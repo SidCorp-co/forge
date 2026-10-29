@@ -71,8 +71,9 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
    Refused by name, nothing written: \`ADOPT_CONTRACT_NOT_CONSUMED\` (the interface consumes no such
    contract), \`VERSION_UNKNOWN\` / \`CONTRACT_VERSION_NOT_APPROVED\`, \`ADOPT_VERSION_BEHIND_PIN\` (a pin is
    already past it), \`ADOPT_VERSION_BREAKING\` (some version between a pin and it is measured breaking:
-   worked through its change notice and the consumer's own issue), \`ADOPT_VERSION_UNMEASURED\` (some
-   version between a pin and it is measured \`unknown\`, or a check went unread, so not non-breaking),
+   worked through its change notice and the consumer's own issue, then pinned by hand as the refusal
+   says), \`ADOPT_VERSION_UNMEASURED\` (some version between a pin and it is measured \`unknown\`, or
+   a check went unread, which the refusal names),
    and \`ADOPT_FIELD_MISSING\`, which names each link and field the version no longer holds.
    An unmeasured step is adopted once the code is checked against it, by saying why it is safe:
    \`acceptUnmeasured: { reason }\` beside \`contract\` and \`version\`. The reason is kept on the

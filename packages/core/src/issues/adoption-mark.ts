@@ -35,7 +35,35 @@ interface AdoptionMarkArgs {
  * or a mark naming a commit, paths, a landing, artifacts or a target beside it, is refused by name,
  * so the record is never a way past a commit (BC-18).
  */
-export async function adoptionOf(args: AdoptionMarkArgs): Promise<AdoptionHeld[]> {
+/** The mark an issue already holds, as the adoption check reads it. */
+interface HeldMark {
+  mergedAt: Date | null;
+  mergedCommitSha: string | null;
+  mergedArtifacts: readonly LandingArtifact[] | null;
+}
+
+/** Refuses adoptions an existing mark on something else would drop unwritten (judge K137 finding 6). */
+function refuseHeldMark(args: AdoptionMarkArgs, held: HeldMark): void {
+  if (held.mergedAt === null) return;
+  const had = (held.mergedArtifacts ?? [])
+    .filter((a) => a.surface === 'adoption')
+    .map((a) => a.ref);
+  const sent = [...new Set(args.adoptions ?? [])];
+  if (had.length === sent.length && sent.every((r) => had.includes(r))) return;
+  const what = held.mergedCommitSha
+    ? `at commit ${held.mergedCommitSha}`
+    : had.length > 0
+      ? `on ${had.join(', ')}`
+      : 'by a mark naming no commit';
+  throw refuse(
+    'ADOPTION_MARK_HELD',
+    `this issue is already marked merged ${what}, so these adoptions would not be written; nothing was marked. Clear that mark first (\`DELETE /api/issues/${args.issue.id}/merge\`), then mark the adoption again.`,
+    '/adoptions',
+  );
+}
+
+export async function adoptionOf(args: AdoptionMarkArgs, held?: HeldMark): Promise<AdoptionHeld[]> {
+  if (held) refuseHeldMark(args, held);
   const beside = [
     args.commit ? `commit ${args.commit}` : null,
     args.changedPaths ? '`changedPaths`' : null,
@@ -52,9 +80,14 @@ export async function adoptionOf(args: AdoptionMarkArgs): Promise<AdoptionHeld[]
   }
   const code = await codeEvidenceOf(args.issue.id);
   if (code.length > 0) {
+    // a branch alone names no commit: where nothing landed there, clearing it is the way out (K137 finding 4)
+    const branchOnly = code.length === 1 && code[0]?.startsWith('branch ');
+    const out = branchOnly
+      ? ` Where no code landed on that branch, clear it (\`PATCH /api/issues/${args.issue.id}\` with \`workState: { branch: null }\`) and mark the adoption again; where code did, mark it naming \`commit\`, the whole sha it landed at.`
+      : ' Mark it naming `commit`, the whole sha it landed at.';
     throw refuse(
       'ADOPTION_BESIDE_CODE',
-      `this issue carries code evidence (${code.join('; ')}), so its landing is the commit that code landed at and an adoption record does not stand in for it; nothing was marked. Mark it naming \`commit\`, the whole sha it landed at.`,
+      `this issue carries code evidence (${code.join('; ')}), so its landing is the commit that code landed at and an adoption record does not stand in for it; nothing was marked.${out}`,
       '/adoptions',
     );
   }

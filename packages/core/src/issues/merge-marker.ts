@@ -130,6 +130,8 @@ type Preflight = {
   fromRepository: RepositoryLanding | null;
   /** The adoption record read before the stamp, where the mark names `adoptions`. */
   adopted?: AdoptionHeld[] | null;
+  /** A version approved since the adoption, said on the thread for the next round, never refused. */
+  adoptionDrift?: string | null;
 };
 
 /** The refusals a mark meets before its transaction: the landing shape, the target, contract
@@ -144,10 +146,12 @@ async function preflightMark(
   const shape = await readLandingShape(args.issue.projectId, db);
   if (shape === null) throw refuse('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
   if (args.adoptions) {
-    const adopted = await adoptionOf(args);
-    const drifted = await contractDrift(prior, [...(args.contracts ?? []), ...args.adoptions]);
-    if (drifted) throw refuse(drifted.code, drifted.detail, '/adoptions');
-    return { shape, fromRepository: null, adopted };
+    const adopted = await adoptionOf(args, prior);
+    const drifted = await contractDrift(prior, args.contracts ?? []);
+    if (drifted) throw refuse(drifted.code, drifted.detail, '/contracts');
+    // an adoption holds on the version it names: one approved since is the next round's to take
+    const later = await contractDrift(prior, args.adoptions);
+    return { shape, fromRepository: null, adopted, adoptionDrift: later?.detail ?? null };
   }
   // A landing on a git project is refused below whatever the target, and that refusal names the
   // real fault, so the missing target is not reported ahead of it.
@@ -495,6 +499,10 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
     };
     if (preflight) stamp = await stampMark(tx, args, preflight, observed);
     else await clearMark(tx, args.issue.id);
+    if (stamp.result.wrote && preflight?.adoptionDrift) {
+      const next = `Marked on the adoption it names. For the next round, not this one: ${preflight.adoptionDrift.split(' Approve the version')[0]} Adopt it in an issue of its own once this consumer's code is checked against it.`;
+      await writeAuditComment(args.issue.id, args.actor.commentAuthorId, next, tx);
+    }
     return { stamp, ...(await writeMarkTrail(tx, args, prior, stamp)) };
   });
 
