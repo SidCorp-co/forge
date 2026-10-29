@@ -185,7 +185,10 @@ export const supportCheckSchema = z.strictObject({
 	/** When it runs each day, `HH:MM` in UTC. */
 	at: z
 		.string()
-		.regex(/^([01]\d|2[0-3]):[0-5]\d$/, "a check's time is HH:MM in UTC, such as 01:30"),
+		.regex(
+			/^([01]\d|2[0-3]):[0-5]\d$/,
+			"a check's time is HH:MM in UTC, such as 01:30",
+		),
 	/** What the agent checks, and what counts as a finding, in the owner's words. */
 	ask: z.string().trim().min(10).max(2000),
 });

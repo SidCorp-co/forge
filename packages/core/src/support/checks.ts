@@ -18,7 +18,6 @@ import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
 import { postTopLevel, scrubbedForRoom } from './thread.js';
 
-
 /** `YYYY-MM-DD` and `HH:MM` of `now` in UTC. */
 function utcParts(now: Date): { day: string; time: string } {
   const iso = now.toISOString();

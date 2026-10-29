@@ -341,7 +341,12 @@ export const supportGitCredentialRequestSchema = z.strictObject({
 /** One duty an outside bot does in a group, which the Forge agent passes before the switch (BC-16). */
 export const channelSwitchDutySchema = z.strictObject({
 	/** A short key, `owner-mode`, by which a person marks it passed. */
-	key: z.string().regex(/^[a-z0-9][a-z0-9-]{1,39}$/, "a duty's key is 2 to 40 lowercase letters, digits and dashes"),
+	key: z
+		.string()
+		.regex(
+			/^[a-z0-9][a-z0-9-]{1,39}$/,
+			"a duty's key is 2 to 40 lowercase letters, digits and dashes",
+		),
 	text: z.string().trim().min(3).max(600),
 });
 
@@ -361,7 +366,10 @@ export const channelSwitchPlanSchema = z.strictObject({
 		.array(channelSwitchDutySchema)
 		.min(1)
 		.max(40)
-		.refine((d) => new Set(d.map((x) => x.key)).size === d.length, "a duty's key is named once"),
+		.refine(
+			(d) => new Set(d.map((x) => x.key)).size === d.length,
+			"a duty's key is named once",
+		),
 	/** Another channel's switch this one waits on until a person marks it proven. */
 	after: z.uuid().optional(),
 	/** The owner's word is needed before this group switches. */

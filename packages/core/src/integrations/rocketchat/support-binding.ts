@@ -108,7 +108,7 @@ function checkRefusals(
         code: 'SUPPORT_CHECK_NOT_AGENT',
         path: '/support/checks',
         detail:
-          'scheduled checks are a channel agent\'s: move this binding\'s block from `support` to `agent`, or drop checks',
+          "scheduled checks are a channel agent's: move this binding's block from `support` to `agent`, or drop checks",
       },
     ];
   }

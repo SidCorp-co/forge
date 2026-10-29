@@ -59,7 +59,9 @@ export function isChatDoorSession(session: { kind: string; metadata: unknown }):
  * schedule fire runs with the box's own view, as a run does.
  */
 export function runsConfined(session: { kind: string; metadata: unknown }): boolean {
-  return isChatDoorSession(session) || (session.kind === 'chat' && isOwnerModeAgent(session.metadata));
+  return (
+    isChatDoorSession(session) || (session.kind === 'chat' && isOwnerModeAgent(session.metadata))
+  );
 }
 
 /**

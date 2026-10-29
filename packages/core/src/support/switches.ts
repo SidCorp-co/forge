@@ -14,16 +14,16 @@ import type {
 } from '@forge/contracts/support-channel';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { supportChannels, supportChannelSwitches } from '../db/schema-support.js';
+import { supportChannelSwitches, supportChannels } from '../db/schema-support.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import {
   type AgentSwitchGate,
   kickFromGroup,
   resolveRoomPostAuth,
 } from '../integrations/rocketchat/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import type { ApiRefusal } from '../project-config/index.js';
 import { planBinding, readBinding, writeBinding } from '../project-config/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { privateRefusal } from './channel.js';
 import { answeredOutside, channelOf } from './channel-store.js';
 import { no, type Outcome } from './outcome.js';
@@ -340,7 +340,8 @@ export async function applySwitch(
     );
   }
   const read = await readBinding(projectId, pair.binding.id);
-  if (!read?.ok) throw new Error(`support: binding ${pair.binding.id} cannot be read as a document`);
+  if (!read?.ok)
+    throw new Error(`support: binding ${pair.binding.id} cannot be read as a document`);
   const target = read.held.document.target as Record<string, unknown>;
   const outside = ((target.outsideRids as string[] | undefined) ?? []).filter((r) => r !== rid);
   const nextTarget: Record<string, unknown> = {

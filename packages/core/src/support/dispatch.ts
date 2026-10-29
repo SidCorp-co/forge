@@ -35,12 +35,12 @@ import {
 import { grantsOf, supportConfigOf } from './grants.js';
 import { injectWaiting, settleInjects } from './inject.js';
 import { operationsBrief } from './ops-prompt.js';
-import { ownViewOf } from './owner-git.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
+import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
-import { isCheckThread } from './rules.js';
 import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
+import { isCheckThread } from './rules.js';
 import { insertAction, offlineToldSince, type RoomRow, roomById, roomsOfSession } from './store.js';
 import { postInThread } from './thread.js';
 
@@ -418,7 +418,10 @@ async function tellTurnFailed(roomId: string, status: string): Promise<void> {
     const posted = isCheckThread(thread)
       ? null
       : await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {
-          logger.error({ err, roomId, thread }, 'support: the failed-turn notice could not be posted');
+          logger.error(
+            { err, roomId, thread },
+            'support: the failed-turn notice could not be posted',
+          );
           return null;
         });
     await insertAction({

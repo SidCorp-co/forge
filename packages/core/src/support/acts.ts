@@ -120,15 +120,20 @@ const ANY_ROOM = new Set<SupportActInput['action']>(['search', 'tools']);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
 function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
-  const named = input as { thread?: unknown; threads?: unknown; message?: unknown; check?: unknown };
+  const named = input as {
+    thread?: unknown;
+    threads?: unknown;
+    message?: unknown;
+    check?: unknown;
+  };
   const thread =
     typeof named.thread === 'string'
       ? named.thread
       : typeof named.check === 'string'
         ? named.check
-      : Array.isArray(named.threads) && typeof named.threads[0] === 'string'
-        ? named.threads[0]
-        : undefined;
+        : Array.isArray(named.threads) && typeof named.threads[0] === 'string'
+          ? named.threads[0]
+          : undefined;
   return {
     rid,
     thread,

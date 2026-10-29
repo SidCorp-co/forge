@@ -50,7 +50,8 @@ const agentBlock = (extra: Record<string, unknown> = {}) => ({
 });
 
 const projectPath = (rest: string) => `/api/projects/${w.projectId}${rest}`;
-const switchPath = (rid: string, rest = '') => projectPath(`/support/channels/${rid}/switch${rest}`);
+const switchPath = (rid: string, rest = '') =>
+  projectPath(`/support/channels/${rid}/switch${rest}`);
 
 /** The binding's target as it is held now. */
 async function heldTarget(): Promise<Record<string, unknown>> {
@@ -200,7 +201,10 @@ describe('REQ-77 BC-13: a scheduled check posts one finding, and nothing when th
 
 describe('REQ-77 BC-16: a group switches from its outside bot only through its duty checklist', () => {
   it('refuses moving an outside group into the agent with no switch planned', async () => {
-    const moved = await w.retarget({ rids: [chat.rid, chat.rid2], outsideRids: [chat.rid3, chat.rid4] });
+    const moved = await w.retarget({
+      rids: [chat.rid, chat.rid2],
+      outsideRids: [chat.rid3, chat.rid4],
+    });
     expect(moved.status, JSON.stringify(moved.body)).toBeGreaterThanOrEqual(400);
     expect(JSON.stringify(moved.body)).toContain('AGENT_SWITCH_NOT_READY');
     expect(JSON.stringify(moved.body)).toContain('no switch is planned');
@@ -208,11 +212,16 @@ describe('REQ-77 BC-16: a group switches from its outside bot only through its d
 
   it('plans the switch, and refuses to run it, or the binding move, while a duty is open', async () => {
     // the outside bot declared itself on its group, as Orbit Babo does (REQ-75 r7 BC-42)
-    const declared = await api(w.owner, 'PUT', projectPath(`/support/channels/${chat.rid2}/agent`), {
-      role: 'Babo',
-      box: 'hub box',
-      address: 'tmux:orbit-chat-watch',
-    });
+    const declared = await api(
+      w.owner,
+      'PUT',
+      projectPath(`/support/channels/${chat.rid2}/agent`),
+      {
+        role: 'Babo',
+        box: 'hub box',
+        address: 'tmux:orbit-chat-watch',
+      },
+    );
     expect(declared.status, JSON.stringify(declared.body)).toBe(200);
     const planned = await api(w.owner, 'PUT', switchPath(chat.rid2), {
       outsideBot: OUTSIDE_BOT,
@@ -229,7 +238,10 @@ describe('REQ-77 BC-16: a group switches from its outside bot only through its d
     const early = await api(w.owner, 'POST', switchPath(chat.rid2, '/apply'));
     expect(early.status, JSON.stringify(early.body)).toBe(409);
     expect(JSON.stringify(early.body)).toContain('duty answers-in-thread is not passed');
-    const byHand = await w.retarget({ rids: [chat.rid, chat.rid2], outsideRids: [chat.rid3, chat.rid4] });
+    const byHand = await w.retarget({
+      rids: [chat.rid, chat.rid2],
+      outsideRids: [chat.rid3, chat.rid4],
+    });
     expect(byHand.status, JSON.stringify(byHand.body)).toBeGreaterThanOrEqual(400);
     expect(JSON.stringify(byHand.body)).toContain('AGENT_SWITCH_NOT_READY');
     expect(chat.kicked).toEqual([]);
@@ -278,7 +290,9 @@ describe('REQ-77 BC-18: a switch waiting on another runs only once that one is p
     const firstId = (first.body.switch as { id: string }).id;
     const planned = await api(w.owner, 'PUT', switchPath(chat.rid3), {
       outsideBot: { userId: 'u-adminhub-babo' },
-      duties: [{ key: 'morning-check', text: 'Posts the morning check finding, and nothing without one' }],
+      duties: [
+        { key: 'morning-check', text: 'Posts the morning check finding, and nothing without one' },
+      ],
       after: firstId,
     });
     expect(planned.status, JSON.stringify(planned.body)).toBe(200);
@@ -287,10 +301,14 @@ describe('REQ-77 BC-18: a switch waiting on another runs only once that one is p
     });
     const early = await api(w.owner, 'POST', switchPath(chat.rid3, '/apply'));
     expect(early.status, JSON.stringify(early.body)).toBe(409);
-    expect(JSON.stringify(early.body)).toContain(`the switch of group ${chat.rid2} it waits on is not proven`);
+    expect(JSON.stringify(early.body)).toContain(
+      `the switch of group ${chat.rid2} it waits on is not proven`,
+    );
     expect(chat.kicked.some((k) => k.rid === chat.rid3)).toBe(false);
 
-    const unswitched = await api(w.owner, 'POST', switchPath(chat.rid4, '/proven'), { note: 'too soon' });
+    const unswitched = await api(w.owner, 'POST', switchPath(chat.rid4, '/proven'), {
+      note: 'too soon',
+    });
     expect(JSON.stringify(unswitched.body)).toMatch(/AGENT_SWITCH_(UNKNOWN|NOT_SWITCHED)/);
     const proven = await api(w.owner, 'POST', switchPath(chat.rid2, '/proven'), {
       note: 'answered a week of real requests as well as Babo did',
@@ -359,7 +377,12 @@ describe('ISS-765 c6: an owner-mode channel agent runs confined, its git reachin
     expect(granted.status, JSON.stringify(granted.body)).toBeLessThan(300);
     await w.settleWarm();
     const start = w.box.turns.slice(turns).find((t) => t.event === 'agent:start');
-    expect(start).toMatchObject({ confined: true, checkout: 'own', buildBase: 'dev', ownHosts: [] });
+    expect(start).toMatchObject({
+      confined: true,
+      checkout: 'own',
+      buildBase: 'dev',
+      ownHosts: [],
+    });
     expect(start?.text).toContain('your own clone of the repository');
   });
 
@@ -381,7 +404,10 @@ describe('ISS-765 c6: an owner-mode channel agent runs confined, its git reachin
     expect(direct?.status, JSON.stringify(direct)).toBe(409);
     expect(JSON.stringify(direct)).toContain('GIT_THROUGH_FORGE');
     expect(JSON.stringify(direct)).not.toContain('glpat');
-    expect(own, JSON.stringify(own)).toMatchObject({ status: 200, body: { username: 'forge-relay' } });
+    expect(own, JSON.stringify(own)).toMatchObject({
+      status: 200,
+      body: { username: 'forge-relay' },
+    });
     expect(String(own?.body.password)).not.toContain('glpat');
     for (const refused of [other, github]) {
       expect(refused?.status, JSON.stringify(refused)).toBe(403);
@@ -403,8 +429,9 @@ describe('ISS-765 c6: an owner-mode channel agent runs confined, its git reachin
       forgetMemberships();
       const listedRooms = await api(w.owner, 'GET', projectPath('/support/rooms'));
       const health = JSON.stringify(
-        (listedRooms.body.rooms as { rid: string; health: unknown }[]).find((r) => r.rid === chat.rid)
-          ?.health,
+        (listedRooms.body.rooms as { rid: string; health: unknown }[]).find(
+          (r) => r.rid === chat.rid,
+        )?.health,
       );
       expect(health).toContain('BOX_TOO_OLD');
       expect(health).toContain('ownerCheckouts');

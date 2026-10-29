@@ -4,13 +4,13 @@
 // here for the project's own bound repository alone, asked for by the session's turn token; the box's
 // SSH key, `gh` login, forge account and ops tools stay out of its view.
 
-import { readProjectDocument } from '../project-config/index.js';
 import type { CheckoutView } from '../agent-sessions/index.js';
 import { sessionRowById } from '../agent-sessions/index.js';
 import {
   gitHostsOfProject,
   mintGitCredentialForDevice,
 } from '../integrations/source-host/index.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { sessionCaller } from './access.js';
 import type { SupportCaller } from './acts.js';
 import { no, type Outcome } from './outcome.js';
