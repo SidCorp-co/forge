@@ -14,7 +14,7 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
 import { draftNaming, nameUnnamedRelease } from '../release-batch/index.js';
-import { carriedRequirements } from './facts.js';
+import { unnotedCriteria } from './facts.js';
 import { draftReleaseNaming, type NamingOutcome, namingFacts } from './naming-draft.js';
 import { claim, clearRow, namingDraftStale, namingRow, settleFailed } from './naming-store.js';
 import { releaseDetailOf } from './read.js';
@@ -32,9 +32,9 @@ type Drafter = typeof draftReleaseNaming;
 
 /**
  * Names the release drafted or cut as `version` where nobody has: drafts its name and summary from
- * what it carries and writes them where a person's would go. A release carrying nothing a user sees
- * and no requirement is refused by name, as is a draft the model could not write; neither is ever
- * left as a silent null.
+ * the issues it carries and writes them where a person's would go. A release carrying no change of
+ * its own is refused by name, as is a draft the model could not write; neither is ever left as a
+ * silent null.
  */
 export async function nameReleaseIfOwed(
   projectId: string,
@@ -57,7 +57,7 @@ export async function nameReleaseIfOwed(
   if (!(await claim(projectId, version))) {
     return (await namingRow(projectId, version))?.state === 'failed' ? 'held' : 'in_flight';
   }
-  const facts = namingFacts(detail, await carriedRequirements(projectId, detail));
+  const facts = namingFacts(detail, await unnotedCriteria(detail));
   if (!namingHasFacts(facts)) {
     await settleFailed(
       projectId,
@@ -66,7 +66,7 @@ export async function nameReleaseIfOwed(
         {
           code: 'RELEASE_NAMING_NOTHING_TO_SAY',
           path: '',
-          detail: `${version} carries no change its users see and advances no requirement, so nothing names it: a project admin names it (PUT /api/projects/${projectId}/releases/${version}/naming)`,
+          detail: `${version} carries no change of its own to name it from (only approved designs, or issues reworked since), so nothing names it: a project admin names it (PUT /api/projects/${projectId}/releases/${version}/naming)`,
         },
       ],
       null,

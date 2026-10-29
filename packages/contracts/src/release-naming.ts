@@ -1,8 +1,9 @@
 // The name and summary the assistant drafts for a release (REQ-40 BC-14), and the rule that judges
 // them. Every release is named once it is drafted or cut: by a person or a master where one names
-// it, else by the assistant from what the release carries — each change's line for users and the
-// requirements it completes or advances, nothing else. A draft that cannot be written is said, with
-// why, on the release's page; it is never left as a silent null.
+// it, else by the assistant from the issues the release carries and nothing else: their notes, and
+// the criteria of one with no note. A requirement those issues serve is never read for it, so a
+// release carrying one criterion of it is never named for the rest. A draft that cannot be written is
+// said, with why, on the release's page; it is never left as a silent null.
 
 import { z } from "zod";
 import { releaseNoteReferences } from "./content-language.js";
@@ -49,23 +50,37 @@ export const ReleaseNamerSchema = z.discriminatedUnion("to", [
 ]);
 export type ReleaseNamer = z.infer<typeof ReleaseNamerSchema>;
 
-/** What the namer is shown: the release's changes as users read them, and the requirements it carries. */
+/**
+ * What the namer is shown: the issues the release carries, each by its own note, or by its own
+ * criteria where it has none. Never a requirement's scope: an issue under a requirement carries only
+ * what it was cut to do.
+ */
 export interface ReleaseNamingFacts {
 	version: string;
-	/** Each change a user sees: its short title, where its note has one, and its one sentence. */
+	/** Each change a user sees, from its note: its short title, where it has one, and its one sentence. */
 	changes: { title: string | null; line: string }[];
-	requirements: {
-		key: string;
-		title: string;
-		/** The requirement's summary, where it has one. */
-		text: string;
-		completes: boolean;
-	}[];
+	/** Each change nobody using the product sees (a `Skip` note): what it changes for whoever runs it. */
+	operatorChanges: { title: string; line: string | null }[];
+	/** Each carried issue with no note, by its title and its own criteria. */
+	unnoted: { title: string; criteria: string[] }[];
 }
 
-/** Whether there is anything to name the release from: a change users see, or a requirement it carries. */
+/** Whether the release carries anything to name it from. */
 export function namingHasFacts(facts: ReleaseNamingFacts): boolean {
-	return facts.changes.length > 0 || facts.requirements.length > 0;
+	return (
+		facts.changes.length > 0 ||
+		facts.operatorChanges.length > 0 ||
+		facts.unnoted.length > 0
+	);
+}
+
+/** Whether every change the release carries is one nobody using the product sees. */
+export function namingForOperatorsOnly(facts: ReleaseNamingFacts): boolean {
+	return (
+		facts.changes.length === 0 &&
+		facts.unnoted.length === 0 &&
+		facts.operatorChanges.length > 0
+	);
 }
 
 const NUMERAL = /\d+(?:[.,:]\d+)*/g;
@@ -97,7 +112,8 @@ export function judgeNaming(raw: unknown, facts: ReleaseNamingFacts): Refusal[] 
 	const record = [
 		facts.version,
 		...facts.changes.flatMap((c) => [c.title ?? "", c.line]),
-		...facts.requirements.flatMap((r) => [r.title, r.text]),
+		...facts.operatorChanges.flatMap((c) => [c.title, c.line ?? ""]),
+		...facts.unnoted.flatMap((u) => [u.title, ...u.criteria]),
 	].join(" ");
 	const backed = new Set(record.match(NUMERAL) ?? []);
 	for (const n of `${naming.name} ${naming.summary}`.match(NUMERAL) ?? [])
@@ -105,7 +121,7 @@ export function judgeNaming(raw: unknown, facts: ReleaseNamingFacts): Refusal[] 
 			out.push({
 				code: "RELEASE_NAMING_FIGURE_UNBACKED",
 				path: "",
-				detail: `"${n}" is not a figure the release's changes or requirements state`,
+				detail: `"${n}" is not a figure the release's changes state`,
 			});
 	return out;
 }
