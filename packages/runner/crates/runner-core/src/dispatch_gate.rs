@@ -8,8 +8,19 @@
 //! ran start to finish leaving no record of who did them.
 //!
 //! This module holds the decision and nothing else: no socket, no ledger, no
-//! files. `daemon/control.rs` supplies the facts and carries the answer back;
-//! `cmd/gate.rs` is the process a pane's own `PreToolUse` hook runs.
+//! transcript. `runner-daemon`'s `control` supplies the facts and carries the
+//! answer back; `cmd/gate.rs` is the process a pane's own `PreToolUse` hook
+//! runs.
+//!
+//! A declaration is promised to the tool call the gate let through, and other
+//! `PreToolUse` hooks run beside this one: the forge plugin's brief gate
+//! refuses a prompt `forge brief` did not print. A call one of them refused
+//! started nothing, and its result says so in the master's own transcript,
+//! flagged an error, before the next dispatch is made. That result, and not
+//! a clock, is what passes the declaration to the next dispatch (ISS-737).
+//! No hook fires for the refusal itself: measured with Claude Code 2.1.312,
+//! a `PreToolUse` deny fires neither `PostToolUseFailure` nor
+//! `PermissionDenied`, and `SubagentStart` names no tool call.
 //!
 //! The subject is a dispatch to a role this box's plugin copy actually ships,
 //! and that is a definition rather than an approximation:
@@ -20,6 +31,8 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
+
+pub use crate::transcript_age::ToolCall;
 
 pub const REFUSAL: &str =
     "Refused: nothing on this box has been told about the work you are handing out. \
@@ -37,6 +50,9 @@ pub struct Dispatch {
     pub subagent_type: Option<String>,
     /// This tool call's own id, which is what a declaration is promised to.
     pub tool_use_id: Option<String>,
+    /// The hook's `transcript_path`: the master's own conversation, where the
+    /// call a declaration is promised to has its result written once it ends.
+    pub transcript_path: Option<String>,
 }
 
 /// What the box knows when the question is asked.
@@ -47,6 +63,21 @@ pub struct Facts<'a> {
     pub pending_run: Option<&'a str>,
     /// The tool call that pending run is already promised to, if any.
     pub promised_to: Option<&'a str>,
+    /// What this dispatch's own conversation says about the call in
+    /// `promised_to`, read only where that call is another one, or why it
+    /// could not be read.
+    pub promised_call: Option<Result<ToolCall, String>>,
+}
+
+/// Why a run promised to another tool call is not this one's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Elsewhere {
+    /// That call is written and has no result yet, or is not written yet.
+    InFlight,
+    /// That call answered without an error, so the subagent it started takes the run.
+    Started,
+    /// Whether that call ended could not be read, and why.
+    Unread(String),
 }
 
 /// What the gate answers.
@@ -61,6 +92,20 @@ pub enum Verdict {
     /// The same tool call asked twice; the answer it already had stands.
     Replay {
         run_id: String,
+    },
+    /// A declaration covered another tool call, which ended in an error and
+    /// so started no subagent — a sibling `PreToolUse` hook refused it — and
+    /// is now promised to this one instead (ISS-737).
+    Moved {
+        run_id: String,
+        from: String,
+    },
+    /// A declaration exists and is promised to another tool call that has
+    /// not given it up.
+    PromisedElsewhere {
+        run_id: String,
+        to: String,
+        why: Elsewhere,
     },
     /// Nothing was declared for it.
     Undeclared,
@@ -95,8 +140,60 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
         Some(t) if Some(t) == d.tool_use_id.as_deref() => Verdict::Replay {
             run_id: run_id.to_string(),
         },
-        Some(_) => Verdict::Undeclared,
+        Some(t) => {
+            let why = match &f.promised_call {
+                Some(Ok(ToolCall::Failed)) => {
+                    return Verdict::Moved {
+                        run_id: run_id.to_string(),
+                        from: t.to_string(),
+                    }
+                }
+                Some(Ok(ToolCall::Answered)) => Elsewhere::Started,
+                Some(Ok(ToolCall::Unanswered | ToolCall::Unseen)) => Elsewhere::InFlight,
+                Some(Err(why)) => Elsewhere::Unread(why.clone()),
+                None => Elsewhere::Unread(
+                    "nothing read this dispatch's conversation for that call".to_string(),
+                ),
+            };
+            Verdict::PromisedElsewhere {
+                run_id: run_id.to_string(),
+                to: t.to_string(),
+                why,
+            }
+        }
     }
+}
+
+/// The refusal for a dispatch whose master's declaration is promised to
+/// another tool call: which run, which call, whether that call is still in
+/// flight, and what to do. It never says nothing was declared, because
+/// something was (ISS-737).
+pub fn promised_elsewhere(run_id: &str, to: &str, why: &Elsewhere) -> String {
+    let head = format!(
+        "Refused: run {run_id} is declared on this box and is promised to tool call {to}, an \
+         earlier dispatch of yours. One declaration covers one subagent."
+    );
+    let tail = match why {
+        Elsewhere::InFlight => format!(
+            "That call is still in flight: this conversation holds no result for it yet, as with \
+             a second dispatch in the same message. Dispatch this one again in a message of its \
+             own once that call has answered. If that call is refused, run {run_id} passes to the \
+             next dispatch by itself. If it starts its subagent, that subagent takes run \
+             {run_id}, so declare a run of this hand-off's own with `forge-runner run declare` \
+             first."
+        ),
+        Elsewhere::Started => format!(
+            "That call answered without an error, so it started a subagent, which takes run \
+             {run_id}. This hand-off is a second subagent: declare a run of its own with \
+             `forge-runner run declare`, then dispatch it again."
+        ),
+        Elsewhere::Unread(cause) => format!(
+            "Whether that call has ended could not be read ({cause}). If it was refused and \
+             started nothing, `forge-runner run close {run_id}` frees the declaration; declare \
+             again with `forge-runner run declare`, then dispatch."
+        ),
+    };
+    format!("{head} {tail}")
 }
 
 /// The role in `roles` that `name` is, by the one rule every reader here
@@ -242,6 +339,99 @@ mod tests {
             .into_iter()
             .map(str::to_string)
             .collect()
+    }
+
+    fn asked(tool_use: &str) -> Dispatch {
+        Dispatch {
+            subagent_type: Some("forge:runner".into()),
+            tool_use_id: Some(tool_use.into()),
+            ..Dispatch::default()
+        }
+    }
+
+    fn facts<'a>(
+        roles: &'a BTreeSet<String>,
+        pending: Option<&'a str>,
+        to: Option<&'a str>,
+        call: Option<Result<ToolCall, String>>,
+    ) -> Facts<'a> {
+        Facts {
+            roles: Some(roles),
+            pending_run: pending,
+            promised_to: to,
+            promised_call: call,
+        }
+    }
+
+    /// ISS-737: a run promised to a call that ended in an error passes to the
+    /// next; any other state of that call keeps it, and is named.
+    #[test]
+    fn a_run_promised_elsewhere_moves_only_off_a_call_that_ended_in_an_error() {
+        let r = roles();
+        let run = Some("run-1");
+        assert_eq!(
+            decide(
+                &asked("t2"),
+                &facts(&r, run, Some("t1"), Some(Ok(ToolCall::Failed)))
+            ),
+            Verdict::Moved {
+                run_id: "run-1".into(),
+                from: "t1".into()
+            }
+        );
+        for (call, why) in [
+            (Some(Ok(ToolCall::Unanswered)), Elsewhere::InFlight),
+            (Some(Ok(ToolCall::Unseen)), Elsewhere::InFlight),
+            (Some(Ok(ToolCall::Answered)), Elsewhere::Started),
+            (
+                Some(Err("unread".to_string())),
+                Elsewhere::Unread("unread".into()),
+            ),
+        ] {
+            assert_eq!(
+                decide(&asked("t2"), &facts(&r, run, Some("t1"), call)),
+                Verdict::PromisedElsewhere {
+                    run_id: "run-1".into(),
+                    to: "t1".into(),
+                    why
+                }
+            );
+        }
+        assert_eq!(
+            decide(&asked("t1"), &facts(&r, run, Some("t1"), None)),
+            Verdict::Replay {
+                run_id: "run-1".into()
+            },
+            "the call a run is promised to, asked again, is a replay"
+        );
+        assert_eq!(
+            decide(
+                &asked("t2"),
+                &facts(&r, None, None, Some(Ok(ToolCall::Failed)))
+            ),
+            Verdict::Undeclared
+        );
+    }
+
+    #[test]
+    fn a_refusal_for_a_run_promised_elsewhere_names_the_run_the_call_and_the_way_out() {
+        for why in [
+            Elsewhere::InFlight,
+            Elsewhere::Started,
+            Elsewhere::Unread("no transcript".into()),
+        ] {
+            let said = promised_elsewhere("run-1", "toolu_1", &why);
+            assert!(
+                said.contains("run run-1") && said.contains("toolu_1"),
+                "{said}"
+            );
+            assert!(said.contains("forge-runner run "), "{said}");
+            assert!(
+                !said.contains("nothing on this box has been told"),
+                "{said}"
+            );
+        }
+        assert!(promised_elsewhere("r", "t", &Elsewhere::InFlight).contains("in flight"));
     }
 
     #[test]

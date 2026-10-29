@@ -74,6 +74,7 @@ pub fn dispatch_in(payload: &[u8]) -> Payload {
         agent_id: field("agent_id"),
         subagent_type: Some(subagent_type),
         tool_use_id: field("tool_use_id"),
+        transcript_path: field("transcript_path"),
     })
 }
 
@@ -347,12 +348,12 @@ async fn answer(dir: Option<&Path>, caller: Caller<'_>, d: &Dispatch) -> String 
         Err(_) => open_because("the daemon did not answer within the bound"),
         Ok(Err(e)) => open_because(&format!("the daemon could not be reached: {e}")),
         Ok(Ok(reply)) if reply.ok => ALLOW.to_string(),
-        Ok(Ok(reply)) => match reply.reason.as_deref() {
-            Some(r) if r == runner_core::dispatch_gate::REFUSAL => deny(r),
-            Some(other) => {
+        Ok(Ok(reply)) => match (control::gate_denial(&reply), reply.reason.as_deref()) {
+            (Some(r), _) => deny(r),
+            (None, Some(other)) => {
                 open_because(&format!("the daemon refused the question itself: {other}"))
             }
-            None => open_because("the daemon refused the question itself and said nothing"),
+            (None, None) => open_because("the daemon refused the question itself and said nothing"),
         },
     }
 }
@@ -395,4 +396,36 @@ pub async fn run(args: Args) {
         None => Caller::Tokenless(tokenless_here(dir.as_deref()).await),
     };
     println!("{}", answer(dir.as_deref(), caller, &d).await);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `PreToolUse` payload as Claude Code 2.1.312 sends it for an Agent
+    /// call: the transcript it names is where a refused call's result is
+    /// written, and the gate carries it to the daemon (ISS-737).
+    #[test]
+    fn a_dispatch_carries_its_tool_call_and_its_transcript() {
+        let payload = serde_json::json!({
+            "session_id": "c0", "transcript_path": "/home/u/.claude/projects/p/c0.jsonl",
+            "cwd": "/r", "permission_mode": "default", "hook_event_name": "PreToolUse",
+            "prompt_id": "p1", "effort": "high", "tool_name": "Agent",
+            "tool_input": {"subagent_type": "forge:runner", "prompt": "x"},
+            "tool_use_id": "toolu_1"
+        });
+        let Payload::Dispatch(d) = dispatch_in(payload.to_string().as_bytes()) else {
+            panic!("an Agent call was not read as a dispatch");
+        };
+        assert_eq!(d.tool_use_id.as_deref(), Some("toolu_1"));
+        assert_eq!(
+            d.transcript_path.as_deref(),
+            Some("/home/u/.claude/projects/p/c0.jsonl")
+        );
+        let frame = control::dispatch_gate_frame("tok", &d);
+        assert_eq!(
+            frame["transcriptPath"],
+            "/home/u/.claude/projects/p/c0.jsonl"
+        );
+    }
 }

@@ -115,6 +115,9 @@ enum Request {
         subagent_type: Option<String>,
         #[serde(default)]
         tool_use_id: Option<String>,
+        /// The master's own conversation, where a promised call's result is written.
+        #[serde(default)]
+        transcript_path: Option<String>,
     },
     /// "That run is finished" — or "the subagent I declared never started".
     #[serde(rename_all = "camelCase")]
@@ -161,6 +164,10 @@ pub struct ClaimReply {
     pub issue_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// The dispatch gate refused the hand-off itself, which the pane's hook
+    /// prints as a deny ([`gate_denial`]); unset on every other reply.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub deny: bool,
 }
 
 #[cfg(unix)]
@@ -172,6 +179,15 @@ impl ClaimReply {
             agent_session_id: None,
             issue_key: None,
             reason: Some(reason.into()),
+            deny: false,
+        }
+    }
+
+    /// The dispatch gate's refusal of a hand-off, which the hook denies.
+    fn denied(reason: impl Into<String>) -> Self {
+        Self {
+            deny: true,
+            ..Self::refused(reason)
         }
     }
 }
@@ -504,6 +520,7 @@ async fn serve_request(
             agent_id,
             subagent_type,
             tool_use_id,
+            transcript_path,
             ..
         } => dispatch_gate_reply(
             ctl,
@@ -511,6 +528,7 @@ async fn serve_request(
                 agent_id,
                 subagent_type,
                 tool_use_id,
+                transcript_path,
             },
             session_id,
         ),
@@ -548,6 +566,7 @@ fn credential_refused(ctl: &Control, code: &str, detail: &str, session_id: &str)
         agent_session_id: None,
         issue_key: None,
         reason: None,
+        deny: false,
     }
 }
 
@@ -581,6 +600,45 @@ mod credential_refused_tests {
             Request::CredentialRefused { ref token, ref code, ref detail }
                 if token == "tok" && code == "PAT_PROJECT_OUTSIDE_FENCE" && detail == "reaches forge"
         ));
+    }
+
+    #[test]
+    fn the_gate_frame_carries_the_transcript_to_the_request() {
+        let d = runner_core::dispatch_gate::Dispatch {
+            agent_id: None,
+            subagent_type: Some("forge:runner".into()),
+            tool_use_id: Some("toolu_1".into()),
+            transcript_path: Some("/t/c0.jsonl".into()),
+        };
+        let req: Request = serde_json::from_value(dispatch_gate_frame("tok", &d)).unwrap();
+        assert!(matches!(
+            req,
+            Request::DispatchGate { ref transcript_path, ref tool_use_id, .. }
+                if transcript_path.as_deref() == Some("/t/c0.jsonl")
+                    && tool_use_id.as_deref() == Some("toolu_1")
+        ));
+    }
+
+    /// The hook denies the gate's own refusals, the old sentence from a daemon
+    /// before the flag among them, and fails open on a refused question.
+    #[test]
+    fn the_hook_denies_the_gates_refusals_and_no_other() {
+        let wire = |r: &ClaimReply| -> ClaimReply {
+            serde_json::from_str(&serde_json::to_string(r).unwrap()).unwrap()
+        };
+        let gate = wire(&ClaimReply::denied("run r is promised to tool call t"));
+        assert_eq!(gate_denial(&gate), Some("run r is promised to tool call t"));
+        let before_the_flag = wire(&ClaimReply::refused(runner_core::dispatch_gate::REFUSAL));
+        assert!(gate_denial(&before_the_flag).is_some());
+        assert_eq!(
+            gate_denial(&wire(&ClaimReply::refused("unknown_token"))),
+            None
+        );
+        let plain = serde_json::to_string(&ClaimReply::refused("unknown_token")).unwrap();
+        assert!(
+            !plain.contains("deny"),
+            "an ordinary reply grew a field: {plain}"
+        );
     }
 
     #[test]

@@ -318,6 +318,13 @@ impl Drain {
         Some(stop)
     }
 
+    /// Close admission as a handover's closing window does, for a test of what
+    /// a closed window refuses.
+    #[cfg(test)]
+    pub(crate) fn close_window_for_test(&self, attempt: &Attempt) {
+        let _ = self.close_window(attempt);
+    }
+
     /// Open admission again and go back to waiting, keeping the attempt.
     fn release_window(&self, attempt: &Attempt, outstanding: &[String]) {
         let mut inner = self.lock();
