@@ -3,6 +3,9 @@
  * written; a real-shaped credential is still refused VERDICT_SECRET, and the refusal names the span
  * it read (offset, length, the public scheme) without sending the credential back.
  *
+ * ISS-572: a count after a credential label is prose, also where it closes a sentence or a bracket,
+ * and a short secret in a bracket is still refused, telling a writer of prose to reword.
+ *
  * @direct-test-of packages/core/src/issues/criteria/verdict-input.ts
  * @direct-test-of packages/observability/src/index.ts
  */
@@ -98,6 +101,28 @@ describe('a verdict reason over the verdict route', () => {
       `at offset 15, ${key.length} characters: \`${masked}\` after \` log showed \``,
     );
     expect(JSON.stringify(res.body)).not.toContain(KEY_BODY.slice(0, 12));
+    expect(await verdictsOn(id)).toBe(0);
+  });
+
+  it.each([
+    'Three runs ended with no token: 4.',
+    'The suite ran (no token: 4) and passed.',
+    'no token: 4 failures, 3 tests failed, token: 2 left',
+  ])('writes a reason counting after a credential label: %s', async (reason) => {
+    const id = await issueWithCriterion();
+    const res = await verdict(id, reason);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(await verdictsOn(id)).toBe(1);
+  });
+
+  it('refuses a short secret closing a bracket, without the value, telling prose to reword', async () => {
+    const id = await issueWithCriterion();
+    const res = await verdict(id, 'the seed logs (password: hunter2).');
+    expect(res.status).toBe(422);
+    const refusal = refusalOf(res);
+    expect(refusal).toMatchObject({ code: 'VERDICT_SECRET', path: '/reason' });
+    expect(refusal?.detail).toMatch(/If it is not a secret, reword it\.$/);
+    expect(JSON.stringify(res.body)).not.toContain('hunter2');
     expect(await verdictsOn(id)).toBe(0);
   });
 
