@@ -1,1 +1,0 @@
-**Every MCP client is listed five tools in 2 KB instead of 56 KB.** forge_find, forge_describe and forge_call reach every action, one guide at a time; search and fetch read issues, requirements and knowledge.

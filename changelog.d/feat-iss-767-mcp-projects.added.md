@@ -1,1 +1,0 @@
-**An MCP client can find, read and create projects, and write their document and bindings.** projects.*, config.* and bindings.* run through forge_call; a read token is refused writes, and no answer carries a secret.

@@ -1,1 +1,0 @@
-**A channel agent answers by each group's own record, and asks the owner there.** It replies once per request, in the asker's thread, and stays silent on chatter. A change to a running system waits for a Technical or Maintenance member the record confirms. It can ask the owner a question in the thread, and the owner's answer reaches it and the issue it names.
