@@ -1,0 +1,1 @@
+**An issue that only adopted a contract version lands even after its provider approves a newer one.** The issue names the newer version for later, and adoption refusals name the unread check and the way out.

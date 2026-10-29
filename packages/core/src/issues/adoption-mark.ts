@@ -14,10 +14,12 @@ import type { HostMerge } from './host-mark.js';
 import type { LandingShape } from './landing-evidence.js';
 import { adoptionLandingOf } from './merge-mark-kind.js';
 import { type MergeRecord, recordIssueMerge } from './merge-record.js';
-import { adoptionRecord } from './ports.js';
+import { adoptionRecord, contractDrift } from './ports.js';
 import { codeEvidenceOf } from './work-evidence.js';
 
-const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
+const refuse = refuser<MergeRefusalCode | 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED'>(
+  'MERGE_MARK_REFUSED',
+);
 
 interface AdoptionMarkArgs {
   issue: { id: string; projectId: string };
@@ -29,13 +31,41 @@ interface AdoptionMarkArgs {
   adoptions?: readonly string[] | undefined;
 }
 
+/** The mark an issue already holds, as the adoption check reads it. */
+interface HeldMark {
+  mergedAt: Date | null;
+  mergedCommitSha: string | null;
+  mergedArtifacts: readonly LandingArtifact[] | null;
+}
+
+/** Refuses adoptions an existing mark on something else would drop unwritten (judge K137 finding 6). */
+function refuseHeldMark(args: AdoptionMarkArgs, held: HeldMark): void {
+  if (held.mergedAt === null) return;
+  const had = (held.mergedArtifacts ?? [])
+    .filter((a) => a.surface === 'adoption')
+    .map((a) => a.ref);
+  const sent = [...new Set(args.adoptions ?? [])];
+  if (had.length === sent.length && sent.every((r) => had.includes(r))) return;
+  const what = held.mergedCommitSha
+    ? `at commit ${held.mergedCommitSha}`
+    : had.length > 0
+      ? `on ${had.join(', ')}`
+      : 'by a mark naming no commit';
+  throw refuse(
+    'ADOPTION_MARK_HELD',
+    `this issue is already marked merged ${what}, so these adoptions would not be written; nothing was marked. Clear that mark first (\`DELETE /api/issues/${args.issue.id}/merge\`), then mark the adoption again.`,
+    '/adoptions',
+  );
+}
+
 /**
  * The adoption record a mark naming `adoptions` lands on (REQ-5 BC-17), read off the project's
  * interface and links. It stands only for an issue that changed no code: one carrying code evidence,
  * or a mark naming a commit, paths, a landing, artifacts or a target beside it, is refused by name,
  * so the record is never a way past a commit (BC-18).
  */
-export async function adoptionOf(args: AdoptionMarkArgs): Promise<AdoptionHeld[]> {
+export async function adoptionOf(args: AdoptionMarkArgs, held?: HeldMark): Promise<AdoptionHeld[]> {
+  if (held) refuseHeldMark(args, held);
   const beside = [
     args.commit ? `commit ${args.commit}` : null,
     args.changedPaths ? '`changedPaths`' : null,
@@ -52,15 +82,45 @@ export async function adoptionOf(args: AdoptionMarkArgs): Promise<AdoptionHeld[]
   }
   const code = await codeEvidenceOf(args.issue.id);
   if (code.length > 0) {
+    // a branch alone names no commit: where nothing landed there, clearing it is the way out (K137 finding 4)
+    const branchOnly = code.length === 1 && code[0]?.startsWith('branch ');
+    const out = branchOnly
+      ? ` Where no code landed on that branch, clear it (\`PATCH /api/issues/${args.issue.id}\` with \`workState: { branch: null }\`) and mark the adoption again; where code did, mark it naming \`commit\`, the whole sha it landed at.`
+      : ' Mark it naming `commit`, the whole sha it landed at.';
     throw refuse(
       'ADOPTION_BESIDE_CODE',
-      `this issue carries code evidence (${code.join('; ')}), so its landing is the commit that code landed at and an adoption record does not stand in for it; nothing was marked. Mark it naming \`commit\`, the whole sha it landed at.`,
+      `this issue carries code evidence (${code.join('; ')}), so its landing is the commit that code landed at and an adoption record does not stand in for it; nothing was marked.${out}`,
       '/adoptions',
     );
   }
   const read = await adoptionRecord(args.issue.projectId, args.adoptions ?? []);
   if (!read.ok) throw refuse(read.code, read.detail, '/adoptions');
   return read.held;
+}
+
+/**
+ * What an adoption mark meets before its transaction: the record it lands on (`adoptionOf`), a drift
+ * of the contracts the issue names, refused, and a version its provider approved since the adoption,
+ * which never refuses it: the adoption holds on the version it names, and the notice returned is
+ * said on the thread as the next round's to take (ISS-742 c3).
+ */
+export async function adoptionPreflight(
+  args: AdoptionMarkArgs & {
+    contracts?: readonly string[] | undefined;
+  },
+  prior: HeldMark & Parameters<typeof contractDrift>[0],
+): Promise<{ adopted: AdoptionHeld[]; adoptionDrift: string | null }> {
+  const adopted = await adoptionOf(args, prior);
+  const drifted = await contractDrift(prior, [...(args.contracts ?? [])]);
+  if (drifted) throw refuse(drifted.code, drifted.detail, '/contracts');
+  const later = await contractDrift(prior, [...(args.adoptions ?? [])]);
+  const next = later?.detail.split(' Approve the version')[0];
+  return {
+    adopted,
+    adoptionDrift: next
+      ? `Marked on the adoption it names. For the next round, not this one: ${next} Adopt it in an issue of its own once this consumer's code is checked against it.`
+      : null,
+  };
 }
 
 /** The stamp of an adoption record: its `adoption` artifacts and, outside git, the landing naming

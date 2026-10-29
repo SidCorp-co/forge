@@ -81,11 +81,14 @@ function chainFrom(w: AdoptWorld): string[] {
 // declaration only raises a class, so the ways out are a stated reason, kept on the interface
 // revision, and the hand pin, which takes only the version approved
 // (`link-own-rules.ts:versionRefusals`, `interface-rules.ts:builtAgainstRefusals`)
-const handPin = (w: AdoptWorld): string =>
-  ` Adopt cannot take it, and no door re-measures it, so move this consumer by hand once its code is checked against ${w.version}: \`PUT /api/projects/:id/links/<link>\` setting \`pinnedVersion: "${w.version}"\` on each link to ${w.contract}, and \`PUT /api/projects/:id/interface\` setting that consumption's \`builtAgainst: "${w.version}"\`; a hand pin takes only the version approved, and on the interface the elements it names held in that version.`;
+const handPin = (
+  w: AdoptWorld,
+  lead = 'Adopt cannot take it, and no door re-measures it, so move',
+): string =>
+  ` ${lead} this consumer by hand once its code is checked against ${w.version}: \`PUT /api/projects/:id/links/<link>\` setting \`pinnedVersion: "${w.version}"\` on each link to ${w.contract}, and \`PUT /api/projects/:id/interface\` setting that consumption's \`builtAgainst: "${w.version}"\`; a hand pin takes only the version approved, and on the interface the elements it names held in that version.`;
 
 const withReason = (w: AdoptWorld): string =>
-  ` Or adopt across it in one act once this consumer's code is checked against ${w.version}: send \`acceptUnmeasured: { reason }\` with the adopt, saying why what the differ could not measure does not reach this consumer; the reason is kept on the interface revision the adopt writes (REQ-5 BC-15).${handPin(w)}`;
+  ` Or adopt across it in one act once this consumer's code is checked against ${w.version}: send \`acceptUnmeasured: { reason }\` with the adopt, saying why what the differ could not measure does not reach this consumer; the reason is kept on the interface revision the adopt writes (REQ-5 BC-15).${handPin(w, 'Or, with no reason to state, move')}`;
 
 /** What a step's measurement left unread, where it is not measured additive, or null where it is. */
 function unmeasuredOf(v: AdoptVersion): string | null {
@@ -107,7 +110,7 @@ function stepRefusal(w: AdoptWorld, step: string): EcosystemRefusal | null {
     return {
       code: 'ADOPT_VERSION_BREAKING',
       path: '/version',
-      detail: `${w.contract} ${step} is measured breaking against ${from}; adopt moves a consumer only across additive versions, so a breaking one is worked through its change notice and the consumer's own issue.`,
+      detail: `${w.contract} ${step} is measured breaking against ${from}; adopt moves a consumer only across additive versions, never on a reason, so a breaking one is worked through its change notice and the consumer's own issue (REQ-5 BC-16).${handPin(w, "Once that issue has checked this consumer's code against it, move")}`,
     };
   }
   if (unmeasuredOf(v) === null || w.acceptUnmeasured !== null) return null;
@@ -118,10 +121,19 @@ function stepRefusal(w: AdoptWorld, step: string): EcosystemRefusal | null {
       detail: `${w.contract} ${step} measured more changes against ${from} than its record lists, so a removed field a link reads may be among the ones not listed; adopt moves a consumer without a stated reason only where every change between its pin and ${w.version} can be read.${withReason(w)}`,
     };
   }
+  const unread = [
+    ...new Set(
+      v.diff.changes.flatMap((c) => (c.check && NOT_MEASURED_CHECK.test(c.check) ? [c.check] : [])),
+    ),
+  ];
+  const measured =
+    v.diff.classification === 'non-breaking' && unread.length > 0
+      ? `is measured non-breaking against ${from}, but no differ read its ${unread.map((c) => `\`${c}\``).join(', ')} check${unread.length > 1 ? 's' : ''}`
+      : `is measured ${v.diff.classification} against ${from}, not non-breaking`;
   return {
     code: 'ADOPT_VERSION_UNMEASURED',
     path: '/version',
-    detail: `${w.contract} ${step} is measured ${v.diff.classification} against ${from}, not non-breaking; adopt moves a consumer without a stated reason only where a differ measured every version between its pin and ${w.version} as additive.${withReason(w)}`,
+    detail: `${w.contract} ${step} ${measured}; adopt moves a consumer without a stated reason only where a differ measured every version between its pin and ${w.version} as additive.${withReason(w)}`,
   };
 }
 

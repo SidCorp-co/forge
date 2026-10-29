@@ -232,7 +232,13 @@ without one (catalog-fe ISS-36, 2026-10-28). It lands on its adoption record ins
   merged commit (`packages/core/src/issues/work-evidence.ts:codeEvidenceOf`) — is refused `ADOPTION_BESIDE_CODE` naming it, and
   so is a mark sending `commit`, `changedPaths`, `landing`, `artifacts` or `target` beside
   `adoptions`, or one over a merge Forge observed for the issue. A code-carrying issue lands on its
-  commit as before.
+  commit as before. Where the only evidence is a branch, the refusal names clearing it
+  (`workState: { branch: null }`). Adoptions sent to an issue already marked on something else are
+  refused `ADOPTION_MARK_HELD`, naming the mark to clear first, never dropped.
+- **What it is not held to.** An adoption holds on the version it names: a version the provider
+  approved since is no refusal of the mark (`packages/core/src/issues/merge-marker.ts:preflightMark`), only a
+  notice on the thread naming it for the next round. `contracts` beside it are still held to the
+  current version.
 - **What is written.** The stamp's own UPDATE (`packages/core/src/issues/merge-record.ts:recordIssueMerge`, evidence `adopted`)
   sets `merged_at` and one `adoption` artifact per version, no commit; outside git it also names the
   landing (`packages/core/src/issues/merge-mark-kind.ts:adoptionLandingOf`), so the shape reads it as landed. The mark kind

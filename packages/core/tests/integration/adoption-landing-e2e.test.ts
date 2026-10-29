@@ -260,3 +260,51 @@ describe('an adoption record never stands in for a commit (REQ-5 BC-18)', () => 
     expect(await statusOf(id)).toBe('awaiting_release');
   });
 });
+
+// Judge K137 findings 4 and 6 on ISS-742: each way out an adoption mark's refusal names opens.
+describe('an adoption mark refused names the way out that opens (REQ-5 BC-18)', () => {
+  it('names clearing a branch that holds no commit, and the mark lands once it is cleared', async () => {
+    const id = await issue(w.project.plugin);
+    await rows(
+      sql`INSERT INTO issue_work_state (issue_id, branch) VALUES (${id}, 'feat/adopt-iss-9')`,
+    );
+    const refused = refusalOf(await mark(id, { adoptions: [ADOPTED] }));
+    expect(refused.code).toBe('ADOPTION_BESIDE_CODE');
+    expect(refused.detail).toContain('`workState: { branch: null }`');
+    ok(await say('plugin', 'PATCH', `/api/issues/${id}`, { workState: { branch: null } }));
+    expect((await mark(id, { adoptions: [ADOPTED] })).status).toBe(200);
+  });
+
+  it('refuses adoptions sent to an issue already marked on something else, never dropping them', async () => {
+    const id = await issue(w.project.plugin);
+    await rows(sql`UPDATE issues SET merged_at = now() WHERE id = ${id}`);
+    const refused = refusalOf(await mark(id, { adoptions: [ADOPTED] }));
+    expect(refused.code).toBe('ADOPTION_MARK_HELD');
+    expect(refused.detail).toContain(`DELETE /api/issues/${id}/merge`);
+    expect((await markOf(id)).artifacts).toBeNull();
+  });
+});
+
+// Judge K137 c3 (verdict 2db9da1d, dev.354): once the provider approved a newer breaking version, a
+// no-code issue whose adoption still held was refused CONTRACT_DRIFT, with no way out open to it.
+// Last in the file: it approves a version every case above would otherwise meet.
+describe('an adoption that holds lands whatever its provider approved since (REQ-5 BC-17)', () => {
+  it('marks on 2026-10-01 after 2026-10-10 is approved breaking, and names the newer version as a notice', async () => {
+    await seedContractVersion({
+      providerId: w.project.forge,
+      ref: 'forge/forge-api',
+      version: '2026-10-10',
+      previous: '2026-10-01',
+      classification: 'breaking',
+    });
+    const id = await issue(w.project.plugin);
+    const r = await mark(id, { adoptions: [ADOPTED] });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect((await markOf(id)).at).not.toBeNull();
+    const notes = await rows<{ body: string }>(
+      sql`SELECT body FROM comments WHERE issue_id = ${id} ORDER BY created_at`,
+    );
+    expect(notes.map((n) => n.body).join('\n')).toContain('2026-10-10');
+    ok(await move(id, 'awaiting_release'));
+  });
+});

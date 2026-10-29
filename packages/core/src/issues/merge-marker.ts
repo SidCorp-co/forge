@@ -8,7 +8,7 @@ import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
-import { adoptionOf, stampAdoption } from './adoption-mark.js';
+import { adoptionPreflight, stampAdoption } from './adoption-mark.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import * as designMark from './design-mark.js';
 import { type HostMerge, hostMergeOfMark } from './host-mark.js';
@@ -129,8 +129,9 @@ type Stamp = {
 type Preflight = {
   shape: LandingShape;
   fromRepository: RepositoryLanding | null;
-  /** The adoption record read before the stamp, where the mark names `adoptions`. */
+  /** Where the mark names `adoptions`: the record read before the stamp, and the notice of a version approved since (`adoptionPreflight`). */
   adopted?: AdoptionHeld[] | null;
+  adoptionDrift?: string | null;
   /** The approved design revisions a mark naming nothing stands on, where the issue carries no code. */
   designs?: designMark.DesignMark | null;
 };
@@ -146,12 +147,8 @@ async function preflightMark(
   const issueId = args.issue.id;
   const shape = await readLandingShape(args.issue.projectId, db);
   if (shape === null) throw refuse('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
-  if (args.adoptions) {
-    const adopted = await adoptionOf(args);
-    const drifted = await contractDrift(prior, [...(args.contracts ?? []), ...args.adoptions]);
-    if (drifted) throw refuse(drifted.code, drifted.detail, '/adoptions');
-    return { shape, fromRepository: null, adopted };
-  }
+  if (args.adoptions)
+    return { shape, fromRepository: null, ...(await adoptionPreflight(args, prior)) };
   // A landing on a git project is refused below whatever the target, and that refusal names the
   // real fault, so the missing target is not reported ahead of it.
   if (markTargetRequired(shape) && !args.target && !args.landing) {
@@ -217,6 +214,8 @@ async function stampMark(
   const issueId = args.issue.id;
   if (preflight.adopted) {
     const result = await stampAdoption(tx, args, { shape, adopted: preflight.adopted, observed });
+    if (result.wrote && preflight.adoptionDrift)
+      await writeAuditComment(issueId, args.actor.commentAuthorId, preflight.adoptionDrift, tx);
     return {
       result,
       claimedCommit: null,

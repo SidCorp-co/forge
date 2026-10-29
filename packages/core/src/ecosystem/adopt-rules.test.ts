@@ -147,6 +147,10 @@ describe('adopt: a consumer moves to an additive version in one act', () => {
     if (out.ok) return;
     expect(out.refusals.map((r) => r.code)).toEqual(['ADOPT_VERSION_BREAKING']);
     expect(out.refusals[0]?.detail).toContain('3.1.0');
+    // BC-16, judge K137 finding 3: the hand pin that moves a breaking version is named
+    expect(out.refusals[0]?.detail).toContain(
+      '`PUT /api/projects/:id/links/<link>` setting `pinnedVersion: "3.1.1"`',
+    );
   });
 
   it('refuses a step no differ measured as additive: unknown, a declared semantic change, or no line back to the pin', () => {
@@ -159,6 +163,11 @@ describe('adopt: a consumer moves to an additive version in one act', () => {
       ]),
     );
     expect(codes(world({ versions: unread }))).toEqual(['ADOPT_VERSION_UNMEASURED']);
+    // BC-15, judge K137 finding 1: an unread check is named, never read as "not non-breaking"
+    const read = checkAdopt(world({ versions: unread }));
+    const said = read.ok ? '' : (read.refusals[0]?.detail ?? '');
+    expect(said).toContain('no differ read its `opaque` check');
+    expect(said).not.toContain('not non-breaking');
     const cut = new Map(VERSIONS).set('3.1.0', version(null, 'non-breaking'));
     const out = checkAdopt(world({ versions: cut }));
     expect(out.ok).toBe(false);
@@ -261,9 +270,9 @@ describe('adopt: the way out of a step no differ measured', () => {
       expect(out.ok).toBe(false);
       if (out.ok) continue;
       const detail = out.refusals.find((r) => r.code === 'ADOPT_VERSION_UNMEASURED')?.detail ?? '';
-      expect(detail).toContain(
-        'and no door re-measures it, so move this consumer by hand once its code is checked against 3.1.1',
-      );
+      expect(detail).toContain('move this consumer by hand once its code is checked against 3.1.1');
+      // judge K137 finding 2: a refusal offering the reason never also says adopt cannot take it
+      if (detail.includes('acceptUnmeasured')) expect(detail).not.toContain('Adopt cannot take it');
       expect(detail).toContain(
         '`PUT /api/projects/:id/links/<link>` setting `pinnedVersion: "3.1.1"` on each link to catalog-api/admin-rest-v1',
       );
