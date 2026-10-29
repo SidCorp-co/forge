@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.357] - 2026-10-29
+
+The dev merge check now typechecks test files, stopping test-only type errors
+
+### Added
+
+- **Feedback can be about a command-line verb.** A project publishes a `cli` contract listing its commands, and a report names one (`forge feedback`) as its target; a command it does not serve is refused, naming those it does.
+
+### Changed
+
+- **The dev merge check typechecks test files.** `pnpm tc:changed`, and with it `test:changed` and `merge-check`, checks each touched package and its importers under `tsconfig.test.json` as well as `tsconfig.json`, so a test-only type error no longer lands green (ISS-754).
+
+### Fixed
+
+- **A design-only issue can be marked again and closed.** Once its design is approved, an agent marks it on that design and closes it, without a branch or commit.
+
 ## [0.4.0-dev.356] - 2026-10-29
 
 A reporter can reply once to an answer about Forge
