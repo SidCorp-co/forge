@@ -1,0 +1,1 @@
+**The verify gate and three integration files stop waiting on real time.** Conformance reads the probe results verify already has, the refusal sweep makes one call per reference field, and the release-finish and outbox tests inject their waits.

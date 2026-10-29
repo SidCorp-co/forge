@@ -8,7 +8,11 @@ import { affectedBy, boss } from '../queue/boss.js';
 import { consumerOf, type Delivery, registryMismatches } from './consumers.js';
 import { CONSUMER_NAMES, type DeliveryJob, queueOf } from './queues.js';
 
-/** The backstop poll: a commit wakes its consumers in-process, so polling only covers the rest. */
+/**
+ * The backstop poll: a commit wakes its consumers in-process, so polling only covers the rest. A
+ * test that waits on a retry the wake cannot reach (a delivery put back by pg-boss) passes a shorter
+ * `pollSeconds` to `startOutboxWorker`; the server never does.
+ */
 const POLL_SECONDS = 10;
 
 /** The `cause` of the error an inbox throws when pg-boss handed this attempt to another worker (its heartbeat lapsed), or it is settled. */
@@ -83,7 +87,7 @@ export function wakeConsumers(consumers: Iterable<string>): void {
  * Starts one worker per consumer queue. Every consumer must be registered first: a registry that
  * disagrees with `OUTBOX_CONSUMERS` refuses to start, naming each disagreement. Idempotent.
  */
-export async function startOutboxWorker(): Promise<void> {
+export async function startOutboxWorker(options: { pollSeconds?: number } = {}): Promise<void> {
   if (workers.size > 0) return;
   const mismatches = registryMismatches();
   if (mismatches.length > 0) {
@@ -94,7 +98,7 @@ export async function startOutboxWorker(): Promise<void> {
   for (const consumer of CONSUMER_NAMES) {
     const id = await boss.work(
       queueOf(consumer),
-      { batchSize: 1, includeMetadata: true, pollingIntervalSeconds: POLL_SECONDS },
+      { batchSize: 1, includeMetadata: true, pollingIntervalSeconds: options.pollSeconds ?? POLL_SECONDS },
       async ([job]: JobWithMetadata<DeliveryJob>[]) => {
         if (!job) return;
         // an issue's deliveries are strict FIFO, so this one settling is what makes its successor
