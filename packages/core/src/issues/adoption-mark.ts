@@ -14,10 +14,12 @@ import type { HostMerge } from './host-mark.js';
 import type { LandingShape } from './landing-evidence.js';
 import { adoptionLandingOf } from './merge-mark-kind.js';
 import { type MergeRecord, recordIssueMerge } from './merge-record.js';
-import { adoptionRecord } from './ports.js';
+import { adoptionRecord, contractDrift } from './ports.js';
 import { codeEvidenceOf } from './work-evidence.js';
 
-const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
+const refuse = refuser<MergeRefusalCode | 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED'>(
+  'MERGE_MARK_REFUSED',
+);
 
 interface AdoptionMarkArgs {
   issue: { id: string; projectId: string };
@@ -29,12 +31,6 @@ interface AdoptionMarkArgs {
   adoptions?: readonly string[] | undefined;
 }
 
-/**
- * The adoption record a mark naming `adoptions` lands on (REQ-5 BC-17), read off the project's
- * interface and links. It stands only for an issue that changed no code: one carrying code evidence,
- * or a mark naming a commit, paths, a landing, artifacts or a target beside it, is refused by name,
- * so the record is never a way past a commit (BC-18).
- */
 /** The mark an issue already holds, as the adoption check reads it. */
 interface HeldMark {
   mergedAt: Date | null;
@@ -62,6 +58,12 @@ function refuseHeldMark(args: AdoptionMarkArgs, held: HeldMark): void {
   );
 }
 
+/**
+ * The adoption record a mark naming `adoptions` lands on (REQ-5 BC-17), read off the project's
+ * interface and links. It stands only for an issue that changed no code: one carrying code evidence,
+ * or a mark naming a commit, paths, a landing, artifacts or a target beside it, is refused by name,
+ * so the record is never a way past a commit (BC-18).
+ */
 export async function adoptionOf(args: AdoptionMarkArgs, held?: HeldMark): Promise<AdoptionHeld[]> {
   if (held) refuseHeldMark(args, held);
   const beside = [
@@ -94,6 +96,31 @@ export async function adoptionOf(args: AdoptionMarkArgs, held?: HeldMark): Promi
   const read = await adoptionRecord(args.issue.projectId, args.adoptions ?? []);
   if (!read.ok) throw refuse(read.code, read.detail, '/adoptions');
   return read.held;
+}
+
+/**
+ * What an adoption mark meets before its transaction: the record it lands on (`adoptionOf`), a drift
+ * of the contracts the issue names, refused, and a version its provider approved since the adoption,
+ * which never refuses it: the adoption holds on the version it names, and the notice returned is
+ * said on the thread as the next round's to take (ISS-742 c3).
+ */
+export async function adoptionPreflight(
+  args: AdoptionMarkArgs & {
+    contracts?: readonly string[] | undefined;
+  },
+  prior: HeldMark & Parameters<typeof contractDrift>[0],
+): Promise<{ adopted: AdoptionHeld[]; adoptionDrift: string | null }> {
+  const adopted = await adoptionOf(args, prior);
+  const drifted = await contractDrift(prior, [...(args.contracts ?? [])]);
+  if (drifted) throw refuse(drifted.code, drifted.detail, '/contracts');
+  const later = await contractDrift(prior, [...(args.adoptions ?? [])]);
+  const next = later?.detail.split(' Approve the version')[0];
+  return {
+    adopted,
+    adoptionDrift: next
+      ? `Marked on the adoption it names. For the next round, not this one: ${next} Adopt it in an issue of its own once this consumer's code is checked against it.`
+      : null,
+  };
 }
 
 /** The stamp of an adoption record: its `adoption` artifacts and, outside git, the landing naming
