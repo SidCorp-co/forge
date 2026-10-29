@@ -1,1 +1,0 @@
-**A GitLab 429 holds every later call until the wait GitLab named.** The client and the health probe send nothing before `Retry-After` (else `RateLimit-Reset`, else a minute); a per-user limit holds that token, a bare 429 the whole host.

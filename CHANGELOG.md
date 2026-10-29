@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.369] - 2026-10-29
+
+Feedback shows the release that shipped its fix
+
+### Fixed
+
+- **A GitLab 429 holds every later call until the wait GitLab named.** The client and the health probe send nothing before `Retry-After` (else `RateLimit-Reset`, else a minute); a per-user limit holds that token, a bare 429 the whole host.
+- **Your feedback to Forge shows the release its fix shipped in.** The "Shipped in" line now appears on items whose fix a release carried.
+- **A pass at a later build is weighed from Forge's own landing records, never GitLab's compare.** Coverage, the release sweep and build-ahead ask no host; a commit no recorded landing places after the landing reads not judged.
+
 ## [0.4.0-dev.368] - 2026-10-29
 
 Requirement re-pins the master can take now reach the master
