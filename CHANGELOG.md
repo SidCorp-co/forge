@@ -9,6 +9,23 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.352] - 2026-10-29
+
+Refused jobs end at once; adoption-only landings; server-side checks; GitLab merge request pipelines
+
+### Added
+
+- **A consumer can adopt a version measured unknown once it says why.** Send `acceptUnmeasured: { reason }` to adopt; the reason is kept on the interface revision. Breaking versions are still moved by hand.
+- **A check seen only inside the running server has a class of its own.** A `server_side` criterion is judged by QA from a capture attached to the issue, with no screen clip or replayed probe; on-screen criteria still owe both.
+- **A member links their Rocket.Chat account by writing a code in the room.** The code is made signed in to Forge, works once for 15 minutes, and never reaches the assistant.
+
+### Fixed
+
+- **An issue that only adopted a contract version can close.** Mark it with `adoptions`; Forge reads the interface and links, and it closes without a release. An issue carrying code still lands on its commit.
+- **A GitLab merge through Forge records its merge request pipeline.** The checks read after a merge or refresh include the request's own pipeline, not none. A change request is also readable by number: `GET …/change-requests/:number`.
+- **A job its own project refuses ends on that refusal, once.** The runner fails a job by name when its pane credential cannot reach its project, before or after the pane opens; core treats it as terminal, with no retry.
+- **A support room whose group left its binding now says so and is no longer warmed.** Its health names the cause, and a switched-off room gets no warm-up turn when its box comes online.
+
 ## [0.4.0-dev.350] - 2026-10-28
 
 Notes counting failures after a token label are no longer refused as secrets

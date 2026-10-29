@@ -1,1 +1,0 @@
-**A check seen only inside the running server has a class of its own.** A `server_side` criterion is judged by QA from a capture attached to the issue, with no screen clip or replayed probe; on-screen criteria still owe both.
