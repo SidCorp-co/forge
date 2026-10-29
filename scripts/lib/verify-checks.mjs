@@ -127,6 +127,14 @@ export const CHECKS = [
     needs: ['deps'],
   },
   {
+    axis: 'relations',
+    label: 'root-dependencies',
+    cmd: ['node', 'scripts/check-root-dependencies.mjs'],
+    scanned: /^root-dependencies: (\d+) file\(s\) read/m,
+    needs: ['deps'],
+    unit: 'files',
+  },
+  {
     axis: 'form',
     label: 'core lint',
     cmd: ['pnpm', '--filter', '@forge/core', 'lint'],

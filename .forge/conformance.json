@@ -40,8 +40,8 @@
     },
     "relations": {
       "level": 2,
-      "gate": "archmap check + check-module-boundaries + check-module-shape",
-      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, at zero with nothing frozen, so any violation fails); and which module may write which table, where a database call, a refusal and the global fetch may be written (check-module-shape, type-aware ESLint rules ratcheted by the bulk suppressions in .forge/module-shape-suppressions.json, whose per-rule total may not rise over the base revision)",
+      "gate": "archmap check + check-module-boundaries + check-module-shape + check-root-dependencies",
+      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, at zero with nothing frozen, so any violation fails); and which module may write which table, where a database call, a refusal and the global fetch may be written (check-module-shape, type-aware ESLint rules ratcheted by the bulk suppressions in .forge/module-shape-suppressions.json, whose per-rule total may not rise over the base revision); and which package a root consumer under scripts/ or .forge/, or a .arch-tsconfig.json paths target, may reach: only one its own manifest declares (check-root-dependencies, at zero but for priced allowances in checkers.root-dependencies, each refused once it covers nothing)",
       "baseline": {
         "path": ".arch.json",
         "keyBy": "contract",
@@ -419,6 +419,20 @@
       "declarationPattern": "\\.(columnType|notNull|hasDefault|primary|isUnique|dataType|foreignKeys|indexes)\\b|withTimezone\\(|names\\.sort\\(\\)",
       "mockPattern": "toHaveBeenCalled[A-Za-z]*\\(",
       "assertPattern": "expect\\("
+    },
+    "root-dependencies": {
+      "$comment": "ISS-140. A root consumer — a source file under `scan`, or a `paths` target of a resolution map under `pathMaps` — may reach only a package the manifest it stands under declares; under node-linker=hoisted an undeclared one resolves anyway and nothing else says so. Read by scripts/check-root-dependencies.mjs; what it reads and its bounds are stated at the top of scripts/lib/root-dependencies.mjs. An allowance is priced or it is not taken, and one that covers no use is refused, so the list shrinks with its cause.",
+      "scan": ["scripts", ".forge"],
+      "pathMaps": [".arch-tsconfig.json"],
+      "allowed": [
+        {
+          "consumer": ".arch-tsconfig.json",
+          "package": "hono",
+          "why": "archmap's resolution map sends `hono/*` to node_modules/hono/dist/* so dependency-cruiser counts core's `hono/http-exception` edges as resolved (167 were dropped without it). hono is core's dependency: the root node_modules holds it only because .npmrc hoists core's copy there.",
+          "$costs": "The map works only while node-linker=hoisted stands: without hoisting the target is gone and archmap's unresolvable edges went from 33 to 208 against R7's ceiling of 50 (measured 2026-09-27). A hono bump in packages/core/package.json moves what archmap resolves, with nothing recording the link.",
+          "endsWhen": "The root manifest declares hono, or .arch-tsconfig.json maps `hono/*` into packages/core/node_modules/hono with hoisting off. Either one turns this entry stale, and the checker refuses it until it is removed."
+        }
+      ]
     }
   }
 }

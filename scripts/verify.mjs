@@ -38,6 +38,7 @@ const CI_COVERAGE = {
   './.forge/archmap/archmap check': 'verify',
   'node scripts/check-module-boundaries.mjs': 'verify',
   'node scripts/check-module-shape.mjs': 'verify',
+  'node scripts/check-root-dependencies.mjs': 'verify',
   'node scripts/check-test-reachability.mjs': 'verify',
   'node scripts/check-outside-reads.mjs': 'verify',
   'pnpm exec biome check scripts': 'verify',

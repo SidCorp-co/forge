@@ -1,0 +1,1 @@
+**Repository scripts can no longer use a package nobody declared.** A new verify check names any package or tool a root script reaches that the root manifest does not list; the one remaining exception carries its price.

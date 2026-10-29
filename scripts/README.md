@@ -67,7 +67,7 @@ passed, because the external record of what shipped belonged to none of them.
 | API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission; and whether each artifact's semver version is the one its change since the base owes, which the generator derives with the differ an interface upload is measured by (oasdiff, and a JSON Schema differ for the tools) | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether the differ's breaking/additive classification is right, which is the differ's |
 | pattern catalog | `check-pattern-catalog` — `lang-check` | whether every page under `docs/patterns/` (REQ-36 BC-3, BC-4) names its change kind, the issue that introduced it, a `## Reference` of tracked files, a `## Test shape` naming a tracked reference test, and a numbered `## Review checklist`; whether the index links every page; whether every change kind `.forge/conformance.json` declares has a page; and whether `packages/contracts/src/pattern-catalog.ts`, the catalog core reads to tell a catalogued pattern from a new one, is what the pages say (`--write` regenerates it) | whether a reference is a GOOD one, or a checklist line the right one — that is the new-pattern reviewer's; module shape, which is `relations`' and which the core-module page points at rather than restates |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs; and whether every file directly under `docs/proposals/` opens with a `**Removed when:**` line naming at least one issue key, the issue whose landing change deletes the file (`docs/proposals/destination/` is exempt) | whether the price stated is honest, or whether the named issue really carries the condition — that is review's |
-| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` — `archmap` | which requirement or workflow step every core module, web-v2 feature and runner crate serves (`check-module-shape`'s trace); which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; and which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
+| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` + `check-root-dependencies` — `archmap` | which requirement or workflow step every core module, web-v2 feature and runner crate serves (`check-module-shape`'s trace); which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`); and which package a root consumer may reach — only one its own manifest declares (`check-root-dependencies`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | outside reads | `check-outside-reads` — `conformance` | whether a test reading a file outside its package by path declares it with `@direct-test-of`, so the direct selection runs it on a change to that file alone, and whether the `changes` filter of the ci.yml job running the test matches the declared path, so `main` does too | a read the source does not spell from values it can evaluate; reads inside the test's own package; Rust tests |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
@@ -637,6 +637,50 @@ together report both, and still leave `https://user@host:8080/path/pkg.tgz` alon
 
 Both real lockfiles this was measured against agree: 948 resolutions on `main` clean, and the four
 offending lines on the Dependabot pull request that caused this named by package.
+
+## check-root-dependencies.mjs — a root consumer reaches only what its manifest declares
+
+`.npmrc` sets `node-linker=hoisted`, so every package any workspace manifest declares sits in the
+root `node_modules`, and a file under `scripts/` or `.forge/` can import one the root never names
+without anything failing. The census that found six such couplings (ISS-207 declared five; ISS-140
+built this) was a procedure in a document; this is the check `pnpm verify` runs instead.
+
+What it reads, from every tracked source file under `checkers.root-dependencies.scan` and every
+`paths` target of a file under `pathMaps` (`.arch-tsconfig.json`):
+
+- module specifiers — static and dynamic `import`, `export … from`, `require`, `require.resolve` —
+  parsed with TypeScript, so an import written inside a string a test writes as a fixture is a
+  string and not an import;
+- a path into `node_modules/<package>`, as one literal or as `join`/`resolve` pieces;
+- a bin: `node_modules/.bin/<bin>`, `pnpm exec <bin>`, `npx <bin>`, and a node loader flag's value.
+
+Each package is tested against the nearest `package.json`'s declared names, never with
+`require.resolve`: from a worktree under `.claude/worktrees/` node's upward walk reaches the parent
+checkout's hoisted `node_modules` and resolves what this checkout never declared. A bin is matched
+against the `bin` field of each package the manifest declares, read from that manifest's own
+`node_modules`, which is why it needs an install.
+
+**Allowances are priced.** `checkers.root-dependencies.allowed` names a consumer and a package or
+bin with `why`, `$costs` and `endsWhen`; one missing a field exits 2, and one that covers no use is
+refused as stale, so the list shrinks with its cause. Today it holds one: `.arch-tsconfig.json`
+mapping `hono/*` into the root `node_modules`, where only hoisting puts core's copy.
+
+**Bounds, printed rather than skipped:** a bin named through a variable
+(`join(ROOT, 'node_modules', '.bin', engine)`) is listed as `not read` on every run. Shell files
+(`.githooks/`, the archmap launcher) and `ci.yml` are not read; `ci.yml`'s root commands are held to
+`CHECKS` by `--ci-parity`. A file git does not track is not read until it is added.
+
+**Re-measuring hoisting itself** is a different question, and it has to be asked outside every
+checkout: in a clone with no forge-core checkout above it, install once with the defaults and once
+with `--config.node-linker=isolated --config.shamefully-hoist=false`, run `node scripts/verify.mjs`,
+`pnpm build --force` and `pnpm exec turbo run test --force` after each (`--force`, or turbo's cache
+replays the first linker's result), and compare which checks could not run. Measured 2026-09-27, the
+isolated layout costs about 13 MB and five thousand directory entries more per worktree, not
+gigabytes: a worktree's size is `packages/runner/target` and web-v2's build output.
+
+Exit `0` clean · `1` an undeclared use or a stale allowance, each named by file, line and package
+· `2` it could not run (no manifest block, a malformed allowance, an unreadable map, no install
+when a bin has to be matched).
 
 ## check-branch-name.sh
 
