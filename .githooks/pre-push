@@ -127,9 +127,9 @@ fi
 
 echo "[pre-push] validating packages:$packages"
 
-# The emit-only workspace dependencies build first, once, in dependency order: a consumer imports
-# their dist/, and core's post-build step imports @forge/contracts/dist, so a fresh checkout that
-# built only observability failed "core build broke" with nothing wrong in core (ISS-472 round 3).
+# The emit-only workspace dependencies build first, once: a consumer loads their dist/ at runtime
+# and in its tests, so a fresh checkout that built only observability once failed "core build
+# broke" with nothing wrong in core (ISS-472 round 3). Neither depends on the other (ISS-137).
 prebuilt=""
 for dep in observability contracts; do
   [ -d "$repo_root/packages/$dep" ] || continue

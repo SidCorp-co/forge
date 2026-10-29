@@ -1067,8 +1067,8 @@ runner's `cargo test --workspace` left `check-runner-gates.mjs` with this change
 pre-push hook's `PREPUSH_TEST=1` runs `pnpm test:changed` where `PREPUSH_FULL` ran whole suites.
 The hook tells its exit 1 (a check red) from its exit 2 (it could not run, so nothing was checked),
 and `PREPUSH_BUILD=1` measures a new branch from its merge target (`lib/base-branch.mjs`), refusing by
-name where none resolves, and builds `observability` and then `contracts` before any consumer, since
-core's build imports `@forge/contracts/dist`; `lib/pre-push.test.mjs` runs the hook in a fixture repository. A landed
+name where none resolves, and builds `observability` and `contracts` before any consumer, since
+a consumer loads their `dist/` at runtime and in its tests; `lib/pre-push.test.mjs` runs the hook in a fixture repository. A landed
 push run (`--since`) says it checked what already landed, and asks for no record before a mark.
 
 ## whole-suite.mjs — the whole suite on one commit, the cut it gates, and the merge it names
