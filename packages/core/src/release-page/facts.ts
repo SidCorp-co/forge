@@ -61,6 +61,20 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
   });
 }
 
+/** The live criteria statements of each carried issue with no release note, by issue key. */
+export async function unnotedCriteria(detail: ReleaseDetail): Promise<Map<string, string[]>> {
+  const unnoted = new Set(detail.notes.withoutNotes.map((i) => i.key));
+  const issues = detail.issues.filter((i) => unnoted.has(i.key));
+  if (issues.length === 0) return new Map();
+  const criteria = await listCriteriaOf(
+    db,
+    issues.map((i) => i.id),
+  );
+  return new Map(
+    issues.map((i) => [i.key, (criteria.get(i.id) ?? []).map((c) => c.statement)] as const),
+  );
+}
+
 export async function issueFiles(issueIds: readonly string[]): Promise<IssueFile[]> {
   if (issueIds.length === 0) return [];
   const rows = await db

@@ -102,13 +102,17 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
 
 - A release is named once it is drafted: by whoever cuts or names it (`PUT …/releases/:version/naming`),
   else by the assistant through the gateway (`release-page/naming-draft.ts:draftReleaseNaming`), from
-  its changes' lines for users and the requirements it carries, nothing else. Every cut emits
+  the issues it carries and nothing else (`release-page/naming-draft.ts:namingFacts`): each one's
+  note, and its own criteria where it has none. A requirement those issues serve is never read for
+  the name, so a release carrying one of its criteria is never named for the rest. A release whose
+  notes are all `Skip` is named for what it changes for those who run the product, its summary
+  saying nothing changed for its users (`release-naming.ts:namingForOperatorsOnly`). Every cut emits
   `release.cut` in its own transaction, so the unattended cut as an issue enters the release gate
   owes its name as any cut does; a run's move and a page read that finds it unnamed ask too
   (`release-page/naming-refresh.ts:nameReleaseIfOwed`). A name a person wrote is never replaced.
 - A draft is judged before it is written (`release-naming.ts:judgeNaming`): at most six words, two
   or three sentences, no engineer's reference, no figure the release does not state. One refused
-  twice, or a release carrying nothing users see, is kept with why (`release_naming_drafts`,
+  twice, or a release carrying no change of its own (only approved designs or reworked issues), is kept with why (`release_naming_drafts`,
   migration 0521) and said on the page; the master is still owed the name. It is never a silent null.
 
 ## Clips (BC-3, BC-4)

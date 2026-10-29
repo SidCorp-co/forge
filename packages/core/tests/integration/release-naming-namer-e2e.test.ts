@@ -70,7 +70,7 @@ afterEach(async () => {
 const as = (token: string, method: 'GET' | 'PUT', path: string, body?: unknown) =>
   api(token, method, `/api/projects/${projectId}${path}`, body);
 
-/** An unattended cut carrying only what its users do not see, so the assistant names nothing. */
+/** An unattended cut the assistant cannot name: no chat model is configured on this instance. */
 async function unnamedCut(): Promise<string> {
   const issue = await fx.insertIssue('awaiting_release', SKIP_NOTE);
   const outcome = await cutWaitingRelease({ projectId, userId: ownerId, issueIds: [issue] });
@@ -81,7 +81,7 @@ async function unnamedCut(): Promise<string> {
     )),
   ];
   const version = (row as { release_version: string }).release_version;
-  expect(await nameReleaseIfOwed(projectId, version)).toBe('nothing_to_say');
+  expect(await nameReleaseIfOwed(projectId, version)).toBe('missed');
   expect(await unnamedReleases(projectId)).toEqual([{ version }]);
   return version;
 }

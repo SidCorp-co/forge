@@ -1,8 +1,13 @@
 // A release's name and summary as the assistant drafts them (REQ-40 BC-14), judged before they are
 // written: plain words a person using the product follows (BC-15), two or three whole sentences, no
-// figure the release's record does not state; and drafted from what users see of the release alone.
+// figure the release's record does not state; and drafted from the issues the release carries alone,
+// never from a requirement they serve.
 
-import type { ReleaseNamingFacts } from '@forge/contracts/release-naming';
+import {
+  namingForOperatorsOnly,
+  namingHasFacts,
+  type ReleaseNamingFacts,
+} from '@forge/contracts/release-naming';
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import { judgedNaming, namingFacts } from './naming-draft.js';
@@ -15,14 +20,8 @@ const FACTS: ReleaseNamingFacts = {
       line: 'The Workflows page switches between designs and the map at any width.',
     },
   ],
-  requirements: [
-    {
-      key: 'REQ-17',
-      title: 'Workflows are drawn',
-      text: 'Every workflow reads as a map.',
-      completes: false,
-    },
-  ],
+  operatorChanges: [],
+  unnoted: [],
 };
 
 const answer = (over: Record<string, unknown> = {}) =>
@@ -79,54 +78,74 @@ describe('a drafted release name judged before it is written (BC-14, BC-15)', ()
   });
 });
 
+const entry = (key: string, over: Record<string, unknown> = {}) => ({
+  key,
+  title: `${key} title`,
+  heading: null,
+  userFacing: '-',
+  technical: null,
+  adminSteps: [],
+  ...over,
+});
+
+const detailOf = (notes: Record<string, unknown>) =>
+  ({
+    version: '0.4.0-dev.289',
+    notes: { sections: [], designs: [], withoutNotes: [], skipped: [], ...notes },
+  }) as unknown as ReleaseDetail;
+
 describe('what the namer reads of a release', () => {
-  it('reads each change users see and the requirements it carries, never a change nobody sees', () => {
-    const detail = {
-      version: '0.4.0-dev.289',
-      notes: {
+  it('reads each carried issue by its note, a Skip note as a change only operators see', () => {
+    const facts = namingFacts(
+      detailOf({
         sections: [
           {
             section: 'Changed',
             entries: [
-              {
-                key: 'ISS-646',
-                title: 't',
+              entry('ISS-646', {
                 heading: 'Workflows fit a phone',
                 userFacing: 'It fits.',
                 technical: 'x.tsx',
-                adminSteps: [],
-              },
+              }),
             ],
           },
-          {
-            section: 'Skip',
-            entries: [
-              {
-                key: 'ISS-7',
-                title: 't',
-                heading: null,
-                userFacing: '-',
-                technical: null,
-                adminSteps: [],
-              },
-            ],
-          },
+          { section: 'Skip', entries: [entry('ISS-7')] },
         ],
-      },
-    } as unknown as ReleaseDetail;
-    const facts = namingFacts(detail, [
-      {
-        key: 'REQ-17',
-        title: 'Workflows are drawn',
-        tldr: null,
-        completes: true,
-        criteria: new Map(),
-      },
-    ]);
+        skipped: [entry('ISS-7', { technical: '/healthz names the commit it serves.' })],
+      }),
+      new Map(),
+    );
     expect(facts).toEqual({
       version: '0.4.0-dev.289',
       changes: [{ title: 'Workflows fit a phone', line: 'It fits.' }],
-      requirements: [{ key: 'REQ-17', title: 'Workflows are drawn', text: '', completes: true }],
+      operatorChanges: [{ title: 'ISS-7 title', line: '/healthz names the commit it serves.' }],
+      unnoted: [],
     });
+    expect(namingForOperatorsOnly(facts)).toBe(false);
+  });
+
+  it('reads an issue with no note by its own criteria, and nothing of the requirement it serves', () => {
+    const facts = namingFacts(
+      detailOf({
+        withoutNotes: [{ key: 'ISS-16', title: 'Health names its build' }],
+        // what the release record says the release advances: never read for its name
+        requirementsCompleted: [{ key: 'REQ-3', title: 'One version shown everywhere' }],
+      }),
+      new Map([['ISS-16', ['GET /healthz answers with the commit it serves.']]]),
+    );
+    expect(facts.unnoted).toEqual([
+      {
+        title: 'Health names its build',
+        criteria: ['GET /healthz answers with the commit it serves.'],
+      },
+    ]);
+    expect(JSON.stringify(facts)).not.toContain('One version shown everywhere');
+  });
+
+  it('names a release of operator changes only as one, and has nothing to name a design-only one from', () => {
+    const operators = namingFacts(detailOf({ skipped: [entry('ISS-16')] }), new Map());
+    expect(namingForOperatorsOnly(operators)).toBe(true);
+    const designs = namingFacts(detailOf({ designs: [entry('ISS-9')] }), new Map());
+    expect(namingHasFacts(designs)).toBe(false);
   });
 });

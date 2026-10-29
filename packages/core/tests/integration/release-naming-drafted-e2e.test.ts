@@ -2,8 +2,9 @@
  * Every release cut is named (REQ-40 BC-14). Releases cut unattended — the sweep's cut as an issue
  * enters the release gate, the scheduled cut — never had a name written: 256 of them on dev opened
  * on a bare version. Now a cut nobody named is named by the assistant through the outbox
- * (`release.cut`, emitted in the cut's own transaction), from its changes' lines for users and the
- * requirements it carries; a draft that cannot be written is said on the page with why, and the
+ * (`release.cut`, emitted in the cut's own transaction), from the issues it carries alone (their
+ * notes, or their own criteria where they have none) and never from a requirement they serve; a
+ * release of operator changes only is named as one; a draft that cannot be written is said on the page with why, and the
  * master is still owed the name; a name a person wrote is never replaced. Against real Postgres,
  * with the gateway model faked at the provider seam behind `completeOnce`.
  *
@@ -26,6 +27,7 @@ import { cutWaitingRelease } from '../../src/schedules/index.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, truncateAll } from '../helpers/factories.js';
+import { releasePageWorld } from '../helpers/release-page-world.js';
 import { declareProductionDocument, releaseWorld, SKIP_NOTE } from '../helpers/release-world.js';
 
 // Only a naming draft (its system prompt opens "You name release") is recorded and scripted; every
@@ -61,6 +63,12 @@ let projectId: string;
 let ownerId: string;
 let token: string;
 const fx = releaseWorld(() => ({ projectId, ownerId }));
+const requirementsOf = releasePageWorld(() => ({
+  projectId,
+  ownerId,
+  call: (_who, method, path, body) => call(method, path, body),
+  fx,
+}));
 
 beforeEach(async () => {
   asked.length = 0;
@@ -138,7 +146,7 @@ describe('a release cut with no name is named by the assistant (REQ-40 BC-14)', 
     expect(asked).toHaveLength(1);
     const input = String(asked[0]?.at(-1)?.content);
     expect(input).toContain('Visit reminders: Nurses see a reminder before each home visit.');
-    // a Skip note is what nobody using the product sees: never a line the name is drafted from
+    // a Skip note is never read as a change users see: its placeholder line is no line at all
     expect(input).not.toMatch(/^- -$/m);
     const p = await page(cut.version);
     expect(p.header).toMatchObject({ ...NAMED, naming: { state: 'named' } });
@@ -171,12 +179,50 @@ describe('a release cut with no name is named by the assistant (REQ-40 BC-14)', 
     expect(asked).toHaveLength(2);
   });
 
-  it('refuses by name to name a release its users see nothing of, asking no model', async () => {
-    const cut = await autoCut([await fx.insertIssue('awaiting_release', SKIP_NOTE)]);
-    expect(await nameReleaseIfOwed(projectId, cut.version)).toBe('nothing_to_say');
-    expect(asked).toHaveLength(0);
-    const p = await page(cut.version);
-    expect(p.header.naming.refusals?.map((r) => r.code)).toEqual(['RELEASE_NAMING_NOTHING_TO_SAY']);
+  it('names a release of operator changes only for those who run it, saying users see no change', async () => {
+    const cut = await autoCut([
+      await fx.insertIssue('awaiting_release', {
+        ...SKIP_NOTE,
+        technical: 'The health check names the commit it serves.',
+      }),
+    ]);
+    answers = [
+      JSON.stringify({
+        name: 'Health check names its build',
+        summary:
+          'Nothing changes for the people using the product. The health check now names the build it serves.',
+      }),
+    ];
+    expect(await nameReleaseIfOwed(projectId, cut.version)).toBe('named');
+    expect(asked).toHaveLength(1);
+    const [system, input] = (asked[0] ?? []).map((m) => String(m.content));
+    expect(system).toContain('Nothing in this release changes what people using the product see');
+    expect(input).toMatch(/## Changes users see\n\(none\)/);
+    expect(input).toContain('The health check names the commit it serves.');
+    expect(await runNaming(cut.runId)).toMatchObject({ name: 'Health check names its build' });
+  });
+
+  it('names a release carrying one criterion of a requirement by that issue alone, never the rest of it', async () => {
+    // a requirement of four criteria, named for all of them; the release carries the first alone
+    const req = await requirementsOf.agreedRequirement();
+    const issue = await fx.insertIssue('awaiting_release', {
+      section: 'Added',
+      title: 'Reminder before a visit',
+      userFacing: 'Nurses see a reminder before each home visit.',
+    });
+    await requirementsOf.traceIssue(issue, req.id, [req.bc['BC-1'] as string]);
+    answers = [JSON.stringify(NAMED)];
+    const cut = await autoCut([issue]);
+    expect(await nameReleaseIfOwed(projectId, cut.version)).toBe('named');
+    const asks = (asked[0] ?? []).map((m) => String(m.content)).join('\n');
+    expect(asks).toContain('Nurses see a reminder before each home visit.');
+    for (const other of [
+      'Visit reminders',
+      'A nurse sees it on a phone',
+      'A doctor sees the visit report',
+      'A report keeps its filter',
+    ])
+      expect(asks, `the name is drafted from "${other}"`).not.toContain(other);
   });
 
   it('never replaces a name a person wrote', async () => {
