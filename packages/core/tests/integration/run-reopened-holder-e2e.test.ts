@@ -68,9 +68,8 @@ async function boxPat(userId: string, deviceId: string): Promise<string> {
 /** A token bound to no box, as a person's plugin on a laptop carries: its lease names no device. */
 async function looseToken(userId: string, name: string): Promise<string> {
   const { mintPat } = await import('../../src/credentials/pat.js');
-  return (
-    await mintPat({ permissions: ['*'], userId, name, projectIds: [world.projectId] })
-  ).plaintext;
+  return (await mintPat({ permissions: ['*'], userId, name, projectIds: [world.projectId] }))
+    .plaintext;
 }
 
 beforeAll(async () => {
@@ -272,7 +271,7 @@ describe('ISS-589 r2 only the run holding a reopened issue moves it to in_progre
     expect([taken.status, codeOf(taken.body)], JSON.stringify(taken.body)).toEqual([200, null]);
   });
 
-  it('a lease written by a token bound to no box is that token\'s: it moves, another is refused', async () => {
+  it("a lease written by a token bound to no box is that token's: it moves, another is refused", async () => {
     const issue = await closedIssue(7);
     await reopened(issue.id);
     const lease = { holder: 'laptop-claim', renewedAt: new Date().toISOString(), minutes: 60 };

@@ -175,9 +175,7 @@ export async function readIssueMoveFacts(args: {
   const document = (await readProjectDocument(issue.projectId))?.document;
   const asksForHolder = ASKS_FOR_HOLDER.includes(args.to);
   return {
-    caller: asksForHolder
-      ? await callerBoxOf(args.actorUserId, args.actorDeviceId ?? null)
-      : null,
+    caller: asksForHolder ? await callerBoxOf(args.actorUserId, args.actorDeviceId ?? null) : null,
     holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
     gates: Object.fromEntries(projectGates(document, null).map((g) => [g.id, g])) as IssueGates,
     admit: {
