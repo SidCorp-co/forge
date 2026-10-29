@@ -59,14 +59,11 @@ const TYPE_KEYWORDS: Record<string, readonly string[]> = {
   integer: ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'],
 };
 
-export class ListedSchemaError extends Error {
-  constructor(tool: string, path: string, why: string) {
-    super(
-      `mcp registry: ${tool}'s input at ${path || '/'} ${why}; tools/list cannot hand it to a client in the plain JSON Schema every importer reads without changing what the tool accepts (mcp/listed-schema.ts)`,
-    );
-    this.name = 'ListedSchemaError';
-  }
-}
+/** The registry-build refusal for a construct the listing cannot rewrite with the same meaning. */
+const unlistable = (tool: string, path: string, why: string) =>
+  new Error(
+    `mcp registry: ${tool}'s input at ${path || '/'} ${why}; tools/list cannot hand it to a client in the plain JSON Schema every importer reads without changing what the tool accepts (mcp/listed-schema.ts)`,
+  );
 
 const isPlain = (v: unknown): v is Schema =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -90,7 +87,7 @@ function splitTypes(tool: string, path: string, node: Schema): Schema {
   if (!Array.isArray(types)) return node;
   if (types.length === 1) return { ...node, type: types[0] };
   if ('anyOf' in node) {
-    throw new ListedSchemaError(tool, path, 'pairs a type list with an anyOf');
+    throw unlistable(tool, path, 'pairs a type list with an anyOf');
   }
   const { type: _, ...rest } = node;
   const parent: Schema = {};
@@ -111,29 +108,29 @@ function splitTypes(tool: string, path: string, node: Schema): Schema {
 
 function normalize(tool: string, path: string, node: unknown): unknown {
   if (typeof node === 'boolean') return node;
-  if (!isPlain(node)) throw new ListedSchemaError(tool, path, 'is not a JSON Schema');
+  if (!isPlain(node)) throw unlistable(tool, path, 'is not a JSON Schema');
   const out: Schema = {};
   for (const [k, v] of Object.entries(node)) {
     const at = `${path}/${k}`;
     if (k === '$schema') continue;
     if (k === 'propertyNames') {
       if (admitsEveryName(v)) continue;
-      throw new ListedSchemaError(tool, at, 'constrains property names beyond being strings');
+      throw unlistable(tool, at, 'constrains property names beyond being strings');
     }
     if (k === 'required') {
       if (!Array.isArray(v) || !v.every((n) => typeof n === 'string')) {
-        throw new ListedSchemaError(tool, at, 'is not a list of property names');
+        throw unlistable(tool, at, 'is not a list of property names');
       }
       if (v.length > 0) out.required = [...v];
       continue;
     }
     if (k === 'const') {
-      if ('enum' in node) throw new ListedSchemaError(tool, at, 'pairs a const with an enum');
+      if ('enum' in node) throw unlistable(tool, at, 'pairs a const with an enum');
       out.enum = [v];
       continue;
     }
     if (SCHEMA_MAPS.has(k)) {
-      if (!isPlain(v)) throw new ListedSchemaError(tool, at, 'is not a map of schemas');
+      if (!isPlain(v)) throw unlistable(tool, at, 'is not a map of schemas');
       out[k] = Object.fromEntries(
         Object.entries(v).map(([name, s]) => [name, normalize(tool, `${at}/${name}`, s)]),
       );
@@ -146,7 +143,7 @@ function normalize(tool: string, path: string, node: unknown): unknown {
       continue;
     }
     if (SCHEMA_LISTS.has(k)) {
-      if (!Array.isArray(v)) throw new ListedSchemaError(tool, at, 'is not a list of schemas');
+      if (!Array.isArray(v)) throw unlistable(tool, at, 'is not a list of schemas');
       out[k] = v.map((s, i) => normalize(tool, `${at}/${i}`, s));
       continue;
     }
@@ -164,7 +161,7 @@ function normalize(tool: string, path: string, node: unknown): unknown {
     if (!objects) {
       const types = branches.map((b) => (isPlain(b) ? b.type : undefined));
       if (!disjointTypes(types) || 'anyOf' in split) {
-        throw new ListedSchemaError(
+        throw unlistable(
           tool,
           `${path}/oneOf`,
           'holds branches that are not objects and could match one value together',

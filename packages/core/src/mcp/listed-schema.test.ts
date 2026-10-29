@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
 import type { McpContext } from '../lib/tool.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
-import { ListedSchemaError, listedSchema } from './listed-schema.js';
+import { listedSchema } from './listed-schema.js';
 import { MCP_TOOLS } from './registry.js';
 import { mcpTools, toolListing } from './server.js';
 
@@ -297,7 +297,9 @@ describe('listedSchema, construct by construct', () => {
     expect(after.anyOf).toBeDefined();
     expect(() =>
       listedSchema('forge_y', { oneOf: [{ type: 'integer' }, { type: 'number' }] }),
-    ).toThrow(ListedSchemaError);
+    ).toThrow(
+      /forge_y's input at \/oneOf holds branches that are not objects and could match one value together/,
+    );
   });
 
   it('drops $schema and an empty required, and refuses a required that is not a list', () => {
