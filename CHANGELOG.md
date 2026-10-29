@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.353] - 2026-10-29
+
+A refused dispatch keeps its declared run; closing a run gives back its claims
+
+### Fixed
+
+- **`forge-runner run declare` refuses a tree that is gone or is no worktree.** A path a close just gave back, or a worktree of another repository, is refused naming it and `git worktree add`; nothing is recorded.
+- **A dispatch another hook refused no longer spends its declaration.** Once the refusal is in the master's transcript the next dispatch takes the run; a second subagent against one run is refused naming the run and the call (ISS-737).
+- **Closing a run gives back the issue claims its run took.** A master's `forge-runner run close` frees the claim held under the run's tree id, marked as a run close, so the next run takes the issue at once (ISS-737).
+
 ## [0.4.0-dev.352] - 2026-10-29
 
 Refused jobs end at once; adoption-only landings; server-side checks; GitLab merge request pipelines
