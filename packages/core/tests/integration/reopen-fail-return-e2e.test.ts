@@ -46,9 +46,6 @@ beforeAll(async () => {
   testEnv();
   await import('../../src/index.js');
   await startQueue();
-  // a move back to `closed`, or a reopen from `awaiting_release`, enqueues the memory reconcile
-  // (`memory/reconcile.ts:registerMemoryReconcileTrigger`): its queue exists as the server boots it
-  await (await import('../../src/memory/index.js')).registerMemoryReconcileWorker();
 }, 120_000);
 
 afterAll(async () => {
