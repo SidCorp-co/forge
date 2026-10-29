@@ -26,7 +26,7 @@ export function gitlabCaller(): string {
   const frames = (new Error().stack ?? '').split('\n').slice(1);
   for (const frame of frames) {
     const at = frame.match(
-      /at (?:async )?(?:(\S+) \()?(?:file:\/\/)?[^()]*\/src\/([^():]+)\.[jt]s:\d+/,
+      /at (?:async )?(?:(\S+) \()?(?:file:\/\/)?[^()]*\/(?:src|dist)\/([^():]+)\.[jt]s:\d+/,
     );
     if (!at) continue;
     const file = at[2] ?? '';
