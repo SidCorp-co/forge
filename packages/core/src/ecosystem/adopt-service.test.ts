@@ -146,6 +146,7 @@ const adopt = () =>
     writer: { userId: 'u1', agency: 'agent' },
     contract: 'catalog-api/admin-rest-v1',
     version: '3.1.1',
+    acceptUnmeasured: null,
   });
 
 describe('adopt writes the interface and every link in one transaction', () => {

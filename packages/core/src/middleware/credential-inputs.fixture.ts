@@ -186,7 +186,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:category
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks
-    field:json:clientVersion field:json:codes field:json:color field:json:config field:json:contract field:json:contracts
+    field:json:clientVersion field:json:codes field:json:color field:json:config field:json:contract field:json:contracts field:json:acceptUnmeasured
     field:json:createIssue field:json:criteria field:json:cron field:json:designs
     field:json:dialog field:json:diff field:json:disk field:json:document field:json:drift
     field:json:ecosystem field:json:edges field:json:events field:json:expect field:json:facts

@@ -132,6 +132,8 @@ export const ADOPT_REFUSAL_CODES = [
 	"ADOPT_VERSION_BREAKING",
 	"ADOPT_VERSION_UNMEASURED",
 	"ADOPT_FIELD_MISSING",
+	/** A reason for crossing an unmeasured version sent where every version from each pin is measured additive. */
+	"ADOPT_REASON_UNUSED",
 ] as const;
 export type AdoptRefusalCode = (typeof ADOPT_REFUSAL_CODES)[number];
 

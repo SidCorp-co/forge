@@ -33,6 +33,8 @@ interface AdoptInput {
   writer: ProviderWriter;
   contract: string;
   version: string;
+  /** Why the consumer crosses versions no differ measured additive (REQ-5 BC-15), or null. */
+  acceptUnmeasured: string | null;
 }
 
 const consumedAt = (doc: InterfaceDocument, contract: string) =>
@@ -96,10 +98,18 @@ async function writeAdopt(
     const next = { ...storedLink(row), pinnedVersion: version };
     await replaceLink(tx, { id: row.id, revision: row.revision, doc: next, userId: writer.userId });
   }
-  if (moving.size === 0) return current;
+  // a crossing of unmeasured versions is kept on a revision even where only links moved, so the
+  // reason has a record to stand on (REQ-5 BC-15)
+  const reason = plan.unmeasured.length > 0 ? input.acceptUnmeasured?.trim() || null : null;
+  if (moving.size === 0 && reason === null) return current;
   const row = await putInterface(
     tx,
-    { projectId: self.id, revision: current.revision + 1, userId: writer.userId },
+    {
+      projectId: self.id,
+      revision: current.revision + 1,
+      userId: writer.userId,
+      adoptedUnmeasured: reason === null ? null : { reason, versions: plan.unmeasured },
+    },
     doc,
     edgesOf(doc, self.id, providers),
   );
@@ -152,6 +162,7 @@ export async function adoptVersion(input: AdoptInput): Promise<AdoptOutcome> {
       consumed,
       versions: provider ? await versionsFor(tx, provider, ref.contract) : new Map(),
       links: rows.map(impactLink),
+      acceptUnmeasured: input.acceptUnmeasured?.trim() || null,
     });
     if (!checked.ok) return checked;
     if (!current || !provider) throw new Error('ecosystem: an adopt passed with no consumption');

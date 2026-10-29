@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/reason-text';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -153,10 +154,18 @@ export const projectInterfaceRevisions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Why an adopt crossed the versions no differ measured additive (REQ-5 BC-15); null on every other write. */
+    adoptReason: text('adopt_reason'),
+    /** The versions that adopt crossed, each with what its measurement left unread: `[{ version, measured }]`. */
+    adoptUnmeasured: jsonb('adopt_unmeasured'),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.projectId, t.revision] }),
     revisionChk: check('project_interface_revisions_revision_chk', sql`${t.revision} >= 1`),
+    adoptChk: check(
+      'project_interface_revisions_adopt_chk',
+      sql`(${t.adoptReason} IS NULL AND ${t.adoptUnmeasured} IS NULL) OR (length(btrim(${t.adoptReason})) BETWEEN 1 AND ${sql.raw(String(REASON_TEXT_MAX))} AND jsonb_typeof(${t.adoptUnmeasured}) = 'array' AND jsonb_array_length(${t.adoptUnmeasured}) >= 1)`,
+    ),
   }),
 );
 

@@ -23,11 +23,25 @@ export interface AdoptWorld {
   versions: ReadonlyMap<string, AdoptVersion>;
   /** The consumer's links to `contract` in the ecosystems it consumes it in. */
   links: readonly ImpactLink[];
+  /**
+   * Why the consumer crosses the versions no differ measured additive (REQ-5 BC-15): a step
+   * measured `unknown`, a check unread or changes cut short is crossed only with it, and a breaking
+   * step or a pin with no measured line never is (BC-16). Null where none was given.
+   */
+  acceptUnmeasured: string | null;
+}
+
+/** A step an adopt crossed on the consumer's stated reason, with what its measurement left unread. */
+export interface UnmeasuredStep {
+  version: string;
+  measured: string;
 }
 
 export interface AdoptPlan {
   consumptions: { index: number; from: string }[];
   links: { id: string; module: string; from: string }[];
+  /** The steps crossed on `acceptUnmeasured`, oldest last; empty where every step was measured additive. */
+  unmeasured: UnmeasuredStep[];
 }
 
 type AdoptCheck = { ok: true; plan: AdoptPlan } | { ok: false; refusals: EcosystemRefusal[] };
@@ -62,12 +76,28 @@ function chainFrom(w: AdoptWorld): string[] {
   return chain;
 }
 
-// a step is additive only where a differ measured it and found nothing above info: a breaking measurement, an unknown one, a declared semantic change or a change no differ read all stop the adopt
+// a step is additive only where a differ measured it and found nothing above info: a breaking measurement stops the adopt, and an unknown one, a declared semantic change or a change no differ read stop it unless the consumer states why it crosses them (REQ-5 BC-15)
 // a version no differ measured additive stays unmeasured: no door re-measures it, and a `semantic`
-// declaration only raises a class, so the way out is the hand pin, which takes only the version
-// approved (`link-own-rules.ts:versionRefusals`, `interface-rules.ts:builtAgainstRefusals`)
+// declaration only raises a class, so the ways out are a stated reason, kept on the interface
+// revision, and the hand pin, which takes only the version approved
+// (`link-own-rules.ts:versionRefusals`, `interface-rules.ts:builtAgainstRefusals`)
 const handPin = (w: AdoptWorld): string =>
   ` Adopt cannot take it, and no door re-measures it, so move this consumer by hand once its code is checked against ${w.version}: \`PUT /api/projects/:id/links/<link>\` setting \`pinnedVersion: "${w.version}"\` on each link to ${w.contract}, and \`PUT /api/projects/:id/interface\` setting that consumption's \`builtAgainst: "${w.version}"\`; a hand pin takes only the version approved, and on the interface the elements it names held in that version.`;
+
+const withReason = (w: AdoptWorld): string =>
+  ` Or adopt across it in one act once this consumer's code is checked against ${w.version}: send \`acceptUnmeasured: { reason }\` with the adopt, saying why what the differ could not measure does not reach this consumer; the reason is kept on the interface revision the adopt writes (REQ-5 BC-15).${handPin(w)}`;
+
+/** What a step's measurement left unread, where it is not measured additive, or null where it is. */
+function unmeasuredOf(v: AdoptVersion): string | null {
+  if (v.diff.changes.some((c) => c.check === TRUNCATED_CHECK)) {
+    return 'more changes than its record lists';
+  }
+  const unread = v.diff.changes.some(
+    (c) => c.check !== undefined && NOT_MEASURED_CHECK.test(c.check),
+  );
+  if (v.diff.classification !== 'non-breaking') return `measured ${v.diff.classification}`;
+  return unread ? 'a check no differ read' : null;
+}
 
 function stepRefusal(w: AdoptWorld, step: string): EcosystemRefusal | null {
   const v = w.versions.get(step);
@@ -80,24 +110,29 @@ function stepRefusal(w: AdoptWorld, step: string): EcosystemRefusal | null {
       detail: `${w.contract} ${step} is measured breaking against ${from}; adopt moves a consumer only across additive versions, so a breaking one is worked through its change notice and the consumer's own issue.`,
     };
   }
-  const unread = v.diff.changes.some(
-    (c) => c.check !== undefined && NOT_MEASURED_CHECK.test(c.check),
-  );
+  if (unmeasuredOf(v) === null || w.acceptUnmeasured !== null) return null;
   if (v.diff.changes.some((c) => c.check === TRUNCATED_CHECK)) {
     return {
       code: 'ADOPT_VERSION_UNMEASURED',
       path: '/version',
-      detail: `${w.contract} ${step} measured more changes against ${from} than its record lists, so a removed field a link reads may be among the ones not listed; adopt moves a consumer only where every change between its pin and ${w.version} can be read.${handPin(w)}`,
+      detail: `${w.contract} ${step} measured more changes against ${from} than its record lists, so a removed field a link reads may be among the ones not listed; adopt moves a consumer without a stated reason only where every change between its pin and ${w.version} can be read.${withReason(w)}`,
     };
   }
-  if (v.diff.classification !== 'non-breaking' || unread) {
-    return {
-      code: 'ADOPT_VERSION_UNMEASURED',
-      path: '/version',
-      detail: `${w.contract} ${step} is measured ${v.diff.classification} against ${from}, not non-breaking; adopt moves a consumer only where a differ measured every version between its pin and ${w.version} as additive.${handPin(w)}`,
-    };
-  }
-  return null;
+  return {
+    code: 'ADOPT_VERSION_UNMEASURED',
+    path: '/version',
+    detail: `${w.contract} ${step} is measured ${v.diff.classification} against ${from}, not non-breaking; adopt moves a consumer without a stated reason only where a differ measured every version between its pin and ${w.version} as additive.${withReason(w)}`,
+  };
+}
+
+/** The steps from any moving pin to the version that no differ measured additive, oldest last. */
+function unmeasuredSteps(w: AdoptWorld, moving: readonly Pin[], chain: readonly string[]) {
+  const deepest = Math.max(-1, ...moving.map((p) => chain.indexOf(p.version)));
+  return chain.slice(0, Math.max(deepest, 0)).flatMap((step): UnmeasuredStep[] => {
+    const v = w.versions.get(step);
+    const measured = v ? unmeasuredOf(v) : null;
+    return measured ? [{ version: step, measured }] : [];
+  });
 }
 
 function versionRefusals(w: AdoptWorld, moving: readonly Pin[], chain: readonly string[]) {
@@ -157,7 +192,8 @@ function fieldRefusals(w: AdoptWorld, chain: readonly string[]): EcosystemRefusa
 /**
  * Whether a consumer may move its consumption of `contract`, and every link to it, to `version` in
  * one act (feedback-triage `breaking`): the version is approved, at or after every pin, measured
- * additive at each step from each pin, and still holds every field each moving link uses.
+ * additive at each step from each pin (or, for a step no differ measured, crossed on a stated
+ * reason, REQ-5 BC-15), never breaking, and still holds every field each moving link uses.
  */
 export function checkAdopt(w: AdoptWorld): AdoptCheck {
   if (w.consumed.length === 0) {
@@ -198,6 +234,19 @@ export function checkAdopt(w: AdoptWorld): AdoptCheck {
   if (refusals.length > 0) return { ok: false, refusals };
   const fields = fieldRefusals(w, chain);
   if (fields.length > 0) return { ok: false, refusals: fields };
+  const unmeasured = unmeasuredSteps(w, moving, chain);
+  if (w.acceptUnmeasured !== null && unmeasured.length === 0) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'ADOPT_REASON_UNUSED',
+          path: '/acceptUnmeasured',
+          detail: `every version from each pin of ${w.contract} to ${w.version} is measured additive, so there is no unmeasured step for \`acceptUnmeasured\` to cross and its reason would be kept on the record explaining nothing; adopt without it.`,
+        },
+      ],
+    };
+  }
   const moves = (v: string) => compareVersions(w.versioning, w.version, v) > 0;
   return {
     ok: true,
@@ -208,6 +257,7 @@ export function checkAdopt(w: AdoptWorld): AdoptCheck {
       links: w.links
         .filter((l) => moves(l.pinnedVersion))
         .map((l) => ({ id: l.id, module: l.module, from: l.pinnedVersion })),
+      unmeasured,
     },
   };
 }

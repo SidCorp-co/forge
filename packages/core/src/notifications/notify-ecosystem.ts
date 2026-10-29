@@ -175,6 +175,10 @@ async function gateDecided(p: Payload<'channel.gateDecided'>): Promise<void> {
 export function versionNoticeBody(p: Payload<'contract.versionApproved'>, side: string): string {
   const ref = `${p.providerSlug}/${p.contractSlug}`;
   const measured = `${p.providerSlug} approved ${p.version} of ${ref}, measured ${p.classification}`;
+  // an unknown measure is adopted on the consumer's own word that its code was checked (REQ-5 BC-15)
+  if (p.classification === 'unknown') {
+    return `${measured}, so adopt takes it only with the reason it is safe for this project's code, kept on the interface revision: POST /api/projects/${side}/interface/adopt { contract: "${ref}", version: "${p.version}", acceptUnmeasured: { reason } }.`;
+  }
   if (p.classification !== 'non-breaking') return `${measured}; nothing this project does is owed.`;
   return `${measured}. Adopt it in one act, POST /api/projects/${side}/interface/adopt { contract: "${ref}", version: "${p.version}" }: it moves the interface and every link to ${p.version} where each field a link uses is still in it, and names each requirement left for a person to re-pin.`;
 }
