@@ -5,6 +5,7 @@
 // correction confirms it, and the bot never writes over that (BC-33).
 
 import { z } from "zod";
+import { REASON_NOTE_MAX } from "./reason-text.js";
 import {
 	chatUsernameSchema,
 	supportRoomConfigSchema,
@@ -380,7 +381,7 @@ export const channelSwitchOwnerWordSchema = z.strictObject({
 
 /** A person marking a switched group as answered as well as its outside bot answered it. */
 export const channelSwitchProvenSchema = z.strictObject({
-	note: z.string().trim().min(3).max(1000),
+	note: z.string().trim().min(3).max(REASON_NOTE_MAX),
 });
 
 export interface ChannelSwitchDutyView {
