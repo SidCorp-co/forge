@@ -1,1 +1,0 @@
-**The memory-reconcile consumer declares its queue before sending.** A process without the worker, the integration harness, no longer fails each delivery `PGBOSS_QUEUE_NOT_FOUND`, which stalled a test closing an issue 45 s a case.

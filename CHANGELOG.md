@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.364] - 2026-10-29
+
+Forge asks agents to record merges and releases instead of inferring them
+
+### Changed
+
+- **Forge asks the agent for merge records instead of writing them from a hook.** A merged change request with no mark, a late mark, or a yolo merge naming no issue is now owed; no read calls GitLab.
+
+### Fixed
+
+- **The memory-reconcile consumer declares its queue before sending.** A process without the worker, the integration harness, no longer fails each delivery `PGBOSS_QUEUE_NOT_FOUND`, which stalled a test closing an issue 45 s a case.
+
 ## [0.4.0-dev.363] - 2026-10-29
 
 Reopened issues return once their own criteria pass
