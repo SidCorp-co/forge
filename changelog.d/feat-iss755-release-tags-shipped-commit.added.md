@@ -1,1 +1,0 @@
-**A shipped release now tags its commit `v<version>` on the source host.** A project deployed outside Forge reads its release version from that tag; a conflicting tag is refused by name and shown on the release.

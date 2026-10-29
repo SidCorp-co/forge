@@ -1,1 +1,0 @@
-**A requirement-level fail no longer reopens a delivered issue.** An issue whose own criteria for that requirement pass stays where it is and is told why; the fail goes to the issue that owns what is missing.

@@ -1,1 +1,0 @@
-**A readiness suggestion is refused, since the ready checklist decides readiness.** Proposing or accepting one is refused by name on every door, the requirement page shows no readiness advice, and any still waiting is closed as stale.

@@ -1,1 +1,0 @@
-**The dev merge check typechecks test files.** `pnpm tc:changed`, and with it `test:changed` and `merge-check`, checks each touched package and its importers under `tsconfig.test.json` as well as `tsconfig.json`, so a test-only type error no longer lands green (ISS-754).
