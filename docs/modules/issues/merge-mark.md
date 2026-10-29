@@ -290,6 +290,20 @@ on somebody's word is replaced rather than refused `MARK_ALREADY_STANDS`: a land
 propose names a revision that was not yet approved, and the approval is better evidence than that
 word (ISS-262). Like every mark it moves no status.
 
+A design issue whose approval stamp was cleared (`DELETE /api/issues/:id/merge`), or that holds an
+approved revision and was never stamped, is marked again on it (ISS-570, REQ-45 BC-4): a mark naming
+no `commit`, `landing`, `artifacts` or `changedPaths`, on an issue with no code evidence
+(`packages/core/src/issues/work-evidence.ts:findMissingWorkEvidence`), stamps per workflow the newest
+approved revision the issue drew (`packages/core/src/issues/design-delivery.ts:approvedDesignsDrawn`)
+through the approval's own write, `recordDesignLanding`, whoever marks it
+(`packages/core/src/issues/design-mark.ts:stampDesigns`). The answer and the audit comment say the mark
+is that design (`packages/core/src/issues/design-mark.ts:designStampDetail`), and no merge check is
+asked, since no commit landed. It never stands in for code: an issue carrying a branch, a commit or a
+handoff is marked as before, a build issue draws no revision that counts, and a merge Forge observed
+for the issue is stamped as code. With no approved revision an agent's mark is refused
+`NO_WORK_EVIDENCE` as before, its detail naming each drawn revision still waiting on its approver
+(`packages/core/src/issues/design-mark.ts:designsWaiting`).
+
 Whatever the shape, an issue whose mark is the design's alone is design-only: it closes through
 `design_delivered`, and `awaiting_release` refuses it `MERGE_DESIGN_ONLY`
 (`packages/core/src/issues/merged-at.ts:mergeNotRecorded`), since no release roster carries it

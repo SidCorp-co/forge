@@ -10,6 +10,7 @@ import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
 import { adoptionOf, stampAdoption } from './adoption-mark.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
+import * as designMark from './design-mark.js';
 import { type HostMerge, hostMergeOfMark } from './host-mark.js';
 import {
   CLEAR_THE_MARK,
@@ -130,6 +131,8 @@ type Preflight = {
   fromRepository: RepositoryLanding | null;
   /** The adoption record read before the stamp, where the mark names `adoptions`. */
   adopted?: AdoptionHeld[] | null;
+  /** The approved design revisions a mark naming nothing stands on, where the issue carries no code. */
+  designs?: designMark.DesignMark | null;
 };
 
 /** The refusals a mark meets before its transaction: the landing shape, the target, contract
@@ -165,10 +168,16 @@ async function preflightMark(
   if (design && args.commit) {
     return { shape, fromRepository: await overDesign(args, args.commit, design) };
   }
-  if (args.actor.agency !== 'agent') return { shape, fromRepository: null };
+  const bare = designMark.namesNothing(args);
+  if (args.actor.agency !== 'agent' && !bare) return { shape, fromRepository: null };
   const missing = await findMissingWorkEvidence(issueId);
-  if (!missing) return { shape, fromRepository: null };
-  if (!args.commit || shape !== 'git') throw refuse('NO_WORK_EVIDENCE', missing);
+  const designs = missing && bare ? await designMark.designsOfMark(prior) : null;
+  if (!missing || designs || args.actor.agency !== 'agent') {
+    return { shape, fromRepository: null, designs };
+  }
+  if (!args.commit || shape !== 'git') {
+    throw refuse('NO_WORK_EVIDENCE', `${missing}${await designMark.designsWaiting(issueId)}`);
+  }
   const read = await readCommitLanding({ issueId, commit: args.commit });
   if (!read.ok) throw refuse(read.code, read.detail, '/commit');
   return { shape, fromRepository: read };
@@ -215,6 +224,10 @@ async function stampMark(
       claimedTarget: null,
       adopted: preflight.adopted,
     };
+  }
+  if (preflight.designs && !observed) {
+    const result = await designMark.stampDesigns(tx, args, { shape, designs: preflight.designs });
+    return { result, claimedCommit: null, readFrom: null, claimedTarget: args.target ?? null };
   }
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
@@ -375,7 +388,8 @@ async function writeMarkTrail(
   const markDetail =
     stamp.adopted && result.wrote
       ? describeAdoptionMark(stamp.adopted)
-      : describeMergeMark({
+      : (designMark.designStampDetail(result) ??
+        describeMergeMark({
           kind: mark,
           commitSha: result.commitSha,
           claimedCommit,
@@ -383,7 +397,7 @@ async function writeMarkTrail(
           ...(readFrom && result.wrote ? { readFrom } : {}),
           target: result.target,
           claimedTarget: stamp.claimedTarget ?? null,
-        });
+        }));
   const audit = await writeAuditComment(
     issueId,
     args.actor.commentAuthorId,
@@ -470,14 +484,17 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   const unread = preflight && !hostMerge && !preflight.fromRepository;
   const partial = unread ? wholeCommitRefusal(args.commit) : null;
   if (partial) throw refuse(partial.code, partial.detail, '/commit');
-  // the merge check and its review judge a commit, and an adoption record lands none
-  if (preflight && !preflight.adopted) await refuseUncheckedMerge(args, prior, preflight.shape);
+  // the merge check and its review judge a commit, and an adoption record or a design lands none
+  const unchecked = preflight && !preflight.adopted && !preflight.designs;
+  if (unchecked) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   const observed =
     hostMerge ??
     (args.op === 'mark'
       ? await identifiedMergeForIssue(args.issue.id, args.actor.hookActor)
       : null);
+  // a merge Forge observed is code, which the mark stamps over the designs: it owes the check
+  if (preflight?.designs && observed) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {
