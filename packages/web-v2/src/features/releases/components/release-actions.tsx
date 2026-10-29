@@ -73,7 +73,8 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
   const t = useCopy();
   const cut = useCutRelease(projectId);
   const decision = r.can.decide && r.approval && r.runId ? { runId: r.runId, approvalId: r.approval.id } : null;
-  // the act RELEASE_ROSTER_OVERSIZE names: core chose the oldest merged issues one release carries
+  // the act RELEASE_ROSTER_OVERSIZE names: core chose the oldest merged issues one release carries;
+  // RELEASE_PROMOTION_PARTIAL's: the issues the open promotion's head carries
   const split = r.can.split && r.split ? r.split : null;
   if (!decision && !r.can.cut && !split) return null;
   return (
@@ -93,7 +94,9 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
             onClick={() => cut.mutate(split.issueIds)}
             data-testid="release-split"
           >
-            {t("releases.split", { n: split.issueIds.length, version: r.version })}
+            {split.promotion
+              ? t("releases.splitCarried", { n: split.issueIds.length, request: split.promotion, version: r.version })
+              : t("releases.split", { n: split.issueIds.length, version: r.version })}
           </Button>
           <RefusalText error={cut.error} />
         </>

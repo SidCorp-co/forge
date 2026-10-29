@@ -5,9 +5,9 @@
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import type { ReleasePromotion } from '@forge/contracts/releases';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, pipelineRuns } from '../db/schema.js';
+import { pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { resolveSourceHost } from '../integrations/source-host/index.js';
 import { releaseRunClaims } from '../issues/index.js';
@@ -15,8 +15,14 @@ import { closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
 import { label, type ReleaseMergeStep, shown } from './change-request-roster.js';
 import { releaseProbesOf } from './channel.js';
-import { RELEASE_GATE_STATUS } from './gate.js';
-import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
+import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import {
+  type Across,
+  carriedBy,
+  openPromotionFor,
+  type PromotionDeclaration,
+  requestsAcross,
+} from './promotion-standing.js';
 import { admissibleIssues, closeRecorded, writeLedger } from './recorded.js';
 import { blockerRefusal, notVerifiedRefusal, refuseRelease } from './refuse.js';
 import { verifyServingNow } from './verify.js';
@@ -38,22 +44,6 @@ interface PromotionMetadata extends Across {
 }
 
 const WHOLE = /^[0-9a-f]{40}$/i;
-
-/** Of the roster, the issues whose host merge `head` holds, read on the host one compare each. */
-async function carriedBy(projectId: string, head: string, roster: readonly string[]) {
-  const rows = await db
-    .select({ id: issues.id, sha: issues.mergedCommitSha })
-    .from(issues)
-    .where(inArray(issues.id, [...roster]));
-  const host = await resolveSourceHost(projectId, 'agent');
-  const carries: string[] = [];
-  const notCarried: string[] = [];
-  for (const r of rows) {
-    const where = r.sha ? await host.compare(r.sha, head) : null;
-    (where === 'ahead' || where === 'identical' ? carries : notCarried).push(r.id);
-  }
-  return { carries, notCarried };
-}
 
 /** Cuts the release as its promotion request: the run pins it, and the owner is asked for the go. */
 export async function cutPromotionRelease(
@@ -157,6 +147,33 @@ export async function promotionViewOf(
     .where(eq(repoPullRequests.id, p.pullRequestId))
     .limit(1);
   if (!request) return null;
+  return viewOf(request, p.to, p.carries, p.notCarried, keyOf);
+}
+
+/**
+ * The open promotion request a draft pairs with, and which of its roster that head carries, read on
+ * the host (adminhub-fe 0.54.0: !2055 carried 7 of 9). Null where the release is no promotion or none is open.
+ */
+export async function draftPromotionViewOf(
+  projectId: string,
+  roster: readonly string[],
+  keyOf: (issueId: string) => string,
+): Promise<ReleasePromotion | null> {
+  const decl = await resolveReleaseDeclaration(projectId);
+  if (decl?.kind !== 'promotion') return null;
+  const open = await openPromotionFor(projectId, decl.promotion, roster);
+  return open
+    ? viewOf(open.request, decl.promotion.to, open.carries, open.notCarried, keyOf)
+    : null;
+}
+
+function viewOf(
+  request: typeof repoPullRequests.$inferSelect,
+  to: string,
+  carries: string[],
+  notCarried: string[],
+  keyOf: (issueId: string) => string,
+): ReleasePromotion {
   const keys = (ids: string[]) => ids.map(keyOf);
   return {
     label: label(request),
@@ -166,11 +183,11 @@ export async function promotionViewOf(
     state: request.state === 'merged' ? 'merged' : request.state === 'open' ? 'open' : 'closed',
     // the branch the request merges from, which may be one cut from the promotion's source to pin a head
     from: request.headRef,
-    to: p.to,
+    to,
     headSha: request.headSha,
     mergeCommitSha: request.mergeCommitSha,
-    carries: keys(p.carries),
-    notCarried: keys(p.notCarried),
+    carries: keys(carries),
+    notCarried: keys(notCarried),
   };
 }
 

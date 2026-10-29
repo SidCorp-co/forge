@@ -33,6 +33,13 @@ export const SAID = {
 		en: "This release waits on a promotion change request carrying it.",
 	},
 	"standing.gate.title.promotionMissing": { en: "Promotion missing" },
+	"standing.gate.promotionPartial": {
+		en: "Its open promotion carries only part of this release.",
+	},
+	"standing.gate.title.promotionPartial": { en: "Promotion carries part" },
+	"standing.act.cutCarried": {
+		en: "cut the release with the issues its promotion carries",
+	},
 	"standing.act.openPromotion": {
 		en: "open the promotion change request at a judged head",
 	},
