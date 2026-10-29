@@ -186,6 +186,11 @@ jobs:
       # collects emits nothing, so it reads exactly like a suite that passed.
       # Spawns `vitest list` per project, hence this job rather than lang-check.
       - run: node scripts/check-test-reachability.mjs
+      # A test reading a file outside its package by path declares it (`@direct-test-of`),
+      # and the `changes` filter of the job running the test matches it, or a change to
+      # that file alone selects no test (ISS-134). Reads source with core's TypeScript,
+      # hence this job, which installs.
+      - run: node scripts/check-outside-reads.mjs
       - run: pnpm exec biome check scripts
       # Provider literals (ISS-1071): an integration provider is named where a provider is
       # described — its own directory, the registry, the union, the schema vocabulary, the
@@ -433,6 +438,10 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'scripts/lib/whole-tree-*.mjs'
               - 'scripts/check-whole-tree-gates.mjs'
+              # A file a test of this job reads outside its package, by path rather than
+              # import (`@direct-test-of` on the test): `check-outside-reads` refuses one
+              # missing here, since a change to it alone would skip the job (ISS-134).
+              - 'scripts/split-product-copy.mjs'
             # `.npmrc` sits under both because it decides how EVERY package resolves its
             # modules: `node-linker=hoisted` is what lets four packages only `@forge/core`
             # declares resolve from the repository root, and `pnpm verify` loses five
@@ -461,6 +470,11 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'scripts/lib/whole-tree-*.mjs'
               - 'scripts/check-whole-tree-gates.mjs'
+              # Read by path by a core test (`@direct-test-of` on it), held by
+              # `check-outside-reads` (ISS-134). The file, not `packages/runner/**`, so a
+              # runner change does not start the core job.
+              - 'packages/runner/crates/runner-transport/src/status.rs'
+              - 'packages/runner/crates/runner-daemon/src/wake_source.rs'
             runner:
               - 'packages/runner/**'
               - '.github/workflows/ci.yml'
@@ -475,6 +489,7 @@ jobs:
             # cost with no test in it.
             scripts:
               - 'scripts/**'
+              - '.forge/conformance.json'
 
   web:
     needs: changes

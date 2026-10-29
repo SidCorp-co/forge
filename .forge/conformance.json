@@ -57,8 +57,8 @@
     },
     "behaviour": {
       "level": 3,
-      "gate": "check-test-signal + check-test-reachability",
-      "owns": "whether a test asserts behaviour or restates a declaration; whether every tracked test file is collected by a runner at all; whether every suite passed on the commit a release is cut from ($wholeSuite)",
+      "gate": "check-test-signal + check-test-reachability + check-outside-reads",
+      "owns": "whether a test asserts behaviour or restates a declaration; whether every tracked test file is collected by a runner at all; whether a test reading a file outside its package by path declares it and the CI filter of its job matches it, so a change to that file alone selects the test; whether every suite passed on the commit a release is cut from ($wholeSuite)",
       "baseline": null
     },
     "language": {

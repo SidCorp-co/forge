@@ -39,6 +39,7 @@ const CI_COVERAGE = {
   'node scripts/check-module-boundaries.mjs': 'verify',
   'node scripts/check-module-shape.mjs': 'verify',
   'node scripts/check-test-reachability.mjs': 'verify',
+  'node scripts/check-outside-reads.mjs': 'verify',
   'pnpm exec biome check scripts': 'verify',
   'pnpm --filter @forge/core lint': 'verify',
   // The typecheck left verify on 2026-10-10: merge-check runs tc-changed before verify, so verify's
