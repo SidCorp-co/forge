@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { admitChangeRequestMerge } from '../../src/release-batch/change-request-merge.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -118,7 +119,7 @@ async function landedIssues(): Promise<string[]> {
 }
 
 /** The promotion merge request as GitLab's hook writes it into the projection. */
-async function promotionRequest(number: number, head: string, from = STG) {
+async function promotionRequest(number: number, head: string, from = STG, into = PROD) {
   await applyPullRequestEvent(
     { projectId: world.projectId, bindingId: world.bindingId, host: 'gitlab' },
     {
@@ -130,7 +131,7 @@ async function promotionRequest(number: number, head: string, from = STG) {
         html_url: `https://gitlab.com/acme/adminhub-api/-/merge_requests/${number}`,
         state: 'open',
         head: { ref: from, sha: head },
-        base: { ref: PROD, sha: 'f'.repeat(40) },
+        base: { ref: into, sha: 'f'.repeat(40) },
         updated_at: new Date().toISOString(),
       },
       repository: { full_name: 'acme/adminhub-api' },
@@ -316,5 +317,37 @@ describe('BC-12: the record closes only the issues the merged promotion holds', 
     planted.carried.add(`${LANDED[1]}>${after}`);
     const closed = await record(ids, after);
     expect(closed.status, JSON.stringify(closed.body)).toBe(201);
+  });
+});
+
+describe('a promotion gates only the requests into the branch production deploys from', () => {
+  const idOf = async (number: number) => {
+    const [row] = await rows<{ id: string }>(
+      sql`SELECT id FROM repo_pull_requests WHERE project_id = ${world.projectId} AND number = ${number}`,
+    );
+    return String(row?.id);
+  };
+
+  // adminhub-api !5063, 2026-10-29: an ordinary fix into release/stg was refused RELEASE_MERGE_UNRELEASED
+  it('admits a fix merge request into the promotion source as an ordinary landing', async () => {
+    await promotionRequest(5063, 'a7'.repeat(20), 'fix/iss-71-site-write', STG);
+    const admitted = await admitChangeRequestMerge({
+      projectId: world.projectId,
+      pullRequestId: await idOf(5063),
+    });
+    expect(admitted).toEqual({ kind: 'free' });
+  });
+
+  it('still refuses a request into release/production outside a release', async () => {
+    await promotionRequest(5064, HEAD, STG, PROD);
+    await expect(
+      admitChangeRequestMerge({ projectId: world.projectId, pullRequestId: await idOf(5064) }),
+    ).rejects.toMatchObject({ refusals: [{ code: 'RELEASE_MERGE_UNRELEASED' }] });
+  });
+
+  it('refuses by name a request whose target branch it cannot read, rather than letting it through', async () => {
+    await expect(
+      admitChangeRequestMerge({ projectId: world.projectId, pullRequestId: randomUUID() }),
+    ).rejects.toMatchObject({ refusals: [{ code: 'RELEASE_MERGE_TARGET_UNREAD' }] });
   });
 });

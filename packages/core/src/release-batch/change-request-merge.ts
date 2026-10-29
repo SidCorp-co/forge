@@ -61,28 +61,38 @@ type MergeAdmission =
  * Whether this change request may merge now, on a project that releases through change requests:
  * only as a step of a running release that carries it, after that release is approved, and only
  * when every request before it in the declared order has merged. Each refusal names its fault.
+ * Where the release is a promotion, only a request into the promotion's `to` branch is a release
+ * step; one into any other branch (the `from` work lands on, adminhub-api !5063) is a landing.
  */
 export async function admitChangeRequestMerge(args: {
   projectId: string;
   pullRequestId: string;
 }): Promise<MergeAdmission> {
   const doc = await readProjectDocument(args.projectId);
-  if (
-    !releaseThroughChangeRequests(doc?.document) &&
-    (await resolveReleaseDeclaration(args.projectId))?.kind !== 'promotion'
-  )
-    return { kind: 'free' };
+  const throughRequests = releaseThroughChangeRequests(doc?.document);
+  const decl = throughRequests ? null : await resolveReleaseDeclaration(args.projectId);
+  const promotion = decl?.kind === 'promotion' ? decl.promotion : null;
+  if (!throughRequests && !promotion) return { kind: 'free' };
   const [pr] = await db
     .select({
       host: repoPullRequests.host,
       number: repoPullRequests.number,
       headSha: repoPullRequests.headSha,
       state: repoPullRequests.state,
+      baseRef: repoPullRequests.baseRef,
     })
     .from(repoPullRequests)
     .where(eq(repoPullRequests.id, args.pullRequestId))
     .limit(1);
+  if (!pr && promotion) {
+    throw refuseMerge(
+      'RELEASE_MERGE_TARGET_UNREAD',
+      `Request ${args.pullRequestId} is not in Forge's projection of the repository, so the branch it merges into cannot be read, and this project releases through its promotion into \`${promotion.to}\`: only a request into that branch waits on a release. Refresh the request from the host, then merge it.`,
+      '/pullRequest',
+    );
+  }
   if (!pr) return { kind: 'free' };
+  if (promotion && pr.baseRef !== promotion.to) return { kind: 'free' };
   const me = label(pr);
   const linked = (await linksOf([args.pullRequestId])).get(args.pullRequestId) ?? [];
   // a promotion request delivers no issue by its branch: the release that pinned it holds it
