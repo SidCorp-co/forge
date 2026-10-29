@@ -71,9 +71,6 @@ export async function startQueue(options: { pollSeconds?: number } = {}): Promis
   await startBoss();
   const { declareOutboxQueues, startOutboxWorker } = await import('../../src/outbox/index.js');
   await declareOutboxQueues();
-  // every queue an outbox consumer sends to exists as the server's boot declares it; the worker
-  // behind it is not started, so a test that closes an issue runs no reconcile
-  await (await import('../../src/memory/index.js')).declareMemoryReconcileQueue();
   (await import('../../src/outbox-consumers.js')).registerOutboxConsumers();
   await startOutboxWorker(options);
 }

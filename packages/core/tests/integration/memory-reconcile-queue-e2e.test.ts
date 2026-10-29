@@ -1,12 +1,12 @@
 /**
- * The integration harness declares every queue an outbox consumer sends to, as the server's boot
- * does. `memory-reconcile` sends a pg-boss job when an issue's move lands its merge
- * (`memory/reconcile.ts:registerMemoryReconcileTrigger`), and the harness's `startQueue` declared no
- * such queue: the delivery failed, retried behind its backoff, and a test that closed an issue and
- * then waited on the outbox stalled about 45 s (ISS-760 declared it in its own test). Against real
+ * The memory-reconcile consumer declares the queue it sends to. It sends a pg-boss job when an
+ * issue's move lands its merge (`memory/reconcile.ts:registerMemoryReconcileTrigger`), and only the
+ * worker, which the server's boot starts and the integration harness's `startQueue` does not,
+ * declared that queue: the delivery failed `PGBOSS_QUEUE_NOT_FOUND`, retried behind its backoff, and
+ * a test that closed an issue and then waited on the outbox stalled about 45 s a case (ISS-760
+ * declared it in its own test). Against real
  * Postgres and pg-boss.
  *
- * @direct-test-of packages/core/tests/helpers/ecosystem-world.ts
  * @direct-test-of packages/core/src/memory/reconcile.ts
  */
 

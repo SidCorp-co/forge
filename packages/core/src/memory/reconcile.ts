@@ -376,6 +376,9 @@ export function registerMemoryReconcileTrigger(): void {
       const mergeLanded =
         (p.from === BASE_MERGE_STATE && p.to !== BASE_MERGE_STATE) || p.to === 'closed';
       if (!mergeLanded) return;
+      // the sender declares its queue: a process running this consumer without the worker (the
+      // integration harness) otherwise fails every delivery behind the outbox's backoff
+      await declareMemoryReconcileQueue();
       await boss.send(
         MEMORY_RECONCILE_QUEUE,
         { projectId: p.projectId, issueId: p.id },
@@ -388,9 +391,10 @@ export function registerMemoryReconcileTrigger(): void {
 type ReconcileJob = { projectId?: string; issueId?: string };
 
 /**
- * The queue `registerMemoryReconcileTrigger` sends to, declared apart from its worker: a process
- * that runs the outbox consumers without the worker (the integration harness) still holds it, so
- * the trigger's send lands instead of failing `PGBOSS_QUEUE_NOT_FOUND` behind the outbox's backoff.
+ * The queue `registerMemoryReconcileTrigger` sends to, declared by the sender and by the worker
+ * alike (pg-boss's `createQueue` leaves an existing queue as it is): a process that runs the outbox
+ * consumers without the worker, the integration harness, failed every send `PGBOSS_QUEUE_NOT_FOUND`
+ * behind the outbox's backoff, 45 s a case.
  */
 export async function declareMemoryReconcileQueue(): Promise<void> {
   await boss.createQueue(MEMORY_RECONCILE_QUEUE);
