@@ -3,7 +3,8 @@
 // lease a run session takes (`issue_leases`, read live through `liveIssueLeasesSql`), a live run
 // session declared over the issue while it was over, which took no lease (ISS-589), and the lease
 // on the issue's work state a master's claim writes for the run it declares (`issue_work_state.lease`).
-// Reading only the first refused a declared run its own moves (adminhub-api ISS-8, 2026-10-23).
+// Reading only the first refused a declared run its own moves (adminhub-api ISS-8, 2026-10-23). The
+// moves into in_progress and awaiting_release both ask `callerHolds` over this reading (ISS-589 r2).
 
 import { eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -15,7 +16,14 @@ import { classifyLease, leaseHolderOf } from './session-claim.js';
 
 export type RunHolder =
   | { kind: 'run-session'; deviceId: string; sessionId: string; runId: string }
-  | { kind: 'declared-run'; holder: string; deviceId: string | null; expiresAt: string | null };
+  | {
+      kind: 'declared-run';
+      holder: string;
+      deviceId: string | null;
+      expiresAt: string | null;
+      /** The token that wrote the lease, which names its holder where no box does; never shown. */
+      tokenId: string | null;
+    };
 
 /**
  * The box a lease write is stored with (`issue_work_state.lease_device_id`, `lease_token_id`): a
@@ -87,7 +95,11 @@ export async function declaredRunOf(
   now: Date = new Date(),
 ): Promise<Extract<RunHolder, { kind: 'declared-run' }> | null> {
   const [row] = await executor
-    .select({ lease: issueWorkState.lease, deviceId: issueWorkState.leaseDeviceId })
+    .select({
+      lease: issueWorkState.lease,
+      deviceId: issueWorkState.leaseDeviceId,
+      tokenId: issueWorkState.leaseTokenId,
+    })
     .from(issueWorkState)
     .where(eq(issueWorkState.issueId, issueId))
     .limit(1);
@@ -99,6 +111,7 @@ export async function declaredRunOf(
     holder: reading.holder,
     deviceId: row?.deviceId ?? null,
     expiresAt: reading.expiresAt?.toISOString() ?? null,
+    tokenId: row?.tokenId ?? null,
   };
 }
 
@@ -109,7 +122,25 @@ export function holderSentence(h: RunHolder): string {
   return `run \`${h.holder}\`, declared ${from} (its lease runs to ${h.expiresAt})`;
 }
 
-/** Whether `caller` is the box of one of `holders`. */
-export function callerHolds(holders: readonly RunHolder[], caller: string | null): boolean {
-  return caller !== null && holders.some((h) => h.deviceId === caller);
+/** A holder as a refusal's details carry it: the lease's token stays inside core. */
+export function holderShown(h: RunHolder): Record<string, unknown> {
+  if (h.kind === 'run-session') return h;
+  const { tokenId: _kept, ...shown } = h;
+  return shown;
+}
+
+/**
+ * Whether `caller` holds the issue among `holders`: it is the box of one, or, for a lease written
+ * from no box, the very token that wrote it.
+ */
+export function callerHolds(holders: readonly RunHolder[], caller: CallerBox | null): boolean {
+  if (!caller) return false;
+  return holders.some(
+    (h) =>
+      (caller.deviceId !== null && h.deviceId === caller.deviceId) ||
+      (h.kind === 'declared-run' &&
+        h.deviceId === null &&
+        h.tokenId !== null &&
+        h.tokenId === caller.tokenId),
+  );
 }

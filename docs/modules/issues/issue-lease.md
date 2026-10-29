@@ -146,9 +146,18 @@ since a take over an issue at rest is refused `ISSUE_AT_REST`; a queued
 declaration stamps nothing and a given-back key leaves `runIssues`, so neither
 holds. `issueRunDeclaredSql` asks it for the rescue, and
 `packages/core/src/issues/run-holder.ts:runSessionHoldersOf` reads it beside the
-live fleet leases for the in_progress guard (`packages/core/src/issues/work-state.ts:issueHolder`) and
-the awaiting_release guard, so both name the session runs/standing names
-(ISS-589). An ended session holds nothing.
+live fleet leases for the in_progress guard and the awaiting_release guard
+(`packages/core/src/issues/run-holder.ts:runHoldersOf`), so both name the session
+runs/standing names (ISS-589). An ended session holds nothing.
+
+Both moves are the holding run's, not anybody's while something holds
+(`packages/core/src/issues/run-holder.ts:callerHolds`): where a run holds the
+issue, the caller is the box of one holder, or the token that wrote a lease from
+no box, or holds `releases.approve` or `project.admin`; anyone else is refused
+`NOT_THE_HOLDER`, every holder named. A box whose own run has ended holds
+nothing, so it is refused like a stranger (ISS-589 r2). Where no run holds it, a
+job or pipeline run over it still lets the claim through
+(`packages/core/src/issues/work-state.ts:issueHolder`).
 
 ## What a refusal carries
 

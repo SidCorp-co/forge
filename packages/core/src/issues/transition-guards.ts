@@ -14,6 +14,8 @@
  *                      issue-ready checklist the kernel judges                  CHECKLIST_INCOMPLETE
  *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED,
  *                                                                               CONTRACT_WAIT_UNSETTLED
+ *                      where a run holds it, that run makes the move, or a       NOT_THE_HOLDER
+ *                      holder of `releases.approve` or `project.admin` does
  *   approved           plan and criteria written (what the status says)          PLAN_REQUIRED
  *                      the actor holds `plans.approve` where gate                PERMISSION_FORBIDDEN
  *                      `plan_approval` is enforced (REQ-76: strict, or
@@ -75,7 +77,7 @@ import {
 } from '../permissions/index.js';
 import { readAdoptionDelivery } from './adoption-delivery.js';
 import { refuseHeldTake } from './blocked-by.js';
-import { callerBoxOf } from './caller-box.js';
+import { type CallerBox, callerBoxOf } from './caller-box.js';
 import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
 import { designCheckOf } from './design-record.js';
 import type { IssueGates } from './gates.js';
@@ -85,7 +87,13 @@ import type { CatalogReading } from './pattern-rules.js';
 import { catalogOf, patternReleaseRefusal } from './patterns.js';
 import { readProjectDocument } from './ports.js';
 import { releaseClaimRefusal } from './release-claim-guard.js';
-import { callerHolds, holderSentence, runHoldersOf } from './run-holder.js';
+import {
+  callerHolds,
+  holderSentence,
+  holderShown,
+  type RunHolder,
+  runHoldersOf,
+} from './run-holder.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { edgeFault, quote } from './transition-faults.js';
 import { issueHolder } from './work-state.js';
@@ -129,8 +137,8 @@ interface IssueMoveFacts {
   admit: { permission: ProjectPermission; act: string };
   /** The mover's role and grants on the project. */
   permissions: PermissionFacts;
-  /** Who is asking, as the run lane names a holder: the box the device or its token belongs to. */
-  callerDeviceId: string | null;
+  /** Who is asking, as the run lane names a holder: the box the device or its token belongs to, and the token. */
+  caller: CallerBox | null;
   /** The permission that lets the mover make a move another run's hold reserves, or null. */
   holdOverride: HoldOverride | null;
   /** The move to awaiting_release: the issue's approved new patterns and the change its mark names. */
@@ -142,8 +150,8 @@ interface IssueMoveFacts {
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
 type HoldOverride = (typeof HOLD_OVERRIDES)[number];
 
-/** Only the move into `awaiting_release` asks who holds the issue. */
-const ASKS_FOR_HOLDER: readonly IssueStatus[] = ['awaiting_release'];
+/** The moves that ask who holds the issue: the claim, and the holding run's move to its release. */
+const ASKS_FOR_HOLDER: readonly IssueStatus[] = ['in_progress', 'awaiting_release'];
 
 async function holdOverrideOf(
   actorUserId: string,
@@ -167,8 +175,8 @@ export async function readIssueMoveFacts(args: {
   const document = (await readProjectDocument(issue.projectId))?.document;
   const asksForHolder = ASKS_FOR_HOLDER.includes(args.to);
   return {
-    callerDeviceId: asksForHolder
-      ? (await callerBoxOf(args.actorUserId, args.actorDeviceId ?? null)).deviceId
+    caller: asksForHolder
+      ? await callerBoxOf(args.actorUserId, args.actorDeviceId ?? null)
       : null,
     holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
     gates: Object.fromEntries(projectGates(document, null).map((g) => [g.id, g])) as IssueGates,
@@ -220,8 +228,14 @@ async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
   }
 }
 
-/** in_progress, entered by a claim: a run or a lease holds the issue. */
+/**
+ * in_progress, entered by a claim: a run or a lease holds the issue, and where a run holds it, the
+ * caller is that run (ISS-589 r2) — the same reading and refusal as awaiting_release. A job or
+ * pipeline run over it, with no run holding it, holds it as before.
+ */
 async function holderGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const holders = await runHoldersOf(ctx.executor, ctx.issue);
+  if (holders.length > 0) return notTheHolder(ctx, holders);
   const holder = await issueHolder(ctx.executor, ctx.issue);
   if (holder) return null;
   return {
@@ -238,30 +252,38 @@ async function holderGuard(ctx: GuardContext): Promise<GuardFault | null> {
  * named.
  */
 async function runHolderGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  return notTheHolder(ctx, await runHoldersOf(ctx.executor, ctx.issue));
+}
+
+/**
+ * The move is the holding run's: null where the caller is one of `holders` (`run-holder.ts:
+ * callerHolds`) or holds a hold override, else NOT_THE_HOLDER naming every holder and the caller.
+ */
+function notTheHolder(ctx: GuardContext, holders: readonly RunHolder[]): GuardFault | null {
   if (ctx.facts.holdOverride) return null;
-  const holders = await runHoldersOf(ctx.executor, ctx.issue);
-  const caller = ctx.facts.callerDeviceId;
+  const caller = ctx.facts.caller;
   if (callerHolds(holders, caller)) return null;
   const held =
     holders.length > 0
       ? `${holders.map(holderSentence).join(' and ')} holds it`
       : 'no run holds it';
-  const asking =
-    caller === null
-      ? 'the caller is not a paired box or its token'
-      : `the caller is device ${caller}`;
+  const asking = caller?.deviceId
+    ? `the caller is device ${caller.deviceId}`
+    : caller?.tokenId
+      ? 'the caller is a token bound to no box that wrote no lease held here'
+      : 'the caller is not a paired box or its token';
   const session = holders.find((h) => h.kind === 'run-session');
   return {
     code: 'NOT_THE_HOLDER',
-    detail: `\`awaiting_release\` is the move of the run holding the issue, and ${held} while ${asking}. Make the move from the holding run, or as someone holding ${HOLD_OVERRIDES.map(quote).join(' or ')} on the project.`,
+    detail: `${quote(ctx.to)} is the move of the run holding the issue, and ${held} while ${asking}. Make the move from the holding run, or as someone holding ${HOLD_OVERRIDES.map(quote).join(' or ')} on the project.`,
     details: {
       from: ctx.from,
       to: ctx.to,
       holder: session
         ? { deviceId: session.deviceId, sessionId: session.sessionId, runId: session.runId }
         : null,
-      holders,
-      callerDeviceId: caller,
+      holders: holders.map(holderShown),
+      callerDeviceId: caller?.deviceId ?? null,
       permissions: HOLD_OVERRIDES,
     },
   };
