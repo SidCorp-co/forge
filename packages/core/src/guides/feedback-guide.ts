@@ -12,8 +12,8 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
 
 A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
 \`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
-\`GET …/feedback/:fb\` reads one, \`GET …/feedback/endpoints\` lists the routes and tools the project
-serves, \`GET …/feedback/:fb/checklist\` reads the triage checklist (the form, the \`answers\` input and
+\`GET …/feedback/:fb\` reads one, \`GET …/feedback/endpoints\` lists the routes, tools and commands the
+project serves, \`GET …/feedback/:fb/checklist\` reads the triage checklist (the form, the \`answers\` input and
 where the item stands), and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`, \`snooze\`, \`messages\`, \`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
 an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
 into FB-n when it is product feedback after all.
@@ -25,9 +25,10 @@ into FB-n when it is product feedback after all.
   \`FEEDBACK_TARGET_NOT_ONE\`; a \`screen\` is where the item was seen, so \`whereSeen\` beside it is
   \`FEEDBACK_SCREEN_TWICE\`; a reference that resolves to nothing is \`FEEDBACK_TARGET_UNKNOWN\`, one in
   another project \`FEEDBACK_TARGET_NOT_IN_PROJECT\`.
-- An \`endpoint\` is an API route or tool, never free text: an element of the current (approved) version
-  of an openapi contract (\`GET /pets\`) or an mcp-tools contract (a tool's name, not one of its input
-  properties) that this project provides. Send it bare, or as \`<contract>:<element>\` where two
+- An \`endpoint\` is an API route, tool or command, never free text: an element of the current (approved)
+  version of an openapi contract (\`GET /pets\`), an mcp-tools contract (a tool's name, not one of its
+  input properties) or a cli contract (a command as typed, \`forge record verdict\`, not one of its flags)
+  that this project provides. Send it bare, or as \`<contract>:<element>\` where two
   contracts serve the same name (\`FEEDBACK_TARGET_NOT_ONE\` until you do). A name the project does not
   serve is \`FEEDBACK_TARGET_UNKNOWN\`, naming what it does serve; a project that provides no such
   contract serves nothing, and the refusal says so. The item reads back keyed \`<contract>:<element>\`.
@@ -196,6 +197,11 @@ route, declining included, closes the open question.
   (\`FEEDBACK_EVIDENCE_REQUIRED\` without it). It sends the item back to triage as a reopen does, kept as a
   \`replied\` decision. Replying again before the next answer is \`FEEDBACK_REPLY_SPENT\`; an item that
   stands on no answer is \`FEEDBACK_REPLY_NO_ANSWER\`.
+- An answer reaches its reporter's own session once, without anyone polling: the forge-runner hook asks
+  \`POST /api/forge/feedback/answers/claim\` on the session's prompt (and on a tool call 30 s after its last
+  ask), as the account its checkout files with, and tells the session \`FB-n answered: <text>\` with one
+  line not to post it in the project channel. The claim records each answer as told; a later answer on
+  the same item is told again. Answers given before migration 0549 are recorded \`predates\` and never told.
 - Every triage, decline, verify, reopen, reply, redaction, promotion and retarget is kept as its own decision
   record, so a re-triage keeps the history.
 

@@ -36,10 +36,20 @@ impl SessionReader for World {
 
 #[async_trait::async_trait]
 impl LeaseKeeper for World {
-    async fn release(&self, _project_id: Option<&str>, _issue_key: &str) -> Result<()> {
+    async fn release(
+        &self,
+        _project_id: Option<&str>,
+        _session_id: Option<&str>,
+        _issue_key: &str,
+    ) -> Result<()> {
         Ok(())
     }
-    async fn is_returned(&self, _project_id: Option<&str>, _issue_key: &str) -> Result<bool> {
+    async fn is_returned(
+        &self,
+        _project_id: Option<&str>,
+        _session_id: Option<&str>,
+        _issue_key: &str,
+    ) -> Result<bool> {
         Ok(true)
     }
 }

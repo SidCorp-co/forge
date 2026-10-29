@@ -123,16 +123,19 @@ const DECISION_DOOR: Record<StewardAsk['subject']['kind'], (keys: string) => str
     `on a requirement (${keys}), \`forge-runner api projects/<projectId>/requirements/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
 };
 
+/** What an ask says, with each item a decision on answers it (ISS-739: the stuck item, or the blocker it asks about). */
+const askWithItems = (a: StewardAsk) =>
+  `${a.ask} [a decision on ${a.answeredOn.map((i) => i.key).join(' or ')} answers it]`;
+
 /** REQ-48 BC-5: the durable half of a steward wake, so a wake the box missed is read on its next sweep. */
 function stewardAsksLine(asks: Owed['stewardAsks']): string {
   if (asks.length === 0) return '';
+  const items = asks.flatMap((a) => a.answeredOn);
   const kinds = (['issue', 'feedback', 'requirement'] as const).flatMap((kind) => {
-    const keys = [
-      ...new Set(asks.filter((a) => a.subject.kind === kind).map((a) => a.subject.key)),
-    ];
+    const keys = [...new Set(items.filter((i) => i.kind === kind).map((i) => i.key))];
     return keys.length > 0 ? [DECISION_DOOR[kind](keys.join(', '))] : [];
   });
-  return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map((a) => a.ask).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on that item, at its own door: ${kinds.join('; ')} (other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it.`;
+  return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map(askWithItems).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on an item that answers it, at its own door: ${kinds.join('; ')} (other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it, one with a date until that date.`;
 }
 
 /** The door an item's reporter confirms it through: the Forge door for an item about Forge, else its own project's. */

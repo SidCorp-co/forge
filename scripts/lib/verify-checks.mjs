@@ -38,6 +38,14 @@ export const CHECKS = [
   },
   {
     axis: 'behaviour',
+    label: 'outside-reads',
+    cmd: ['node', 'scripts/check-outside-reads.mjs'],
+    scanned: /^outside-reads: (\d+) test file\(s\) read/m,
+    needs: ['deps'],
+    unit: 'test files',
+  },
+  {
+    axis: 'behaviour',
     label: 'whole-tree-gates',
     cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
     scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
@@ -117,6 +125,14 @@ export const CHECKS = [
     cmd: ['node', 'scripts/check-module-shape.mjs'],
     scanned: /^module-shape: (\d+) file\(s\) linted/m,
     needs: ['deps'],
+  },
+  {
+    axis: 'relations',
+    label: 'root-dependencies',
+    cmd: ['node', 'scripts/check-root-dependencies.mjs'],
+    scanned: /^root-dependencies: (\d+) file\(s\) read/m,
+    needs: ['deps'],
+    unit: 'files',
   },
   {
     axis: 'form',

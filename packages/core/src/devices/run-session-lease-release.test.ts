@@ -21,7 +21,11 @@ vi.mock('../agent-sessions/index.js', () => ({
 vi.mock('../issues/index.js', () => ({
   heldIssuePrefixes: vi.fn(),
   refuseHeldTakeForSeqs: vi.fn(),
-  releaseIssueLeaseRow: vi.fn(async () => ({ released: true, projectId: 'project-1' })),
+  releaseIssueLeaseRow: vi.fn(async () => ({
+    released: true,
+    projectId: 'project-1',
+    runId: 'run-of-the-lease',
+  })),
   takeIssueLeases: vi.fn(),
 }));
 const writeRunMetadata = vi.fn(async () => true);
@@ -34,14 +38,16 @@ vi.mock('../pipeline/index.js', () => ({
 }));
 
 describe('releaseIssueLease', () => {
-  it('shrinks the run membership through the pipeline run writer, untouched updated_at, in the release transaction', async () => {
+  it("shrinks only the lease's own run's membership, through the run writer, untouched updated_at, in the release transaction", async () => {
     const { releaseIssueLease } = await import('./run-session.js');
     const outcome = await releaseIssueLease({ deviceId: 'device-1', issueKey: 'ISS-7' });
 
-    expect(outcome).toEqual({ released: true, projectId: 'project-1' });
+    expect(outcome).toEqual({ released: true, projectId: 'project-1', runId: 'run-of-the-lease' });
+    // The run whose lease row went, never every run on the box carrying the key (ISS-752).
+    expect(executed.some((q) => /SELECT/.test(q))).toBe(false);
     expect(writeRunMetadata).toHaveBeenCalledTimes(1);
     expect(writeRunMetadata).toHaveBeenCalledWith(
-      'run-1',
+      'run-of-the-lease',
       expect.objectContaining({ touch: false }),
       tx,
     );

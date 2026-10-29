@@ -96,7 +96,7 @@ const SHAPES: Record<Action, string> = {
   builder_run_update: '{ run, baseRevision, document: a builder-run-v1 document }',
   builder_run_supersede: '{ run: the open builder run uuid, reason: why it is replaced }',
   contract_version_publish:
-    '{ contract: the publication slug, version, kind: graphql | mcp-tools | openapi | json-schema, source: SDL text or the { tools } JSON, sourceRef: <repo path>@<sha> }',
+    '{ contract: the publication slug, version, kind: graphql | mcp-tools | openapi | json-schema | cli, source: SDL text, the { tools } JSON or the { program, commands } JSON, sourceRef: <repo path>@<sha> }',
   contract_version_decide:
     '{ contract: the publication slug, version: a proposed version, decision: approve | return, reason?: why, required to return }',
 };

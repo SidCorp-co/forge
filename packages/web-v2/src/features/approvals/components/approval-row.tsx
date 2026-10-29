@@ -3,10 +3,12 @@
 // then its tags, and on the right how long it has waited and the ✓ / ✕ that decide it in place. Flat:
 // a hairline under each row, the open one marked by a left rule. A decision with no proposal names the
 // answer its ✓ sends on the ✓ itself, and how many others its peek offers (ISS-539): a row never sends
-// an answer the person cannot see.
+// an answer the person cannot see. Nor words: where the ✓ sends a reason as it stands, the row shows
+// it before the press, since it is recorded under the person's name (REQ-4 BC-16, ISS-645 r2).
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { Button, Checkbox, IconButton } from "@/design";
+import { wordsAsItStands } from "@/features/needs-you";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { approveOf, declineOf, otherAnswersOf } from "../derive";
@@ -71,6 +73,19 @@ function NamedAnswer({ d, onOpen, onApprove }: Pick<RowProps, "d" | "onOpen" | "
   );
 }
 
+/** The words the row's ✓ records as the person's reason, once: an open row's peek says them under Why. */
+function SentReason({ d, open }: Pick<RowProps, "d" | "open">) {
+  const t = useCopy();
+  const approve = approveOf(d);
+  const words = approve ? wordsAsItStands(approve) : null;
+  if (!words || (open && !d.proposal)) return null;
+  return (
+    <span className="block w-full min-w-0 truncate text-13 text-muted" title={words} data-testid="approval-reason">
+      <span className="font-semibold text-fg">{t("approvals.reason")}</span> {words}
+    </span>
+  );
+}
+
 export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove, onDecline }: RowProps) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -105,6 +120,7 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
             d.question
           )}
         </span>
+        <SentReason d={d} open={open} />
         <DecisionTags d={d} />
         {d.mockup ? <MockupStanding m={d.mockup} /> : null}
       </button>

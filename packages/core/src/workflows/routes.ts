@@ -9,7 +9,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, readElsewhere, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { DESIGN_DECISIONS } from './design.js';
 import { readRepinPlanAs, repinAs } from './design-repin-service.js';
@@ -26,7 +26,7 @@ import { listWorkflowsWithHealthAs } from './listed.js';
 import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
 import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
-import { type IgnoredField, readBackOf } from './read-back.js';
+import { type IgnoredField, ignoredByWrite, readBackOf } from './read-back.js';
 import {
   createWorkflow,
   readWorkflowAs,
@@ -66,6 +66,21 @@ const workflowParam = zValidator(
 
 const envelope = zValidator('json', z.unknown());
 
+// a read that takes no query refuses each key by name, so a filter it does not read never answers
+// as if it had been applied
+const noQuery = zValidator('query', z.strictObject({}));
+
+// the workflow row holds its head alone; the revisions a workflow keeps are its proposed designs,
+// read on the two routes that take `revision`
+const headQuery = zValidator(
+  'query',
+  z.strictObject({}),
+  readElsewhere({
+    revision:
+      'This read answers the current revision; a past revision is read at /design?view=steps&revision=<n> or /system-graph?revision=<n>.',
+  }),
+);
+
 const listView = zValidator(
   'query',
   z.strictObject({ view: z.enum(ANSWER_VIEWS).optional() }),
@@ -91,8 +106,9 @@ function writerOf(c: Context<{ Variables: AuthVars }>): WorkflowWriter {
   return { userId: c.get('userId'), agency };
 }
 
-function answer(c: Context, outcome: WorkflowOutcome, ignored?: readonly IgnoredField[]) {
+function answer(c: Context, outcome: WorkflowOutcome, readBack?: readonly IgnoredField[]) {
   if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
+  const ignored = readBack ? ignoredByWrite(readBack, outcome.issueUnused) : undefined;
   return c.json(
     {
       ...workflowView(outcome.row, outcome.document),
@@ -127,7 +143,7 @@ workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
   return c.json({ workflows, returned: workflows.length });
 });
 
-workflowRoutes.get('/:id/workflows/:workflow', workflowParam, async (c) => {
+workflowRoutes.get('/:id/workflows/:workflow', workflowParam, headQuery, async (c) => {
   const { id, workflow } = c.req.valid('param');
   return c.json(
     await egressForRequest(
@@ -288,7 +304,7 @@ workflowRoutes.post(
   },
 );
 
-workflowRoutes.get('/:id/workflows/:workflow/design/repins', workflowParam, async (c) => {
+workflowRoutes.get('/:id/workflows/:workflow/design/repins', workflowParam, noQuery, async (c) => {
   const { id, workflow } = c.req.valid('param');
   return c.json(
     await egressForRequest(
@@ -357,12 +373,12 @@ workflowRoutes.post(
   },
 );
 
-workflowRoutes.get('/:id/workflow-templates', idParam, async (c) => {
+workflowRoutes.get('/:id/workflow-templates', idParam, noQuery, async (c) => {
   const templates = await listProjectTemplatesAs(c.get('userId'), c.req.valid('param').id);
   return c.json({ templates, returned: templates.length });
 });
 
-workflowRoutes.get('/:id/workflow-templates/:templateId/:version', async (c) => {
+workflowRoutes.get('/:id/workflow-templates/:templateId/:version', noQuery, async (c) => {
   const id = z.uuid().safeParse(c.req.param('id'));
   if (!id.success) throw badRequest('invalid path: the project id is a uuid');
   return c.json(
@@ -398,11 +414,16 @@ workflowRoutes.post(
   },
 );
 
-workflowRoutes.get('/:id/workflows/:workflow/observations', workflowRefParam, async (c) => {
-  const { id, workflow } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  return c.json(await listObservations(id, workflow));
-});
+workflowRoutes.get(
+  '/:id/workflows/:workflow/observations',
+  workflowRefParam,
+  noQuery,
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+    return c.json(await listObservations(id, workflow));
+  },
+);
 
 workflowRoutes.get(
   '/:id/workflows/:workflow/observations/:at',
@@ -417,6 +438,7 @@ workflowRoutes.get(
       'invalid path: a project uuid, a workflow uuid or flow, and latest, a commit sha or an observation id',
     ),
   ),
+  noQuery,
   async (c) => {
     const { id, workflow, at } = c.req.valid('param');
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
@@ -432,7 +454,7 @@ workflowRoutes.get(
   },
 );
 
-workflowRoutes.get('/:id/workflows/:workflow/health', workflowRefParam, async (c) => {
+workflowRoutes.get('/:id/workflows/:workflow/health', workflowRefParam, noQuery, async (c) => {
   const { id, workflow } = c.req.valid('param');
   const viewer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
   return c.json({

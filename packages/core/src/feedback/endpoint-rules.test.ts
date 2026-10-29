@@ -87,7 +87,7 @@ describe('naming an endpoint', () => {
   it('says a project serving nothing provides no contract, and how to declare one', () => {
     const r = endpointIn([], 'save_backend_workflow', '/endpoint');
     expect(r).toMatchObject({ code: 'FEEDBACK_TARGET_UNKNOWN', path: '/endpoint' });
-    expect('detail' in r && r.detail).toMatch(/provides no openapi or mcp-tools contract/);
+    expect('detail' in r && r.detail).toMatch(/provides no openapi, mcp-tools or cli contract/);
   });
 
   it('lists at most twenty names and says how many more there are', () => {
@@ -116,5 +116,46 @@ describe('a endpoint is a target', () => {
     expect(targetCountRefusal({}, undefined)?.detail).toContain(
       'requirement, issue, release, workflow, endpoint, mockup or screen',
     );
+  });
+});
+
+// ISS-594 / FB-168: a CLI verb is served the way a tool is, by `<program> <command>`, and its flags
+// are parts of it, never targets on their own
+describe('a cli contract serves its commands', () => {
+  const cli = servedFrom([
+    version({
+      contractSlug: 'forge-cli',
+      contractType: 'cli',
+      elements: [
+        'forge feedback',
+        'forge feedback/options/--kind',
+        'forge record verdict',
+        'forge record verdict/options/--criterion',
+      ],
+    }),
+  ]);
+
+  it('serves each command and none of its options', () => {
+    expect(cli.map((s) => s.key)).toEqual([
+      'forge-cli:forge feedback',
+      'forge-cli:forge record verdict',
+    ]);
+  });
+
+  it('finds a command by the words a person types', () => {
+    expect(endpointIn(cli, 'forge record verdict', '/endpoint')).toMatchObject({
+      key: 'forge-cli:forge record verdict',
+      type: 'cli',
+    });
+  });
+
+  it('refuses a command it does not serve, and an option, naming the commands it serves', () => {
+    for (const name of ['forge nope', 'forge feedback/options/--kind', 'feedback']) {
+      const r = endpointIn(cli, name, '/endpoint');
+      expect(r).toMatchObject({ code: 'FEEDBACK_TARGET_UNKNOWN', path: '/endpoint' });
+      expect('detail' in r && r.detail).toContain(
+        'forge-cli:forge feedback, forge-cli:forge record verdict',
+      );
+    }
   });
 });

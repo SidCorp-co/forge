@@ -51,7 +51,10 @@ export function blockerTurn(blocker: StandingEdge): Turn {
 
 // the project document is declared by a holder of project.admin (`project-config/routes.ts`), so a
 // policy refusal names them
-const WITHHELD_ACT: Record<IssueWithheldCode, { who: Said | 'admins'; act: Said }> = {
+const WITHHELD_ACT: Record<
+  Exclude<IssueWithheldCode, 'ISSUE_SCOPE_HELD'>,
+  { who: Said | 'admins'; act: Said }
+> = {
   POLICY_UNDECLARED: { who: 'admins', act: say('issues.standing.act.declarePolicy') },
   POLICY_STATE_UNDECLARED: { who: 'admins', act: say('issues.standing.act.declarePolicyState') },
   WORKFLOW_DESIGN_NOT_APPROVED: {
@@ -68,20 +71,25 @@ const WITHHELD_ACT: Record<IssueWithheldCode, { who: Said | 'admins'; act: Said 
   },
 };
 
-/** A takeable issue no master is handed: stuck, the dispatch door's refusal named as its rule. */
+/**
+ * A takeable issue no master is handed: stuck, the dispatch door's refusal named as its rule. A
+ * scope hold waits on the issue whose live run holds it, which ends it without anybody's act.
+ */
 export function withheldTurn(withheld: IssueWithheld, admins: readonly string[]): Turn {
+  const rule = say('issues.rule.withheld', { code: withheld.code, detail: withheld.detail });
+  if (withheld.code === 'ISSUE_SCOPE_HELD') {
+    const act = say('issues.standing.act.running');
+    return {
+      group: 'stuck',
+      waitingOn: wait('issue', named(withheld.holder), act, rule, withheld.holder),
+    };
+  }
   const owed = WITHHELD_ACT[withheld.code];
   const nobody = owed.who === 'admins' && admins.length === 0;
   const who = owed.who === 'admins' ? holdersWho(admins) : owed.who;
   const act = nobody ? nobodyHoldsAct(owed.act, 'project.admin') : owed.act;
   return {
     group: 'stuck',
-    waitingOn: wait(
-      'person',
-      who,
-      act,
-      say('issues.rule.withheld', { code: withheld.code, detail: withheld.detail }),
-      withheld.code,
-    ),
+    waitingOn: wait('person', who, act, rule, withheld.code),
   };
 }

@@ -19,6 +19,7 @@ pub mod api;
 pub mod checkout_ancestry;
 pub mod checkout_head;
 pub mod events;
+pub mod feedback_answers;
 pub mod git_credential;
 pub mod heartbeat;
 pub mod host_command;

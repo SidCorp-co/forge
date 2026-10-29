@@ -178,7 +178,7 @@ const feedbackFacts = () => (
       f={view({
         attentionGroup: "waiting",
         route: { route: "answer", carriers: [], answer: "Tra loi" },
-        decisions: [{ decision: "triaged", route: "answer", carrier: null, reason: null, says: { reason: null }, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: null }],
+        decisions: [{ id: "d1", decision: "triaged", route: "answer", carrier: null, reason: null, says: { reason: null }, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: null, inReplyTo: null }],
         waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.confirmAnswer"), rule: RULE }),
       })}
     />

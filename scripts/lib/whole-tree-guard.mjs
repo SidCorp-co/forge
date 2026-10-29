@@ -2,7 +2,8 @@
 // listed a directory covering the repository root and it does not declare `@gate-input whole-tree`
 // (ISS-1314). It reads calls, not source, bar the file's own `import.meta.glob`, which vite expands
 // before the file runs. It cannot see a listing the run never executes, native code, or a listing
-// delegated to a process the test did not start: docs/proposals/a-test-reading-a-named-file-*.md.
+// delegated to a process the test did not start: scripts/README.md, "Why a whole-tree test is
+// selected by its own declaration".
 
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';

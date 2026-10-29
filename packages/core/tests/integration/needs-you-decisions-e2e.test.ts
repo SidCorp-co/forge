@@ -5,6 +5,7 @@
 // app on a throwaway Postgres: the route, the buttons pressed as the viewer, the device ask door.
 // @direct-test-of packages/core/src/lib/standing-times.ts
 // @direct-test-of packages/core/src/development/needs-you-decisions.ts
+// @direct-test-of packages/core/src/development/needs-you-approve-builders.ts
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -55,10 +56,21 @@ const READY_SPEC = {
 
 const byKey = (all: readonly NeedsYouDecision[], key: string) => all.find((d) => d.key === key);
 
+/** REQ-1 revision 2's own words: what it changes, and why its author proposed it (ISS-645 r2). */
+const SUMMARY_R2 = 'BC-1 names the clinician a referral reaches';
+const REASON_R2 = 'The ward lead asked who owns a referral once it lands';
+
 async function seedRequirement(
   seq: number,
   owner: string,
-  revisions: { n: number; state: string; author: string }[],
+  revisions: {
+    n: number;
+    state: string;
+    author: string;
+    /** What the revision changes and why its author proposed it; the test's stock words otherwise. */
+    summary?: string;
+    reason?: string;
+  }[],
 ) {
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
   const { db } = await import('../../src/db/client.js');
@@ -72,8 +84,8 @@ async function seedRequirement(
     for (const r of revisions) {
       await tx.execute(sql`
         INSERT INTO requirement_revisions
-          (requirement_id, revision, base_revision, state, spec, reason, author_id, author_agency, proposed_at, decided_by, decided_at)
-        VALUES (${id}, ${r.n}, ${r.n > 1 ? r.n - 1 : null}, ${r.state}, ${JSON.stringify(READY_SPEC)}::jsonb, 'written for the test', ${r.author}, 'human',
+          (requirement_id, revision, base_revision, state, spec, change_summary, reason, author_id, author_agency, proposed_at, decided_by, decided_at)
+        VALUES (${id}, ${r.n}, ${r.n > 1 ? r.n - 1 : null}, ${r.state}, ${JSON.stringify(READY_SPEC)}::jsonb, ${r.summary ?? null}, ${r.reason ?? 'written for the test'}, ${r.author}, 'human',
                 ${r.state === 'draft' ? null : new Date().toISOString()},
                 ${r.state === 'current' ? r.author : null}, ${r.state === 'current' ? new Date().toISOString() : null})
       `);
@@ -165,7 +177,7 @@ beforeAll(async () => {
   // (the default) its accept is asked of the requirement's owner alone (REQ-34 BC-22)
   await seedRequirement(1, ownerId, [
     { n: 1, state: 'current', author: ownerId },
-    { n: 2, state: 'proposed', author: authorId },
+    { n: 2, state: 'proposed', author: authorId, summary: SUMMARY_R2, reason: REASON_R2 },
   ]);
   // its proposed revision 2 links a workflow design, the last answer the accept's ready checklist reads
   await makeAgreeReady(projectId, 1, ownerId);
@@ -256,10 +268,14 @@ describe('each decision shows its question, a recommended answer and a button (R
     expect(d?.noRecommendation).toContain('The run that asked gave no recommended answer');
   });
 
-  // an accept is a sign-off and records why (REQ-4 BC-16): its button carries the recommendation's why
+  // an accept is a sign-off and records why (REQ-4 BC-16): its button carries the recommendation's
+  // why, which is the revision's own words, what it changes and why it was proposed, never the rule's
+  // instruction to the reader, one sentence the same on every accept (ISS-645 r2, judge K144)
   it('a proposed revision: accept recommended by rule with its why as the reason, return asks one', async () => {
     const d = byKey((await read()).decisions, 'REQ-1');
     expect(d).toMatchObject({ group: 'approve', recommended: { answerId: 'accept', by: 'rule' } });
+    expect(d?.recommended?.why).toBe(`${SUMMARY_R2} — ${REASON_R2}`);
+    expect(d?.recommended?.why).not.toMatch(/sign-off|accept it unless/);
     expect(d?.answers[0]?.body).toEqual({ reason: d?.recommended?.why });
     expect(d?.answers.map((a) => [a.act, a.path, a.needsReason])).toEqual([
       ['revision.accept', `/api/projects/${projectId}/requirements/REQ-1/revisions/2/accept`, true],
@@ -287,6 +303,7 @@ describe('each decision shows its question, a recommended answer and a button (R
       SELECT v.accept_reason FROM requirement_revisions v JOIN requirements r ON r.id = v.requirement_id
        WHERE r.project_id = ${projectId} AND r.req_seq = 1 AND v.revision = 2`);
     expect(accepted?.accept_reason).toBe(byKey(before.decisions, 'REQ-1')?.recommended?.why);
+    expect(accepted?.accept_reason).toBe(`${SUMMARY_R2} — ${REASON_R2}`);
   });
 });
 

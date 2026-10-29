@@ -42,7 +42,7 @@ describe("the nav model", () => {
     ]);
     const product = groups[0]?.items.map((it) => it.label) ?? [];
     // REQ-33 BC-8, BC-9: a question is read in Approvals and on its item, a lesson is internal to Forge; neither has a page
-    expect([...product].sort()).toEqual(["Feedback", "Releases", "Requirements", "Workflows"]);
+    expect([...product].sort()).toEqual(["Channels", "Feedback", "Releases", "Requirements", "Workflows"]);
     expect(PROJECT_ITEMS.map((it) => it.sub)).not.toEqual(expect.arrayContaining(["/questions"]));
     expect(PROJECT_ITEMS.map((it) => it.sub)).not.toEqual(expect.arrayContaining(["/lessons"]));
     expect(groups[1]?.items.map((it) => it.label)).toEqual(["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"]);
@@ -70,6 +70,7 @@ describe("the nav model", () => {
   it("lights a Product row on its own page", () => {
     expect(buildActiveKey("/projects/hop/requirements/REQ-3", "hop")).toBe("proj-requirements");
     expect(buildActiveKey("/projects/hop/feedback", "hop")).toBe("proj-feedback");
+    expect(buildActiveKey("/projects/hop/channels/GROUP1", "hop")).toBe("proj-channels");
   });
 
   it("holds no Decisions, Roadmap or Memory entry: each is read on the item it is about (REQ-33 BC-1)", () => {

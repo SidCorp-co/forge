@@ -5,6 +5,7 @@
 //
 //   pnpm --filter web-v2 witness witness/my-forge-feedback.witness.tsx --out <dir>
 
+import type { FeedbackToldView } from "@forge/contracts/forge-feedback";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { TopBarSlotProvider } from "@/design";
@@ -34,7 +35,7 @@ const progress = (says: string, running = false) => ({
   waitingOn: [],
   eta: { estimate: false },
 });
-const NONE = { answer: null, declined: null, clarification: null, shippedIn: null };
+const NONE: FeedbackToldView = { answer: null, declined: null, clarification: null, shippedIn: null };
 const item = (key: string, title: string, phase: string, from: string, n: number, says: string, running = false, told = NONE) => ({
   key,
   title,

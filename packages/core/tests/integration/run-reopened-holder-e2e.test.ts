@@ -8,9 +8,15 @@
  * runSessionsDeclaredOverSql`, the relation `issueRunDeclaredSql` reads), so the guard, the
  * awaiting_release guard and the standing name one holder; an ended session still holds nothing.
  *
+ * Fix round 2 (judge K134 on dev.354, finding 1): the in_progress guard asked only whether SOMETHING
+ * held the issue, never whether the caller did, so a box with no run over the reopened issue, and a
+ * box whose own run had ended, both moved it while another box's run held it. The move into
+ * in_progress now asks who holds it as awaiting_release does, refusing NOT_THE_HOLDER by name.
+ *
  * The boxes' credentials are an agent account with the member role, as a box's is: neither holds
  * `releases.approve` nor `project.admin`, so only being the holder lets a move through.
  *
+ * @direct-test-of packages/core/src/issues/transition-guards.ts
  * @direct-test-of packages/core/src/issues/issue-lease.ts
  * @direct-test-of packages/core/src/issues/run-holder.ts
  * @direct-test-of packages/core/src/issues/work-state.ts
@@ -41,6 +47,8 @@ const world = {
   boxPat: '',
   other: '',
   otherPat: '',
+  memberPat: '',
+  secondMemberPat: '',
 };
 
 async function boxPat(userId: string, deviceId: string): Promise<string> {
@@ -55,6 +63,13 @@ async function boxPat(userId: string, deviceId: string): Promise<string> {
       onBehalfOf: world.ownerId,
     })
   ).plaintext;
+}
+
+/** A token bound to no box, as a person's plugin on a laptop carries: its lease names no device. */
+async function looseToken(userId: string, name: string): Promise<string> {
+  const { mintPat } = await import('../../src/credentials/pat.js');
+  return (await mintPat({ permissions: ['*'], userId, name, projectIds: [world.projectId] }))
+    .plaintext;
 }
 
 beforeAll(async () => {
@@ -73,6 +88,8 @@ beforeAll(async () => {
   await bindTestRunner(world.projectId, world.other);
   world.boxPat = await boxPat(agent, world.box);
   world.otherPat = await boxPat(agent, world.other);
+  world.memberPat = await looseToken(agent, 'laptop-plugin');
+  world.secondMemberPat = await looseToken(agent, 'another-laptop');
 }, 120_000);
 
 afterAll(async () => {
@@ -93,10 +110,13 @@ async function closedIssue(seq: number): Promise<{ id: string; key: string }> {
   });
 }
 
-/** The master's run over `key`, opened by the box: a run over closed work, so it takes nothing. */
-async function declared(key: string): Promise<{ runId: string; sessionId: string }> {
+/** The master's run over `key`, opened by a box: a run over closed work, so it takes nothing. */
+async function declared(
+  key: string,
+  token: string = world.boxPat,
+): Promise<{ runId: string; sessionId: string }> {
   const runId = randomUUID();
-  const res = await api(world.boxPat, 'POST', '/api/devices/me/run-sessions', {
+  const res = await api(token, 'POST', '/api/devices/me/run-sessions', {
     projectId: world.projectId,
     runId,
     issueKeys: [key],
@@ -117,6 +137,19 @@ const move = (token: string, issueId: string, toStatus: string) =>
     toStatus,
     reason: 'a judge failed a criterion on the release that carried it',
   });
+
+async function endRun(token: string, sessionId: string): Promise<void> {
+  const ended = await api(token, 'POST', `/api/devices/me/run-sessions/${sessionId}/close`, {
+    outcome: 'ended',
+  });
+  expect(ended.status, JSON.stringify(ended.body)).toBe(200);
+}
+
+/** The holders a NOT_THE_HOLDER refusal names, as [kind, sessionId, deviceId]. */
+function namedHolders(body: unknown): unknown[][] {
+  const named = ((body as Doc).error?.refusals?.[0]?.holders ?? []) as Doc[];
+  return named.map((h) => [h.kind, h.sessionId, h.deviceId]);
+}
 
 async function reopened(issueId: string): Promise<void> {
   const res = await move(world.owner, issueId, 'reopen');
@@ -144,13 +177,7 @@ describe('ISS-589 a run declared over a closed issue holds it once it reopens', 
   it('criterion 2: a run session that has ended holds nothing, and NO_HOLDER stands', async () => {
     const issue = await closedIssue(2);
     const run = await declared(issue.key);
-    const ended = await api(
-      world.boxPat,
-      'POST',
-      `/api/devices/me/run-sessions/${run.sessionId}/close`,
-      { outcome: 'ended' },
-    );
-    expect(ended.status, JSON.stringify(ended.body)).toBe(200);
+    await endRun(world.boxPat, run.sessionId);
     await reopened(issue.id);
 
     const refused = await move(world.boxPat, issue.id, 'in_progress');
@@ -196,5 +223,86 @@ describe('ISS-589 a run declared over a closed issue holds it once it reopens', 
       null,
     ]);
     expect(await statusOf(issue.id)).toBe('awaiting_release');
+  });
+});
+
+describe('ISS-589 r2 only the run holding a reopened issue moves it to in_progress', () => {
+  it('criterion 4: a box with no run over it is refused NOT_THE_HOLDER, naming the holding session', async () => {
+    const issue = await closedIssue(4);
+    const run = await declared(issue.key);
+    await reopened(issue.id);
+
+    const refused = await move(world.otherPat, issue.id, 'in_progress');
+    expect([refused.status, codeOf(refused.body)], JSON.stringify(refused.body)).toEqual([
+      403,
+      'NOT_THE_HOLDER',
+    ]);
+    expect(namedHolders(refused.body)).toEqual([['run-session', run.sessionId, world.box]]);
+    expect(JSON.stringify(refused.body)).toContain(world.other);
+    expect(await statusOf(issue.id)).toBe('reopen');
+
+    // the holder's own box still makes the move
+    const taken = await move(world.boxPat, issue.id, 'in_progress');
+    expect([taken.status, codeOf(taken.body)], JSON.stringify(taken.body)).toEqual([200, null]);
+  });
+
+  it('criterion 5: a box whose own run over it has ended is refused NOT_THE_HOLDER', async () => {
+    const issue = await closedIssue(5);
+    const gone = await declared(issue.key, world.otherPat);
+    await endRun(world.otherPat, gone.sessionId);
+    const run = await declared(issue.key);
+    await reopened(issue.id);
+
+    const refused = await move(world.otherPat, issue.id, 'in_progress');
+    expect([refused.status, codeOf(refused.body)], JSON.stringify(refused.body)).toEqual([
+      403,
+      'NOT_THE_HOLDER',
+    ]);
+    expect(namedHolders(refused.body)).toEqual([['run-session', run.sessionId, world.box]]);
+    expect(await statusOf(issue.id)).toBe('reopen');
+  });
+
+  it('a holder of project.admin still moves it on purpose, as at awaiting_release', async () => {
+    const issue = await closedIssue(6);
+    await declared(issue.key);
+    await reopened(issue.id);
+
+    const taken = await move(world.owner, issue.id, 'in_progress');
+    expect([taken.status, codeOf(taken.body)], JSON.stringify(taken.body)).toEqual([200, null]);
+  });
+
+  it("a lease written by a token bound to no box is that token's: it moves, another is refused", async () => {
+    const issue = await closedIssue(7);
+    await reopened(issue.id);
+    const lease = { holder: 'laptop-claim', renewedAt: new Date().toISOString(), minutes: 60 };
+    const claimed = await api(
+      world.memberPat,
+      'PATCH',
+      `/api/issues/${issue.id}`,
+      { sessionContext: { lease } },
+      { 'X-Forge-Lifecycle': '10' },
+    );
+    expect(claimed.status, JSON.stringify(claimed.body)).toBe(200);
+
+    const refused = await move(world.secondMemberPat, issue.id, 'in_progress');
+    expect([refused.status, codeOf(refused.body)], JSON.stringify(refused.body)).toEqual([
+      403,
+      'NOT_THE_HOLDER',
+    ]);
+    expect(JSON.stringify(refused.body)).toContain('laptop-claim');
+    expect(JSON.stringify(refused.body)).not.toContain('tokenId');
+
+    const taken = await move(world.memberPat, issue.id, 'in_progress');
+    expect([taken.status, codeOf(taken.body)], JSON.stringify(taken.body)).toEqual([200, null]);
+  });
+
+  it('nothing holding it is still NO_HOLDER, whoever asks', async () => {
+    const issue = await closedIssue(8);
+    await reopened(issue.id);
+    const refused = await move(world.otherPat, issue.id, 'in_progress');
+    expect([refused.status, codeOf(refused.body)], JSON.stringify(refused.body)).toEqual([
+      409,
+      'NO_HOLDER',
+    ]);
   });
 });

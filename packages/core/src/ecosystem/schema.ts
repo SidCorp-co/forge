@@ -18,6 +18,7 @@ const CONTRACT_TYPES = [
   'mcp-tools',
   'json-schema',
   'graphql',
+  'cli',
   'protobuf',
   'opaque',
 ] as const;

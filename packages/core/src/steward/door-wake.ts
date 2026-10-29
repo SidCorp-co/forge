@@ -1,9 +1,11 @@
 // The steward's ask of whoever owes an item's act (REQ-48 BC-5, ISS-607). The door picks the
 // addressee from the item's standing, never the model: the project's master, woken and asked until the
 // item's standing moves; or, for a release approval or a feedback triage the master may not take, the
-// holders of that act's permission, told once in their notices (ISS-654). An item already asked on
-// the standing it reads now, or with a decision recorded on it, is not asked again: that is said to
-// the turn, and nothing is written. The ask cites the item it is about, which keys it (`asks.ts`).
+// holders of that act's permission, told once in their notices (ISS-654). A wait a person owes asks
+// nobody: it is theirs, on their Needs you, and the turn is told so (ISS-739). An item already asked on
+// the standing it reads now, or with a decision recorded on it or on the asking run's own item, is not
+// asked again: that is said to the turn, and nothing is written. The ask cites the item it is about,
+// which keys it (`asks.ts`).
 
 import type { ItemStanding } from '@forge/contracts/steward';
 import { z } from 'zod';
@@ -44,12 +46,20 @@ async function askOnce(
   // keyed on the item asked about, whichever run asks (ISS-607: FB-runs asked on ISS-498 again)
   const standing = await standingOfKey(about, ctx);
   if (standing) {
-    const again = await askedAlready(ctx.projectId, standing, new Date());
+    // the run's own item answers an ask about its blocker too (ISS-739: ISS-748 asking about ISS-746)
+    const asker = about === ctx.subject.key.toUpperCase() ? null : ctx.standing;
+    const again = await askedAlready(ctx.projectId, standing, new Date(), asker);
     if (again) return { correct: again };
   }
   const cite = standing ? { kind: standing.subject.kind, ref: standing.subject.key } : null;
   const steward = await heldStewardOf(ctx.projectId);
   const to = await askAddresseeOf(ctx.projectId, standing, steward);
+  if (to.to === 'person') {
+    const owes = to.act ? `${to.who} to ${to.act}` : to.who;
+    return {
+      correct: `${about} waits on ${owes}: a person's act, on their Needs you, which the master's account does not take for them. Ask nothing of the master; write the note saying so.`,
+    };
+  }
   if (to.to === 'nobody') {
     return {
       correct: `${about} waits on a ${to.act.what}, and ${to.why}: ask nothing; write the note saying so.`,

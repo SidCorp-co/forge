@@ -1,1 +1,0 @@
-**Feedback to Forge shows what triage told you.** An item read through the Forge door, over REST, forge_feedback or Your feedback to Forge, now carries its answer, decline note, clarification asked and the release its fix shipped in.

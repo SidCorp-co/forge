@@ -17,6 +17,9 @@
 //! leaves a process it started standing in it. A refused stop did not happen,
 //! so it is not reported to the daemon as one.
 //!
+//! `UserPromptSubmit` also carries what the session's own account was answered on feedback it
+//! filed to Forge, which none of its sessions has been told (`answers`, REQ-47 BC-11).
+//!
 //! Everything here is subordinate to one rule: a hook must never be able to
 //! break the agent that runs it. So there is no failure path — no socket, no
 //! token, an unknown event, a daemon that refuses: every one of them exits 0
@@ -160,6 +163,13 @@ pub async fn run(ctx: Ctx, args: Args) {
         None
     };
     let (out, report) = said_for(refusal.as_deref());
+    // a prompt is where an answer to the session's own feedback reaches it (REQ-47 BC-11)
+    let out = match refusal {
+        None => super::answers::told(&args.event, &payload)
+            .await
+            .unwrap_or(out),
+        Some(_) => out,
+    };
     println!("{out}");
     if !report {
         return;

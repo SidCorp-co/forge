@@ -1,5 +1,5 @@
 // Filing what needs code as Feedback for the team once its asker confirmed it (REQ-75 BC-14), then
-// following it (BC-15).
+// telling its result once it is final (r6 BC-15, `result.ts`).
 
 import { createHash } from 'node:crypto';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
@@ -31,9 +31,9 @@ export async function threadLink(room: RoomRow, thread: string): Promise<string>
 /**
  * File what needs code as Feedback for the team (BC-14), once the asker confirmed it
  * (`fixes.ts:proposeRecord`): filed as the room's own account through the external filing door,
- * the asker as its reporter, the thread's link in its body; the thread is told the key and is
- * followed until it ships (BC-15). The external filing door hands a group member no status link:
- * in a group anyone could open it, and the thread's own progress lines are the status.
+ * the asker as its reporter, the thread's link in its body; the thread is told the key, and its
+ * result once it is final (r6 BC-15). The external filing door hands a group member no status link:
+ * in a group anyone could open it, and the result posted in the thread is what they are owed.
  */
 export async function fileRecord(
   room: RoomRow,
@@ -108,7 +108,7 @@ export async function fileRecord(
     const posted = await postInThread({
       room,
       thread: input.thread,
-      text: `Recorded as ${filed.key} for the team. I will post its progress in this thread.`,
+      text: `Recorded as ${filed.key} for the team. I will post the result here once it is live.`,
     });
     await insertAction({
       roomId: room.id,

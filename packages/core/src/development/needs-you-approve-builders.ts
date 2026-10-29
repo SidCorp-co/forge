@@ -19,12 +19,19 @@ import {
   filled,
   impactOf,
 } from './needs-you-decision-builders.js';
+import { wordlessRevision } from './needs-you-signoff-words.js';
 
+/**
+ * A proposed revision's accept or return. The accept is a sign-off and records why (REQ-4 BC-16): it
+ * is recommended with the revision's own words (`needs-you-signoff-words.ts:revisionWords`), which
+ * prefilledReason sends as the reason; a revision with none recommends nothing and its accept asks.
+ */
 export function revisionDecision(
   row: AttentionRow,
   area: NeedsYouAreaKey,
   projectId: string,
   n: number,
+  words: string | null,
 ): Built {
   const params = { projectId: projectId, key: row.key, n };
   return {
@@ -39,12 +46,8 @@ export function revisionDecision(
       question: `Accept revision ${n} of ${row.key}, or return it to its author?`,
       changes: `Which revision of ${row.key} is current`,
       impact: impactOf(row, 'delivery plans from the current revision'),
-      recommended: {
-        answerId: 'accept',
-        why: `Its author proposed revision ${n} for sign-off; accept it unless its change summary is not what you asked for.`,
-        by: 'rule',
-      },
-      noRecommendation: null,
+      recommended: words ? { answerId: 'accept', why: words, by: 'rule' } : null,
+      noRecommendation: words ? null : wordlessRevision(n),
       answers: [
         answer({
           id: 'accept',
@@ -52,10 +55,10 @@ export function revisionDecision(
           act: 'revision.accept',
           path: filled('revision.accept', params),
           body: {},
-          // a sign-off records why (REQ-4 BC-16): prefilledReason sends the recommendation's why
+          // a sign-off records why (REQ-4 BC-16): prefilledReason sends the revision's own words
           needsReason: true,
           effect: `Revision ${n} becomes the current revision of ${row.key}.`,
-          recommended: true,
+          recommended: words !== null,
         }),
         answer({
           id: 'return',
@@ -73,11 +76,13 @@ export function revisionDecision(
   };
 }
 
+/** A requirement's agree or drop: the agree is a sign-off, recommended with its head revision's own words as `revisionDecision`'s accept is. */
 export function agreeDecision(
   row: AttentionRow,
   area: NeedsYouAreaKey,
   projectId: string,
   head: number,
+  words: string | null,
 ): Built {
   const params = { projectId: projectId, key: row.key };
   return {
@@ -92,12 +97,8 @@ export function agreeDecision(
       question: `Agree ${row.key} at revision ${head}, or drop it?`,
       changes: `Whether ${row.key} is built`,
       impact: impactOf(row, 'only an agreed requirement goes to delivery'),
-      recommended: {
-        answerId: 'agree',
-        why: 'Its linked designs are approved and it waits only on an agree; drop it with a reason if it should not be built.',
-        by: 'rule',
-      },
-      noRecommendation: null,
+      recommended: words ? { answerId: 'agree', why: words, by: 'rule' } : null,
+      noRecommendation: words ? null : wordlessRevision(head),
       answers: [
         answer({
           id: 'agree',
@@ -108,7 +109,7 @@ export function agreeDecision(
           // an agree writes a baseline, and a baseline records why (REQ-4 BC-4)
           needsReason: true,
           effect: `${row.key} is agreed at revision ${head} and goes to delivery.`,
-          recommended: true,
+          recommended: words !== null,
         }),
         answer({
           id: 'drop',

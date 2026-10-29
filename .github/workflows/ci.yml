@@ -186,6 +186,11 @@ jobs:
       # collects emits nothing, so it reads exactly like a suite that passed.
       # Spawns `vitest list` per project, hence this job rather than lang-check.
       - run: node scripts/check-test-reachability.mjs
+      # A test reading a file outside its package by path declares it (`@direct-test-of`),
+      # and the `changes` filter of the job running the test matches it, or a change to
+      # that file alone selects no test (ISS-134). Reads source with core's TypeScript,
+      # hence this job, which installs.
+      - run: node scripts/check-outside-reads.mjs
       - run: pnpm exec biome check scripts
       # Provider literals (ISS-1071): an integration provider is named where a provider is
       # described — its own directory, the registry, the union, the schema vocabulary, the
@@ -307,6 +312,11 @@ jobs:
       # .forge/module-shape-suppressions.json. exit 1 = a refused declaration, a new violation, a
       # stale entry, or a rule whose frozen count rose · exit 2 = it could not run.
       - run: node scripts/check-module-shape.mjs
+      # A root consumer (scripts/, .forge/, .arch-tsconfig.json's paths) reaches only a package
+      # the manifest it stands under declares (ISS-140): the hoisted root resolves an undeclared
+      # one anyway. Priced allowances live in .forge/conformance.json. exit 1 = an undeclared
+      # use or a stale allowance · exit 2 = it could not run.
+      - run: node scripts/check-root-dependencies.mjs
 
   changes:
     runs-on: ubuntu-latest
@@ -433,10 +443,14 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'scripts/lib/whole-tree-*.mjs'
               - 'scripts/check-whole-tree-gates.mjs'
+              # A file a test of this job reads outside its package, by path rather than
+              # import (`@direct-test-of` on the test): `check-outside-reads` refuses one
+              # missing here, since a change to it alone would skip the job (ISS-134).
+              - 'scripts/split-product-copy.mjs'
             # `.npmrc` sits under both because it decides how EVERY package resolves its
-            # modules: `node-linker=hoisted` is what lets four packages only `@forge/core`
-            # declares resolve from the repository root, and `pnpm verify` loses five
-            # verdicts without them. It matched no filter, so a change to it skipped `core`,
+            # modules: `node-linker=hoisted` puts every declared package at the repository
+            # root, and what a root consumer reaches there undeclared is named by
+            # `check-root-dependencies` (ISS-140). It matched no filter, so a change to it skipped `core`,
             # `web`, `core-integration` and `runner` at once — and a skipped job passes
             # `ci-passed`, which is the shape `39431309` already cost a production deploy.
             # `pnpm-lock.yaml`, the root `package.json` and `pnpm-workspace.yaml` sit under
@@ -461,6 +475,11 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'scripts/lib/whole-tree-*.mjs'
               - 'scripts/check-whole-tree-gates.mjs'
+              # Read by path by a core test (`@direct-test-of` on it), held by
+              # `check-outside-reads` (ISS-134). The file, not `packages/runner/**`, so a
+              # runner change does not start the core job.
+              - 'packages/runner/crates/runner-transport/src/status.rs'
+              - 'packages/runner/crates/runner-daemon/src/wake_source.rs'
             runner:
               - 'packages/runner/**'
               - '.github/workflows/ci.yml'
@@ -475,6 +494,9 @@ jobs:
             # cost with no test in it.
             scripts:
               - 'scripts/**'
+              - '.forge/conformance.json'
+              # Read by path by scripts/lib/root-dependencies.test.mjs (ISS-140).
+              - '.arch-tsconfig.json'
 
   web:
     needs: changes
@@ -516,8 +538,8 @@ jobs:
       # BLOCKING since 2026-08-10, when 84 drifted errors were cleared to 0. tsgo
       # since 2026-10-10: the same errors as tsc, about five times faster.
       # `typecheck` is the source (tsconfig.json); `typecheck:test` adds the
-      # tests (tsconfig.test.json). A merge into dev runs the first alone, through
-      # tc-changed; the test files are type-checked here, on main and nightly.
+      # tests (tsconfig.test.json). A merge into dev runs both, through
+      # tc-changed, for the packages it touched and their importers (ISS-754).
       - run: pnpm --filter @forge/core typecheck
       - run: pnpm --filter @forge/core typecheck:test
       - run: pnpm --filter @forge/core build

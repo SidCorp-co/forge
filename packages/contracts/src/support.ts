@@ -2,7 +2,7 @@
 // group's members are never Forge users: the session acts as the room's own agent account, reads
 // the project's knowledge and published OpenAPI, runs the checks the project grants, proposes the
 // fixes it grants and runs one only after the person who asked confirms in chat, and records what
-// needs code as Feedback it then follows in the same thread until it ships.
+// needs code as Feedback whose result it posts in the same thread once it is live (r6 BC-15).
 //
 // Two integrations carry the configuration, both policy (VISION kernel-hard-policy-soft): a
 // `rocketchat` binding with a `support` block names the one group and its limits; a `support-api`
@@ -310,8 +310,12 @@ export type SupportApiBindingConfig = z.infer<
 /**
  * What one support action was. `message_in` an inbound message (undelivered until a turn took it),
  * `reply` a line the session posted, `diagnose` a check that ran, `fix_*` a fix's life,
- * `feedback_recorded` an item filed, `progress_posted` a progress line, `refused` a refusal the
- * room was told of, `operation` an operations room's act (its action in `tool`).
+ * `feedback_recorded` an item filed, `refused` a refusal the room was told of, `operation` an
+ * operations room's act (its action in `tool`). REQ-75 r6: `channel_written` the session wrote the
+ * channel record (its act in `tool`), `routed` a need sent to Forge, Technical or Product,
+ * `announced` the one top-level post, `secret_flagged` a posted secret flagged to Technical,
+ * `result_told` the session told a recorded item's result. `progress_posted` is a progress line
+ * posted before r6 (BC-15 now forbids progress); nothing writes it.
  */
 export const SUPPORT_ACTION_KINDS = [
 	"message_in",
@@ -327,6 +331,11 @@ export const SUPPORT_ACTION_KINDS = [
 	"progress_posted",
 	"refused",
 	"operation",
+	"channel_written",
+	"routed",
+	"announced",
+	"secret_flagged",
+	"result_told",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -372,7 +381,7 @@ export const SUPPORT_CONFIRM_MESSAGE_PATTERN =
 export const SUPPORT_RECORD_KINDS = ["defect", "feature", "request"] as const;
 export type SupportRecordKind = (typeof SUPPORT_RECORD_KINDS)[number];
 
-const threadId = z
+export const supportThreadIdSchema = z
 	.string()
 	.min(1)
 	.max(64)
@@ -380,6 +389,7 @@ const threadId = z
 	.describe(
 		"the thread: the id the message you answer carries as `thread` in what you were handed",
 	);
+const threadId = supportThreadIdSchema;
 
 export const SUPPORT_ACTIONS = [
 	"search",
@@ -393,6 +403,12 @@ export const SUPPORT_ACTIONS = [
 	"build",
 	"deploy",
 	"command",
+	"channel",
+	"member",
+	"rule",
+	"common_issue",
+	"route",
+	"announce",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -615,6 +631,17 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_NOT_A_CONFIRMER",
 	"SUPPORT_COMMAND_FAILED",
 	"SUPPORT_BUILD_REFUSED",
+	"SUPPORT_MEMBER_CONFIRMED",
+	"SUPPORT_MENTION_REFUSED",
+	"SUPPORT_CHANNEL_PRIVATE_DATA",
+	"SUPPORT_MESSAGE_UNKNOWN",
+	"SUPPORT_RULE_AUTHOR",
+	"SUPPORT_NOT_REPEATED",
+	"SUPPORT_FEEDBACK_UNKNOWN",
+	"SUPPORT_ROUTE_ROLE",
+	"SUPPORT_ANNOUNCE_LIMIT",
+	"SUPPORT_CHANNEL_UNKNOWN",
+	"SUPPORT_RULE_UNKNOWN",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -654,4 +681,15 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_NOT_A_CONFIRMER: 403,
 	SUPPORT_COMMAND_FAILED: 503,
 	SUPPORT_BUILD_REFUSED: 409,
+	SUPPORT_MEMBER_CONFIRMED: 409,
+	SUPPORT_MENTION_REFUSED: 409,
+	SUPPORT_CHANNEL_PRIVATE_DATA: 400,
+	SUPPORT_MESSAGE_UNKNOWN: 404,
+	SUPPORT_RULE_AUTHOR: 403,
+	SUPPORT_NOT_REPEATED: 409,
+	SUPPORT_FEEDBACK_UNKNOWN: 404,
+	SUPPORT_ROUTE_ROLE: 409,
+	SUPPORT_ANNOUNCE_LIMIT: 409,
+	SUPPORT_CHANNEL_UNKNOWN: 404,
+	SUPPORT_RULE_UNKNOWN: 404,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

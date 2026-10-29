@@ -67,6 +67,8 @@ vi.mock('./ports.js', async (importOriginal) => {
     designHoldsOf: async () => new Map(),
     // a project with no change-request release: the work state is the run's own record
     deliveryHeadsOf: async () => null,
+    // no project document: every gate at its default mode, as the withheld read asks them
+    readProjectDocument: async () => null,
   };
 });
 // the gate predicate and the gate itself answer from `state.waiting`, as the wait table would

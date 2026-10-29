@@ -169,7 +169,9 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     if (!row) throw notFound('issue not found');
     // where plan approval is enforced, build waits for approved since the plan's last write (REQ-2
     // BC-4; issue-lifecycle design-check -> in_progress), asked once this write's own plan is in
-    if (planCheckpointAsked && planGate) await refusePlanUnapprovedForBuild(tx, issueId, planGate);
+    if (planCheckpointAsked && planGate && workState?.step) {
+      await refusePlanUnapprovedForBuild(tx, issueId, planGate, workState.step);
+    }
     if (updates.acceptanceCriteria !== undefined) {
       await syncCriteriaFromText(
         tx,

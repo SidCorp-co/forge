@@ -10,11 +10,6 @@
       "outputs": ["dist/**", "build/**"],
       "env": ["NODE_ENV"]
     },
-    "@forge/contracts#build": {
-      "dependsOn": [],
-      "inputs": ["$TURBO_DEFAULT$", "!**/*.test.ts"],
-      "outputs": ["dist/**"]
-    },
     "dev": {
       "cache": false,
       "persistent": true

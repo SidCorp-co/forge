@@ -14,6 +14,7 @@ import { requireAdmin } from '../middleware/require-admin.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import {
   type Answer,
+  claimForgeAnswers,
   type ForgeDoorCaller,
   fencedProjectOfCredential,
   getForgeFeedback,
@@ -60,6 +61,11 @@ forgeFeedbackRoutes.post(
 
 forgeFeedbackRoutes.get('/', zValidator('query', z.strictObject({})), async (c) =>
   answer(c, await listOwnForgeFeedback(callerOf(c), REST_DOOR)),
+);
+
+// the answers on the caller's own items none of its sessions was told, each told once (REQ-47 BC-11)
+forgeFeedbackRoutes.post('/answers/claim', strictBody(z.strictObject({}), '{}'), async (c) =>
+  answer(c, await claimForgeAnswers(callerOf(c), REST_DOOR)),
 );
 
 const keyParam = z.object({

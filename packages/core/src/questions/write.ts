@@ -345,7 +345,7 @@ export async function askParkQuestion(
     }
   }
   if (input.awaitsMerge) {
-    const awaited = await awaitedMergeFault(executor, input.projectId, input.awaitsMerge);
+    const awaited = await awaitedMergeFault(executor, input.issueId, input.awaitsMerge);
     if ('fault' in awaited) throw refuseQuestion(awaited.fault.code, awaited.fault.detail);
     needed ||= neededForMerge(awaited.key);
   }

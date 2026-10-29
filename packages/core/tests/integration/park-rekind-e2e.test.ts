@@ -4,14 +4,18 @@
  * `waitingKind` other than the park's own. It withdraws what the park asked, records the new kind, and
  * asks the new question; the standing and the park view then read the new wait, never an answer given
  * before it. The same kind again is still `NO_OP`; a wrong kind, `about` or missing reason is refused
- * by name and writes nothing.
+ * by name and writes nothing, and so is a merge mark other than the parked issue's own, which is
+ * ordering between issues and a `blocks` edge (ISS-738).
  */
 
+// @direct-test-of packages/core/src/issues/park-question.ts
 // @direct-test-of packages/core/src/issues/park-repoint.ts
 // @direct-test-of packages/core/src/issues/park-since.ts
 // @direct-test-of packages/core/src/issues/park-view.ts
 // @direct-test-of packages/core/src/issues/standing-read.ts
 // @direct-test-of packages/core/src/questions/issue-coupling.ts
+// @direct-test-of packages/core/src/questions/merge-wait.ts
+// @direct-test-of packages/core/src/questions/write.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -216,27 +220,6 @@ describe('a needs_info park changes its waiting kind without leaving needs_info'
     expect((await standingOf(issue.key)).act).toBe('issues.standing.act.decide');
   });
 
-  it('re-kinds onto a merge mark, and the park waits on the mark rather than the answered decision', async () => {
-    const issue = await plantIssue();
-    const other = await plantIssue();
-    ok(await parkOnDecision(issue.id));
-    await answerDecision(issue.id);
-
-    const res = await rekindToResource(issue.id, {
-      needs: undefined,
-      awaitsMerge: { issueId: other.id },
-    });
-    expect(res.status, JSON.stringify(res.json)).toBe(200);
-    const open = await openOn(issue.id);
-    expect(open.map((q) => q.awaits_merge_issue_id)).toEqual([other.id]);
-    expect(await issueOf(issue.id)).toEqual({
-      status: 'needs_info',
-      waitingKind: 'needs_resource',
-    });
-    expect((await parkOf(issue.id)).answered).toBeNull();
-    expect((await standingOf(issue.key)).act).toBe('issues.standing.act.supply');
-  });
-
   it('takes a person re-kinding the park, which asks nothing, and the standing reads the new kind', async () => {
     const issue = await plantIssue();
     ok(await parkOnDecision(issue.id));
@@ -312,5 +295,59 @@ describe('a needs_info park changes its waiting kind without leaving needs_info'
       status: 'needs_info',
       waitingKind: 'needs_decision',
     });
+  });
+});
+
+describe('a needs_info park re-kinded onto a merge mark waits only on its own (ISS-738)', () => {
+  it('re-kinds onto its own merge mark, and the park waits on the mark rather than the answered decision', async () => {
+    const issue = await plantIssue();
+    ok(await parkOnDecision(issue.id));
+    await answerDecision(issue.id);
+
+    const res = await rekindToResource(issue.id, {
+      needs: undefined,
+      awaitsMerge: { issueId: issue.id },
+    });
+    expect(res.status, JSON.stringify(res.json)).toBe(200);
+    const open = await openOn(issue.id);
+    expect(open.map((q) => q.awaits_merge_issue_id)).toEqual([issue.id]);
+    expect(await issueOf(issue.id)).toEqual({
+      status: 'needs_info',
+      waitingKind: 'needs_resource',
+    });
+    expect((await parkOf(issue.id)).answered).toBeNull();
+    expect((await standingOf(issue.key)).act).toBe('issues.standing.act.supply');
+  });
+
+  it("refuses a re-kind onto another issue's merge mark as ordering, naming the blocks edge, and writes nothing (ISS-738)", async () => {
+    const issue = await plantIssue();
+    const other = await plantIssue();
+    ok(await parkOnDecision(issue.id));
+    await answerDecision(issue.id);
+    const before = await questionsOn(issue.id);
+    const parkBefore = await parkOf(issue.id);
+    const thread = async () =>
+      (
+        (ok(await say('owner', 'GET', `/api/issues/${issue.id}/comments`)).items ?? []) as Doc[]
+      ).map((c) => c.id);
+    const threadBefore = await thread();
+
+    const res = await rekindToResource(issue.id, {
+      needs: undefined,
+      awaitsMerge: { issueId: other.id },
+    });
+    expect(res.status, JSON.stringify(res.json)).toBe(422);
+    expect(refusalCodes(res)).toEqual(['QUESTION_MERGE_IS_ORDERING']);
+    const said = JSON.stringify(res.json);
+    expect(said).toContain('`blocks` edge');
+    expect(said).toContain(`/api/issues/${issue.id}/dependencies`);
+
+    expect(await questionsOn(issue.id)).toEqual(before);
+    expect(await issueOf(issue.id)).toEqual({
+      status: 'needs_info',
+      waitingKind: 'needs_decision',
+    });
+    expect(await parkOf(issue.id)).toEqual(parkBefore);
+    expect(await thread()).toEqual(threadBefore);
   });
 });

@@ -41,10 +41,25 @@ pub trait RunCloser: Send + Sync {
 /// Both carry the project the run belongs to: a lease is keyed by project and
 /// issue, and a box serving two projects holds two rows under one key, so a
 /// call naming only the key is a question core cannot answer (ISS-1139).
+///
+/// Both carry the run's session too. Two runs on one box can name one key —
+/// an ended judge's and the build that took the issue after it — and a call
+/// naming only the box read the newer run's lease as the older one's, gave it
+/// back, and left the newer run refused `NO_HOLDER` on its own move (ISS-752).
 #[async_trait::async_trait]
 pub trait LeaseKeeper: Send + Sync {
-    async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()>;
-    async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool>;
+    async fn release(
+        &self,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        issue_key: &str,
+    ) -> Result<()>;
+    async fn is_returned(
+        &self,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        issue_key: &str,
+    ) -> Result<bool>;
 }
 
 /// What the ledger says, with no process inspected.
@@ -210,12 +225,15 @@ pub async fn close(
     }
 
     let project = run.project_id.clone();
+    let session = run.session_id.clone();
     for m in ledger.issues(run_id)? {
         if m.lease_returned_at.is_some() {
             continue;
         }
         if !matches!(
-            leases.is_returned(project.as_deref(), &m.issue_key).await,
+            leases
+                .is_returned(project.as_deref(), session.as_deref(), &m.issue_key)
+                .await,
             Ok(true)
         ) {
             // The mark answers to the read-back below and never to this
@@ -223,7 +241,10 @@ pub async fn close(
             // does: a refusal names the way out — the project to send, the key
             // that reaches no lease — and a run whose release is refused says
             // so rather than passing in silence (ISS-1139).
-            if let Err(e) = leases.release(project.as_deref(), &m.issue_key).await {
+            if let Err(e) = leases
+                .release(project.as_deref(), session.as_deref(), &m.issue_key)
+                .await
+            {
                 tracing::warn!(
                     "[close] run={run_id} {}: lease release refused: {e}",
                     m.issue_key
@@ -231,7 +252,9 @@ pub async fn close(
             }
         }
         if matches!(
-            leases.is_returned(project.as_deref(), &m.issue_key).await,
+            leases
+                .is_returned(project.as_deref(), session.as_deref(), &m.issue_key)
+                .await,
             Ok(true)
         ) {
             ledger.mark_lease_returned_observed(run_id, &m.issue_key)?;
@@ -239,4 +262,126 @@ pub async fn close(
     }
 
     state(ledger, run_id)
+}
+
+/// Two runs on one box over one key (ISS-752): the close of the older one,
+/// whose session took no lease, against a core that answers per session.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use runner_core::ledger::NewRun;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    /// Core's lease store as one box sees it: rows of (session, key). A
+    /// give-back naming a session reaches that session's row; one naming none
+    /// is refused over a live lease, as core refuses `ISSUE_LEASE_RUN_UNNAMED`.
+    struct Core {
+        rows: Mutex<Vec<(String, String)>>,
+        released: Mutex<Vec<(Option<String>, String)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl SessionReader for Core {
+        async fn is_terminal(&self, _id: &str) -> Result<bool> {
+            Ok(true)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LeaseKeeper for Core {
+        async fn release(&self, _p: Option<&str>, session: Option<&str>, key: &str) -> Result<()> {
+            self.released
+                .lock()
+                .unwrap()
+                .push((session.map(str::to_string), key.to_string()));
+            let mut rows = self.rows.lock().unwrap();
+            match session {
+                Some(s) => rows.retain(|(rs, rk)| !(rs == s && rk == key)),
+                None if rows.iter().any(|(_, rk)| rk == key) => {
+                    return Err(runner_platform::error::Error::Other(
+                        "ISSUE_LEASE_RUN_UNNAMED".into(),
+                    ))
+                }
+                None => {}
+            }
+            Ok(())
+        }
+        async fn is_returned(
+            &self,
+            _p: Option<&str>,
+            session: Option<&str>,
+            key: &str,
+        ) -> Result<bool> {
+            let rows = self.rows.lock().unwrap();
+            Ok(!rows
+                .iter()
+                .any(|(rs, rk)| rk == key && session.is_none_or(|s| s == rs)))
+        }
+    }
+
+    fn declare(led: &mut Ledger, run_id: &str, key: &str) {
+        led.create_run_group(NewRun {
+            run_id: run_id.into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: PathBuf::from(format!("/nonexistent/{run_id}")),
+            boot_id: "boot-1".into(),
+            issue_keys: vec![key.into()],
+        })
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn criterion_3_an_older_runs_close_completes_while_a_newer_run_holds_the_key() {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-iss752-{}-{}",
+            std::process::id(),
+            runner_core::agent_activity::now_ms()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+
+        // ISS-572's shape: the judge over the closed issue took no lease and
+        // ended; the build declared after it took the issue's lease.
+        declare(&mut led, "judge", "ISS-572");
+        led.attach_session("judge", "session-judge").unwrap();
+        led.end_run("judge", "test", "the judge ended").unwrap();
+        declare(&mut led, "build", "ISS-572");
+        led.attach_session("build", "session-build").unwrap();
+        let core = Core {
+            rows: Mutex::new(vec![("session-build".into(), "ISS-572".into())]),
+            released: Mutex::new(vec![]),
+        };
+
+        let closed = close(&mut led, "judge", None, &core, &core).await.unwrap();
+
+        assert_eq!(
+            (closed.leases_returned, closed.leases_total),
+            (1, 1),
+            "the judge's close stayed owed a lease the build holds"
+        );
+        assert_eq!(
+            *core.rows.lock().unwrap(),
+            vec![("session-build".to_string(), "ISS-572".to_string())],
+            "the judge's close gave back the build's lease"
+        );
+        assert!(
+            core.released.lock().unwrap().is_empty(),
+            "a lease the judge never took was given back: {:?}",
+            core.released.lock().unwrap()
+        );
+        let build = state(&led, "build").unwrap();
+        assert_eq!(build.leases_returned, 0);
+
+        // The build's own close still gives back what it took, by its session.
+        let closed = close(&mut led, "build", None, &core, &core).await.unwrap();
+        assert_eq!((closed.leases_returned, closed.leases_total), (1, 1));
+        assert!(core.rows.lock().unwrap().is_empty());
+        assert_eq!(
+            *core.released.lock().unwrap(),
+            vec![(Some("session-build".to_string()), "ISS-572".to_string())]
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

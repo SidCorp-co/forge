@@ -389,7 +389,7 @@ export const KERNEL_RULES = [
 	{ id: "transition_evidence", holds: "no status move without its evidence: a legal edge, its reason, its waiting kind", codes: ["ILLEGAL_TRANSITION", "TRANSITION_REASON_REQUIRED", "WAITING_KIND_REQUIRED"] },
 	{ id: "merged", holds: "no awaiting_release without a recorded merge", codes: ["MERGE_NOT_RECORDED", "MERGE_DESIGN_ONLY"] },
 	{ id: "close_by_release", holds: "no close without a release that claimed the issue and its recorded merge", codes: ["CLOSE_ONLY_BY_RELEASE", "CLOSE_REQUIRES_SHIPPED", "DESIGN_NOT_DELIVERED"] },
-	{ id: "run_holder", holds: "only the holding run, or releases.approve, moves an issue to awaiting_release", codes: ["NOT_THE_HOLDER", "NO_HOLDER"] },
+	{ id: "run_holder", holds: "only the holding run, or releases.approve, moves an issue to in_progress or awaiting_release", codes: ["NOT_THE_HOLDER", "NO_HOLDER"] },
 	{ id: "review_by_builder", holds: "a recorded review is never the builder's own", codes: ["REVIEW_BY_BUILDER"] },
 	{ id: "verdict_shape", holds: "a verdict names a known criterion and carries no secret", codes: ["VERDICT_CRITERION_UNKNOWN", "VERDICT_SECRET"] },
 	{ id: "requirement_proven", holds: "a requirement reads delivered only where every BC is proven", codes: ["REQUIREMENT_CRITERIA_UNPROVEN", "REQUIREMENT_NO_LIVE_ISSUE"] },
@@ -473,8 +473,10 @@ export function gateSays(g: ResolvedGate): string {
 			: g.from === "key"
 				? `this project's ${g.key} setting, which its gate profile ${g.profile} defers to`
 				: `this project's gate profile ${g.profile} (gates.profile)`;
-	// plain words: it ends refusals a person reads, a checklist gap's among them
-	return `Gate ${g.id} is ${g.mode === "enforce" ? "enforced" : g.mode} by ${by}; gates.overrides.${g.id} relaxes it.`;
+	// plain words: it ends refusals a person reads, a checklist gap's among them; a setting the profile
+	// defers to is the nearer way to relax it, so it is named before the override
+	const relaxes = g.from === "key" ? `changing ${g.key}, or gates.overrides.${g.id},` : `gates.overrides.${g.id}`;
+	return `Gate ${g.id} is ${g.mode === "enforce" ? "enforced" : g.mode} by ${by}; ${relaxes} relaxes it.`;
 }
 
 /** What of a project document a gate's own switch reads: the keys the profile defers to under standard. */

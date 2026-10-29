@@ -116,3 +116,37 @@ export async function noteInThread(conversationId: string, line: string): Promis
     messages: [{ role: 'system', content: line }],
   });
 }
+
+/** The venue the channel's top-level posts are recorded under. */
+export const TOP_LEVEL = 'top';
+
+/**
+ * Post one line at the channel's top level, outside any thread (REQ-75 r6 BC-39): only an
+ * announcement does, screened by the caller. Recorded on the channel's top-level conversation.
+ */
+export async function postTopLevel(input: {
+  room: RoomRow;
+  text: string;
+  proof: ReplySendProof;
+}): Promise<{ messageId: string | null; conversationId: string }> {
+  const { auth, namespace } = await roomAuth(input.room);
+  const conversation = await threadConversationOf(input.room, namespace, TOP_LEVEL);
+  const { messageId } = await sendFixedReply(
+    { kind: 'rest', auth, rid: input.room.rid },
+    input.text,
+    input.proof,
+  );
+  await appendMessages({
+    conversationId: conversation.id,
+    messages: [
+      {
+        role: 'assistant',
+        content: input.text,
+        authorUserId: input.room.principalUserId,
+        externalId: messageId,
+        deliveryProof: { messageId, door: 'support-reply' },
+      },
+    ],
+  });
+  return { messageId, conversationId: conversation.id };
+}

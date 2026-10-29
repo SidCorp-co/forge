@@ -44,6 +44,7 @@ import {
 } from './needs-you-decision-builders.js';
 import { asked } from './needs-you-escalation.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
+import { revisionWordsOf } from './needs-you-signoff-words.js';
 import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
 
 /** The said act keys whose row is the viewer's own work to finish, never a choice. */
@@ -114,6 +115,9 @@ interface Facts {
       head: number | null;
       current: number | null;
       criteria: { passing: number; total: number };
+      /** The proposed and the current revision's own words, what a sign-off's press records (REQ-4 BC-16). */
+      proposedWords: string | null;
+      currentWords: string | null;
     }
   >;
   /** Each requirement's draft issues, by requirement key. */
@@ -196,11 +200,11 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   if (row.entity === 'requirement') {
     const req = f.requirementOf.get(row.key);
     if (act.key === 'standing.act.acceptR' && req?.proposed) {
-      return revisionDecision(row, area, f.projectId, req.proposed);
+      return revisionDecision(row, area, f.projectId, req.proposed, req.proposedWords);
     }
     // an agree pins the current revision, never a newer withdrawn one (`rules.ts:agreeRefusals`)
     if (act.key === 'standing.act.agreeR' && req?.current) {
-      return agreeDecision(row, area, f.projectId, req.current);
+      return agreeDecision(row, area, f.projectId, req.current, req.currentWords);
     }
     if (act.key === 'standing.acts' && req?.head) {
       return repinDecision(row, area, f.projectId, req.head);
@@ -345,9 +349,15 @@ export async function decisionsOf(
   const runIds = attention.releases.releases.flatMap((r) =>
     r.state === 'awaiting_approval' && r.runId ? [r.runId] : [],
   );
-  const [questions, approvals] = await Promise.all([
+  const signed = attention.requirements.flatMap((r) =>
+    [r.standing.facts.proposedRevision, r.currentRevision].flatMap((n) =>
+      n === null ? [] : [{ requirementId: r.id, revision: n }],
+    ),
+  );
+  const [questions, approvals, wordsOf] = await Promise.all([
     readOpenPersonQuestions(projectId),
     releaseApprovalsOfRuns(runIds),
+    revisionWordsOf(signed),
   ]);
   const facts: Facts = {
     projectId,
@@ -362,6 +372,8 @@ export async function decisionsOf(
           head: r.latestRevision?.revision ?? r.currentRevision,
           current: r.currentRevision,
           criteria: { passing: r.standing.facts.passing, total: r.standing.facts.criteria },
+          proposedWords: wordsOf(r.id, r.standing.facts.proposedRevision),
+          currentWords: wordsOf(r.id, r.currentRevision),
         },
       ]),
     ),

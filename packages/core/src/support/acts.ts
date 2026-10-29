@@ -5,10 +5,13 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { SupportRecordKind } from '@forge/contracts/support';
+import type { ChannelRole, ChannelRoute } from '@forge/contracts/support-channel';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import { moveIssue, proposeBuild, proposeDeploy, runCommand } from './ability-acts.js';
 import { sessionCaller } from './access.js';
+import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
+import { sessionChannelView } from './channel-read.js';
 import { settleLatency } from './delivery.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
@@ -53,7 +56,32 @@ export type SupportActInput =
     }
   | { action: 'build'; thread: string; branch: string; title: string; summary: string }
   | { action: 'deploy'; thread: string; target: string }
-  | { action: 'command'; thread: string; host: string; command: string };
+  | { action: 'command'; thread: string; host: string; command: string }
+  | { action: 'channel' }
+  | {
+      action: 'member';
+      member: string;
+      roles: ChannelRole[];
+      askFor?: string | undefined;
+      message: string;
+    }
+  | { action: 'rule'; thread: string; message: string; text: string }
+  | {
+      action: 'common_issue';
+      threads: string[];
+      question: string;
+      answer: string;
+      feedback?: string | undefined;
+    }
+  | {
+      action: 'route';
+      thread: string;
+      to: ChannelRoute;
+      member?: string | undefined;
+      title?: string | undefined;
+      text: string;
+    }
+  | { action: 'announce'; text: string };
 
 export async function supportAct(
   caller: SupportCaller,
@@ -87,6 +115,7 @@ const POSTS = new Set<SupportActInput['action']>([
   'command',
   'deploy',
   'build',
+  'route',
 ]);
 
 /**
@@ -115,8 +144,17 @@ async function tellNotGranted(
   });
 }
 
-/** The acts both kinds of room take. */
-const SHARED = new Set<SupportActInput['action']>(['reply', 'thread']);
+/** The acts both kinds of room take: every bound channel keeps its record (REQ-75 r6). */
+const SHARED = new Set<SupportActInput['action']>([
+  'reply',
+  'thread',
+  'channel',
+  'member',
+  'rule',
+  'common_issue',
+  'route',
+  'announce',
+]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
 const isOperation = (input: SupportActInput): input is OperationsActInput =>
@@ -174,5 +212,25 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
       return proposeDeploy(room, { thread: input.thread, target: input.target });
     case 'command':
       return runCommand(room, { thread: input.thread, host: input.host, command: input.command });
+    case 'channel':
+      return { ok: true, value: await sessionChannelView(room.projectId, room.rid) };
+    case 'member': {
+      const { action: _, ...request } = input;
+      return inferMember(room, request);
+    }
+    case 'rule': {
+      const { action: _, ...request } = input;
+      return ruleFromMessage(room, request);
+    }
+    case 'common_issue': {
+      const { action: _, ...request } = input;
+      return noteCommonIssue(room, request);
+    }
+    case 'route': {
+      const { action: _, ...request } = input;
+      return routeNeed(room, request);
+    }
+    case 'announce':
+      return announce(room, { text: input.text });
   }
 }

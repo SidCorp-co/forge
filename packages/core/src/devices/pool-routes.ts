@@ -108,7 +108,11 @@ devicePoolRoutes.get(
 );
 
 const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
-const leaseQuerySchema = z.object({ projectId: z.string().uuid().optional() });
+/** `sessionId` names the run session asking, so a give-back reaches only that run's lease (ISS-752). */
+const leaseQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
+});
 
 /**
  * The lease this request is about, or the refusal that says why there is none.
@@ -142,16 +146,19 @@ devicePoolRoutes.get(
   zValidator('param', leaseParamsSchema),
   zValidator('query', leaseQuerySchema),
   async (c) => {
-    const key = await leaseKeyOf(c.req.valid('param').issueKey, c.req.valid('query').projectId);
-    // Two questions, both answered, because they are different ones: `held` is
-    // the fleet-wide fact, `heldByThisDevice` is what a close loop asking
-    // "have I given this back" means. Answering the second under the first
-    // name is the defect ISS-1109 closed.
+    const query = c.req.valid('query');
+    const key = await leaseKeyOf(c.req.valid('param').issueKey, query.projectId);
+    // Three questions, each answered, because they are different ones: `held` is
+    // the fleet-wide fact, `heldByThisDevice` this box's, and `heldByThisSession`
+    // what a close loop asking "has my run given this back" means. Answering the
+    // second under the first name is the defect ISS-1109 closed; the third under
+    // the second, ISS-752.
     return c.json(
       await readDeviceIssueLease({
         deviceId: c.get('device').id,
         issueKey: key.issueKey,
         projectId: key.projectId,
+        sessionId: query.sessionId ?? null,
       }),
     );
   },
@@ -164,17 +171,30 @@ devicePoolRoutes.delete(
   zValidator('query', leaseQuerySchema),
   async (c) => {
     const rawKey = c.req.valid('param').issueKey;
-    const key = await leaseKeyOf(rawKey, c.req.valid('query').projectId);
+    const query = c.req.valid('query');
+    const key = await leaseKeyOf(rawKey, query.projectId);
     const outcome = await releaseIssueLease({
       deviceId: c.get('device').id,
       issueKey: key.issueKey,
       projectId: key.projectId,
+      sessionId: query.sessionId ?? null,
     });
     if (outcome.released) {
       return c.json({ ok: true, issueKey: key.issueKey, projectId: outcome.projectId });
     }
     // A delete that matched nothing is not a success: the box reads the ack as
     // the issue handed back and stops watching it (ISS-1139).
+    // Which of this box's runs is giving back is unsaid, and the lease is a live run's: taking it
+    // is how an older run's close took a newer run's issue (ISS-752).
+    if (outcome.reason === 'run_unnamed') {
+      throw refuseDevice(
+        'ISSUE_LEASE_RUN_UNNAMED',
+        [
+          `${key.issueKey} is held on this box by live run session ${outcome.holder.sessionId} (run ${outcome.holder.runId}), and this give-back names no run session, so nothing was given back.`,
+          'A give-back names the run session returning its lease: send `?sessionId=<id>`. A lease whose run session has ended is given back without one.',
+        ].join('\n'),
+      );
+    }
     if (outcome.reason === 'ambiguous') {
       throw refuseDevice(
         'ISSUE_LEASE_AMBIGUOUS',

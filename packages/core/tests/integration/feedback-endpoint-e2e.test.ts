@@ -165,7 +165,7 @@ describe('a name the project does not serve is refused by name', () => {
   it('says so on a project that provides no route or tool, and how to declare one', async () => {
     const r = refusal(await file(servingNothing, { endpoint: 'save_backend_workflow' }));
     expect(r).toMatchObject({ code: 'FEEDBACK_TARGET_UNKNOWN', path: '/endpoint' });
-    expect(r.detail).toMatch(/provides no openapi or mcp-tools contract/);
+    expect(r.detail).toMatch(/provides no openapi, mcp-tools or cli contract/);
     expect(r.detail).toContain('interface');
   });
 

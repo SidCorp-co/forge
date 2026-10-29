@@ -31,7 +31,7 @@ interface ResolvedTarget {
   issueId: string | null;
   releaseRunId: string | null;
   workflowId: string | null;
-  /** A route or tool the project serves, as its contract's current version names it. */
+  /** A route, tool or command the project serves, as its contract's current version names it. */
   endpoint: { contractSlug: string; contractVersion: string; element: string } | null;
   mockupId: string | null;
   screen: string | null;
