@@ -476,7 +476,7 @@ describe('a verdict nobody could check against the live build does not count', (
     expect((await standingOf(req)).facts).toMatchObject({ passing: 0, judged: 0 });
   });
 
-  it('ancestry unanswered: neither a commit nor a runtime pass counts, and each line names the reader', async () => {
+  it('a live build no verified release places: neither a commit nor a runtime pass counts, and each line names the record', async () => {
     unplant?.();
     const live = '8888888888888888888888888888888888888888';
     unplant = plantLiveBuild(live, { [NEW]: { unread: 'the host timed out' } });
@@ -496,7 +496,7 @@ describe('a verdict nobody could check against the live build does not count', (
       expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
       expect(c.issues[0]).toMatchObject({ inLiveBuild: null });
       expect(c.issues[0]?.notCounted).toBe(
-        `judged at ${judged}, and whether the live build (888888888888) holds it could not be checked: the ancestry reader could not answer: the host timed out`,
+        `judged at ${judged}, and whether the live build (888888888888) holds it could not be checked: no release Forge verified shows whether the live build \`${live}\` holds it`,
       );
     }
   });

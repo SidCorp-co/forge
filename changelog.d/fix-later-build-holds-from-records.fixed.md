@@ -1,0 +1,1 @@
+**A pass at a later build is weighed from Forge's own landing records, never GitLab's compare.** Coverage, the release sweep and build-ahead ask no host; a commit no recorded landing places after the landing reads not judged.

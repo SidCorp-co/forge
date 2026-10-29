@@ -78,8 +78,8 @@ export interface LandedHolds {
   /** Where the build is a host merge commit: the merged request's head and whether its tree is the build's. */
   head?: MergedHead | null;
   /**
-   * Per later commit a verdict on the issue names (lower case), whether it holds the landing, or why
-   * that was not read, through the record door's ancestry reader (`landed-build.ts:readHolding`).
+   * Per later commit a verdict on the issue names (lower case), whether it holds the landing, or the
+   * record that is missing, from the landings Forge recorded (`release-batch/recorded-holding.ts`).
    * A commit absent was not asked, and is read as another build.
    */
   holders?: ReadonlyMap<string, boolean | { unread: string }>;
@@ -286,7 +286,7 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
     return {
       commit,
       inLiveBuild: null,
-      notCounted: `${away}, and whether it holds that landing could not be read: ${held.unread}`,
+      notCounted: `${away}, and no record of Forge's says it holds that landing: ${held.unread}`,
     };
   }
   return {

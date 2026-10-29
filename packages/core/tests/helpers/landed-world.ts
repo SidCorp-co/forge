@@ -133,3 +133,16 @@ export async function statusOf(issueId: string): Promise<string> {
 type Refused = { code?: string; error?: { refusals?: Array<{ code: string; detail: string }> } };
 export const refusalsOf = (body: unknown) =>
   (body as Refused).error?.refusals ?? [{ code: (body as Refused).code ?? '', detail: '' }];
+
+/**
+ * A landing Forge recorded at `commit` on BRANCH after every issue landed so far: another issue's
+ * merge mark, which is what says a later build holds an earlier landing (`recorded-holding.ts`).
+ */
+export async function laterLanding(commit: string, seq = 900): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, merged_at,
+                        merged_commit_sha, merged_target)
+    VALUES (${randomUUID()}, ${world.projectId}, ${seq}, ${`issue ${seq}`}, 'closed', ${world.ownerId},
+            now() + interval '1 minute', ${commit}, ${BRANCH})
+  `);
+}

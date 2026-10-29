@@ -26,6 +26,7 @@ import {
   F4,
   LATER,
   landedIssue,
+  laterLanding,
   record,
   seedLandedWorld,
   statusOf,
@@ -117,6 +118,8 @@ describe('a requirement whose issues all closed by landing records', () => {
     const issue = await landedIssue(1, F4);
     await traced(req, issue, 1);
     await passedAll(issue, LATER);
+    // a later landing recorded at LATER is what says it holds F4; the host is never asked
+    await laterLanding(LATER);
 
     expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
   });
@@ -135,7 +138,7 @@ describe('a requirement whose issues all closed by landing records', () => {
       UPDATE issues SET merged_commit_sha = ${LATER}, merged_at = now() + interval '1 minute'
        WHERE id = ${issue}`);
     const moved = await bcOf(req);
-    expect(moved.verdict).toBe('not_live');
+    expect(moved.verdict).toBe('not_judged');
     expect(moved.issues[0]?.notCounted).toContain(
       `judged at commit ${F4.slice(0, 12)}, not at its issue's landing ${LATER.slice(0, 12)}`,
     );
@@ -163,27 +166,29 @@ describe('a requirement whose issues all closed by landing records', () => {
     await reopenedNow(issue);
 
     const bc = await bcOf(req);
-    expect(bc.verdict).toBe('not_live');
+    expect(bc.verdict).toBe('not_judged');
     expect(bc.issues[0]?.notCounted).toContain(
       `judged at commit ${D9.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}`,
     );
   });
 
   // adminhub-fe ISS-4, dev.344 (REQ-36 BC-18): a pass on a later build holding the landing is a
-  // pass on the delivered work; one at a commit that does not hold it judged another build
+  // pass on the delivered work, where a landing Forge recorded there says so; one at a commit no
+  // record places after the landing does not count, naming the record that is missing
   it('counts a pass at a later commit holding the landing, and never one at a commit that does not', async () => {
     const req = await agreedRequirement(BCS.slice(0, 1));
     const issue = await landedIssue(6, F4);
     await traced(req, issue, 6);
     await verdict(issue, 1, 'pass', LATER);
+    await laterLanding(LATER);
 
     expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
 
     await verdict(issue, 1, 'pass', ASIDE);
     const bc = await bcOf(req);
-    expect(bc.verdict).toBe('not_live');
+    expect(bc.verdict).toBe('not_judged');
     expect(bc.issues[0]?.notCounted).toContain(
-      `judged at commit ${ASIDE.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)} nor at a build that holds it`,
+      `judged at commit ${ASIDE.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}, and no record of Forge's says it holds that landing: no merge mark records a landing at ${ASIDE.slice(0, 12)}`,
     );
   });
 });

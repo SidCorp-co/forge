@@ -115,12 +115,14 @@ describe("the steward's output check reads the same landed build", () => {
 
   // catalog-fe ISS-1, 2026-10-22: marked at its landing, every criterion re-judged at a later head
   // holding it, reopened before the record at that head that then went through
-  it('reads every criterion passing at a later head holding the landing, which it then records at', async () => {
+  it('names the record a pass at a later head needs, and the record at that head then closes it', async () => {
     const issue = await landedIssue(1, F4);
     await judgedAll(issue, LATER);
 
+    // no landing Forge recorded is at LATER, so the steward reads no host to place it after F4: it
+    // says the record at that head is what counts the pass, and that record's own door reads it
     expect(await facts(issue)).toContain(
-      `every live criterion passes at \`${LATER.slice(0, 12)}\``,
+      `it was judged at \`${LATER.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\`: a verdict at an earlier commit judged another build, and one at a later head counts only on a record made at that head`,
     );
     await sendsNothingBack(issue, 'ISS-1');
     const recorded = await record([issue], LATER);
