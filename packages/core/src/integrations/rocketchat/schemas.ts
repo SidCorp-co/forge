@@ -11,6 +11,8 @@ export const rocketchatConfigBase = z.object({
   support: supportRoomConfigSchema.optional(),
   /** Present, each room the binding names is an operations room answered under the bot's role (REQ-75 BC-20). */
   operations: operationsRoomConfigSchema.optional(),
+  /** Present, every room the binding names is answered by the project's one channel agent (REQ-77). */
+  agent: supportRoomConfigSchema.optional(),
   /** Groups an agent outside Forge answers: Forge keeps each one's channel record only (REQ-75 r6). */
   outsideRids: outsideRidsSchema.optional(),
   /** The bot account's one role (BC-22): kept on the connection, which is the account. */
@@ -27,6 +29,7 @@ export const ROCKETCHAT_BINDING_CONFIG_KEYS = [
   'rids',
   'support',
   'operations',
+  'agent',
   'outsideRids',
   ...RELEASE_CHANNEL_KEYS,
 ] as const;

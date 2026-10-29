@@ -43,10 +43,12 @@ export interface ChatServer {
 export class StandInRocketChat implements ChatServer {
   serverUrl = '';
   readonly rid = `GRP${randomUUID().slice(0, 8)}`;
+  /** A second group the bot is a member of, which a channel agent's binding names beside the first (REQ-77). */
+  readonly rid2 = `GRP${randomUUID().slice(0, 8)}`;
   readonly bot = { userId: 'bot-support', authToken: `rc-bot-${randomUUID()}` };
   readonly alice: Member = { userId: 'u-alice', username: 'alice' };
   readonly bob: Member = { userId: 'u-bob', username: 'bob' };
-  readonly lines: (BotLine & { at: number })[] = [];
+  readonly lines: (BotLine & { at: number; rid: string })[] = [];
   readonly reactions: { messageId: string; emoji: string }[] = [];
   /** Whether the bot is a member of the group (`subscriptions.getOne` answers its subscription). */
   botIsMember = true;
@@ -84,11 +86,13 @@ export class StandInRocketChat implements ChatServer {
     switch (url.pathname) {
       case '/api/v1/me':
         return json(200, { _id: this.bot.userId, username: 'supportbot', name: 'Support' });
-      case '/api/v1/rooms.info':
+      case '/api/v1/rooms.info': {
+        const asked = url.searchParams.get('roomId') ?? this.rid;
         return json(200, {
           success: true,
-          room: { _id: this.rid, t: 'p', name: 'catalog-support' },
+          room: { _id: asked, t: 'p', name: this.nameOf(asked) },
         });
+      }
       case '/api/v1/rooms.get':
         return json(200, {
           success: true,
@@ -98,8 +102,12 @@ export class StandInRocketChat implements ChatServer {
         return json(200, {
           success: true,
           subscription:
-            this.botIsMember && url.searchParams.get('roomId') === this.rid
-              ? { rid: this.rid, name: 'catalog-support', fname: 'catalog-support' }
+            this.botIsMember && this.rooms().includes(url.searchParams.get('roomId') ?? '')
+              ? {
+                  rid: url.searchParams.get('roomId'),
+                  name: this.nameOf(url.searchParams.get('roomId') ?? ''),
+                  fname: this.nameOf(url.searchParams.get('roomId') ?? ''),
+                }
               : null,
         });
       case '/api/v1/chat.react':
@@ -109,6 +117,7 @@ export class StandInRocketChat implements ChatServer {
         const id = this.nextId();
         this.lines.push({
           id,
+          rid: String(body.roomId ?? body.channel ?? this.rid),
           text: String(body.text),
           tmid: body.tmid ?? null,
           attachments: body.attachments ?? [],
@@ -117,7 +126,7 @@ export class StandInRocketChat implements ChatServer {
         // the server echoes the bot's own message on its stream, as Rocket.Chat does
         this.push({
           _id: id,
-          rid: this.rid,
+          rid: String(body.roomId ?? body.channel ?? this.rid),
           msg: body.text,
           tmid: body.tmid,
           u: { _id: this.bot.userId, username: 'supportbot' },
@@ -177,14 +186,33 @@ export class StandInRocketChat implements ChatServer {
     return this.sayAt(Date.now(), who, text, tmid);
   }
 
+  /** `say` in the group `rid` (the second group, where a channel agent's binding names two). */
+  async sayIn(rid: string, who: Member, text: string, tmid?: string): Promise<string> {
+    return this.sayAt(Date.now(), who, text, tmid, rid);
+  }
+
+  private rooms(): string[] {
+    return [this.rid, this.rid2];
+  }
+
+  private nameOf(rid: string): string {
+    return rid === this.rid2 ? 'catalog-team' : 'catalog-support';
+  }
+
   /** `say`, the server stamping the message at `ts` (a message the stream carries late). */
-  async sayAt(ts: number, who: Member, text: string, tmid?: string): Promise<string> {
+  async sayAt(
+    ts: number,
+    who: Member,
+    text: string,
+    tmid?: string,
+    rid: string = this.rid,
+  ): Promise<string> {
     await expect.poll(() => this.subs.size, { timeout: 15_000 }).toBeGreaterThan(0);
     const id = this.nextId();
     this.push(
       {
         _id: id,
-        rid: this.rid,
+        rid,
         msg: text,
         ...(tmid ? { tmid } : {}),
         mentions: this.mentionsIn(text),
@@ -207,7 +235,12 @@ export class StandInRocketChat implements ChatServer {
   }
 
   async botLines(): Promise<BotLine[]> {
-    return this.lines.map(({ at: _at, ...l }) => l);
+    return this.lines.map(({ at: _at, rid: _rid, ...l }) => l);
+  }
+
+  /** The bot's lines in one group, oldest first. */
+  linesIn(rid: string): BotLine[] {
+    return this.lines.filter((l) => l.rid === rid).map(({ at: _at, rid: _rid, ...l }) => l);
   }
 
   async close(): Promise<void> {

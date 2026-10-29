@@ -9,7 +9,7 @@ import { turnCredentialChatDevice } from '../agent-sessions/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
 import { deviceProjectIds } from '../runners/index.js';
-import { hasUndelivered, roomsOfProjects, roomsWithSessions } from './delivery.js';
+import { hasUndelivered, roomsOfProjects, roomsToWarm } from './delivery.js';
 import {
   deliverWaiting,
   handTurn,
@@ -28,7 +28,7 @@ import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { grantsLine, toolsLine } from './prompt.js';
 import { declareSupportRooms, roomIsBound } from './rooms.js';
-import { type RoomRow, roomById } from './store.js';
+import { type RoomRow, roomById, roomsOfSession } from './store.js';
 
 /** What the warm-up turn says: no member is waiting, so the session answers nothing. */
 export const WARM_UP_LINE =
@@ -120,7 +120,9 @@ async function retellOf(room: RoomRow): Promise<string | null> {
   const tools = (await activeSupportApi(room.projectId))?.tools ?? [];
   const config = await supportConfigOf(room);
   if (toldTools(room.id) === toolsKey(tools, config)) return null;
-  noteTools(room.id, tools, config);
+  // a channel agent's rooms share one session: it is told once for all of them (REQ-77)
+  const told = room.kind === 'agent' && room.sessionId ? await roomsOfSession(room.sessionId) : [room];
+  for (const r of told) noteTools(r.id, tools, config);
   return [
     'This room was changed; from now on:',
     ...(config?.persona ? [config.persona] : []),
@@ -148,15 +150,17 @@ export async function warmRoomsOfDevice(deviceId: string): Promise<void> {
 }
 
 /**
- * The sweep: a room whose session is not resident is warmed, at most once a minute, and one whose
- * grant change arrived mid-turn is told the new tools now.
+ * The sweep: a room whose session is not resident is warmed, at most once a minute, one whose
+ * session is gone is given a new one and warmed, and one whose grant change arrived mid-turn is
+ * told the new tools now.
  */
 export async function warmColdRooms(): Promise<void> {
   const now = Date.now();
-  for (const roomId of await roomsWithSessions()) {
+  for (const { id: roomId, sessionId } of await roomsToWarm()) {
     const why: WarmReason = retellOwed.has(roomId) ? 'bindings' : 'sweep';
     const tried = lastTried.get(roomId);
-    if (why === 'sweep' && tried && now - tried < WARM_RETRY_MS) continue;
+    // a room whose session is gone is given one at once: nothing answers it until then
+    if (why === 'sweep' && sessionId && tried && now - tried < WARM_RETRY_MS) continue;
     const out = await warmSupportRoom(roomId, why).catch((err) => {
       logger.error({ err, roomId }, 'support: warming a room failed');
       return 'none' as const;

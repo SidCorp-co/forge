@@ -38,6 +38,15 @@ import {
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
 import { z } from 'zod';
+
+/** A Rocket.Chat group id, as a channel agent's brief and each message it is handed name it. */
+const channelRidSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .describe(
+    'a channel agent only: the group (`channel` in what you were handed) an act naming no thread is for',
+  );
 import type { Refusal } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
 import { type SupportActInput, supportAct } from './acts.js';
@@ -108,6 +117,8 @@ const inputSchema = z.strictObject({
   // an issue move's status, or a route's destination: each action's own request judges which
   // one enum, so the published tool gains values rather than changing shape
   to: z.enum([...ISSUE_STATUSES, ...CHANNEL_ROUTES]).optional(),
+  // a channel agent answers several groups: an act naming no thread or message of one names it here
+  rid: channelRidSchema.optional(),
 });
 
 const SHAPE = [
@@ -135,6 +146,7 @@ const SHAPE = [
   'common_issue { threads, question, answer, feedback? }',
   `route { thread, to: ${CHANNEL_ROUTES.join(' | ')}, member? (technical, product), title? (forge), text }`,
   'announce { text }',
+  'any action may add rid: the group, where you answer several and the act names no thread',
 ].join('; ');
 
 const DESCRIPTION = [
@@ -170,6 +182,7 @@ export const forgeSupportTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const parsed = inputSchema.safeParse(args);
     const action = parsed.success ? parsed.data.action : null;
+    const rid = parsed.success ? parsed.data.rid : undefined;
     const judged =
       parsed.success && action ? REQUESTS[action].safeParse(withoutAction(parsed.data)) : parsed;
     if (!judged.success || !action) {
@@ -196,12 +209,13 @@ export const forgeSupportTool: ContextScopedMcpToolFactory = (ctx) => ({
     const out = await supportAct(
       { userId: ctx.principal.userId, tokenId: ctx.principal.tokenId, projectId },
       { action, ...(judged.data as object) } as SupportActInput,
+      { rid },
     );
     return out.ok ? out.value : refusedAnswer(out.refusals, 'SUPPORT_REFUSED');
   },
 });
 
 function withoutAction(input: Record<string, unknown>): Record<string, unknown> {
-  const { action: _action, ...rest } = input;
+  const { action: _action, rid: _rid, ...rest } = input;
   return rest;
 }

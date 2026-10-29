@@ -43,7 +43,7 @@ function confirmerRefusal(
   author: { key: string; label: string | null },
   verb: 'confirm' | 'cancel',
 ): string | null {
-  if (isConfirmer(grants, author.label)) return null;
+  if (isConfirmer(grants, author)) return null;
   if (verb === 'cancel' && author.key === fix.askerKey) return null;
   const who =
     (grants.confirmers ?? []).map((c) => `@${c}`).join(' or ') || 'a confirmer this room names';
@@ -183,7 +183,7 @@ export async function answerConfirm(input: {
       fix,
       input.conversationId,
       (note) => tellSession(room, fix, input.conversationId, note),
-      author.label,
+      author,
     );
   }
   return runFix(room, fix, limits.responseMaxBytes, input.conversationId);

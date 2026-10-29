@@ -61,3 +61,7 @@ export async function buildBaseOf(projectId: string, branch?: string): Promise<O
   }
   return { ok: true, value: { base } };
 }
+
+/** The key of the working copy a room's session builds in: a channel agent's rooms share one (REQ-77). */
+export const buildKeyOf = (room: { id: string; kind: string; bindingId: string }) =>
+  room.kind === 'agent' ? room.bindingId : room.id;

@@ -195,7 +195,7 @@ function SupportRoomFields(p: {
       </Field>
       <Field label={t("integrations.support.abilities")} error={shown("abilities")}>
         <div className="flex flex-col divide-y divide-line border-y border-line">
-          {SUPPORT_ABILITIES.map((a) => (
+          {SUPPORT_ABILITIES.filter((a) => a !== "owner_mode").map((a) => (
             <div key={a} className="py-2">
               <Checkbox
                 checked={has(a)}

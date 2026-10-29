@@ -62,7 +62,10 @@ export const supportRooms = pgTable(
   (t) => ({
     bindingRidUq: uniqueIndex('support_rooms_binding_rid_uq').on(t.bindingId, t.rid),
     roomUq: uniqueIndex('support_rooms_connection_rid_uq').on(t.connectionId, t.rid),
-    principalUq: uniqueIndex('support_rooms_principal_uq').on(t.principalUserId),
+    // a channel agent's rooms share one account (REQ-77 BC-1); every other room has its own
+    principalUq: uniqueIndex('support_rooms_principal_uq')
+      .on(t.principalUserId)
+      .where(sql`${t.kind} <> 'agent'`),
     projectIdx: index('support_rooms_project_idx').on(t.projectId),
     kindChk: check('support_rooms_kind_chk', sql`${t.kind} IN (${inList(SUPPORT_ROOM_KINDS)})`),
     scopeChk: check(

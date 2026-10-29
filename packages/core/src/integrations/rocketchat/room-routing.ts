@@ -23,6 +23,8 @@ export interface Route {
   support: SupportRoomConfig | null;
   /** Set where the binding makes the room an operations room, answered under the bot's role (REQ-75 BC-20). */
   operations: OperationsRoomConfig | null;
+  /** Set where the binding's rooms are answered by the project's channel agent (REQ-77). */
+  agent: SupportRoomConfig | null;
 }
 
 export async function buildRoutes(connectionId: string): Promise<Map<string, Route>> {
@@ -59,6 +61,7 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
         bindingId: b.id,
         support: (b.config as RocketChatBindingConfig | null)?.support ?? null,
         operations: (b.config as RocketChatBindingConfig | null)?.operations ?? null,
+        agent: (b.config as RocketChatBindingConfig | null)?.agent ?? null,
       });
     }
   }

@@ -87,6 +87,14 @@ export class SupportWorld {
       grants: { abilities: ['read_checkout', 'file_items'] },
     },
   ): Promise<void> {
+    await this.bindTarget({ rids: [this.chat.rid], support });
+  }
+
+  /**
+   * The two connections, the Rocket.Chat binding carrying `target` as given (a channel agent's
+   * `agent` block over both groups, REQ-77), as a project admin makes them.
+   */
+  async bindTarget(target: Record<string, unknown>): Promise<void> {
     const rc = await api(this.owner, 'POST', '/api/integration-connections', {
       provider: 'rocketchat',
       displayName: 'Support bot',
@@ -96,7 +104,7 @@ export class SupportWorld {
         {
           projectId: this.projectId,
           role: 'service',
-          target: { provider: 'rocketchat', rids: [this.chat.rid], support },
+          target: { provider: 'rocketchat', ...target },
         },
       ],
     });
@@ -130,6 +138,13 @@ export class SupportWorld {
   async regrant(
     support: Record<string, unknown>,
   ): Promise<{ status: number; body: Record<string, unknown> }> {
+    return this.retarget({ support });
+  }
+
+  /** Re-declare the Rocket.Chat binding's target with `patch` merged over it, through the binding door. */
+  async retarget(
+    patch: Record<string, unknown>,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
     const [b] = await rows<{ id: string }>(
       sql`SELECT id FROM integration_bindings WHERE connection_id = ${this.rcConnectionId}::uuid`,
     );
@@ -139,7 +154,7 @@ export class SupportWorld {
     const document = got.body.document as { target: Record<string, unknown> };
     return api(this.owner, 'PUT', path, {
       baseRevision: got.body.revision,
-      document: { ...document, target: { ...document.target, support } },
+      document: { ...document, target: { ...document.target, ...patch } },
     });
   }
 

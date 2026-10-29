@@ -37,6 +37,8 @@ export interface Turn {
   claudeSessionId: string | null;
   /** The frame told the box to keep its Claude Code process resident between turns. */
   keepResident: boolean;
+  /** The frame told the box to confine the session to its turn token (a chat door). */
+  confined: boolean;
   /** A warm-up: the session is spawned and briefed with no member message to answer. */
   warmUp: boolean;
   /** How the frame told the box to show the session its checkout (REQ-75 r5), and a build's base. */
@@ -221,6 +223,7 @@ export class SessionBox {
       messages,
       claudeSessionId: (d.claudeSessionId as string | undefined) ?? null,
       keepResident: d.keepResident === true,
+      confined: d.confined === true,
       checkout: (d.checkout as string | undefined) ?? null,
       buildBase: (d.buildBase as string | undefined) ?? null,
       warmUp: messages.length === 0 && text.includes('reply with the single word: ready'),

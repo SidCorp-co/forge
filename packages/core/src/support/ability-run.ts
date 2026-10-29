@@ -13,7 +13,7 @@ import { dispatchCoolifyDeployDirect } from '../release-batch/index.js';
 import { pushSupportBuild, runHostCommand } from '../runners/index.js';
 import { commandLine, scrubbedResult } from './ability-acts.js';
 import { boxOfRoom } from './box.js';
-import { buildBaseOf } from './build.js';
+import { buildBaseOf, buildKeyOf } from './build.js';
 import { abilityRefusal, grantsOf, isConfirmer, supportConfigOf } from './grants.js';
 import { threadLink } from './record.js';
 import {
@@ -82,6 +82,9 @@ async function ran(
   return ok ? 'ran' : 'failed';
 }
 
+/** Who confirmed a change: the account the chat server signed, and its username. */
+export type Writer = { key: string | null; label: string | null };
+
 /**
  * Run a confirmed build, deploy or host change. The proposal was claimed `ran` before this starts,
  * so a throw on the way is settled `failed` and said in the thread: a confirmed change that broke
@@ -92,7 +95,7 @@ export async function runConfirmed(
   fix: ProposalRow,
   conversationId: string,
   tell: Tell,
-  confirmer: string | null,
+  confirmer: Writer,
 ): Promise<Ran> {
   try {
     return await runClaimed(room, fix, conversationId, tell, confirmer);
@@ -108,7 +111,7 @@ async function runClaimed(
   fix: ProposalRow,
   conversationId: string,
   tell: Tell,
-  confirmer: string | null,
+  confirmer: Writer,
 ): Promise<Ran> {
   const args = (fix.args ?? {}) as Record<string, string>;
   const grants = grantsOf(await supportConfigOf(room));
@@ -136,7 +139,7 @@ async function runClaimed(
       fix,
       conversationId,
       tell,
-      `@${confirmer ?? 'the confirmer'} is no longer a confirmer this room names`,
+      `@${confirmer.label ?? 'the confirmer'} is no longer a confirmer this room names`,
     );
   }
 
@@ -213,7 +216,7 @@ async function runBuild(
   args: Record<string, string>,
   conversationId: string,
   tell: Tell,
-  confirmer: string | null,
+  confirmer: Writer,
 ): Promise<Ran> {
   const base = await buildBaseOf(room.projectId, args.branch ?? '');
   if (!base.ok) return failed(room, fix, conversationId, tell, base.refusals[0]?.detail ?? '');
@@ -221,11 +224,11 @@ async function runBuild(
   if (!box.ok) return failed(room, fix, conversationId, tell, box.refusals[0]?.detail ?? '');
   const branch = args.branch ?? '';
   const link = await threadLink(room, fix.thread);
-  const body = `${args.summary ?? ''}\n\nAsked in ${link}; confirmed by @${confirmer ?? 'a confirmer'}.`;
+  const body = `${args.summary ?? ''}\n\nAsked in ${link}; confirmed by @${confirmer.label ?? 'a confirmer'}.`;
   const pushed = await pushSupportBuild({
     deviceId: box.value,
     projectId: room.projectId,
-    buildKey: room.id,
+    buildKey: buildKeyOf(room),
     base: base.value.base,
     branch,
     title: args.title ?? branch,

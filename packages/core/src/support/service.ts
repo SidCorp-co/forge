@@ -119,7 +119,9 @@ export async function runDiagnose(
 
 async function roomConfig(room: RoomRow) {
   const pair = await findBindingWithConnectionById(room.bindingId);
-  return ((pair?.binding.config ?? null) as RocketChatBindingConfig | null)?.support ?? null;
+  const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
+  // a channel agent's rooms are read under its `agent` block, the same shape (REQ-77)
+  return (room.kind === 'agent' ? config?.agent : config?.support) ?? null;
 }
 
 /**
@@ -182,7 +184,7 @@ export async function reply(
 
 /** The door a reply to this asker passes (BC-37). */
 async function doorOf(room: RoomRow, member: Parameters<typeof readerOf>[0]): Promise<SessionDoor> {
-  if (room.kind === 'support') {
+  if (room.kind !== 'operations') {
     const reader = readerOf(member);
     if (reader) return reader === 'detail' ? 'operations-reply' : 'support-reply';
   }

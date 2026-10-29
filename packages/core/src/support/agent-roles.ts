@@ -7,6 +7,7 @@
 
 import {
   type AgentRoleView,
+  CHANNEL_AGENT_ROLE,
   type ChannelAgentWrite,
   forgeSessionAddress,
 } from '@forge/contracts/support-channel';
@@ -53,7 +54,8 @@ async function forgeBotOf(projectId: string, rid: string): Promise<AgentRoleView
     if (!(await roomIsBound({ bindingId: room.binding_id, rid }))) continue;
     return {
       kind: 'channel',
-      role: room.kind,
+      // a channel agent's rooms all read its one session, under the role a peer looks it up by
+      role: room.kind === 'agent' ? CHANNEL_AGENT_ROLE : room.kind,
       channel: rid,
       answeredBy: 'forge',
       box: room.box,

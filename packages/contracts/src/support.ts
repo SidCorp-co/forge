@@ -51,6 +51,7 @@ export const SUPPORT_ABILITIES = [
 	"build",
 	"deploy",
 	"run_commands",
+	"owner_mode",
 ] as const;
 export type SupportAbility = (typeof SUPPORT_ABILITIES)[number];
 
@@ -64,6 +65,8 @@ export const SUPPORT_ABILITY_MEANING: Record<SupportAbility, string> = {
 	deploy: "deploy a bound target this room names, once a confirmer confirms",
 	run_commands:
 		"run commands on the hosts this room names; a change waits for a confirmer",
+	owner_mode:
+		"work as a full session for the owner the grant names: code, pull requests and merges, and confirm changes; everyone else reads and asks",
 };
 
 /** Who reads a room: a product's users (no developer detail), or the team the room was bound for. */
@@ -81,6 +84,11 @@ export const supportCommandHostSchema = z
 		/^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/,
 		"a host name as the box's SSH names it: letters, digits, . _ -",
 	);
+
+/** A Rocket.Chat user id, as the server signs a message with it (`u._id`): never a name a message carries. */
+export const chatUserIdSchema = z
+	.string()
+	.regex(/^[A-Za-z0-9._-]{1,64}$/, "a Rocket.Chat user id, as the server names the account");
 
 /** A Rocket.Chat username, as the server signs a message with it. */
 export const chatUsernameSchema = z
@@ -103,6 +111,11 @@ export const supportGrantsSchema = z
 		hosts: z.array(supportCommandHostSchema).max(20).optional(),
 		/** Whose `confirm <code>` lets a deploy or a host change run: Rocket.Chat usernames. */
 		confirmers: z.array(chatUsernameSchema).max(20).optional(),
+		/**
+		 * The owner `owner_mode` obeys (REQ-77 BC-20): the chat server's user id for their account,
+		 * never a name, so a message is the owner's only when the server signed it so.
+		 */
+		owner: chatUserIdSchema.optional(),
 	})
 	.superRefine((g, ctx) => {
 		const has = (a: SupportAbility) => g.abilities.includes(a);
@@ -124,9 +137,19 @@ export const supportGrantsSchema = z
 					: "hosts are named and run_commands is not granted: grant run_commands or drop them",
 			});
 		}
+		if (has("owner_mode") !== Boolean(g.owner)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["owner"],
+				message: has("owner_mode")
+					? "owner_mode is granted and names no owner: name the owner's Rocket.Chat user id"
+					: "an owner is named and owner_mode is not granted: grant owner_mode or drop it",
+			});
+		}
 		if (
 			(has("deploy") || has("run_commands") || has("build")) &&
-			!g.confirmers?.length
+			!g.confirmers?.length &&
+			!has("owner_mode")
 		) {
 			ctx.addIssue({
 				code: "custom",
@@ -643,6 +666,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_CHANNEL_UNKNOWN",
 	"SUPPORT_RULE_UNKNOWN",
 	"SUPPORT_CHANNEL_NOT_OUTSIDE",
+	/** A channel agent serves several groups, and the act named none it could be read from (REQ-77). */
+	"SUPPORT_ROOM_AMBIGUOUS",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -694,4 +719,5 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_CHANNEL_UNKNOWN: 404,
 	SUPPORT_RULE_UNKNOWN: 404,
 	SUPPORT_CHANNEL_NOT_OUTSIDE: 409,
+	SUPPORT_ROOM_AMBIGUOUS: 400,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

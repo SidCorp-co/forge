@@ -270,8 +270,9 @@ class RocketChatConnectionManager {
       logger.error(ctx, 'rocketchat: room type unresolved; refusing the message, not assuming one');
       return;
     }
-    // a support group and an operations room are each answered by their own session (REQ-75)
-    if (route.support || route.operations) {
+    // a support group and an operations room are each answered by their own session (REQ-75), and
+    // a channel agent's rooms by the agent's one session (REQ-77)
+    if (route.support || route.operations || route.agent) {
       if (ac.seenMessage(m.id)) return;
       await supportRoomHandler()
         .handle({ connectionId, ac, route, m, shape })

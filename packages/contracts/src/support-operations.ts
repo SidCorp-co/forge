@@ -71,8 +71,11 @@ export const operationsRoomConfigSchema = z.strictObject({
 });
 export type OperationsRoomConfig = z.infer<typeof operationsRoomConfigSchema>;
 
-/** A room answered for a product's users (`support`), or for the team under a role (`operations`). */
-export const SUPPORT_ROOM_KINDS = ["support", "operations"] as const;
+/**
+ * A room answered for a product's users (`support`), for the team under a role (`operations`), or
+ * by the project's channel agent, one session serving every group its binding names (`agent`, REQ-77).
+ */
+export const SUPPORT_ROOM_KINDS = ["support", "operations", "agent"] as const;
 export type SupportRoomKind = (typeof SUPPORT_ROOM_KINDS)[number];
 
 export const OPERATIONS_ACTIONS = [

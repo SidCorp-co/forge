@@ -212,13 +212,12 @@ export async function latencySamples(
   return rows.map((r) => ({ ms: Number(r.ms), path: r.path }));
 }
 
-/** Every room with a session, for the warm sweep. */
-export async function roomsWithSessions(): Promise<string[]> {
-  const rows = await db
-    .select({ id: supportRooms.id })
-    .from(supportRooms)
-    .where(sql`${supportRooms.sessionId} IS NOT NULL`);
-  return rows.map((r) => r.id);
+/**
+ * Every room, for the warm sweep: one whose session is gone is given a new one there, as a master's
+ * pane is placed again (REQ-77 BC-1); one its binding no longer names is left alone by the sweep.
+ */
+export async function roomsToWarm(): Promise<{ id: string; sessionId: string | null }[]> {
+  return db.select({ id: supportRooms.id, sessionId: supportRooms.sessionId }).from(supportRooms);
 }
 
 /** The rooms of every project in `projectIds`. */

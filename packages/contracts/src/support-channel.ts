@@ -219,6 +219,12 @@ export const FORGE_SESSION_ADDRESS_PREFIX = "forge-session:";
 export const forgeSessionAddress = (sessionId: string): string =>
 	`${FORGE_SESSION_ADDRESS_PREFIX}${sessionId}`;
 
+/**
+ * The role a project's channel agent is listed under (REQ-77 BC-14): the one session Forge placed
+ * to answer every group its binding names under `agent`.
+ */
+export const CHANNEL_AGENT_ROLE = "channel agent";
+
 /** The two kinds of agent session a project lists by role (BC-43). */
 export const AGENT_ROLE_KINDS = ["master", "channel"] as const;
 export type AgentRoleKind = (typeof AGENT_ROLE_KINDS)[number];

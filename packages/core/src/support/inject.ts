@@ -12,7 +12,6 @@ import {
   sessionSendStanding,
 } from '../agent-sessions/index.js';
 import { logger } from '../lib/logger.js';
-import { writerRoles } from './channel-read.js';
 import {
   claimUndelivered,
   giveBackInjected,
@@ -23,7 +22,7 @@ import {
   unsettledInjects,
 } from './delivery.js';
 import { type DeliverOutcome, deliverWaiting, type SessionRow } from './dispatch.js';
-import { turnMessages } from './prompt.js';
+import { roomMessages } from './prompt.js';
 import { type RoomRow, roomById } from './store.js';
 
 const INJECT_LEAD = 'More messages arrived in the group while you were working:';
@@ -44,7 +43,7 @@ export async function injectWaiting(room: RoomRow, session: SessionRow): Promise
       agentSessionId: session.id,
       kind: 'inject',
       intentId: `${INJECT_INTENT}${first.id}`,
-      body: `${INJECT_LEAD}\n\n${turnMessages(rows, await writerRoles(room.projectId, room.rid))}`,
+      body: `${INJECT_LEAD}\n\n${await roomMessages(room, rows)}`,
     });
     if (!sent.published) {
       await unclaim(ids, at);

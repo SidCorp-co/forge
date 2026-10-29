@@ -54,10 +54,15 @@ const roomParam = zValidator(
   invalid('invalid path: a project uuid and a support room uuid'),
 );
 
+/**
+ * One act of the room's session. A channel agent answering several groups names the group of an act
+ * that names no thread of it with `?rid=` (REQ-77).
+ */
 async function act(c: Context<{ Variables: AuthVars }>, projectId: string, input: SupportActInput) {
   const out = await supportAct(
     { userId: c.get('userId'), tokenId: c.get('patTokenId'), projectId },
     input,
+    { rid: c.req.query('rid') },
   );
   if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
   return c.json(out.value as Record<string, unknown>);

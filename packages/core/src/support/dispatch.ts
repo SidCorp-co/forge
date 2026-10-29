@@ -21,8 +21,8 @@ import { findBindingWithConnectionById, forgeReads } from '../integrations/index
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
-import { buildBaseOf } from './build.js';
-import { briefChannel, channelNews, writerRoles } from './channel-read.js';
+import { buildBaseOf, buildKeyOf } from './build.js';
+import { briefChannel, channelNews } from './channel-read.js';
 import {
   claimUndelivered,
   markDelivery,
@@ -37,9 +37,15 @@ import { injectWaiting, settleInjects } from './inject.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
-import { coldThreads, supportBrief, turnMessages } from './prompt.js';
-import { ensureSupportRoom } from './rooms.js';
-import { insertAction, offlineToldSince, type RoomRow, roomById } from './store.js';
+import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
+import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
+import {
+  insertAction,
+  offlineToldSince,
+  type RoomRow,
+  roomById,
+  roomsOfSession,
+} from './store.js';
 import { postInThread } from './thread.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
@@ -106,14 +112,19 @@ export async function roomWithSession(roomId: string): Promise<RoomRow | null> {
   if (!room || room.sessionId) return room;
   const pair = await findBindingWithConnectionById(room.bindingId);
   const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
+  const named = (config?.rids ?? []).includes(room.rid);
   const declared =
     room.kind === 'operations'
-      ? config?.operations && (config.rids ?? []).includes(room.rid)
+      ? config?.operations && named
         ? ({ kind: 'operations', scope: config.operations.scope } as const)
         : null
-      : config?.support
-        ? ({ kind: 'support', support: config.support } as const)
-        : null;
+      : room.kind === 'agent'
+        ? config?.agent && named
+          ? ({ kind: 'agent', agent: config.agent } as const)
+          : null
+        : config?.support
+          ? ({ kind: 'support', support: config.support } as const)
+          : null;
   if (!declared) return room;
   return ensureSupportRoom({
     projectId: room.projectId,
@@ -146,6 +157,7 @@ async function briefOf(room: RoomRow, projectName: string): Promise<string> {
   const api = await activeSupportApi(room.projectId);
   const config = await supportConfigOf(room);
   noteTools(room.id, api?.tools ?? [], config);
+  if (room.kind === 'agent') return agentBriefOf(room, projectName, api?.tools ?? [], config);
   return supportBrief({
     projectName,
     product: config?.product ?? null,
@@ -156,19 +168,58 @@ async function briefOf(room: RoomRow, projectName: string): Promise<string> {
 }
 
 /**
+ * A channel agent's brief (REQ-77): one for every group its session answers, each group's channel
+ * record after it. Every room of the session is noted told, so a grant change re-tells it once.
+ */
+async function agentBriefOf(
+  room: RoomRow,
+  projectName: string,
+  tools: readonly SupportTool[],
+  config: SupportRoomConfig | null,
+): Promise<string> {
+  const rooms = room.sessionId ? await roomsOfSession(room.sessionId) : [room];
+  for (const r of rooms) noteTools(r.id, tools, config);
+  const records = (await Promise.all(rooms.map((r) => briefChannel(r)))).filter(Boolean);
+  return supportBrief({
+    projectName,
+    product: config?.product ?? null,
+    tools,
+    config,
+    channel: records.join('\n\n') || null,
+    opening: agentOpening({
+      projectName,
+      product: config?.product ?? null,
+      channels: rooms.map((r) => r.rid),
+      ownerMode: Boolean(config?.grants?.abilities.includes('owner_mode')),
+    }),
+  });
+}
+
+/**
  * How a support group's session sees the project's checkout (REQ-75 r5 BC-27): a writable copy of
  * the development branch when granted build (and the project names one apart from production's),
  * the checkout read-only when granted read_checkout, and an empty folder otherwise. An operations
- * room keeps the checkout as it was before r5.
+ * room keeps the checkout as it was before r5. A channel agent always reads the checkout (REQ-77
+ * BC-2), or builds in a copy when granted build; in owner mode it is a full session in the checkout
+ * itself, as a master is (BC-21), so no view narrows it.
  */
 export async function checkoutViewOf(room: RoomRow): Promise<CheckoutView | null> {
-  if (room.kind !== 'support') return null;
+  if (room.kind === 'operations') return null;
   const grants = grantsOf(await supportConfigOf(room));
+  if (room.kind === 'agent' && (await ownerModeSession(room))) return null;
   if (grants.abilities.includes('build')) {
     const base = await buildBaseOf(room.projectId);
-    if (base.ok) return { mode: 'build', base: base.value.base, key: room.id };
+    if (base.ok) return { mode: 'build', base: base.value.base, key: buildKeyOf(room) };
   }
-  return grants.abilities.includes('read_checkout') ? { mode: 'read' } : { mode: 'none' };
+  return room.kind === 'agent' || grants.abilities.includes('read_checkout')
+    ? { mode: 'read' }
+    : { mode: 'none' };
+}
+
+/** Whether the room's session was placed in owner mode: its marker, fixed when it was made. */
+async function ownerModeSession(room: RoomRow): Promise<boolean> {
+  const session = room.sessionId ? await sessionRowById(room.sessionId) : null;
+  return agentMarkerOf(session?.metadata)?.ownerMode === true;
 }
 
 /** Whether a turn of this session starts Claude Code cold (no session of its own to resume). */
@@ -191,8 +242,12 @@ export async function handTurn(
   const parts: string[] = [];
   if (startsCold(session, client)) {
     parts.push(await briefOf(room, project.name));
-    const history = await coldThreads(room);
-    if (history) parts.push(history);
+    // a channel agent re-reads every group it answers, each thread naming its channel
+    const rooms = room.kind === 'agent' ? await roomsOfSession(session.id) : [room];
+    for (const r of rooms) {
+      const history = await coldThreads(r);
+      if (history) parts.push(rooms.length > 1 ? `In channel ${r.rid}:\n${history}` : history);
+    }
     if ('messages' in body) parts.push('New messages:');
   } else if ('messages' in body) {
     // a warm session reads the channel record again when it changed since it was told (BC-41)
@@ -261,7 +316,7 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
       session,
       { ...client, deviceId: client.deviceId },
       {
-        messages: turnMessages(rows, await writerRoles(room.projectId, room.rid)),
+        messages: await roomMessages(room, rows),
       },
     );
     await markDelivery(
@@ -320,16 +375,24 @@ export async function drainSupportRooms(): Promise<void> {
   }
 }
 
-/** The bridge a support session's turn end fires: the room's waiting messages go next. */
+/**
+ * The bridge a support session's turn end fires: the room's waiting messages go next. A channel
+ * agent's session answers every group of its binding, so each of them is handed on (REQ-77).
+ */
 export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
   const marker = (row.metadata as Record<string, unknown> | null)?.supportRoom as
     | { roomId?: unknown }
     | undefined;
   if (typeof marker?.roomId !== 'string') return;
-  if (!COMPLETED.has(row.status)) await tellTurnFailed(marker.roomId, row.status);
-  // what the box refused to write into the turn now waits again, and goes with the rest
-  await settleInjects(marker.roomId);
-  await deliverWaiting(marker.roomId);
+  const served = agentMarkerOf(row.metadata)
+    ? (await roomsOfSession(row.id)).map((r) => r.id)
+    : [marker.roomId];
+  for (const roomId of served) {
+    if (!COMPLETED.has(row.status)) await tellTurnFailed(roomId, row.status);
+    // what the box refused to write into the turn now waits again, and goes with the rest
+    await settleInjects(roomId);
+    await deliverWaiting(roomId);
+  }
 }
 
 /** The ends of a turn that finished it; every other end left its messages unanswered. */

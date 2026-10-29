@@ -376,6 +376,7 @@ const BINDING_TARGETS = [
     // one support group its session answers (REQ-75), else refused by name (support-binding.ts)
     support: supportRoomConfigSchema.optional(),
     operations: operationsRoomConfigSchema.optional(), // operations rooms (REQ-75 BC-20)
+    agent: supportRoomConfigSchema.optional(), // the channel agent's groups (REQ-77)
     outsideRids: outsideRidsSchema.optional(), // outside agents' groups: record only (REQ-75 r6)
   }),
   targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),

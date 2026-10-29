@@ -38,7 +38,7 @@ export async function handleSupportMessage(input: {
   const secret = containsSecret(input.m.text);
   const m = secret ? { ...input.m, text: scrubLogText(input.m.text) } : input.m;
   // an operations room runs under the default limits and takes no confirm: it proposes nothing
-  const config: SupportRoomConfig = route.support ?? {};
+  const config: SupportRoomConfig = route.support ?? route.agent ?? {};
   if (input.shape !== 'group') {
     // a support binding names a group; a direct room bound so is refused, never answered as one
     logger.error(
@@ -54,7 +54,9 @@ export async function handleSupportMessage(input: {
     rid: m.rid,
     room: route.operations
       ? { kind: 'operations', scope: route.operations.scope }
-      : { kind: 'support', support: config },
+      : route.agent
+        ? { kind: 'agent', agent: route.agent }
+        : { kind: 'support', support: config },
   });
   const { auth, namespace } = await roomAuth(room);
   const thread = threadOf(m);
@@ -70,7 +72,7 @@ export async function handleSupportMessage(input: {
     return fresh;
   };
 
-  const confirm = room.kind === 'support' ? parseConfirm(input.m.text) : null;
+  const confirm = room.kind !== 'operations' ? parseConfirm(input.m.text) : null;
   if (confirm) {
     await recordAndFlag(m, author, { deliver: false });
     await answerConfirm({

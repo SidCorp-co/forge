@@ -26,13 +26,29 @@ function isScheduleFire(metadata: unknown): boolean {
 }
 
 /**
+ * A project's channel agent placed in owner mode (REQ-77 BC-20, BC-21): the binding granted it a full
+ * session, as the owner's own terminal session is, so it is no chat door. The mode is fixed when the
+ * session is made; a grant that changes it replaces the session (`support/rooms.ts`).
+ */
+function isOwnerModeAgent(metadata: unknown): boolean {
+  const agent = ((metadata ?? {}) as Record<string, unknown>).channelAgent as
+    | { ownerMode?: unknown }
+    | undefined;
+  return agent?.ownerMode === true;
+}
+
+/**
  * Whether a session on a paired box is a chat door: a chat-kind session that is not a schedule
- * fire. Its turn token files no issue, and the box runs it confined, holding that token and none
- * of the box's own — one set, so a session the issue kernel fences is never one whose shell can
- * reach a credential it does not fence.
+ * fire nor a channel agent in owner mode. Its turn token files no issue, and the box runs it
+ * confined, holding that token and none of the box's own — one set, so a session the issue kernel
+ * fences is never one whose shell can reach a credential it does not fence.
  */
 export function isChatDoorSession(session: { kind: string; metadata: unknown }): boolean {
-  return session.kind === 'chat' && !isScheduleFire(session.metadata);
+  return (
+    session.kind === 'chat' &&
+    !isScheduleFire(session.metadata) &&
+    !isOwnerModeAgent(session.metadata)
+  );
 }
 
 /**
@@ -60,4 +76,18 @@ export async function chatDoorOfToken(tokenId: string): Promise<ChatDoor | null>
     .limit(1);
   if (session && !isChatDoorSession(session)) return null;
   return chat;
+}
+
+/**
+ * The box session a `turn:<sessionId>` token was minted for, whether or not that session is a chat
+ * door: what a support room's doors admit its own session by (an owner-mode channel agent is none).
+ */
+export async function boxSessionOfToken(tokenId: string): Promise<string | null> {
+  const [token] = await db
+    .select({ name: personalAccessTokens.name })
+    .from(personalAccessTokens)
+    .where(eq(personalAccessTokens.id, tokenId))
+    .limit(1);
+  const origin = token ? turnTokenOrigin(token.name) : null;
+  return origin?.door === 'box-session' ? origin.sessionId : null;
 }

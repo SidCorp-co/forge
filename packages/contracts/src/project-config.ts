@@ -79,6 +79,8 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_ROOM_NOT_ONE_GROUP",
 	"SUPPORT_ROOM_TWO_KINDS",
 	"SUPPORT_GRANT_TARGET_UNKNOWN",
+	/** `owner_mode` granted on a block other than a channel agent's (REQ-77 BC-20). */
+	"SUPPORT_OWNER_MODE_NOT_AGENT",
 ] as const;
 
 /** Every code a project-config document write answers with. */

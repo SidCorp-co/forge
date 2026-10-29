@@ -9,7 +9,7 @@ import type { ChannelRole, ChannelRoute } from '@forge/contracts/support-channel
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import { moveIssue, proposeBuild, proposeDeploy, runCommand } from './ability-acts.js';
-import { sessionCaller } from './access.js';
+import { type RoomHint, sessionCaller } from './access.js';
 import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
 import { sessionChannelView } from './channel-read.js';
 import { settleLatency } from './delivery.js';
@@ -83,19 +83,24 @@ export type SupportActInput =
     }
   | { action: 'announce'; text: string };
 
+/**
+ * One act of a room's session. `rid` names the group a channel agent acts in where the act names no
+ * thread or message of it (REQ-77); a session answering one group never needs it.
+ */
 export async function supportAct(
   caller: SupportCaller,
   input: SupportActInput,
+  where: { rid?: string | undefined } = {},
 ): Promise<OpsOutcome<unknown>> {
-  const room = await sessionCaller(caller);
+  const room = await sessionCaller(caller, hintOf(input, where.rid));
   const out = isOperation(input)
     ? await operationsAct(room, input)
-    : room.kind === 'support' || SHARED.has(input.action)
+    : room.kind === 'support' || room.kind === 'agent' || SHARED.has(input.action)
       ? await act(room, input)
       : no(
           'SUPPORT_NOT_A_SUPPORT_ROOM',
           '/action',
-          `${input.action} is a support group's act, and this room is an operations room: its acts are ${OPERATION_ACTIONS.join(', ')}, reply and thread`,
+          `${input.action} is a support group's and a channel agent's act, and this room is an operations room: its acts are ${OPERATION_ACTIONS.join(', ')}, reply and thread`,
         );
   // an ungranted ability is told in the thread by core itself, naming who can grant it (BC-28)
   if (!out.ok && 'thread' in input) await tellNotGranted(room, input.thread, input.action, out);
@@ -104,6 +109,26 @@ export async function supportAct(
     await settleLatency(room.id, input.thread, new Date());
   }
   return out;
+}
+
+/** The acts that read the same from any group of a channel agent: its grant and project are shared. */
+const ANY_ROOM = new Set<SupportActInput['action']>(['search', 'tools']);
+
+/** What an act names that places it in one group of a channel agent's (REQ-77). */
+function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
+  const named = input as { thread?: unknown; threads?: unknown; message?: unknown };
+  const thread =
+    typeof named.thread === 'string'
+      ? named.thread
+      : Array.isArray(named.threads) && typeof named.threads[0] === 'string'
+        ? named.threads[0]
+        : undefined;
+  return {
+    rid,
+    thread,
+    message: typeof named.message === 'string' ? named.message : undefined,
+    anyRoom: ANY_ROOM.has(input.action),
+  };
 }
 
 /** The acts that post in the thread they name. */

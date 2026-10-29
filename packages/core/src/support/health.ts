@@ -47,10 +47,11 @@ async function membershipOf(room: RoomRow): Promise<BotMembership> {
 
 /** The capabilities the room's box must declare for its turns to run as its grant says. */
 async function capabilitiesNeeded(room: RoomRow): Promise<string[]> {
-  const need = ['confinedChatNetwork'];
-  if (room.kind !== 'support') return need;
+  if (room.kind === 'operations') return ['confinedChatNetwork'];
   const grants = grantsOf(await supportConfigOf(room));
-  need.push(SUPPORT_BOX_CAPABILITIES.checkout);
+  // a channel agent in owner mode is a full session in the checkout, confined by nothing (REQ-77)
+  const full = room.kind === 'agent' && grants.abilities.includes('owner_mode');
+  const need = full ? [] : ['confinedChatNetwork', SUPPORT_BOX_CAPABILITIES.checkout];
   if (grants.abilities.includes('build')) need.push(SUPPORT_BOX_CAPABILITIES.build);
   if (grants.abilities.includes('run_commands')) need.push(SUPPORT_BOX_CAPABILITIES.commands);
   return need;

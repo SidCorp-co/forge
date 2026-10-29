@@ -40,13 +40,43 @@ export async function roomById(roomId: string): Promise<RoomRow | null> {
   return row ?? null;
 }
 
-export async function roomOfPrincipal(userId: string): Promise<RoomRow | null> {
-  const [row] = await db
+/** Every room a principal answers: one, or every group of a channel agent (REQ-77), oldest first. */
+export async function roomsOfPrincipal(userId: string): Promise<RoomRow[]> {
+  return db
     .select()
     .from(supportRooms)
     .where(eq(supportRooms.principalUserId, userId))
-    .limit(1);
-  return row ?? null;
+    .orderBy(asc(supportRooms.createdAt));
+}
+
+/** Every room a session answers: one, or every group of a channel agent (REQ-77), oldest first. */
+export async function roomsOfSession(sessionId: string): Promise<RoomRow[]> {
+  return db
+    .select()
+    .from(supportRooms)
+    .where(eq(supportRooms.sessionId, sessionId))
+    .orderBy(asc(supportRooms.createdAt));
+}
+
+/** A channel agent binding's rooms, which share one account and one session (REQ-77), oldest first. */
+export async function agentRoomsOfBinding(bindingId: string, exec: Exec = db): Promise<RoomRow[]> {
+  return exec
+    .select()
+    .from(supportRooms)
+    .where(and(eq(supportRooms.bindingId, bindingId), eq(supportRooms.kind, 'agent')))
+    .orderBy(asc(supportRooms.createdAt));
+}
+
+/** Set (or clear) the one session every room of a channel agent binding shares. */
+export async function setRoomsSession(
+  tx: Exec,
+  bindingId: string,
+  sessionId: string | null,
+): Promise<void> {
+  await tx
+    .update(supportRooms)
+    .set({ sessionId })
+    .where(and(eq(supportRooms.bindingId, bindingId), eq(supportRooms.kind, 'agent')));
 }
 
 export async function roomsOfProject(projectId: string): Promise<RoomRow[]> {

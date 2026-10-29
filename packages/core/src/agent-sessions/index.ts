@@ -1,7 +1,7 @@
 export { persistSessionAttachment } from './attachment-service.js';
 export type { CheckoutView } from './chat-checkout.js';
 export { boxLacks } from './chat-device.js';
-export { type ChatDoor, chatDoorOfToken } from './chat-door.js';
+export { boxSessionOfToken, type ChatDoor, chatDoorOfToken } from './chat-door.js';
 export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 export {
   dispatchInteractiveTurn,

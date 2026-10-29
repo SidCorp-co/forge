@@ -7,10 +7,13 @@ type Settled =
 
 /**
  * A binding that carries `support` names exactly one room: one group, one session (REQ-75 BC-10).
- * One that carries `operations` names rooms each answered by a session of its own (BC-20), and never
- * `support` beside it. A binding with neither is the team assistant's and keeps any number of rooms.
- * Whatever it carries, the groups it names in `outsideRids` are answered by an agent outside Forge,
- * so a group named in `rids` too would be answered twice: refused (REQ-75 r6).
+ * One that carries `operations` names rooms each answered by a session of its own (BC-20). One that
+ * carries `agent` names any number of rooms, all answered by the project's one channel agent
+ * (REQ-77 BC-1). A binding carries at most one of the three, so no group is answered twice; one with
+ * none is the team assistant's and keeps any number of rooms. `owner_mode` is granted only to a
+ * channel agent (REQ-77 BC-20). Whatever it carries, the groups it names in `outsideRids` are
+ * answered by an agent outside Forge, so a group named in `rids` too would be answered twice:
+ * refused (REQ-75 r6).
  */
 export async function settleSupportRoom(args: {
   bindingId: string;
@@ -32,15 +35,35 @@ export async function settleSupportRoom(args: {
       })),
     };
   }
-  if (support && operations) {
+  const agent = args.config.agent !== undefined && args.config.agent !== null;
+  const kinds = [support && 'support', operations && 'operations', agent && 'agent'].filter(
+    (k): k is string => Boolean(k),
+  );
+  if (kinds.length > 1) {
     return {
       ok: false,
       refusals: [
         {
           code: 'SUPPORT_ROOM_TWO_KINDS',
-          path: '/operations',
+          path: `/${kinds[1]}`,
+          detail: `a binding's rooms are a support group (\`support\`), operations rooms (\`operations\`) or a channel agent's (\`agent\`), never more than one; this one carries ${kinds.map((k) => `\`${k}\``).join(' and ')}`,
+        },
+      ],
+    };
+  }
+  const ownerMode = (block: unknown) =>
+    ((block as { grants?: { abilities?: string[] } } | null)?.grants?.abilities ?? []).includes(
+      'owner_mode',
+    );
+  if (support && ownerMode(args.config.support)) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'SUPPORT_OWNER_MODE_NOT_AGENT',
+          path: '/support/grants/abilities',
           detail:
-            "a binding's rooms are a support group (`support`) or operations rooms (`operations`), never both; bind each from its own binding",
+            "owner_mode is granted only to a channel agent: move this binding's block from `support` to `agent`, or drop owner_mode",
         },
       ],
     };
@@ -71,8 +94,9 @@ export async function settleSupportRoom(args: {
 export async function verifySupportGrant(
   args: VerifyBindingTargetArgs,
 ): Promise<BindingTargetRefusal[]> {
-  const support = args.config.support as { grants?: { deployTargets?: string[] } } | undefined;
-  const named = support?.grants?.deployTargets ?? [];
+  type Granting = { grants?: { deployTargets?: string[] } } | undefined;
+  const block = args.config.agent ? 'agent' : 'support';
+  const named = (args.config[block] as Granting)?.grants?.deployTargets ?? [];
   if (named.length === 0) return [];
   const bound = new Set(
     (await listActiveDeployBindingsForProvider(args.projectId, 'coolify')).map((p) => p.binding.id),
@@ -83,7 +107,7 @@ export async function verifySupportGrant(
       : [
           {
             code: 'SUPPORT_GRANT_TARGET_UNKNOWN' as const,
-            path: `/support/grants/deployTargets/${i}`,
+            path: `/${block}/grants/deployTargets/${i}`,
             detail: `${id} is not an active deploy binding of this project, so this room could never deploy it; name one of ${[...bound].join(', ') || 'none — bind a deploy target first'}`,
           },
         ],

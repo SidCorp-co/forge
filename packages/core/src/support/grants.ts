@@ -15,11 +15,15 @@ import { holderNames } from '../permissions/index.js';
 import { no, type Outcome } from './outcome.js';
 import type { RoomRow } from './store.js';
 
-/** A room's `support` block as its binding holds it now; null for an operations room or a gone binding. */
+/**
+ * A room's `support` block as its binding holds it now, or a channel agent room's `agent` block (the
+ * same shape, REQ-77); null for an operations room or a gone binding.
+ */
 export async function supportConfigOf(room: RoomRow): Promise<SupportRoomConfig | null> {
-  if (room.kind !== 'support') return null;
+  if (room.kind === 'operations') return null;
   const pair = await findBindingWithConnectionById(room.bindingId);
-  return ((pair?.binding.config ?? null) as RocketChatBindingConfig | null)?.support ?? null;
+  const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
+  return (room.kind === 'agent' ? config?.agent : config?.support) ?? null;
 }
 
 const NO_GRANT: SupportGrants = { abilities: [] };
@@ -81,9 +85,24 @@ export async function abilityRefusal(
   return null;
 }
 
-/** Whether `username` may confirm a change this room's grant waits on (a build, a deploy, a host change). */
-export function isConfirmer(grants: SupportGrants, username: string | null): boolean {
-  if (!username) return false;
-  const name = username.toLowerCase();
+/** Whether the account the chat server signed is the owner a channel agent's owner mode obeys (REQ-77 BC-20). */
+export function isOwner(grants: SupportGrants, userId: string | null | undefined): boolean {
+  return Boolean(
+    userId && grants.abilities.includes('owner_mode') && grants.owner && grants.owner === userId,
+  );
+}
+
+/**
+ * Whether the writer may confirm a change this room's grant waits on (a build, a deploy, a host
+ * change): a confirmer the grant names, by the username the server signed; or, under owner mode,
+ * the owner, by the user id the server signed (REQ-77 BC-21).
+ */
+export function isConfirmer(
+  grants: SupportGrants,
+  writer: { key: string | null; label: string | null },
+): boolean {
+  if (isOwner(grants, writer.key)) return true;
+  if (!writer.label) return false;
+  const name = writer.label.toLowerCase();
   return (grants.confirmers ?? []).some((c) => c.toLowerCase() === name);
 }
