@@ -43,15 +43,14 @@ runs:
       shell: bash
       run: pnpm install --frozen-lockfile
 
-    # Every workspace dep whose export map points at dist/ is built here, in
-    # dependency order. dist/ is gitignored, so a checkout has none of it and a
-    # job running `pnpm --filter <pkg> typecheck` directly (not through turbo,
-    # which would build deps itself) fails TS2307 on the specifier. Adding a
-    # compiled export to a workspace dep means adding it here — @forge/contracts
-    # joined on 2026-09-23 when ./document-patch was repointed at dist.
+    # Every workspace dep whose export map points at dist/ is built here.
+    # dist/ is gitignored, so a checkout has none of it and a job running
+    # `pnpm --filter <pkg> typecheck` directly (not through turbo, which would
+    # build deps itself) fails TS2307 on the specifier. Each filter carries its
+    # `...`, so pnpm builds the package's own workspace deps first, in the order
+    # the manifests declare. Adding a compiled export to a workspace dep means
+    # adding its filter here.
     - name: Prebuild emit-only workspace deps
       if: inputs.prebuild-deps == 'true'
       shell: bash
-      run: |
-        pnpm --filter @forge/observability build
-        pnpm --filter @forge/contracts build
+      run: pnpm --filter "@forge/observability..." --filter "@forge/contracts..." build

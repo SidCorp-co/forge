@@ -1,0 +1,1 @@
+**Core and its shared contracts now build in a declared order.** The contracts package no longer names core as a dependency, so pnpm and turbo build contracts before core without hand-written ordering.
