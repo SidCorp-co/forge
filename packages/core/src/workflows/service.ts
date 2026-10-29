@@ -54,8 +54,34 @@ export interface WorkflowWriter {
 }
 
 export type WorkflowOutcome =
-  | { ok: true; row: StoredWorkflow; document: WorkflowWrite; created: boolean }
+  | {
+      ok: true;
+      row: StoredWorkflow;
+      document: WorkflowWrite;
+      created: boolean;
+      /** Why the `issue` a write named was not used: it proposed no design to draw under it. */
+      issueUnused?: string;
+    }
   | { ok: false; refusals: WorkflowRefusal[] };
+
+/** Why a write naming an issue drew no revision under it; null where it proposed one. */
+function issueUnusedBy(
+  write:
+    | { changed: false; revision: number }
+    | { changed: true; proposes: boolean; draft: boolean },
+  flow: string,
+): string | null {
+  if (!write.changed) {
+    return `the document is unchanged from revision ${write.revision}, so nothing was written and no revision is drawn under the issue; to re-name the issue a waiting revision is drawn under, propose it again with \`issue\`.`;
+  }
+  if (write.proposes) return null;
+  return write.draft
+    ? `workflow ${flow} is a draft, so this write proposes no design and no revision is drawn under the issue; name it when proposing (POST .../design/propose with \`issue\`).`
+    : `this write changes nothing in workflow ${flow}'s design, so it proposes no design and no revision is drawn under the issue.`;
+}
+
+const withIssueUnused = (named: string | undefined, why: string | null) =>
+  named !== undefined && why !== null ? { issueUnused: why } : {};
 
 export function storedWorkflow(row: StoredWorkflow): WorkflowWrite {
   const parsed = readStoredWorkflow(row.document);
@@ -253,7 +279,16 @@ export async function updateWorkflow(input: {
     ];
     if (refusals.length > 0) return { ok: false, refusals };
     if (JSON.stringify(stored) === JSON.stringify(doc)) {
-      return { ok: true, row, document: stored, created: false };
+      return {
+        ok: true,
+        row,
+        document: stored,
+        created: false,
+        ...withIssueUnused(
+          designIssueId,
+          issueUnusedBy({ changed: false, revision: row.revision }, row.flow),
+        ),
+      };
     }
     const fingerprint = designFingerprint(doc, templateFor(doc, facts.templates));
     const design = designStatusAfterWrite(row.designStatus, row.designFingerprint !== fingerprint);
@@ -308,6 +343,17 @@ export async function updateWorkflow(input: {
       row: { ...next, designStatus: design.status },
       document: doc,
       created: false,
+      ...withIssueUnused(
+        designIssueId,
+        issueUnusedBy(
+          {
+            changed: true,
+            proposes: design.proposes,
+            draft: row.designStatus === null || row.designStatus === 'draft',
+          },
+          row.flow,
+        ),
+      ),
     };
   });
 }

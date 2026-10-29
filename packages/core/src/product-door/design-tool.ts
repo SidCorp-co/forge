@@ -50,6 +50,7 @@ import {
   decideDesignAs,
   designStepsOf,
   designSummaryOf,
+  ignoredByWrite,
   listWorkflowsWithHealthAs,
   proposeDesign,
   readBackOf,
@@ -221,18 +222,17 @@ async function design_revise(ctx: McpContext, i: Input) {
   const { workflowId, body } = need(i, 'design_revise', 'workflowId', 'body');
   const read = readBackOf(body, workflowId);
   if (!read.ok) throw new RefusalError(read.refusals, 'WORKFLOW_REFUSED');
+  const outcome = await updateWorkflow({
+    projectId: i.projectId,
+    id: workflowId,
+    writer: actorOf(ctx),
+    baseRevision: read.baseRevision,
+    raw: read.document,
+    issue: read.issue,
+  });
   return {
-    ...writtenWorkflow(
-      await updateWorkflow({
-        projectId: i.projectId,
-        id: workflowId,
-        writer: actorOf(ctx),
-        baseRevision: read.baseRevision,
-        raw: read.document,
-        issue: read.issue,
-      }),
-    ),
-    ignored: read.ignored,
+    ...writtenWorkflow(outcome),
+    ignored: ignoredByWrite(read.ignored, outcome.ok ? outcome.issueUnused : undefined),
   };
 }
 

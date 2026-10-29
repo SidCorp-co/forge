@@ -1,0 +1,1 @@
+**Workflow reads and writes no longer pass silently over what they do not use.** A workflow read refuses a query it does not take, naming where a past revision is read, and a write lists an unused issue under ignored.
