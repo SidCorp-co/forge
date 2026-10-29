@@ -212,6 +212,9 @@ export const CHECKS = [
     axis: 'meta',
     label: 'conformance levels',
     cmd: ['node', 'scripts/conformance-status.mjs'],
+    // run once every other check has exited, reading their exit statuses instead of re-running the
+    // twenty probes they share (scripts/conformance-status.mjs:VERIFY_RESULTS)
+    readsResults: true,
     scanned: /^conformance-status: (\d+) axes measured/m,
     unit: 'axes',
   },
