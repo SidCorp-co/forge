@@ -538,8 +538,8 @@ jobs:
       # BLOCKING since 2026-08-10, when 84 drifted errors were cleared to 0. tsgo
       # since 2026-10-10: the same errors as tsc, about five times faster.
       # `typecheck` is the source (tsconfig.json); `typecheck:test` adds the
-      # tests (tsconfig.test.json). A merge into dev runs the first alone, through
-      # tc-changed; the test files are type-checked here, on main and nightly.
+      # tests (tsconfig.test.json). A merge into dev runs both, through
+      # tc-changed, for the packages it touched and their importers (ISS-754).
       - run: pnpm --filter @forge/core typecheck
       - run: pnpm --filter @forge/core typecheck:test
       - run: pnpm --filter @forge/core build

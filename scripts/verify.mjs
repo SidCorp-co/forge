@@ -52,9 +52,9 @@ const CI_COVERAGE = {
   'pnpm --filter web-v2 typecheck':
     'pnpm typecheck, and tc-changed inside pnpm test:changed / pnpm merge-check',
   'pnpm --filter @forge/core typecheck:test':
-    'pnpm typecheck:test — the core job on main and nightly; no dev merge runs it',
+    'pnpm typecheck:test, and tc-changed inside pnpm test:changed / pnpm merge-check (ISS-754)',
   'pnpm --filter web-v2 typecheck:test':
-    'pnpm typecheck:test — the web job on main and nightly; no dev merge runs it',
+    'pnpm typecheck:test, and tc-changed inside pnpm test:changed / pnpm merge-check (ISS-754)',
   'pnpm --filter web-v2 lint': 'verify',
   'pnpm --filter @forge/contracts test': 'pnpm test',
   'pnpm --filter web-v2 test': 'pnpm test',

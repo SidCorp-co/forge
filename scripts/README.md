@@ -349,10 +349,13 @@ Four contracts:
 
 **The typecheck is not a verify check** (since 2026-10-10). `merge-check` runs `tc-changed` and
 then `verify`, so verify's own `core typecheck` checked core twice on every dev merge. Types are
-`pnpm typecheck` (tsgo, each package's `tsconfig.json`, which is its source alone) and `tc-changed`
-inside `test:changed` and `merge-check`. Test files are `pnpm typecheck:test` (`tsconfig.test.json`),
-which runs in CI's `core` and `web` jobs — on main and nightly, never on a dev merge. The web's
-`vite build` checks no types and runs no lint.
+`tc-changed` inside `test:changed` and `merge-check`: each touched package and each package importing
+one, under its `tsconfig.json` (the source) and its `tsconfig.test.json` where it has one (source and
+tests), so a type error confined to a test file is red before the merge (ISS-754,
+`lib/tc-check.mjs`). Both configs and not the test one alone, because the test config takes in
+test-only global declarations a source file could lean on. `pnpm typecheck` and
+`pnpm typecheck:test` run each config over a whole package, and CI's `core` and `web` jobs run both.
+The web's `vite build` checks no types and runs no lint.
 
 ### One proposition per verdict
 
