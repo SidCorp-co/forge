@@ -1,0 +1,1 @@
+**A GitLab merge through Forge records its merge request pipeline.** The checks read after a merge or refresh include the request's own pipeline, not none. A change request is also readable by number: `GET …/change-requests/:number`.

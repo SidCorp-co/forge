@@ -328,6 +328,7 @@ export async function mergeStoredChangeRequest(
     // here, so a read that fails is reported on the outcome and never undoes it
     const checks = await projectChecksAfterMerge(host, {
       id: row.id,
+      number: row.number,
       headSha: result.head ?? row.headSha,
     });
     await updateDelivery(deliveryId, {

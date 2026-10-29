@@ -18,7 +18,15 @@ export interface MergeRequestBody {
   merged_at?: string | null;
   detailed_merge_status?: string | null;
   merge_status?: string | null;
-  head_pipeline?: { id?: number; status?: string; sha?: string } | null;
+  head_pipeline?: {
+    id?: number;
+    name?: string | null;
+    status?: string;
+    sha?: string;
+    web_url?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  } | null;
   web_url?: string;
   title?: string;
   description?: string | null;
