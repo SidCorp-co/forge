@@ -339,7 +339,9 @@ describe('the refusal says which step waits, what relaxes it first, in few words
     ok(await step(issue, 'design'));
     const said = details(await step(issue, 'build'));
     const relaxes = said.slice(said.indexOf('Gate plan_approval'));
-    expect(relaxes).toMatch(/changing plan\.approval\.required, or gates\.overrides\.plan_approval, relaxes it\.$/);
+    expect(relaxes).toMatch(
+      /changing plan\.approval\.required, or gates\.overrides\.plan_approval, relaxes it\.$/,
+    );
   });
 });
 
