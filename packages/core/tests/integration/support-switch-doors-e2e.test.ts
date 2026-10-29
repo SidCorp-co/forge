@@ -13,6 +13,14 @@ import { fakeCoolify, seedDeployBinding, seedProjectDocument } from '../helpers/
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
 
+/**
+ * @direct-test-of packages/core/src/support/switches.ts
+ * @direct-test-of packages/core/src/support/switch-outside.ts
+ * @direct-test-of packages/core/src/support/switch-view.ts
+ * @direct-test-of packages/core/src/support/project-read.ts
+ * @direct-test-of packages/core/src/support/channel-routes.ts
+ */
+
 // ISS-775 (REQ-77 BC-16, BC-17, BC-22): OrbitInternal's switch checklist on the harness.
 // - Four of Orbit Babo's duties named a box file, a key or a production host, which the confined
 //   agent cannot see. Each now passes on a Forge door the agent holds: tell-orbit-master on

@@ -17,6 +17,11 @@ import { seedProjectDocument } from '../helpers/release-world.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SUPPORT_BOX_CAPS, SupportWorld, type Turn } from '../helpers/support-world.js';
 
+/**
+ * @direct-test-of packages/core/src/support/switches.ts
+ * @direct-test-of packages/core/src/support/switch-view.ts
+ */
+
 // REQ-77 r1 part 3 (ISS-765): scheduled checks and the switch-over, and forge-core-61's switch gate.
 // - BC-13: a check the binding names fires once a day as a message to the agent, which answers it
 //   with one finding core posts in the group, or none, and nothing is posted.
