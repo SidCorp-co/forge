@@ -344,24 +344,31 @@ describe('the build a verdict defaults to on a project judged on dev', () => {
     coolify.applications.clear();
   });
 
-  it('is the commit dev serves where it holds the recorded landing, judged there', async () => {
+  // ISS-774: a read asks no host and no box whether a commit holds the work; dev serving the landing
+  // itself, or a release Forge verified carrying it, is what Forge knows
+  it('is the commit dev serves where it is the recorded landing, judged there', async () => {
     const { issue } = await landedOnCommitVerdicts();
-    coolify.deployed(APP.resourceUuid, 'dep-1', LATER, '2026-10-27T07:00:00Z');
+    coolify.deployed(APP.resourceUuid, 'dep-1', F4, '2026-10-27T07:00:00Z');
 
     const build = await ok(api(world.token, 'GET', `/api/issues/${issue}/judged-build`));
 
-    expect(build).toMatchObject({ sha: LATER, source: 'judged-on', version: null });
+    expect(build).toMatchObject({ sha: F4, source: 'judged-on', version: null });
     expect(String(build.basis)).toContain('`dev` serves');
     expect(String(build.basis)).not.toContain('declares no production environment');
   });
 
-  it('stays the landing, saying why, where dev serves a commit that does not hold it', async () => {
+  it('stays the landing, saying why, where dev serves a commit no release Forge verified carries', async () => {
     const { issue } = await landedOnCommitVerdicts();
-    coolify.deployed(APP.resourceUuid, 'dep-1', ASIDE, '2026-10-27T07:00:00Z');
+    for (const served of [ASIDE, LATER]) {
+      coolify.applications.clear();
+      coolify.deployed(APP.resourceUuid, `dep-${served}`, served, '2026-10-27T07:00:00Z');
 
-    const build = await ok(api(world.token, 'GET', `/api/issues/${issue}/judged-build`));
+      const build = await ok(api(world.token, 'GET', `/api/issues/${issue}/judged-build`));
 
-    expect(build).toMatchObject({ sha: F4, source: 'landed' });
-    expect(String(build.basis)).toContain(`\`dev\` serves \`${ASIDE}\`, which does not hold it`);
+      expect(build).toMatchObject({ sha: F4, source: 'landed' });
+      expect(String(build.basis)).toContain(
+        `\`dev\` serves \`${served}\`, and no release Forge verified there holds this issue`,
+      );
+    }
   });
 });

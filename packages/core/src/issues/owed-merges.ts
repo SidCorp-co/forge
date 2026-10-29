@@ -12,14 +12,16 @@
  *   answered by an issue whose mark names that commit.
  */
 
-import { type SQL, sql } from 'drizzle-orm';
+import { eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import type { TransitionActor } from './actor-agency.js';
 import { issueGateOf } from './gates.js';
 import { targetBranchSql } from './host-landing.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { MARK_RECORD, UNMARK_RECORD } from './mark-trail.js';
-import { readLandingBranches } from './ports.js';
+import { readLandingBranches, settleChangeRequestRelease } from './ports.js';
 
 /** The merged change request an issue's mark is owed for. */
 export interface OwedMark {
@@ -136,4 +138,18 @@ export async function owedMarks(projectId: string): Promise<OwedMarkRow[]> {
     issueId: r.id,
     key: formatIssueRef(prefix, Number(r.iss_seq)),
   }));
+}
+
+/**
+ * After an agent's mark on `issueId`: the change-request release claiming it closes where its last
+ * request merged and every mark it waits on is in. The mark is one of the two writes that may close
+ * it, Forge's own merge route the other; the host's report of a merge is neither.
+ */
+export async function settleReleaseOnMark(issueId: string, actor: TransitionActor): Promise<void> {
+  const [row] = await db
+    .select({ runId: issues.releaseBatchRunId })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (row?.runId) await settleChangeRequestRelease(row.runId, actor);
 }

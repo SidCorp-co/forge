@@ -34,7 +34,7 @@ export const SAID = {
 	},
 	"standing.gate.title.promotionMissing": { en: "Promotion missing" },
 	"standing.gate.shippedInOwed": {
-		en: "{subject} {verb} a merge marked after a shipped release was cut; it may already be out.",
+		en: "{subject} {verb} marked after a shipped release was cut.",
 		vars: { subject: "said", verb: "agreement" },
 	},
 	"standing.gate.title.shippedInOwed": { en: "Shipped-in owed" },
@@ -412,7 +412,7 @@ export const SAID = {
 	"issues.rule.personPaused": { en: "a person paused it; a person resumes it" },
 	"issues.rule.queued": { en: "a job is queued; no run session holds it yet" },
 	"issues.rule.markOwed": {
-		en: "change request !{n} merged at {sha} and no merged mark records it; Forge does not write one from the host's report",
+		en: "change request !{n} merged at {sha}; no merged mark records it",
 		vars: { n: "count", sha: "code" },
 	},
 	"issues.rule.releaseHeld": {
@@ -437,7 +437,7 @@ export const SAID = {
 	"issues.releaseHold.act.releaseProbesUnreadable": { en: "fix the live probes" },
 	"issues.releaseHold.cause.releaseQueuedBehind": { en: "It is queued for a later automatic release" },
 	"issues.releaseHold.cause.releaseShippedInOwed": {
-		en: "It was marked merged after a release was cut that may already hold it",
+		en: "Marked merged after a release that may hold it was cut",
 	},
 	"issues.releaseHold.act.releaseShippedInOwed": {
 		en: "check with git which release holds its landing, and record it",

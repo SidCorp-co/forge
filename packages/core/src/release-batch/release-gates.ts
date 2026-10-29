@@ -182,7 +182,7 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
   RELEASE_SHIPPED_IN_OWED: {
     title: 'standing.gate.title.shippedInOwed',
-    plain: (d) => withSubject('standing.gate.shippedInOwed', d, ['has', 'have']),
+    plain: (d) => withSubject('standing.gate.shippedInOwed', d, ['was', 'were']),
   },
   RELEASE_PROBES_UNREADABLE: {
     title: 'standing.gate.title.unprovable',

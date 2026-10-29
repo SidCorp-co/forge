@@ -24,11 +24,8 @@ import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
 import { RECORD_REVIEW_SHAPE, recordReviewRequestSchema } from '@forge/contracts/issue-review';
 import { changedPathsSchema, landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
 import { MERGE_CHECK_SHAPE, mergeCheckReportSchema } from '@forge/contracts/merge-check';
-import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -37,7 +34,7 @@ import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
-import { settleChangeRequestRelease } from './ports.js';
+import { settleReleaseOnMark } from './owed-merges.js';
 import { issueReviewOf, recordReview } from './review.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
@@ -102,18 +99,7 @@ async function runMergeMarker(
   // ISS-774: the agent's mark is one of the two writes that may close a change-request release whose
   // last request merged on the host, Forge's own merge route being the other; the host's report is not
   if (op === 'mark') {
-    const [row] = await db
-      .select({ runId: issues.releaseBatchRunId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
-    if (row?.runId) {
-      await settleChangeRequestRelease(row.runId, {
-        type: actor.type,
-        id: actor.id,
-        agency: actor.agency,
-      });
-    }
+    await settleReleaseOnMark(issueId, { type: actor.type, id: actor.id, agency: actor.agency });
   }
   // ISS-1126 — `mark` and `detail` say which kind of record this call left. Without them a
   // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
