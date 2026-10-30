@@ -20,10 +20,28 @@ describe("the issue rail's Requirement property", () => {
   it("unlinks the requirement the issue delivers", async () => {
     const calls = fakeCore(() => ({ body: { key: "REQ-5", issues: [] } }));
     const user = userEvent.setup();
-    renderWithQuery(<IssueRequirementProperty projectId="p1" slug="hop" issueKey="ISS-136" current="REQ-5" disabled={false} />);
+    renderWithQuery(<IssueRequirementProperty projectId="p1" slug="hop" issue={{ id: "i-136", displayId: "ISS-136" }} current="REQ-5" disabled={false} />);
     expect(screen.getByRole("link", { name: "REQ-5" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-5");
     await user.click(screen.getByTestId("issue-requirement-unlink"));
     await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/projects/p1/requirements/REQ-5/issues/ISS-136", body: undefined }));
+  });
+
+  it("names a sibling project's requirement with its project, and unlinks it there by the issue's uuid", async () => {
+    const calls = fakeCore(() => ({ body: { key: "REQ-14", issues: [] } }));
+    const user = userEvent.setup();
+    renderWithQuery(
+      <IssueRequirementProperty
+        projectId="fe"
+        slug="adminhub-fe"
+        issue={{ id: "i-114", displayId: "ISS-114" }}
+        current="REQ-14"
+        requirementProject={{ id: "api", slug: "adminhub-api", name: "adminhub-api" }}
+        disabled={false}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "adminhub-api/REQ-14" })).toHaveAttribute("href", "/projects/adminhub-api/requirements/REQ-14");
+    await user.click(screen.getByTestId("issue-requirement-unlink"));
+    await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/projects/api/requirements/REQ-14/issues/i-114", body: undefined }));
   });
 
   it("offers only agreed requirements to link, and names a refusal", async () => {
@@ -43,7 +61,7 @@ describe("the issue rail's Requirement property", () => {
       return undefined;
     });
     const user = userEvent.setup();
-    renderWithQuery(<IssueRequirementProperty projectId="p1" slug="hop" issueKey="ISS-136" current={null} disabled={false} />);
+    renderWithQuery(<IssueRequirementProperty projectId="p1" slug="hop" issue={{ id: "i-136", displayId: "ISS-136" }} current={null} disabled={false} />);
     await user.click(await screen.findByRole("combobox", { name: "Link to a requirement…" }));
     expect(screen.queryByRole("option", { name: /REQ-6/ })).toBeNull();
     await user.click(await screen.findByRole("option", { name: /REQ-5/ }));
@@ -59,7 +77,7 @@ describe("the issue rail's Requirement property", () => {
         : undefined,
     );
     const user = userEvent.setup();
-    renderWithQuery(<IssueRequirementProperty projectId="p1" slug="hop" issueKey="ISS-136" current={null} disabled={false} />);
+    renderWithQuery(<IssueRequirementProperty projectId="p1" slug="hop" issue={{ id: "i-136", displayId: "ISS-136" }} current={null} disabled={false} />);
     await user.click(await screen.findByRole("combobox", { name: "Link to a requirement…" }));
     await user.click(await screen.findByRole("option", { name: /REQ-5/ }));
     const ask = await screen.findByRole("alertdialog");

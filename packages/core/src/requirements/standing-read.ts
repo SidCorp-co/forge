@@ -17,7 +17,7 @@ import { changedSincePlan } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import type { issues } from '../db/schema.js';
 import {
   type RequirementStatus,
   type RevisionState,
@@ -29,7 +29,6 @@ import {
 import { runners } from '../db/schema-runners.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { masterServingOf } from '../masters/index.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
@@ -38,6 +37,7 @@ import { type CriterionClip, clipOf } from './criterion-clip.js';
 import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { followReadsOf } from './follow-reads.js';
+import { type IssueNaming, issueNamingOf, linkedIssuesOf, namedIssue } from './issue-projects.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
@@ -79,6 +79,7 @@ export interface StandingPreload {
     typeof issues.$inferSelect,
     | 'requirementId'
     | 'id'
+    | 'projectId'
     | 'issSeq'
     | 'title'
     | 'status'
@@ -225,6 +226,7 @@ async function workFactsOf(
 
 type LinkedIssue = {
   id: string;
+  projectId: string;
   issSeq: number;
   title: string;
   status: string;
@@ -238,7 +240,7 @@ function standingIssueOf(
   i: LinkedIssue,
   currentRevision: number | null,
   f: {
-    prefix: string | null;
+    naming: IssueNaming;
     releaseApproval: boolean;
     times: Awaited<ReturnType<typeof issueTimesOf>>;
     changedTraced: Map<string, { code: string; revision: number }[]>;
@@ -248,7 +250,7 @@ function standingIssueOf(
   const own = f.issueWaits.get(i.id)?.standing;
   return {
     id: i.id,
-    displayId: formatIssueRef(f.prefix, i.issSeq),
+    ...namedIssue(f.naming, i),
     title: i.title,
     status: i.status,
     tone: issueStatusToneOn(i.status as IssueStatus, f.releaseApproval),
@@ -348,21 +350,7 @@ export async function standingsOf(
         })
         .from(requirementCriteria)
         .where(inArray(requirementCriteria.requirementId, ids)),
-    held?.linked ??
-      db
-        .select({
-          requirementId: issues.requirementId,
-          id: issues.id,
-          issSeq: issues.issSeq,
-          title: issues.title,
-          status: issues.status,
-          updatedAt: issues.updatedAt,
-          plan: issues.plan,
-          plannedRevision: issues.plannedRevision,
-        })
-        .from(issues)
-        .where(inArray(issues.requirementId, ids))
-        .orderBy(issues.issSeq),
+    held?.linked ?? linkedIssuesOf(ids),
     proposedSuggestionsOf(ids),
     held ? held.prefix : activeIssuePrefix(projectId),
     latestPinsOf(ids),
@@ -386,8 +374,8 @@ export async function standingsOf(
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
-  const [people, issueCriteria, feedbackLinks, times, changedTraced, work, own] = await Promise.all(
-    [
+  const [people, issueCriteria, feedbackLinks, times, changedTraced, work, own, naming] =
+    await Promise.all([
       peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
       issueCriteriaOf(linkedIds, db, known.asReturned),
       feedbackLinksOf(projectId, ids),
@@ -395,8 +383,8 @@ export async function standingsOf(
       changedTracedOf(db, linkedIds),
       workFactsOf(projectId, rows, linked, viewer, now),
       requirementVerdictsIn(projectId, ids),
-    ],
-  );
+      issueNamingOf(projectId, prefix, linked),
+    ]);
   const { issueWaits, release } = work;
   const liveBuild = await liveBuildOf(projectId, issueCriteria, own);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
@@ -404,7 +392,7 @@ export async function standingsOf(
   for (const row of rows) {
     const mine = by(linked, row.id).map((i) =>
       standingIssueOf(i, row.currentRevision, {
-        prefix,
+        naming,
         releaseApproval: gates.releaseApproval,
         times,
         changedTraced,

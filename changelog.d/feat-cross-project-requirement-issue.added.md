@@ -1,0 +1,1 @@
+**A requirement is delivered by a sibling project's issue in its organization.** Link it by uuid with write on the requirement and read on the issue; it reads as `<project>/<key>`, counts on its own build, and gates issue-ready.

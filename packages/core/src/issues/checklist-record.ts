@@ -17,6 +17,8 @@ const DELIVERABLE: readonly string[] = AGREED_STATUSES;
 
 export interface Planned {
   key: string | null;
+  /** The requirement's project slug, where it is another project's than the issue's; absent or null where its own. */
+  project?: string | null;
   status: string | null;
   /** The revision the issue's plan was written against; null where no plan names one. */
   plannedRevision: number | null;
@@ -33,11 +35,14 @@ export const plannedAgainst = (p: Planned): number | null => p.plannedRevision ?
 
 async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
   const rows = (await exec.execute(sql`
-    SELECT r.req_seq, r.status, i.planned_revision, r.current_revision
+    SELECT r.req_seq, r.status, i.planned_revision, r.current_revision,
+           CASE WHEN r.project_id <> i.project_id THEN p.slug END AS project
       FROM issues i LEFT JOIN requirements r ON r.id = i.requirement_id
+      LEFT JOIN projects p ON p.id = r.project_id
      WHERE i.id = ${issueId}
   `)) as unknown as Array<{
     req_seq: number | null;
+    project: string | null;
     status: string | null;
     planned_revision: number | null;
     current_revision: number | null;
@@ -46,6 +51,7 @@ async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
   if (!row) throw new Error(`issue checklist: issue ${issueId} has no row to read`);
   return {
     key: row.req_seq === null ? null : requirementKey(row.req_seq),
+    project: row.project,
     status: row.status,
     plannedRevision: row.planned_revision,
     currentRevision: row.current_revision,
@@ -62,21 +68,23 @@ export function requirementAnswer(p: Planned): RecordAnswer {
       fix: 'Link it to the agreed requirement it delivers.',
     };
   }
+  // a sibling project's requirement is named with its project, so it is not read as this project's own
+  const key = p.project ? `${p.project}/${p.key}` : p.key;
   if (!DELIVERABLE.includes(p.status ?? '')) {
     return {
-      gap: `It is linked to ${p.key}, which is ${p.status}, and an issue can deliver only an agreed or accepted requirement.`,
-      fix: `Wait until ${p.key} is agreed, or link the issue to the agreed requirement it delivers instead.`,
+      gap: `It is linked to ${key}, which is ${p.status}, and an issue can deliver only an agreed or accepted requirement.`,
+      fix: `Wait until ${key} is agreed, or link the issue to the agreed requirement it delivers instead.`,
     };
   }
-  if (p.plannedRevision !== null) return { value: `${p.key} at revision ${p.plannedRevision}` };
+  if (p.plannedRevision !== null) return { value: `${key} at revision ${p.plannedRevision}` };
   if (p.currentRevision === null) {
     return {
-      gap: `It is linked to ${p.key}, which has no current revision yet.`,
-      fix: `A person accepts a revision of ${p.key} first.`,
+      gap: `It is linked to ${key}, which has no current revision yet.`,
+      fix: `A person accepts a revision of ${key} first.`,
     };
   }
   return {
-    value: `${p.key} at revision ${p.currentRevision}, its current one, which the run's plan is written against`,
+    value: `${key} at revision ${p.currentRevision}, its current one, which the run's plan is written against`,
   };
 }
 

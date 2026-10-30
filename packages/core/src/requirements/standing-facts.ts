@@ -9,7 +9,7 @@ import type { CoverageFile, RequirementAcceptanceDecision } from '@forge/contrac
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { issueAttachments } from '../db/schema.js';
+import { issueAttachments, issues } from '../db/schema.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
 import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
 import { waivedOf } from './acceptance-waived.js';
@@ -211,9 +211,53 @@ export async function issueCriteriaOf(
 /**
  * What the live build holds of the commits `rows`' judgements name, directly or through the runtime
  * that served them, and of the commits the verdicts recorded at the requirement itself name
- * (`own`, ISS-588); null where none names either.
+ * (`own`, ISS-588); null where none names either. The rows of another project's issue are read on
+ * that project's own build and carried under `foreign` (`standing-identity.ts:holdsFor`): its
+ * commits are never in the requirement project's build, so reading them there would say none counts.
  */
 export async function liveBuildOf(
+  projectId: string,
+  rows: readonly StandingIssueCriterion[],
+  own: readonly Pick<StandingRequirementVerdict, 'commit'>[] = [],
+): Promise<LiveBuildHolds | null> {
+  const owners = await issueProjectsOf(rows.map((r) => r.issueId));
+  const theirs = new Map<string, StandingIssueCriterion[]>();
+  const mine: StandingIssueCriterion[] = [];
+  for (const r of rows) {
+    const at = owners.get(r.issueId) ?? projectId;
+    if (at === projectId) mine.push(r);
+    else theirs.set(at, [...(theirs.get(at) ?? []), r]);
+  }
+  const holds = await projectBuildOf(projectId, mine, own);
+  if (theirs.size === 0) return holds;
+  const foreign = new Map<string, LiveBuildHolds | null>();
+  for (const [other, those] of theirs) {
+    const build = await projectBuildOf(other, those);
+    for (const r of those) foreign.set(r.issueId.toLowerCase(), build);
+  }
+  return { ...(holds ?? NOTHING_ASKED), foreign };
+}
+
+/** A build nothing was asked of: what carries another project's holds where this one's read none. */
+const NOTHING_ASKED: LiveBuildHolds = {
+  sha: null,
+  holds: new Map(),
+  runtimes: new Map(),
+  unanswered: new Map(),
+};
+
+/** The project of each issue named. */
+async function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(issueIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: issues.id, projectId: issues.projectId })
+    .from(issues)
+    .where(inArray(issues.id, ids));
+  return new Map(rows.map((r) => [r.id, r.projectId]));
+}
+
+async function projectBuildOf(
   projectId: string,
   rows: readonly StandingIssueCriterion[],
   own: readonly Pick<StandingRequirementVerdict, 'commit'>[] = [],

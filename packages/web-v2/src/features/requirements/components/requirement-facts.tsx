@@ -9,7 +9,7 @@ import { Link } from "@/lib/navigation/router";
 import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";
-import { issueHref } from "@/lib/routes/issues";
+import { issueHref, linkedIssueHref } from "@/lib/routes/issues";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
@@ -273,7 +273,7 @@ export function RequirementProperties({
           <ul className="grid gap-1">
             {d.issues.map((i) => (
               <li key={i.issueId} className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-issue">
-                <Link href={issueHref(slug, i.displayId)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
+                <Link href={linkedIssueHref(slug, i)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
                   {i.displayId}
                 </Link>
                 <span className="min-w-0 flex-1 truncate" title={i.changedSincePlan ? t("requirements.facts.plannedOn", { title: i.title, r: i.plannedRevision ?? "—" }) : i.title}>

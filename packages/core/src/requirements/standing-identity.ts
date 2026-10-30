@@ -55,6 +55,18 @@ export interface LiveBuildHolds {
    * and of its issues (`recorded-landings.ts:recordedLandingsOf`); absent where none was read.
    */
   recordedLandings?: RecordedLandings;
+  /**
+   * Per issue id (lower case) of another project delivering the requirement, what that project's own
+   * build holds of its verdicts: a sibling project ships on its own build, so its issue's verdicts are
+   * weighed there and never on the requirement project's (`holdsFor`). Null where nothing was asked.
+   */
+  foreign?: ReadonlyMap<string, LiveBuildHolds | null>;
+}
+
+/** The build an issue's verdicts are weighed on: its own project's where it is another project's issue. */
+export function holdsFor(live: LiveBuildHolds | null, issueId: string): LiveBuildHolds | null {
+  const key = issueId.toLowerCase();
+  return live?.foreign?.has(key) ? (live.foreign.get(key) ?? null) : live;
 }
 
 /** A landing Forge recorded: the issue whose merge mark names it, its commit, time and target branch. */

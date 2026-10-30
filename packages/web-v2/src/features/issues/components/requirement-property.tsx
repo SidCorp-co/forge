@@ -2,7 +2,8 @@
 // The issue rail's Requirement property: the requirement the issue delivers, which a person links
 // or unlinks there. An issue serves one requirement, so a linked one is unlinked before another is
 // picked; picking one asks before it links, since a link changes what the issue is read against.
-// Core refuses a requirement not agreed yet, or one the issue cannot join, by name.
+// Core refuses a requirement not agreed yet, or one the issue cannot join, by name. A sibling
+// project's requirement is named, linked to and unlinked on that project, by the issue's uuid.
 
 import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
@@ -10,32 +11,37 @@ import { Button, ConfirmDialog, Select } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
+import type { OtherProject } from "@forge/contracts/requirements";
 import { useIssueRequirementLink, useLinkableRequirements } from "../requirement-link";
 
 export function IssueRequirementProperty({
   projectId,
   slug,
-  issueKey,
+  issue,
   current,
+  requirementProject = null,
   disabled,
 }: {
   projectId: string;
   slug: string;
-  issueKey: string;
+  issue: { id: string; displayId: string };
   /** The requirement it delivers, by key; null while it delivers none. */
   current: string | null;
+  /** The requirement's project, where it is a sibling project's rather than the issue's own. */
+  requirementProject?: OtherProject | null;
   disabled: boolean;
 }) {
   const t = useCopy();
+  const issueKey = issue.displayId;
   const list = useLinkableRequirements(current || disabled ? undefined : projectId);
-  const act = useIssueRequirementLink(projectId, issueKey);
+  const act = useIssueRequirementLink(requirementProject?.id ?? projectId, requirementProject ? issue.id : issueKey);
   const [asking, setAsking] = useState<{ key: string; title: string } | null>(null);
   if (current) {
     return (
       <div className="grid justify-items-end gap-1" data-testid="issue-requirement">
         <span className="flex items-center gap-2">
-          <Link href={requirementHref(slug, current)} className="font-mono text-12 font-semibold text-link hover:underline">
-            {current}
+          <Link href={requirementHref(requirementProject?.slug ?? slug, current)} className="font-mono text-12 font-semibold text-link hover:underline">
+            {requirementProject ? `${requirementProject.slug}/${current}` : current}
           </Link>
           {disabled ? null : (
             <Button variant="ghost" size="sm" disabled={act.isPending} onClick={() => act.mutate({ req: current, unlink: true })} data-testid="issue-requirement-unlink">

@@ -101,7 +101,7 @@ export function IssuePageMain(props: {
             <div className="border-b border-line-subtle py-4">
               <IssueCriteria
                 issue={issue}
-                projectId={projectId}
+                projectId={standingQ.data?.standing.requirement?.project?.id ?? projectId}
                 checklist={props.checklist}
                 canWrite={canWrite}
                 requirementKey={standingQ.data?.standing.requirement?.key ?? null}

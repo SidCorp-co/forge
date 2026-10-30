@@ -1,6 +1,7 @@
 import type { IssueMove, IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type { ReleaseHoldView } from "./releases.js";
+import type { OtherProject } from "./requirements.js";
 import type { Said } from "./said.js";
 import type {
 	Standing,
@@ -94,6 +95,8 @@ export interface IssueCriteriaTally {
 
 export interface IssueRequirementRef {
 	key: string;
+	/** The project the requirement is, where it is not the issue's own (a sibling project of its organization). */
+	project: OtherProject | null;
 	title: string;
 	/** The business criteria the issue's criteria trace to at their current wording, e.g. ["BC-3"]. */
 	criteria: string[];

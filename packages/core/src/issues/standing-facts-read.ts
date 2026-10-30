@@ -1,6 +1,7 @@
 // The per-issue facts the standing read joins in: criteria tallies, requirement, module and feedback.
 
 import { modulePaths } from '@forge/contracts/modules';
+import type { OtherProject } from '@forge/contracts/requirements';
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -82,17 +83,31 @@ export interface RequirementRaw {
   req_seq: number;
   title: string;
   current_revision: number | null;
+  /** Its project, where it is not the issues' own (a sibling project's requirement they deliver). */
+  project: OtherProject | null;
 }
 
-export async function requirementsOf(ids: readonly string[]): Promise<Map<string, RequirementRaw>> {
+/** The requirements named, each with its project where that is not `projectId`, the issues' own. */
+export async function requirementsOf(
+  ids: readonly string[],
+  projectId: string,
+): Promise<Map<string, RequirementRaw>> {
   if (ids.length === 0) return new Map();
-  const rows = rowsOf<RequirementRaw>(
+  const rows = rowsOf<
+    Omit<RequirementRaw, 'project'> & { project_id: string; slug: string; name: string }
+  >(
     await db.execute(
-      sql`SELECT r.id, r.req_seq, r.title, r.current_revision
-            FROM requirements r WHERE r.id IN (${idList(ids)})`,
+      sql`SELECT r.id, r.req_seq, r.title, r.current_revision, r.project_id, p.slug, p.name
+            FROM requirements r JOIN projects p ON p.id = r.project_id
+           WHERE r.id IN (${idList(ids)})`,
     ),
   );
-  return new Map(rows.map((r) => [r.id, r]));
+  return new Map(
+    rows.map(({ project_id, slug, name, ...r }) => [
+      r.id,
+      { ...r, project: project_id === projectId ? null : { id: project_id, slug, name } },
+    ]),
+  );
 }
 
 interface ModuleRaw {

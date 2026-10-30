@@ -260,6 +260,7 @@ function requirementRef(
   if (!req) return null;
   return {
     key: `REQ-${req.req_seq}`,
+    project: req.project,
     title: req.title,
     ...tracedCodesOf(mine),
     plannedRevision: r.planned_revision,
@@ -372,7 +373,10 @@ async function standingRows(
     releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
   const [requirements, people, changedTraced] = await Promise.all([
-    requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
+    requirementsOf(
+      [...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))],
+      projectId,
+    ),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
     changedTracedOf(db, ids),
   ]);

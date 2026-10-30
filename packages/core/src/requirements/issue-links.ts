@@ -6,7 +6,7 @@
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import { issues, projects } from '../db/schema.js';
 import {
   type RequirementStatus,
   requirementCriterionSteps,
@@ -16,23 +16,54 @@ import {
 import { projectWorkflows } from '../db/schema-workflows.js';
 import {
   adoptIssuePlan,
+  findIssueById,
+  isUuid,
   linkIssueToRequirement,
   resolveIssueRouteRef,
   unlinkIssueFromRequirement,
 } from '../issues/index.js';
+import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import {
+  actorFor,
+  permissionFactsOf,
+  permissionRefusal,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
 import { gateOf } from '../project-config/index.js';
+import { projectsOf, requirementNamed } from './issue-projects.js';
 import { planDriftOf } from './plan-drift.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { designWithdrawnRefusal, linkIssueRefusal, refuseRequirement } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
+/**
+ * The issue a link names: by key, an issue of the requirement's own project; by uuid, an issue of
+ * any project of the same organization, a sibling project's issue delivering it. Who may link
+ * holds `project.write` on the requirement's project (asked before this) and `project.read` on the
+ * issue's: one rule for a person and for an agent, whose credential must reach both projects. An
+ * issue of another organization, and one of a project the caller cannot read, are refused by name.
+ */
 async function issueIn(projectId: string, ref: string, userId: string) {
-  const issue = await resolveIssueRouteRef(ref, projectId, userId);
-  if (issue.projectId !== projectId) {
-    throw notFound(`issue ${ref} is not an issue of project ${projectId}`);
+  if (!isUuid(ref)) return resolveIssueRouteRef(ref, projectId, userId);
+  const issue = await findIssueById(ref);
+  if (!issue) throw notFound(`no issue ${ref}`);
+  if (issue.projectId === projectId) return issue;
+  const [here, there] = await projectsOf([projectId, issue.projectId]);
+  if (!here || !there || here.orgId !== there.orgId) {
+    throw refuseRequirement(
+      'REQUIREMENT_ISSUE_OTHER_ORG',
+      `issue ${ref} is an issue of another organization's project; a requirement is delivered only by issues of its own organization's projects, so link one of those.`,
+      '/issue',
+    );
   }
+  const refusal = permissionRefusal(
+    await permissionFactsOf(userId, issue.projectId),
+    'project.read',
+    `Linking an issue of ${there.slug} to a requirement of ${here.slug}`,
+  );
+  if (refusal) throw new RefusalError([refusal], refusal.code);
   return issue;
 }
 
@@ -87,12 +118,13 @@ export async function linkIssue(input: {
       return null;
     }
     if (held?.requirementId) {
-      const elsewhere = await rowIn(tx, projectId, held.requirementId);
+      const elsewhere = await requirementNamed(tx, held.requirementId);
+      const own = elsewhere.projectId === projectId;
       return [
         {
           code: 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE',
           path: '/issue',
-          detail: `${input.issue} already delivers ${requirementKey(elsewhere.reqSeq)}; an issue serves one requirement, so unlink it there first: DELETE /api/projects/:id/requirements/${requirementKey(elsewhere.reqSeq)}/issues/${input.issue}.`,
+          detail: `${input.issue} already delivers ${own ? '' : `${elsewhere.slug}/`}${elsewhere.key}; an issue serves one requirement, so unlink it there first: DELETE /api/projects/${own ? ':id' : elsewhere.projectId}/requirements/${elsewhere.key}/issues/${input.issue}.`,
         },
       ];
     }
@@ -217,10 +249,15 @@ export async function unlinkWorkflow(input: {
   return answer(projectId, row.id, actor, null);
 }
 
+/** The requirement an issue delivers, naming its project where it is a sibling project's. */
 export async function requirementOfIssue(issueId: string) {
   const [r] = await db
     .select({
       id: requirements.id,
+      issueProjectId: issues.projectId,
+      projectId: requirements.projectId,
+      projectSlug: projects.slug,
+      projectName: projects.name,
       reqSeq: requirements.reqSeq,
       title: requirements.title,
       status: requirements.status,
@@ -229,12 +266,17 @@ export async function requirementOfIssue(issueId: string) {
     })
     .from(issues)
     .innerJoin(requirements, eq(requirements.id, issues.requirementId))
+    .innerJoin(projects, eq(projects.id, requirements.projectId))
     .where(eq(issues.id, issueId));
   if (!r) return null;
   const drift = await planDriftOf(db, issueId);
   return {
     requirementId: r.id,
     key: requirementKey(r.reqSeq),
+    project:
+      r.projectId === r.issueProjectId
+        ? null
+        : { id: r.projectId, slug: r.projectSlug, name: r.projectName },
     title: r.title,
     status: r.status as RequirementStatus,
     currentRevision: r.currentRevision,

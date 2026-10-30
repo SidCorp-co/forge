@@ -28,7 +28,6 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/index.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
@@ -39,6 +38,7 @@ import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
+import { type IssueNaming, issueNamingOf, namedIssue } from './issue-projects.js';
 import { listRowsOf } from './list-rows.js';
 import { dedupCheckOf } from './near-duplicate.js';
 import { pictureRowsOf } from './picture-read.js';
@@ -236,6 +236,7 @@ function detailRowsOf(requirementId: string) {
     db
       .select({
         id: issues.id,
+        projectId: issues.projectId,
         issSeq: issues.issSeq,
         title: issues.title,
         status: issues.status,
@@ -290,13 +291,13 @@ function issueViews(
   row: Row,
   linked: DetailRows[5],
   changedTraced: Map<string, ChangedTrace[]>,
-  prefix: string | null,
+  naming: IssueNaming,
   releaseApproval: boolean,
   delivered: Delivered,
 ) {
   return linked.map((i) => ({
     issueId: i.id,
-    displayId: formatIssueRef(prefix, i.issSeq),
+    ...namedIssue(naming, i),
     title: i.title,
     status: i.status,
     // awaiting_release is a person's turn only where this project requires a release approval
@@ -360,7 +361,7 @@ export async function detailOf(
       ),
     ),
   ]);
-  const [people, standings, changedTraced, delivered] = await Promise.all([
+  const [people, standings, changedTraced, delivered, naming] = await Promise.all([
     peopleOf([
       ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
       ...baselines.map((b) => b.agreedBy),
@@ -378,7 +379,8 @@ export async function detailOf(
       db,
       linked.map((i) => i.id),
     ),
-    deliveredOf(row.projectId, linked),
+    deliveredOf(linked),
+    issueNamingOf(row.projectId, prefix, linked),
   ]);
   const standing = standings.get(row.id) as RequirementStanding;
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
@@ -397,8 +399,8 @@ export async function detailOf(
     contracts,
     traces,
     baselines: baselineViews(baselines, pins, name),
-    issues: issueViews(row, linked, changedTraced, prefix, gates.releaseApproval, delivered),
-    releases: releasesOf(delivered.shipped),
+    issues: issueViews(row, linked, changedTraced, naming, gates.releaseApproval, delivered),
+    releases: releasesOf(delivered.shipped, linked, naming),
     canSignOff: viewerFacts?.canSignOff ?? false,
     canAccept: viewerFacts?.canAccept ?? false,
     canPromote: viewerFacts?.canAdmit ?? false,

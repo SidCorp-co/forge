@@ -396,9 +396,22 @@ export interface CoverageFile {
 	mime: string;
 }
 
+/**
+ * The project of the other side of a requirement–issue link, where the two are not the same
+ * project's: a sibling project of the requirement's organization whose issue delivers it, or, read
+ * from the issue, the project whose requirement it delivers. Null where both are one project's.
+ */
+export interface OtherProject {
+	id: string;
+	slug: string;
+	name: string;
+}
+
 export interface CoverageIssue {
 	issueId: string;
+	/** Its key; `<project-slug>/<key>` where it is another project's issue (`otherProject`). */
 	displayId: string;
+	otherProject: OtherProject | null;
 	title: string;
 	status: string;
 	/** The status's tone on this project (`issue-vocabulary.ts:issueStatusToneOn`). */
@@ -804,6 +817,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_DUPLICATE_UNDECIDED",
 	"REQUIREMENT_DUPLICATE_TARGET_INVALID",
 	"REQUIREMENT_ISSUE_LINKED_ELSEWHERE",
+	/** The issue named is a project's of another organization: a requirement is delivered only within its own. */
+	"REQUIREMENT_ISSUE_OTHER_ORG",
 	"REQUIREMENT_NO_PLAN_TO_ADOPT",
 	"REQUIREMENT_DEFERRED",
 	"REQUIREMENT_DEFER_REASON_REQUIRED",
@@ -1103,7 +1118,9 @@ export interface RequirementContractLink {
 
 export interface RequirementIssueLink {
 	issueId: string;
+	/** Its key; `<project-slug>/<key>` where it is another project's issue (`otherProject`). */
 	displayId: string;
+	otherProject: OtherProject | null;
 	title: string;
 	status: string;
 	/** awaiting_release is a person's turn only where the project requires a release approval. */
@@ -1127,8 +1144,8 @@ export interface RequirementDetail extends RequirementSummary {
 	/** Newest first. */
 	baselines: RequirementBaseline[];
 	issues: RequirementIssueLink[];
-	/** The releases that shipped its issues, oldest ship first, each once. */
-	releases: { version: string; at: string }[];
+	/** The releases that shipped its issues, oldest ship first, each once; one of another project names it. */
+	releases: { version: string; at: string; otherProject: OtherProject | null }[];
 	/** The viewer is a person allowed to accept, return or agree. */
 	canSignOff: boolean;
 	/**

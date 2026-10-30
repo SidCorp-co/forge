@@ -244,8 +244,8 @@ export function IssuePeekProperties({
       {s.requirement ? (
         <Fact label={t("issues.facts.requirement")}>
           <span className="min-w-0">
-            <Link href={requirementHref(slug, s.requirement.key)} className="font-mono text-12 font-semibold text-link hover:underline">
-              {s.requirement.key}
+            <Link href={requirementHref(s.requirement.project?.slug ?? slug, s.requirement.key)} className="font-mono text-12 font-semibold text-link hover:underline">
+              {s.requirement.project ? `${s.requirement.project.slug}/${s.requirement.key}` : s.requirement.key}
             </Link>
             {s.requirement.criteria.length ? <span className="ml-1.5 font-mono text-12">{s.requirement.criteria.join(", ")}</span> : null}
             {s.requirement.staleCriteria.length ? (

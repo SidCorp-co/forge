@@ -214,7 +214,7 @@ export function PropertiesRail({
         <div className="divide-y divide-line-subtle">
           {requirementKey !== undefined ? (
             <Row label={t("issues.facts.requirement")}>
-              <IssueRequirementProperty projectId={issue.projectId} slug={slug} issueKey={issue.displayId} current={requirementKey} disabled={readOnly} />
+              <IssueRequirementProperty projectId={issue.projectId} slug={slug} issue={issue} current={requirementKey} requirementProject={standing?.requirement?.project ?? null} disabled={readOnly} />
             </Row>
           ) : null}
           <RailTraceRows issue={issue} slug={slug} standing={standing} />

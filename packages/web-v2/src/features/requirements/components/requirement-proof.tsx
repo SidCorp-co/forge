@@ -12,7 +12,7 @@ import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i1
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
-import { issueHref } from "@/lib/routes/issues";
+import { linkedIssueHref } from "@/lib/routes/issues";
 import { OwnVerdictRows } from "./requirement-own-verdicts";
 import { agreedTitle, diffColours, VERDICT_WORD, VerdictDot } from "./standing-bits";
 
@@ -262,7 +262,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 ) : (
                   issues.map(({ i, stale }) => (
                     <span key={i.issueId} className="inline-flex min-w-0 items-center gap-1.5">
-                      <Link href={issueHref(slug, i.displayId)} className="max-w-xs truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
+                      <Link href={linkedIssueHref(slug, i)} className="max-w-xs truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
                         {i.title}
                       </Link>
                       <span className="shrink-0 whitespace-nowrap font-mono text-12 text-subtle" data-testid="criterion-issue-key">{i.displayId}</span>
@@ -284,7 +284,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                           {developer && l.identity ? <span className="font-mono text-12"> · {l.identity}</span> : null}
                           {l.stale ? t("requirements.criteria.tracesEarlier") : ""}
                           {l.notCounted ? t("requirements.criteria.notCounted", { reason: l.notCounted }) : ""}{" "}
-                          <Link href={issueHref(slug, i.displayId)} className="whitespace-nowrap font-mono text-12 text-subtle hover:underline" data-testid="criterion-issue-key">
+                          <Link href={linkedIssueHref(slug, i)} className="whitespace-nowrap font-mono text-12 text-subtle hover:underline" data-testid="criterion-issue-key">
                             {i.displayId}
                           </Link>
                           <VerdictEvidence

@@ -15,6 +15,7 @@ export function IssueCriteria({
   developer = false,
 }: {
   issue: Pick<IssueDetail, "id" | "status">;
+  /** The requirement's project: the issue's own, or the sibling project whose requirement it delivers. */
   projectId: string;
   /** The lines of the acceptance-criteria text, read where the issue has no criterion rows yet. */
   checklist: { key: string; text: string; checked: boolean }[];

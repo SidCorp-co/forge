@@ -22,9 +22,9 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import type { RequirementStatus } from '../db/schema-requirements.js';
 import { activeIssuePrefix, transitionIssueStatus } from '../issues/index.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal } from '../lib/refusal.js';
 import { personGateOf } from '../project-config/index.js';
+import { issueNamingOf, namedIssue } from './issue-projects.js';
 import { detailOf, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 
@@ -120,10 +120,10 @@ export async function promoteDraftIssues(input: {
   );
   const admit = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (admit) return { ok: false, refusals: [admit] };
-  const prefix = await activeIssuePrefix(projectId);
   const linked = await db
     .select({
       id: issues.id,
+      projectId: issues.projectId,
       issSeq: issues.issSeq,
       status: issues.status,
       reopenCount: issues.reopenCount,
@@ -131,10 +131,8 @@ export async function promoteDraftIssues(input: {
     .from(issues)
     .where(eq(issues.requirementId, row.id))
     .orderBy(asc(issues.issSeq));
-  const candidates = linked.map((i) => ({
-    ...i,
-    displayId: formatIssueRef(prefix, i.issSeq),
-  }));
+  const naming = await issueNamingOf(projectId, await activeIssuePrefix(projectId), linked);
+  const candidates = linked.map((i) => ({ ...i, displayId: namedIssue(naming, i).displayId }));
   const key = requirementKey(row.reqSeq);
   const picked = promoteSelection({
     status: row.status as RequirementStatus,
@@ -147,11 +145,30 @@ export async function promoteDraftIssues(input: {
   const promoted: PromotedDraftIssue[] = [];
   const refused: RefusedDraftIssue[] = [];
   for (const issue of picked.drafts) {
+    // another project's draft opens under that project's own admit gate, never this one's
+    if (issue.projectId !== projectId) {
+      const theirs = await personGateOf(
+        issue.projectId,
+        'admit',
+        `promoting ${issue.displayId} to open`,
+      );
+      const refusal = await signerRefusal(
+        actor,
+        issue.projectId,
+        theirs.act,
+        undefined,
+        theirs.permission,
+      );
+      if (refusal) {
+        refused.push({ issueId: issue.id, displayId: issue.displayId, ...refusal });
+        continue;
+      }
+    }
     try {
       await transitionIssueStatus(
         {
           id: issue.id,
-          projectId,
+          projectId: issue.projectId,
           status: issue.status as IssueStatus,
           reopenCount: issue.reopenCount,
         },

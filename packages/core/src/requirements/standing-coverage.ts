@@ -21,6 +21,7 @@ import {
   atLiveCommit,
   atRecordedLanding,
   type CoverageIdentity,
+  holdsFor,
   identityWords,
   type LandedHolds,
   type LiveBuildHolds,
@@ -89,6 +90,8 @@ interface CoverageInput {
   }[];
   issues: readonly (Pick<CoverageIssue, 'displayId' | 'title' | 'status' | 'tone'> & {
     id: string;
+    /** Its project, where it is not the requirement's own; absent reads as the requirement's. */
+    otherProject?: CoverageIssue['otherProject'] | undefined;
   })[];
   issueCriteria: readonly StandingIssueCriterion[];
   /** The verdicts recorded on its criteria at the requirement itself; absent reads as none. */
@@ -129,17 +132,19 @@ export function coverageOf(
       const wording = byId.get(traced.requirementCriterionId);
       const issue = issues.get(traced.issueId);
       if (!wording || wording.code !== bc.code || !issue) return [];
+      // another project's issue is weighed on its own project's build (`standing-identity.ts:holdsFor`)
+      const build = holdsFor(input.liveBuild ?? null, traced.issueId);
       const ic = judgesOf(
-        withoutUnplaced(standsAtLanding(traced, input.liveBuild?.landed), input.liveBuild ?? null),
+        withoutUnplaced(standsAtLanding(traced, build?.landed), build),
         input.judge,
       );
       const judged = verdictExercised(ic.verdict);
-      const r =
-        ic.verdict === null ? null : resolve(ic.identity, input.liveBuild ?? null, traced.issueId);
+      const r = ic.verdict === null ? null : resolve(ic.identity, build, traced.issueId);
       return [
         {
           issueId: issue.id,
           displayId: issue.displayId,
+          otherProject: issue.otherProject ?? null,
           title: issue.title,
           status: issue.status,
           tone: issue.tone,

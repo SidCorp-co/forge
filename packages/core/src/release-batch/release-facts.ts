@@ -32,7 +32,7 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
-import { standingsOf } from '../requirements/index.js';
+import { issueNamingOf, namedIssue, standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
 export interface IssueFact {
@@ -233,13 +233,15 @@ async function requirementFacts(
     db
       .select({
         id: issues.id,
-        seq: issues.issSeq,
+        projectId: issues.projectId,
+        issSeq: issues.issSeq,
         status: issues.status,
         requirementId: issues.requirementId,
       })
       .from(issues)
       .where(and(inArray(issues.requirementId, [...ids]), ne(issues.status, 'dropped'))),
   ]);
+  const naming = await issueNamingOf(projectId, prefix, live);
   return new Map(
     rows.flatMap((r) => {
       const standing = standings.get(r.id);
@@ -252,7 +254,7 @@ async function requirementFacts(
         coverage: standing.coverage,
         live: live
           .filter((i) => i.requirementId === r.id)
-          .map((i) => ({ id: i.id, key: formatIssueRef(prefix, i.seq), status: i.status })),
+          .map((i) => ({ id: i.id, key: namedIssue(naming, i).displayId, status: i.status })),
       };
       return [[r.id, fact] as const];
     }),

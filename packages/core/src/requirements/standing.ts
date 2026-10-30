@@ -13,6 +13,7 @@ import {
   CHECK_SLA_WORKING_DAYS,
   criteriaCoverageOf,
   draftIssuesToPromote,
+  type OtherProject,
   type RequirementAcceptanceDecision,
   type RequirementCoverage,
   type RequirementDelivery,
@@ -71,6 +72,8 @@ interface StandingCriterion {
 export interface StandingIssue {
   id: string;
   displayId: string;
+  /** Its project, where it is not the requirement's own (`issue-projects.ts`); absent reads as the requirement's. */
+  otherProject?: OtherProject | null;
   title: string;
   status: string;
   /** The status's tone on this project; awaiting_release is amber only where a release needs approval. */

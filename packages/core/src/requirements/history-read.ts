@@ -14,7 +14,6 @@ import { requirementDeferrals, requirementReturns } from '../db/schema-requireme
 import { requirementBaselines, requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/index.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { waivedOf } from './acceptance-waived.js';
 import {
@@ -25,6 +24,7 @@ import {
   SIGNER,
   SOMEONE,
 } from './history-entries.js';
+import { issueNamingOf, namedIssue } from './issue-projects.js';
 import { type PictureRow, pictureRowsOf } from './picture-read.js';
 
 const SUGGESTION_LABEL: Record<string, SaidPlainKey> = {
@@ -387,7 +387,7 @@ async function historyRows(requirementId: string, projectId: string) {
         .from(suggestions)
         .where(eq(suggestions.requirementId, requirementId)),
       db
-        .select({ id: issues.id, issSeq: issues.issSeq })
+        .select({ id: issues.id, projectId: issues.projectId, issSeq: issues.issSeq })
         .from(issues)
         .where(eq(issues.requirementId, requirementId)),
       activeIssuePrefix(projectId),
@@ -408,7 +408,8 @@ async function historyRows(requirementId: string, projectId: string) {
         .orderBy(desc(activityLog.createdAt))
         .limit(HISTORY_LIMIT * 2)
     : [];
-  const keyOf = new Map(linked.map((i) => [i.id, formatIssueRef(prefix, i.issSeq)]));
+  const naming = await issueNamingOf(projectId, prefix, linked);
+  const keyOf = new Map(linked.map((i) => [i.id, namedIssue(naming, i).displayId]));
   return { revisions, baselines, returns, deferrals, moves, suggested, activity, keyOf };
 }
 

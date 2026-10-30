@@ -25,7 +25,6 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { activeIssuePrefix } from '../issues/index.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { personGateOf, readVerifiedJudge } from '../project-config/index.js';
@@ -40,6 +39,7 @@ import {
 } from './acceptance-rules.js';
 import { postWaivedDecisionIn, waivedOf } from './acceptance-waived.js';
 import { acceptanceAnswersOf, uncitedVerdictsIn } from './checklist-record.js';
+import { issueNamingOf, namedIssue } from './issue-projects.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
 import { openRevisionOf, withdrawRevisionIn } from './revision-write.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
@@ -91,6 +91,7 @@ export async function deliveryIn(
   const linked = await ex
     .select({
       id: issues.id,
+      projectId: issues.projectId,
       issSeq: issues.issSeq,
       title: issues.title,
       status: issues.status,
@@ -109,7 +110,7 @@ export async function deliveryIn(
     })
     .from(requirementCriteria)
     .where(eq(requirementCriteria.requirementId, row.id));
-  const prefix = await activeIssuePrefix(projectId);
+  const naming = await issueNamingOf(projectId, await activeIssuePrefix(projectId), linked, ex);
   const judge = await readVerifiedJudge(projectId);
   const issueCriteria = await issueCriteriaOf(
     linked.map((i) => i.id),
@@ -117,7 +118,7 @@ export async function deliveryIn(
   );
   const standingIssues: ProofIssue[] = linked.map((i) => ({
     id: i.id,
-    displayId: formatIssueRef(prefix, i.issSeq),
+    ...namedIssue(naming, i),
     title: i.title,
     status: i.status,
     tone: issueStatusToneOn(i.status as IssueStatus, false),

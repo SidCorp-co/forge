@@ -116,6 +116,12 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   issue serves one requirement: linking one held elsewhere is \`REQUIREMENT_ISSUE_LINKED_ELSEWHERE\`, naming
   the requirement that holds it. **unlink_issue** \`DELETE /api/projects/:id/requirements/:req/issues/:issue\`
   frees it there first.
+- **A sibling project's issue delivers it too.** Name it by uuid on the requirement's project
+  (\`POST /api/projects/:id/requirements/:req/issues { issue: <uuid> }\`): the caller holds
+  \`project.write\` on the requirement's project and \`project.read\` on the issue's, so an agent's
+  credential reaches both. Another organization's issue is \`REQUIREMENT_ISSUE_OTHER_ORG\`. It reads as
+  \`<project-slug>/<key>\` with \`otherProject\` on the requirement, its verdicts count on its own
+  project's build, and the issue's \`requirement.project\` names the requirement's project.
 - An issue's plan records the revision and the baseline it was written against. A plan written while
   the requirement has no current revision is refused \`REQUIREMENT_REVISION_NOT_CURRENT\`.
 - \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another
