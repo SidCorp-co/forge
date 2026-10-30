@@ -105,14 +105,16 @@ function weighIn(
   runs: (file: string) => boolean,
   weighing: Weighing,
   declared: boolean,
-): { standing: VerdictStanding; beside: string[]; carried: string | null } {
+): Pick<WeighedVerdict, 'standing' | 'carried'> & { beside: string[] } {
+  const none = { carried: null };
   // A declared runtime's reading is missing NOW, which is not ISS-1286's project with no route.
   if (declared && serving.kind !== 'serving')
-    return { standing: 'superseded', beside: [], carried: null };
+    return { standing: 'superseded', beside: [], ...none };
   const standing = verdictStanding(at, serving, identities);
   if (standing !== 'superseded' || !at || serving.kind !== 'serving')
-    return { standing, beside: [], carried: null };
+    return { standing, beside: [], ...none };
   const beside: string[] = [];
+  const unread: string[] = [];
   const commits = servedCommits(serving);
   for (const served of commits) {
     // The judge clause names what is served, once (ISS-1346); a commit is named here only where
@@ -120,25 +122,39 @@ function weighIn(
     const what = commits.length > 1 ? `\`${served}\`` : 'what it serves';
     const carriage = weighing.carriage.get(carriageKey(at.value, served));
     if (!carriage) {
-      if (weighing.read) beside.push(`whether ${what} carries it was not read`);
+      if (weighing.read) unread.push(`whether ${what} carries it was not read`);
       continue;
     }
-    if (carriage.kind === 'descends')
-      return { standing: 'stands', beside: [], carried: `\`${served}\` descends from it` };
+    if (carriage.kind === 'descends') {
+      const by = carriage.by ? `: ${carriage.by}` : '';
+      return {
+        standing: 'stands',
+        beside: [],
+        ...none,
+        carried: `\`${served}\` descends from it${by}`,
+      };
+    }
     if (carriage.kind === 'unread') {
-      beside.push(`whether ${what} carries it could not be read: ${carriage.why}`);
+      unread.push(`whether ${what} carries it could not be read: ${carriage.why}`);
+      continue;
+    }
+    if (carriage.kind === 'lacks') {
+      beside.push(`${what} does not carry it: ${carriage.why}`);
       continue;
     }
     const differing = carriage.paths.filter(runs);
     if (differing.length === 0) {
       const carried = `\`${served}\` differs from it only in files this runtime does not run`;
-      return { standing: 'stands', beside: [], carried };
+      return { standing: 'stands', beside: [], ...none, carried };
     }
     beside.push(
       `${what} does not descend from it and differs from it in ${filesClause(differing)}`,
     );
   }
-  return { standing, beside, carried: null };
+  // what was not read is unknown, which a served commit read as not carrying it does not settle:
+  // never superseded, and never earned on a guess (ISS-1368: an unread pair earns nothing)
+  if (unread.length > 0) return { standing: 'unread', beside: [...unread, ...beside], ...none };
+  return { standing, beside, ...none };
 }
 
 /**

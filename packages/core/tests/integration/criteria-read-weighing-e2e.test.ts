@@ -260,15 +260,12 @@ describe('an on-land project: the criteria read weighs at what is served', () =>
     ]);
     const onStg = { basis: 'served', environment: 'stg', runtime: null };
 
-    // a read asks the source host nothing (ISS-774): before any release pass, it says so
+    // a read asks the source host nothing (ISS-774): before any release pass, nothing on record
+    // answers whether stg's commit carries it, which is unknown, never not carried
     const asked = H.asked.calls;
     const before = await weighed(id);
     expect(H.asked.calls).toBe(asked);
-    expect(before.get(1)).toMatchObject({
-      earned: false,
-      standing: 'superseded',
-      weighedOn: onStg,
-    });
+    expect(before.get(1)).toMatchObject({ earned: null, standing: 'unread', weighedOn: onStg });
     expect(before.get(1)?.reason).toContain(READ_PATH_HELD_ONLY);
 
     // the release sweep's own pass reads the host, as `release-sweep.ts:readCriteria` does

@@ -60,7 +60,9 @@ async function atServed(issue: { id: string; projectId: string }): Promise<Issue
   const criteria = new Map<number, CriterionWeighing>();
   for (const c of report.unearned) {
     const weighedOn = { basis: 'served', environment: c.environment, runtime: c.runtime } as const;
-    criteria.set(c.criterion, { earned: false, standing: c.standing, reason: c.why, weighedOn });
+    // unknown whether what is served carries it: the gate would ask, so this read decides nothing
+    const earned = c.undecided ? null : false;
+    criteria.set(c.criterion, { earned, standing: c.standing, reason: c.why, weighedOn });
   }
   for (const c of report.earned) {
     const weighedOn = { basis: 'served', environment: c.environment, runtime: c.runtime } as const;

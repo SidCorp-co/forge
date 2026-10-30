@@ -28,7 +28,9 @@ export type CriterionWeighedOn =
   | { readonly basis: 'none' };
 
 export interface CriterionWeighing {
-  /** Whether the gate counts this criterion earned; null where nothing was weighed. */
+  /** Whether the gate counts this criterion earned; null where nothing was weighed, or where only
+   *  whether what is served carries its verdict is unknown (`standing: 'unread'`), which a release
+   *  pass decides by asking the source host and a read never asks. */
   readonly earned: boolean | null;
   /**
    * How the verdict's identity resolved on a served basis — `carried` where a served commit other

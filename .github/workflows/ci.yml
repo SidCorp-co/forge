@@ -932,7 +932,8 @@ jobs:
   # those run after the merge (ISS-1370), a red there is fixed forward, and
   # `.forge/conformance.json` `$postMerge` holds the list conformance-audit R12
   # compares this one against.
-  # (`core build` runs `tsc -p tsconfig.build.json`; the test-inclusive
+  # (`core build` runs `tsgo -p tsconfig.build.json --noCheck`, which emits
+  # without checking a type; the test-inclusive
   # `typecheck` and `lint` became blocking inside the `core` job on
   # 2026-08-10/11 once their debt reached 0. Both had drifted for months
   # precisely because nothing failed on them.)

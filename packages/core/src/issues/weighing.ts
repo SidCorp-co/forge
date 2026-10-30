@@ -8,8 +8,11 @@ import { runtimePathPrefix, type ServingReading } from '@forge/contracts/release
 
 /** What a served commit holds of a judged one. */
 export type Carriage =
-  /** The served commit is the judged one or a descendant of it. */
-  | { readonly kind: 'descends' }
+  /** The served commit is the judged one or a descendant of it; `by` names the record that says so
+   *  where it was not the host (`release-batch/recorded-carriage.ts`). */
+  | { readonly kind: 'descends'; readonly by?: string }
+  /** It is not, by a record that does not name the files the two differ in. */
+  | { readonly kind: 'lacks'; readonly why: string }
   /** It is not: `paths` is every file the two trees may differ in, each side's since their merge base. */
   | { readonly kind: 'differs'; readonly paths: readonly string[] }
   | { readonly kind: 'unread'; readonly why: string };

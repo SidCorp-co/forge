@@ -28,16 +28,18 @@ import {
 import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identity.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { carriageOf, changedPathsOf } from './carriage.js';
+import { recordedCarriage } from './recorded-carriage.js';
 import { readJudgedOnNow } from './serving-reading.js';
 
 /** Uncached reads (one or two compares each) one weighing may make of each kind — landings and
  *  carriages, so neither can starve the other; a cached answer costs none. */
 const WEIGHING_READ_LIMIT = 60;
 
-/** Why a read path's weighing left a pair unread: it asks the source host nothing (ISS-774), and
- *  weighs what the release's own passes in this process have read. */
+/** Why a read path's weighing left a pair unread: no release Forge recorded places it
+ *  (`recorded-carriage.ts`), and a read asks the source host nothing (ISS-774), so only what a
+ *  release pass of this process read answers it. */
 export const READ_PATH_HELD_ONLY =
-  'a read asks the source host nothing, and no release pass of this process has read it yet';
+  'no release Forge recorded shipping places it, a read asks the source host nothing, and no release pass of this process has read it';
 
 interface WeighingDeps {
   host?: (projectId: string) => Promise<SourceHost>;
@@ -119,8 +121,10 @@ async function readCarriage(
   served: readonly string[],
   reader: Reader,
   spend: () => string | null,
+  recorded: ReadonlyMap<string, Carriage>,
 ): Promise<Map<string, Carriage>> {
-  const out = new Map<string, Carriage>();
+  // what a release Forge recorded answers is never asked again, of the host or the process
+  const out = new Map<string, Carriage>(recorded);
   const pairs = judged.flatMap((j) => served.filter((s) => !sameIdentity(j, s)).map((s) => [j, s]));
   for (const [j, s] of rotated(pairs, passes) as Array<[string, string]>) {
     const key = carriageKey(j, s);
@@ -170,6 +174,7 @@ export async function readWeighingNow(
   const { heldOnly } = deps;
   const spend = () => (heldOnly === undefined ? budget() : () => heldOnly);
   const changed = runtimes.length > 0 ? await readChanged(rows, reader, spend()) : new Map();
-  const carriage = await readCarriage(judged, served, reader, spend());
+  const recorded = await recordedCarriage(projectId, judged, served);
+  const carriage = await readCarriage(judged, served, reader, spend(), recorded);
   return { read: true, runtimes, changed, carriage, judgedOn };
 }

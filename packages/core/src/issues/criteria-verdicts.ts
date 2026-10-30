@@ -195,6 +195,9 @@ interface UnearnedCriterion extends WeighedWhere {
   /** How that verdict's identity resolved, or null where there is no verdict. */
   readonly standing: VerdictStanding | null;
   readonly why: string;
+  /** Whether its only reason is that nothing could say whether what is served carries it
+   *  (`unread`): a weighing that asked would decide it, so it is neither earned nor refused. */
+  readonly undecided: boolean;
 }
 
 /** One criterion an issue carries an earned, standing verdict on, and what earned it. */
@@ -348,6 +351,7 @@ function findingsFor(
         why: NEVER_JUDGED,
         runtime: null,
         environment: null,
+        undecided: false,
       });
       continue;
     }
@@ -358,12 +362,18 @@ function findingsFor(
     const reasons = reasonsAgainst(said, w, identities, unresolved);
     const where = { runtime, environment };
     if (reasons.length > 0) {
+      const undecided =
+        standing === 'unread' &&
+        reasons.length === 1 &&
+        !pair.unverified &&
+        verdictEarns(pair.verdict);
       unearned.push({
         criterion,
         verdict: pair.verdict,
         standing,
         why: reasons.join('; and '),
         ...where,
+        undecided,
       });
       continue;
     }

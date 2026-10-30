@@ -100,7 +100,11 @@ block names what that criterion was judged against before the next \`criterion\`
   change is released that is the environment the project judges changes on (\`delivery.judgedOn\`);
   once it is released, or where the project names none, production. It stands where the
   reading names that identity, and where a fleet mid-rollout answers two it stands on either of
-  them. It is superseded where the reading names something else, and it stops reading as earned.
+  them. Where the reading names something else, a served commit that holds it carries it: a
+  release Forge recorded shipping no later than the one served says so, else the source host's
+  compare. It is superseded where what is served does not hold it, and it stops reading as earned;
+  where nothing could say whether it does it reads \`unread\`: never superseded, and not earned
+  until a release pass, which asks the host, decides it.
   Where the project declares no way to ask, or where what it declares answered nothing, the verdict
   reads as uncorroborated: a runtime witnessed it and nothing here could check that, which is
   weaker evidence than a checked reading and is earned all the same. Absence of a reading is not a

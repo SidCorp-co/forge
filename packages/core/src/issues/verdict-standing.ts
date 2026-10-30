@@ -42,6 +42,9 @@ export interface IssueIdentities {
 export type VerdictStanding =
   | 'stands'
   | 'superseded'
+  /** A runtime or source at a commit nothing served, where whether a served commit holds it could not
+   *  be read: unknown, which is neither superseded nor earned (`runtime-standing.ts:weighVerdict`). */
+  | 'unread'
   | 'unwitnessed'
   | 'uncorroborated'
   | 'unanchored';
@@ -255,6 +258,16 @@ export function standingSentence(
   runtime: string | null = null,
   environment: string | null = null,
 ): string {
+  if (standing === 'unread') {
+    const where =
+      runtime !== null
+        ? `the \`${runtime}\` runtime`
+        : environment === null
+          ? 'this project'
+          : `\`${environment}\``;
+    // what was not read is said beside it (`runtime-standing.ts:weighIn`)
+    return `judged at ${named(at?.value ?? null)}, which is not a commit ${where} is serving`;
+  }
   if (runtime !== null && standing !== 'superseded') {
     return `for the \`${runtime}\` runtime, ${standingSentence(standing, at, serving, identities)}`;
   }
@@ -280,5 +293,6 @@ export function standingSentence(
     return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running`;
   }
   if (standing === 'uncorroborated') return uncorroboratedSentence(at, serving);
+
   return supersededSentence(at, serving, identities, runtime, environment);
 }
