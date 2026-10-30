@@ -102,7 +102,9 @@ field and its words are text; one sent without it is read like a line of the fie
 unchanged wording keeps its row and its trace, so rewording or removing a traced line without
 restating its trace is refused \`CRITERIA_TRACE_DROPPED\`, naming each line and its BC: open the line
 with its tag, or send \`requirementCriterionId\` on it. To drop a trace on purpose, PUT every
-criterion with \`requirementCriterionId\` stated (\`null\` for none). The PUT answers \`verdicts\`:
+criterion with \`requirementCriterionId\` stated (\`null\` for none): each BC's id reads at
+\`GET /api/issues/:id/requirement\` (\`revision.criteria\`), and an id that is no BC of the issue's
+requirement is refused \`CRITERIA_TRACE_UNRESOLVED\`. The PUT answers \`verdicts\`:
 \`kept\` names the verdicts on unchanged wordings, \`voided\` those on reworded or removed ones, which
 stop counting.
 

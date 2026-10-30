@@ -189,5 +189,5 @@ export function droppedTraceDetail(dropped: readonly DroppedTrace[]): string {
       ? `leaves ${fewer.join(', ')} on fewer lines than it had, and every line that held it still carries it at its number, so which one lost it cannot be told`
       : '',
   ].filter(Boolean);
-  return `this write ${what.join('; it ')}. A reworded or removed line is a new criterion here, and only an unchanged wording keeps its row and its trace, so the proof it held would vanish silently. Keep each trace with PUT /api/issues/:id/criteria, sending \`requirementCriterionId\` on that criterion, or open its line with ${tags}; to drop one on purpose, PUT the criteria with \`requirementCriterionId\` stated (null for none) on every one`;
+  return `this write ${what.join('; it ')}. A reworded or removed line is a new criterion here, and only an unchanged wording keeps its row and its trace, so the proof it held would vanish silently. Keep each trace with PUT /api/issues/:id/criteria, sending \`requirementCriterionId\` on that criterion, or open its line with ${tags}; to drop one on purpose, PUT the criteria with \`requirementCriterionId\` stated (null for none) on every one. Each BC's id reads at GET /api/issues/:id/requirement (\`revision.criteria\`), whichever project holds the requirement, and each line's current one at GET /api/issues/:id/criteria`;
 }

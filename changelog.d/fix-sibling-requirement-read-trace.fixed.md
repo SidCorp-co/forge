@@ -1,0 +1,1 @@
+**A criterion traced by an id that is no BC of its issue's requirement is refused by name.** It was written and counted as no proof; the refusal and `CRITERIA_TRACE_DROPPED` now say where each BC's id reads.

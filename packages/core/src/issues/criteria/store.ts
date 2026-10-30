@@ -233,8 +233,10 @@ async function tracedInputs(
       );
     }
   }
-  if (tags.every((t) => t.tag.kind !== 'tag')) return [...desired];
+  const stated = desired.flatMap((c) => c.requirementCriterionId ?? []);
+  if (tags.every((t) => t.tag.kind !== 'tag') && stated.length === 0) return [...desired];
   const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
+  refuseForeignTraces(desired, req, wordings, path);
   const revision = req?.revision ?? null;
   const traced = tags.map(({ c, i, tag }) => {
     if (tag.kind !== 'tag') return c;
@@ -273,6 +275,33 @@ async function tracedInputs(
   const owned = await failureOwnedElsewhere(tx, issueId, taken);
   if (owned) throw refuseCriteria('CRITERION_FAILURE_OWNED', owned, path);
   return traced;
+}
+
+/**
+ * A criterion sent with `requirementCriterionId` traces a wording of its own issue's requirement, or
+ * is refused by name: an id of another requirement's BC (or of none) was written and then counted
+ * as no proof anywhere, so the trace the writer stated vanished in silence.
+ */
+function refuseForeignTraces(
+  desired: readonly CriterionInput[],
+  req: Awaited<ReturnType<typeof traceWordingsOf>>['requirement'],
+  wordings: Awaited<ReturnType<typeof traceWordingsOf>>['wordings'],
+  path: CriteriaPath,
+): void {
+  const own = new Set(wordings.map((w) => w.id));
+  const foreign = desired.find(
+    (c) => c.requirementCriterionId && !own.has(c.requirementCriterionId),
+  );
+  if (!foreign) return;
+  throw refuseCriteria(
+    'CRITERIA_TRACE_UNRESOLVED',
+    `criterion ${foreign.n} is sent with requirementCriterionId ${foreign.requirementCriterionId}, which is ${
+      req
+        ? `no business criterion of REQ-${req.seq}, the requirement this issue delivers`
+        : 'a business criterion of no requirement this issue delivers: it delivers none'
+    }; send the id of one of its BCs (GET /api/issues/:id/requirement lists them under \`revision.criteria\`), or null for none`,
+    path,
+  );
 }
 
 /** Refuse a desired set whose numbers repeat or fall below 1, or whose statements are blank. */

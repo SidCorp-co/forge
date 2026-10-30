@@ -259,3 +259,86 @@ describe('the requirement an issue delivers, read through the issue', () => {
     expect(row?.requirement_id).not.toBeNull();
   });
 });
+
+describe("the issue's criteria traced to the sibling's requirement", () => {
+  it("re-traces the issue's criteria to the sibling's BCs on the issue's credential", async () => {
+    const key = await agreedRequirement(apiProject, 'API keys', [
+      'The key screen shows only to a holder of the permission',
+      'The create form sends a name and an expiry',
+      'A key reads nowhere but its one reveal',
+    ]);
+    const other = await agreedRequirement(apiProject, 'Refunds', ['A refund returns the money']);
+    const id = await feIssueDelivering(114, key);
+    const put = (criteria: Body[]) =>
+      api(feAgent, 'PUT', `/api/issues/${id}/criteria`, { criteria });
+    const traces = async () =>
+      ((await ok(api(feAgent, 'GET', `/api/issues/${id}/criteria`))).criteria as Body[]).map(
+        (c) => ({ n: c.n, id: c.requirementCriterionId }),
+      );
+
+    // every line traced at first to BC-3, by its lead tag, resolved on the sibling's requirement
+    await ok(
+      put([
+        { n: 1, statement: `(${key} BC-3) The key is never in the URL` },
+        { n: 2, statement: `(${key} BC-3) The screen is hidden without the permission` },
+        { n: 3, statement: `(${key} BC-3) The form sends name and expires_at` },
+      ]),
+    );
+
+    // re-tagging two lines away from BC-3 drops its trace there, and the refusal says where the ids read
+    const retagged = await put([
+      { n: 1, statement: `(${key} BC-3) The key is never in the URL` },
+      { n: 2, statement: `(${key} BC-1) The screen is hidden without the permission` },
+      { n: 3, statement: `(${key} BC-2) The form sends name and expires_at` },
+    ]);
+    expect(retagged.status, JSON.stringify(retagged.body)).toBe(422);
+    expect(JSON.stringify(retagged.body)).toContain('CRITERIA_TRACE_DROPPED');
+    expect(JSON.stringify(retagged.body)).toContain('GET /api/issues/:id/requirement');
+
+    // the ids the run states on every line read through the issue, on the same fenced credential
+    const bcs = (
+      ((await ok(api(feAgent, 'GET', `/api/issues/${id}/requirement`))).requirement as Body)
+        .revision as Body
+    ).criteria as Body[];
+    const bc = (code: string) => bcs.find((c) => c.code === code)?.id as string;
+    await ok(
+      put([
+        { n: 1, statement: 'The key is never in the URL', requirementCriterionId: bc('BC-3') },
+        {
+          n: 2,
+          statement: 'The screen is hidden without the permission',
+          requirementCriterionId: bc('BC-1'),
+        },
+        {
+          n: 3,
+          statement: 'The form sends name and expires_at',
+          requirementCriterionId: bc('BC-2'),
+        },
+      ]),
+    );
+    expect(await traces()).toEqual([
+      { n: 1, id: bc('BC-3') },
+      { n: 2, id: bc('BC-1') },
+      { n: 3, id: bc('BC-2') },
+    ]);
+
+    // a BC of another requirement of the sibling is refused by name, and nothing is written
+    const refund = (
+      (await ok(api(owner, 'GET', `/api/projects/${apiProject.id}/requirements/${other}`)))
+        .criteria as Body[]
+    )[0]?.id as string;
+    const foreign = await put([
+      { n: 1, statement: 'The key is never in the URL', requirementCriterionId: refund },
+      {
+        n: 2,
+        statement: 'The screen is hidden without the permission',
+        requirementCriterionId: bc('BC-1'),
+      },
+      { n: 3, statement: 'The form sends name and expires_at', requirementCriterionId: bc('BC-2') },
+    ]);
+    expect(foreign.status, JSON.stringify(foreign.body)).toBe(422);
+    expect(JSON.stringify(foreign.body)).toContain('CRITERIA_TRACE_UNRESOLVED');
+    expect(JSON.stringify(foreign.body)).toContain(`no business criterion of ${key}`);
+    expect((await traces())[0]).toEqual({ n: 1, id: bc('BC-3') });
+  });
+});
