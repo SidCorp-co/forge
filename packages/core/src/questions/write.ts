@@ -44,6 +44,7 @@ import { type AwaitedMerge, awaitedMergeFault, neededForMerge } from './merge-wa
 import { resolveAskOrigin } from './origin.js';
 import { contractAboutRefusal, requirementIdIn } from './ports.js';
 import { screenRound } from './screen.js';
+import { refuseUnanswerableAsk } from './unanswerable-ask.js';
 
 /** The pool, or a caller's open transaction — a park writes its question inside the transition's. */
 type QuestionExecutor = IssueDependencyExecutor;
@@ -226,6 +227,7 @@ async function refuseFinishedWork(executor: QuestionExecutor, issueId: string | 
  */
 export async function insertAskedQuestion(executor: QuestionExecutor, input: AskInput) {
   checkAnswer(input.answer, input.askedByRun === true && input.blockerKind === 'human');
+  refuseUnanswerableAsk(input);
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
   await refuseFinishedWork(executor, input.issueId);
   refuseAboutOnWait(input);
@@ -351,6 +353,7 @@ export async function askParkQuestion(
   }
   const answer: AskAnswer = { shape: 'free_text', needed };
   checkAnswer(answer);
+  refuseUnanswerableAsk({ ...input, answer });
   const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
   return insertQuestion(
     executor,

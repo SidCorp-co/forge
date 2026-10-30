@@ -20,7 +20,12 @@ const AGENT_ADDRESSEES = new Set(['agent', 'run', 'master', 'self']);
  */
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
 
-function promptOf(record: ForgeRecord, body: string): string {
+/**
+ * The question's own words, or `null` where the record and its comment carry none: a record asking
+ * nothing is not minted, because a prompt made up for it ("which of these readings holds") named
+ * choices nobody had sent and held the issue open with nothing to answer (ISS-812).
+ */
+function promptOf(record: ForgeRecord, body: string): string | null {
   const named = record.fields.find((f) => f.key === 'prompt' || f.key === 'question')?.value;
   if (named?.trim()) return oneLine(named);
   const prose = oneLine(
@@ -28,7 +33,8 @@ function promptOf(record: ForgeRecord, body: string): string {
       .replace(/^#+\s*question\s*$/gim, '')
       .replace(/`forge-record:[^`]*`/g, ''),
   );
-  return prose || 'The run asked which of these readings holds.';
+  if (prose) return prose;
+  return record.fields.some((f) => f.key === 'reading') ? 'Which reading holds?' : null;
 }
 
 function neededOf(record: ForgeRecord): string {
@@ -115,11 +121,17 @@ export async function mintRecordQuestion(
   if (!issue) return [];
   if ('warning' in issue) return [issue.warning];
   if (await questionExists(tx, comment.id)) return [];
+  const prompt = promptOf(record, comment.body);
+  if (prompt === null) {
+    return [
+      "QUESTION_SHAPE_INVALID: this comment's `forge-record: question` is stored as prose only — it carries no question text and no `reading` lines, so a person could not tell what is asked. Put the question in the comment body, or in a `prompt:` field, and each choice in a `reading:` field",
+    ];
+  }
   await askParkQuestion(tx, {
     id: comment.id,
     projectId: issue.projectId,
     issueId: comment.issueId,
-    prompt: promptOf(record, comment.body),
+    prompt,
     needed: neededOf(record),
   });
   return [];

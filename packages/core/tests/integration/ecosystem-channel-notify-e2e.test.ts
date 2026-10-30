@@ -293,6 +293,7 @@ describe('a gated type tells the sending admins, and the answer clears it', () =
     const asked = await askQuestion({
       id: randomUUID(),
       projectId: w.project.forge,
+      askedBy: w.user.platform,
       prompt: 'Which branch should the release cut from?',
       blockerKind: 'human',
       answer: {

@@ -1,0 +1,1 @@
+**A question naming choices it does not carry is refused:** "these readings" with no options, or no issue, requirement or asker, is refused by name; an empty record question is no longer minted with an invented prompt. (ISS-812)

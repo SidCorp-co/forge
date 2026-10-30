@@ -10,6 +10,9 @@
 
 // @direct-test-of packages/core/src/questions/routes.ts
 // @direct-test-of packages/core/src/questions/ask.ts
+// @direct-test-of packages/core/src/questions/write.ts
+// @direct-test-of packages/core/src/questions/unanswerable-ask.ts
+// @direct-test-of packages/core/src/issues/record-events/question-record.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -290,5 +293,62 @@ describe('an ask on an issue is the ask it was', () => {
     const issue = await plantIssue(null);
     const r = await askRest({ issueId: issue.id, projectId: w.project.internal });
     expect(refusalCodes(r), JSON.stringify(r.json)).toContain('QUESTION_ISSUE_ELSEWHERE');
+  });
+});
+
+describe('a question that names nothing it carries is refused by name and writes nothing (ISS-812)', () => {
+  const freeText = {
+    answerShape: 'free_text',
+    needed: 'the reading that holds',
+    recommended: 'the first',
+    options: undefined,
+    recommendedOptionId: undefined,
+  };
+
+  it('refuses a prompt pointing at "these readings" that carries no options', async () => {
+    const issue = await plantIssue(null);
+    const before = await questionCount();
+    const r = await askBox({
+      ...freeText,
+      issueId: issue.id,
+      prompt: 'The run asked which of these readings holds.',
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(422);
+    expect(refusalCodes(r)).toEqual(['QUESTION_OPTIONS_REQUIRED']);
+    const row = (r.json.error.refusals as Doc[])[0];
+    expect(row?.path).toBe('/options');
+    expect(row?.detail).toContain('recommendedOptionId');
+    expect(await questionCount()).toBe(before);
+  });
+
+  it('refuses a question on no issue, requirement or asker, naming the shapes it takes', async () => {
+    const before = await questionCount();
+    const r = await askBox({ ...freeText, prompt: 'May the report be downloaded?' });
+    expect(r.status, JSON.stringify(r.json)).toBe(400);
+    expect(refusalCodes(r)).toEqual(['QUESTION_SUBJECT_REQUIRED']);
+    expect(((r.json.error.refusals as Doc[])[0]?.detail as string) ?? '').toContain('`about`');
+    expect(await questionCount()).toBe(before);
+  });
+
+  it('admits the control: the same wording with its options, and a plain free-text question', async () => {
+    const issue = await plantIssue(null);
+    ok(await askRest({ issueId: issue.id, prompt: 'Which of these readings holds?' }), 201);
+    ok(await askBox({ ...freeText, issueId: issue.id, prompt: 'Which flag guards the tour?' }));
+  });
+
+  it('does not mint a record question that carries no text and no readings; it warns by name', async () => {
+    const issue = await plantIssue(null);
+    const posted = ok(
+      await say('master', 'POST', `/api/issues/${issue.id}/comments`, {
+        body: '```forge-record\nto: owner\n```\n\n`forge-record: question · contract 1`',
+        intent: 'question',
+      }),
+      201,
+    );
+    const asked = await rows<{ steps: Doc[] }>(
+      sql`SELECT steps FROM agent_questions WHERE issue_id = ${issue.id}`,
+    );
+    expect(asked.map((q) => q.steps[0]?.prompt).join(' ')).not.toContain('which of these readings');
+    expect(posted.warnings.join(' ')).toContain('QUESTION_SHAPE_INVALID');
   });
 });
