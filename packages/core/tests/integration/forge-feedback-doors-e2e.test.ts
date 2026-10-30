@@ -306,10 +306,13 @@ describe('the retired agent-report doors say where reports go now (BC-8)', () =>
   // the old read REQUIRED ?projectId unless scope=all, so every old caller sends a query: the
   // retirement is answered before any shape check, never "this route takes no query parameters"
   it.each([
-    ['?projectId=<uuid>', () => `?projectId=${w.client}`],
-    ['?scope=all', () => '?scope=all'],
-    ['?limit=5', () => '?limit=5'],
-    ['?projectId=<uuid>&status=open&limit=5', () => `?projectId=${w.client}&status=open&limit=5`],
+    ['?projectId=<uuid>', (): string => `?projectId=${w.client}`],
+    ['?scope=all', (): string => '?scope=all'],
+    ['?limit=5', (): string => '?limit=5'],
+    [
+      '?projectId=<uuid>&status=open&limit=5',
+      (): string => `?projectId=${w.client}&status=open&limit=5`,
+    ],
   ] as const)(
     'GET /api/agent-reports%s answers AGENT_REPORT_RETIRED, not a query refusal',
     async (_shape, query) => {
