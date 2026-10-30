@@ -14,10 +14,12 @@ export interface RunSecretResolve {
   sessionId: string;
   runId: string;
   deviceId: string;
-  environment: string;
+  environment: string | null;
   profile: string;
   refs: string[];
   tokenId: string;
+  /** The person who declared the run, where it is a review run (`devices/review-run.ts`). */
+  declaredBy?: string;
 }
 
 /** Audit the read, committed before any value leaves. */

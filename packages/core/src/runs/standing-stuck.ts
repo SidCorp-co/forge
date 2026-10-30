@@ -136,6 +136,11 @@ interface Sign {
   column: string;
 }
 
+// A review run's one sign is its declared end: stuck only once the reaper has let it stand past it.
+function reviewEndOf(f: RunFacts, at: Date): Sign {
+  return { at, table: 'pipeline_runs', id: f.run.id, column: 'metadata.reviewRun.expiresAt' };
+}
+
 // As devices/run-session-reaper.ts reads it: a run session's beat falls back to its start, then its creation.
 function lastSignOf(f: RunFacts): Sign {
   const signs: Sign[] = [];
@@ -175,7 +180,8 @@ function lastSignOf(f: RunFacts): Sign {
 
 function silentOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
   if (f.liveJobs > 0) return null;
-  const sign = lastSignOf(f);
+  // nothing beats a review run a person declared; it stands still until the end it names
+  const sign = f.run.review ? reviewEndOf(f, f.run.review.expiresAt) : lastSignOf(f);
   const since = after(sign.at, ctx.stuckAfterMs);
   if (since.getTime() >= ctx.now.getTime()) return null;
   return {

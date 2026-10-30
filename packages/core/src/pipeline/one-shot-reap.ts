@@ -1,6 +1,10 @@
 // Reaping one-shot runs nothing will finish.
 
-import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  MASTER_SESSION_KIND,
+  REVIEW_RUN_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import { LIVE_PIPELINE_RUN_STATUSES, oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
@@ -74,6 +78,12 @@ export async function reapOrphanedOneShotRuns(
                 WHERE rn.device_id = s.device_id
                   AND rn.last_seen_at >= ${cutoffIso}
               )
+            )
+            -- a review run a person declared is beaten by nothing: it lives to the end it names,
+            -- and the run-session reaper closes it there (devices/review-run.ts)
+            OR (
+              s.kind = ${RUN_SESSION_KIND}
+              AND (r.metadata -> ${REVIEW_RUN_METADATA_KEY} ->> 'expiresAt')::timestamptz > ${now.toISOString()}
             )
             OR ${parkedOnAHuman(sql`s.id`)}
             OR ${PERSON_CHAT_BETWEEN_TURNS}

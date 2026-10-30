@@ -90,6 +90,14 @@ const BINDING_TARGET_REFUSAL_CODES = [
 ] as const;
 
 /** Every code a project-config document write answers with. */
+/** A person's declaration of a review run (`POST /api/projects/:id/review-runs`), refused by name. */
+const REVIEW_RUN_REFUSAL_CODES = [
+	/** The caller is an agent account: a review run is declared by a person; an agent's runs are its master's. */
+	"REVIEW_RUN_NOT_A_PERSON",
+	/** The profile named is no testing profile this project declares. */
+	"REVIEW_RUN_PROFILE_UNKNOWN",
+] as const;
+
 export const PROJECT_CONFIG_REFUSAL_CODES = [
 	...CONFIG_REFUSAL_CODES,
 	"SCHEMA_VIOLATION",
@@ -104,6 +112,7 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"AGENT_ACCESS_NEEDS_ORG_ADMIN",
 	"PROJECT_NOT_ADMINISTERED",
 	"TARGETS_NOT_LISTED",
+	...REVIEW_RUN_REFUSAL_CODES,
 	...BINDING_TARGET_REFUSAL_CODES,
 	...GATE_PROFILE_REFUSAL_CODES,
 ] as const;
@@ -116,6 +125,7 @@ export const PROJECT_CONFIG_REFUSAL_STATUSES = {
 	PROJECT_NOT_ADMINISTERED: 403,
 	GATE_PROFILE_RAISED: 403,
 	GATES_NO_PROJECT_DOCUMENT: 409,
+	REVIEW_RUN_NOT_A_PERSON: 403,
 } as const satisfies RefusalStatuses<ProjectConfigRefusalCode>;
 
 /** Reading an environment's deployed state through its binding. */

@@ -1,0 +1,1 @@
+**A person can declare a review run.** A project admin calls `POST /api/projects/:id/review-runs` naming an issue, a box and a testing profile; a session on that box reads the profile under the box's credential until the run closes or ends.

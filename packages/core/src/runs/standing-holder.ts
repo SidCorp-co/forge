@@ -196,6 +196,17 @@ function earlierOf(a: Clock, b: Clock | null): Clock {
 
 function silenceExpiry(f: RunFacts, ctx: StandingContext): Clock {
   const s = f.session;
+  // a review run a person declared is beaten by nothing; the run-session reaper ends it at its end
+  if (f.run.review && s?.status === 'running') {
+    const at = f.run.review.expiresAt;
+    return {
+      expiry: expiry(
+        { source: 'declaration', at: at.toISOString(), verdict: verdictAt(at, ctx.now, 'expired') },
+        say('runs.holder.reviewClock', { at: at.toISOString() }),
+      ),
+      detail: null,
+    };
+  }
   if (f.run.rawLane === 'run_session' && s?.status === 'running') {
     const beat = s.lastHeartbeatAt ?? s.startedAt ?? s.createdAt;
     return clock(

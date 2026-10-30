@@ -10,6 +10,7 @@ import {
   declaredRunElsewhere,
   declaredRunOfCall,
   deviceHolderUserId,
+  openReviewRun,
   provideDevicesPorts,
   readRunnerPoolRead,
   residentMasterSql,
@@ -145,11 +146,12 @@ async function checkoutRemoteOf(projectId: string, repository: string): Promise<
   return (await relayRemoteOf(projectId, repository)) ?? remoteOf(repository);
 }
 
-/** What the testing-secrets door reads and writes for a run a master declared, where no job holds it. */
+/** What the testing-secrets door reads and writes for a declared run, where no job holds it, and the door a person declares a review run at. */
 export const declaredRunSecretPorts = {
   declaredRunOfCall,
   declaredRunElsewhere,
   recordRunSecretResolve,
+  openReviewRun,
 };
 
 export function provideExecutionPorts(): void {

@@ -4,7 +4,13 @@
 // run id, or the run id the box declared (`issues/pattern-runs.ts` reads a verdict's `run` the same
 // way). Core admitted that run on that box for that project, which is what binds it to both.
 
-import { RUN_GROUP_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  REVIEW_RUN_METADATA_KEY,
+  type ReviewRunDeclaration,
+  RUN_GROUP_METADATA_KEY,
+  RUN_SESSION_KIND,
+  readReviewRun,
+} from '@forge/contracts/agent-sessions';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
@@ -21,6 +27,8 @@ export type DeclaredRunRead =
       projectId: string;
       /** The issues the run was declared over, in its project. */
       issueIds: string[];
+      /** Where a person declared it for review (`devices/review-run.ts`): who, its profile, its end. */
+      review: ReviewRunDeclaration | null;
     };
 
 interface Row {
@@ -29,6 +37,7 @@ interface Row {
   project_id: string;
   run_id: string;
   run_group: unknown;
+  review: unknown;
 }
 
 /** The projects a credential reaches, where it is fenced to some; null where it names none. */
@@ -64,7 +73,8 @@ export async function declaredRunOfCall(
   if (!caller.deviceId) return { kind: 'none' };
   const [row] = (await db.execute(sql`
     SELECT s.id AS session_id, s.status, s.project_id, r.id AS run_id,
-           r.metadata -> ${RUN_GROUP_METADATA_KEY} AS run_group
+           r.metadata -> ${RUN_GROUP_METADATA_KEY} AS run_group,
+           jsonb_build_object(${REVIEW_RUN_METADATA_KEY}::text, r.metadata -> ${REVIEW_RUN_METADATA_KEY}) AS review
       FROM agent_sessions s
       JOIN pipeline_runs r ON r.id = s.pipeline_run_id
      WHERE s.device_id = ${caller.deviceId}
@@ -98,6 +108,14 @@ export async function declaredRunOfCall(
       detail: `${named} has ended (\`${row.status}\`), so it judges nothing now; a run reads testing secrets only while it runs.`,
     };
   }
+  const review = readReviewRun(row.review);
+  if (review && Date.parse(review.expiresAt) <= Date.now()) {
+    return {
+      kind: 'refused',
+      reason: 'ended',
+      detail: `${named} is a review run a person declared, and it ended at ${review.expiresAt}; declare another (POST /api/projects/${row.project_id}/review-runs) to read again.`,
+    };
+  }
   if (row.status === 'queued') {
     return {
       kind: 'refused',
@@ -126,6 +144,7 @@ export async function declaredRunOfCall(
     runId: row.run_id,
     projectId: row.project_id,
     issueIds: issues.map((i) => i.id),
+    review,
   };
 }
 

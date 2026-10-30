@@ -17,6 +17,7 @@ export { readRunnerPoolRead } from './pool-read-report.js';
 export { provideDevicesPorts } from './ports.js';
 export { runDevicePrune } from './prune.js';
 export { deviceOwnedBy, projectRunnerBuilds } from './read.js';
+export { openReviewRun, REVIEW_RUN_DECLARED } from './review-run.js';
 export { returnIssuesForRun } from './run-issue-return.js';
 export { handleRunnerSessions } from './run-ledger-ws.js';
 export { reapAbandonedDeclarations } from './run-session-queued.js';

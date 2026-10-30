@@ -42,6 +42,8 @@ export interface RunFacts {
     releaseVersion: string | null;
     /** The id the box gave its run when it declared it; null for a run no box declared. */
     boxRunId: string | null;
+    /** Where a person declared the run for review: its declaration ends it, not silence. */
+    review?: { declaredBy: string; profile: string; expiresAt: Date } | null;
     /** The take refusal a box's declaration is queued behind, until core admits it. */
     declarationRefusal: {
       code: string;

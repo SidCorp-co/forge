@@ -3,12 +3,14 @@
 // testing-secrets read is made for (execution, a context below in the order). The composition
 // root fills them at boot (`provideProjectOrg` is the pattern).
 
+import type { ReviewRunDeclaration } from '@forge/contracts/agent-sessions';
 import type { Tx } from '../db/client.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 
 export interface SecretResolveAudit {
-  environment: string;
+  /** The environment judged; null for a review run's read where no one environment names its profile. */
+  environment: string | null;
   profile: string;
   refs: string[];
   tokenId: string;
@@ -19,13 +21,23 @@ export interface SecretResolveAudit {
 export type DeclaredRunRead =
   | { kind: 'none' }
   | { kind: 'refused'; reason: 'ended' | 'queued' | 'foreign'; detail: string }
-  | { kind: 'run'; sessionId: string; runId: string; projectId: string; issueIds: string[] };
+  | {
+      kind: 'run';
+      sessionId: string;
+      runId: string;
+      projectId: string;
+      issueIds: string[];
+      /** Where a person declared it for review: who, the one profile it reads, its end. */
+      review: ReviewRunDeclaration | null;
+    };
 
 export interface RunSecretResolveAudit extends SecretResolveAudit {
   issueId: string;
   sessionId: string;
   runId: string;
   deviceId: string;
+  /** The person who declared the run, where it is a review run. */
+  declaredBy?: string;
 }
 
 type JobCredentialRead =
@@ -61,6 +73,20 @@ interface ProjectConfigPorts {
   ): Promise<{ box: string; keys: string[] } | null>;
   /** Audit a declared run's resolve on the issue it judges, committed before any value leaves. */
   recordRunSecretResolve(audit: RunSecretResolveAudit): Promise<void>;
+  /** Open a review run a person declared on a box serving the project (`devices/review-run.ts`). */
+  openReviewRun(args: {
+    projectId: string;
+    box: string;
+    /** The issue reviewed, by its key or its id. */
+    issue: string;
+    declaration: ReviewRunDeclaration;
+  }): Promise<{
+    sessionId: string;
+    runId: string;
+    box: { id: string; name: string };
+    /** The issue's canonical key. */
+    issue: string;
+  }>;
 }
 
 const slot = portSlot<ProjectConfigPorts>('project-config', 'provideProjectConfigPorts');

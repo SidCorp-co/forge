@@ -1,47 +1,22 @@
 import type { TestingSecretsRefusalCode } from '@forge/contracts/project-config';
 import { JUDGING_JOB_TYPES, SELF_JOB } from '@forge/contracts/project-config';
-import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
-import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import { projectConfigPorts } from './ports.js';
 import { environmentsOf } from './release-path.js';
+import { resolveForReviewRun } from './review-run-secrets.js';
 import type { ProjectDocument } from './schema.js';
-import { credentialRefs, readProjectConfig, readTestingProfile } from './service.js';
-import { drizzleConfigStore } from './store.js';
-
-interface TestingSecretsRefusal {
-  status: 403 | 404 | 409 | 422 | 503;
-  code: TestingSecretsRefusalCode;
-  message: string;
-  details?: Record<string, unknown>;
-}
-
-interface ResolvedTestingSecrets {
-  /** The job whose credential read them; null where a run a master declared did. */
-  jobId: string | null;
-  /** The declared run that read them, by core's session and run ids. */
-  run?: { session: string; id: string };
-  environment: string;
-  profileId: string;
-  secrets: { ref: string; value: string }[];
-}
-
-type Refused = { ok: false; refusal: TestingSecretsRefusal };
-
-type TestingSecretsOutcome = { ok: true; resolved: ResolvedTestingSecrets } | Refused;
-
-const refuse = (
-  status: TestingSecretsRefusal['status'],
-  code: TestingSecretsRefusalCode,
-  message: string,
-  details?: Record<string, unknown>,
-): Refused => ({
-  ok: false,
-  refusal: { status, code, message, ...(details ? { details } : {}) },
-});
+import { readProjectConfig } from './service.js';
+import {
+  type DeclaredRun,
+  decryptedValues,
+  profileRefs,
+  type Refused,
+  refuse,
+  type TestingSecretsOutcome,
+} from './testing-secret-values.js';
 
 const JOB_CREDENTIAL_SHAPE =
   'The credential that reaches this route is the one a running job holds: issued to the box the job runs on and bound to the job’s project, so it names exactly one live job; or a box’s own credential with the id of a run a master on that box declared (its run id, or core’s session or run id for it) in place of the job id.';
@@ -102,85 +77,6 @@ async function judgingJob(jobId: string) {
   return { ok: true as const, job };
 }
 
-/** The secret refs to resolve: every ref the profile names, or the asked subset of them. */
-async function profileRefs(
-  projectId: string,
-  profileId: string,
-  environment: string,
-  asked: readonly string[] | null,
-): Promise<Refused | { ok: true; wanted: string[] }> {
-  const profile = await readTestingProfile(projectId, profileId);
-  if (!profile) {
-    return refuse(
-      422,
-      'TESTING_PROFILE_NOT_DECLARED',
-      `environment \`${environment}\` names testing profile \`${profileId}\`, and this project holds no profile of that id.`,
-    );
-  }
-  const named = [...new Set(credentialRefs(profile.document).map((r) => r.ref))];
-  const wanted = asked === null ? named : [...new Set(asked)];
-  const unnamed = wanted.filter((r) => !named.includes(r));
-  if (unnamed.length > 0) {
-    return refuse(
-      422,
-      'SECRET_NOT_NAMED',
-      `testing profile \`${profileId}\` names none of ${unnamed.join(', ')}; it names ${named.join(', ') || 'no secret'}.`,
-      { unnamed },
-    );
-  }
-  if (!isVaultConfigured()) {
-    return refuse(
-      503,
-      'VAULT_NOT_CONFIGURED',
-      'INTEGRATION_MASTER_KEY is not set on this core, so no secret can be decrypted; nothing was read.',
-    );
-  }
-
-  return { ok: true, wanted };
-}
-
-/** Each wanted value decrypted, long enough for the scrubber to replace in a log. */
-async function decryptedValues(
-  projectId: string,
-  profileId: string,
-  wanted: string[],
-): Promise<Refused | { ok: true; secrets: { ref: string; value: string }[] }> {
-  const stored = await drizzleConfigStore.secretValues(projectId, wanted);
-  const missing = wanted.filter((r) => !stored.has(r));
-  if (missing.length > 0) {
-    return refuse(
-      422,
-      'SECRET_VALUE_MISSING',
-      `testing profile \`${profileId}\` names ${missing.join(', ')}, and this project stores no value for it; PUT /api/projects/${projectId}/secrets/<scope>/<name> first.`,
-      { missing },
-    );
-  }
-
-  const secrets: { ref: string; value: string }[] = [];
-  for (const ref of wanted) {
-    let value: string;
-    try {
-      value = decryptSecret(stored.get(ref) as Buffer);
-    } catch (err) {
-      return refuse(
-        422,
-        'SECRET_VALUE_UNREADABLE',
-        `${ref} is stored but does not decrypt under this core's INTEGRATION_MASTER_KEY (${err instanceof Error ? err.message : String(err)}); write it again.`,
-      );
-    }
-    if (value.length < SCRUB_MIN_SECRET_LENGTH) {
-      return refuse(
-        422,
-        'SECRET_TOO_SHORT_TO_SCRUB',
-        `${ref} holds a value shorter than ${SCRUB_MIN_SECRET_LENGTH} characters, which the secret scrubber does not replace, so it would reach this job's log in plain text; store a longer one.`,
-      );
-    }
-    secrets.push({ ref, value });
-  }
-
-  return { ok: true, secrets };
-}
-
 // testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
 // the one testing profile its environment names, and nothing else. A run a master declared reads
 // them the same way under its box's credential, naming itself (`resolveForDeclaredRun`).
@@ -232,7 +128,12 @@ export async function resolveTestingSecrets(args: {
     );
   }
 
-  const refs = await profileRefs(job.projectId, profileId, environment, args.refs);
+  const refs = await profileRefs(
+    job.projectId,
+    profileId,
+    `environment \`${environment}\` names`,
+    args.refs,
+  );
   if (!refs.ok) return refs;
   const { wanted } = refs;
 
@@ -305,11 +206,6 @@ const DECLARED_RUN_REFUSAL = {
   foreign: 'TESTING_SECRETS_FOREIGN_RUN',
 } as const satisfies Record<string, TestingSecretsRefusalCode>;
 
-type DeclaredRun = Extract<
-  Awaited<ReturnType<ReturnType<typeof projectConfigPorts>['declaredRunOfCall']>>,
-  { kind: 'run' }
->;
-
 /**
  * A run a master declared on the caller's box: the runs a master declares execute in its pane under
  * the box's own credential, so the call names the run, and core's record of that run on that box
@@ -326,6 +222,7 @@ async function resolveForDeclaredRun(args: {
 }): Promise<TestingSecretsOutcome> {
   const { principal, profileId, run } = args;
   const judge = `run ${run.runId}`;
+  if (run.review) return resolveForReviewRun({ ...args, review: run.review });
   const project = await readProjectConfig(run.projectId);
   if (!project) {
     return refuse(
@@ -362,7 +259,12 @@ async function resolveForDeclaredRun(args: {
   }
   const { environment } = judged;
 
-  const refs = await profileRefs(run.projectId, profileId, environment, args.refs);
+  const refs = await profileRefs(
+    run.projectId,
+    profileId,
+    `environment \`${environment}\` names`,
+    args.refs,
+  );
   if (!refs.ok) return refs;
   const values = await decryptedValues(run.projectId, profileId, refs.wanted);
   if (!values.ok) return values;

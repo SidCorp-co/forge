@@ -89,6 +89,8 @@ export const RUN_EXPIRY_SOURCES = [
 	"claim",
 	"silence_reap",
 	"deploy_lock",
+	/** A review run a person declared ends at the time its declaration names. */
+	"declaration",
 ] as const;
 export type RunExpirySource = (typeof RUN_EXPIRY_SOURCES)[number];
 

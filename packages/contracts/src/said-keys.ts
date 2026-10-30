@@ -2134,6 +2134,10 @@ export const SAID = {
 		en: "silent {mins} min plus {grace} s grace fails it (stale); last {at}",
 		vars: { mins: "count", grace: "count", at: "instant" },
 	},
+	"runs.holder.reviewClock": {
+		en: "a person declared it for review; it ends at {at} (run_session_review_expired)",
+		vars: { at: "instant" },
+	},
 	"runs.holder.boxSilentClock": {
 		en: "silent {mins} min fails it (run_session_box_silent); last beat {at}",
 		vars: { mins: "count", at: "instant" },

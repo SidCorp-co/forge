@@ -431,5 +431,6 @@ projectConfigRoutes.delete(
 
 export { contentLanguageRoutes } from './content-language-routes.js';
 export { environmentStateRoutes } from './environment-state-routes.js';
+export { reviewRunRoutes } from './review-run-routes.js';
 export { projectConfigSchemaRoutes } from './schema-routes.js';
 export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';

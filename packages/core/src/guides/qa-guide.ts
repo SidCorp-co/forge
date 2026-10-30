@@ -68,6 +68,12 @@ Read these before judging anything, while whoever sent you can still equip you.
   \`TESTING_SECRETS_RUN_NOT_RECORDED\`, and the same call answers once it has. Only the profile of the environment deploying the branch the
   issue's work landed on is answered, while the run runs; each read is audited on the issue and each
   value is scrubbed from what the run posts. Keep a value in no file, comment or commit.
+- A session working for a person on a box, with no master to declare for it, gets a run from that
+  person: someone holding project admin calls \`POST /api/projects/:id/review-runs\` with
+  \`{ issue, box, profile, minutes? }\`, and the session reads that one profile under the box's
+  credential (\`FORGE_BORROW_FROM=<runner config dir>/forge-runner/master/<slug>/forge-cli.json
+  forge-runner api jobs/<runId>/testing-profiles/<profile>/secrets\`) until the run is closed at
+  \`devices/me/run-sessions/<sessionId>/close\` or reaches its end (30 minutes unless named, 120 at most).
 
 A criterion you have no route to is a \`skipped\` naming what is missing. Where every criterion you
 were given would be one, say so and stop: a credential or a person is what was owed, not a run.

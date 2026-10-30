@@ -7,7 +7,11 @@
  * keys on the heartbeat, which stops on its own when a box vanishes.
  */
 
-import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  REVIEW_RUN_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import { and, eq, sql } from 'drizzle-orm';
 import { transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
@@ -23,10 +27,13 @@ interface ReapedRunSession {
 }
 
 /**
- * Release run sessions whose box has gone silent, naming the issues freed.
+ * Release run sessions whose box has gone silent, naming the issues freed, and end the review runs
+ * a person declared whose time is up.
  */
 export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
+  // a review run (`review-run.ts`) has no process on its box to beat it: its clock is the end its
+  // declaration names, never silence
   const rows = (await db.execute(sql`
     SELECT s.id, s.pipeline_run_id,
            COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) AS issue_keys
@@ -34,6 +41,7 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     JOIN pipeline_runs r ON r.id = s.pipeline_run_id
     WHERE s.kind = ${RUN_SESSION_KIND}
       AND s.status = 'running'
+      AND r.metadata -> ${REVIEW_RUN_METADATA_KEY} IS NULL
       AND COALESCE(s.last_heartbeat_at, s.started_at, s.created_at)
           < now() - make_interval(secs => ${staleSeconds})
   `)) as unknown as Array<Record<string, unknown>>;
@@ -75,5 +83,42 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     );
     reaped.push({ sessionId, runId, issueKeys });
   }
-  return reaped;
+  return [...reaped, ...(await endExpiredReviewRuns())];
+}
+
+/** A review run whose declared end has passed is over: completed, as a run closed at its end is. */
+async function endExpiredReviewRuns(): Promise<ReapedRunSession[]> {
+  const rows = (await db.execute(sql`
+    SELECT s.id, s.pipeline_run_id, r.metadata -> ${REVIEW_RUN_METADATA_KEY} ->> 'expiresAt' AS expires_at
+    FROM agent_sessions s
+    JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+    WHERE s.kind = ${RUN_SESSION_KIND}
+      AND s.status = 'running'
+      AND (r.metadata -> ${REVIEW_RUN_METADATA_KEY} ->> 'expiresAt')::timestamptz <= now()
+  `)) as unknown as Array<{ id: string; pipeline_run_id: string; expires_at: string }>;
+  const ended: ReapedRunSession[] = [];
+  for (const row of rows) {
+    const flipped = await db.transaction(async (tx) => {
+      await lockRunForClose(tx, row.pipeline_run_id);
+      const moved = (
+        await transitionSessions(tx, {
+          to: 'completed',
+          set: { updatedAt: new Date() },
+          where: and(eq(agentSessions.id, row.id), eq(agentSessions.status, 'running')),
+          reason: 'run_session_review_expired',
+          actor: { type: 'system' },
+          source: 'run-session-reaper',
+        })
+      ).rows;
+      if (moved.length > 0) await closeRunIfOneShotInTx(tx, row.pipeline_run_id, 'completed');
+      return moved.length > 0;
+    });
+    if (!flipped) continue;
+    logger.info(
+      { runSessionId: row.id, runId: row.pipeline_run_id, expiresAt: row.expires_at },
+      'run-session-reaper: ended a review run at the end its declaration named',
+    );
+    ended.push({ sessionId: row.id, runId: row.pipeline_run_id, issueKeys: [] });
+  }
+  return ended;
 }

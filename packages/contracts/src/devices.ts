@@ -45,6 +45,12 @@ export const DEVICE_REFUSAL_CODES = [
 	"BOX_ANSWER_NOT_ASKED",
 	/** A token core handed a chat (a turn, a session, an agreed proposal) on a route only a box may call. */
 	"TURN_CREDENTIAL_NOT_A_BOX",
+	/** A review run named a box that no runner of the project's organisation is bound to, or one revoked. */
+	"REVIEW_RUN_BOX_NOT_IN_ORG",
+	/** A review run named a box by a name several of the organisation's boxes carry. */
+	"REVIEW_RUN_BOX_AMBIGUOUS",
+	/** A review run named an issue that is none of its project's: absent, another project's, or no issue reference. */
+	"REVIEW_RUN_ISSUE_NOT_IN_PROJECT",
 	...POOL_CLAIM_REFUSAL_CODES,
 ] as const;
 

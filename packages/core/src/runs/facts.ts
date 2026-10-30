@@ -1,4 +1,8 @@
-import { RUN_ISSUE_STATUSES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_SESSION_KIND,
+  readReviewRun,
+} from '@forge/contracts/agent-sessions';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { readHoldState } from '../jobs/index.js';
@@ -210,7 +214,13 @@ function runPart(b: BaseRun, lane: RunFacts['run']['rawLane'], t: Tables): RunFa
     releaseVersion: b.release_version,
     boxRunId: str(metadataObject(b.metadata).boxRunId) ?? null,
     declarationRefusal: declarationRefusalOf(metadataObject(b.metadata).declarationRefusal),
+    review: reviewOf(b.metadata),
   };
+}
+
+function reviewOf(metadata: unknown): NonNullable<RunFacts['run']['review']> | null {
+  const review = readReviewRun(metadata);
+  return review ? { ...review, expiresAt: new Date(review.expiresAt) } : null;
 }
 
 function declarationRefusalOf(raw: unknown): RunFacts['run']['declarationRefusal'] {

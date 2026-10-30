@@ -72,3 +72,40 @@ export const RUN_ISSUE_STATUSES_METADATA_KEY = "runIssueStatuses";
 export const RUN_DECLARATION_REFUSAL_METADATA_KEY = "declarationRefusal";
 /** What each carried issue was given when the run opened (`run-standing.ts:RunGiven`); nothing rewrites it. */
 export const RUN_GIVEN_METADATA_KEY = "runGiven";
+/**
+ * On a run a PERSON declared for review (`POST /api/projects/:id/review-runs`), who declared it, the
+ * one testing profile it reads and when it ends (`ReviewRunDeclaration`). A run a master declared
+ * carries none.
+ */
+export const REVIEW_RUN_METADATA_KEY = "reviewRun";
+/** How long a review run lives when its declaration names no length, in minutes. */
+export const REVIEW_RUN_DEFAULT_MINUTES = 30;
+/** The longest a review run may be declared for, in minutes. */
+export const REVIEW_RUN_MAX_MINUTES = 120;
+
+/** What a review run's metadata holds under `REVIEW_RUN_METADATA_KEY`. */
+export interface ReviewRunDeclaration {
+	/** The person who declared it. */
+	declaredBy: string;
+	/** The one testing profile its reads are served from. */
+	profile: string;
+	/** When it ends, ISO 8601; a read after it is refused and the run-session reaper closes it. */
+	expiresAt: string;
+}
+
+/** The declaration a run's metadata holds, or null where it is no review run or the entry is malformed. */
+export function readReviewRun(metadata: unknown): ReviewRunDeclaration | null {
+	const m = metadata as Record<string, unknown> | null;
+	const raw = m && typeof m === "object" ? m[REVIEW_RUN_METADATA_KEY] : null;
+	if (!raw || typeof raw !== "object") return null;
+	const r = raw as Record<string, unknown>;
+	if (
+		typeof r.declaredBy !== "string" ||
+		typeof r.profile !== "string" ||
+		typeof r.expiresAt !== "string" ||
+		Number.isNaN(Date.parse(r.expiresAt))
+	) {
+		return null;
+	}
+	return { declaredBy: r.declaredBy, profile: r.profile, expiresAt: r.expiresAt };
+}

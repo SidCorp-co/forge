@@ -471,6 +471,7 @@ export const ENUM_LABELS = {
 		claim: "Claim",
 		silence_reap: "Silence reap",
 		deploy_lock: "Deploy lock",
+		declaration: "Declared end",
 	} satisfies Record<RunExpirySource, string>,
 	runHandbackClose: {
 		ended: "Ended",
