@@ -28,6 +28,7 @@ import {
 import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identity.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { carriageOf, changedPathsOf } from './carriage.js';
+import { readJudgedOnNow } from './serving-reading.js';
 
 /** Uncached reads (one or two compares each) one weighing may make of each kind — landings and
  *  carriages, so neither can starve the other; a cached answer costs none. */
@@ -124,7 +125,9 @@ async function readCarriage(
 
 /**
  * The weighing for these waiting issues — the project's unclaimed `awaiting_release` rows where
- * none are named — beside `serving`, the deployment's reading the caller already took. A project
+ * none are named — beside `serving`, the deployment's reading the caller already took, and the
+ * reading of the environment the project's changes are judged on, which an unreleased issue's
+ * runtime verdicts are weighed against (`issues/runtime-standing.ts:weighedOn`). A project
  * declaring no runtime, whose verdicts name what it serves, makes no repository read at all.
  */
 export async function readWeighingNow(
@@ -141,17 +144,22 @@ export async function readWeighingNow(
     runnersRead ??= await readProjectRunners(projectId, now);
     runtimes.push({ name: runtime.name, paths: runtime.paths, serving: runnersRead });
   }
+  const judgedOn = await readJudgedOnNow(projectId, now);
   const { rows, judged } = await verdictWeighingInputs(projectId, issueIds);
   const served = [
-    ...new Set([...servedCommits(serving), ...runtimes.flatMap((r) => servedCommits(r.serving))]),
+    ...new Set([
+      ...servedCommits(serving),
+      ...(judgedOn.kind === 'read' ? servedCommits(judgedOn.serving) : []),
+      ...runtimes.flatMap((r) => servedCommits(r.serving)),
+    ]),
   ];
   const unequal = judged.some((j) => served.some((s) => !sameIdentity(j, s)));
   if (runtimes.length === 0 && !unequal) {
-    return { read: true, runtimes, changed: new Map(), carriage: new Map() };
+    return { read: true, runtimes, changed: new Map(), carriage: new Map(), judgedOn };
   }
   const reader = await readerFor(projectId, deps);
   passes += 1;
   const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget()) : new Map();
   const carriage = await readCarriage(judged, served, reader, budget());
-  return { read: true, runtimes, changed, carriage };
+  return { read: true, runtimes, changed, carriage, judgedOn };
 }

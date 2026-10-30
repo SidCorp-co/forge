@@ -269,6 +269,7 @@ export {
   type Carriage,
   type ChangedPaths,
   carriageKey,
+  type JudgedOnReading,
   type RuntimeReading,
   rotated,
   UNWEIGHED,

@@ -4,6 +4,7 @@
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { ServedAt, ServingReading } from '@forge/contracts/releases';
+import type { JudgedOnReading } from '../issues/index.js';
 import { longestSpelling } from '../messaging/verdict-identity.js';
 import type { EnvironmentState } from '../project-config/index.js';
 import {
@@ -132,7 +133,11 @@ export async function readServingNow(
       route: 'declare an environment with `tier: "production"`',
     };
   }
-  const state = await readEnvironmentState(projectId, document, production);
+  return readingOf(await readEnvironmentState(projectId, document, production), now, NO_ROUTE);
+}
+
+/** A state read into what it says is served; an environment that cannot be read reads as such. */
+function readingOf(state: EnvironmentState, now: () => Date, route: string): ServingReading {
   const readAt = now().toISOString();
   if (state.state !== 'unknown') return fromState(state, readAt);
   if (
@@ -142,5 +147,34 @@ export async function readServingNow(
   ) {
     return { kind: 'unreadable', why: state.reason.message, hosts: [], readAt };
   }
-  return { kind: 'undeclared', missing: state.reason.message, route: NO_ROUTE };
+  return { kind: 'undeclared', missing: state.reason.message, route };
+}
+
+/**
+ * The environment the project names as where its changes are judged before release
+ * (`delivery.judgedOn`, REQ-36 BC-18) and what it serves now, which an unreleased issue's runtime
+ * verdicts are weighed against; or why that environment is not known.
+ */
+export async function readJudgedOnNow(
+  projectId: string,
+  now: () => Date = () => new Date(),
+): Promise<JudgedOnReading> {
+  const held = await readProjectDocument(projectId);
+  const name = judgedOnOf(held?.document.delivery);
+  if (!held || name === null) {
+    return {
+      kind: 'none',
+      why: 'this project names no environment its changes are judged on (`delivery.judgedOn`)',
+    };
+  }
+  const declaration = held.document.environments[name];
+  if (!declaration) {
+    return {
+      kind: 'none',
+      why: `\`delivery.judgedOn\` names \`${name}\`, which the project document does not declare`,
+    };
+  }
+  const route = `declare a runtime probe on \`${name}\` (\`verification.runtime\`, \`"identifies": "source"\`), or deploy it through a binding whose platform records the commit it built`;
+  const state = await readEnvironmentState(projectId, held.document, { name, declaration });
+  return { kind: 'read', name, serving: readingOf(state, now, route) };
 }

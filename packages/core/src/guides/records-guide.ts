@@ -96,7 +96,9 @@ block names what that criterion was judged against before the next \`criterion\`
 
 - \`runtime: <a whole object id>\` — an identity something was observed serving. A verdict carrying
   one is weighed against a READING of what the project is serving, taken at the moment it is
-  weighed: what its declared probes answer, never a commit stored on the issue. It stands where the
+  weighed: what its declared probes answer, never a commit stored on the issue. Until the issue's
+  change is released that is the environment the project judges changes on (\`delivery.judgedOn\`);
+  once it is released, or where the project names none, production. It stands where the
   reading names that identity, and where a fleet mid-rollout answers two it stands on either of
   them. It is superseded where the reading names something else, and it stops reading as earned.
   Where the project declares no way to ask, or where what it declares answered nothing, the verdict

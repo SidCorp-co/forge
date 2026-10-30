@@ -45,11 +45,43 @@ export function owedRuntimes(issueId: string, weighing: Weighing): OwedRuntimes 
   return { deployment, declared, unread: null };
 }
 
+/**
+ * The reading an issue's runtime verdicts are weighed against in the deployment's place: until its
+ * change is released, the environment the project judges its changes on (`delivery.judgedOn`);
+ * once released, production. Where that environment is not known, production, saying why.
+ */
+export interface WeighedOn {
+  readonly serving: ServingReading;
+  /** The judged-on environment read in production's place, or null where production is read. */
+  readonly environment: string | null;
+  /** Why production is read for an unreleased issue; null where it is not. */
+  readonly unknown: string | null;
+}
+
+export function weighedOn(
+  released: boolean,
+  production: ServingReading,
+  weighing: Weighing,
+): WeighedOn {
+  if (released) return { serving: production, environment: null, unknown: null };
+  const judgedOn = weighing.judgedOn ?? { kind: 'none', why: 'it was not read' };
+  if (judgedOn.kind === 'read') {
+    return { serving: judgedOn.serving, environment: judgedOn.name, unknown: null };
+  }
+  return {
+    serving: production,
+    environment: null,
+    unknown: `the environment it was judged on is not known — ${judgedOn.why} — so it is weighed against production`,
+  };
+}
+
 /** How a verdict stood, and against which runtime's reading that was decided. */
 export interface WeighedVerdict {
   readonly standing: VerdictStanding;
   /** The declared runtime that decided, or null for the deployment. */
   readonly runtime: string | null;
+  /** The judged-on environment the deployment's reading was taken from, or null for production. */
+  readonly environment: string | null;
   readonly serving: ServingReading;
   /** What the weighing read about the served commits, said after the standing where it holds. */
   readonly beside: readonly string[];
@@ -112,17 +144,28 @@ export function weighVerdict(
   identities: IssueIdentities,
   owed: OwedRuntimes,
   weighing: Weighing,
+  on: WeighedOn | null = null,
 ): WeighedVerdict {
   const results: WeighedVerdict[] = [];
   if (owed.deployment) {
+    // only a runtime verdict was judged somewhere; any other is read against production, as before
+    const place = at?.kind === 'runtime' && on ? on : null;
+    const read = place?.serving ?? serving;
     const runs = (file: string) => !claimedByAny(weighing.runtimes, file);
-    const weighed = weighIn(at, serving, identities, runs, weighing, false);
-    results.push({ runtime: null, serving, ...weighed });
+    const weighed = weighIn(at, read, identities, runs, weighing, false);
+    if (place?.unknown && !EARNED_STANDINGS.has(weighed.standing))
+      weighed.beside.push(place.unknown);
+    results.push({
+      runtime: null,
+      environment: place?.environment ?? null,
+      serving: read,
+      ...weighed,
+    });
   }
   for (const r of owed.declared) {
     const runs = (file: string) => claimedBy(r.paths, file);
     const weighed = weighIn(at, r.serving, identities, runs, weighing, true);
-    results.push({ runtime: r.name, serving: r.serving, ...weighed });
+    results.push({ runtime: r.name, environment: null, serving: r.serving, ...weighed });
   }
   const failing = results.find((r) => !EARNED_STANDINGS.has(r.standing));
   if (failing) {

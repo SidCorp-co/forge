@@ -25,12 +25,22 @@ export interface RuntimeReading {
   readonly serving: ServingReading;
 }
 
+/**
+ * The environment a project's changes are judged on before release (`delivery.judgedOn`, REQ-36
+ * BC-18) and what it serves now, or why which environment that is is not known.
+ */
+export type JudgedOnReading =
+  | { readonly kind: 'read'; readonly name: string; readonly serving: ServingReading }
+  | { readonly kind: 'none'; readonly why: string };
+
 export interface Weighing {
   /** False only for `UNWEIGHED`: then a pair absent below was never asked, not missed. */
   readonly read: boolean;
   readonly runtimes: readonly RuntimeReading[];
   readonly changed: ReadonlyMap<string, ChangedPaths>;
   readonly carriage: ReadonlyMap<string, Carriage>;
+  /** Where an unreleased issue's runtime verdicts are weighed; absent where it was not read. */
+  readonly judgedOn?: JudgedOnReading;
 }
 
 /** Nothing read: equality alone decides, which can hold a verdict and never earn one. */

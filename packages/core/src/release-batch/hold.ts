@@ -85,8 +85,12 @@ function runtimeClause(runtime: RuntimeReading): string {
 }
 
 /** Where a verdict has to be judged to count — the one place the reading is said (ISS-1346). */
-function judgeClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
-  const deployment = deploymentClause(serving, runtimes);
+function judgeClause(
+  serving: ServingReading,
+  runtimes: readonly RuntimeReading[],
+  weighedOn: string | null,
+): string {
+  const deployment = deploymentClause(serving, runtimes, weighedOn);
   if (serving.kind === 'serving' || runtimes.length === 0) return deployment;
   // The allowance above is the deployment's: a declared runtime with nothing read still holds.
   return (
@@ -95,7 +99,16 @@ function judgeClause(serving: ServingReading, runtimes: readonly RuntimeReading[
   );
 }
 
-function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
+function deploymentClause(
+  serving: ServingReading,
+  runtimes: readonly RuntimeReading[],
+  weighedOn: string | null,
+): string {
+  // an unreleased issue's runtime verdicts are weighed where it is judged (`delivery.judgedOn`)
+  const project =
+    weighedOn === null
+      ? 'this project'
+      : `\`${weighedOn}\`, the environment this project judges a change on until it is released,`;
   if (serving.kind === 'serving' && runtimes.length > 0) {
     return (
       'record a verdict on each criterion named, judged at a commit the runtime it is held in is ' +
@@ -104,20 +117,20 @@ function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeRea
   }
   if (serving.kind === 'serving') {
     return (
-      'record a verdict on each criterion named, judged at a commit this project is serving — ' +
+      `record a verdict on each criterion named, judged at a commit ${project} is serving — ` +
       servingClause(serving)
     );
   }
   if (serving.kind === 'unreadable') {
     const asked = serving.hosts.length === 0 ? '' : ` (read from ${serving.hosts.join(', ')})`;
     return (
-      `nothing could be read from what this project answers through${asked}, read at ` +
+      `nothing could be read from what ${weighedOn === null ? 'this project' : `\`${weighedOn}\``} answers through${asked}, read at ` +
       `${serving.readAt}: ${serving.why}. Record a verdict on each criterion named — a verdict ` +
       'nothing could check still earns the criterion, and this sentence is why it reads as weaker'
     );
   }
   return (
-    `nothing here can read what this project is serving: ${serving.missing}. To give it a way, ` +
+    `nothing here can read what ${project} is serving: ${serving.missing}. To give it a way, ` +
     `${serving.route}, then record a verdict on each criterion named`
   );
 }
@@ -128,7 +141,7 @@ function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeRea
  */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const reasons = reasonsByWhy(report);
-  const judge = judgeClause(report.serving, report.runtimes);
+  const judge = judgeClause(report.serving, report.runtimes, report.weighedOn);
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:

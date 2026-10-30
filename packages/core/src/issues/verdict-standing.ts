@@ -159,11 +159,20 @@ function missingClause(serving: ServingReading): string {
   return serving.kind === 'undeclared' ? ` — ${serving.missing}` : '';
 }
 
+/** Where a reading was taken: the judged-on environment an unreleased issue is weighed on, else
+ *  the project's own production. */
+function servingWhere(environment: string | null): string {
+  return environment === null
+    ? 'this project'
+    : `\`${environment}\`, the environment this project judges a change on until it is released,`;
+}
+
 function supersededSentence(
   at: VerdictIdentity | null,
   serving: ServingReading,
   identities: IssueIdentities,
   runtime: string | null,
+  environment: string | null,
 ): string {
   const judged = named(at?.value ?? null);
   if (runtime !== null && serving.kind !== 'serving') {
@@ -174,12 +183,13 @@ function supersededSentence(
     return `judged at ${judged}, and this issue now stands at ${named(identities.source)}`;
   }
   if (serving.kind !== 'serving') {
-    return `judged at ${judged}, and nothing this project declares answered what it is serving`;
+    const where = environment === null ? 'this project' : `\`${environment}\``;
+    return `judged at ${judged}, and nothing ${where} declares answered what it is serving`;
   }
   if (runtime !== null) {
     return `judged at ${judged}, which the \`${runtime}\` runtime is not running`;
   }
-  return `judged at ${judged}, which is not a commit this project is serving`;
+  return `judged at ${judged}, which is not a commit ${servingWhere(environment)} is serving`;
 }
 
 function designSentence(standing: VerdictStanding, value: string, identities: IssueIdentities) {
@@ -223,13 +233,15 @@ function contractSentence(standing: VerdictStanding, value: string, identities: 
 }
 
 /** `runtime` names the declared release runtime the standing was decided in; null is the
- *  deployment (ISS-1368). */
+ *  deployment (ISS-1368). `environment` names the judged-on environment the deployment's reading was
+ *  taken from for an unreleased issue; null is production (`runtime-standing.ts:weighedOn`). */
 export function standingSentence(
   standing: VerdictStanding,
   at: VerdictIdentity | null,
   serving: ServingReading,
   identities: IssueIdentities,
   runtime: string | null = null,
+  environment: string | null = null,
 ): string {
   if (runtime !== null && standing !== 'superseded') {
     return `for the \`${runtime}\` runtime, ${standingSentence(standing, at, serving, identities)}`;
@@ -256,5 +268,5 @@ export function standingSentence(
     return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running`;
   }
   if (standing === 'uncorroborated') return uncorroboratedSentence(at, serving);
-  return supersededSentence(at, serving, identities, runtime);
+  return supersededSentence(at, serving, identities, runtime, environment);
 }

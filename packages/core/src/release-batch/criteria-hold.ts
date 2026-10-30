@@ -28,11 +28,11 @@ const NO_READING =
 /** A criterion earned on a runtime nothing could re-read passes, and says so (ISS-1286). */
 async function uncorroboratedWarning(
   reports: readonly IssueCriteriaReport[],
-  serving: ServingReading,
   warnings: ReleaseWarning[],
 ): Promise<void> {
   const weak = reports.filter((r) => r.uncorroborated.length > 0);
-  if (weak.length === 0) return;
+  const first = weak[0];
+  if (!first) return;
   const shown = await attempt('issue-display-ids', async () =>
     issueDisplayIds(weak.map((r) => r.issueId)),
   );
@@ -43,7 +43,8 @@ async function uncorroboratedWarning(
   }));
   warnings.push({
     code: 'RELEASE_CRITERIA_UNCORROBORATED',
-    message: uncorroboratedWarningSentence(held, whyUncorroborated(serving)),
+    // every waiting issue is unreleased, so each was weighed on the same reading (`weighedOn`)
+    message: uncorroboratedWarningSentence(held, whyUncorroborated(first.serving)),
     details: { held },
   });
 }
@@ -113,7 +114,7 @@ export async function criteriaHold(
     out,
   );
   if (!reports) return;
-  await uncorroboratedWarning(reports, serving, warnings);
+  await uncorroboratedWarning(reports, warnings);
   await heldOrWarned(waiting, reports, out, warnings, serving, gate);
 }
 

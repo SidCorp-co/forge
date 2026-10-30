@@ -28,7 +28,9 @@ import { reopenedAtOf } from './release-evidence.js';
 import {
   type OwedRuntimes,
   owedRuntimes,
+  type WeighedOn,
   type WeighedVerdict,
+  weighedOn,
   weighVerdict,
 } from './runtime-standing.js';
 import {
@@ -197,8 +199,11 @@ export interface IssueCriteriaReport {
   readonly unearned: readonly UnearnedCriterion[];
   /** Named beside `unearned` so a reader gets the citation and not only the consequence. */
   readonly broken: readonly BrokenCitations[];
-  /** What the project's declared probes answered when these verdicts were weighed. */
+  /** What the project's declared probes answered when these verdicts were weighed: the judged-on
+   *  environment's for an unreleased issue (`weighedOn`), else production's. */
   readonly serving: ServingReading;
+  /** The judged-on environment `serving` was read from, or null where it is production's. */
+  readonly weighedOn: string | null;
   /** Each release runtime the project declares beside its deployment, as read then (ISS-1368). */
   readonly runtimes: readonly RuntimeReading[];
   /** Criteria earned on a runtime nothing could re-read: earned, and weaker than a checked one. */
@@ -233,13 +238,13 @@ function reasonsAgainst(
   unresolved: readonly CitationReport[],
 ): string[] {
   const out: string[] = [];
-  const { standing, serving, runtime, beside } = weighed;
+  const { standing, serving, runtime, environment, beside } = weighed;
   if (pair.unverified) {
     out.push(pair.unverified);
   } else if (!verdictEarns(pair.verdict)) {
     out.push(`its verdict is \`${pair.verdict}\`, which is not earned`);
   } else if (!EARNED_STANDINGS.has(standing) || unconfirmedDraft(pair, standing)) {
-    const said = standingSentence(standing, pair.at, serving, identities, runtime);
+    const said = standingSentence(standing, pair.at, serving, identities, runtime, environment);
     out.push(beside.length === 0 ? said : `${said} — ${beside.join('; ')}`);
   }
   if (unresolved.length > 0) out.push(citationSentence(unresolved));
@@ -280,6 +285,7 @@ interface Weighed {
   readonly serving: ServingReading;
   readonly owed: OwedRuntimes;
   readonly weighing: Weighing;
+  readonly on: WeighedOn;
 }
 
 function findingsFor(
@@ -298,7 +304,7 @@ function findingsFor(
     if (!pair) continue;
     weighed.set(
       criterion,
-      weighVerdict(pair.at, weigh.serving, identities, weigh.owed, weigh.weighing),
+      weighVerdict(pair.at, weigh.serving, identities, weigh.owed, weigh.weighing, weigh.on),
     );
   }
   const spoken = spokenAt(
@@ -334,6 +340,7 @@ interface CriteriaRow {
   sessionContext: unknown;
   mergedCommitSha: string | null;
   mergedAt?: Date | null;
+  status: string;
 }
 
 function byMerge(a: CriteriaRow, b: CriteriaRow): number {
@@ -351,24 +358,26 @@ async function reportFor(
   judge: Awaited<ReturnType<typeof readJudge>>,
 ): Promise<IssueCriteriaReport> {
   const { runtimes } = weighing;
+  // a closed issue's change was released; until then it is weighed where it was judged
+  const on = weighedOn(row.status === 'closed', serving, weighing);
+  const placed = { serving: on.serving, weighedOn: on.environment, runtimes };
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), ...anchors };
   const stands = await standingOn(row.id, await listCriteria(db, row.id), judge);
   const criteria = await withCurrentDrafts(row.projectId, stands.criteria);
   const numbers = criteria.map((c) => c.n);
   if (numbers.length === 0) {
-    return { issueId: row.id, unearned: [], broken: [], serving, runtimes, uncorroborated: [] };
+    return { issueId: row.id, unearned: [], broken: [], ...placed, uncorroborated: [] };
   }
   const latest = latestByNumber(criteria, stands.unverified);
   const held = await heldAttachmentNames(row.id);
   const owed = owedRuntimes(row.id, weighing);
-  const found = findingsFor(numbers, latest, { serving, owed, weighing }, identities, held);
+  const found = findingsFor(numbers, latest, { serving, owed, weighing, on }, identities, held);
   return {
     issueId: row.id,
     unearned: found.unearned,
     broken: found.broken,
-    serving,
-    runtimes,
+    ...placed,
     uncorroborated: found.uncorroborated,
   };
 }
@@ -399,6 +408,7 @@ export async function unearnedCriteriaReports(
       sessionContext: issues.sessionContext,
       mergedCommitSha: issues.mergedCommitSha,
       mergedAt: issues.mergedAt,
+      status: issues.status,
     })
     .from(issues)
     .where(inArray(issues.id, issueIds))) as CriteriaRow[];
@@ -429,6 +439,7 @@ export async function unearnedCriteriaReports(
         unearned: [],
         broken: [],
         serving,
+        weighedOn: null,
         runtimes: weighing.runtimes,
         uncorroborated: [],
       });
