@@ -19,6 +19,7 @@ export {
 } from './dispatch-policy.js';
 export { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
 export { readEnvironmentState } from './environment-state.js';
+export type { EnvironmentState } from './environment-state-schema.js';
 export { readFastDelivery } from './fast-delivery.js';
 export {
   gateOf,
@@ -52,7 +53,6 @@ export {
 } from './release-path.js';
 export {
   type DeploymentTrigger,
-  type EnvironmentState,
   type ProjectDocument,
   STOREFRONT_PROVIDERS,
   sized,

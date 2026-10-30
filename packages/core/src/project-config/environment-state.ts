@@ -8,15 +8,14 @@ import {
 } from '../integrations/deploy/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import { deployAdapterForBinding } from './deploy-adapters/index.js';
-import type { NamedEnvironment } from './release-path.js';
 import {
-  type EnvironmentDeclaration,
   type EnvironmentState,
   environmentStateSchema,
   type ProbeOutcomeState,
-  type ProjectDocument,
   type RecordedEnvironmentState,
-} from './schema.js';
+} from './environment-state-schema.js';
+import type { NamedEnvironment } from './release-path.js';
+import type { EnvironmentDeclaration, ProjectDocument } from './schema.js';
 
 type RuntimeProbe = NonNullable<EnvironmentDeclaration['verification']>['runtime'][number];
 type UnknownCause = Extract<EnvironmentState, { state: 'unknown' }>['reason']['cause'];

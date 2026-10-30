@@ -1,7 +1,8 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
+import { environmentStateSchema } from './environment-state-schema.js';
 import { policyDocumentSchema, testingProfileSchema } from './policy-schema.js';
-import { bindingDocumentSchema, environmentStateSchema, projectDocumentSchema } from './schema.js';
+import { bindingDocumentSchema, projectDocumentSchema } from './schema.js';
 
 export type ProjectConfigSchemaName =
   | 'project'
