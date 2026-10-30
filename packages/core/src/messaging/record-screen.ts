@@ -172,7 +172,9 @@ function refusalFor(field: ForgeRecordField): MessageRefusal {
 
 /** A verdict's `criterion` led by a number names that number; the label after it is never read. */
 const labelUnread = (record: ForgeRecord, field: ForgeRecordField) =>
-  record.kind === 'verdict' && field.key === 'criterion' && criterionLeadingNumber(field.value) !== null;
+  record.kind === 'verdict' &&
+  field.key === 'criterion' &&
+  criterionLeadingNumber(field.value) !== null;
 
 /** Every field of this record that is past the budget, in the order written. */
 function budgetRefusals(record: ForgeRecord | null): MessageRefusal[] {
