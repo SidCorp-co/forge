@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.378] - 2026-10-30
+
+Refused requirement revision edits name their way out; merge check names debt
+
+### Fixed
+
+- **A merge check that passed a red as cleanup debt now says so.** Its record names each such check and its debt id, and reads `lane: fast-delivery` where fast delivery applied. Requirement verdicts name their run, as issue verdicts do.
+- **A proposed requirement revision now tells you how to get out.** Refusing a new revision or an edit on a proposal names the return that frees it, instead of each refusal pointing at the other.
+
 ## [0.4.0-dev.377] - 2026-10-30
 
 Requirement accept reads a goal's problem line wherever it stands
