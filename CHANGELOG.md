@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.377] - 2026-10-30
+
+Requirement accept reads a goal's problem line wherever it stands
+
+### Fixed
+
+- **A closed issue's code-property criteria are judged by a reviewer run.** `run declare --role reviewer` carries closed issues untaken like `qa`; a run records only its own role's judgement, refused `VERDICT_JUDGE_NOT_RUN_ROLE` otherwise.
+- **A requirement's problem line counts wherever it stands.** Accepting a requirement no longer refuses for the problem when a Value: or Measured by: line sits above it, and a missing problem now says where to put it.
+
 ## [0.4.0-dev.376] - 2026-10-30
 
 Retired agent-report reads point to Forge feedback; runs read pinned sibling designs

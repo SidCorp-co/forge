@@ -1,1 +1,0 @@
-**A closed issue's code-property criteria are judged by a reviewer run.** `run declare --role reviewer` carries closed issues untaken like `qa`; a run records only its own role's judgement, refused `VERDICT_JUDGE_NOT_RUN_ROLE` otherwise.
