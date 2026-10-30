@@ -5,6 +5,7 @@
  * presses release", while its earned neighbour is cut.
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -21,6 +22,7 @@ import {
   releaseWorld,
   seedProductionDeployTrigger,
   seedProjectDocument,
+  stubProbe,
   verdictComment,
 } from '../helpers/release-world.js';
 
@@ -230,6 +232,68 @@ describe('release sweep (ISS-1117)', () => {
     expect((await holdOf(blocked))?.code).toBe('RELEASE_ABORT_BLOCKED');
     expect((await stored(blocked)).claim).toBeNull();
     expect((await holdOf(neighbour))?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+  });
+});
+
+describe('a finish that cannot close a roster issue does not get it cut again (ISS-811)', () => {
+  // agenfold, 2026-10-30: ISS-11 held an open question, so each finish recorded it under `failed`
+  // and stamped the release shipped; the issue came back to the gate and the sweep cut it again,
+  // releases 0.8.0 to 0.14.0, each a release run that closed nothing.
+  it('cuts once, then holds the issue naming the question, and the release reads failed', async () => {
+    const id = await waitingRow(1, [verdictBlock(1, 'pass')]);
+    const { askQuestion } = await import('../../src/questions/index.js');
+    const { finishReleaseBatch } = await import('../../src/release-batch/finish.js');
+    const questionId = randomUUID();
+    await askQuestion({
+      id: questionId,
+      projectId,
+      issueId: id,
+      prompt: 'Is Half half of the large width?',
+      blockerKind: 'human',
+      answer: { shape: 'free_text', needed: 'the width rule', recommended: 'Half.' },
+    });
+
+    expect(await sweepAutomaticReleases()).toMatchObject({ issuesCut: 1 });
+    const first = (await stored(id)).claim as string;
+    expect(first).toBeTruthy();
+    await db.execute(sql`
+      INSERT INTO release_attempts (run_id, stage, idempotency_key, verdict, settled_at)
+      VALUES (${first}, 'deploy', ${`deploy-${first}`}, 'ok', now())
+    `);
+    // production's source probe, which the world's own stub does not answer
+    const fetchBefore = globalThis.fetch;
+    stubProbe({ [PRODUCTION_PROBE]: () => Response.json({ commit: SERVING }) });
+    const finished = await finishReleaseBatch(
+      first,
+      { type: 'user', id: ownerId, agency: 'human' },
+      { commit: SERVING, probeSleep: async () => {}, stableReads: 1 },
+    );
+    vi.stubGlobal('fetch', fetchBefore);
+    expect(finished.closed).toEqual([]);
+    expect(finished.failed.map((f) => f.id)).toEqual([id]);
+
+    // the next ticks cut nothing: the issue is held, and the hold names the question
+    expect(await sweepAutomaticReleases()).toMatchObject({ issuesCut: 0, projectsCut: 0 });
+    expect(await sweepAutomaticReleases()).toMatchObject({ issuesCut: 0, projectsCut: 0 });
+    expect((await stored(id)).claim).toBeNull();
+    const hold = await holdOf(id);
+    expect(hold).toMatchObject({ code: 'RELEASE_UNCLOSED_QUESTION', owes: 'human' });
+    expect(hold?.waitingFor).toContain(questionId);
+    const runs = await db.execute(sql`
+      SELECT release_version AS v, release_released_at AS shipped, status FROM pipeline_runs
+       WHERE project_id = ${projectId} AND release_version IS NOT NULL
+    `);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ shipped: null, status: 'failed' });
+
+    // the refusal clearing ends the hold: with the question voided the sweep cuts it again
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    const { agentQuestions } = await import('../../src/db/schema-questions.js');
+    const { eq } = await import('drizzle-orm');
+    await withKernelMarker(db, (tx) =>
+      tx.update(agentQuestions).set({ status: 'void' }).where(eq(agentQuestions.id, questionId)),
+    );
+    expect(await sweepAutomaticReleases()).toMatchObject({ issuesCut: 1 });
   });
 });
 

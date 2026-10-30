@@ -33,7 +33,7 @@ interface SchedulesPorts {
     issues: { id: string; claimedByRunId: string | null }[];
   }>;
   /** The rows an aborted release left held for a person, which no unattended cut takes. */
-  abortBlockedIssues(issueIds: readonly string[]): Promise<Set<string>>;
+  heldFromUnattendedCut(issueIds: readonly string[]): Promise<Set<string>>;
   createReleaseBatch(args: {
     projectId: string;
     issueIds: string[];

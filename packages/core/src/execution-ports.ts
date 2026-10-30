@@ -93,8 +93,8 @@ import {
   waiterFor,
 } from './questions/index.js';
 import {
-  abortBlockedIssues,
   createReleaseBatch,
+  heldFromUnattendedCut,
   loadReleaseRoster,
   owedReleaseNotes,
   provideReleaseBatchPorts,
@@ -277,7 +277,7 @@ export function provideExecutionPorts(): void {
     cleanupFire: cleanupFirePlan,
     emitNotification,
     loadReleaseRoster,
-    abortBlockedIssues,
+    heldFromUnattendedCut,
     createReleaseBatch,
     sendStatusReport,
   });

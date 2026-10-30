@@ -88,6 +88,10 @@ interface RecoverStrandedReleasingOptions {
    *  sweep's, buying a batch that promoted and cannot verify a status some door closes from
    *  (ISS-1199). */
   settlePromotedRoster?: boolean;
+  /** The release verified production serving but wrote no ship stamp, because its finish closed
+   *  none of its roster (ISS-811): what production serves is known, so the roster is let go like a
+   *  shipped release's, and each issue is told it was not closed rather than that it shipped. */
+  verifiedLive?: boolean;
   /** Run inside each write's own transaction before it writes; throws to stop the recovery. */
   fence?: ((tx: Tx) => Promise<void>) | undefined;
 }
@@ -198,7 +202,8 @@ export async function recoverStrandedReleasing(
   const alreadyClosed = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
   const promoted = await runRecordedPromotion(runId);
   const shipped = promoted && (await runRecordedShip(runId));
-  if (promoted && !shipped && options.settlePromotedRoster !== true) {
+  const known = shipped || options.verifiedLive === true;
+  if (promoted && !known && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
       'release-batch: this run promoted, so its roster stays held at its release step for a person to settle',
@@ -220,12 +225,12 @@ export async function recoverStrandedReleasing(
 
   for (const issue of claimed) {
     if (!heldMidRelease(issue)) continue;
-    if (await recoverOne(issue, { runId, options, promoted, shipped, destination }))
+    if (await recoverOne(issue, { runId, options, promoted, shipped: known, destination }))
       recovered.push(issue.id);
   }
 
   const { fence } = options;
-  const open = shipped ? claimed.filter((r) => r.status !== 'closed').map((r) => r.id) : undefined;
+  const open = known ? claimed.filter((r) => r.status !== 'closed').map((r) => r.id) : undefined;
   const released = await db.transaction(async (tx) => {
     if (fence) await fence(tx);
     return releaseClaims(tx, runId, open);
@@ -233,8 +238,8 @@ export async function recoverStrandedReleasing(
 
   if (recovered.length > 0) {
     logger.warn(
-      { runId, recovered: recovered.length, shipped, reason: options.reason },
-      shipped
+      { runId, recovered: recovered.length, shipped: known, reason: options.reason },
+      known
         ? 'release-batch: issues a shipped release could not close, let go of their release step'
         : 'release-batch: issues rescued from their release step by a batch that wrote no outcome',
     );
@@ -293,12 +298,12 @@ function settledNote(projectId: string, destination: IssueStatus): string {
   );
 }
 
-/** What an issue a shipped release could not close is told: it is free, and where the reason is. */
+/** What an issue a release could not close is told: its claim is let go, and where the reason is. */
 function shippedNote(projectId: string, runId: string, destination: IssueStatus): string {
   return (
-    `The release shipped, so nothing holds this issue: it is at \`${destination}\` with its claim ` +
-    `released, and the next release can carry it. Why it did not close is on the release's finish: ` +
-    `GET /api/projects/${projectId}/release-batches/${runId}/state.`
+    `This issue did not close with the release: it is at \`${destination}\` with its claim ` +
+    `released, and no automatic release carries it until the hold on it is cleared. Why it did ` +
+    `not close is on the release's finish: GET /api/projects/${projectId}/release-batches/${runId}/state.`
   );
 }
 

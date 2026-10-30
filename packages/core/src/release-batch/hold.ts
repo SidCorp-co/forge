@@ -336,8 +336,22 @@ export function abortBlockedHold(args: {
   };
 }
 
-/** The rows an aborted release left held for a person: no unattended cut may take them. */
-export async function abortBlockedIssues(issueIds: readonly string[]): Promise<Set<string>> {
+/**
+ * The two holds a finish leaves on a roster issue it could not close (`unclosed-hold.ts`, ISS-811);
+ * with `RELEASE_ABORT_BLOCKED` they hold an issue out of every unattended cut.
+ */
+export const RELEASE_UNCLOSED_QUESTION = 'RELEASE_UNCLOSED_QUESTION';
+export const RELEASE_UNCLOSED_REFUSED = 'RELEASE_UNCLOSED_REFUSED';
+
+/** What holds an issue out of every unattended cut: an aborted release's blocker, or a finish's refusal. */
+const HELD_FROM_UNATTENDED_CUT: readonly string[] = [
+  RELEASE_ABORT_BLOCKED,
+  RELEASE_UNCLOSED_QUESTION,
+  RELEASE_UNCLOSED_REFUSED,
+];
+
+/** The rows held out of every unattended cut: an aborted release left them for a person, or a finish could not close them. */
+export async function heldFromUnattendedCut(issueIds: readonly string[]): Promise<Set<string>> {
   if (issueIds.length === 0) return new Set();
   const rows = await db
     .select({ issueId: releaseHolds.issueId })
@@ -345,7 +359,7 @@ export async function abortBlockedIssues(issueIds: readonly string[]): Promise<S
     .where(
       and(
         inArray(releaseHolds.issueId, [...issueIds]),
-        eq(releaseHolds.code, RELEASE_ABORT_BLOCKED),
+        inArray(releaseHolds.code, [...HELD_FROM_UNATTENDED_CUT]),
         isNull(releaseHolds.clearedAt),
       ),
     );

@@ -22,7 +22,6 @@ import { cleanupHold } from './cleanup-hold.js';
 import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { resolveReleaseGate } from './gate.js';
 import {
-  abortBlockedIssues,
   clearProjectReleaseHolds,
   clearReleaseHolds,
   clearStaleReleaseHolds,
@@ -30,6 +29,7 @@ import {
   criteriaUnreadableHold,
   cutFailedHold,
   gateUnreadableHold,
+  heldFromUnattendedCut,
   landingCriteriaHold,
   NO_ACTOR_HOLD,
   NO_RELEASE_GATE_HOLD,
@@ -50,6 +50,7 @@ import {
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 import { shippedInHold, shippedInOwed } from './shipped-in.js';
+import { clearAnsweredQuestionHolds } from './unclosed-hold.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
 const CANDIDATE_PAGE_LIMIT = 200;
@@ -290,7 +291,9 @@ async function sweepProject(
   const gate = await waitingIssueIds(projectId);
   const owed = await shippedInOwed(projectId, gate);
   result.shippedInOwed += owed.size;
-  const blocked = await abortBlockedIssues(gate.filter((id) => !owed.has(id)));
+  // a finish's refusal that was an open question ends with it: the row is weighed again below
+  await clearAnsweredQuestionHolds(gate);
+  const blocked = await heldFromUnattendedCut(gate.filter((id) => !owed.has(id)));
   const base = { projectId, now, result };
   for (const [id, o] of owed)
     await hold({ ...base, issueIds: [id], holdFor: () => shippedInHold(o) });

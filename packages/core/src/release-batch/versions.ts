@@ -36,12 +36,15 @@ const idsIn = (list: unknown): string[] =>
 
 /**
  * The issues a release carries: the roster it was cut with, then each it closed afterwards
- * (`metadata.rosterClosed`) — the row its agent recorded that release as shipping
+ * (`metadata.rosterClosed`), less each its finish could not close (`rosterUnclosed`) — the row its agent recorded that release as shipping
  * (`shipped-in.ts`) is that release's, though it was never on its roster.
  */
-export const issueIdsOf = (meta: Record<string, unknown>): string[] => [
-  ...new Set([...idsIn(meta.issueIds), ...idsIn(meta.rosterClosed)]),
-];
+export const issueIdsOf = (meta: Record<string, unknown>): string[] => {
+  const closed = idsIn(meta.rosterClosed);
+  // a roster issue the finish could not close was not carried by that release (ISS-811)
+  const unclosed = new Set(idsIn(meta.rosterUnclosed).filter((id) => !closed.includes(id)));
+  return [...new Set([...idsIn(meta.issueIds).filter((id) => !unclosed.has(id)), ...closed])];
+};
 
 /**
  * The branch a recorded landing put its release on, where production does not deploy from that

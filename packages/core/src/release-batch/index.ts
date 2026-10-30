@@ -32,7 +32,7 @@ export { registerDeployWorker } from './deploy-worker.js';
 export { nextDraftVersion } from './draft-version.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export { runningBuildObserved } from './gate.js';
-export { abortBlockedIssues, releaseHoldsOf } from './hold.js';
+export { heldFromUnattendedCut, releaseHoldsOf } from './hold.js';
 export { judgedBuildOf, liveBuildHolds, unobservedBuildOf } from './judged-build.js';
 export { deliveryHeadsOf } from './landed-build.js';
 export { landedBuildHolds } from './landed-build-holds.js';

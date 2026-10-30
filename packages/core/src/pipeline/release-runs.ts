@@ -99,6 +99,8 @@ export async function shippedReleasesOf(
          AND r.release_version IS NOT NULL
          AND r.release_released_at IS NOT NULL
          AND m.issue_id IN (${idList(issueIds)})
+         AND (NOT coalesce(r.metadata -> 'rosterUnclosed', '[]'::jsonb) @> to_jsonb(m.issue_id::text)
+              OR coalesce(r.metadata -> 'rosterClosed', '[]'::jsonb) @> to_jsonb(m.issue_id::text))
        ORDER BY m.issue_id, r.release_released_at DESC`),
   );
   const withdrawn = await shipsWithdrawnOf(db, issueIds);

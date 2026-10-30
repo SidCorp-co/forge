@@ -86,6 +86,16 @@ const WORDS: Readonly<Record<string, Words>> = {
     act: 'issues.releaseHold.act.releaseAbortBlocked',
     actor: 'person',
   },
+  RELEASE_UNCLOSED_QUESTION: {
+    cause: 'issues.releaseHold.cause.releaseUnclosedQuestion',
+    act: 'issues.releaseHold.act.releaseUnclosedQuestion',
+    actor: 'person',
+  },
+  RELEASE_UNCLOSED_REFUSED: {
+    cause: 'issues.releaseHold.cause.releaseUnclosedRefused',
+    act: 'issues.releaseHold.act.releaseUnclosedRefused',
+    actor: 'person',
+  },
   BATCH_IN_FLIGHT: {
     cause: 'issues.releaseHold.cause.batchInFlight',
     act: 'issues.releaseHold.act.batchInFlight',

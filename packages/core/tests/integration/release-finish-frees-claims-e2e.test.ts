@@ -9,6 +9,9 @@
  * @direct-test-of packages/core/src/release-batch/finish.ts
  * @direct-test-of packages/core/src/release-batch/releasing-recovery.ts
  * @direct-test-of packages/core/src/issues/release-claim.ts
+ * @direct-test-of packages/core/src/release-batch/unclosed-hold.ts
+ * @direct-test-of packages/core/src/release-batch/versions.ts
+ * @direct-test-of packages/core/src/issues/release-hold-words.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -20,6 +23,7 @@ import {
   setWorkStep,
   type TransitionActor,
 } from '../../src/issues/index.js';
+import { shippedReleasesOf } from '../../src/pipeline/index.js';
 import { askQuestion } from '../../src/questions/index.js';
 import { finishReleaseBatch } from '../../src/release-batch/finish.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -57,6 +61,12 @@ beforeEach(async () => {
   await fx.declareProduction({ baseUrl: 'http://coolify.invalid', targets: [] });
   await fx.seedReleaseRunner();
 });
+
+const { holdOf } = fx;
+
+async function shippedIn(issueId: string): Promise<unknown> {
+  return (await shippedReleasesOf(projectId, [issueId])).get(issueId);
+}
 
 const actor = (): TransitionActor => ({ type: 'user', id: ownerId, agency: 'human' });
 
@@ -112,6 +122,32 @@ async function endedHolding(issueId: string, shipped: boolean): Promise<string> 
   return id;
 }
 
+describe('a release whose finish closed none of its roster is failed, not shipped (ISS-811)', () => {
+  it('stamps no ship, ends the run failed, holds the issue and never reads shippedIn', async () => {
+    const asked = await askedAtTheGate();
+    const { runId } = await fx.claim([asked]);
+    await recordDeploy(runId);
+    fx.serve(SERVED);
+
+    const result = await finishReleaseBatch(runId, actor(), { commit: SERVED });
+
+    expect(result.closed).toEqual([]);
+    expect(result.failed.map((f) => f.id)).toEqual([asked]);
+    expect(await shippedAt(runId)).toBeNull();
+    const [run] = await rows<{ status: string }>(sql`
+      SELECT status FROM pipeline_runs WHERE id = ${runId}
+    `);
+    expect(run?.status).toBe('failed');
+    expect(await fx.stored(asked)).toMatchObject({
+      status: 'awaiting_release',
+      claim: null,
+      step: null,
+    });
+    expect((await holdOf(asked))?.code).toBe('RELEASE_UNCLOSED_QUESTION');
+    expect((await shippedIn(asked)) ?? null).toBeNull();
+  });
+});
+
 describe('a release that shipped lets go of what it could not close', () => {
   it('leaves the unclosed issue at the gate unclaimed, off its release step, and the next release claims it', async () => {
     const closes = await fx.insertIssue('awaiting_release');
@@ -133,9 +169,17 @@ describe('a release that shipped lets go of what it could not close', () => {
       step: null,
     });
     expect(await lastComment(asked)).toContain(
-      'The release shipped, so nothing holds this issue: it is at `awaiting_release` with its claim released',
+      'This issue did not close with the release: it is at `awaiting_release` with its claim released',
     );
+    expect(await holdOf(asked)).toMatchObject({
+      code: 'RELEASE_UNCLOSED_QUESTION',
+      owes: 'human',
+      waitingFor: expect.stringContaining('open question'),
+    });
+    expect((await shippedIn(asked)) ?? null).toBeNull();
+    expect(await shippedIn(closes)).not.toBeNull();
 
+    // a person's own cut still takes it, and the hold goes with the claim
     const next = await fx.claim([asked]);
 
     expect(next.runId).not.toBe(runId);

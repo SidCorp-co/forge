@@ -1,0 +1,1 @@
+**A release that closes none of its issues is failed, not shipped, and its issues are held:** an issue whose close was refused is held from every automatic cut, naming the refusal; an answered open question clears the hold.
