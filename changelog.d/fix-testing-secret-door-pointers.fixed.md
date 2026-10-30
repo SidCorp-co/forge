@@ -1,0 +1,1 @@
+**Every read a judge tries for a testing secret names the one door that serves it.** The profile read and the secrets list carry `GET /api/jobs/<run id>/testing-profiles/<profile>/secrets?ref=…`; guessed value paths refuse by name, pointing there.

@@ -13,6 +13,7 @@
  *
  * @direct-test-of packages/core/src/project-config/testing-secrets.ts
  * @direct-test-of packages/core/src/devices/declared-run-of-call.ts
+ * @direct-test-of packages/core/src/project-config/secret-value-door.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -297,5 +298,66 @@ describe('everything else stays refused by name', () => {
     const res = await secrets(person.plaintext, run.boxRunId);
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_A_JOB_CREDENTIAL');
+  });
+});
+
+// adminhub-api run 194c71e4 on dev core, 2026-10-30: a declared qa run over profile stg read seven
+// routes looking for the value, found neither a value nor a pointer, and gave up. Each read it made
+// now names the one door; none serves the value.
+describe('a judge looking for a testing secret is pointed at the one door by every read it tries', () => {
+  const DOOR = `/api/jobs/<run id>/testing-profiles/stg/secrets?ref=${REF}`;
+
+  it('the profile, the guessed paths and the secrets list each name the jobs route, and none the value', async () => {
+    // read as the project member the run acts for, whose reads reach the project's routes
+    const member = await userToken(world.ownerId);
+    const at = (path: string) => api(member, 'GET', `/api/projects/${world.projectId}${path}`);
+    const answers: Array<[string, { status: number; body: unknown }]> = [];
+    for (const path of [
+      '/testing-profiles/stg',
+      '/testing-profiles/stg/credentials',
+      '/testing-profiles/stg/resolve',
+      '/testing-profiles/stg/secrets',
+      '/test-credentials',
+      '/secrets/test/stg-admin',
+      '/secrets',
+    ]) {
+      answers.push([path, await at(path)]);
+    }
+    for (const [path, res] of answers) {
+      const text = JSON.stringify(res.body);
+      expect(text, `${path} names no door: ${text}`).toContain(
+        '/api/jobs/<run id>/testing-profiles/',
+      );
+      expect(text, `${path} served the value`).not.toContain(VALUE);
+    }
+    const byPath = new Map(answers);
+    const profile = byPath.get('/testing-profiles/stg')?.body as { valueDoor?: { route?: string } };
+    expect(profile.valueDoor?.route).toBe(`GET ${DOOR}`);
+    for (const path of [
+      '/testing-profiles/stg/credentials',
+      '/testing-profiles/stg/resolve',
+      '/testing-profiles/stg/secrets',
+      '/secrets/test/stg-admin',
+    ]) {
+      const res = byPath.get(path);
+      expect([res?.status, codeOf(res?.body)], path).toEqual([
+        404,
+        'TESTING_SECRET_READ_ELSEWHERE',
+      ]);
+      expect(JSON.stringify(res?.body), path).toContain(DOOR);
+    }
+    expect(codeOf(byPath.get('/test-credentials')?.body)).toBe('TESTING_SECRET_READ_ELSEWHERE');
+    const list = byPath.get('/secrets')?.body as {
+      secrets: Array<{ ref: string; valueAt: string[] }>;
+    };
+    expect(list.secrets).toEqual([expect.objectContaining({ ref: REF, valueAt: [`GET ${DOOR}`] })]);
+  });
+
+  it('the door it names answers the declared run', async () => {
+    await landedIssue(world.projectId, 68);
+    const run = await declaredRun(world.projectId, 68);
+    const res = await api(world.boxToken, 'GET', DOOR.replace('<run id>', run.boxRunId));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ secrets: [{ ref: REF, value: VALUE }] });
   });
 });

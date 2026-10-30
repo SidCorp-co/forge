@@ -1,4 +1,5 @@
 import { GATE_MODES, GATE_PROFILES } from '@forge/contracts/gate-profiles';
+import { secretRefOf } from '@forge/contracts/project-config';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -12,6 +13,13 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
 import { readGateChanges, readProjectGates, writeGates } from './gates.js';
+import {
+  profileValueDoor,
+  SECRETS_LIST_SAYS,
+  secretValueDoor,
+  secretValueDoors,
+  secretValueElsewhere,
+} from './secret-value-door.js';
 import {
   deleteTestingProfile,
   type Held,
@@ -38,6 +46,7 @@ for (const path of [
   '/:id/testing-profiles/*',
   '/:id/secrets',
   '/:id/secrets/*',
+  '/:id/test-credentials',
   '/:id/bindings',
   '/:id/bindings/*',
   '/:id/gates',
@@ -191,7 +200,11 @@ projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), noQuery, asyn
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const profiles = await listTestingProfiles(id);
   return c.json({
-    profiles: profiles.map((p) => ({ profileId: p.profileId, ...serialise(p) })),
+    profiles: profiles.map((p) => ({
+      profileId: p.profileId,
+      ...serialise(p),
+      valueDoor: profileValueDoor(p.profileId, p.document),
+    })),
     returned: profiles.length,
   });
 });
@@ -204,7 +217,30 @@ projectConfigRoutes.get(
     const { id, profileId } = c.req.valid('param');
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     const held = await readTestingProfile(id, profileId);
-    return c.json(held ? serialise(held) : UNDECLARED);
+    return c.json(
+      held
+        ? { ...serialise(held), valueDoor: profileValueDoor(profileId, held.document) }
+        : UNDECLARED,
+    );
+  },
+);
+
+// a value guessed under a profile (`/secrets`, `/credentials`, `/resolve`) is refused naming the door
+projectConfigRoutes.get(
+  '/:id/testing-profiles/:profileId/:part',
+  paramOf(profileParam.extend({ part: z.string().regex(NAME) })),
+  noQuery,
+  async (c) => {
+    const { id, profileId, part } = c.req.valid('param');
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+    const held = await readTestingProfile(id, profileId);
+    const door = held
+      ? profileValueDoor(profileId, held.document).route
+      : secretValueDoor(profileId, []);
+    throw secretValueElsewhere(
+      `GET /api/projects/${id}/testing-profiles/${profileId}/${part}`,
+      door,
+    );
   },
 );
 
@@ -241,11 +277,33 @@ projectConfigRoutes.delete('/:id/testing-profiles/:profileId', paramOf(profilePa
 projectConfigRoutes.get('/:id/secrets', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const secrets = await listSecretNames(id);
+  const [secrets, profiles] = await Promise.all([listSecretNames(id), listTestingProfiles(id)]);
   return c.json({
-    secrets: secrets.map(secretView),
+    secrets: secrets.map((s) => ({ ...secretView(s), valueAt: secretValueDoors(profiles, s.ref) })),
     returned: secrets.length,
+    says: SECRETS_LIST_SAYS,
   });
+});
+
+// a value guessed at a secret's own path is refused naming the door each profile reads it at
+projectConfigRoutes.get('/:id/secrets/:scope/:name', paramOf(secretParam), noQuery, async (c) => {
+  const { id, scope, name } = c.req.valid('param');
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+  const ref = secretRefOf(scope, name);
+  const [door] = secretValueDoors(await listTestingProfiles(id), ref);
+  throw secretValueElsewhere(
+    `GET /api/projects/${id}/secrets/${scope}/${name}`,
+    door ?? secretValueDoor('<profile naming it>', [ref]),
+  );
+});
+
+projectConfigRoutes.get('/:id/test-credentials', paramOf(idParam), noQuery, async (c) => {
+  const { id } = c.req.valid('param');
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+  throw secretValueElsewhere(
+    `GET /api/projects/${id}/test-credentials`,
+    secretValueDoor('<profile>', ['<ref>']),
+  );
 });
 
 projectConfigRoutes.put(
