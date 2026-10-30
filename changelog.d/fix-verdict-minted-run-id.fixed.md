@@ -1,1 +1,0 @@
-**A dispatched judge's verdict counts under the id its tree was minted.** `run=iss-112-d65cfcc4` resolves to the box's one live run declared over ISS-112; where two are, the refusal names each declared id.

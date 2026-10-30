@@ -9,6 +9,17 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.371] - 2026-10-30
+
+A judge's verdicts count under the id its tree was given
+
+### Fixed
+
+- **Whether a merged issue is on production is read from Forge's release records, never a branch compare.** The issue page and the pulse ask no source host; without a record they name what is missing and who owes it.
+- **Live reach reads shipped releases the way "Shipped in" does.** It moves into the pipeline kernel beside that reader, and the pulse's gap lines fit the copy budget.
+- **Every read a judge tries for a testing secret names the one door that serves it.** The profile read and the secrets list carry `GET /api/jobs/<run id>/testing-profiles/<profile>/secrets?ref=…`; guessed value paths refuse by name, pointing there.
+- **A dispatched judge's verdict counts under the id its tree was minted.** `run=iss-112-d65cfcc4` resolves to the box's one live run declared over ISS-112; where two are, the refusal names each declared id.
+
 ## [0.4.0-dev.370] - 2026-10-29
 
 Reads refuse unknown query keys by name instead of ignoring them

@@ -1,1 +1,0 @@
-**Whether a merged issue is on production is read from Forge's release records, never a branch compare.** The issue page and the pulse ask no source host; without a record they name what is missing and who owes it.
