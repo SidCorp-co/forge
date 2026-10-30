@@ -124,7 +124,7 @@ const DEVICE =
   'a personal or agent token is not a device';
 
 const JOB =
-  "a running job's own testing secrets, admitted by the job credential and decided by the job " +
+  "a running job's own testing secrets and environment variables, admitted by the job credential and decided by the job " +
   'it names; no grant reaches them, because a grant is not a job';
 
 /**
@@ -184,6 +184,7 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/devices/login/init': DEVICE,
   '/api/devices/login/poll': DEVICE,
   'GET /api/jobs/:id/testing-profiles': JOB,
+  'GET /api/jobs/:id/variables': JOB,
   'POST /api/jobs/:id/events': DEVICE,
   'POST /api/jobs/:id/ack': DEVICE,
   'POST /api/jobs/:id/fail': DEVICE,

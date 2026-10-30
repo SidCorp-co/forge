@@ -145,9 +145,11 @@ import {
   contentLanguageRoutes,
   environmentStateRoutes,
   jobTestingSecretsRoutes,
+  jobVariableRoutes,
   projectConfigRoutes,
   projectConfigSchemaRoutes,
   reviewRunRoutes,
+  variableRoutes,
 } from './project-config/routes.js';
 import { projectStatusRoutes } from './project-status/routes.js';
 import {
@@ -253,6 +255,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api', projectConfigSchemaRoutes(ecosystemJsonSchemas, workflowJsonSchemas));
   app.route('/api/workflow-templates', workflowTemplateCatalogueRoutes);
   app.route('/api/projects', projectConfigRoutes);
+  app.route('/api/projects', variableRoutes);
   app.route('/api/projects', reviewRunRoutes);
   app.route('/api/projects', environmentStateRoutes);
   app.route('/api/projects', workflowRoutes);
@@ -360,6 +363,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/jobs', jobLifecycleDeviceRoutes);
   app.route('/api/jobs', jobLifecycleUserRoutes);
   app.route('/api/jobs', jobTestingSecretsRoutes);
+  app.route('/api/jobs', jobVariableRoutes);
   app.route('/api/webhooks', webhookInboundRoutes);
   app.route('/api/mcp-relay', mcpRelayRoutes);
   app.route('/api/git', gitRelayRoutes);

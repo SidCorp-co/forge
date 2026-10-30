@@ -14,7 +14,9 @@ import { resolveTestingSecrets } from './testing-secrets.js';
 
 export const jobTestingSecretsRoutes = new Hono();
 
-const SECRET_REF = /^secret:\/\/[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
+// a profile's credential is a `secret://<scope>/<name>` copy, or a `var://KEY` stored variable (REQ-80 BC-7)
+const SECRET_REF =
+  /^(secret:\/\/[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}|var:\/\/[A-Za-z_][A-Za-z0-9_]{0,254})$/;
 
 const paramSchema = z.object({
   id: z.union([z.uuid(), z.literal(SELF_JOB)]),
@@ -41,7 +43,7 @@ async function isSession(token: string): Promise<boolean> {
 // this door admits no session and no PAT door's grant: the job credential, or the box credential a
 // declared run calls under, is a token of the PAT format, and what it may read here is decided by the
 // job or run it names, not by a grant.
-async function jobCredential(c: Context): Promise<PatPrincipal> {
+export async function jobCredential(c: Context): Promise<PatPrincipal> {
   const parsed = parseBearerHeader(c);
   if (parsed.kind === 'malformed') throw unauthenticated('invalid authorization header');
   if (parsed.kind === 'absent') {
@@ -78,7 +80,7 @@ jobTestingSecretsRoutes.get(
     'query',
     refsQuery,
     invalid(
-      'the only query is ref, repeated as needed, each secret://<scope>/<name> with both parts matching ^[a-z][a-z0-9-]{0,62}$',
+      'the only query is ref, repeated as needed, each secret://<scope>/<name> with both parts matching ^[a-z][a-z0-9-]{0,62}$, or var://<KEY> naming a stored variable',
       'SECRET_REF_SHAPE',
     ),
   ),

@@ -24,7 +24,7 @@ export function renderTestCreds(
   const lines = environmentsOf(document).flatMap(({ name, declaration }) =>
     declaration.testing
       ? [
-          `- ${name}: testing profile \`${declaration.testing}\` — its actors and services name \`secret://\` references, never values; read it with \`GET /api/projects/${projectId}/testing-profiles/${declaration.testing}\`.`,
+          `- ${name}: testing profile \`${declaration.testing}\` — its actors and services name \`secret://\` references or \`var://KEY\` stored variables, never values; read it with \`GET /api/projects/${projectId}/testing-profiles/${declaration.testing}\`.`,
         ]
       : [],
   );
@@ -32,6 +32,9 @@ export function renderTestCreds(
   const route = `GET /api/jobs/${SELF_JOB}/testing-profiles/<profile>/secrets`;
   lines.push(
     `- To log in, a ${JUDGING_JOB_TYPES.join(', ')} job reads the values behind its environment's references with \`${route}\` (optionally \`?ref=secret://<scope>/<name>\`, repeated), sending its own credential (\`Authorization: Bearer $FORGE_PAT\`). It answers only the job that credential runs, and only for the profile of the environment deploying the branch its issue's merge mark landed on; every other caller and every other profile is refused by name. A run a master declared reads under its box's credential, not \`$FORGE_PAT\`: \`forge-runner api jobs/${SELF_JOB}/testing-profiles/<profile>/secrets\` from inside its own checkout goes out on that credential with the run's id in place of \`${SELF_JOB}\`; from anywhere else, send the run id itself. Each read is audited, and each value is scrubbed from this job's output. Never write a credential into a comment, a commit or a prompt.`,
+  );
+  lines.push(
+    `- The project's environment variables are listed by name at \`GET /api/projects/${projectId}/variables\`; a run receives the values effective on the environment it targets with \`GET /api/jobs/${SELF_JOB}/variables/<environment>\` (optionally \`?key=KEY\`, repeated), under the same credential as above. A change a run needs is proposed with \`POST /api/projects/${projectId}/variables/proposals\` and takes effect when a holder of env.manage approves it.`,
   );
   return lines.join('\n');
 }

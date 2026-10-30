@@ -3578,6 +3578,13 @@
       "when": 1831161600000,
       "tag": "0558_fast_delivery_keeps_impact_debt_and_cleanup_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 559,
+      "version": "7",
+      "when": 1831248000000,
+      "tag": "0559_projects_hold_their_environment_variables",
+      "breakpoints": true
     }
   ]
 }

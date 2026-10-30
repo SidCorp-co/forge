@@ -961,9 +961,12 @@
         "projectGateChanges",
         "projectPolicies",
         "projectSecrets",
-        "projectTestingProfiles"
+        "projectTestingProfiles",
+        "projectVariableEvents",
+        "projectVariableProposals",
+        "projectVariables"
       ],
-      "serves": ["issue-delivery#policy", "REQ-13", "personal-data-flow#ds-vault"]
+      "serves": ["issue-delivery#policy", "REQ-13", "personal-data-flow#ds-vault", "REQ-80"]
     },
     "project-status": {
       "kind": "read-model",
@@ -1457,7 +1460,7 @@
       "serves": ["REQ-11"]
     },
     "project-settings": {
-      "serves": ["issue-delivery#policy", "REQ-13"]
+      "serves": ["issue-delivery#policy", "REQ-13", "REQ-80"]
     },
     "project-status": {
       "serves": ["REQ-11"]

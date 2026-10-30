@@ -197,6 +197,9 @@ export const requirementAssumptionSchema = z.strictObject({
 	// the answer the assistant filled and the value it assumed there, so a later edit reads it corrected
 	field: z.string().trim().min(1).max(40).optional(),
 	value: z.string().max(2_000).optional(),
+	// derived on every read (`requirements/assumption-corrections.ts:withCorrections`), so a spec read
+	// back is writable as it stands; a write never stores it (`requirements/revision-write.ts:specOf`)
+	corrected: z.boolean().optional(),
 });
 
 export const requirementSpecSchema = z.strictObject({

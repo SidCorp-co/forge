@@ -96,6 +96,8 @@ const DOORS: Readonly<Record<string, string>> = {
     'callingDevice is a read on a route requireAuth admits; a chat credential names no device there',
   'project-config/testing-secrets-routes.ts':
     'a job credential reads one job’s testing secrets: GET only, decided by the job it names',
+  'project-config/variables-routes.ts':
+    'a job credential reads one run’s environment variables: GET only, decided by the run it names',
   'ws/server.ts': 'resolveBearer opens the socket for a person or a box, never a chat credential',
   'auth/password.ts': 'defines verifyPassword: a password hash, which no chat credential is',
   'auth/login.ts':

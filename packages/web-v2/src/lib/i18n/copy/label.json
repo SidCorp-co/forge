@@ -606,7 +606,8 @@
     "label.workStep.plan": "Plan",
     "label.workStep.release": "Release",
     "label.workStep.test": "Test",
-    "label.workStep.triage": "Triage"
+    "label.workStep.triage": "Triage",
+    "label.permissionRole.env.manage": "Admin"
   },
   "vi": {
     "label.artifactChange.added": "Thêm mới",

@@ -1,8 +1,8 @@
 // The sections of project settings, in the order a person comes to them: what the project is, who is
 // on it, how its work is organised, how it ships, how tightly its agents are gated, how a change is
-// previewed, which accounts it is tested with, what it connects to, and the raw documents.
+// previewed, which accounts it is tested with, the environment variables it runs with, what it connects to, and the raw documents.
 
-export const SETTINGS_SECTIONS = ["general", "people", "work", "delivery", "gates", "preview", "testing", "connections", "advanced"] as const;
+export const SETTINGS_SECTIONS = ["general", "people", "work", "delivery", "gates", "preview", "testing", "variables", "connections", "advanced"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** Every tab the page had before it was grouped, and where that content now stands, so a link

@@ -87,6 +87,13 @@ const PUBLIC_SHARE = ["shares.public"] as const;
  */
 const EXEC = ["assistant.exec"] as const;
 
+/**
+ * Add, edit, delete and reveal a project's environment variables, and decide an agent's proposed
+ * change to one (REQ-80 BC-1, BC-2, BC-6). Admin's by default; a member holds it only where the
+ * project's grant names it, and a named token grant only where it names it.
+ */
+const ENV = ["env.manage"] as const;
+
 export const PROJECT_PERMISSIONS = [
 	...READ,
 	...WRITE,
@@ -95,6 +102,7 @@ export const PROJECT_PERMISSIONS = [
 	...DEPLOY,
 	...PUBLIC_SHARE,
 	...EXEC,
+	...ENV,
 	...ADMIN,
 ] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
@@ -132,6 +140,7 @@ export const ROLE_PERMISSIONS: Readonly<
 		...DEPLOY,
 		...PUBLIC_SHARE,
 		...EXEC,
+		...ENV,
 		...ADMIN,
 	],
 };
@@ -170,6 +179,7 @@ export const PERMISSION_ROLE_LABELS: Readonly<Record<Permission, string>> = {
 	"deploys.run": "Deployer",
 	"shares.public": "Admin",
 	"assistant.exec": "Admin",
+	"env.manage": "Admin",
 	"project.admin": "Admin",
 	"members.admin": "Admin",
 	"issues.admit": "Admin",
@@ -208,6 +218,7 @@ export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"comments.moderate",
 	"shares.public",
 	"assistant.exec",
+	"env.manage",
 	...APPROVE,
 ];
 
