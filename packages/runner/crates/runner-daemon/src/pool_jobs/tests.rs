@@ -163,6 +163,10 @@ fn a_job_pane_keeps_its_own_projects_master_and_an_adopted_one_keeps_every_maste
     assert_eq!(panes.holds_for("project-1"), 0);
 }
 
+fn none() -> runner_workspace::plugin_source::PluginLaunch {
+    runner_workspace::plugin_source::PluginLaunch::default()
+}
+
 #[test]
 fn a_job_pane_denies_every_tool_that_waits_on_a_person_and_a_master_pane_none() {
     use runner_workspace::terminal::{job_argv, pane_argv};
@@ -179,12 +183,20 @@ fn a_job_pane_denies_every_tool_that_waits_on_a_person_and_a_master_pane_none() 
         );
     }
     assert!(denied.contains(&"Bash(git push:*)".to_string()));
-    let job = job_argv(None, None, None, &ports::job_denied_tools(&[]), None).join(" ");
+    let job = job_argv(
+        None,
+        None,
+        None,
+        &ports::job_denied_tools(&[]),
+        None,
+        &none(),
+    )
+    .join(" ");
     assert!(
         job.contains("--disallowed-tools 'AskUserQuestion'"),
         "{job}"
     );
-    assert!(!pane_argv(None, None)
+    assert!(!pane_argv(None, None, &none())
         .join(" ")
         .contains("--disallowed-tools"));
 }
@@ -193,15 +205,22 @@ fn a_job_pane_denies_every_tool_that_waits_on_a_person_and_a_master_pane_none() 
 fn a_job_brief_is_the_launch_prompt_after_the_variadic_tool_list_and_a_master_pane_has_none() {
     use runner_workspace::terminal::{job_argv, pane_argv};
     let brief = std::path::Path::new("/box/forge-job-mcp-x.brief.md");
-    let line = job_argv(None, None, None, &ports::job_denied_tools(&[]), Some(brief))
-        .pop()
-        .unwrap();
+    let line = job_argv(
+        None,
+        None,
+        None,
+        &ports::job_denied_tools(&[]),
+        Some(brief),
+        &none(),
+    )
+    .pop()
+    .unwrap();
     assert!(
         line.starts_with("p=$(cat -- '/box/forge-job-mcp-x.brief.md')"),
         "{line}"
     );
     assert!(line.ends_with("'ExitPlanMode' -- \"$p\""), "{line}");
-    assert!(!pane_argv(None, None).join(" ").contains("$p"));
+    assert!(!pane_argv(None, None, &none()).join(" ").contains("$p"));
 }
 
 #[test]

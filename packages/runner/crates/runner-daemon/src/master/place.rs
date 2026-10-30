@@ -160,15 +160,13 @@ pub(crate) async fn place_pane(
     let output_from = transcript
         .as_deref()
         .map(|p| std::fs::metadata(p).map_or(0, |m| m.len()));
-    let argv = terminal::pane_argv(prepared.mcp_config.as_deref(), resume);
-    let started = terminal::ensure(
-        name,
-        &resolved.repo_path,
-        &argv,
-        &env,
-        transcript.as_deref(),
-    )
-    .await;
+    let started = match master_argv(prepared.mcp_config.as_deref(), resume) {
+        Ok(argv) => {
+            let at = &resolved.repo_path;
+            terminal::ensure(name, at, &argv, &env, transcript.as_deref()).await
+        }
+        Err(why) => Err(why),
+    };
     let started = match started {
         Ok(started) => started,
         Err(e) => {
@@ -480,6 +478,17 @@ pub(crate) fn write_authority(
 /// gated on it is unreachable on a daemon that has just started — and a
 /// stood-down project is never placed, so it is in `reg.live` on no daemon at
 /// all once one restarts.
+/// The command a master pane is started with, refused where this runner's plugin checkout no
+/// longer holds the plugins it serves.
+fn master_argv(
+    mcp: Option<&std::path::Path>,
+    resume: Option<&str>,
+) -> runner_platform::error::Result<Vec<String>> {
+    let plugins = runner_workspace::plugin_source::pane_launch()
+        .map_err(runner_platform::error::Error::Other)?;
+    Ok(terminal::pane_argv(mcp, resume, &plugins))
+}
+
 pub(crate) fn say_unplaced(masters: &Arc<Masters>, project_id: &str, slug: &str, why: Unplaced) {
     if !masters.note_unplaced(project_id, why.clone()) {
         return;

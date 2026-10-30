@@ -642,6 +642,11 @@ pub async fn run(
         "[cred] device token store: {}",
         runner_platform::cred_store::active_backend()
     );
+    // every pane this daemon spawns loads its plugins from here, so a wrong one is refused now
+    let plugins = runner_workspace::plugin_source::resolve(&cfg.plugins).await;
+    runner_workspace::plugin_source::install(
+        plugins.map_err(runner_platform::error::Error::Config)?,
+    );
     let client = Arc::new(CoreClient::new(core_url.clone(), device_token.clone()));
     let runner = Arc::new(ClaudeCodeRunner::new(
         core_url.clone(),

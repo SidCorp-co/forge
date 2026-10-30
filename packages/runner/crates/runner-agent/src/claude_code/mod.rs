@@ -29,6 +29,7 @@ use runner_core::inflight;
 use runner_platform::error::{Error, Result};
 use runner_platform::process::{build_command_for, graceful_kill, own_session, resolve_claude_bin};
 use runner_workspace::mcp;
+use runner_workspace::plugin_source::PluginLaunch;
 
 fn user_message_line(text: &str) -> String {
     let msg = serde_json::json!({
@@ -223,7 +224,10 @@ pub struct Resident {
     pub checkout: crate::CheckoutView,
 }
 
-fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
+/// `plugins` is the checkout this runner loads its plugins from, empty where it loads the
+/// registered ones or the session is confined: a confined session's home is emptied, so it sees
+/// no plugin checkout, the registered one included.
+fn build_args(spec: &JobSpec, mcp_path: &str, plugins: &PluginLaunch) -> Vec<String> {
     let mode = spec
         .permission_mode
         .as_deref()
@@ -262,23 +266,31 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
         args.push("--resume".into());
         args.push(rid.into());
     }
-    if spec.hooks_off {
-        // a POC room's agent (REQ-44 BC-3): no hook the checkout declares runs between an edit and
-        // the preview showing it
-        args.push("--settings".into());
-        args.push(HOOKS_OFF.into());
-    }
+    // a POC room's agent (REQ-44 BC-3) runs with `hooks_off`: no hook the checkout declares runs
+    // between an edit and the preview showing it
+    args.extend(plugins.args(spec.hooks_off));
     args
+}
+
+/// The plugin launch a session spawned for `spec` takes, or the refusal naming why none can start.
+fn session_plugins(spec: &JobSpec) -> Result<PluginLaunch> {
+    if spec.confinement.is_some() {
+        return Ok(PluginLaunch::default());
+    }
+    runner_workspace::plugin_source::pane_launch().map_err(Error::Other)
 }
 
 /// `build_args` with a placeholder MCP config path, for the turn tests.
 #[cfg(test)]
 pub(crate) fn args_for_test(spec: &JobSpec) -> Vec<String> {
-    build_args(spec, "/tmp/mcp.json")
+    build_args(spec, "/tmp/mcp.json", &PluginLaunch::default())
 }
 
-/// The settings a session with every hook off is spawned with.
-pub const HOOKS_OFF: &str = r#"{"disableAllHooks":true}"#;
+/// `build_args` with `plugins`, for the tests of a runner that loads a plugin checkout.
+#[cfg(test)]
+pub(crate) fn args_with_plugins(spec: &JobSpec, plugins: &PluginLaunch) -> Vec<String> {
+    build_args(spec, "/tmp/mcp.json", plugins)
+}
 
 impl ClaudeCodeRunner {
     /// What the live duplex session for `id` was spawned with, if there is one.
@@ -836,7 +848,10 @@ async fn spawn_claude(
     bearer_dir: Option<&std::path::Path>,
     core_url: &str,
 ) -> Result<(tokio::process::Child, Option<EgressGuard>)> {
-    let args = build_args(spec, &mcp_path.to_string_lossy());
+    let plugins = session_plugins(spec).inspect_err(|_| {
+        let _ = std::fs::remove_file(mcp_path);
+    })?;
+    let args = build_args(spec, &mcp_path.to_string_lossy(), &plugins);
     let program = std::ffi::OsStr::new(resolve_claude_bin());
     let made = SessionCommand {
         spec,

@@ -379,8 +379,8 @@ pub fn job_denied_tools(policy: &[String]) -> Vec<String> {
 
 /// The command a job pane is started with: the launch a master pane takes, handed the project's
 /// declared servers through a config of the job's own, the model and denied tools of its policy
-/// state, every tool that waits on a person, which no job pane may call, and the job's brief as
-/// the agent's first turn. A declaration or brief that cannot be written is a refusal, because the
+/// state, every tool that waits on a person, which no job pane may call, the plugin checkout this
+/// runner loads in place of the registered plugin, and the job's brief as the agent's first turn. A declaration or brief that cannot be written is a refusal, because the
 /// pane it would start carries none of it.
 pub(crate) fn job_pane_argv(
     dir: &Path,
@@ -398,12 +398,14 @@ pub(crate) fn job_pane_argv(
                 servers.keys().cloned().collect::<Vec<_>>().join(", ")
             ))
         })?;
+    let plugins = runner_workspace::plugin_source::pane_launch().map_err(Error::Other)?;
     Ok(terminal::job_argv(
         config.as_deref(),
         None,
         Some(launch.model),
         &job_denied_tools(launch.denied_tools),
         Some(&brief),
+        &plugins,
     ))
 }
 

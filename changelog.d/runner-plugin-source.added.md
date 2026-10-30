@@ -1,0 +1,1 @@
+**A runner can load its forge plugin from its own checkout.** `[plugins] checkout` and `ref` make its panes load that checkout, kept at the branch, with the shared registered plugin off; a wrong path or branch is refused.

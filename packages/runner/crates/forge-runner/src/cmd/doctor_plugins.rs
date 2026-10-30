@@ -41,6 +41,39 @@ pub async fn rows(client: &CoreClient, timeout: Duration, local: Option<&str>) -
     }
 }
 
+/// The row for `[plugins] checkout`: which directories this runner's panes load their plugins from
+/// and which registered plugins they turn off, or the refusal the daemon starts with. `true` where
+/// refused; nothing where no checkout is set.
+pub async fn source_row(settings: &runner_platform::config::PluginSettings) -> bool {
+    use runner_workspace::plugin_source;
+    let launch = match plugin_source::resolve(settings).await {
+        Ok(None) => return false,
+        Ok(Some(source)) => {
+            plugin_source::launch_for(Some(&source), plugin_sync::claude_config_dir().as_deref())
+        }
+        Err(why) => Err(why),
+    };
+    match launch {
+        Ok(launch) => {
+            let dirs: Vec<String> = launch
+                .dirs
+                .iter()
+                .map(|d| d.display().to_string())
+                .collect();
+            let off = match launch.disabled.as_slice() {
+                [] => String::from("no registered plugin of the same name"),
+                ids => format!("{} turned off", ids.join(", ")),
+            };
+            println!("✔ plugins      panes load {} — {off}", dirs.join(", "));
+            false
+        }
+        Err(why) => {
+            println!("✖ plugins      {why}");
+            true
+        }
+    }
+}
+
 /// A marketplace this box's operator registered to a directory of their own: the sweep installs
 /// nothing from it, so neither config.toml nor a project's designation or pin is applied for it.
 pub fn registered_row(marketplace: &str, path: &std::path::Path) -> String {

@@ -17,7 +17,8 @@ pub enum Action {
     Path,
     /// Set a config value: `core-url`, `projects-root`, `update.auto`,
     /// `update.manifest-url`, `skills.auto_pull`, `plugins.enabled`,
-    /// `plugins.marketplace-repo` or `plugins.plugin-names`.
+    /// `plugins.marketplace-repo`, `plugins.plugin-names`, `plugins.checkout` or `plugins.ref`.
+    /// An empty value for the last two removes the key.
     Set { key: String, value: String },
 }
 
@@ -69,10 +70,16 @@ pub async fn run(_ctx: Ctx, args: Args) -> anyhow::Result<()> {
                         .map(str::to_string)
                         .collect();
                 }
+                // which plugin checkout this runner's panes load, refused below before it is saved
+                "plugins.checkout" => cfg.plugins.checkout = Some(value).filter(|v| !v.is_empty()).map(Into::into),
+                "plugins.ref" => cfg.plugins.git_ref = Some(value).filter(|v| !v.is_empty()),
                 other => anyhow::bail!(
-                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url | skills.auto_pull | plugins.enabled | plugins.marketplace-repo | plugins.plugin-names)"
+                    "unknown key `{other}` (try: core-url | projects-root | update.auto | update.manifest-url | skills.auto_pull | plugins.enabled | plugins.marketplace-repo | plugins.plugin-names | plugins.checkout | plugins.ref)"
                 ),
             }
+            runner_workspace::plugin_source::resolve(&cfg.plugins)
+                .await
+                .map_err(|why| anyhow::anyhow!("not saved: {why}"))?;
             cfg.save()?;
             println!("✔ saved {}", Config::path()?.display());
         }

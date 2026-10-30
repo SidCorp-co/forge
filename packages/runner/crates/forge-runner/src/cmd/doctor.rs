@@ -55,6 +55,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     failed |= config_rows(&ctx, &cfg);
 
     device_rows(&cfg);
+    failed |= super::doctor_plugins::source_row(&cfg.plugins).await;
 
     let credential_file = cred_store::credential_file_path().ok();
     let (row, token_failed) = access_token_row(&cred_store::load_pat(), credential_file.as_deref());
@@ -140,8 +141,11 @@ fn config_rows(ctx: &Ctx, cfg: &Config) -> bool {
 /// The rows for which plugin a job finds installed and where credentials are kept; notes only.
 fn device_rows(cfg: &Config) {
     // Which plugin a job spawned here would find installed. `enabled = false`
-    // is a legitimate device state, not a failure, so it reports as a note.
-    if cfg.plugins.enabled {
+    // is a legitimate device state, not a failure, so it reports as a note. A
+    // `checkout` replaces the marketplace, and `doctor_plugins::source_row` names it.
+    if !cfg.plugins.enabled {
+        println!("• plugins      disabled — `forge-runner config set plugins.enabled true`");
+    } else if cfg.plugins.checkout.is_none() {
         match cfg.plugins.marketplace_repo.as_deref() {
             Some(repo) if !cfg.plugins.plugin_names.is_empty() => {
                 println!(
@@ -156,8 +160,6 @@ fn device_rows(cfg: &Config) {
                 "• plugins      config.toml names none — `forge-runner config set plugins.plugin-names forge`"
             ),
         }
-    } else {
-        println!("• plugins      disabled — `forge-runner config set plugins.enabled true`");
     }
 
     // Report the backend a read/write would actually resolve to right now

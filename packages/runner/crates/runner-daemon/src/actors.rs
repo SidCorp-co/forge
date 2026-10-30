@@ -723,7 +723,8 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
         })
         .collect();
 
-    runner_workspace::plugin_sync::ensure_plugins(&cfg.plugins, &server).await;
+    let source = runner_workspace::plugin_source::installed();
+    runner_workspace::plugin_sync::ensure_plugins(&cfg.plugins, &server, source).await;
 }
 
 /// The gate, answered-dialog and pool conditions off the files beside `config.toml`, none where

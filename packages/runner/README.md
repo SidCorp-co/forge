@@ -185,7 +185,13 @@ device installs the first-party `forge` plugin from `SidCorp-co/forge-plugin` â€
 the `forge` CLI, the session hooks and the `issue-flow` driver skill a `drive`
 job runs. It is on by default; `forge-runner config set plugins.enabled false`
 opts a machine out, and `plugins.marketplace-repo` / `plugins.plugin-names`
-point it elsewhere. A config still naming the retired `forge-pipeline-skills`
+point it elsewhere. `plugins.checkout` names a marketplace checkout on the box
+that this runner's panes load those plugins from instead, with the registered
+ones of the same names turned off for them, which is how a second runner sharing
+the box's Claude config runs another plugin line; `plugins.ref` keeps that
+checkout fast-forwarded to a branch on its origin. A path that is not such a
+checkout, or a branch that is not on its origin, stops the daemon at start,
+naming it. A config still naming the retired `forge-pipeline-skills`
 marketplace is moved onto the first-party one at load, with a warning naming
 the file. What a runner actually ended up executing is reported back â€” see `observed_sha` /
 `shadowed_by` on the device-skill row, which is what makes a green sync status

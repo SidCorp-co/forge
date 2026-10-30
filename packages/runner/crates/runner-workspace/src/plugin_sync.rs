@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
+use crate::plugin_source::PluginSource;
 use runner_platform::config::PluginSettings;
 use runner_platform::process::resolve_claude_bin;
 
@@ -71,17 +72,38 @@ pub fn merge_targets(local: Vec<PluginTarget>, server: Vec<PluginTarget>) -> Vec
     out
 }
 
+/// What the sweep installs from a marketplace: the local and server targets, less every plugin
+/// `source` serves from this runner's own checkout.
+pub fn install_targets(
+    settings: &PluginSettings,
+    server: &[PluginTarget],
+    source: Option<&PluginSource>,
+) -> Vec<PluginTarget> {
+    let mut targets = merge_targets(local_targets(settings), server.to_vec());
+    targets.retain(|t| source.is_none_or(|s| !s.serves(&t.name)));
+    targets
+}
+
 /// Idempotently bring this device's plugin state in line with `settings` plus the server-designated
 /// `server` targets. Per marketplace: sync the runner-owned clone (pin or tip), register it with
 /// the CLI as a directory marketplace, install + enable each plugin, then re-sync the installs to
-/// whatever the clone has checked out. No-op when disabled or when nothing is configured.
+/// whatever the clone has checked out. A plugin `source` serves from this runner's own checkout is
+/// installed from no marketplace: the checkout is kept at its ref instead, and panes load it there.
+/// No-op when disabled or when nothing is configured.
 /// Never panics; every step is logged and independent of the others.
-pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) {
+pub async fn ensure_plugins(
+    settings: &PluginSettings,
+    server: &[PluginTarget],
+    source: Option<&PluginSource>,
+) {
     if !settings.enabled {
         return;
     }
 
-    let targets = merge_targets(local_targets(settings), server.to_vec());
+    if let Some(source) = source {
+        keep_checkout(source).await;
+    }
+    let targets = install_targets(settings, server, source);
     if targets.is_empty() {
         tracing::debug!("[plugins] enabled but no local or server-designated plugins — skipping");
         return;
@@ -153,6 +175,23 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
             group.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
             pin.map(|p| format!(" (pinned {p})")).unwrap_or_default()
         );
+    }
+}
+
+/// Bring `source`'s checkout to its ref, or say why it stays where it is.
+async fn keep_checkout(source: &PluginSource) {
+    let names: Vec<&str> = source.plugins.iter().map(|p| p.name.as_str()).collect();
+    let at = source.checkout.display();
+    match crate::plugin_source::sync(source).await {
+        Ok(head) => tracing::info!(
+            "[plugins] {names:?} load from {at} @ {head}{}, not from a marketplace",
+            source
+                .git_ref
+                .as_deref()
+                .map(|r| format!(" (kept at origin/{r})"))
+                .unwrap_or_default()
+        ),
+        Err(e) => tracing::warn!("[plugins] {names:?} load from {at}, which was not synced: {e}"),
     }
 }
 
@@ -384,4 +423,43 @@ async fn run_claude(args: &[&str]) -> runner_platform::error::Result<()> {
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin_source::ServedPlugin;
+
+    fn target(name: &str) -> PluginTarget {
+        PluginTarget {
+            marketplace: "SidCorp-co/forge-plugin".into(),
+            name: name.into(),
+            pinned_ref: None,
+            auto_update: true,
+        }
+    }
+
+    #[test]
+    fn a_plugin_served_from_the_runners_checkout_is_installed_from_no_marketplace() {
+        let settings = PluginSettings::default();
+        let server = [target("forge"), target("forge-codemap")];
+        let names = |t: Vec<PluginTarget>| t.into_iter().map(|t| t.name).collect::<Vec<_>>();
+        assert_eq!(
+            names(install_targets(&settings, &server, None)),
+            vec!["forge", "forge-codemap"],
+            "with no checkout the sweep installs what it did before"
+        );
+        let source = PluginSource {
+            checkout: "/co".into(),
+            git_ref: Some("dev".into()),
+            plugins: vec![ServedPlugin {
+                name: "forge".into(),
+                dir: "/co/plugin".into(),
+            }],
+        };
+        assert_eq!(
+            names(install_targets(&settings, &server, Some(&source))),
+            vec!["forge-codemap"]
+        );
+    }
 }

@@ -89,10 +89,16 @@ impl Inputs {
             map.insert("mcp".to_string(), digest(doc.to_string().as_bytes()));
         }
         let config = runner_workspace::mcp::config::session_path(handed.slug);
-        let argv = runner_workspace::terminal::pane_argv(Some(&config), None);
+        let source = runner_workspace::plugin_source::installed();
+        let launch = runner_workspace::plugin_source::pane_launch();
+        let argv = match &launch {
+            Ok(plugins) => runner_workspace::terminal::pane_argv(Some(&config), None, plugins),
+            Err(why) => vec![why.clone()],
+        };
         map.insert("launch".to_string(), digest(argv.join("\0").as_bytes()));
+        let off = launch.map(|l| l.disabled).unwrap_or_default();
         if let Some(plugins) = runner_workspace::plugin_sync::claude_config_dir()
-            .and_then(|dir| plugin_set(&dir, handed.repo))
+            .and_then(|dir| plugin_set(&dir, handed.repo, &off, source))
         {
             map.insert("plugins".to_string(), digest(plugins.as_bytes()));
         }
@@ -115,15 +121,22 @@ impl Inputs {
 /// `installed_plugins.json` under the Claude config directory `config`: every
 /// user-scoped install, and every install scoped to `repo` itself, each as its
 /// id, version and the first eight characters of its commit, sorted and joined.
+/// An id in `off` is one the launch turns off, and a plugin `source` serves from
+/// this runner's checkout is named by that checkout's HEAD instead.
 /// `None` where the file cannot be read or does not have the shape Claude Code
 /// writes.
-pub fn plugin_set(config: &Path, repo: &Path) -> Option<String> {
+pub fn plugin_set(
+    config: &Path,
+    repo: &Path,
+    off: &[String],
+    source: Option<&runner_workspace::plugin_source::PluginSource>,
+) -> Option<String> {
     let raw =
         std::fs::read_to_string(config.join("plugins").join("installed_plugins.json")).ok()?;
     let doc: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let plugins = doc.get("plugins")?.as_object()?;
     let mut set = Vec::new();
-    for (id, installs) in plugins {
+    for (id, installs) in plugins.iter().filter(|(id, _)| !off.contains(id)) {
         for install in installs.as_array()? {
             let scope = install.get("scope").and_then(|s| s.as_str()).unwrap_or("");
             let here = install
@@ -145,6 +158,11 @@ pub fn plugin_set(config: &Path, repo: &Path) -> Option<String> {
             set.push(format!("{id} {version} {sha}"));
         }
     }
+    set.extend(
+        source
+            .map(runner_workspace::plugin_source::identity)
+            .unwrap_or_default(),
+    );
     set.sort();
     Some(set.join(", "))
 }

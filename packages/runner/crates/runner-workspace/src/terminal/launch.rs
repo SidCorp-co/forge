@@ -1,9 +1,16 @@
 //! The command line a pane's agent is started with.
 
 use super::shell_quote;
+use crate::plugin_source::PluginLaunch;
 
-pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> Vec<String> {
-    job_argv(mcp_config, resume, None, &[], None)
+/// The launch a master pane takes. `plugins` is the checkout this runner loads its plugins from
+/// (`crate::plugin_source`), empty where it loads the registered ones.
+pub fn pane_argv(
+    mcp_config: Option<&std::path::Path>,
+    resume: Option<&str>,
+    plugins: &PluginLaunch,
+) -> Vec<String> {
+    job_argv(mcp_config, resume, None, &[], None, plugins)
 }
 
 /// [`pane_argv`] for a job: the model and the tools its policy state names, and the brief at
@@ -29,12 +36,16 @@ pub fn job_argv(
     model: Option<&str>,
     denied_tools: &[String],
     first_turn: Option<&std::path::Path>,
+    plugins: &PluginLaunch,
 ) -> Vec<String> {
     let bin = shell_quote(runner_platform::process::resolve_claude_bin());
     let mut line = first_turn.map(first_turn_prelude).unwrap_or_default();
     line.push_str(&format!(
         "unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions"
     ));
+    for arg in plugins.args(false) {
+        line.push_str(&format!(" {}", shell_quote(&arg)));
+    }
     if let Some(model) = model.filter(|m| !m.is_empty()) {
         line.push_str(&format!(" --model {}", shell_quote(model)));
     }
@@ -70,4 +81,70 @@ pub fn first_turn_prelude(path: &std::path::Path) -> String {
             path.display()
         ))
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn checkout_launch() -> PluginLaunch {
+        PluginLaunch {
+            dirs: vec![std::path::PathBuf::from("/co/forge plugin")],
+            disabled: vec!["forge@forge-local".into()],
+        }
+    }
+
+    /// What the shell hands `claude` for `line`: the line run with `printf` in place of the binary.
+    fn argv_the_shell_reads(line: &str) -> Vec<String> {
+        let bin = shell_quote(runner_platform::process::resolve_claude_bin());
+        let exec = format!("unset CLAUDECODE; exec {bin}");
+        assert!(line.starts_with(&exec), "{line}");
+        let printed = line.replacen(&exec, "printf '%s\\n'", 1);
+        let out = std::process::Command::new("sh")
+            .args(["-c", &printed])
+            .output()
+            .unwrap();
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn a_runner_with_no_plugin_checkout_launches_a_pane_exactly_as_before() {
+        let mcp = std::path::Path::new("/box/mcp.json");
+        let line = pane_argv(Some(mcp), Some("abc"), &PluginLaunch::default())
+            .pop()
+            .unwrap();
+        let bin = shell_quote(runner_platform::process::resolve_claude_bin());
+        assert_eq!(
+            line,
+            format!(
+                "unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions --mcp-config \
+                 '/box/mcp.json' --resume 'abc'"
+            )
+        );
+    }
+
+    #[test]
+    fn a_runner_with_a_plugin_checkout_hands_the_pane_its_directory_and_turns_the_registered_one_off(
+    ) {
+        let line = job_argv(None, None, Some("opus"), &[], None, &checkout_launch())
+            .pop()
+            .unwrap();
+        assert_eq!(
+            argv_the_shell_reads(&line),
+            vec![
+                "--permission-mode",
+                "bypassPermissions",
+                "--plugin-dir",
+                "/co/forge plugin",
+                "--settings",
+                r#"{"enabledPlugins":{"forge@forge-local":false}}"#,
+                "--model",
+                "opus",
+            ]
+        );
+    }
 }

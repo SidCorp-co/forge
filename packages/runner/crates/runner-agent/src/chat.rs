@@ -1050,6 +1050,36 @@ mod tests {
         assert!(!crate::claude_code::args_for_test(&spec).contains(&"--settings".to_string()));
     }
 
+    /// A runner loading a plugin checkout spawns a session with that checkout's directory and the
+    /// registered plugin off, in the one `--settings` an ungated turn's hooks-off also rides.
+    #[test]
+    fn a_session_of_a_runner_with_a_plugin_checkout_loads_it_in_one_settings_with_hooks_off() {
+        let plugins = runner_workspace::plugin_source::PluginLaunch {
+            dirs: vec![std::path::PathBuf::from("/co/plugin")],
+            disabled: vec!["forge@forge-local".into()],
+        };
+        let frame = serde_json::json!({
+            "sessionId": "s1", "message": "go", "forgeToken": "t", "ungated": true
+        });
+        let spec = chat_spec("s1", "go", &turn_of(frame, None));
+        let args = crate::claude_code::args_with_plugins(&spec, &plugins);
+        assert_eq!(
+            args.iter().filter(|a| *a == "--settings").count(),
+            1,
+            "{args:?}"
+        );
+        let at = args
+            .iter()
+            .position(|a| a == "--plugin-dir")
+            .expect("no --plugin-dir");
+        assert_eq!(args[at + 1], "/co/plugin");
+        let at = args.iter().position(|a| a == "--settings").unwrap();
+        assert_eq!(
+            args[at + 1],
+            r#"{"disableAllHooks":true,"enabledPlugins":{"forge@forge-local":false}}"#
+        );
+    }
+
     /// Core marks a chat door's turn `confined`; the session it spawns is then confined, and
     /// reads the turn's attachments, which sit where its view is otherwise empty.
     #[test]
