@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.384] - 2026-10-30
+
+The steward's nudge names a decision body the events route accepts
+
+### Fixed
+
+- **The steward's nudge prints a decision body the route accepts.** It names `contract: 1` and `fields` as key and value pairs, not top-level `decision` and `why` keys.
+
 ## [0.4.0-dev.383] - 2026-10-30
 
 A goal label with an empty colon takes the list under it
