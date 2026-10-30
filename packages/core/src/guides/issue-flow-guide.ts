@@ -134,7 +134,7 @@ posted on the issue. Until the issue names a catalogued pattern or names the slu
 work does not move to build and it does not reach \`awaiting_release\` (\`PATTERN_RETURNED\`). An
 approved one's catalog page lands in this change, whichever comes first: the merge check reads the
 change, the merge mark reads the commit it marks, and an approval on an issue already marked and the
-move to \`awaiting_release\` read the change the merge mark names. Each refuses \`PATTERN_ENTRY_MISSING\` where the page is not in it.
+move to \`awaiting_release\` read the change the merge mark names. Each refuses \`PATTERN_ENTRY_MISSING\` where the page is not in it; the mark and the move ask it only where gate \`patterns\` is enforced, which \`yolo\` turns off.
 
 Then record the design, before any code: \`PUT /api/issues/:id/design\`
 \`{ criteria: [{ criterion, class, pattern, proof }], modules, contracts }\`, one line per criterion.

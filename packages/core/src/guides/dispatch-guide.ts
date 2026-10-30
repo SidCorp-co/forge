@@ -13,12 +13,13 @@ export const DISPATCH_GUIDE: CoreGuide = {
   audience: 'agent',
   title: "Running a wave: a master's dispatch and fold",
   summary:
-    "The method a project's master follows for one wave: read the order, triage each candidate on the record, group what shares a place, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`.",
-  version: 2,
+    "The method a project's master follows for one wave: read the order, triage each candidate on the record, group what shares a place, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (gate profile yolo, fast delivery on), build, land and record instead.",
+  version: 3,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
-The master writes no code and lands nothing; each run follows ${guideRef('issue-flow')}. Every
+The master writes no code and lands nothing, except on a project that runs direct (the last
+section); each run follows ${guideRef('issue-flow')}. Every
 tracker act below is a REST call; in a master pane \`forge-runner api <path>\` makes it with the
 checkout's credential, and \`forge-runner\` is the box itself — its runs, its panes, its refusals.
 
@@ -130,5 +131,26 @@ records — before acting on it.
   gives back its tree and its issues.
 - The statuses past \`awaiting_release\` are the release's: a wave never moves an issue to \`closed\`.
 - The fold ends with a \`fold\` record on the headline carrying the wave's one-line summary. Until it
-  is written the wave is open, whatever its members' statuses say.`,
+  is written the wave is open, whatever its members' statuses say.
+
+### Direct mode: a project that runs fast
+A project whose gate profile is \`yolo\` (\`GET /api/projects/:id/gates\`) and whose project document
+leaves \`delivery.fast\` on runs direct, and its nudge says so. Its master builds instead of
+dispatching, so §5 and §6 do not apply: no shipped role, no declaration, no printed brief, no plan
+approval, design record, review or judge before the landing. For each issue it takes:
+1. Claim it with a lease, as ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`.
+2. Build it in this session, or give a general-purpose subagent a short prompt: the issue, its tree,
+   the base branch and the standing rules.
+3. Push it to the base branch when its build and its own tests are green, the issue's key in the
+   commit subject so the mark can read the commit as this issue's.
+4. Record in one go: rate its impact (${guideRef('fast-delivery')}), \`POST /api/issues/:id/merge\`
+   \`{ commit: <landing sha>, target: <base branch> }\`, \`POST /api/issues/:id/transition\`
+   \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`, and a comment saying what shipped;
+   then hand the lease back.
+5. Record a criterion's or a requirement BC's verdict only once it was checked live, after landing.
+
+The kernel holds in this mode as in every other: a legal edge with its reason, \`awaiting_release\`
+only on a recorded merge, the holder alone moving the issue into \`in_progress\` and
+\`awaiting_release\`, and a close only by a release. A gate the project's overrides enforce again
+still refuses by name.`,
 };

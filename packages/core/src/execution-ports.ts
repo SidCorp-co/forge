@@ -72,6 +72,7 @@ import {
   readDeclaredSource,
   readEffectivePolicy,
   readGateModes,
+  readMasterMode,
   remoteOf,
   requirePolicy,
   withDeclaredSource,
@@ -323,6 +324,7 @@ export function provideExecutionPorts(): void {
       recordings: await filingRecordsOwed(projectId),
     }),
     masterGate: (projectId) => gateOf(projectId, 'master_admitted_only'),
+    masterMode: readMasterMode,
     requestsWaiting: async (projectId) => [
       ...(await draftIssuesPeopleFiled(projectId)).map((r) => ({
         kind: 'issue' as const,

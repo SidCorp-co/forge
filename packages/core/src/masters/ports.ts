@@ -1,4 +1,5 @@
 import type { ResolvedGate } from '@forge/contracts/gate-profiles';
+import type { MasterMode } from '@forge/contracts/master-mode';
 import type { AnswerResume } from '@forge/contracts/questions';
 import type { ReleaseNamer } from '@forge/contracts/release-naming';
 import type { StandingSubjectKind } from '@forge/contracts/steward';
@@ -144,6 +145,8 @@ interface MastersPorts {
   breakdownsHeldBySteward(projectId: string): Promise<string[]>;
   /** The project's gate `master_admitted_only` (REQ-76): off, a master is placed for a waiting request too. */
   masterGate(projectId: string): Promise<ResolvedGate>;
+  /** How the project's master works: `direct` under gate profile yolo with fast delivery on, else `dispatch`. */
+  masterMode(projectId: string): Promise<MasterMode>;
   /**
    * The chat or direct requests waiting on a person (REQ-76 BC-9): draft issues a person filed, and
    * draft requirements whose revision is proposed. Asked only where `masterGate` is off.

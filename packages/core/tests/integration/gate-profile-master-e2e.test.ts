@@ -8,12 +8,15 @@
  * issue is filed. The profile is set through the gates door (BC-12).
  *
  * @direct-test-of packages/core/src/masters/owed.ts
+ * @direct-test-of packages/core/src/project-config/master-mode.ts
  * @direct-test-of packages/core/src/issues/requests-waiting.ts
  * @direct-test-of packages/core/src/requirements/requests-waiting.ts
  * @direct-test-of packages/core/src/issues/create-service.ts
  */
 
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
 import {
   closeWorld,
   type Doc,
@@ -181,6 +184,40 @@ describe('REQ-76 BC-9: a master for a chat or direct request', () => {
     expect(nudge).toContain(
       `1 draft requirement has a proposed revision waiting (${requirementKey})`,
     );
+  });
+});
+
+// owner, 2026-10-30: the pass prompt the box types is core's, so which way the master works is read
+// from the project's declarations here: yolo with fast delivery on builds direct, anything else
+// dispatches as before.
+describe('the pass prompt under direct mode (gate profile yolo, fast delivery on)', () => {
+  const nudge = async () => String((await verdict()).work.nudge);
+  const fast = async (on: boolean) =>
+    db.execute(sql`
+      UPDATE project_config_documents
+         SET document = jsonb_set(document, '{delivery}', ${JSON.stringify({ fast: on })}::jsonb)
+       WHERE project_id = ${projectId}`);
+
+  it('tells a yolo master that delivers fast to build and record, and names no dispatch', async () => {
+    await profile(projectId, 'yolo');
+    const said = await nudge();
+    expect(said).toContain("This project's master works direct");
+    expect(said).toContain('Dispatch no forge:runner');
+    expect(said).not.toContain('Hand it to the dispatch skill');
+  });
+
+  it('dispatches as before once fast delivery is off, and under standard', async () => {
+    await profile(projectId, 'yolo');
+    await fast(false);
+    try {
+      expect(await nudge()).toMatch(/^Pass\. Hand it to the dispatch skill/);
+    } finally {
+      await fast(true);
+    }
+    await profile(projectId, 'standard');
+    const said = await nudge();
+    expect(said).toMatch(/^Pass\. Hand it to the dispatch skill/);
+    expect(said).not.toContain('works direct');
   });
 });
 

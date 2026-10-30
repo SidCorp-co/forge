@@ -13,6 +13,12 @@ import type {
 // The owed-work read is core's: the seven kinds of work a master owes are counted and digested in
 // owed.ts, and the box only carries the line core composed. These are those rules.
 
+/** The work as a project that dispatches is told it; direct mode is owed-direct.test.ts's. */
+const dispatched = (
+  admissible: Parameters<typeof masterWork>[0],
+  owed: Parameters<typeof masterWork>[1],
+) => masterWork(admissible, owed, 'dispatch');
+
 const none = {
   designs: [],
   revisions: [],
@@ -98,7 +104,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     );
     expect(line).toContain('ISS-6 question q3: not acted on yet');
     expect(
-      masterWork([], { ...none, answers: [{ issueKey: 'ISS-6', questionId: 'q3', outcome: null }] })
+      dispatched([], { ...none, answers: [{ issueKey: 'ISS-6', questionId: 'q3', outcome: null }] })
         .owed,
     ).toBe(1);
   });
@@ -125,7 +131,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain('ISS-498: no master has taken it since 10-14');
     // ISS-607: only an ISO 8601 date ends a decision; the line says so, matching decision-until.ts
     expect(line).toContain('`until` only as an ISO 8601 date such as 2026-11-01');
-    expect(masterWork([], { ...none, stewardAsks: [ask] }).owed).toBe(1);
+    expect(dispatched([], { ...none, stewardAsks: [ask] }).owed).toBe(1);
     expect(workDigest([], { ...none, stewardAsks: [ask] })).not.toBe(workDigest([], none));
   });
 
@@ -168,7 +174,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain('"toStatus":"awaiting_release"');
     expect(line).toContain('issues/<id>/merge -X DELETE');
     expect(owedLine(none)).not.toContain('in_progress');
-    expect(masterWork([], { ...none, landedWork: [left] }).owed).toBe(1);
+    expect(dispatched([], { ...none, landedWork: [left] }).owed).toBe(1);
     const once = workDigest([], { ...none, landedWork: [left] });
     expect(once).not.toBe(workDigest([], none));
     // a new mark on the same issue is new work: landed again after a reopen
@@ -188,7 +194,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain(`!42 at ${sha} "Header fix"`);
     expect(line).toContain('file the issue for each merge');
     expect(owedLine(none)).not.toContain('file the issue');
-    expect(masterWork([], { ...none, marks: [mark], filings: [filing] }).owed).toBe(2);
+    expect(dispatched([], { ...none, marks: [mark], filings: [filing] }).owed).toBe(2);
     expect(workDigest([], { ...none, filings: [filing] })).not.toBe(workDigest([], none));
   });
 
@@ -242,7 +248,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain('1 release drafted or cut has no name (0.1.0)');
     expect(line).toContain('releases/<version>/naming -X PUT');
     expect(line).toContain('in Vietnamese');
-    expect(masterWork([], { ...none, unnamedReleases: [{ version: '0.1.0' }] }).owed).toBe(1);
+    expect(dispatched([], { ...none, unnamedReleases: [{ version: '0.1.0' }] }).owed).toBe(1);
   });
 
   it('teaches the note it asks for with its short title, so the write it names is never refused', () => {
@@ -282,7 +288,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
       '1 release note waiting to ship reads wrong to a user (ISS-6 u6 (not in Vietnamese; issue key ISS-6))',
     );
     expect(line).toContain('the release is not refused for it');
-    expect(masterWork([], { ...none, warnedNotes: warned }).owed).toBe(1);
+    expect(dispatched([], { ...none, warnedNotes: warned }).owed).toBe(1);
     expect(workDigest([], { ...none, warnedNotes: warned })).not.toBe(workDigest([], none));
   });
 
@@ -351,13 +357,13 @@ describe('workDigest: the same work digests the same, and changed work does not'
 
 describe('masterWork: what the box types and opens a pass on', () => {
   it('opens the pass on the one admissible issue only where nothing else is owed', () => {
-    expect(masterWork([issue('a')], none).issueKey).toBe('ISS-a');
-    expect(masterWork([issue('a')], { ...none, triages: [{ key: 'FB-1' }] }).issueKey).toBeNull();
-    expect(masterWork([issue('a'), issue('b')], none).issueKey).toBeNull();
+    expect(dispatched([issue('a')], none).issueKey).toBe('ISS-a');
+    expect(dispatched([issue('a')], { ...none, triages: [{ key: 'FB-1' }] }).issueKey).toBeNull();
+    expect(dispatched([issue('a'), issue('b')], none).issueKey).toBeNull();
   });
 
   it('counts the owed items and carries their line on the nudge', () => {
-    const work = masterWork([], {
+    const work = dispatched([], {
       ...none,
       triages: [{ key: 'FB-1' }],
       builderRuns: [{ id: 'b1', ecosystem: 'e' }],
@@ -388,7 +394,7 @@ describe('an accepted merge-request release is owed to the master that merges it
   it('moves the digest with each merge, so the master is asked for the one after', () => {
     const first = workDigest([], { ...none, releaseMerges: [merge(5008, 0)] });
     expect(workDigest([], { ...none, releaseMerges: [merge(5009, 1)] })).not.toBe(first);
-    expect(masterWork([], { ...none, releaseMerges: [merge(5008, 0)] }).owed).toBe(1);
+    expect(dispatched([], { ...none, releaseMerges: [merge(5008, 0)] }).owed).toBe(1);
   });
 
   it('names the route a release waiting on its approval request asks with (ISS-591)', () => {
@@ -478,7 +484,7 @@ describe('owedLine: a marked filing waits on its release record', () => {
     const line = owedLine({ ...none, recordings: [ready] });
     expect(line).toContain('0.4.0-dev.348');
     expect(line).toContain('projects/<projectId>/shipped-in-records -X POST');
-    expect(masterWork([], { ...none, recordings: [ready] }).owed).toBe(1);
+    expect(dispatched([], { ...none, recordings: [ready] }).owed).toBe(1);
     // a release shipping moves the digest, so the master is asked again
     expect(workDigest([], { ...none, recordings: [ready] })).not.toBe(
       workDigest([], { ...none, recordings: [waiting] }),

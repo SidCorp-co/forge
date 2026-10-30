@@ -147,7 +147,8 @@ const everyOwed = {
 
 describe('the master nudge names a guide by slug, never restates one', () => {
   it('restates no guide, with every kind of owed work on it', () => {
-    expect(restated(masterWork([], everyOwed).nudge)).toEqual([]);
+    expect(restated(masterWork([], everyOwed, 'dispatch').nudge)).toEqual([]);
+    expect(restated(masterWork([], everyOwed, 'direct').nudge)).toEqual([]);
   });
 
   it.each(Object.entries(OWED_KINDS))(

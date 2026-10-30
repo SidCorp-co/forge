@@ -50,8 +50,8 @@ saying so.
 
 These hold whatever core serves:
 
-1. **You dispatch; you do not do the work.** The run is the worker. A master that starts building is
-   a master that has stopped reading the board.
+1. **You dispatch; you do not do the work** — except on a project that runs direct, below. The run
+   is the worker. A master that starts building is a master that has stopped reading the board.
 2. **One project per master pane.** Do not cross another project's authority boundary, whatever
    this box happens to be running beside you.
 3. **A decision you did not write down did not happen.** The pane records the wave; each issue
@@ -69,7 +69,8 @@ leaving a state somebody else can explain without you. It says:
 
 - **what you saw** — the reads you actually took
 - **what you chose for the wave**, and what was **actually dispatched** — selecting a row and
-  getting a run out on it are two outcomes, and a pass that reports only the first hides the gap
+  getting a run out on it are two outcomes, and a pass that reports only the first hides the gap;
+  on a project that runs direct, what you built and what actually landed
 - **what you passed over, and why**
 - **whether another pass is owed**, and what would make it worth taking
 - **where the project stands**, as a posture rather than a workload:
@@ -84,6 +85,48 @@ no row.
 
 Running the wave itself has a method of its own, and it is not here: the `dispatch` guide, read from
 the index below rather than worked out in the pane.
+
+## Direct mode: a project that runs fast
+
+A project whose gate profile is `yolo` and that delivers fast (its `delivery.fast` is not `false`)
+runs **direct**: its master builds and records afterwards. Nothing else selects it, and there is no
+switch of its own: the profile already turns off every policy gate that asks a plan, a design, a
+review or a judge before a merge, and fast delivery already lands a change on its build and its own
+tests. A profile Forge raised after an incident is no longer `yolo`, so the raise ends direct mode
+with it. Every nudge on such a project says so; on a pass with no nudge in front of it, read
+`forge-runner api projects/<projectId>/gates` (its `profile`) and
+`forge-runner api projects/<projectId>/config` (its `document.delivery`).
+
+On a project that runs direct:
+
+- **Build it yourself.** Take each issue in this session, or hand it to a general-purpose subagent
+  with a short prompt: the issue, its tree, the base branch, and the standing rules. No shipped
+  role is dispatched, so nothing is declared and no brief is printed; the box's dispatch gate and
+  the plugin's brief gate both ask only of a shipped role.
+- **Ask nothing before landing.** No plan approval, no design record, no review and no judge stand
+  between the build and the base branch. A project override that enforces one of those gates again
+  still refuses by name, and that refusal is followed, not routed around.
+- **Land on the base branch** once it builds and its own tests pass, with the issue's key in the
+  commit subject. Here pushing to the base branch is the landing this mode exists for, and it is
+  yours to take; a force-push still is not.
+- **Then record, in one go:** mark it merged at the landing sha (`forge-runner api issues/<id>/merge`,
+  POST, naming the `commit` and its `target`), move it to `awaiting_release` with that sha as the
+  reason, and comment what shipped. Rate the change's impact before the mark, as fast delivery asks,
+  so a change rated high waits for a green cleanup.
+- **Judge after landing, and only what you checked live.** A criterion's or a requirement BC's
+  verdict is recorded once you have exercised it on the running build, never as a forecast.
+
+**The kernel does not relax with the mode.** Whatever the profile, core still refuses:
+
+- a move that is not a legal edge, or that lacks its reason;
+- `awaiting_release` without a recorded merge;
+- a move to `in_progress` or `awaiting_release` by anyone but the issue's holder — so claim it
+  first, with the lease the `issue-flow` guide's Take it names, and hand that lease back last;
+- a close by anything but a release that claimed the issue and its recorded merge.
+
+Everything else in this file holds in direct mode: the pass still ends in a posture, a row you do
+not build still gets a decision on the record, and owed replies, triages and release notes are still
+yours. Where a project is not direct, nothing in this section applies.
 
 ## Reports are input; state has a source
 
@@ -102,7 +145,7 @@ guarantees, so a claim about the box that you cannot show evidence for this turn
 
 **A write you can undo is taken, not asked about.** Editing in a run's worktree, committing, pushing
 a run's own branch, opening a pull or merge request, commenting, moving a status — all reversible, so none is
-a question. These are not: pushing to a shared branch, force-pushing, merging somebody else's pull
+a question. These are not: pushing to a shared branch (save the landing a project that runs direct asks of you, above), force-pushing, merging somebody else's pull
 request, deploying, touching a live database, writing project config, and pushing a skill.
 
 **A pass-over is written on the issue, not only said.** Where you looked at a row and chose not to
@@ -244,6 +287,8 @@ reading and dispatch it, or record what the reading found on the issue; a row le
 it "still needs triage" is the row nobody decided about.
 
 ## Declare a run before you dispatch it
+
+Outside direct mode, every issue goes out this way.
 
 `forge-runner run declare` writes the row naming which issues a subagent is being given and which
 tree it works in. This is no longer advice: dispatch a shipped role with nothing declared and the

@@ -372,3 +372,54 @@ describe('an issue with no approved new pattern', () => {
     expect(host.reads).toEqual([]);
   });
 });
+
+describe('on a yolo project, where gate patterns is off', () => {
+  // master-direct-mode: a master building directly marks its landing and moves it on, and the mark
+  // asked the catalog page whatever the gate said while the move asked it only where gate `patterns`
+  // is enforced, so a yolo landing carrying an approved new pattern was refused at the mark alone.
+  let yolo = '';
+  beforeAll(async () => {
+    yolo = await projectBuiltFrom(reviewerId, THIS_REPOSITORY);
+    await addProjectMember(yolo, reviewerId, 'admin');
+    const path = `/api/projects/${yolo}/gates`;
+    const read = ok(await call('reviewer', 'GET', path));
+    ok(
+      await call('reviewer', 'PUT', path, {
+        baseRevision: read.revision,
+        profile: 'yolo',
+        overrides: {},
+        reason: 'planted: a POC project that builds direct',
+      }),
+    );
+  });
+
+  it('marks and moves an issue whose approved new pattern has no page in the change, and standard still refuses that mark', async () => {
+    seq += 1;
+    const issue = (
+      await createTestIssue(yolo, reviewerId, 9000 + seq, {
+        status: 'in_progress',
+        createdAt: new Date(),
+      })
+    ).id;
+    const pattern = ok(
+      await call('reviewer', 'POST', `/api/issues/${issue}/patterns`, {
+        pattern: slugOf(issue),
+        summary: 'a queue consumer as a door; no catalogued pattern consumes a queue',
+      }),
+      201,
+    ).pattern.id as string;
+    await approvedPastTheRoute(pattern);
+    const marked = await mark(issue, [CODE]);
+    expect([marked.status, codes(marked)]).toEqual([200, []]);
+    const moved = await toAwaitingRelease(issue);
+    expect([moved.status, codes(moved)]).toEqual([200, []]);
+    expect(await statusOf(issue)).toBe('awaiting_release');
+
+    const standard = await inProgress();
+    const held = await named(standard);
+    ok(await approve(standard, held));
+    const refused = await mark(standard, [CODE]);
+    expect(codes(refused)).toEqual(['PATTERN_ENTRY_MISSING']);
+    expect(detail(refused)).toContain('Gate patterns is enforced');
+  });
+});

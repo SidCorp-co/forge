@@ -6,8 +6,10 @@
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { FileChange, LandingArtifact } from '@forge/contracts/landing-artifacts';
+import { gateRefusal } from '../lib/gated.js';
 import { refuser } from '../lib/refusal.js';
 import { resolveCarriage } from './carriage.js';
+import { issueGateOf } from './gates.js';
 import type { LandingShape } from './landing-evidence.js';
 import { lastUnmarkedAt } from './mark-trail.js';
 import { uncheckedMergeRefusal } from './merge-check.js';
@@ -38,9 +40,9 @@ export async function resolveRecordedCommit(issueId: string): Promise<string | n
 /**
  * A merge a check is owed for is marked only at a commit a passing merge check is recorded at
  * (Issue to release r20 `rule-merge`; `merge-check.ts`). The commit is the one the mark names, else
- * the one the row or the issue's work evidence already records. Before that, each approved new
- * pattern's catalog page must be in the change at that commit (`pattern-entry.ts`): a check that ran
- * while the pattern waited on its reviewer did not ask for it. After it, a project that declares the
+ * the one the row or the issue's work evidence already records. Before that, where gate `patterns`
+ * is enforced, each approved new pattern's catalog page must be in the change at that commit
+ * (`pattern-entry.ts`): a check that ran while the pattern waited on its reviewer did not ask for it. After it, a project that declares the
  * merge check asks a passing review at that commit by another than the building run (`review.ts`).
  */
 export async function refuseUncheckedMerge(
@@ -54,13 +56,22 @@ export async function refuseUncheckedMerge(
   if (shape !== 'git') return;
   const commit =
     args.commit ?? prior.mergedCommitSha ?? (await resolveRecordedCommit(prior.id)) ?? null;
-  const entry = await markEntryRefusal({
-    issueId: prior.id,
-    projectId: prior.projectId,
-    commit,
-    changedPaths: args.changedPaths ?? null,
-  });
-  if (entry) throw refuse(entry.code, entry.detail, entry.path);
+  // gate `patterns` refuses merging an uncatalogued new pattern, as the move to awaiting_release asks
+  // it (`transition-guards.ts:patternsUnderGate`): where the profile turns it off the mark asks nothing
+  const patterns = await issueGateOf(prior.projectId, 'patterns');
+  const entry =
+    patterns.mode === 'enforce'
+      ? await markEntryRefusal({
+          issueId: prior.id,
+          projectId: prior.projectId,
+          commit,
+          changedPaths: args.changedPaths ?? null,
+        })
+      : null;
+  if (entry) {
+    const said = gateRefusal(patterns, entry);
+    throw refuse(said.code, said.detail, said.path);
+  }
   const detail = await uncheckedMergeRefusal({
     issueId: prior.id,
     projectId: prior.projectId,

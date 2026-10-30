@@ -459,6 +459,36 @@ mod tests {
         }
     }
 
+    /// Owner, 2026-10-30: a project that runs fast pays a dispatched runner, a printed brief, a plan,
+    /// a design and a judge before every landing for nothing. The skill selects direct mode from
+    /// what the project declares, says what the master does instead, and keeps the kernel it does
+    /// not relax.
+    #[test]
+    fn the_skill_teaches_direct_mode_and_the_kernel_it_keeps() {
+        for word in [
+            "## Direct mode: a project that runs fast",
+            "gate profile is `yolo` and that delivers fast",
+            "general-purpose subagent",
+            "No shipped\n  role is dispatched",
+            "No plan approval, no design record, no review and no judge",
+            "**Land on the base branch** once it builds and its own tests pass",
+            "mark it merged at the landing sha",
+            "move it to `awaiting_release`",
+            "comment what shipped",
+            "only what you checked live",
+            "a move that is not a legal edge, or that lacks its reason",
+            "`awaiting_release` without a recorded merge",
+            "by anyone but the issue's holder",
+            "a close by anything but a release",
+            "Outside direct mode, every issue goes out this way.",
+        ] {
+            assert!(
+                ASSET.contains(word),
+                "forge-master-skill.md no longer says {word:?}, so a master on a project that runs fast dispatches and waits as every other project does, or builds there without the kernel"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [

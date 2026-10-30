@@ -165,14 +165,16 @@ already merged answers it merged (`alreadyMerged`) without merging again.
 
 ## A mark a merge check is owed for
 
-Before the stamp, `refuseUncheckedMerge` (`packages/core/src/issues/merge-marker.ts`) asks
+Before the stamp, `refuseUncheckedMerge` (`packages/core/src/issues/mark-preconditions.ts`) asks
 `uncheckedMergeRefusal` (`packages/core/src/issues/merge-check.ts`) whether this mark owes a merge
 check: on the `git` shape, where the project document declares `validation.mergeCheck: required`,
 or where the issue introduces an approved new pattern, whose catalog page the check asks for. Ahead
-of that, each pattern approved by then must have its page in the change at the commit marked, or the
-mark is refused `PATTERN_ENTRY_MISSING`: a check that ran while the pattern waited on its reviewer
-did not ask. A pattern approved after the mark is asked again against the change this mark names, at
-its approval and at the move to `awaiting_release` (`packages/core/src/issues/pattern-entry.ts`).
+of that, where gate `patterns` is enforced, each pattern approved by then must have its page in the
+change at the commit marked, or the mark is refused `PATTERN_ENTRY_MISSING`: a check that ran while
+the pattern waited on its reviewer did not ask. Where a profile turns the gate off (`yolo`), the
+mark asks no page, as the move to `awaiting_release` asks none. A pattern approved after the mark is
+asked again against the change this mark names, at its approval and at the move to
+`awaiting_release` (`packages/core/src/issues/pattern-entry.ts`).
 Where one is owed, the commit the mark names — else the one the row or the issue's work evidence
 records — must be the head of a passing check recorded by `POST /api/issues/:id/merge-check`, read
 from core's own `verification` records, never a caller's post of the same kind. Otherwise the mark
