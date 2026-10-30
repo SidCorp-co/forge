@@ -11,7 +11,7 @@ import {
   readProjectDocument,
   readReleasePath,
 } from '../project-config/index.js';
-import { type Reading, servedBySourceProbes } from './provider-live.js';
+import type { Reading } from './provider-live.js';
 
 export type { ServedAt, ServingReading } from '@forge/contracts/releases';
 export { servedCommits } from '@forge/contracts/releases';
@@ -62,6 +62,13 @@ function fromState(
     if (probe.status === 'unreachable') unread.push(probe.error);
     else served.push({ commit: probe.observed, where: probe.url });
   }
+  if (state.state === 'serving') {
+    // probes deployed outside Forge answer; no record stands beside them
+    if (served.length === 0) {
+      return { kind: 'unreadable', why: unread.join('; '), hosts: [], readAt };
+    }
+    return { kind: 'serving', served, unread, readAt };
+  }
   const record = `${state.deployment.provider} deployment ${state.deployment.id} of environment \`${state.environment}\` (${state.deployment.status}, ${state.deployment.at})`;
   if (state.state === 'deployed' && state.source.kind === 'revision') {
     served.push({ commit: state.source.revision, where: record });
@@ -89,18 +96,6 @@ export async function servedOnJudgedOn(
   const declaration = held.document.environments[name];
   if (!declaration) {
     return { name, served: { ok: false, why: `the project document declares no \`${name}\`` } };
-  }
-  if ('mode' in declaration.deployment) {
-    // no binding records its deployments, so its own source probes are the one reading there is
-    const served = await servedBySourceProbes({ name, declaration });
-    if (!served.ok || /^[0-9a-f]{40}$/.test(served.value.toLowerCase())) return { name, served };
-    return {
-      name,
-      served: {
-        ok: false,
-        why: `its source probe answers \`${served.value}\`, not one whole commit`,
-      },
-    };
   }
   const state = await readEnvironmentState(projectId, held.document, { name, declaration });
   if (state.state === 'unknown') return { name, served: { ok: false, why: state.reason.message } };
@@ -140,7 +135,11 @@ export async function readServingNow(
   const state = await readEnvironmentState(projectId, document, production);
   const readAt = now().toISOString();
   if (state.state !== 'unknown') return fromState(state, readAt);
-  if (state.reason.cause === 'adapter-error' || state.reason.cause === 'no-record') {
+  if (
+    state.reason.cause === 'adapter-error' ||
+    state.reason.cause === 'no-record' ||
+    state.reason.cause === 'probe-unread'
+  ) {
     return { kind: 'unreadable', why: state.reason.message, hosts: [], readAt };
   }
   return { kind: 'undeclared', missing: state.reason.message, route: NO_ROUTE };

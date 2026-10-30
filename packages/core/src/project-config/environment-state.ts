@@ -130,6 +130,48 @@ async function latestRecord(
   }
 }
 
+const NO_RECORD_TO_COMPARE =
+  'deployed outside Forge, so no deployment record holds a commit to compare with';
+
+/**
+ * What an environment deployed outside Forge serves, read through its own source probes: every one
+ * answering, and all naming one commit, reads \`serving\` that commit; anything less says what each
+ * answered (adminhub-api's \`stg\`, 2026-10-30, read \`unknown\` beside a probe answering its commit).
+ */
+async function readExternalProbes(
+  environment: string,
+  probes: readonly RuntimeProbe[],
+): Promise<EnvironmentState> {
+  const seen = await Promise.all(
+    probes.map((p) => readRuntimeProbe(p, { timeoutMs: PROBE_TIMEOUT_MS })),
+  );
+  const readings = seen.map((r, i) => describeProbeReading(probes[i] as RuntimeProbe, r));
+  const commits = seen.map((r) => (r.kind === 'value' ? r.value.toLowerCase() : null));
+  const [first] = commits;
+  const agreed =
+    first && /^[0-9a-f]{7,40}$/.test(first) && commits.every((c) => c === first) ? first : null;
+  if (agreed === null) {
+    return unknown(
+      environment,
+      'probe-unread',
+      `environment \`${environment}\`'s source probe answered no one commit: ${readings.join('; ')}`,
+    );
+  }
+  return environmentStateSchema.parse({
+    environment,
+    state: 'serving',
+    evidence: 'runtime-probe',
+    source: { kind: 'revision', revision: agreed },
+    probes: probes.map((p) => ({
+      url: p.url,
+      identifies: p.identifies,
+      status: 'uncompared',
+      observed: agreed,
+      error: NO_RECORD_TO_COMPARE,
+    })),
+  });
+}
+
 /** What one declared environment runs now, read off its deployment record. */
 export async function readEnvironmentState(
   projectId: string,
@@ -139,10 +181,12 @@ export async function readEnvironmentState(
   const { name: environment, declaration: decl } = env;
   const ctx: EnvironmentStateContext = { sourceType: document.source.type };
   if ('mode' in decl.deployment) {
+    const source = (decl.verification?.runtime ?? []).filter((p) => p.identifies === 'source');
+    if (source.length > 0) return readExternalProbes(environment, source);
     return unknown(
       environment,
       'external',
-      `environment \`${environment}\` is deployed outside Forge, with no binding to read`,
+      `environment \`${environment}\` is deployed outside Forge, with no binding to read and no source probe declared`,
     );
   }
   const latest = await latestRecord(projectId, environment, decl.deployment.binding);

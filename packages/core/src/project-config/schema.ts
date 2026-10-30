@@ -445,7 +445,7 @@ const unknownEnvironmentStateSchema = z.strictObject({
   state: z.literal('unknown'),
   evidence: z.literal('none'),
   reason: z.strictObject({
-    cause: z.enum(['external', 'no-record', 'adapter-error', 'binding-refused']),
+    cause: z.enum(['external', 'no-record', 'adapter-error', 'binding-refused', 'probe-unread']),
     message: z.string().min(1).max(1000),
   }),
 });
@@ -483,11 +483,26 @@ const recordedEnvironmentStateSchema = z.strictObject({
   probes: z.array(probeOutcomeSchema).min(1).max(3).optional(),
 });
 
+// an environment deployed outside Forge keeps no deployment record here, so what its declared source
+// probes agree on is the one reading there is of what it serves
+const servingEnvironmentStateSchema = z.strictObject({
+  environment: slug(),
+  state: z.literal('serving'),
+  evidence: z.literal('runtime-probe'),
+  source: z.strictObject({
+    kind: z.literal('revision'),
+    revision: z.string().regex(/^[0-9a-f]{7,40}$/),
+  }),
+  probes: z.array(probeOutcomeSchema).min(1).max(3),
+});
+
 export const environmentStateSchema = z.discriminatedUnion('state', [
   unknownEnvironmentStateSchema,
   recordedEnvironmentStateSchema,
+  servingEnvironmentStateSchema,
 ]);
 
 export type EnvironmentState = z.infer<typeof environmentStateSchema>;
 export type RecordedEnvironmentState = z.infer<typeof recordedEnvironmentStateSchema>;
+export type ServingEnvironmentState = z.infer<typeof servingEnvironmentStateSchema>;
 export type ProbeOutcomeState = z.infer<typeof probeOutcomeSchema>;

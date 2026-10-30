@@ -54,9 +54,13 @@ way:
 ### Who reads it
 - **Coverage's live build** is what production's source probe answers, however production is
   deployed. A project declaring no production reads each issue's landing instead.
-- **The judged-on environment** (\`delivery.judgedOn\`): deployed outside Forge, its own source
-  probe is what it serves, and it must answer a whole sha; deployed through a binding, its deployment
-  record is read, beside its probes.
+- **An environment's state** (\`GET /api/projects/:id/environments/:name/state\`): deployed outside
+  Forge, it reads \`serving\` the commit its source probes agree on, \`unknown\` with cause
+  \`probe-unread\` and each reading where they do not, and \`unknown\` with cause \`external\` where
+  it declares none. Deployed through a binding, its deployment record is read, beside its probes.
+- **The judged-on environment** (\`delivery.judgedOn\`) is what its state reads, and must name a
+  whole sha. Production's state is the serving reading a runtime verdict is weighed against: a
+  verdict at an ancestor of what it serves stands, one at an unrelated commit is superseded.
 - **A release** reads production's probes where production deploys through a binding. A production
   deployed outside Forge is released through its promotion's change request and closed by the
   operator's record of the deploy, not by the probe.

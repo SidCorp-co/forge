@@ -35,6 +35,9 @@ function LiveNow({ live }: { live: EnvironmentState | null | undefined }) {
     const said = live.reason.cause === "external" ? t("settings.project.env.liveOutside") : live.reason.cause === "no-record" ? t("settings.project.env.liveNoRecord") : t("settings.project.env.liveUnread");
     return <span className="text-muted">{said}</span>;
   }
+  if (live.state === "serving") {
+    return <span>{t("settings.project.raw.probeServes", { observed: live.source.revision.slice(0, 8) })}</span>;
+  }
   const revision = live.source.kind === "revision" ? live.source.revision.slice(0, 8) : null;
   const probe = live.probes?.[0];
   return (

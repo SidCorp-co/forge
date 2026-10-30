@@ -76,7 +76,7 @@ export type EnvironmentState =
 			state: "unknown";
 			evidence: "none";
 			reason: {
-				cause: "external" | "no-record" | "adapter-error" | "binding-refused";
+				cause: "external" | "no-record" | "adapter-error" | "binding-refused" | "probe-unread";
 				message: string;
 			};
 	  }
@@ -101,6 +101,14 @@ export type EnvironmentState =
 				| { kind: "unrecorded" }
 				| { kind: "non-git" };
 			probes?: ProbeOutcome[];
+	  }
+	| {
+			environment: string;
+			/** Deployed outside Forge: what its declared source probes agree it serves. */
+			state: "serving";
+			evidence: "runtime-probe";
+			source: { kind: "revision"; revision: string };
+			probes: ProbeOutcome[];
 	  };
 
 export interface EnvironmentStateList {
