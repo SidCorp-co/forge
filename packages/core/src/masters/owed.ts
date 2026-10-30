@@ -135,7 +135,7 @@ function outcomeOf(outcome: AnswerResume | null): string {
  */
 const DECISION_DOOR: Record<StewardAsk['subject']['kind'], (keys: string) => string> = {
   issue: (keys) =>
-    `on an issue (${keys}), \`forge-runner api issues/<id>/events -X POST\` with \`kind: decision\` and the fields \`decision\` and \`why\`, plus \`until\` only as an ISO 8601 date such as 2026-11-01`,
+    `on an issue (${keys}), \`forge-runner api issues/<id>/events -X POST\` with the body \`{"kind":"decision","contract":1,"fields":[{"key":"decision","value":"…"},{"key":"why","value":"…"}]}\`, plus a field \`until\` only as an ISO 8601 date such as 2026-11-01`,
   feedback: (keys) =>
     `on a feedback item (${keys}), \`forge-runner api projects/<projectId>/feedback/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
   requirement: (keys) =>

@@ -85,6 +85,13 @@ const askOf = (actId: string, ask: string, subject: StewardAsk['subject']): Stew
   answeredOn: [subject],
 });
 
+/**
+ * ISS-785: the body the events route takes, never top-level `decision` and `why` keys; and ISS-607's
+ * `until`, read only as an ISO 8601 date, as decision-until.ts reads it.
+ */
+const ISSUE_DECISION_BODY =
+  '`{"kind":"decision","contract":1,"fields":[{"key":"decision","value":"…"},{"key":"why","value":"…"}]}`, plus a field `until` only as an ISO 8601 date such as 2026-11-01';
+
 describe('owedLine: what a pass is told it owes besides issues', () => {
   // hop 2026-10-07: six answers moved their parks back with nothing on the nudge, and the master
   // reported answered questions as owner-pending for several passes
@@ -130,7 +137,7 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain("The project's steward asks you to act on 1 item");
     expect(line).toContain('ISS-498: no master has taken it since 10-14');
     // ISS-607: only an ISO 8601 date ends a decision; the line says so, matching decision-until.ts
-    expect(line).toContain('`until` only as an ISO 8601 date such as 2026-11-01');
+    expect(line).toContain(ISSUE_DECISION_BODY);
     expect(dispatched([], { ...none, stewardAsks: [ask] }).owed).toBe(1);
     expect(workDigest([], { ...none, stewardAsks: [ask] })).not.toBe(workDigest([], none));
   });
