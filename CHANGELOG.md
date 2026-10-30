@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.372] - 2026-10-30
+
+A requirement-linked draft opens without a pre-written plan
+
+### Fixed
+
+- **A draft linked to an agreed requirement opens without a plan.** It opens against that requirement's current revision, since the plan is the run's to write; the work enters build only once its plan is written (`PLAN_REQUIRED`).
+- **A move refused because nobody holds the issue names the way through.** `NOT_THE_HOLDER` and `NO_HOLDER` say how to claim it with its lease, make the move, and hand it back.
+- **A kept probe sending a credential header is refused again, whatever the header holds.** `Authorization`, `Cookie` and the other credential headers are read by their name, not by the shape of their value.
+
 ## [0.4.0-dev.371] - 2026-10-30
 
 A judge's verdicts count under the id its tree was given

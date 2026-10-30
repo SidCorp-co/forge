@@ -1,1 +1,0 @@
-**A kept probe sending a credential header is refused again, whatever the header holds.** `Authorization`, `Cookie` and the other credential headers are read by their name, not by the shape of their value.
