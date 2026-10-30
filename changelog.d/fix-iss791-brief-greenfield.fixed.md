@@ -1,1 +1,0 @@
-**`run brief` briefs a repo whose remote has no base branch yet.** It says the first landing creates the branch and reads held trees without a base. An unfetched base or an unreadable remote is still refused by name.

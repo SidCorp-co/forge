@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.385] - 2026-10-30
+
+Brief a run on a new repo whose remote has no base branch
+
+### Fixed
+
+- **`run brief` briefs a repo whose remote has no base branch yet.** It says the first landing creates the branch and reads held trees without a base. An unfetched base or an unreadable remote is still refused by name.
+
 ## [0.4.0-dev.384] - 2026-10-30
 
 The steward's nudge names a decision body the events route accepts
