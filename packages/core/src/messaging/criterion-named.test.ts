@@ -1,5 +1,6 @@
-// A verdict's `criterion` as the criterion's exact line: the forms that name it, and the near misses
-// that never do (no fuzzy match), each refused listing the issue's criteria.
+// A verdict's `criterion` as a number leading a label, or as the criterion's exact line: the forms
+// that name it, and the near misses that never do (no fuzzy match), each refused listing the
+// issue's criteria.
 
 import { describe, expect, it } from 'vitest';
 import { criterionNamed, type NamedCriterion, numberCriteria } from './criterion-named.js';
@@ -23,11 +24,24 @@ describe('criterionNamed', () => {
     expect(criterionNamed(text, CRITERIA)).toEqual({ n });
   });
 
+  // forge-plugin quotes `<n> — <the line as it stood>` and may clip it (adminhub-api ISS-85): the
+  // number is the name, and the label after it is never matched against anything
+  it.each([
+    ['1 — (REQ-8 BC-2) Route … the boa…', 1],
+    ['2 – a label that is no criterion line', 2],
+    ['2. A reload shows every saved card', 2],
+    ['7—clipped', 7],
+  ])('names %s by its leading number %i, reading no label', (text, n) => {
+    expect(criterionNamed(text, CRITERIA)).toEqual({ n });
+  });
+
   it.each([
     'A reload shows every saved cards',
     'a reload shows every saved card',
     '(REQ-8 BC-2) A reload shows every saved card',
-    '2. A reload shows every saved card',
+    '1.5 A reload shows every saved card',
+    '0 — A reload shows every saved card',
+    '1 - A reload shows every saved card',
     'reload shows every saved card',
     '(REQ-8 BC-1)',
   ])('refuses %s, listing the criteria', (text) => {

@@ -104,7 +104,6 @@ describe('a criterion named by its exact line, through the comment door', () => 
     for (const miss of [
       '(REQ-8 BC-1) A reload shows every saved cards',
       '(REQ-8 BC-2) A reload shows every saved card',
-      `2. ${LINE_1}`,
       'a reload shows every saved card',
     ]) {
       const res = await recordVerdict(miss);
@@ -118,7 +117,32 @@ describe('a criterion named by its exact line, through the comment door', () => 
   });
 });
 
+// forge-plugin quotes `--criterion N` as `N — <the line as it stood>` and clips it (adminhub-api
+// ISS-85, 2026-10-30): the number names the criterion and the label is never read
+describe('a number leading a label, through the comment door', () => {
+  it('records the clipped quote forge-plugin writes on the number leading it', async () => {
+    const res = await recordVerdict('1 — (REQ-8 BC-1) A reload shows every sa…');
+    expect(res.status, said(res)).toBe(201);
+    expect((await recordVerdict(`2. ${LINE_1}`)).status).toBe(201);
+    expect(await recorded()).toEqual([1, 2]);
+  });
+
+  it('refuses a number the issue holds no criterion of, by name, and writes nothing', async () => {
+    const res = await recordVerdict('3 — (REQ-8 BC-3) A criterion this issue lacks');
+    expect(res.status, said(res)).toBe(422);
+    expect(said(res)).toContain('this issue has no criterion 3; its criteria are 1, 2');
+    expect(await recorded()).toEqual([]);
+  });
+});
+
 describe('a criterion named by its exact line, at POST /api/issues/:id/verdicts', () => {
+  it('records a number leading a clipped label on that number', async () => {
+    const res = await postVerdict('2 — The board keeps its or…');
+    expect(res.status, said(res)).toBe(201);
+    expect((res.body.criterion as { n: number }).n).toBe(2);
+    expect(await recorded()).toEqual([2]);
+  });
+
   it('records the trace-tagged whole line on its criterion', async () => {
     const res = await postVerdict(LINE_1);
     expect(res.status, said(res)).toBe(201);

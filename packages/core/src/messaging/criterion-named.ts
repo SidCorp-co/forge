@@ -1,10 +1,11 @@
-// A verdict names its criterion by number. A writer that sends the criterion's own line instead
-// (`(REQ-8 BC-1) A reload shows every saved card`, as forge-plugin's `forge record verdict` does
-// where the line opens with a trace tag) names it just as surely, so that exact line resolves to its
-// number (adminhub-fe FB-364, adminhub-api ISS-83 and ISS-84, 2026-10-30). Exact only: the line as
-// the issue holds it, with or without its leading `n. ` and its trace tag, its whitespace collapsed
-// as a criterion's own identity collapses it (`criteria-text.ts:normalizeStatement`). Anything else
-// is refused by name with the issue's criteria listed; nothing is guessed.
+// A verdict names its criterion by number. Two other writings name it just as surely:
+// - a number leading a label, `1. <text>` or `1 — <text>`, names that number and the label is never
+//   read, since forge-plugin quotes the line as it stood and may clip it (`1 — (REQ-8 BC-2) Route …`,
+//   adminhub-api ISS-85, 2026-10-30);
+// - the criterion's own line with no number (`(REQ-8 BC-1) A reload shows every saved card`), which
+//   resolves to its number only where it is exactly one criterion's line, its trace tag optional and
+//   its whitespace collapsed (adminhub-fe FB-364, adminhub-api ISS-83 and ISS-84).
+// Anything else is refused by name with the issue's criteria listed; no text is guessed at.
 
 import type { ForgeRecord } from './forge-record.js';
 
@@ -19,7 +20,8 @@ export interface NamedCriterion {
 export type CriterionNaming = { readonly n: number } | { readonly why: string };
 
 const WHOLE_NUMBER = /^\d+$/u;
-const NUMBERED = /^(\d+)\.\s+/u;
+/** A number leading a label: `1. <text>`, `1 — <text>` or `1 – <text>`. */
+const NUMBER_LABEL = /^(\d+)(?:\.\s+|\s*[\u2014\u2013]\s*)\S/u;
 const LEAD_TAG = /^\((REQ-\d+ BC-\d+)\)\s*/u;
 
 const squash = (text: string) => text.replace(/\s+/gu, ' ').trim();
@@ -40,22 +42,15 @@ export function isCriterionNumber(value: string): boolean {
 
 /** The criterion `text` is the exact line of, or why it names none. */
 export function criterionNamed(text: string, criteria: readonly NamedCriterion[]): CriterionNaming {
-  let rest = squash(text);
-  let number: number | null = null;
-  const numbered = NUMBERED.exec(rest);
-  if (numbered) {
-    number = Number(numbered[1]);
-    rest = rest.slice(numbered[0].length);
-  }
-  const given = withoutTag(rest);
+  const labelled = NUMBER_LABEL.exec(squash(text));
+  const number = labelled ? Number(labelled[1]) : 0;
+  if (number >= 1 && Number.isSafeInteger(number)) return { n: number };
+  const given = withoutTag(squash(text));
   const matched = criteria.filter((c) => {
     const own = withoutTag(squash(c.statement));
     const trace = own.tag ?? c.trace;
     return (
-      given.body !== '' &&
-      given.body === own.body &&
-      (number === null || number === c.n) &&
-      (given.tag === null || given.tag === trace)
+      given.body !== '' && given.body === own.body && (given.tag === null || given.tag === trace)
     );
   });
   const [only] = matched;
@@ -70,7 +65,7 @@ export function criterionNamed(text: string, criteria: readonly NamedCriterion[]
     .sort((a, b) => a.n - b.n)
     .map((c) => `${c.n} "${clip(withoutTag(squash(c.statement)).body, 60)}"`);
   return {
-    why: `${quoted} is not a criterion number, nor the exact line of one of this issue's criteria (its number and trace tag may be left off); ${
+    why: `${quoted} is not a criterion number, nor a number leading a label, nor the exact line of one of this issue's criteria (its trace tag may be left off); ${
       listed.length === 0
         ? 'this issue has no criteria yet'
         : `its criteria are ${listed.join(', ')}`

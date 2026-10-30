@@ -66,7 +66,7 @@ function authorOfActor(actor: Actor): VerdictAuthor {
 }
 
 /**
- * A criterion line that is neither a whole number nor one criterion's exact line, or a block that
+ * A criterion line that is neither a whole number, a number leading a label, nor one criterion's exact line, or a block that
  * names no verdict: never dropped. `record` is read with its exact lines numbered already.
  */
 function unparsedBlocks(

@@ -11,17 +11,51 @@ already shipped. Paths are the plugin's `src/`, as cached at version 3.36.542.
 When an entry is filed on forge-plugin, delete it here. Delete it too when the plugin no longer
 does what it says.
 
-## `forge record verdict` sends the criterion's whole line
+## `forge record verdict` and `finding` send the criterion's line, clipped
 
-Where a criterion's line opens with a trace tag, `forge record verdict` writes
-`criterion: (REQ-8 BC-1) A reload shows every saved card` instead of its number. Both of core's
-verdict doors refused it: adminhub-fe FB-364 and FB-365, and the adminhub-api builders of ISS-83 and
-ISS-84 (2026-10-29/30).
+`flow/record/record.mjs:quoteCriteria` rewrites `--criterion N` to `criterion: N — <the line as it
+stood>`, clipped with an ellipsis where it is long (adminhub-api ISS-85, 2026-10-30:
+`1 — (REQ-8 BC-2) Route … <clipped>…`). Core refused it at both verdict doors under
+`verdict-criterion`: adminhub-fe FB-364 and FB-365, and the adminhub-api judges and builders of
+ISS-49, ISS-83, ISS-84 and ISS-85 (2026-10-29/30, FB-380).
 
-- **Core's half (shipped):** the exact line, with or without `n. ` and its tag, now resolves to its
+- **Core's half (shipped):** a number leading a label (`1 — <text>`, `1. <text>`) names that
+  number, and the label is not read. A criterion's exact line with no number still resolves to its
   number (`messaging/criterion-named.ts:criterionNamed`). Any other text is refused, listing the
   criteria.
-- **Plugin's half:** send the number.
+- **Plugin's half:** send the number, and keep the quote for the heading a person reads.
+
+## A record writes the lease and its evidence before core has screened it
+
+`forge record verdict` on adminhub-api ISS-85 (2026-10-30T03:24:23Z) took the issue's lease
+(`sessionContext.lease`, `how: write`) for `judge-iss-85-62555939b`, an id the run did not ask
+for. It then uploaded `evidence-commit.txt` as an attachment of the issue. Only then did it post
+the record, which core refused (the clipped criterion above). The refused record left the
+attachment and the lease behind. Posting a comment takes no lease at core: the lease row's history
+names the plugin's write, half a second before the upload.
+
+- **Plugin's half:** check what it can locally before writing anything, and take the lease under
+  the run id the brief holds.
+- **Core:** has no door that screens a record without storing it, so nothing on core's side
+  orders these writes.
+
+## `forge resume` reads no record when prose follows the tag line
+
+`flow/machine/block.mjs:TAG` is anchored to the end of the whole body (`$` without the `m` flag).
+A comment that puts a sentence after `` `forge-record: verdict · contract 1` `` therefore yields no
+record to `parseAll`. adminhub-api ISS-49 (FB-380) shows it:
+
+- Comments `339158aa`, `8eee7fb5`, `8837cbc3` and `9ac66e53` (2026-10-30T03:12Z) each end with a
+  sentence after the tag. The plugin read none of them, and `forge resume` showed every criterion
+  as none.
+- Comment `26778a2d` (a finding) ends on its tag and was read.
+- Core read all four. Criteria 1 and 3 hold them as latest (`record.verdict` events under run
+  session `a5600520`, the declared qa run). For criteria 2 and 4 the resends were answered as
+  repeats of that run's earlier verdicts, and no new row was written.
+- Core's requirement coverage names why none counts yet: the production build declares no source
+  probe, so whether it holds commit `6369aae6d` cannot be read.
+
+- **Plugin's half:** match the tag per line (`m`), as `FIRST_TAG` already does.
 
 ## The legacy status ladder
 
@@ -75,10 +109,14 @@ re-sent each one through `POST /verdicts`.
 
 ## Honest costs
 
-- **Two spellings at the verdict doors:** core now accepts a criterion's exact line as well as its
-  number. A reader that compares a verdict's raw `criterion` field must expect text, until the plugin
-  sends numbers and this shim can be weighed for removal.
+- **Three spellings at the verdict doors:** core now accepts a number leading a label and a
+  criterion's exact line as well as the number. A reader that compares a verdict's raw `criterion`
+  field must expect text, until the plugin sends numbers and this shim can be weighed for removal.
+- **A label is trusted to its number:** `3 — <the line of criterion 2>` records on criterion 3. The
+  label is the plugin's quote of the line it numbered, so they agree when the plugin writes it. A
+  hand-written mismatch is not caught.
 - **Waiting on whoever files it:** each entry here waits for someone to file it on forge-plugin.
   Until then the plugin's halves stay unfixed, and runs keep paying for them:
-  - the judges on ISS-83, ISS-84 and ISS-112 re-sent verdicts core already held;
+  - the judges on ISS-49, ISS-83, ISS-84 and ISS-112 re-sent verdicts core already held;
+  - a refused `forge record` leaves an attachment and a lease that no record cites;
   - a judge given an invented id is refused once before it finds the declared one.

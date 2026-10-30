@@ -1,0 +1,1 @@
+**A verdict's criterion may be a number leading a label:** `1 — <text>` or `1. <text>` names criterion 1 and the label is not read, so a clipped quote from `forge record verdict` is recorded instead of refused.

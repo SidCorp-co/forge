@@ -107,7 +107,7 @@ export async function addVerdict(
   });
 }
 
-/** The number a verdict's `criterion` names; any text but one criterion's exact line is refused. */
+/** The number a verdict's `criterion` names; any text but a number leading a label or one criterion's exact line is refused. */
 async function criterionNumberIn(tx: Tx, issueId: string, criterion: number | string) {
   if (typeof criterion === 'number') return criterion;
   if (isCriterionNumber(criterion)) return Number(criterion.trim());

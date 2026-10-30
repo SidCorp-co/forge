@@ -367,7 +367,7 @@ export function verdictIdentityRefusals(
             : `a \`criterion\` line holds \`${value}\`, which is not a criterion number: it is the whole number of 1 or more the issue's criterion carries, so the block under it is neither read nor recorded until it is written as one`,
         quote: `criterion: ${value}`,
         shape:
-          'a `criterion:` line names one criterion of the issue by its whole number, 1 or more, or by its exact line as the issue holds it',
+          'a `criterion:` line names one criterion of the issue by its whole number, 1 or more, by that number leading a label (`1 — <text>`), or by its exact line as the issue holds it',
         example: EXAMPLE,
       });
     }
