@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.382] - 2026-10-30
+
+Memory writes say when they replaced an entry; one entry reads by id
+
+### Fixed
+
+- **A memory write over an existing source and sourceRef now says it replaced an entry.** The answer carries `replaced.revisionId`, naming the revision that kept the old text, and `GET /api/memory/:id` reads one entry by its id.
+
 ## [0.4.0-dev.380] - 2026-10-30
 
 A runner loads its own forge plugin checkout; high-rated landings need a green base
