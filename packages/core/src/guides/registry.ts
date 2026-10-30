@@ -21,6 +21,7 @@ import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { DISPATCH_GUIDE } from './dispatch-guide.js';
 import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
+import { FAST_DELIVERY_GUIDE } from './fast-delivery-guide.js';
 import { FEEDBACK_TRIAGE_GUIDE } from './feedback-guide.js';
 import { ISSUE_FLOW_GUIDE } from './issue-flow-guide.js';
 import {
@@ -31,7 +32,6 @@ import {
 import { MOCKUPS_GUIDE } from './mockups-guide.js';
 import { QA_GUIDE } from './qa-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
-import { FAST_DELIVERY_GUIDE } from './fast-delivery-guide.js';
 import { RELEASE_TAGS_GUIDE } from './release-tags-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';

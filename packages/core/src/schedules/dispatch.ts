@@ -7,12 +7,12 @@ import {
 import { db } from '../db/client.js';
 import { type agentSessions, projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
+import { routeScheduleCleanupFire } from './cleanup-dispatch.js';
 import type {
   DispatchScheduleInput,
   DispatchScheduleResult,
   RoutedFire,
 } from './dispatch-types.js';
-import { routeScheduleCleanupFire } from './cleanup-dispatch.js';
 import { attachFireSession, openFire, settleFire } from './fires.js';
 import { routeScheduleReleaseBatchFire } from './release-batch-dispatch.js';
 import {

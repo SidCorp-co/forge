@@ -10,6 +10,7 @@
 // (`shipped-in.ts`) included.
 
 import { sql } from 'drizzle-orm';
+import { cleanupWaiting } from '../cleanup/index.js';
 import { db } from '../db/client.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
@@ -17,6 +18,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
 import { gateOf } from '../project-config/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
+import { cleanupHold } from './cleanup-hold.js';
 import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { resolveReleaseGate } from './gate.js';
 import {
@@ -48,8 +50,6 @@ import {
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 import { shippedInHold, shippedInOwed } from './shipped-in.js';
-import { cleanupWaiting } from '../cleanup/index.js';
-import { cleanupHold } from './cleanup-hold.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
 const CANDIDATE_PAGE_LIMIT = 200;

@@ -113,6 +113,8 @@ export interface AnsweredQuestion {
   resume: AnswerResume | null;
 }
 
+type MergeCheckOf = { issueId: string; projectId: string; report: MergeCheckReport };
+
 interface IssuePorts {
   projectCreatorOf: (projectId: string) => Promise<string | null>;
   settleOpenQuestions: (
@@ -414,16 +416,11 @@ interface IssuePorts {
     },
   ) => Promise<string | null>;
   /** Why a fast-lane merge check may not stand for this issue, or null (`fast-lane/index.ts`, REQ-39 BC-7). */
-  fastLaneMergeRefusal: (args: {
-    issueId: string;
-    projectId: string;
-    report: MergeCheckReport;
-  }) => Promise<{ code: FastLaneRefusalCode; path: string; detail: string } | null>;
-  /** Keep a passing merge check's impact rating and cleanup debts, in its transaction (`cleanup/index.ts`, REQ-79). */
-  recordMergeCheckCleanup: (
-    tx: Tx,
-    args: { issue: { id: string; projectId: string }; report: MergeCheckReport; actor: Actor },
-  ) => Promise<void>;
+  fastLaneMergeRefusal: (
+    args: MergeCheckOf,
+  ) => Promise<{ code: FastLaneRefusalCode; path: string; detail: string } | null>;
+  /** A passing check's rating and cleanup debt, kept in its transaction (`cleanup/index.ts`, REQ-79). */
+  recordMergeCheckCleanup: (tx: Tx, args: MergeCheckOf & { actor: Actor }) => Promise<void>;
 }
 
 const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');

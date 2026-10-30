@@ -94,7 +94,12 @@ export async function recordMergeCheck(args: {
     });
     if (!written.ok) throw new RefusalError(written.refusals, 'MERGE_CHECK_REFUSED');
     // the rating and the reds passed as cleanup debt are the cleanup ledger's (REQ-79 BC-3, BC-4)
-    await recordMergeCheckCleanup(tx, { issue, report, actor: args.actor });
+    await recordMergeCheckCleanup(tx, {
+      issueId: issue.id,
+      projectId: issue.projectId,
+      report,
+      actor: args.actor,
+    });
     return writeCoreRecord(tx, {
       issueId: issue.id,
       actor: args.actor,

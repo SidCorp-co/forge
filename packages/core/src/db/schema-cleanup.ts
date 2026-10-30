@@ -1,4 +1,9 @@
-import { CLEANUP_RESULTS, DEBT_KINDS, IMPACT_RATINGS, IMPACT_TYPES } from '@forge/contracts/cleanup';
+import {
+  CLEANUP_RESULTS,
+  DEBT_KINDS,
+  IMPACT_RATINGS,
+  IMPACT_TYPES,
+} from '@forge/contracts/cleanup';
 import { sql } from 'drizzle-orm';
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
@@ -32,10 +37,7 @@ export const changeImpacts = pgTable(
   (t) => ({
     issueIdx: index('change_impacts_issue_idx').on(t.issueId, t.createdAt),
     typeChk: check('change_impacts_type_chk', sql`${t.type} IN (${inList(IMPACT_TYPES)})`),
-    ratingChk: check(
-      'change_impacts_rating_chk',
-      sql`${t.rating} IN (${inList(IMPACT_RATINGS)})`,
-    ),
+    ratingChk: check('change_impacts_rating_chk', sql`${t.rating} IN (${inList(IMPACT_RATINGS)})`),
   }),
 );
 
@@ -54,8 +56,9 @@ export const cleanupReports = pgTable(
     scheduleRunId: uuid('schedule_run_id').references(() => scheduleRuns.id, {
       onDelete: 'set null',
     }),
-    baseBranch: text('base_branch').notNull(),
-    baseSha: text('base_sha').notNull(),
+    /** The branch the run left, and the head it left there. */
+    branch: text('branch').notNull(),
+    headSha: text('head_sha').notNull(),
     result: text('result', { enum: CLEANUP_RESULTS }).notNull(),
     ci: text('ci'),
     /** `[{ debt, how }]`. */

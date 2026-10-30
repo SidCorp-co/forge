@@ -20,7 +20,12 @@ type StartSession = (
 
 const refused = (refusal: Refusal): RoutedFire => ({
   result: { ok: false, reason: 'rule-refused', status: 'skipped', refusal },
-  settle: { status: 'skipped', reason: 'gate-refused', refusal: refusal.code, output: refusal.detail },
+  settle: {
+    status: 'skipped',
+    reason: 'gate-refused',
+    refusal: refusal.code,
+    output: refusal.detail,
+  },
 });
 
 /** Whether another fire of this project's cleanup schedules still holds a live run. */

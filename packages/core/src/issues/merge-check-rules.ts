@@ -99,7 +99,9 @@ export function checkRefusal(report: MergeCheckReport, fastDelivery = false): Ch
   }
   // a red probe is refused by its own name (`probeRefusals`), which reads it against the kept probe
   const passed = new Set(
-    fastDelivery ? (report.debts ?? []).flatMap((d) => (d.kind === 'red' && d.check ? [d.check] : [])) : [],
+    fastDelivery
+      ? (report.debts ?? []).flatMap((d) => (d.kind === 'red' && d.check ? [d.check] : []))
+      : [],
   );
   const red = report.checks.filter(
     (c) => c.result === 'fail' && c.kind !== 'probes' && !passed.has(c.name),

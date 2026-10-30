@@ -277,13 +277,19 @@ describe('a cleanup report (BC-9)', () => {
 
 describe('the cleanup window fires a run on a slot of its own (BC-7, BC-8)', () => {
   const windowRow = async () => {
-    const [row] = await db.select().from(schedules).where(sql`${schedules.projectId} = ${projectId}`);
+    const [row] = await db
+      .select()
+      .from(schedules)
+      .where(sql`${schedules.projectId} = ${projectId}`);
     if (!row) throw new Error('no cleanup window was saved');
     return { ...row, params: null };
   };
   const jobs = async () =>
-    (await rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM jobs WHERE project_id = ${projectId}`))[0]
-      ?.n;
+    (
+      await rows<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM jobs WHERE project_id = ${projectId}`,
+      )
+    )[0]?.n;
   const fires = async () =>
     rows<{ status: string; reason: string | null; refusal: string | null }>(
       sql`SELECT status, reason, refusal FROM schedule_runs WHERE project_id = ${projectId} ORDER BY created_at`,

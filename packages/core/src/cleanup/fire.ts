@@ -2,11 +2,11 @@
 // ports: nothing where the project turned fast delivery off or has nothing to clean, else the brief
 // its cleanup run starts with. Whether a run is already live is the schedule's own read.
 
-import type { CleanupFirePlan } from '../schedules/index.js';
-import { FAST_DELIVERY_OFF_DETAIL, cleanupBrief } from './rules.js';
 import { readFastDelivery } from '../project-config/index.js';
-import { readDebts } from './store.js';
+import type { CleanupFirePlan } from '../schedules/index.js';
+import { cleanupBrief, FAST_DELIVERY_OFF_DETAIL } from './rules.js';
 import { waitingIssues } from './service.js';
+import { readDebts } from './store.js';
 
 export async function cleanupFirePlan(args: {
   projectId: string;

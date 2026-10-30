@@ -20,7 +20,7 @@ export interface CleanupRefusal {
 
 /** Why a project's fast delivery is off, in the words every door that refuses for it says. */
 export const FAST_DELIVERY_OFF_DETAIL =
-  'this project turned fast delivery off (`delivery.fast: false` in its project document), so a red is fixed in the issue that met it and nothing is left as cleanup debt (REQ-79 BC-1). Turn it back on with `delivery.fast: true`, or drop the setting: fast delivery is every project\'s default';
+  "this project turned fast delivery off (`delivery.fast: false` in its project document), so a red is fixed in the issue that met it and nothing is left as cleanup debt (REQ-79 BC-1). Turn it back on with `delivery.fast: true`, or drop the setting: fast delivery is every project's default";
 
 /** Each red rated high among `items`: it holds its issue, so it is never debt (BC-3). */
 export function debtRefusals(items: readonly DebtItem[]): CleanupRefusal[] {

@@ -134,7 +134,12 @@ export async function recordDebts(args: {
     }
     issueId = issue.id;
   }
-  const debts = await insertDebts(db, { projectId, issueId, items: request.items, recordedBy: userId });
+  const debts = await insertDebts(db, {
+    projectId,
+    issueId,
+    items: request.items,
+    recordedBy: userId,
+  });
   return { debts, window: await ensureCleanupWindow(projectId) };
 }
 
@@ -145,29 +150,19 @@ export async function recordDebts(args: {
  */
 export async function recordMergeCheckCleanup(
   tx: Tx,
-  args: { issue: { id: string; projectId: string }; report: MergeCheckReport; actor: Actor },
+  args: { issueId: string; projectId: string; report: MergeCheckReport; actor: Actor },
 ): Promise<void> {
-  const { issue, report, actor } = args;
+  const { issueId, projectId, report, actor } = args;
   const by = actor.type === 'user' ? actor.id : null;
   if (report.impact) {
-    await insertImpact(tx, {
-      projectId: issue.projectId,
-      issueId: issue.id,
-      impact: report.impact,
-      commit: report.head.toLowerCase(),
-      ratedBy: by,
-    });
+    const commit = report.head.toLowerCase();
+    await insertImpact(tx, { projectId, issueId, impact: report.impact, commit, ratedBy: by });
   }
   if (report.debts?.length) {
-    await insertDebts(tx, {
-      projectId: issue.projectId,
-      issueId: issue.id,
-      items: report.debts,
-      recordedBy: by,
-    });
+    await insertDebts(tx, { projectId, issueId, items: report.debts, recordedBy: by });
   }
   if (report.debts?.length || report.impact?.rating === HOLDING_RATING) {
-    await ensureCleanupWindow(issue.projectId);
+    await ensureCleanupWindow(projectId);
   }
 }
 

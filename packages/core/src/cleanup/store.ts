@@ -97,7 +97,10 @@ export async function insertDebts(
 }
 
 /** The project's open debt, oldest first, for a report to be checked against. */
-export async function openDebts(executor: Pick<Tx, 'select'>, projectId: string): Promise<OpenDebt[]> {
+export async function openDebts(
+  executor: Pick<Tx, 'select'>,
+  projectId: string,
+): Promise<OpenDebt[]> {
   const rows = await executor
     .select({ id: deliveryDebts.id, where: deliveryDebts.location })
     .from(deliveryDebts)
@@ -107,7 +110,10 @@ export async function openDebts(executor: Pick<Tx, 'select'>, projectId: string)
 }
 
 /** The project's debts, open or cleared, newest first, at most `limit` of each. */
-export async function readDebts(projectId: string, limit = 200): Promise<{ open: DebtView[]; cleared: DebtView[] }> {
+export async function readDebts(
+  projectId: string,
+  limit = 200,
+): Promise<{ open: DebtView[]; cleared: DebtView[] }> {
   const read = (cleared: boolean) =>
     db
       .select()
@@ -164,16 +170,15 @@ export async function currentRatings(issueIds: readonly string[]): Promise<Rated
 }
 
 /** The project's open issues that carry a rating at all, with their status. */
-export async function ratedOpenIssues(projectId: string): Promise<{ id: string; status: string }[]> {
+export async function ratedOpenIssues(
+  projectId: string,
+): Promise<{ id: string; status: string }[]> {
   return db
     .selectDistinct({ id: issues.id, status: issues.status })
     .from(issues)
     .innerJoin(changeImpacts, eq(changeImpacts.issueId, issues.id))
     .where(
-      and(
-        eq(issues.projectId, projectId),
-        notInArray(issues.status, [...ISSUE_TERMINAL_STATUSES]),
-      ),
+      and(eq(issues.projectId, projectId), notInArray(issues.status, [...ISSUE_TERMINAL_STATUSES])),
     );
 }
 
@@ -212,8 +217,8 @@ export async function insertReport(
     .values({
       projectId: row.projectId,
       scheduleRunId: report.fire ?? null,
-      baseBranch: report.base.branch,
-      baseSha: report.base.sha.toLowerCase(),
+      branch: report.base.branch,
+      headSha: report.base.sha.toLowerCase(),
       result: report.result,
       ci: report.ci ?? null,
       cleared: report.cleared,
@@ -258,7 +263,7 @@ export function reportView(
   return {
     id: r.id,
     fireId: r.scheduleRunId,
-    base: { branch: r.baseBranch, sha: r.baseSha },
+    base: { branch: r.branch, sha: r.headSha },
     result: r.result,
     ci: r.ci,
     cleared: r.cleared as CleanupReportView['cleared'],

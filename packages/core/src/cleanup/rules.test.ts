@@ -43,7 +43,10 @@ describe('debt an agent records (REQ-79 BC-3)', () => {
 
 describe('what a cleanup report owes (REQ-79 BC-9)', () => {
   it('names every open debt once, cleared with how or remaining with why', () => {
-    const whole = report({ cleared: [{ debt: D1, how: 'fixed' }], remains: [{ debt: D2, why: 'needs a person' }] });
+    const whole = report({
+      cleared: [{ debt: D1, how: 'fixed' }],
+      remains: [{ debt: D2, why: 'needs a person' }],
+    });
     expect(reportRefusals(whole, open, [])).toEqual([]);
     const short = reportRefusals(report({ cleared: [{ debt: D1, how: 'fixed' }] }), open, []);
     expect(short.map((r) => r.code)).toEqual(['CLEANUP_REPORT_INCOMPLETE']);
@@ -54,18 +57,29 @@ describe('what a cleanup report owes (REQ-79 BC-9)', () => {
   it('refuses a debt that is not open, and one named twice', () => {
     const twice = report({
       cleared: [{ debt: D1, how: 'fixed' }],
-      remains: [{ debt: D1, why: 'not fixed' }, { debt: D2, why: 'later' }],
+      remains: [
+        { debt: D1, why: 'not fixed' },
+        { debt: D2, why: 'later' },
+      ],
     });
-    expect(reportRefusals(twice, open, []).map((r) => r.code)).toEqual(['CLEANUP_DEBT_NAMED_TWICE']);
+    expect(reportRefusals(twice, open, []).map((r) => r.code)).toEqual([
+      'CLEANUP_DEBT_NAMED_TWICE',
+    ]);
     const stranger = report({
       cleared: [{ debt: '33333333-3333-4333-8333-333333333333', how: 'x' }],
-      remains: [{ debt: D1, why: 'a' }, { debt: D2, why: 'b' }],
+      remains: [
+        { debt: D1, why: 'a' },
+        { debt: D2, why: 'b' },
+      ],
     });
     expect(reportRefusals(stranger, open, []).map((r) => r.code)).toEqual(['CLEANUP_DEBT_UNKNOWN']);
   });
 
   it('covers only on green, and only a change rated high now', () => {
-    const remains = [{ debt: D1, why: 'a' }, { debt: D2, why: 'b' }];
+    const remains = [
+      { debt: D1, why: 'a' },
+      { debt: D2, why: 'b' },
+    ];
     const high = { ref: 'ISS-1', issueId: 'i1', key: 'ISS-1', rating: 'high' as const };
     const medium = { ref: 'ISS-2', issueId: 'i2', key: 'ISS-2', rating: 'medium' as const };
     const none = { ref: 'ISS-9', issueId: null, key: null, rating: null };
@@ -103,7 +117,16 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
     const brief = cleanupBrief({
       projectId: 'p1',
       fireId: 'f1',
-      debts: [{ id: D1, kind: 'red', check: 'verify', where: 'scripts', rating: 'medium', issueKey: 'ISS-4' }],
+      debts: [
+        {
+          id: D1,
+          kind: 'red',
+          check: 'verify',
+          where: 'scripts',
+          rating: 'medium',
+          issueKey: 'ISS-4',
+        },
+      ],
       waiting: [{ key: 'ISS-7', reason: 'a migration' }],
     });
     expect(brief).toContain(D1);

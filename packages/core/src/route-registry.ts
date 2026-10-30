@@ -23,6 +23,7 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
+import { cleanupIssueRoutes, cleanupProjectRoutes } from './cleanup/index.js';
 import { codeTraceRoutes } from './code-trace.js';
 import {
   commentRoutes,
@@ -33,7 +34,6 @@ import { mcpOauthMetadataRoutes } from './credentials/mcp-oauth-metadata.js';
 import { mcpOauthRoutes } from './credentials/mcp-oauth-routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
-
 import {
   deviceAuthRoutes,
   deviceLoginRoutes,
@@ -57,7 +57,6 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { issueLaneRoutes } from './fast-lane/routes.js';
-import { cleanupIssueRoutes, cleanupProjectRoutes } from './cleanup/index.js';
 import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import {

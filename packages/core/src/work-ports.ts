@@ -20,6 +20,7 @@ import {
 } from './agent-sessions/index.js';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
 import { provideAutomationPorts } from './automation/index.js';
+import { recordMergeCheckCleanup } from './cleanup/index.js';
 import { postIssueNotice, postIssueNoticeOnce, provideCommentPorts } from './comments/index.js';
 import {
   appendMessagesIn,
@@ -43,7 +44,6 @@ import {
   tokenIdOf,
 } from './ecosystem/index.js';
 import { fastLaneMergeRefusal } from './fast-lane/index.js';
-import { recordMergeCheckCleanup } from './cleanup/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';

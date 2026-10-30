@@ -19,6 +19,7 @@ export {
 } from './dispatch-policy.js';
 export { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
 export { readEnvironmentState } from './environment-state.js';
+export { readFastDelivery } from './fast-delivery.js';
 export {
   gateOf,
   raiseAfterIncident,
@@ -28,7 +29,6 @@ export {
 } from './gates.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export { emitJsonSchema } from './json-schema.js';
-export { readFastDelivery } from './fast-delivery.js';
 export type { TestingProfile } from './policy-schema.js';
 export { provideProjectConfigPorts } from './ports.js';
 export {

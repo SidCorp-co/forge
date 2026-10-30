@@ -54,7 +54,11 @@ export async function ensureCleanupWindow(projectId: string): Promise<CleanupWin
   });
 }
 
-async function saveDefault(tx: Tx, projectId: string, owner: string): Promise<CleanupWindow | null> {
+async function saveDefault(
+  tx: Tx,
+  projectId: string,
+  owner: string,
+): Promise<CleanupWindow | null> {
   const { cron, timeZone, name } = CLEANUP_WINDOW_DEFAULT;
   const [row] = await tx
     .insert(schedules)
