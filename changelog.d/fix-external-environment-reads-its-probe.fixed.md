@@ -1,1 +1,0 @@
-**An environment deployed outside Forge reads through its source probe:** its state is `serving` the commit its declared probe answers, instead of `unknown`, so a runtime verdict there is weighed, carried or superseded, like a bound environment's.

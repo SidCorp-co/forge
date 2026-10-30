@@ -1,1 +1,0 @@
-**A draft with no criteria names who writes them:** opening a requirement-linked draft without criteria is still refused, and the refusal now says to declare a run over it, which writes the traced criteria and then opens it.

@@ -1,1 +1,0 @@
-**An MCP design read returns a draft never proposed:** `design_get` carries the working document as `current`, and `view=steps` reads it unless a proposed revision is named, so a redraw is no longer blind.

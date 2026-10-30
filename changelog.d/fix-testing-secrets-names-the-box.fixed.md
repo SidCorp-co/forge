@@ -1,1 +1,0 @@
-**A testing-secrets read without a box names the box:** a declared run's id sent under a credential carrying no box is refused naming the box it was declared on and the `forge-runner api` call that reads under that box.

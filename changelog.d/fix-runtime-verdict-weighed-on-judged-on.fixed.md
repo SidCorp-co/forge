@@ -1,1 +1,0 @@
-**An unreleased issue's runtime verdicts are weighed on the environment it is judged on.** Until release, `delivery.judgedOn`'s reading decides, so a verdict its build carries is earned; after release, production. An unknown environment keeps production and says why.

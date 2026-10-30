@@ -9,6 +9,30 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.374] - 2026-10-30
+
+Fast delivery by default with rated cleanup debt, and MCP draft design reads
+
+### Added
+
+- **The criteria read says whether each verdict counts:** `GET /api/issues/:id/criteria` gives each criterion a `weighing` — earned, standing, reason, and where it was weighed: the landing on a promotion project, else what is served. Reads ask the source host nothing.
+- **A requirement is delivered by a sibling project's issue in its organization.** Link it by uuid with write on the requirement and read on the issue; it reads as `<project>/<key>`, counts on its own build, and gates issue-ready.
+- **A source probe has a guide, and an external environment's is read:** `GET /api/guides/release-source-probe.md` says how an environment declares the probe naming the commit it serves; a production or judged-on environment deployed outside Forge is now read through its own.
+- **A person can declare a review run.** A project admin calls `POST /api/projects/:id/review-runs` naming an issue, a box and a testing profile; a session on that box reads the profile under the box's credential until the run closes or ends.
+- **Fast delivery is every project's default.** A change lands on build and scoped tests, a non-severe red passes as cleanup debt, and only a change rated high waits for a green cleanup run in its own window.
+
+### Fixed
+
+- **A declared run's testing-secrets read as `self` works from its own checkout:** `forge-runner api jobs/self/testing-profiles/<profile>/secrets`, said from inside the checkout a master declared a run over, goes out as that run's id under the box's credential and says so on stderr, instead of being refused `TESTING_SECRETS_NOT_A_JOB_CREDENTIAL`. Said from any other checkout, or once the run has ended, `self` goes as written and is refused as before.
+- **An environment deployed outside Forge reads through its source probe:** its state is `serving` the commit its declared probe answers, instead of `unknown`, so a runtime verdict there is weighed, carried or superseded, like a bound environment's.
+- **An MCP design read returns a draft never proposed:** `design_get` carries the working document as `current`, and `view=steps` reads it unless a proposed revision is named, so a redraw is no longer blind.
+- **forge-core commits no Forge orientation:** `.forge/orientation.md` named beta's project in every checkout, so dev sessions searched a project dev core does not hold. Each checkout's runner writes its own instance's orientation into `CLAUDE.local.md`.
+- **A draft with no criteria names who writes them:** opening a requirement-linked draft without criteria is still refused, and the refusal now says to declare a run over it, which writes the traced criteria and then opens it.
+- **An unreleased issue's runtime verdicts are weighed on the environment it is judged on.** Until release, `delivery.judgedOn`'s reading decides, so a verdict its build carries is earned; after release, production. An unknown environment keeps production and says why.
+- **A testing-secrets read without a box names the box:** a declared run's id sent under a credential carrying no box is refused naming the box it was declared on and the `forge-runner api` call that reads under that box.
+- **A verdict's criterion led by its number is not refused for the length of its label:** `1 — <a 2,572-character line>`, as `forge record verdict` quotes it, records on criterion 1 instead of being refused `field-budget`, and `POST /api/issues/:id/verdicts` takes it past the 2,000 characters it caps a line at. A criterion with no leading number, and every other field, keep their budget.
+- **A verdict's criterion may be a number leading a label:** `1 — <text>` or `1. <text>` names criterion 1 and the label is not read, so a clipped quote from `forge record verdict` is recorded instead of refused.
+
 ## [0.4.0-dev.373] - 2026-10-30
 
 A verdict may name its criterion by its exact line

@@ -1,1 +1,0 @@
-**Fast delivery is every project's default.** A change lands on build and scoped tests, a non-severe red passes as cleanup debt, and only a change rated high waits for a green cleanup run in its own window.

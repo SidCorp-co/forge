@@ -1,1 +1,0 @@
-**A source probe has a guide, and an external environment's is read:** `GET /api/guides/release-source-probe.md` says how an environment declares the probe naming the commit it serves; a production or judged-on environment deployed outside Forge is now read through its own.
