@@ -419,6 +419,11 @@ interface IssuePorts {
     projectId: string;
     report: MergeCheckReport;
   }) => Promise<{ code: FastLaneRefusalCode; path: string; detail: string } | null>;
+  /** Keep a passing merge check's impact rating and cleanup debts, in its transaction (`cleanup/index.ts`, REQ-79). */
+  recordMergeCheckCleanup: (
+    tx: Tx,
+    args: { issue: { id: string; projectId: string }; report: MergeCheckReport; actor: Actor },
+  ) => Promise<void>;
 }
 
 const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');
@@ -500,3 +505,4 @@ export const handoffContextsOf = port('handoffContextsOf');
 export const closeOpenRunForIssue = port('closeOpenRunForIssue');
 export const triggerPipelineStepManual = port('triggerPipelineStepManual');
 export const fastLaneMergeRefusal = port('fastLaneMergeRefusal');
+export const recordMergeCheckCleanup = port('recordMergeCheckCleanup');

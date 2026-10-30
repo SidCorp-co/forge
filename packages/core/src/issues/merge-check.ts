@@ -14,11 +14,16 @@
  * approved in its live preview: the fast lane's own rule, asked through `fastLaneMergeRefusal`, holds
  * its patch id to the approved one and its files to the lane.
  *
+ * On a project delivering fast (REQ-79, every project's default) a report needs only build and the
+ * scoped tests, and a red it names as cleanup debt rated below high passes; its rating and that debt
+ * go to the cleanup ledger in the check's transaction (`recordMergeCheckCleanup`).
+ *
  * The report is the box's word, as a mark without an observed commit is: core cannot rerun the
  * checks, so the record says what the box ran and when, and is written by core only after core's own
  * rules held.
  */
 
+import { fastDeliveryOf } from '@forge/contracts/delivery-policy';
 import { gateSays, type ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { MergeCheckRefusalCode, MergeCheckReport } from '@forge/contracts/merge-check';
 import { db } from '../db/client.js';
@@ -38,7 +43,7 @@ import {
   recordFields,
 } from './merge-check-rules.js';
 import { catalogPageFields, hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
-import { fastLaneMergeRefusal } from './ports.js';
+import { fastLaneMergeRefusal, readProjectDocument, recordMergeCheckCleanup } from './ports.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';
 
 const refuse = refuser<MergeCheckRefusalCode>('MERGE_CHECK_REFUSED');
@@ -55,7 +60,8 @@ export async function recordMergeCheck(args: {
   box: string | null;
 }): Promise<RecordEvent> {
   const { issue, report } = args;
-  const fault = checkRefusal(report);
+  const held = await readProjectDocument(issue.projectId);
+  const fault = checkRefusal(report, fastDeliveryOf(held?.document.delivery));
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
   const criteria = await readCriteriaWithDrafts(issue);
   const probes = probeRefusals(report, criteria);
@@ -87,6 +93,8 @@ export async function recordMergeCheck(args: {
       actor: args.actor,
     });
     if (!written.ok) throw new RefusalError(written.refusals, 'MERGE_CHECK_REFUSED');
+    // the rating and the reds passed as cleanup debt are the cleanup ledger's (REQ-79 BC-3, BC-4)
+    await recordMergeCheckCleanup(tx, { issue, report, actor: args.actor });
     return writeCoreRecord(tx, {
       issueId: issue.id,
       actor: args.actor,

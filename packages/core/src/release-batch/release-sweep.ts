@@ -48,6 +48,8 @@ import {
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 import { shippedInHold, shippedInOwed } from './shipped-in.js';
+import { cleanupWaiting } from '../cleanup/index.js';
+import { cleanupHold } from './cleanup-hold.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
 const CANDIDATE_PAGE_LIMIT = 200;
@@ -63,6 +65,8 @@ export interface AutomaticReleaseSweepResult {
   holdsWritten: number;
   /** How many waiting issues owe their agent a record of the earlier release that shipped them. */
   shippedInOwed: number;
+  /** How many waiting issues rated high impact were left for a green cleanup (REQ-79 BC-5). */
+  cleanupHeld: number;
 }
 
 interface CandidateRow {
@@ -290,7 +294,13 @@ async function sweepProject(
   const base = { projectId, now, result };
   for (const [id, o] of owed)
     await hold({ ...base, issueIds: [id], holdFor: () => shippedInHold(o) });
-  const waiting = gate.filter((id) => !owed.has(id) && !blocked.has(id));
+  const unowed = gate.filter((id) => !owed.has(id) && !blocked.has(id));
+  // a change rated high waits for its green cleanup; every other one goes now (REQ-79 BC-5, BC-6)
+  const cleanup = await cleanupWaiting(projectId, unowed);
+  for (const [id, rated] of cleanup)
+    await hold({ ...base, issueIds: [id], holdFor: () => cleanupHold(rated) });
+  result.cleanupHeld += cleanup.size;
+  const waiting = unowed.filter((id) => !cleanup.has(id));
   if (waiting.length === 0) return;
 
   const releaseGate = await readGate(projectId);
@@ -350,6 +360,7 @@ export async function sweepAutomaticReleases(
     issuesExcluded: 0,
     holdsWritten: 0,
     shippedInOwed: 0,
+    cleanupHeld: 0,
   };
   await clearStaleReleaseHolds();
   const projectIds = await candidateProjectIds(now);

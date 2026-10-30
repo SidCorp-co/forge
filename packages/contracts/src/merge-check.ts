@@ -7,6 +7,7 @@
 // from a script that predates patch ids is still taken, recorded with `PATCH_ID_ABSENT`.
 
 import { z } from "zod";
+import { debtItemsSchema, HOLDING_RATING, impactSchema } from "./cleanup.js";
 import {
 	CHECK_RUN_SHAPE,
 	type CheckKind,
@@ -68,11 +69,16 @@ const standingSchema = z.strictObject({
 });
 export type MergeStanding = z.infer<typeof standingSchema>;
 
-/** The checks a report on `lane` needs: the fast lane's three, else every one a merge needs. */
+/**
+ * The checks a report needs: on the fast lane, or on a project delivering fast (REQ-79 BC-2: a change
+ * lands when it builds and its scoped tests pass), the three of `FAST_LANE_MERGE_CHECKS`; else every
+ * one a merge needs.
+ */
 export function requiredMergeChecksOf(
 	lane: Lane | undefined,
+	fastDelivery = false,
 ): readonly RequiredMergeCheck[] {
-	return lane === "fast" ? FAST_LANE_MERGE_CHECKS : REQUIRED_MERGE_CHECKS;
+	return lane === "fast" || fastDelivery ? FAST_LANE_MERGE_CHECKS : REQUIRED_MERGE_CHECKS;
 }
 
 export const mergeCheckReportSchema = z
@@ -122,6 +128,14 @@ export const mergeCheckReportSchema = z
 				"patchId is the 40-hex id `git patch-id --stable` prints",
 			)
 			.optional(),
+		/** The building agent's rating of its change (REQ-79 BC-4), recorded with the check. */
+		impact: impactSchema.optional(),
+		/**
+		 * Reds the check passes as cleanup debt on a project delivering fast (REQ-79 BC-3): each red
+		 * check is named by a `red` debt whose `check` is its name, rated below high. A red rated high
+		 * holds the change, so it is never debt.
+		 */
+		debts: debtItemsSchema.optional(),
 	})
 	.superRefine((r, ctx) => {
 		for (const [i, s] of (r.standing ?? []).entries()) {
@@ -130,6 +144,15 @@ export const mergeCheckReportSchema = z
 					code: "custom",
 					path: ["standing", i, "criterion"],
 					message: `criterion ${s.criterion} is named standing twice; each criterion stands on one verdict`,
+				});
+			}
+		}
+		for (const [i, d] of (r.debts ?? []).entries()) {
+			if (d.kind === "red" && d.impact.rating === HOLDING_RATING) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["debts", i, "impact", "rating"],
+					message: `a red rated ${HOLDING_RATING} holds the change and is fixed in it, so it is never cleanup debt (REQ-79 BC-3)`,
 				});
 			}
 		}
@@ -151,7 +174,7 @@ export const mergeCheckReportSchema = z
 	});
 export type MergeCheckReport = z.infer<typeof mergeCheckReportSchema>;
 
-export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], lane?: fast | full, patchId?: <40 hex, required on the fast lane> }`;
+export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], lane?: fast | full, patchId?: <40 hex, required on the fast lane>, impact?: { type, rating: low | medium | high, reason }, debts?: [{ kind: red | debt | simplify, check?, where, detail, impact }] }`;
 
 /** A kept probe of a criterion the change claims that the report did not run, a claimed observable criterion keeping none, or a standing reading core does not hold. */
 export const MERGE_PROBE_MISSING = "MERGE_PROBE_MISSING" as const;
@@ -170,6 +193,8 @@ export const MERGE_CHECK_REFUSAL_CODES = [
 	MERGE_PROBE_MISSING,
 	MERGE_PROBE_RED,
 	PATTERN_ENTRY_MISSING,
+	/** A report passing reds as cleanup debt on a project that turned fast delivery off (REQ-79 BC-1). */
+	"MERGE_DEBT_FAST_DELIVERY_OFF",
 ] as const;
 export type MergeCheckRefusalCode = (typeof MERGE_CHECK_REFUSAL_CODES)[number];
 

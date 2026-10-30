@@ -8,6 +8,8 @@ export const SCHEDULE_KINDS = [
 	"release_batch",
 	"sentry_pull",
 	"status_report",
+	/** A cleanup window (REQ-79 BC-7): starts the project's cleanup run on its own slot. */
+	"cleanup",
 ] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 

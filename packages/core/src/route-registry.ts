@@ -57,6 +57,7 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { issueLaneRoutes } from './fast-lane/routes.js';
+import { cleanupIssueRoutes, cleanupProjectRoutes } from './cleanup/index.js';
 import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import {
@@ -342,6 +343,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
   app.route('/api/issues', issueLaneRoutes);
+  app.route('/api/issues', cleanupIssueRoutes);
   app.route('/api/issues', issuePreviewRoutes);
   app.route('/api/previews', previewRoutes);
   app.route('/api/recordings', recordingRoutes);
@@ -405,6 +407,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
 function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/pipeline', pipelineAnalyticsRoutes);
   app.route('/api/projects', releaseBatchRoutes);
+  app.route('/api/projects', cleanupProjectRoutes);
   app.route('/api/projects', releasePageRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/forge/feedback', forgeFeedbackRoutes);

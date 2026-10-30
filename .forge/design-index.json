@@ -51,7 +51,7 @@
   },
   "REQ-12": {
    "title": "Every Forge screen and entity is built to one set of conventions",
-   "status": "accepted"
+   "status": "agreed"
   },
   "REQ-13": {
    "title": "What an agent writes for a project follows that project's rules, not Forge's",
@@ -311,6 +311,14 @@
   },
   "REQ-77": {
    "title": "A Forge channel agent answers each bound channel with full session power, replacing the outside bots one channel at a time",
+   "status": "agreed"
+  },
+  "REQ-78": {
+   "title": "ChatGPT and other MCP clients connect to Forge and work a project",
+   "status": "agreed"
+  },
+  "REQ-79": {
+   "title": "Fast delivery: issues ship app-alive; cleanup runs apart, on its own capacity",
    "status": "agreed"
   }
  },

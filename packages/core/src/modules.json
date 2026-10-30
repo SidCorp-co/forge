@@ -170,6 +170,12 @@
       "context": "platform",
       "serves": ["via:comments", "via:issues", "via:memory"]
     },
+    "cleanup": {
+      "kind": "domain",
+      "context": "release",
+      "owns": ["changeImpacts", "cleanupReports", "deliveryDebts"],
+      "serves": ["REQ-79"]
+    },
     "comments": {
       "kind": "domain",
       "context": "work",

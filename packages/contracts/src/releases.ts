@@ -827,6 +827,8 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_PROMOTION_MISSING",
 	/** A roster issue marked merged after a shipped release was cut that may hold it: its agent records which release shipped it (ISS-774). */
 	"RELEASE_SHIPPED_IN_OWED",
+	/** A roster issue rated high impact that no green cleanup covers yet: it waits for one before production (REQ-79 BC-5). */
+	"RELEASE_CLEANUP_PENDING",
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 

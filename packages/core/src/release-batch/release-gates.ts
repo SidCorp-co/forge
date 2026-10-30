@@ -89,7 +89,8 @@ const withSubject = (
     | 'standing.gate.noteMissing'
     | 'standing.gate.unmerged'
     | 'standing.gate.changeRequestMissing'
-    | 'standing.gate.shippedInOwed',
+    | 'standing.gate.shippedInOwed'
+    | 'standing.gate.cleanupPending',
   d: Details,
   verb: [string, string],
 ): Said => {
@@ -184,6 +185,10 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'standing.gate.title.shippedInOwed',
     plain: (d) => withSubject('standing.gate.shippedInOwed', d, ['was', 'were']),
   },
+  RELEASE_CLEANUP_PENDING: {
+    title: 'standing.gate.title.cleanupPending',
+    plain: (d) => withSubject('standing.gate.cleanupPending', d, ['is', 'are']),
+  },
   RELEASE_PROBES_UNREADABLE: {
     title: 'standing.gate.title.unprovable',
     plain: plain('standing.gate.unprovable'),
@@ -252,6 +257,7 @@ const onThem =
       | 'standing.act.writeReleaseNote'
       | 'standing.act.markMerge'
       | 'standing.act.recordShippedIn'
+      | 'standing.act.runCleanup'
       | 'standing.act.openChangeRequest',
   ) =>
   (d: Details): Said => {
@@ -302,6 +308,7 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_THROUGH_CHANGE_REQUESTS: { by: 'admin', act: act('standing.act.cutAndApprove') },
   RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
   RELEASE_SHIPPED_IN_OWED: { by: 'master', act: onThem('standing.act.recordShippedIn') },
+  RELEASE_CLEANUP_PENDING: { by: 'master', act: onThem('standing.act.runCleanup') },
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: act('standing.act.declareProbe') },
   RELEASE_POOL_EMPTY: { by: 'admin', act: act('standing.act.pairRunner') },
   NO_RUNNER_ONLINE: { by: 'admin', act: act('standing.act.runnerOnline') },

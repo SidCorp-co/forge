@@ -512,6 +512,7 @@ export const ENUM_LABELS = {
 		release_batch: "Release batch",
 		sentry_pull: "Sentry pull",
 		status_report: "Status report",
+		cleanup: "Cleanup window",
 	} satisfies Record<ScheduleKind, string>,
 	/** How a fire started (contracts `schedules.ts:SCHEDULE_RUN_TRIGGERS`). */
 	fireTrigger: {

@@ -3,6 +3,7 @@
 // before it (ADR 0008), so what they need from above is handed in here, from the owners' faces.
 
 import { provideAgentSessionsPorts } from './agent-sessions/index.js';
+import { cleanupFirePlan } from './cleanup/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
 import {
@@ -250,6 +251,7 @@ export function provideExecutionPorts(): void {
   });
 
   provideSchedulesPorts({
+    cleanupFire: cleanupFirePlan,
     emitNotification,
     loadReleaseRoster,
     abortBlockedIssues,

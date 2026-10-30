@@ -12,6 +12,7 @@ import type {
   DispatchScheduleResult,
   RoutedFire,
 } from './dispatch-types.js';
+import { routeScheduleCleanupFire } from './cleanup-dispatch.js';
 import { attachFireSession, openFire, settleFire } from './fires.js';
 import { routeScheduleReleaseBatchFire } from './release-batch-dispatch.js';
 import {
@@ -57,6 +58,8 @@ function routeFire(input: DispatchScheduleInput, fireId: string): Promise<Routed
       return routeScheduleSentryPullFire(input, fireId);
     case 'status_report':
       return routeScheduleStatusReportFire(input, fireId);
+    case 'cleanup':
+      return routeScheduleCleanupFire(input, fireId, routePromptFire);
     default:
       return routePromptFire(input, fireId);
   }
@@ -72,10 +75,18 @@ const sessionFailed = (error: string): RoutedFire => ({
   settle: { status: 'failed', error },
 });
 
-async function routePromptFire(input: DispatchScheduleInput, fireId: string): Promise<RoutedFire> {
+/**
+ * A fire that starts an agent session on a box, as the schedule's person: a prompt schedule's own
+ * prompt, or the brief a self-named kind writes for its run (`cleanup`).
+ */
+export async function routePromptFire(
+  input: DispatchScheduleInput,
+  fireId: string,
+  prompt: string | null = input.schedule.prompt,
+): Promise<RoutedFire> {
   const { schedule } = input;
 
-  if (schedule.prompt == null) return sessionFailed('this prompt-kind schedule has no prompt');
+  if (prompt == null) return sessionFailed('this prompt-kind schedule has no prompt');
 
   let resolvedProjectId = schedule.projectId;
   if (schedule.targetProjectSlug) {
@@ -143,7 +154,7 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
       project,
       client: { deviceId: authorised.authority.deviceId, migrated: false },
       authority: authorised.authority,
-      message: schedule.prompt,
+      message: prompt,
       broadcastEvent: 'agent-session.created',
     });
   } catch (err) {

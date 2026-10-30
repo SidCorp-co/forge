@@ -18,6 +18,7 @@ export {
 export * from './schema-agent-reports.js';
 export * from './schema-agent-sessions.js';
 export * from './schema-auth.js';
+export * from './schema-cleanup.js';
 export * from './schema-comments.js';
 export * from './schema-credentials.js';
 export * from './schema-devices.js';

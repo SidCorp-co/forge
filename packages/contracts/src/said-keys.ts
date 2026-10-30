@@ -38,6 +38,15 @@ export const SAID = {
 		vars: { subject: "said", verb: "agreement" },
 	},
 	"standing.gate.title.shippedInOwed": { en: "Shipped-in owed" },
+	"standing.gate.cleanupPending": {
+		en: "{subject} {verb} rated high impact, held for a green cleanup before production.",
+		vars: { subject: "said", verb: "agreement" },
+	},
+	"standing.gate.title.cleanupPending": { en: "Cleanup pending" },
+	"standing.act.runCleanup": {
+		en: "run the cleanup and report it green, covering it{on}",
+		vars: { on: "said?" },
+	},
 	"standing.act.recordShippedIn": {
 		en: "record which release shipped it{on}",
 		vars: { on: "said?" },
@@ -443,6 +452,12 @@ export const SAID = {
 		en: "record which release holds its landing, read with git",
 	},
 	"issues.releaseHold.act.releaseQueuedBehind": { en: "take it in a later release" },
+	"issues.releaseHold.cause.releaseCleanupPending": {
+		en: "Rated high impact, so it waits for a green cleanup before production",
+	},
+	"issues.releaseHold.act.releaseCleanupPending": {
+		en: "run the cleanup window and report it green, covering this issue",
+	},
 	"issues.releaseHold.cause.noReleaseGate": { en: "This project has no release gate set" },
 	"issues.releaseHold.act.noReleaseGate": { en: "record the landing" },
 	"issues.releaseHold.cause.releaseNoActor": { en: "Nobody owns the project, so nobody can release it" },

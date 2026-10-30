@@ -18,7 +18,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 5,
+  version: 6,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -226,6 +226,12 @@ the mark or the decision answers it, so the business question is asked on its ow
   \`MERGE_PROBE_RED\`, and an approved
   new pattern whose catalog page the touched files lack \`PATTERN_ENTRY_MISSING\`. Land the commit
   you checked: a rebase after it is a new check.
+- **Fast delivery** (every project's default; \`delivery.fast: false\` turns it off): rate the
+  change before you mark it, \`POST /api/issues/:id/impact\` \`{ type, rating, reason }\`; the merge
+  check asks only \`rebased-on-base\`, \`typecheck\` and \`direct-tests\`; a red you rate below
+  high passes as cleanup debt (\`debts\` in the report, or \`POST /api/projects/:id/debts\`), and
+  one rated high is fixed here. Only a change rated high waits for a green cleanup before
+  production. The whole method: ${guideRef('fast-delivery')}.
 - **The fast lane.** Where a person approved the issue's live preview, \`GET /api/issues/:id/lane\`
   reads \`lane: 'fast'\` or says, in \`refusal\`, why the change is on the full lane — the file and
   the rule that caught it. On the fast lane run the merge check's fast lane (here

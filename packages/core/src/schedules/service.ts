@@ -31,6 +31,7 @@ const SELF_NAMED_KINDS: ReadonlySet<ScheduleKind> = new Set([
   'release_batch',
   'sentry_pull',
   'status_report',
+  'cleanup',
 ]);
 
 // Cross-project routing via `targetProjectSlug` would otherwise let a source

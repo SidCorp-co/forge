@@ -215,3 +215,13 @@ export async function settleSessionFires(
     source: args.source,
   });
 }
+
+/** The project a fire belongs to, or null where no fire has this id. */
+export async function fireProjectOf(fireId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ projectId: scheduleRuns.projectId })
+    .from(scheduleRuns)
+    .where(eq(scheduleRuns.id, fireId))
+    .limit(1);
+  return row?.projectId ?? null;
+}

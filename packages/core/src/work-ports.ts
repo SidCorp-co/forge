@@ -43,6 +43,7 @@ import {
   tokenIdOf,
 } from './ecosystem/index.js';
 import { fastLaneMergeRefusal } from './fast-lane/index.js';
+import { recordMergeCheckCleanup } from './cleanup/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
@@ -309,6 +310,7 @@ export function provideWorkPorts(): void {
     closeOpenRunForIssue,
     triggerPipelineStepManual,
     fastLaneMergeRefusal,
+    recordMergeCheckCleanup,
   });
   provideFailReturnPort({ requirementFailReturn });
 

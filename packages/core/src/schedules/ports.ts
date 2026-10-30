@@ -17,7 +17,15 @@ interface ScheduleNotice {
   scheduleRunId?: string | null;
 }
 
+/** What a cleanup window's fire does (`cleanup/fire.ts`, REQ-79 BC-7). */
+export type CleanupFirePlan =
+  | { kind: 'off'; why: string }
+  | { kind: 'nothing'; why: string }
+  | { kind: 'run'; prompt: string };
+
 interface SchedulesPorts {
+  /** Whether the project's cleanup run has anything to do, and its brief where it has. */
+  cleanupFire(args: { projectId: string; fireId: string }): Promise<CleanupFirePlan>;
   emitNotification(input: ScheduleNotice): Promise<unknown>;
   /** The project's release gate and what waits at it; `gateStatus` is null with no gate. */
   loadReleaseRoster(projectId: string): Promise<{

@@ -9,6 +9,11 @@
 // still gates the merge, proves no release criterion. It is one name on the delivery policy rather
 // than a flag on each environment, so a project has at most one by construction, and it is not
 // `environments.<name>.testing`, which names the testing profile a run signs in with.
+//
+// `fast` is fast delivery (REQ-79): every project's default, which `fast: false` turns off. Under it a
+// merge asks only build and the change's scoped tests, a red the building agent rates below high
+// passes as cleanup debt, and only a change rated high waits for a green cleanup before production
+// (`./cleanup.ts`). Off, every one of those doors behaves as it did before REQ-79.
 
 import { z } from "zod";
 
@@ -20,6 +25,7 @@ const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]{0,62}$/u;
 export const deliveryPolicySchema = z.strictObject({
 	verdictsRequired: z.boolean().optional(),
 	judgedOn: z.string().regex(ENVIRONMENT_NAME).optional(),
+	fast: z.boolean().optional(),
 });
 
 type DeliveryPolicy = z.infer<typeof deliveryPolicySchema>;
@@ -27,6 +33,13 @@ type DeliveryPolicy = z.infer<typeof deliveryPolicySchema>;
 export const verdictsRequiredOf = (
 	delivery: DeliveryPolicy | null | undefined,
 ): boolean => delivery?.verdictsRequired ?? VERDICTS_REQUIRED_DEFAULT;
+
+const FAST_DELIVERY_DEFAULT = true;
+
+/** Whether the project delivers fast (REQ-79 BC-1): absent is on, `fast: false` turns it off. */
+export const fastDeliveryOf = (
+	delivery: DeliveryPolicy | null | undefined,
+): boolean => delivery?.fast ?? FAST_DELIVERY_DEFAULT;
 
 /** The environment a release's criteria are proven on, or null where commit verdicts prove them. */
 export const judgedOnOf = (

@@ -44,6 +44,12 @@ BC-18..BC-20), a commit verdict still gates the merge, but a release is proven, 
 review owed, only by passes judged on the build that environment serves (a `runtime` verdict at
 the release's commit); a criterion not judged there reads "Not judged on <environment>".
 
+Fast delivery (REQ-79) is every project's default, and `delivery.fast: false` turns it off: a
+merge check then asks only build and the change's scoped tests, a red the building agent rates
+below high passes as cleanup debt, and a change it rates high is held from production
+(`RELEASE_CLEANUP_PENDING`) until a green cleanup report covers it. The cleanup run works the debt in
+the project's `cleanup` schedule window, on its own slot.
+
 ## Release authority
 
 **A deploy is never a side effect of code, and neither is a release tag.** Both are the

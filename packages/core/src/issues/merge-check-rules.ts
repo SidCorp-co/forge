@@ -41,16 +41,36 @@ function described(run: CheckRun): string {
 const isRequired = (name: string): name is RequiredMergeCheck =>
   (REQUIRED_MERGE_CHECKS as readonly string[]).includes(name);
 
+/** Who a report's required checks are asked by, for the sentence naming them. */
+function whoNeeds(report: MergeCheckReport, fastDelivery: boolean): string {
+  if (report.lane === 'fast') return 'a fast-lane merge needs';
+  return fastDelivery
+    ? 'a merge on a project delivering fast (REQ-79 BC-2: build and scoped tests) needs'
+    : 'every merge needs';
+}
+
 /**
  * Why a report cannot let a merge through, or null: a check its lane needs that it never ran, a
  * required check filed under another kind (its time would be counted where it does not belong), a
  * base it is behind, then any check that ended red. The first fault answers, each naming its check.
+ *
+ * On a project delivering fast (REQ-79), the required checks are build and the scoped tests (BC-2),
+ * and a red check passes where the report names it a `red` debt, rated below high (BC-3); it is then
+ * recorded as cleanup debt with the check. A project that turned fast delivery off passes no red.
  */
-export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
-  const needed = requiredMergeChecksOf(report.lane);
+export function checkRefusal(report: MergeCheckReport, fastDelivery = false): CheckRefusal | null {
+  if (!fastDelivery && report.debts?.length) {
+    return {
+      code: 'MERGE_DEBT_FAST_DELIVERY_OFF',
+      path: '/debts',
+      detail:
+        'this project turned fast delivery off (`delivery.fast: false`), so a red is fixed in its issue and nothing passes as cleanup debt (REQ-79 BC-1). Fix the red, drop `debts`, and run the merge check again. Nothing was recorded',
+    };
+  }
+  const needed = requiredMergeChecksOf(report.lane, fastDelivery);
   const missing = needed.filter((n) => !report.checks.some((c) => c.name === n));
   if (missing.length) {
-    const who = report.lane === 'fast' ? 'a fast-lane merge needs' : 'every merge needs';
+    const who = whoNeeds(report, fastDelivery);
     return {
       code: 'MERGE_CHECK_INCOMPLETE',
       path: '/checks',
@@ -78,12 +98,20 @@ export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
     };
   }
   // a red probe is refused by its own name (`probeRefusals`), which reads it against the kept probe
-  const red = report.checks.filter((c) => c.result === 'fail' && c.kind !== 'probes');
+  const passed = new Set(
+    fastDelivery ? (report.debts ?? []).flatMap((d) => (d.kind === 'red' && d.check ? [d.check] : [])) : [],
+  );
+  const red = report.checks.filter(
+    (c) => c.result === 'fail' && c.kind !== 'probes' && !passed.has(c.name),
+  );
   if (red.length) {
+    const how = fastDelivery
+      ? ' Fix it, or, where you rate its impact below high, name it in `debts` as `{ kind: "red", check: <its name>, where, detail, impact: { type, rating, reason } }` so it passes as cleanup debt (REQ-79 BC-3); a red rated high is fixed in this change.'
+      : ' Fix it and run the merge check again.';
     return {
       code: 'MERGE_CHECK_RED',
       path: '/checks',
-      detail: `${red.map(described).join('; ')} ended red at ${report.head.slice(0, 12)}. Fix it and run the merge check again. Nothing was recorded`,
+      detail: `${red.map(described).join('; ')} ended red at ${report.head.slice(0, 12)}.${how} Nothing was recorded`,
     };
   }
   return null;
