@@ -1,1 +1,1 @@
-**A high-impact change now waits before it lands, not after.** Where production deploys on land, a change rated high lands only once the cleanup has left the base green, and the refusal names the cleanup and the open debt.
+**A high-impact change now waits before it lands.** Where production deploys on land, a change rated high lands once the latest cleanup on the base is green and no high-rated debt is open; the refusal names both.

@@ -43,6 +43,7 @@ import {
   insertImpact,
   insertReport,
   issueImpacts,
+  lastHighLanding,
   lastReport,
   openDebts,
   ratedOpenIssues,
@@ -310,9 +311,10 @@ export async function cleanupLandingRefusal(args: {
   if (!shape.fast || !shape.onLand) return null;
   const rating = await landingRating(issueId, report.impact);
   if (rating?.rating !== HOLDING_RATING) return null;
-  const [open, last, window, key] = await Promise.all([
+  const [open, last, highAt, window, key] = await Promise.all([
     openDebts(db, projectId),
-    lastReport(db, projectId),
+    lastReport(db, projectId, report.base.branch),
+    lastHighLanding(projectId, issueId),
     readCleanupWindow(projectId),
     issueDisplayIds([issueId]),
   ]);
@@ -321,8 +323,9 @@ export async function cleanupLandingRefusal(args: {
     rating,
     issueRef: key.get(issueId) ?? issueId,
     open,
-    ownDebts: report.debts?.length ?? 0,
+    ownHigh: report.debts?.filter((d) => d.impact.rating === HOLDING_RATING).length ?? 0,
     last,
+    lastHighLandedAt: highAt,
     window,
   });
 }

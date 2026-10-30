@@ -102,7 +102,11 @@ export async function openDebts(
   projectId: string,
 ): Promise<OpenDebt[]> {
   const rows = await executor
-    .select({ id: deliveryDebts.id, where: deliveryDebts.location })
+    .select({
+      id: deliveryDebts.id,
+      where: deliveryDebts.location,
+      rating: deliveryDebts.impactRating,
+    })
     .from(deliveryDebts)
     .where(and(eq(deliveryDebts.projectId, projectId), isNull(deliveryDebts.clearedAt)))
     .orderBy(asc(deliveryDebts.createdAt));
@@ -285,10 +289,11 @@ export function reportView(
   };
 }
 
-/** The project's newest cleanup report, or null where none was ever filed. */
+/** The project's newest cleanup report on `branch`, or null where none was filed on it. */
 export async function lastReport(
   executor: Pick<Tx, 'select'>,
   projectId: string,
+  branch: string,
 ): Promise<LastReport | null> {
   const [r] = await executor
     .select({
@@ -296,10 +301,32 @@ export async function lastReport(
       result: cleanupReports.result,
       branch: cleanupReports.branch,
       sha: cleanupReports.headSha,
+      reportedAt: cleanupReports.createdAt,
     })
     .from(cleanupReports)
-    .where(eq(cleanupReports.projectId, projectId))
+    .where(and(eq(cleanupReports.projectId, projectId), eq(cleanupReports.branch, branch)))
     .orderBy(desc(cleanupReports.createdAt), desc(cleanupReports.id))
     .limit(1);
   return r ?? null;
+}
+
+/** When the newest change currently rated high, other than `exceptIssueId`, was marked landed. */
+export async function lastHighLanding(
+  projectId: string,
+  exceptIssueId: string,
+): Promise<Date | null> {
+  const rows = (await db.execute(sql`
+    SELECT max(i.merged_at) AS at
+      FROM ${issues} i
+      JOIN LATERAL (
+        SELECT c.rating FROM ${changeImpacts} c
+         WHERE c.issue_id = i.id
+         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
+      ) r ON true
+     WHERE i.project_id = ${projectId} AND i.id <> ${exceptIssueId}
+       AND i.merged_at IS NOT NULL AND r.rating = 'high'`)) as unknown as {
+    at: string | Date | null;
+  }[];
+  const at = rows[0]?.at;
+  return at ? new Date(at) : null;
 }

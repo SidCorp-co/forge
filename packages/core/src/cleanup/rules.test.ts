@@ -23,8 +23,8 @@ const report = (over: Partial<CleanupReportRequest> = {}): CleanupReportRequest 
   ...over,
 });
 const open = [
-  { id: D1, where: 'packages/core/src/a.ts' },
-  { id: D2, where: 'scripts/gate.mjs' },
+  { id: D1, where: 'packages/core/src/a.ts', rating: 'high' as const },
+  { id: D2, where: 'scripts/gate.mjs', rating: 'medium' as const },
 ];
 
 describe('debt an agent records (REQ-79 BC-3)', () => {
@@ -154,32 +154,52 @@ describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
     enabled: true,
     nextRunAt: '2026-10-30T18:00:00.000Z',
   };
+  const T = new Date('2026-10-30T10:00:00.000Z');
+  const green = {
+    id: 'r1',
+    result: 'green' as const,
+    branch: 'dev',
+    sha: 'c'.repeat(40),
+    reportedAt: T,
+  };
   const base = {
     fast: true,
     onLand: true,
     rating: impact('high'),
     issueRef: 'ISS-9',
     open,
-    ownDebts: 0,
-    last: null,
+    ownHigh: 0,
+    last: green,
+    lastHighLandedAt: null,
     window,
   };
 
-  it('refuses a change rated high on open debt, naming each debt and the cleanup window', () => {
+  it('refuses an open debt rated high, naming it and the window, and never a medium one', () => {
     const refused = landingRefusal(base);
     expect(refused?.code).toBe('MERGE_CLEANUP_PENDING');
     expect(refused?.detail).toContain(D1);
-    expect(refused?.detail).toContain(D2);
+    expect(refused?.detail).not.toContain(D2);
     expect(refused?.detail).toContain('sched-1');
     expect(refused?.detail).toContain('2026-10-30T18:00:00.000Z');
+    expect(landingRefusal({ ...base, open: [open[1] as (typeof open)[number]] })).toBeNull();
   });
 
-  it('refuses on a red last cleanup with no debt, and on debt the report itself would leave', () => {
-    const last = { id: 'r1', result: 'red' as const, branch: 'dev', sha: 'c'.repeat(40) };
-    expect(landingRefusal({ ...base, open: [], last })?.detail).toContain('report r1 is red');
-    expect(landingRefusal({ ...base, open: [], ownDebts: 2 })?.detail).toContain('2 red');
-    expect(landingRefusal({ ...base, open: [], last: { ...last, result: 'green' } })).toBeNull();
+  it('refuses a red last report, and a green one no newer than the last high landing', () => {
+    const red = { ...green, result: 'red' as const };
+    expect(landingRefusal({ ...base, open: [], last: red })?.detail).toContain('report r1 is red');
+    const before = new Date(T.getTime() - 1000);
+    expect(landingRefusal({ ...base, open: [], lastHighLandedAt: before })).toBeNull();
+    expect(landingRefusal({ ...base, open: [], lastHighLandedAt: T })?.detail).toContain(
+      'since the last change rated high',
+    );
+    expect(landingRefusal({ ...base, open: [], last: null, lastHighLandedAt: T })).not.toBeNull();
     expect(landingRefusal({ ...base, open: [], last: null })).toBeNull();
+  });
+
+  it('refuses the high debt the report would leave', () => {
+    expect(landingRefusal({ ...base, open: [], ownHigh: 2 })?.detail).toContain(
+      '2 new cleanup debt',
+    );
   });
 
   it('lets every other change land: lower or no rating, a project that promotes, fast off', () => {
@@ -195,7 +215,11 @@ describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
     expect(landingRefusal({ ...base, window: { ...window, enabled: false } })?.detail).toContain(
       'disabled',
     );
-    const many = Array.from({ length: 11 }, (_, i) => ({ id: `d${i}`, where: 'x' }));
+    const many = Array.from({ length: 11 }, (_, i) => ({
+      id: `d${i}`,
+      where: 'x',
+      rating: 'high' as const,
+    }));
     expect(landingRefusal({ ...base, open: many })?.detail).toContain('and 3 more');
   });
 });

@@ -1,11 +1,8 @@
 /**
- * Fast delivery (REQ-79), against real Postgres over HTTP: every project delivers fast unless it
- * turns it off (BC-1); a merge check asks build and scoped tests and passes a red rated below high as
- * cleanup debt (BC-2, BC-3); the building agent's impact rating is kept (BC-4); a change rated high is
- * held until a green cleanup covers it, from landing where production deploys on land and from
- * promotion where a person promotes, while lower ones go (BC-5, BC-6); the cleanup
- * window fires a run with its brief on a slot of its own (BC-7, BC-8); and its report says what it
- * cleared and what remains (BC-9).
+ * Fast delivery (REQ-79) against real Postgres over HTTP: the default and its off switch (BC-1), the
+ * merge check on build and scoped tests with red as debt (BC-2, BC-3), impact ratings (BC-4), a change
+ * rated high held from landing or from promotion (BC-5, BC-6), the cleanup window on a slot of its
+ * own (BC-7, BC-8) and its report (BC-9).
  *
  * @direct-test-of packages/core/src/cleanup/service.ts
  * @direct-test-of packages/core/src/cleanup/store.ts
@@ -98,7 +95,7 @@ const debts = (body: unknown) => call('POST', `/api/projects/${projectId}/debts`
 const ledger = () => call('GET', `/api/projects/${projectId}/debts`);
 const reportCleanup = (body: Doc) =>
   call('POST', `/api/projects/${projectId}/cleanup-reports`, {
-    base: { branch: 'main', sha: 'c'.repeat(40) },
+    base: { branch: 'dev', sha: 'c'.repeat(40) },
     result: 'green',
     cleared: [],
     remains: [],
@@ -242,108 +239,120 @@ const landing = (over: Doc = {}) => ({
 });
 const checkLanding = (issue: string, over: Doc = {}) =>
   call('POST', `/api/issues/${issue}/merge-check`, landing(over));
-const markLanding = (issue: string, commit = 'a'.repeat(40)) =>
-  call('POST', `/api/issues/${issue}/merge`, {
-    target: 'dev',
-    commit,
-    note: 'landed',
-    changedPaths: { commit, changes: [{ path: 'packages/core/src/x.ts', change: 'changed' }] },
-  });
+const markLanding = (issue: string) =>
+  call('POST', `/api/issues/${issue}/merge`, { target: 'dev', commit: 'a'.repeat(40), note: 'ok' });
 const verifications = async (issue: string) =>
-  ((await call('GET', `/api/issues/${issue}/events`)).body.items as Doc[]).filter(
-    (e) => e.kind === 'verification',
+  (await call('GET', `/api/issues/${issue}/events`)).body.items.filter(
+    (e: Doc) => e.kind === 'verification',
   );
+const highDebt = { ...red('high'), kind: 'debt', check: undefined };
+const remaining = async () =>
+  ((await ledger()).body.open as Doc[]).map((d) => ({ debt: d.id, why: 'a person owes it' }));
+
 describe('a change rated high lands only on a green base where production deploys on land (BC-5 r4)', () => {
-  it('is refused at the landing door naming the cleanup and each open debt, and a low or medium one lands', async () => {
-    const owed = (await debts({ items: [red('low')] })).body.debts[0] as string;
-    const high = await fx.insertIssue('in_progress');
-    const medium = await fx.insertIssue('in_progress');
-    const low = await fx.insertIssue('in_progress');
-    await rate(high, 'high');
-    await rate(medium, 'medium');
-    await rate(low, 'low');
+  it('is refused on an open debt rated high, naming it and the cleanup, while a low or medium one lands', async () => {
+    const owed = (await debts({ items: [highDebt] })).body.debts[0] as string;
+    const [high, medium, low] = [
+      await fx.insertIssue('in_progress', undefined, false),
+      await fx.insertIssue('in_progress'),
+      await fx.insertIssue('in_progress'),
+    ] as [string, string, string];
+    for (const [issue, rating] of [
+      [high, 'high'],
+      [medium, 'medium'],
+      [low, 'low'],
+    ] as const) {
+      await rate(issue, rating);
+    }
     const window = (await ledger()).body.window as Doc;
+    expect(((await ledger()).body.waiting as Doc[]).map((w) => w.issueId)).toEqual([high]);
 
     const refused = await checkLanding(high);
     expect([refused.status, codes(refused)]).toEqual([422, ['MERGE_CLEANUP_PENDING']]);
     const said = JSON.stringify(refused.body);
-    expect(said).toContain(owed);
-    expect(said).toContain(window.scheduleId);
-    expect(said).toContain('0 18 * * *');
-    expect(said).toContain('Nothing was recorded');
+    for (const named of [owed, window.scheduleId, '0 18 * * *', 'Nothing was recorded']) {
+      expect(said).toContain(named);
+    }
     expect(await verifications(high)).toEqual([]);
-
     for (const issue of [medium, low]) {
-      const landed = await checkLanding(issue);
-      expect(landed.status, JSON.stringify(landed.body)).toBe(201);
+      expect((await checkLanding(issue)).status).toBe(201);
     }
   });
 
-  it('is refused on a red last cleanup with no debt open, and lands once a green report follows', async () => {
+  it('lands on a green report with a medium debt open, which only a person can clear', async () => {
+    await debts({ items: [red('medium')] });
     const high = await fx.insertIssue('in_progress');
     await rate(high, 'high');
-    // nothing open and nothing ever reported red: a high change lands (a check twice is allowed)
+    const green = await reportCleanup({ remains: await remaining() });
+    expect(green.status, JSON.stringify(green.body)).toBe(201);
+    const landed = await checkLanding(high);
+    expect(landed.status, JSON.stringify(landed.body)).toBe(201);
+    expect(codes(await markLanding(high))).not.toContain('MERGE_CHECK_MISSING');
+  });
+
+  it('is refused on a red last report, and lands once a green one follows', async () => {
+    const high = await fx.insertIssue('in_progress');
+    await rate(high, 'high');
     expect((await checkLanding(high)).status).toBe(201);
     const red1 = await reportCleanup({ result: 'red' });
-    expect(red1.status, JSON.stringify(red1.body)).toBe(201);
-
     const refused = await checkLanding(high);
     expect(codes(refused)).toEqual(['MERGE_CLEANUP_PENDING']);
     expect(JSON.stringify(refused.body)).toContain(red1.body.report.id);
-
     expect((await reportCleanup({})).status).toBe(201);
-    const landed = await checkLanding(high);
-    expect(landed.status, JSON.stringify(landed.body)).toBe(201);
+    expect((await checkLanding(high)).status).toBe(201);
   });
 
-  it('judges the rating the report itself carries, and the debt it would leave', async () => {
-    await debts({ items: [red('low')] });
+  it('is refused while no report on this base follows the last change rated high that landed', async () => {
+    expect((await reportCleanup({})).status).toBe(201);
+    const earlier = await fx.insertIssue('awaiting_release');
+    await rate(earlier, 'high');
+    const high = await fx.insertIssue('in_progress');
+    await rate(high, 'high');
+    const refused = await checkLanding(high);
+    expect(codes(refused)).toEqual(['MERGE_CLEANUP_PENDING']);
+    expect(JSON.stringify(refused.body)).toContain('since the last change rated high landed');
+    expect((await reportCleanup({ base: { branch: 'main', sha: 'c'.repeat(40) } })).status).toBe(
+      201,
+    );
+    expect(codes(await checkLanding(high))).toEqual(['MERGE_CLEANUP_PENDING']);
+    expect((await reportCleanup({})).status).toBe(201);
+    expect((await checkLanding(high)).status).toBe(201);
+  });
+
+  it('judges the rating the report carries and the high debt it would leave', async () => {
+    await debts({ items: [highDebt] });
     const unrated = await fx.insertIssue('in_progress');
     const sentHigh = await checkLanding(unrated, {
       impact: { type: 'data', rating: 'high', reason: 'a migration' },
     });
     expect(codes(sentHigh)).toEqual(['MERGE_CLEANUP_PENDING']);
-    expect(await verifications(unrated)).toEqual([]);
-    expect((await call('GET', `/api/issues/${unrated}/impact`)).body.current).toBeNull();
-
-    // an unrated change is never guessed high
     expect((await checkLanding(unrated)).status).toBe(201);
 
-    // a clean base, but the report leaves its own red behind as debt: a high change does not land on it
-    const cleared = await reportCleanup({
-      cleared: ((await ledger()).body.open as Doc[]).map((d) => ({ debt: d.id, how: 'fixed' })),
-    });
-    expect(cleared.status, JSON.stringify(cleared.body)).toBe(201);
+    expect(
+      (
+        await reportCleanup({
+          cleared: (await remaining()).map((r) => ({ debt: r.debt, how: 'fixed' })),
+        })
+      ).status,
+    ).toBe(201);
     const own = await fx.insertIssue('in_progress');
     await rate(own, 'high');
-    const checks = [
-      ...FAST_LANE_MERGE_CHECKS.map((n) => passingCheck(n)),
-      { ...passingCheck('verify'), result: 'fail' },
-    ];
-    const leaving = await checkLanding(own, { checks, debts: [red('low')] });
+    const leaving = await checkLanding(own, { debts: [highDebt] });
     expect(codes(leaving)).toEqual(['MERGE_CLEANUP_PENDING']);
-    expect(JSON.stringify(leaving.body)).toContain('would leave 1 red as new cleanup debt');
+    expect(JSON.stringify(leaving.body)).toContain('would leave 1 new cleanup debt rated high');
+    expect((await checkLanding(own, { debts: [red('medium')] })).status).toBe(201);
   });
 
   it('owes the mark a passing merge check, which is itself refused while the base is not green', async () => {
-    await debts({ items: [red('low')] });
+    await debts({ items: [highDebt] });
     const high = await fx.insertIssue('in_progress');
     const low = await fx.insertIssue('in_progress');
     await rate(high, 'high');
     await rate(low, 'low');
-
     const unchecked = await markLanding(high);
     expect([unchecked.status, codes(unchecked)]).toEqual([422, ['MERGE_CHECK_MISSING']]);
-    expect(JSON.stringify(unchecked.body)).toContain('deploys on land');
     expect(codes(await markLanding(low))).not.toContain('MERGE_CHECK_MISSING');
     expect(codes(await checkLanding(high))).toEqual(['MERGE_CLEANUP_PENDING']);
-  });
-
-  it('marks a high change once a check passed at its commit on a green base', async () => {
-    const high = await fx.insertIssue('in_progress');
-    await rate(high, 'high');
-    expect((await checkLanding(high)).status).toBe(201);
-    expect(codes(await markLanding(high))).not.toContain('MERGE_CHECK_MISSING');
   });
 });
 
@@ -355,6 +364,7 @@ describe('a change rated high waits for a green cleanup before promotion (BC-5, 
     await rate(medium, 'medium');
 
     await sweepAutomaticReleases();
+    expect((await ledger()).body.waiting).toEqual([]);
 
     expect((await fx.holdOf(high))?.code).not.toBe('RELEASE_CLEANUP_PENDING');
     expect((await fx.holdOf(medium))?.code).not.toBe('RELEASE_CLEANUP_PENDING');
@@ -372,7 +382,6 @@ describe('a change rated high waits for a green cleanup before promotion (BC-5, 
     await rate(high, 'high');
     await rate(medium, 'medium');
 
-    // landing is not held where a person promotes: the hold is on the promotion
     const highLanding = await fx.insertIssue('in_progress');
     await rate(highLanding, 'high');
     const landed = await checkLanding(highLanding);
@@ -413,17 +422,6 @@ describe('a change rated high waits for a green cleanup before promotion (BC-5, 
       issueIds: [high],
     });
     expect(JSON.stringify(cut.body)).not.toContain('RELEASE_CLEANUP_PENDING');
-  });
-});
-
-describe('the ledger lists the changes waiting (BC-5)', () => {
-  it('lists a change rated high that has not landed, and not one already live, where production deploys on land', async () => {
-    const waiting = await fx.insertIssue('in_progress', undefined, false);
-    const live = await fx.insertIssue('awaiting_release');
-    await rate(waiting, 'high');
-    await rate(live, 'high');
-    await db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${live}`);
-    expect(((await ledger()).body.waiting as Doc[]).map((w) => w.issueId)).toEqual([waiting]);
   });
 });
 

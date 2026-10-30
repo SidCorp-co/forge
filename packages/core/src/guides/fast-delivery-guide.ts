@@ -13,7 +13,7 @@ export const FAST_DELIVERY_GUIDE: CoreGuide = {
   title: 'Fast delivery: rate the change, leave debt to the cleanup run',
   summary:
     "Every project delivers fast unless its document says `delivery.fast: false`: a change lands when it builds, deploys healthy and its scoped tests pass; the building run rates the change's impact and leaves a non-severe red as cleanup debt; only a change rated high waits for a green cleanup: it is held from landing where the project deploys on land, and from promotion where a person promotes; the cleanup run works the debt in its own window and reports what it cleared and what remains.",
-  version: 2,
+  version: 3,
   body: `## Fast delivery: rate the change, leave debt to the cleanup run
 
 Fast delivery is every project's default. A project turns it off with \`delivery.fast: false\` in its
@@ -46,10 +46,11 @@ a red is fixed in its issue, and nothing waits on a cleanup.
 Where the project's production deploys on land (\`deployment.trigger: on-land\` on its production
 environment), landing is reaching production, so the hold is on the landing. The merge check
 (\`POST /api/issues/:id/merge-check\`) refuses a change whose current rating is high, or whose report
-\`impact\` rates it high, \`MERGE_CLEANUP_PENDING\` while the base carries open cleanup debt (the
-report's own \`debts\` included) or the project's last cleanup report is red. It names each open debt
-by id and the cleanup window, its schedule and next run, and records nothing; land after a green
-cleanup report has cleared or accounted for the debt. The mark of such a change owes a passing merge
+\`impact\` rates it high, \`MERGE_CLEANUP_PENDING\` when the project's latest cleanup report on the base
+branch is red, when no report on that branch follows the last change rated high that landed, or when
+an open debt is rated high (the report's own \`debts\` included), naming that debt. A green latest
+report with only medium or low debt open lets it land. The refusal names the cleanup window, its
+schedule and next run, and records nothing; land after a green cleanup report on the base. The mark of such a change owes a passing merge
 check at its commit (\`MERGE_CHECK_MISSING\`), whatever the gate profile asks. Low, medium and unrated
 changes land as before, and the release sweep holds nothing for the cleanup there. Where a person
 promotes (any other production trigger), landing is not held: a release that would carry the change

@@ -42,6 +42,7 @@ export function debtRefusals(items: readonly DebtItem[]): CleanupRefusal[] {
 export interface OpenDebt {
   id: string;
   where: string;
+  rating: Impact['rating'];
 }
 
 /** One issue a report names as covered, as read now: its key and its current rating, if any. */
@@ -202,12 +203,13 @@ export interface WindowSaid {
   nextRunAt: string | null;
 }
 
-/** The newest cleanup report, as the landing rule reads it. */
+/** The newest cleanup report on the base, as the landing rule reads it. */
 export interface LastReport {
   id: string;
   result: 'green' | 'red';
   branch: string;
   sha: string;
+  reportedAt: Date;
 }
 
 const NAMED_DEBTS = 8;
@@ -231,10 +233,13 @@ export interface LandingRefusal {
 /**
  * Whether a change may land (REQ-79 r4 BC-5): on a project delivering fast whose production deploys on
  * land, landing is reaching production, so a change rated high lands only once a cleanup has left the
- * base green: no cleanup debt open (the report's own `debts` included, as it would leave them open) and
- * the project's last cleanup report green, or none yet (nothing was ever left red). Every lower
+ * base green. It passes when the latest cleanup report on the base is green, that report is newer than
+ * the last change rated high that landed, and no open debt is rated high (the report's own `debts`
+ * included). A medium or low open debt never blocks. It refuses by name on a red last report, on no
+ * report since the last high landing, and on each open high debt, naming it. A project that never
+ * rated a change high and never filed a report has left nothing red, so it passes. Every lower
  * rating, an unrated change, a project that promotes and one that turned fast delivery off land as
- * they did. Returns the refusal naming the cleanup and each debt by id, or null.
+ * they did.
  */
 export function landingRefusal(args: {
   fast: boolean;
@@ -242,31 +247,38 @@ export function landingRefusal(args: {
   rating: Impact | null;
   issueRef: string;
   open: readonly OpenDebt[];
-  ownDebts: number;
+  ownHigh: number;
   last: LastReport | null;
+  lastHighLandedAt: Date | null;
   window: WindowSaid | null;
 }): LandingRefusal | null {
-  const { rating, open, last } = args;
+  const { rating, last, lastHighLandedAt } = args;
   if (!args.fast || !args.onLand || rating?.rating !== HOLDING_RATING) return null;
-  const redLast = last !== null && last.result !== 'green';
-  if (open.length === 0 && args.ownDebts === 0 && !redLast) return null;
   const why: string[] = [];
-  if (open.length > 0) {
-    const shown = open.slice(0, NAMED_DEBTS).map((d) => `${d.id} (${d.where})`);
-    const more = open.length > NAMED_DEBTS ? `, and ${open.length - NAMED_DEBTS} more` : '';
-    why.push(`the base carries ${open.length} open cleanup debt: ${shown.join(', ')}${more}`);
+  const high = args.open.filter((d) => d.rating === HOLDING_RATING);
+  if (high.length > 0) {
+    const shown = high.slice(0, NAMED_DEBTS).map((d) => `${d.id} (${d.where})`);
+    const more = high.length > NAMED_DEBTS ? `, and ${high.length - NAMED_DEBTS} more` : '';
+    why.push(
+      `the base carries ${high.length} open cleanup debt rated high: ${shown.join(', ')}${more}`,
+    );
   }
-  if (args.ownDebts > 0) {
-    why.push(`this report would leave ${args.ownDebts} red as new cleanup debt (\`debts\`)`);
+  if (args.ownHigh > 0) {
+    why.push(`this report would leave ${args.ownHigh} new cleanup debt rated high (\`debts\`)`);
   }
-  if (last && redLast) {
+  if (last && last.result !== 'green') {
     why.push(
       `the last cleanup report ${last.id} is red at ${last.sha.slice(0, 12)} on ${last.branch}`,
     );
+  } else if (lastHighLandedAt && (!last || last.reportedAt <= lastHighLandedAt)) {
+    why.push(
+      `no cleanup report on this base since the last change rated high landed (${lastHighLandedAt.toISOString()})`,
+    );
   }
+  if (why.length === 0) return null;
   return {
     code: MERGE_CLEANUP_PENDING,
     path: '/impact',
-    detail: `${args.issueRef} is rated high impact (${rating.type}: ${rating.reason}) and this project deploys on land, so landing it is reaching production (REQ-79 BC-5): a change rated high lands only once a cleanup has left the base green, and ${why.join('; ')}. ${windowWords(args.window)} Land after a cleanup report is green and its debt cleared or remaining by name; low and medium changes land without waiting. Nothing was recorded`,
+    detail: `${args.issueRef} is rated high impact (${rating.type}: ${rating.reason}) and this project deploys on land, so landing it is reaching production (REQ-79 BC-5): a change rated high lands only once a cleanup has left the base green, and ${why.join('; ')}. ${windowWords(args.window)} Land after a green cleanup report on this base; a medium or low open debt does not block, and low and medium changes land without waiting. Nothing was recorded`,
   };
 }

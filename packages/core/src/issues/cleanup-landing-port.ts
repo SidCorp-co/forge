@@ -11,7 +11,7 @@ interface LandingAsk {
 }
 
 const slot = portSlot<{
-  /** Why a change rated high may not land on an unclean base, or null (`cleanup/service.ts`). */
+  /** Why a change rated high may not land before a green cleanup, or null (`cleanup/service.ts`). */
   cleanupLandingRefusal: (
     args: LandingAsk & { report: MergeCheckReport },
   ) => Promise<{ code: MergeCheckRefusalCode; path: string; detail: string } | null>;
