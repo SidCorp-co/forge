@@ -114,12 +114,12 @@ export const GATE_CATALOG = defineGates([
 	{
 		id: "design_record",
 		title: "Design record",
-		refuses: "building without a recorded design: criterion classes, patterns, proof and scope",
-		codes: ["DESIGN_RECORD_MISSING", "DESIGN_RECORD_INCOMPLETE"],
+		refuses: "building without a recorded design (criterion classes, patterns, proof and scope), or without a plan written against the requirement the issue delivers",
+		codes: ["DESIGN_RECORD_MISSING", "DESIGN_RECORD_INCOMPLETE", "PLAN_REQUIRED"],
 		at: "issue in_progress → approved, work step design → build",
 		modes: ENFORCE_OFF,
 		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
-		relaxed: "off: build starts with no design record",
+		relaxed: "off: build starts with no design record or plan",
 	},
 	{
 		id: "design_approved_for_build",

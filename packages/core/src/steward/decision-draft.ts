@@ -1,6 +1,6 @@
 // The two answers to a draft no agreed requirement fits (REQ-48 BC-5): `link` ties it to the
 // requirement the answer names, inside the answer's transaction, and has the steward diagnose it
-// again, which prepares the plan and criteria and asks whether to open it; `requirement` starts a
+// again, which prepares its criteria and asks whether to open it; `requirement` starts a
 // draft requirement from the feedback the draft carries, as the requirement door writes one, in the
 // answer's own transaction, and the assistant is asked for its area as on any new requirement. `decision-act.ts` records the answer and logs each as a steward act.
 
@@ -59,7 +59,7 @@ export async function linkDraftIn(
   if (linked) {
     await linkIssueToRequirement(tx, a.issue.id, requirementId, { plannedRevision: null });
   }
-  // the steward diagnoses the draft again: it prepares the plan and criteria, then asks to open it
+  // the steward diagnoses the draft again: it prepares the criteria, then asks to open it
   await emitEvent(tx, 'standing.stuck', {
     projectId: a.projectId,
     subject: { kind: 'issue', id: a.issue.id, key: a.key },

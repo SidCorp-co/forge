@@ -1,9 +1,10 @@
 // The steward prepares a stale draft before it asks anything about it (REQ-48 BC-5, the coordinator's
-// ruling of 2026-10-22): nobody is asked to write a plan or criteria, the steward writes them. One call
-// links the agreed requirement the draft delivers, saves a short plan, which records that requirement's
-// current revision as the one it is planned against, and writes the issue's criteria, each traced to a
-// BC of it, through the issue's own doors as the steward account. Each write that lands is its own act
-// with its own undo, and the answer is the issue-ready check as the draft now stands.
+// ruling of 2026-10-22): nobody is asked to write criteria, the steward writes them. One call links
+// the agreed requirement the draft delivers and writes the issue's criteria, each traced to a BC of
+// it, through the issue's own doors as the steward account. No plan is written: the draft opens
+// against the requirement's current revision and the run that claims it writes its plan (ISS-778).
+// Each write that lands is its own act with its own undo, and the answer is the issue-ready check as
+// the draft now stands.
 
 import { AGREED_STATUSES } from '@forge/contracts/requirements';
 import { z } from 'zod';
@@ -38,14 +39,6 @@ const prepareParams = z.strictObject({
     .describe(
       "the agreed requirement it delivers: the carried feedback's triaged one, else the best fit",
     ),
-  plan: z
-    .string()
-    .trim()
-    .min(20)
-    .max(2000)
-    .describe(
-      'what the issue delivers and why, in a few BA sentences; its driver writes the steps',
-    ),
   criteria: z
     .array(criterion)
     .min(1)
@@ -76,7 +69,7 @@ const correct = (text: string) => ({ correct: text });
 export const PREPARE: DoorSpec<z.infer<typeof prepareParams>> = {
   name: 'steward_prepare_draft',
   describe:
-    "Prepare a draft so it can open: link the agreed requirement it delivers, save a short plan (which records that requirement's current revision), and write its criteria, each traced to a BC. Answers the issue-ready check as it then stands. Take the requirement from the carried feedback's triage, else the best agreed fit by area and title.",
+    "Prepare a draft so it can open: link the agreed requirement it delivers and write its criteria, each traced to a BC. Its plan is the run's, written once it is open. Answers the issue-ready check as it then stands. Take the requirement from the carried feedback's triage, else the best agreed fit by area and title.",
   params: prepareParams,
   write: true,
   async call(args, ctx: DoorContext) {
@@ -88,7 +81,6 @@ export const PREPARE: DoorSpec<z.infer<typeof prepareParams>> = {
     const issue = (read.answer.json ?? {}) as {
       id?: string;
       status?: string;
-      plan?: string | null;
       requirementId?: string | null;
     };
     if (!issue.id) return read;
@@ -147,18 +139,6 @@ export const PREPARE: DoorSpec<z.infer<typeof prepareParams>> = {
         },
       });
     }
-
-    const plan = await send(
-      { method: 'PATCH', path: `/api/issues/${issue.id}`, body: { plan: args.plan } },
-      ctx,
-    );
-    if (!plan.answer.ok) return halt(plan);
-    landed.push({
-      door: doorName(plan.request),
-      did: `Saved ${args.issue}'s plan against ${requirement} revision ${req.currentRevision}`,
-      wrote: cite('issue', args.issue),
-      undo: { door: `PATCH /api/issues/${issue.id}`, body: { plan: issue.plan ?? null } },
-    });
 
     const criteria = await send(
       {

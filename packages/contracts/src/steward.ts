@@ -428,7 +428,7 @@ export type StewardFailureKind = (typeof STEWARD_FAILURE_KINDS)[number];
  * never options the model spells, so every such question reads alike and is answered in bulk. The
  * model picks only the recommended one and says why in one line. Each kind of item has its own set:
  * - an issue (`stewardDecisionsFor`): a draft is prepared by the steward before anything is asked
- *   (its requirement linked, its plan saved, its criteria traced); one that then passes the
+ *   (its requirement linked, its criteria traced; its plan is the run's); one that then passes the
  *   issue-ready check is asked `open`, `keep` or `drop`, recommending open; one no agreed requirement
  *   fits is asked `link` (one of at most 3 candidates, each a requirement and a BC), `requirement`
  *   (start one from its feedback) or `drop`; either may be asked `merge` into a live issue it repeats.
@@ -774,7 +774,7 @@ export function stewardDecisionEffect(
 		"until its standing moves, with your reason; the steward does not ask again until then.";
 	switch (decision) {
 		case "open":
-			return `Opens ${key} as you; its driver plans it from the requirement, plan and criteria the steward prepared.`;
+			return `Opens ${key} as you; its driver plans it from the requirement and criteria the steward prepared.`;
 		case "keep":
 			if (item.kind === "issue")
 				return item.draft
@@ -788,7 +788,7 @@ export function stewardDecisionEffect(
 		case "link": {
 			const to = stewardLinkOf(item.option);
 			const target = to ? `${to.requirement} ${to.bc}` : "that requirement";
-			return `Links ${key} to ${target} as you; the steward then writes its plan and criteria, and asks whether to open it.`;
+			return `Links ${key} to ${target} as you; the steward then writes its criteria, and asks whether to open it.`;
 		}
 		case "requirement":
 			return `Starts a requirement from ${key}'s feedback as you; ${key} stays a draft until that requirement is agreed.`;

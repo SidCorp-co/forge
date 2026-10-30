@@ -1,0 +1,1 @@
+**A draft linked to an agreed requirement opens without a plan.** It opens against that requirement's current revision, since the plan is the run's to write; the work enters build only once its plan is written (`PLAN_REQUIRED`).

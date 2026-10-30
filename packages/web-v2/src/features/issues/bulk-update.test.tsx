@@ -18,7 +18,7 @@ const GAPS = checklistRefusals(
   evaluateChecklist(ISSUE_READY_CHECKLIST, {
     given: {},
     record: {
-      requirement: { gap: "The issue is not linked to a requirement.", fix: "Link it, then write its plan." },
+      requirement: { gap: "The issue is not linked to a requirement.", fix: "Link it to the agreed requirement it delivers." },
       criteria: { gap: "The issue has no acceptance criteria.", fix: "Write its numbered acceptance criteria." },
       design: { value: "None: it builds no workflow design." },
     },

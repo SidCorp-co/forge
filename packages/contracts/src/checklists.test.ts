@@ -330,7 +330,7 @@ describe("the registered issue-ready checklist", () => {
 		const edge = ISSUE_MACHINE.edges.find((e) => e.from === "draft" && e.to === "open");
 		expect(edge).toMatchObject({ guards: ["admit", "checklist"], checklist: "issue_ready" });
 		expect(checklistsOn(ISSUE_MACHINE)).toEqual([CHECKLISTS.issue_ready]);
-		expect(ISSUE_READY_CHECKLIST.version).toBe(3);
+		expect(ISSUE_READY_CHECKLIST.version).toBe(4);
 	});
 
 	it("asks hotfix obligations as an assumed answer, naming the open owner question", () => {
@@ -428,7 +428,7 @@ describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
 				path: "/answers/requirement",
 				field: "requirementId",
 				detail:
-					'"Which agreed requirement does this issue deliver, and at which revision?" is answered on the issue itself, by its linked requirement and its plan, so the move cannot answer it. Leave it out of the move.',
+					'"Which agreed requirement does this issue deliver, and at which revision?" is answered on the issue itself, by its linked requirement and its revision, so the move cannot answer it. Leave it out of the move.',
 			}),
 		]);
 	});

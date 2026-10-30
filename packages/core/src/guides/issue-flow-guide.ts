@@ -148,7 +148,9 @@ while that run is already building. It lifts when that run ends.
 work step into build, test or release, and moving to \`approved\`, is refused
 \`DESIGN_RECORD_MISSING\` or \`DESIGN_RECORD_INCOMPLETE\` naming each gap until the check passes; a
 claim from \`approved\` or \`reopen\` resumes at build only where it passes, else at design.
-Where the project's gate \`plan_approval\` is enforced, the same move into build also waits until a
+Where gate \`design_record\` is enforced, an issue delivering a requirement also enters build only
+with a plan written against a revision of it (\`PLAN_REQUIRED\`): the draft opened without one,
+since the plan is yours to write in the plan step. Where the project's gate \`plan_approval\` is enforced, the same move into build also waits until a
 holder of \`plans.approve\` has moved the issue to \`approved\` since its plan was last written
 (\`PLAN_APPROVAL_PENDING\`), and a claim resumes at design until then. A verdict
 on a code-property criterion is the review's (\`judge: 'review'\`); one recorded as QA's is refused

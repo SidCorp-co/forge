@@ -223,6 +223,7 @@ export const ISSUE_UPDATE_REFUSAL_CODES = [
 	"PATTERN_RETURNED",
 	"ISSUE_SCOPE_HELD",
 	"PLAN_APPROVAL_PENDING",
+	"PLAN_REQUIRED",
 	...DESIGN_CHECK_CODES,
 ] as const;
 export type IssueUpdateRefusalCode =

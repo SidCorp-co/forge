@@ -17,18 +17,17 @@ const planned = (over: Partial<Planned>): Planned => ({
   key: 'REQ-7',
   status: 'agreed',
   plannedRevision: 3,
-  hasPlan: true,
+  currentRevision: 3,
   ...over,
 });
 
 const REQUIREMENT_STATES: Planned[] = [
-  planned({ key: null, status: null, plannedRevision: null, hasPlan: false }),
-  planned({ key: null, status: null, plannedRevision: null, hasPlan: true }),
+  planned({ key: null, status: null, plannedRevision: null, currentRevision: null }),
   planned({ status: 'draft' }),
   planned({ status: 'dropped' }),
   planned({ status: 'deferred' }),
-  planned({ plannedRevision: null, hasPlan: true }),
-  planned({ plannedRevision: null, hasPlan: false }),
+  planned({ plannedRevision: null, currentRevision: null }),
+  planned({ plannedRevision: null, currentRevision: 5 }),
   planned({}),
 ];
 
@@ -46,8 +45,8 @@ const trace = (
 
 const CRITERIA_STATES: [CriterionTrace[], Planned][] = [
   [[], planned({})],
-  [[trace(1, true)], planned({ key: null, plannedRevision: null })],
-  [[trace(1, true), trace(2, true)], planned({ plannedRevision: null })],
+  [[trace(1, true)], planned({ key: null, plannedRevision: null, currentRevision: null })],
+  [[trace(1, true), trace(2, true)], planned({ plannedRevision: null, currentRevision: null })],
   [[trace(1, false)], planned({})],
   [[trace(1, true), trace(2, null, null), trace(3, false)], planned({})],
   [[trace(1, true), trace(2, null, null, true)], planned({})],
@@ -65,12 +64,12 @@ const EVERY_ANSWER: RecordAnswer[] = [
 const sentencesOf = (a: RecordAnswer) => ('gap' in a ? [a.gap, a.fix] : []);
 
 describe("the issue-ready record reader's words", () => {
-  // six requirement gaps (not linked; draft, dropped, deferred; planned before the link; no plan) and
-  // seven criteria gaps (none; no plan, for one criterion and for two; one untraced; several
+  // five requirement gaps (not linked; draft, dropped, deferred; no revision to plan against) and
+  // seven criteria gaps (none; no revision, for one criterion and for two; one untraced; several
   // untraced; one and several whose BC tag is not leading) are each read below
   it('reach every gap it can name', () => {
     const gaps = new Set(EVERY_ANSWER.flatMap((a) => ('gap' in a ? [a.gap] : [])));
-    expect(gaps.size).toBe(13);
+    expect(gaps.size).toBe(12);
   });
 
   it('never show a record field key or code formatting', () => {
@@ -101,9 +100,25 @@ describe("the issue-ready record reader's words", () => {
   });
 
   it('count one criterion as "1 criterion"', () => {
-    const one = criteriaAnswerOf([trace(1, true)], planned({ plannedRevision: null }));
-    expect('gap' in one && one.gap).toBe(
-      'Its 1 criterion cannot be traced yet, because the issue has no plan written against a requirement revision.',
+    const one = criteriaAnswerOf(
+      [trace(1, true)],
+      planned({ plannedRevision: null, currentRevision: null }),
     );
+    expect('gap' in one && one.gap).toBe(
+      'Its 1 criterion cannot be traced yet, because the issue is linked to no requirement revision.',
+    );
+  });
+
+  // ISS-778: the plan is the run's to write once it claims the open issue, so no answer asks for one
+  it('answer an agreed requirement with no plan at its current revision, and never ask for a plan', () => {
+    expect(requirementAnswer(planned({ plannedRevision: null, currentRevision: 5 }))).toEqual({
+      value: "REQ-7 at revision 5, its current one, which the run's plan is written against",
+    });
+    expect(
+      criteriaAnswerOf([trace(1, true)], planned({ plannedRevision: null, currentRevision: 5 })),
+    ).toEqual({ value: '1 criterion, tracing BC-1 of REQ-7 revision 5' });
+    for (const sentence of EVERY_ANSWER.flatMap(sentencesOf)) {
+      expect(sentence, sentence).not.toMatch(/\bplan\b/i);
+    }
   });
 });

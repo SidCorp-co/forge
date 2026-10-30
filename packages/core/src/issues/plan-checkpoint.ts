@@ -13,10 +13,16 @@
  * there neither holds got there no earlier than its create or its newest recorded move, and passed
  * the checkpoint where its plan was written no later than that. Where the gate is off or the project
  * relaxes it, nothing is asked.
+ *
+ * Before either, an issue delivering a requirement reaches build only with a plan written against a
+ * revision of it (`unplannedForBuild`, ISS-778): the draft opened against the requirement's current
+ * revision without one (`checklist-record.ts:plannedAgainst`), since the plan is the run's to write.
+ * It is asked where gate `design_record` is enforced, at the same doors as the design check.
  */
 
 import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
+import { requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
@@ -28,6 +34,7 @@ import { isBlankPlan } from './transition-evidence.js';
 type Reader = Pick<Tx, 'execute'>;
 
 const PENDING = 'PLAN_APPROVAL_PENDING' satisfies IssueUpdateRefusalCode;
+const REQUIRED = 'PLAN_REQUIRED' satisfies IssueUpdateRefusalCode;
 
 /** Where the issue stands against the checkpoint: when its plan was written and when it last passed approved. */
 export interface PlanCheckpoint {
@@ -106,6 +113,54 @@ export async function refusePlanUnapprovedForBuild(
       : `\`${step}\` waits for plan approval: the plan changed after \`approved\`, so a holder of plans.approve approves it again.`;
   const refusal = gateRefusal(gate, { code: PENDING, path: '/workState/step', detail });
   throw new RefusalError([refusal], PENDING);
+}
+
+/**
+ * Why `step` (build, test or release) waits for a plan written against the requirement the issue
+ * delivers, or null: it delivers none, or its plan names a revision of it.
+ */
+export async function unplannedForBuild(
+  executor: Reader,
+  issueId: string,
+  step: WorkStep,
+): Promise<string | null> {
+  const row = rowsOf<{
+    req_seq: number;
+    current_revision: number | null;
+    planned_revision: number | null;
+    plan: string | null;
+  }>(
+    await executor.execute(sql`
+      SELECT r.req_seq, r.current_revision, i.planned_revision, i.plan
+        FROM issues i JOIN requirements r ON r.id = i.requirement_id
+       WHERE i.id = ${issueId}
+    `),
+  )[0];
+  if (!row) return null;
+  const hasPlan = !isBlankPlan(row.plan);
+  if (hasPlan && row.planned_revision !== null) return null;
+  const key = requirementKey(Number(row.req_seq));
+  const records =
+    row.current_revision === null
+      ? `${key} has no current revision to write it against, so a person accepts one first.`
+      : `saving it records ${key} revision ${row.current_revision} as the one it is written against.`;
+  return hasPlan
+    ? `\`${step}\` waits for a plan written against ${key}: the issue's plan was saved before it was linked to ${key}, so it names no revision. Save the plan again (PATCH /api/issues/:id {plan}); ${records}`
+    : `\`${step}\` waits for a plan: the issue delivers ${key} and has no plan yet. Write it (PATCH /api/issues/:id {plan}); ${records}`;
+}
+
+/** Refuses the move of the work into `step` while `unplannedForBuild` names a missing plan. */
+export async function refuseUnplannedForBuild(
+  executor: Reader,
+  issueId: string,
+  gate: ResolvedGate,
+  step: WorkStep,
+): Promise<void> {
+  if (gate.mode !== 'enforce') return;
+  const detail = await unplannedForBuild(executor, issueId, step);
+  if (detail === null) return;
+  const refusal = gateRefusal(gate, { code: REQUIRED, path: '/plan', detail });
+  throw new RefusalError([refusal], REQUIRED);
 }
 
 function asDate(value: Date | string | null | undefined): Date | null {

@@ -27,7 +27,7 @@ function refusedForTheRecord(): { status: number; body: ProblemBody } {
       given: {},
       record: {
         ...READY,
-        requirement: { gap: "The issue is not linked to a requirement.", fix: "Link it, then write its plan." },
+        requirement: { gap: "The issue is not linked to a requirement.", fix: "Link it to the agreed requirement it delivers." },
       },
     }),
   );
@@ -68,7 +68,7 @@ function coreWith(state: { recordFixed: boolean }): Call[] {
 }
 
 const posted = (calls: Call[]) => calls.filter((c) => c.method === "POST").map((c) => c.body);
-const hotfixBox = () => screen.getByRole("textbox") as HTMLTextAreaElement;
+const hotfixBox = () => screen.getByRole<HTMLTextAreaElement>("textbox");
 
 describe("the checklist form keeps what the person typed", () => {
   it("when the move is refused again for a gap in the record", async () => {

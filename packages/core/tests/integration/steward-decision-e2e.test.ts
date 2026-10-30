@@ -275,8 +275,10 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
   it("refuses an open the kernel's ready check refuses, by its name, and leaves the question open", async () => {
     const issue = await readyDraft(85);
     const q = await asked(issue);
-    // the draft loses its plan revision between the question and its answer
-    await rows(sql`UPDATE issues SET planned_revision = NULL WHERE id = ${issue.id} RETURNING id`);
+    // the draft loses its criteria between the question and its answer
+    await rows(
+      sql`UPDATE issue_criteria SET retired_at = now() WHERE issue_id = ${issue.id} RETURNING id`,
+    );
     const refused = await answer(q.id, { optionId: IDS.open });
     expect([refused.status, refused.json.code]).toEqual([422, 'CHECKLIST_INCOMPLETE']);
     expect(await statusOf(issue.id)).toBe('draft');
@@ -346,7 +348,7 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     ]);
     // each button says what it does to this issue, never that it sends the answer to a run
     expect(answers.map((a) => a.effect)).toEqual([
-      `Opens ${issue.key} as you; its driver plans it from the requirement, plan and criteria the steward prepared.`,
+      `Opens ${issue.key} as you; its driver plans it from the requirement and criteria the steward prepared.`,
       `Keeps ${issue.key} as a draft until its standing moves, with your reason; the steward does not ask again until then.`,
       `Drops ${issue.key} as you, with your reason.`,
     ]);

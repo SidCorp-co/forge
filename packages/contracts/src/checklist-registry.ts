@@ -18,18 +18,18 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 	title: "Issue ready",
 	gates: { machine: "issue", from: ["draft"], to: "open" },
 	design: { flow: "issue-lifecycle", revision: 12, step: "ready-check" },
-	shapes: ["df56d5bf", "31b93801", "bff3a99f"],
+	shapes: ["df56d5bf", "31b93801", "bff3a99f", "4be4999c"],
 	questions: [
 		{
 			id: "requirement",
 			prompt:
 				"Which agreed requirement does this issue deliver, and at which revision?",
-			fix: "Link the agreed requirement it delivers, then write its plan.",
+			fix: "Link the agreed requirement it delivers.",
 			answer: { kind: "text", maxLength: 200 },
 			answeredBy: {
 				by: "record",
 				field: "requirementId",
-				label: "linked requirement and its plan",
+				label: "linked requirement and its revision",
 			},
 			need: { blocking: true },
 		},

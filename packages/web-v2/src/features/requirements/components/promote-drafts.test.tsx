@@ -126,8 +126,8 @@ const GAPS = checklistRefusals(
     given: {},
     record: {
       requirement: {
-        gap: "It is linked to REQ-2, and it has no plan yet.",
-        fix: "Write the issue's plan: saving it records the current revision of REQ-2 as the one it is written against.",
+        gap: "It is linked to REQ-2, which is draft, and an issue can deliver only an agreed or accepted requirement.",
+        fix: "Wait until REQ-2 is agreed, or link the issue to the agreed requirement it delivers instead.",
       },
       criteria: { gap: "The issue has no acceptance criteria.", fix: "Write its numbered acceptance criteria." },
       design: { value: "None: it builds no workflow design." },

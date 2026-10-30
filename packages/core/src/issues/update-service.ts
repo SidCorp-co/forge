@@ -21,7 +21,7 @@ import {
   assertPatternReviewsSettledForIssue,
   catalogOf,
 } from './patterns.js';
-import { refusePlanUnapprovedForBuild } from './plan-checkpoint.js';
+import { refusePlanUnapprovedForBuild, refuseUnplannedForBuild } from './plan-checkpoint.js';
 import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
 import { leaseOriginFor } from './run-holder.js';
@@ -94,6 +94,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const intoBuild = scope && workState?.step && BUILD_STEPS.includes(workState.step) ? scope : null;
   const catalog = intoBuild ? await catalogOf(intoBuild.projectId) : undefined;
   const planGate = intoBuild ? await issueGateOf(intoBuild.projectId, 'plan_approval') : null;
+  const designGate = intoBuild ? await issueGateOf(intoBuild.projectId, 'design_record') : null;
 
   // the box a lease write comes from is stamped on the lease it takes (`run-holder.ts`)
   const writer =
@@ -167,8 +168,12 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(eq(issues.id, issueId))
       .returning({ id: issues.id });
     if (!row) throw notFound('issue not found');
-    // where plan approval is enforced, build waits for approved since the plan's last write (REQ-2
-    // BC-4; issue-lifecycle design-check -> in_progress), asked once this write's own plan is in
+    // build waits for a plan written against the requirement it delivers (ISS-778), then, where plan
+    // approval is enforced, for approved since the plan's last write (REQ-2 BC-4; issue-lifecycle
+    // design-check -> in_progress); both asked once this write's own plan is in
+    if (planCheckpointAsked && designGate && workState?.step) {
+      await refuseUnplannedForBuild(tx, issueId, designGate, workState.step);
+    }
     if (planCheckpointAsked && planGate && workState?.step) {
       await refusePlanUnapprovedForBuild(tx, issueId, planGate, workState.step);
     }

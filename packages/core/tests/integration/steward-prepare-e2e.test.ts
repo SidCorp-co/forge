@@ -1,7 +1,7 @@
 // REQ-48 BC-5, the coordinator's ruling of 2026-10-22: a person is never asked to write a plan or
 // criteria. The steward prepares a stale draft first, as its own acts through the issue's doors:
-// it links the agreed requirement the draft delivers, saves a short plan (recording that
-// requirement's current revision) and writes criteria traced to its BCs, each a checkable statement.
+// it links the agreed requirement the draft delivers and writes criteria traced to its BCs, each a
+// checkable statement. It writes no plan: the run that claims the open issue does (ISS-778).
 // A prepared draft is asked open, recommending open. Where no agreed requirement fits, the steward
 // asks link (its candidates), requirement or drop, and the answer acts: link links the draft and has
 // it diagnosed again, which prepares it and asks open, under the same daily budget; requirement
@@ -85,7 +85,6 @@ const prepare = (
   args: {
     issue: key,
     requirement,
-    plan: 'Deliver the saved board the feedback reports missing, as BC-1 reads it.',
     criteria: [{ statement, bc: 'BC-1' }],
   },
 });
@@ -180,28 +179,26 @@ afterAll(async () => {
 });
 
 describe('the steward prepares a draft before it asks anything (REQ-48 BC-5)', () => {
-  it('links the agreed requirement, saves the plan at its revision and traces the criteria, then asks open', async () => {
+  it('links the agreed requirement and traces the criteria, writing no plan, then asks open', async () => {
     const req = await agreedRequirement(901);
     const issue = await draftIssue(101);
     const results = await diagnose(issue, [prepare(issue.key, req), decide(issue.key, 'open')]);
     expect(results[0]).toContain(String.raw`\"complete\":true`);
     const row = await issueRow(issue.id);
-    expect(row?.planned_revision).toBe(1);
-    expect(row?.plan).toContain('saved board');
+    // the plan is the run's, written once it is open (ISS-778): the draft opens without one
+    expect([row?.planned_revision, row?.plan]).toEqual([null, null]);
     expect(await criteriaOf(issue.id)).toEqual([
       { statement: 'A reload shows every saved card', code: 'BC-1' },
     ]);
     const acts = await actsOn(lastRunId);
     expect(acts.map((a) => a.door)).toEqual([
       `POST /api/projects/${projectId}/requirements/${req}/issues`,
-      `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
       `POST /api/projects/${projectId}/steward-runs/${lastRunId}/decisions`,
     ]);
     // each write is undone through its own door
-    expect(acts.slice(0, 3).map((a) => (a.undo as Doc | null)?.door)).toEqual([
+    expect(acts.slice(0, 2).map((a) => (a.undo as Doc | null)?.door)).toEqual([
       `DELETE /api/projects/${projectId}/requirements/${req}/issues/${issue.id}`,
-      `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
     ]);
     const { id, step } = await openQuestion(issue.id);
@@ -217,7 +214,7 @@ describe('the steward prepares a draft before it asks anything (REQ-48 BC-5)', (
     const issue = await draftIssue(102);
     await diagnose(issue, [prepare(issue.key, req)]);
     const acts = await actsOn(lastRunId);
-    expect(acts).toHaveLength(3);
+    expect(acts).toHaveLength(2);
     for (const act of [...acts].reverse()) {
       ok(await say('owner', 'POST', at(`/steward-acts/${act.id}/undo`), {}));
     }
@@ -226,7 +223,7 @@ describe('the steward prepares a draft before it asks anything (REQ-48 BC-5)', (
     expect(await criteriaOf(issue.id)).toEqual([]);
   });
 
-  // ISS-618 c4, judged on dev.276: FB-180's run linked ISS-603 to REQ-10, planned it, wrote its
+  // ISS-618 c4, judged on dev.276: FB-180's run linked ISS-603 to REQ-10, wrote its
   // criteria and asked on it, and ISS-603 and REQ-10 each read 0 acts: acts were read by run subject
   it("lists a feedback run's acts on the issue and requirement they changed, each undone there", async () => {
     const req = await agreedRequirement(921);
@@ -245,20 +242,19 @@ describe('the steward prepares a draft before it asks anything (REQ-48 BC-5)', (
       );
     const all = [
       `POST /api/projects/${projectId}/requirements/${req}/issues`,
-      `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
       `POST /api/projects/${projectId}/steward-runs/${lastRunId}/decisions`,
     ];
     expect(new Set(await actsAt(fbKey))).toEqual(new Set(all));
     expect(new Set(await actsAt(issue.key))).toEqual(new Set(all));
     expect(await actsAt(req)).toEqual([all[0]]);
-    // an act read on the issue is undone from the issue: its criteria go, its plan stays
+    // an act read on the issue is undone from the issue: its criteria go, its link stays
     const onIssue = ok(await say('owner', 'GET', at(`/steward-acts?subject=${issue.key}`)))
       .acts as Doc[];
-    const criteria = onIssue.find((a) => a.door === all[2]);
+    const criteria = onIssue.find((a) => a.door === all[1]);
     ok(await say('owner', 'POST', at(`/steward-acts/${criteria?.id}/undo`), {}));
     expect(await criteriaOf(issue.id)).toEqual([]);
-    expect((await issueRow(issue.id))?.plan).toContain('saved board');
+    expect((await issueRow(issue.id))?.requirement_id).not.toBeNull();
     const after = ok(await say('owner', 'GET', at(`/steward-acts?subject=${issue.key}`)))
       .acts as Doc[];
     expect(after.find((a) => a.id === criteria?.id)?.undoneAt).not.toBeNull();
@@ -319,7 +315,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
       [
         link,
         false,
-        `Links ${issue.key} to ${req} BC-1 as you; the steward then writes its plan and criteria, and asks whether to open it.`,
+        `Links ${issue.key} to ${req} BC-1 as you; the steward then writes its criteria, and asks whether to open it.`,
       ],
       [
         IDS.requirement,
@@ -352,7 +348,6 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     const [rerun] = await runsOf(issue.id);
     expect(rerun).toMatchObject({ state: 'done', turns: 1 });
     expect((await actsOn(rerun?.id ?? '')).map((a) => a.door)).toEqual([
-      `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
       `POST /api/projects/${projectId}/steward-runs/${rerun?.id}/decisions`,
     ]);

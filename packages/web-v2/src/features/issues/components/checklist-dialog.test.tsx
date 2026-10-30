@@ -14,7 +14,7 @@ import { ChecklistDialog, type ChecklistPrompt, checklistFieldsOf, checklistProm
 
 const NO_REQUIREMENT = {
   gap: "The issue is not linked to a requirement.",
-  fix: "Link it to the agreed requirement it delivers, then write its plan.",
+  fix: "Link it to the agreed requirement it delivers.",
 };
 
 /** The refusals the kernel answers for a draft linked to no requirement, as the contract builds them. */

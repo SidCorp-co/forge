@@ -126,7 +126,7 @@ describe('an incomplete issue-ready checklist', () => {
         question: 'requirement',
         field: 'requirementId',
         detail:
-          'Which agreed requirement does this issue deliver, and at which revision? The issue is not linked to a requirement. Link it to the agreed requirement it delivers, then write its plan.',
+          'Which agreed requirement does this issue deliver, and at which revision? The issue is not linked to a requirement. Link it to the agreed requirement it delivers.',
       },
       {
         code: 'CHECKLIST_INCOMPLETE',
@@ -150,10 +150,10 @@ describe('an incomplete issue-ready checklist', () => {
         FROM kernel_refused_moves WHERE entity = 'issue' AND entity_id = ${id} ORDER BY created_at
     `);
     expect(refused).toEqual([
-      { actor_agency: 'human', gate: 'issue_ready', gate_version: 3, n: 2 },
-      { actor_agency: 'human', gate: 'issue_ready', gate_version: 3, n: 2 },
-      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 3, n: 2 },
-      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 3, n: 2 },
+      { actor_agency: 'human', gate: 'issue_ready', gate_version: 4, n: 2 },
+      { actor_agency: 'human', gate: 'issue_ready', gate_version: 4, n: 2 },
+      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 4, n: 2 },
+      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 4, n: 2 },
     ]);
   });
 
@@ -166,22 +166,6 @@ describe('an incomplete issue-ready checklist', () => {
     expect(refusalsOf(res.body).map((r) => r.detail)).toEqual([
       'What are its criteria, each traced to a BC of that revision? Criterion 2 is not traced to a business criterion (BC) that stands at REQ-1 revision 1. Start its line with the BC it proves, as "(REQ-1 BC-<m>) <statement>"; a BC tag anywhere else in the line traces nothing.',
     ]);
-  });
-
-  it('tells a linked issue with no plan to write its plan, and one planned before the link to save it again', async () => {
-    const id = await readyIssue();
-    await db.execute(sql`UPDATE issues SET planned_revision = NULL, plan = NULL WHERE id = ${id}`);
-    const unplanned = await moveThrough('web', id, { toStatus: 'open' });
-    expect(refusalsOf(unplanned.body).map((r) => r.detail)).toEqual([
-      "Which agreed requirement does this issue deliver, and at which revision? It is linked to REQ-1, and it has no plan yet. Write the issue's plan: saving it records the current revision of REQ-1 as the one it is written against.",
-      'What are its criteria, each traced to a BC of that revision? Its 1 criterion cannot be traced yet, because the issue has no plan written against a requirement revision. Answer the requirement question first; then trace each criterion to a business criterion (BC) of that revision.',
-    ]);
-
-    await db.execute(sql`UPDATE issues SET plan = 'Build it.' WHERE id = ${id}`);
-    const stale = await moveThrough('web', id, { toStatus: 'open' });
-    expect(refusalsOf(stale.body)[0]?.detail).toBe(
-      "Which agreed requirement does this issue deliver, and at which revision? It is linked to REQ-1, and its plan was saved before that link, so the plan records no revision of REQ-1. Save the issue's plan again: that records the current revision of REQ-1 as the one it is written against.",
-    );
   });
 });
 
@@ -202,7 +186,7 @@ describe('a complete issue-ready checklist', () => {
     `);
     expect(move).toEqual({
       checklist: 'issue_ready',
-      checklist_version: 3,
+      checklist_version: 4,
       checklist_answers: [
         {
           question: 'requirement',
@@ -296,12 +280,12 @@ describe('a wrong answer is refused by name at every door', () => {
     expect(recorded).toEqual([
       {
         actor_type: 'user',
-        gate_version: 3,
+        gate_version: 4,
         refusals: (res.body.error as { refusals: unknown }).refusals,
       },
       {
         actor_type: 'runner',
-        gate_version: 3,
+        gate_version: 4,
         refusals: (lane.error as { refusals: unknown }).refusals,
       },
     ]);
