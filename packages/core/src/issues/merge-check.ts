@@ -6,7 +6,7 @@
  * against it — and sends its report here. Core refuses a report a merge may not rely on, holds its
  * probes to the ones the criteria its change claims keep now and its standing criteria to their live
  * latest verdicts (`probeRefusals`), asks the issue's approved new patterns for their catalog
- * pages in the change, and records a passing check on the issue: each of its checks once, with its
+ * pages in the change where gate `patterns` is enforced, and records a passing check on the issue: each of its checks once, with its
  * kind and duration, as a check run of the run that sent it (`check-runs.ts`, ISS-474), and the
  * verification record naming them and the catalog pages the change carried (`pattern-entry.ts`). The merge mark then asks for that record (`uncheckedMergeRefusal`).
  *
@@ -25,9 +25,10 @@
  */
 
 import { fastDeliveryOf } from '@forge/contracts/delivery-policy';
-import { gateSays, type ResolvedGate } from '@forge/contracts/gate-profiles';
+import { gateSays, projectGate, type ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { MergeCheckRefusalCode, MergeCheckReport } from '@forge/contracts/merge-check';
 import { db } from '../db/client.js';
+import { gateRefusal } from '../lib/gated.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import type { Actor } from './activity.js';
 import { checkRunSessionOf, writeCheckRuns } from './check-runs.js';
@@ -76,12 +77,21 @@ export async function recordMergeCheck(args: {
     });
     if (lane) throw new RefusalError([lane], 'MERGE_CHECK_REFUSED');
   }
-  const entry = await patternEntryRefusal({
-    issueId: issue.id,
-    projectId: issue.projectId,
-    paths: { commit: report.head, changes: report.touched },
-  });
-  if (entry) throw refuse(entry.code, entry.detail, entry.path);
+  // gate `patterns` refuses merging an uncatalogued new pattern; where the profile turns it off the
+  // check asks no page, as the mark and the move to awaiting_release ask none
+  const patterns = projectGate(held?.document, null, 'patterns');
+  const entry =
+    patterns.mode === 'enforce'
+      ? await patternEntryRefusal({
+          issueId: issue.id,
+          projectId: issue.projectId,
+          paths: { commit: report.head, changes: report.touched },
+        })
+      : null;
+  if (entry) {
+    const said = gateRefusal(patterns, entry);
+    throw refuse(said.code, said.detail, said.path);
+  }
   const session = await checkRunSessionOf({ issue, box: args.box });
   if (!session.ok) throw new RefusalError(session.refusals, 'MERGE_CHECK_REFUSED');
   return db.transaction(async (tx) => {

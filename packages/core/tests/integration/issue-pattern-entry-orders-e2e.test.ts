@@ -393,7 +393,8 @@ describe('on a yolo project, where gate patterns is off', () => {
     );
   });
 
-  it('marks and moves an issue whose approved new pattern has no page in the change, and standard still refuses that mark', async () => {
+  /** An in_progress issue of the yolo project whose new pattern was approved with no page anywhere. */
+  async function yoloWithApprovedPattern(): Promise<string> {
     seq += 1;
     const issue = (
       await createTestIssue(yolo, reviewerId, 9000 + seq, {
@@ -409,16 +410,36 @@ describe('on a yolo project, where gate patterns is off', () => {
       201,
     ).pattern.id as string;
     await approvedPastTheRoute(pattern);
+    return issue;
+  }
+
+  it('marks and moves an issue whose approved new pattern has no page in the change, reading no repository, and standard still refuses that mark', async () => {
+    const issue = await yoloWithApprovedPattern();
     const marked = await mark(issue, [CODE]);
     expect([marked.status, codes(marked)]).toEqual([200, []]);
     const moved = await toAwaitingRelease(issue);
     expect([moved.status, codes(moved)]).toEqual([200, []]);
     expect(await statusOf(issue)).toBe('awaiting_release');
+    // the move asks no page under the gate, so it reads none from the repository either
+    expect(host.reads).toEqual([]);
 
     const standard = await inProgress();
     const held = await named(standard);
     ok(await approve(standard, held));
     const refused = await mark(standard, [CODE]);
+    expect(codes(refused)).toEqual(['PATTERN_ENTRY_MISSING']);
+    expect(detail(refused)).toContain('Gate patterns is enforced');
+  });
+
+  it('records a merge check whose change carries no page, and standard still refuses that check naming the gate', async () => {
+    const issue = await yoloWithApprovedPattern();
+    const recorded = await checked(issue, [CODE]);
+    expect([recorded.status, codes(recorded)]).toEqual([201, []]);
+
+    const standard = await inProgress();
+    const held = await named(standard);
+    ok(await approve(standard, held));
+    const refused = await checked(standard, [CODE]);
     expect(codes(refused)).toEqual(['PATTERN_ENTRY_MISSING']);
     expect(detail(refused)).toContain('Gate patterns is enforced');
   });

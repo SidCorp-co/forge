@@ -196,16 +196,22 @@ export async function readIssueMoveFacts(args: {
   const { issue } = args;
   const document = (await readProjectDocument(issue.projectId))?.document;
   const asksForHolder = ASKS_FOR_HOLDER.includes(args.to);
+  const gates = Object.fromEntries(
+    projectGates(document, null).map((g) => [g.id, g]),
+  ) as IssueGates;
+  // the merged guard asks the pages only where gate `patterns` is enforced (`patternsUnderGate`), so
+  // the repository is read for them only there
+  const asksPages = args.to === 'awaiting_release' && gates.patterns.mode === 'enforce';
   return {
     caller: asksForHolder ? await callerBoxOf(args.actorUserId, args.actorDeviceId ?? null) : null,
     holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
-    gates: Object.fromEntries(projectGates(document, null).map((g) => [g.id, g])) as IssueGates,
+    gates,
     admit: {
       permission: personGatePermission(effectiveApprovals(document), 'admit'),
       act: personGateAct(document, 'admit'),
     },
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
-    patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
+    patternEntry: asksPages ? await readMoveEntryFacts(issue) : null,
     catalog: args.to === 'approved' ? await catalogOf(issue.projectId) : null,
     failReturn: asksFailReturn(args.from, args.to) ? await readFailReturn(db, issue) : null,
     filing: args.from === 'draft' && args.to === 'closed' ? await filingAnsweredBy(issue.id) : null,

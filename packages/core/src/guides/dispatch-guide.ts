@@ -143,10 +143,10 @@ approval, design record, review or judge before the landing. For each issue it t
    the base branch and the standing rules.
 3. Push it to the base branch when its build and its own tests are green, the issue's key in the
    commit subject so the mark can read the commit as this issue's.
-4. Record in one go: rate its impact (${guideRef('fast-delivery')}), \`POST /api/issues/:id/merge\`
-   \`{ commit: <landing sha>, target: <base branch> }\`, \`POST /api/issues/:id/transition\`
-   \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`, and a comment saying what shipped;
-   then hand the lease back.
+4. Record in one go. Rate its impact (${guideRef('fast-delivery')}) and mark it,
+   \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <base branch> }\`. Move it,
+   \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`.
+   Comment what shipped, then hand the lease back.
 5. Record a criterion's or a requirement BC's verdict only once it was checked live, after landing.
 
 The kernel holds in this mode as in every other: a legal edge with its reason, \`awaiting_release\`

@@ -172,7 +172,7 @@ or where the issue introduces an approved new pattern, whose catalog page the ch
 of that, where gate `patterns` is enforced, each pattern approved by then must have its page in the
 change at the commit marked, or the mark is refused `PATTERN_ENTRY_MISSING`: a check that ran while
 the pattern waited on its reviewer did not ask. Where a profile turns the gate off (`yolo`), the
-mark asks no page, as the move to `awaiting_release` asks none. A pattern approved after the mark is
+mark asks no page, as neither the merge check nor the move to `awaiting_release` asks one. A pattern approved after the mark is
 asked again against the change this mark names, at its approval and at the move to
 `awaiting_release` (`packages/core/src/issues/pattern-entry.ts`).
 Where one is owed, the commit the mark names — else the one the row or the issue's work evidence
