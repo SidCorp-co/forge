@@ -223,6 +223,21 @@ function firstScreenWords(): string[] {
 
 const all = () => [...opensReadable(), ...oneToolbar(), ...standsAsMarks(), ...stateOnce(), ...firstScreenWords()];
 
+/** Business/Contract is the page's Person/Developer switch now: step ids (contract terms) show on the cards in the Developer view only. */
+const contractIds = () => [...document.querySelectorAll(".react-flow__node-step .wfc-mono")].length;
+function personSpeaksBusiness(): string[] {
+  return contractIds() ? [`C6: the Person view draws ${contractIds()} contract ids on the cards`] : [];
+}
+async function developerSpeaksContract(): Promise<string[]> {
+  const dev = [...document.querySelectorAll<HTMLElement>("[data-testid=record-view-switch] button, [data-testid=record-view-switch] [role=radio]")].find((b) => b.innerText.trim() === "Developer");
+  if (!dev) return phone ? [] : ["C6: no Developer switch in the header"];
+  dev.click();
+  await settle(1200);
+  const wrong = contractIds() === STEPS.length ? [] : [`C6: the Developer view draws ${contractIds()} contract ids, not ${STEPS.length}`];
+  if (document.querySelector("[data-testid=fact-approved]")) wrong.push("C8: the Developer view says the approval twice, as a mark and as a fact");
+  return wrong;
+}
+
 window.__witness = {
   cases: [
     { name: "desktop", width: 1440 },
@@ -231,6 +246,7 @@ window.__witness = {
   ready: () => document.querySelectorAll(".react-flow__node-step, .react-flow__node-band").length > 0 && document.querySelector(".wfc[data-ready=true]") !== null,
   stages: [
     { name: "light", run: async () => (theme("light"), await settle(1200), all()) },
-    { name: "dark", run: async () => (theme("dark"), await settle(), all()) },
+    { name: "dark", run: async () => (theme("dark"), await settle(), [...all(), ...personSpeaksBusiness()]) },
+    { name: "developer", run: async () => (theme("light"), developerSpeaksContract()) },
   ],
 };

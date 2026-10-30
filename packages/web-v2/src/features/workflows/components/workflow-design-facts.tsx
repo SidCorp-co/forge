@@ -365,6 +365,8 @@ function ApprovedFact({ d }: { d: WorkflowDesign }) {
   const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
   const approvedReason = approved ? revisionReason(approved, language) : null;
   const approvedAt = approved?.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined;
+  // not approved is Where it stands' mark, said once (REQ-43 BC-5)
+  if (d.approvedRevision === null) return null;
   return (
     <Fact label={t("workflows.facts.approved")} testId="fact-approved">
       {approved ? (
@@ -378,10 +380,8 @@ function ApprovedFact({ d }: { d: WorkflowDesign }) {
             </span>
           ) : null}
         </span>
-      ) : d.approvedRevision !== null ? (
-        <span>{t("workflows.facts.rev", { r: d.approvedRevision })}</span>
       ) : (
-        <span className="text-muted">{t("workflows.facts.none")}</span>
+        <span>{t("workflows.facts.rev", { r: d.approvedRevision })}</span>
       )}
     </Fact>
   );
