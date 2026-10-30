@@ -2,7 +2,7 @@
 // (`environment-state.ts`): kept beside the project document's schema, which declares the probes.
 
 import { z } from 'zod';
-import { httpsUrl, slug } from './schema.js';
+import { deploymentProviderSchema, httpsUrl, slug } from './schema.js';
 
 const observedIdentity = () => z.string().min(1).max(200);
 const probeIdentity = { url: httpsUrl(), identifies: z.enum(['source', 'artifact']) };
@@ -53,7 +53,7 @@ const recordedEnvironmentStateSchema = z.strictObject({
   ]),
   deployment: z.strictObject({
     id: z.string().min(1).max(100),
-    provider: z.enum(['coolify', 'shopify', 'epodsystem', 'autoflow']),
+    provider: deploymentProviderSchema,
     status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
     at: z.iso.datetime({ offset: true }),
   }),

@@ -411,3 +411,6 @@ export const bindingDocumentSchema = z.strictObject({
 });
 
 export type BindingDocument = z.infer<typeof bindingDocumentSchema>;
+
+/** The providers whose deployment record an environment's state reads (`environment-state-schema.ts`). */
+export const deploymentProviderSchema = z.enum(['coolify', 'shopify', 'epodsystem', 'autoflow']);
