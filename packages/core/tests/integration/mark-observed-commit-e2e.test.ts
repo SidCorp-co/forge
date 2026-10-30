@@ -91,6 +91,30 @@ describe('a mark naming a commit the repository vouches for is observed', () => 
     expect(detailOf(res.body)).toContain('this mark is a merge Forge observed');
   });
 
+  // ISS-766 at 486dcd5a2: marked from its run, again 30 s later, again from a worktree, each one
+  // asserted; a mark the repository vouches for now turns the standing claim into the observed merge
+  it('turns a standing claim into the observed merge when the same commit is marked again (ISS-766)', async () => {
+    await world_();
+    const fix = '486dcd5a'.repeat(5);
+    messages.set(
+      fix,
+      'fix(core): a refused requirement revision names the act that frees the caller (ISS-766)',
+    );
+    const iss766 = await issue(766, 'awaiting_release');
+    await rows(sql`
+      INSERT INTO issue_work_state (issue_id, branch) VALUES (${iss766}, 'fix/iss766-revision-way-out')
+      ON CONFLICT (issue_id) DO UPDATE SET branch = excluded.branch`);
+    // the claim the three earlier marks left: merged_at stamped, no commit observed
+    await rows(
+      sql`UPDATE issues SET merged_at = now() - interval '5 minutes' WHERE id = ${iss766}`,
+    );
+
+    const res = await mark(box, iss766, fix);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await issueRow(iss766))?.merged_commit_sha).toBe(fix);
+    expect(detailOf(res.body)).toContain('this mark is a merge Forge observed');
+  });
+
   it('keeps a commit declaring another issue as the caller’s claim, and says why', async () => {
     await world_();
     const other = 'd5'.repeat(20);
