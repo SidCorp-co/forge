@@ -120,9 +120,10 @@ async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promis
 
 export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): RecordAnswer {
   if (rows.length === 0) {
+    // The criteria are the run's to write, so the mover is told how a run comes to write them.
     return {
       gap: 'The issue has no acceptance criteria.',
-      fix: 'Write numbered criteria, each traced to a business criterion of that revision.',
+      fix: `They are the run's to write: declare a run over this draft (forge-runner run declare), and that run writes them, each line starting with the BC it proves, as "(${p.key ?? 'REQ-<n>'} BC-<m>) <statement>", and then opens it.`,
     };
   }
   const revision = p.key === null ? null : plannedAgainst(p);

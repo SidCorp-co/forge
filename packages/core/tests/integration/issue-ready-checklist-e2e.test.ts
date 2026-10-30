@@ -134,7 +134,7 @@ describe('an incomplete issue-ready checklist', () => {
         question: 'criteria',
         field: 'acceptanceCriteria',
         detail:
-          'What are its criteria, each traced to a BC of that revision? The issue has no acceptance criteria. Write numbered criteria, each traced to a business criterion of that revision.',
+          'What are its criteria, each traced to a BC of that revision? The issue has no acceptance criteria. They are the run\'s to write: declare a run over this draft (forge-runner run declare), and that run writes them, each line starting with the BC it proves, as "(REQ-<n> BC-<m>) <statement>", and then opens it.',
       },
     ];
     for (const door of ['web', 'api', 'agent', 'lane']) expect(seen[door], door).toEqual(expected);
