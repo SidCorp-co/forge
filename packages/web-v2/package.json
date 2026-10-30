@@ -1,6 +1,6 @@
 {
   "name": "web-v2",
-  "version": "0.4.0-dev.378",
+  "version": "0.4.0-dev.379",
   "private": true,
   "type": "module",
   "sideEffects": [

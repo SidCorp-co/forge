@@ -9,6 +9,23 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.379] - 2026-10-30
+
+A release that closes none of its roster is failed, not shipped
+
+### Added
+
+- **A master on a project that runs fast builds directly.** Under gate profile yolo with fast delivery on, it lands, then marks, moves and comments, with no runner, brief or judge first; a yolo mark no longer asks pattern pages.
+
+### Fixed
+
+- **A release that closes none of its issues is failed, not shipped, and its issues are held:** an issue whose close was refused is held from every automatic cut, naming the refusal; an answered open question clears the hold.
+- **A deploy no longer takes away a verdict it carried:** whether the served commit holds a judged one is read from the releases Forge recorded shipping, not a per-process cache; a pair nothing could read is `unread`, never superseded.
+- **A merge mark naming a commit the repository vouches for now reads as observed for every marker.** A run with a recorded branch, or a person, no longer leaves a landed commit as a bare claim.
+- **A release that ships issues still owing criteria now says they ship.** Under an advising release-criteria gate, the warning named the issues as held back while shipping them; it now says each ships owing its criteria, and names the gate.
+- **A marked filing stays on the master's list until a release records it.** It reads as awaiting a release until one ships the merge, then names the release to record it on.
+- **An issue filed for a merge that already shipped now closes on that release.** Recording the shipped release checks that its commit contains the merge, then closes the issue straight from draft, with no new cut or run.
+
 ## [0.4.0-dev.378] - 2026-10-30
 
 Refused requirement revision edits name their way out; merge check names debt

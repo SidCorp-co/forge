@@ -1,1 +1,0 @@
-**A master on a project that runs fast builds directly.** Under gate profile yolo with fast delivery on, it lands, then marks, moves and comments, with no runner, brief or judge first; a yolo mark no longer asks pattern pages.

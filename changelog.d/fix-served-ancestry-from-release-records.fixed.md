@@ -1,1 +1,0 @@
-**A deploy no longer takes away a verdict it carried:** whether the served commit holds a judged one is read from the releases Forge recorded shipping, not a per-process cache; a pair nothing could read is `unread`, never superseded.
