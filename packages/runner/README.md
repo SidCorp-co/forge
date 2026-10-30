@@ -224,8 +224,9 @@ and slug), and changes no tracked file (`crates/runner-workspace/src/orientation
 - **A committed `.forge/orientation.md`** is the repository's own and is left as committed, so pull,
   merge, rebase and checkout move it. `claudeMdExcludes` in the main checkout's
   `.claude/settings.local.json` keeps it, and every worktree's copy, from loading beside this
-  instance's. This is the case of a repository worked from two Forge instances, such as forge-core on
-  dev and on prod. A committed orientation this instance would write byte for byte, imported by the
+  instance's. This is the case of a repository worked from two Forge instances, such as epod or the
+  catalog repositories on dev and on prod. forge-core commits none: its `.forge/.gitignore` keeps
+  the path untracked. A committed orientation this instance would write byte for byte, imported by the
   committed `CLAUDE.md`, gets nothing added.
 - **Every daemon start writes it again** into every bound checkout, under that checkout's provision
   lock (`crates/runner-workspace/src/orientation_record.rs`), so a box that upgrades onto a build

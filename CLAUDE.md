@@ -1,5 +1,3 @@
-@.forge/orientation.md
-
 # Forge
 
 **Constitution: [`docs/VISION.md`](docs/VISION.md)** — what Forge is / is not, why, who, and the

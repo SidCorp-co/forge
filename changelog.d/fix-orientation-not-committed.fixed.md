@@ -1,0 +1,1 @@
+**forge-core commits no Forge orientation:** `.forge/orientation.md` named beta's project in every checkout, so dev sessions searched a project dev core does not hold. Each checkout's runner writes its own instance's orientation into `CLAUDE.local.md`.

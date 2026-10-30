@@ -300,11 +300,12 @@ and `globalThis.fetch` and a bare `fetch` value, plus a stale and a deleted-file
 
 ### Vendored checkers
 
-**`.forge/` is committed, all of it.** archmap is vendored there (`.forge/archmap/`) and the CI job
+**`.forge/` is committed, all of it but the orientation**, which names one Forge instance's
+project and is written per checkout into `CLAUDE.local.md` by the runner. archmap is vendored there (`.forge/archmap/`) and the CI job
 runs that copy, so a contributor without a global install and the gate are held to the same reviewed
 version — bump with `archmap install --force` and commit the result. `.forge/.gitignore` is the only place an exception may be declared,
 and it carries the reason; a blanket `.forge/` in `.git/info/exclude` is a **local** rule teammates
-never see, and it is why `orientation.md` went uncommitted for months.
+never see.
 
 The vendored shim must stay mode `100755` — `git ls-files -s .forge/archmap/archmap` to check. A shim
 committed `100644` fails the job with permission denied, not with a violation.

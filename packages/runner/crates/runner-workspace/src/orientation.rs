@@ -9,9 +9,9 @@
 //!
 //! What it writes names ONE Forge instance (its projectId and slug), so it is
 //! per-checkout and never something the repository's own history should carry:
-//! the same repository can be worked from two Forge instances (forge-core, epod
-//! and the catalog repositories commit a `CLAUDE.md` importing
-//! `@.forge/orientation.md` and an orientation naming the prod project). So the
+//! the same repository can be worked from two Forge instances (epod and the
+//! catalog repositories commit a `CLAUDE.md` importing `@.forge/orientation.md`
+//! and an orientation naming the prod project; forge-core commits none). So the
 //! orientation lives off every tracked path, and no tracked file is changed:
 //!
 //!   - `CLAUDE.local.md` of the main checkout holds the orientation itself,

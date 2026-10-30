@@ -1,7 +1,7 @@
-# Everything in .forge/ is committed — the registry, the baselines, the vendored
-# checkers, and the orientation that CLAUDE.md imports on its first line. A fresh
-# clone must be held to the same rules as this one, so nothing here is machine-local
-# by default, and this file is the only place an exception may be declared.
+# Everything in .forge/ is committed — the registry, the baselines and the vendored
+# checkers. A fresh clone must be held to the same rules as this one, so nothing here
+# is machine-local by default, and this file is the only place an exception may be
+# declared.
 #
 # A trailing comment on a pattern line becomes part of the pattern, so each
 # exception gets its own line above it.
@@ -12,3 +12,10 @@ knowledge.json
 
 # Anything a tool writes per machine.
 *.local.*
+
+# The Forge orientation names one Forge instance's project (its id and slug), and this
+# repository is worked from two: beta and dev. A committed one sent every dev checkout
+# to beta's project id, which dev core answers 404 for. The runner writes each
+# checkout's own into CLAUDE.local.md on provision and every refresh
+# (packages/runner/crates/runner-workspace/src/orientation.rs).
+orientation.md
