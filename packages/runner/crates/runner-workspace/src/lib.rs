@@ -11,6 +11,7 @@
 //! - `record_file` — the versioned JSON records `forge-runner status` reads back
 //! - `provision`  — workspace provisioning (clone + skills + .mcp.json) on bind
 //! - `plugin_sync`— device-level shared-skill plugin channel (ISS-739)
+//! - `plugin_source` — the plugin checkout this runner's panes load in place of the registered one
 //! - `refresh`    — fetch + fast-forward before an agent reads the workspace
 //! - `repo_cred`  — the credential a repository is configured to push with, named
 //!   rather than inherited
@@ -28,6 +29,7 @@ pub mod mcp;
 pub mod orientation;
 pub mod orientation_record;
 pub mod pairing;
+pub mod plugin_source;
 pub mod plugin_sync;
 pub mod provision;
 pub mod record_file;

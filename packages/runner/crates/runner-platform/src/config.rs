@@ -117,6 +117,17 @@ pub struct PluginSettings {
     /// (<=10min) startup delay.
     #[serde(default = "default_plugin_poll_interval_secs")]
     pub poll_interval_secs: u64,
+    /// A plugin marketplace checkout on this box that every pane this runner spawns loads
+    /// `plugin_names` from, by `--plugin-dir`, in place of the plugin of the same name registered
+    /// in the Claude config dir it shares with other runners. Absent, panes load what is
+    /// registered there. `runner_workspace::plugin_source` resolves it and refuses a path that is
+    /// not such a checkout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkout: Option<PathBuf>,
+    /// The branch on `checkout`'s `origin` the sweep keeps that checkout fast-forwarded to.
+    /// Absent, the sweep leaves the checkout where its owner put it. Needs `checkout`.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
 }
 
 fn default_plugin_auto_update() -> bool {
@@ -179,6 +190,8 @@ impl Default for PluginSettings {
             pinned_ref: None,
             auto_update: default_plugin_auto_update(),
             poll_interval_secs: default_plugin_poll_interval_secs(),
+            checkout: None,
+            git_ref: None,
         }
     }
 }
@@ -466,6 +479,31 @@ mod tests {
         assert!(err.contains(CONFIG_DIR_ENV), "{err}");
         assert!(err.contains("cfg/forge-runner"), "{err}");
         assert!(named_dir(Some(OsString::from("cfg"))).is_err());
+    }
+
+    #[test]
+    fn a_plugins_block_with_no_checkout_reads_none_and_writes_none_back() {
+        let cfg: Config = toml::from_str("[plugins]\nenabled = true\n").unwrap();
+        assert_eq!(cfg.plugins.checkout, None);
+        assert_eq!(cfg.plugins.git_ref, None);
+        let saved = toml::to_string_pretty(&cfg).unwrap();
+        assert!(
+            !saved.contains("checkout") && !saved.contains("ref ="),
+            "{saved}"
+        );
+    }
+
+    #[test]
+    fn a_plugins_checkout_and_ref_read_from_the_keys_an_operator_writes() {
+        let raw = "[plugins]\ncheckout = \"/srv/forge-plugin-dev\"\nref = \"dev\"\n";
+        let cfg: Config = toml::from_str(raw).unwrap();
+        assert_eq!(
+            cfg.plugins.checkout.as_deref(),
+            Some(std::path::Path::new("/srv/forge-plugin-dev"))
+        );
+        assert_eq!(cfg.plugins.git_ref.as_deref(), Some("dev"));
+        let saved = toml::to_string_pretty(&cfg).unwrap();
+        assert!(saved.contains("ref = \"dev\""), "{saved}");
     }
 
     #[test]
