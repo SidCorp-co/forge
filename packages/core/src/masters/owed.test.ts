@@ -445,3 +445,15 @@ describe('stewardAsksLine: the items a decision answers an ask on', () => {
     expect(line).toContain('or such a decision answers it, one with a date until that date');
   });
 });
+
+// ISS-774: every merge the line lists is owed because its commit names no issue, so the line asks
+// for the act the mark takes for exactly that commit, never one a subject check refuses
+describe('owedLine: a filing is asked for as the mark takes it', () => {
+  it('names the mark door and the rule that takes a merge naming no issue', () => {
+    const filing = { number: 1233, commit: 'd'.repeat(40), title: 'Archived project', url: null };
+    const line = owedLine({ ...none, filings: [filing] });
+    expect(line).toContain('issues/<id>/merge -X POST');
+    expect(line).toContain('The mark takes a merge listed here as the landing of the one issue');
+    expect(line).toContain('a commit naming one issue is never another');
+  });
+});

@@ -342,6 +342,9 @@ naming its own rule before the green counts.
    in \`commit\`, never only in \`note\`: it reads as asserted rather than observed, and the release
    places the issue by that commit. A commit named only in the note is no claim. To correct a mark,
    \`DELETE /api/issues/:id/merge\` clears it first. A merge mark moves no status.
+   A commit core reads is this issue's when its subject declares the key, or it is refused
+   \`COMMIT_NOT_THIS_ISSUE\`; a merge the master's pass lists as owed a filing names no issue, so
+   the issue filed for it is marked at that merge's commit, one issue answering each.
    Where a merge check is owed, the mark is refused \`MERGE_CHECK_MISSING\` until a passing one is
    recorded at the commit it marks (the commit named, else the one the issue records).
    Where the project declares the merge check, it is then refused \`MERGE_REVIEW_MISSING\` until a

@@ -10,7 +10,8 @@
  * route reads a landing with (`commit-landing.ts:readCommitLanding`, `declaredIssueSeqs`), or it
  * names the change request it merged (`See merge request …!12`, `Merge pull request #12`, `(#12)`)
  * and that request links the issue (REQ-63 BC-4: one request delivers every issue it names). The
- * request Forge merged itself is named by the merge, not by its message. Anything else is refused by
+ * request Forge merged itself is named by the merge, not by its message. A mark naming the commit of
+ * a merge its project owes a filing for, declaring no issue, answers that filing (ISS-774). Anything else is refused by
  * name, with the commit and the reason, and recorded on the issue (`recordRefusedStamp`).
  */
 
@@ -24,6 +25,7 @@ import { logger } from '../lib/logger.js';
 import { insertActivityRow } from './activity-log.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 import { observedMergesForIssue } from './merge-record.js';
+import { owedFilingOfMark } from './owed-merges.js';
 import {
   declaredIssueSeqs,
   type HostCommit,
@@ -35,7 +37,7 @@ import {
 } from './ports.js';
 
 export type MergeIdentity =
-  | { holds: true; by: 'subject' | 'change-request' }
+  | { holds: true; by: 'subject' | 'change-request' | 'filing' }
   | { holds: false; code: CommitLandingRefusalCode; detail: string };
 
 /** The activity a refused stamp writes on the issue it would have stamped. */
@@ -123,11 +125,16 @@ async function linkedThrough(
 /**
  * The judge of one merge commit for each issue a change request would stamp from it, reading the
  * commit from the host at most once. `mergedRequestId` is the stored request Forge merged itself.
+ * `markNamed` is set only where a mark names this commit for the issue: a merge the project
+ * owes a filing for, whose commit declares no issue, is then the marking issue's
+ * (`owed-merges.ts:owedFilingOfMark`, ISS-774). A stamp a request's links ask for never reads it, so a
+ * sibling request sharing an unlinked merge's commit stamps nothing through it.
  */
 export function mergeIdentityOf(args: {
   projectId: string;
   commitSha: string;
   mergedRequestId?: string | null;
+  markNamed?: boolean;
 }): (issueId: string) => Promise<MergeIdentity> {
   let commit: Promise<CommitRead> | null = null;
   let branches: ReturnType<typeof readLandingBranches> | null = null;
@@ -156,18 +163,29 @@ export function mergeIdentityOf(args: {
       .where(eq(issues.id, issueId))
       .limit(1);
     const seq = row?.issSeq ?? null;
-    if (seq !== null && declaredIssueSeqs(got.read.message, pattern, base).includes(seq)) {
+    const declared = declaredIssueSeqs(got.read.message, pattern, base);
+    if (seq !== null && declared.includes(seq)) {
       return { holds: true, by: 'subject' };
     }
     const named = changeRequestsNamed(got.read.message);
     if (await linkedThrough(issueId, { projectId: args.projectId, numbers: named }, promotes)) {
       return { holds: true, by: 'change-request' };
     }
+    const filing = args.markNamed
+      ? await owedFilingOfMark({
+          projectId: args.projectId,
+          issueId,
+          commit: got.read.sha,
+          declared,
+        })
+      : null;
+    if (filing) return { holds: true, by: 'filing' };
     const key = seq === null ? `issue ${issueId}` : ref(seq);
-    const through =
+    const through = `${
       named.length === 0
         ? 'and it names no change request'
-        : `and no change request it names (${named.map((n) => `#${n}`).join(', ')}) delivers ${key}`;
+        : `and no change request it names (${named.map((n) => `#${n}`).join(', ')}) delivers ${key}`
+    }${args.markNamed ? `, and it is not the merge of a change request this project owes a filing for that declares no issue, which an issue filed for it may answer${declared.length > 0 ? ` (it declares ${declared.map(ref).join(', ')})` : ''}` : ''}`;
     return {
       holds: false,
       code: 'COMMIT_NOT_THIS_ISSUE',
@@ -277,7 +295,11 @@ export async function identifiedNamedMerge(
   merge: { commitSha: string; mergedAt: Date; target: string },
   actor: OutboxActor,
 ): Promise<{ merge: typeof merge } | { refused: Extract<MergeIdentity, { holds: false }> }> {
-  const identity = await mergeIdentityOf({ projectId, commitSha: merge.commitSha })(issueId);
+  const identity = await mergeIdentityOf({
+    projectId,
+    commitSha: merge.commitSha,
+    markNamed: true,
+  })(issueId);
   if (identity.holds) return { merge };
   await db.transaction((tx) =>
     recordRefusedStamp(tx, {

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
+import { owedFilingOfMark } from './owed-merges.js';
 import {
   type CommitHost,
   declaredIssueSeqs,
@@ -15,7 +16,15 @@ import {
 } from './ports.js';
 
 export type CommitLanding =
-  | { ok: true; sha: string; committedAt: Date; branch: string; repository: string }
+  | {
+      ok: true;
+      sha: string;
+      committedAt: Date;
+      branch: string;
+      repository: string;
+      /** The change request whose owed filing this issue answers, where its subject declares none. */
+      filing: number | null;
+    }
   | {
       ok: false;
       code: CommitLandingRefusalCode;
@@ -39,9 +48,10 @@ function unreadable(commit: string, why: string): CommitLanding {
 
 /**
  * Whether `commit` is this issue's landing, read from the project's own repository: the repository
- * resolves it, its subject declares the issue by the rule `commitOwners` places commits with, and
- * the base branch or the branch production deploys from contains it. Every other answer is a refusal
- * by name, and a read that could not be taken is one of them.
+ * resolves it, its subject declares the issue by the rule `commitOwners` places commits with — or it
+ * declares none and is the merge this project owes a filing for, which the issue answers
+ * (`owedFilingOfMark`, ISS-774) — and the base branch or the branch production deploys from contains
+ * it. Every other answer is a refusal by name, and a read that could not be taken is one of them.
  */
 export async function readCommitLanding(
   args: { issueId: string; commit: string },
@@ -92,13 +102,18 @@ export async function readCommitLanding(
   const sha = read.sha.toLowerCase();
 
   const message = read.message;
-  const ref = (await issueRefFormatter(projectId))(issSeq);
+  const refOf = await issueRefFormatter(projectId);
+  const ref = refOf(issSeq);
   const pattern = issueRefPattern(await heldIssuePrefixes(projectId));
-  if (!declaredIssueSeqs(message, pattern, baseBranch).includes(issSeq)) {
+  const declared = declaredIssueSeqs(message, pattern, baseBranch);
+  const filing = declared.includes(issSeq)
+    ? null
+    : await owedFilingOfMark({ projectId, issueId, commit: sha, declared });
+  if (!declared.includes(issSeq) && !filing) {
     const subject = subjectOf(message);
     return refuse(
       'COMMIT_NOT_THIS_ISSUE',
-      `commit ${sha} in ${repository} is not ${ref}'s landing: its subject "${subject}" does not declare ${ref}. A commit is an issue's when its subject names the key in a closing (…) group, opens with it, or merges a branch named for it`,
+      `commit ${sha} in ${repository} is not ${ref}'s landing: its subject "${subject}" does not declare ${ref}${declared.length > 0 ? `; it declares ${declared.map(refOf).join(', ')}` : ', and it is the merge of no change request this project owes a filing for'}. A commit is an issue's when its subject names the key in a closing (…) group, opens with it, or merges a branch named for it; a commit naming no issue is the landing of an issue filed for it only while this project owes a filing for its merge (the master's owed filings), and only one issue answers each`,
     );
   }
 
@@ -114,7 +129,7 @@ export async function readCommitLanding(
       if (Number.isNaN(at.getTime())) {
         return unreadable(commit, `${repository} answered no committer date for ${sha}`);
       }
-      return { ok: true, sha, committedAt: at, branch, repository };
+      return { ok: true, sha, committedAt: at, branch, repository, filing: filing?.number ?? null };
     }
   }
   return refuse(

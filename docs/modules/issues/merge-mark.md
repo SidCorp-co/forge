@@ -132,6 +132,17 @@ default branch delivering no issue is owed the master as "file the issue for mer
 release closes on Forge's own merge or on the agent's mark (`POST /api/issues/:id/merge`), never on
 the report.
 
+Such a merge is owed because its commit names no issue, so the mark cannot judge it by its subject:
+a mark naming it is taken as the landing of the issue marking it, where that issue is of the same
+project, the commit declares no issue, and no other issue answers it already
+(`packages/core/src/issues/owed-merges.ts:owedFilingOfMark`, read by
+`packages/core/src/issues/commit-landing.ts:readCommitLanding` and, for a mark on a project
+releasing through change requests, `packages/core/src/issues/merge-identity.ts:mergeIdentityOf`
+with `markNamed`). Anything else is still refused `COMMIT_NOT_THIS_ISSUE`, and a stamp a request's links
+ask for never reads the rule. `OWED_FILING_DAYS` bounds only what the master is asked: a merge that
+ages out while its filing is in flight is still taken. A mark an unmark withdrew, or one the first
+stamp outranked, answers no filing, so the merge is asked for again.
+
 ## A merge whose answer was lost
 
 Forge's own merge can reach the host and lose its answer: adminhub-fe !1994 merged at 8ab74c9f

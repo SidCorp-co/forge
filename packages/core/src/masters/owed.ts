@@ -181,7 +181,7 @@ function mergesLine(marks: MarkOwed[], filings: FilingOwed[]): string {
   }
   if (filings.length > 0) {
     const merges = filings.map((f) => `!${f.number} at ${f.commit} "${f.title}"`);
-    line += ` ${filings.length} merge${plural(filings.length, '', 's')} into the default branch name${plural(filings.length, 's', '')} no issue (${merges.join('; ')}), and this project's gate profile lets code come first (gate issue_before_code off): file the issue for each merge (\`forge-runner api issues -X POST\`) with the title and release note it ships under, then mark it merged at that commit, as ${method('issue-flow')} (Land, mark, move) says; the mark answers this.`;
+    line += ` ${filings.length} merge${plural(filings.length, '', 's')} into the default branch name${plural(filings.length, 's', '')} no issue (${merges.join('; ')}), and this project's gate profile lets code come first (gate issue_before_code off): file the issue for each merge (\`forge-runner api issues -X POST\`) with the title and release note it ships under, then mark it merged at that commit (\`forge-runner api issues/<id>/merge -X POST -d '{"commit":"<sha>","target":"<branch>"}'\`), as ${method('issue-flow')} (Land, mark, move) says. The mark takes a merge listed here as the landing of the one issue of this project that answers it, though its commit names no issue, and that mark answers this; a merge that ages out of this list while its filing is in flight is still taken. Where a merge's commit names an issue after all, that issue's mark answers it instead: a commit naming one issue is never another's landing.`;
   }
   return line;
 }

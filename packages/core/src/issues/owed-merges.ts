@@ -9,7 +9,8 @@
  *   !N at <sha>" to whoever works it: its run where one holds it, else the project's master;
  * - where the project's gate `issue_before_code` is off (REQ-76 BC-8), a merge into its default branch
  *   that delivers no issue owes the master "file the issue for merge !N at <sha>"; the filing is
- *   answered by an issue whose mark names that commit.
+ *   answered by an issue whose mark names that commit, which the mark takes as that issue's landing
+ *   for the reason it is owed (`owedFilingOfMark`): the commit names no issue to judge it by.
  */
 
 import { eq, type SQL, sql } from 'drizzle-orm';
@@ -70,20 +71,46 @@ export interface OwedMarkRow extends OwedMark {
  * a merge from before the profile let code come first; asking for every such merge in a repository's
  * history would bury the master's pass under work nobody owes. Priced: a merge older than this that
  * nothing filed stays unrecorded; it ends when a filing door reads the profile's own switch-over time.
+ * The window bounds the ASK only: a mark answering a filing (`owedFilingOfMark`) reads no window, so a
+ * filing in flight when its merge ages out is still taken rather than refused as nobody's.
  */
 export const OWED_FILING_DAYS = 14;
 
-/** Every merge the master owes a filing for (REQ-76 BC-8, as owed rather than written by Forge). */
-export async function owedFilings(projectId: string): Promise<OwedFiling[]> {
+type FilingRow = {
+  number: number;
+  commit: string;
+  title: string;
+  url: string | null;
+  merged_at: Date | string;
+};
+
+/**
+ * The project's merges into its default branch owed a filing: no promotion, no change request link,
+ * and no issue of the project answering it, by its observed commit, the filing Forge once wrote, or
+ * a current stamped mark claiming it. A mark an unmark withdrew answers nothing, so its merge is
+ * owed again, and one the first stamp outranked never answered it. `scope` narrows it to the window
+ * the master is asked about, or to one commit judged for the issue `except` names, whose own answer
+ * is the mark it is making again.
+ */
+async function owedFilingRows(
+  projectId: string,
+  scope: { days: number } | { commit: string; except: string },
+): Promise<FilingRow[]> {
   if ((await issueGateOf(projectId, 'issue_before_code')).mode === 'enforce') return [];
   const { defaultBranch, promotes } = await readLandingBranches(projectId);
   if (!defaultBranch) return [];
-  const rows = (await db.execute(sql`
+  const except = 'except' in scope ? sql`AND fi.id <> ${scope.except}::uuid` : sql``;
+  const exceptMark = 'except' in scope ? sql`AND fai.id <> ${scope.except}::uuid` : sql``;
+  return (await db.execute(sql`
     SELECT p.number, lower(p.merge_commit_sha) AS commit, p.title, p.html_url AS url, p.merged_at
       FROM repo_pull_requests p
      WHERE p.project_id = ${projectId}::uuid AND p.state = 'merged' AND p.base_ref = ${defaultBranch}
        AND p.merge_commit_sha IS NOT NULL
-       AND p.merged_at > now() - make_interval(days => ${OWED_FILING_DAYS})
+       ${
+         'days' in scope
+           ? sql`AND p.merged_at > now() - make_interval(days => ${scope.days})`
+           : sql`AND lower(p.merge_commit_sha) = lower(${scope.commit})`
+       }
        ${
          promotes.length > 0
            ? sql`AND p.head_ref NOT IN (${sql.join(
@@ -95,28 +122,54 @@ export async function owedFilings(projectId: string): Promise<OwedFiling[]> {
        AND NOT EXISTS (SELECT 1 FROM repo_pull_request_issues l WHERE l.pull_request_id = p.id)
        AND NOT EXISTS (
          SELECT 1 FROM issues fi
-          WHERE fi.project_id = p.project_id
+          WHERE fi.project_id = p.project_id ${except}
             AND (lower(fi.merged_commit_sha) = lower(p.merge_commit_sha)
                  OR fi.detector_key = 'merged/' || lower(p.merge_commit_sha)))
        AND NOT EXISTS (
          SELECT 1 FROM activity_log fa JOIN issues fai ON fai.id = fa.issue_id
-          WHERE fai.project_id = p.project_id AND fa.action = ${MARK_RECORD}
-            AND lower(fa.payload ->> 'commit') = lower(p.merge_commit_sha))
+          WHERE fai.project_id = p.project_id ${exceptMark} AND fa.action = ${MARK_RECORD}
+            AND (fa.payload ->> 'stamped')::boolean
+            AND lower(fa.payload ->> 'commit') = lower(p.merge_commit_sha)
+            AND NOT EXISTS (SELECT 1 FROM activity_log ua
+                             WHERE ua.issue_id = fa.issue_id AND ua.action = ${UNMARK_RECORD}
+                               AND ua.created_at >= fa.created_at))
      ORDER BY p.merged_at, p.number
-  `)) as unknown as Array<{
-    number: number;
-    commit: string;
-    title: string;
-    url: string | null;
-    merged_at: Date | string;
-  }>;
-  return rows.map((r) => ({
-    number: Number(r.number),
-    commit: r.commit,
-    title: r.title,
-    url: r.url,
-    mergedAt: new Date(r.merged_at).toISOString(),
-  }));
+  `)) as unknown as FilingRow[];
+}
+
+const filingOf = (r: FilingRow): OwedFiling => ({
+  number: Number(r.number),
+  commit: r.commit,
+  title: r.title,
+  url: r.url,
+  mergedAt: new Date(r.merged_at).toISOString(),
+});
+
+/** Every merge the master owes a filing for (REQ-76 BC-8, as owed rather than written by Forge). */
+export async function owedFilings(projectId: string): Promise<OwedFiling[]> {
+  return (await owedFilingRows(projectId, { days: OWED_FILING_DAYS })).map(filingOf);
+}
+
+/**
+ * The owed filing a mark of `issueId` at `commit` answers, or null: the merge at `commit` is one the
+ * issue's own project owes a filing for, and the commit declares no issue (`declared`, the keys its
+ * subject names by `declaredIssueSeqs`). A filing is the issue filed for a merge that names none, so
+ * its mark cannot be judged by the subject the merge never had; a commit declaring an issue is that
+ * issue's, and a merge another issue of the project already answers is that issue's. The ask's window
+ * is not read here (`OWED_FILING_DAYS`).
+ */
+export async function owedFilingOfMark(args: {
+  projectId: string;
+  issueId: string;
+  commit: string;
+  declared: readonly number[];
+}): Promise<OwedFiling | null> {
+  if (args.declared.length > 0) return null;
+  const [row] = await owedFilingRows(args.projectId, {
+    commit: args.commit,
+    except: args.issueId,
+  });
+  return row ? filingOf(row) : null;
 }
 
 /** Every issue of the project owing its mark for a merged change request, as the master reads them. */

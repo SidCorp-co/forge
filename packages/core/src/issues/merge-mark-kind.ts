@@ -79,7 +79,7 @@ export function describeMergeMark(args: {
   claimedCommit?: string | null;
   landing?: string | null;
   /** Where this call read an `observed` commit from the repository rather than a pull request. */
-  readFrom?: { repository: string; branch: string } | null;
+  readFrom?: { repository: string; branch: string; filing?: number | null } | null;
   /** The branch an `observed` row holds as its target, and the one this call named. */
   target?: string | null;
   claimedTarget?: string | null;
@@ -103,7 +103,7 @@ export function describeMergeMark(args: {
         ? `. \`merged_target\` holds \`${args.target}\`, the branch that merge landed on as Forge read it; \`${args.claimedTarget}\`, which this call named, is recorded as its claim`
         : '';
     const source = args.readFrom
-      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue by its subject and holds it on ${args.readFrom.branch}`
+      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue ${args.readFrom.filing ? `as the filing this project owed for change request ${args.readFrom.filing}, whose subject names no issue,` : 'by its subject'} and holds it on ${args.readFrom.branch}`
       : "read by Forge itself, from its record of the pull request or from the project's repository";
     return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}${retargeted}`;
   }

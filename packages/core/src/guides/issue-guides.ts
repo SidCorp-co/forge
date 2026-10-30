@@ -195,8 +195,10 @@ it, recorded with who and why. A refusal a gate makes names the gate, the profil
 relaxes it. The kernel holds under every profile: \`NO_HOLDER\`, \`NOT_THE_HOLDER\`,
 \`MERGE_NOT_RECORDED\`, \`CLOSE_ONLY_BY_RELEASE\` and \`CLOSE_REQUIRES_SHIPPED\` are never relaxed. A
 failed deploy or a rollback raises a yolo project to standard, and only a person lowers it again
-(\`GATE_PROFILE_RAISED\`). Under yolo a merge onto the base branch naming no issue files one at
-\`open\` with its landing recorded, which its master claims and moves to \`awaiting_release\`.
+(\`GATE_PROFILE_RAISED\`). Where \`issue_before_code\` is off (yolo) a merge onto the base branch naming
+no issue files nothing: the master is owed its filing, listed on its pass for 14 days. It files the issue
+and marks it merged at that merge's commit, which the mark takes as the landing of that one issue though
+the commit names none, after the 14 days too; a commit declaring another issue is never this one's.
 
 **Leaving a park returns to the status it left**, which \`issue_work_state.left_status\` records on the way in — never a guess, and not always \`open\`. That return is the park's own edge: the guard of the status it returns to is not asked again, because it was met when that status was first entered. A park taken at \`awaiting_release\` goes back to \`awaiting_release\`; an answered \`needs_info\` question returns the issue there too (\`pipeline/answer-resume.ts\`). A park that predates the record (migration 0346 found no history to read it from) carries no left status, and a person names where it resumes.
 

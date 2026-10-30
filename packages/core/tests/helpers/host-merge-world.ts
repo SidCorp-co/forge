@@ -29,7 +29,11 @@ export const world = { projectId: '', ownerId: '', token: '', bindingId: '' };
 export const rows = async <T>(query: ReturnType<typeof sql>) =>
   [...(await db.execute(query))] as unknown as T[];
 
-export async function seedWorld(release: Record<string, unknown> | null): Promise<void> {
+/** `extra` adds project-document keys beside `delivery` and `release`, such as a suite's `gates`. */
+export async function seedWorld(
+  release: Record<string, unknown> | null,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
   await truncateAll();
   resetPlanted();
   world.ownerId = (await createTestUser({ verified: true })).id;
@@ -46,6 +50,7 @@ export async function seedWorld(release: Record<string, unknown> | null): Promis
     extra: {
       delivery: { verdictsRequired: false },
       ...(release ? { release } : {}),
+      ...extra,
     } as never,
   });
   const connectionId = randomUUID();
