@@ -45,15 +45,24 @@ export function signoffRefusal(
   return permissionRefusal(facts, permission, act);
 }
 
-/** A revision may be written only while no other revision of the requirement is open. */
+/**
+ * A revision may be written only while no other revision of the requirement is open. The refusal
+ * names the act that frees it, never the one refused for the same reason: a proposal is frozen, so
+ * it is returned (requirements.approve) before it is rewritten, and a draft is rewritten or withdrawn.
+ */
 export function openRevisionRefusal(
   open: { revision: number; state: RevisionState } | null,
 ): RequirementRefusal | null {
   if (!open) return null;
+  const n = open.revision;
+  const way =
+    open.state === 'proposed'
+      ? `requirements.approve returns it (POST …/revisions/${n}/return) or accepts it (POST …/revisions/${n}/accept)`
+      : `rewrite it (PUT …/revisions/${n}) or withdraw it (POST …/revisions/${n}/withdraw)`;
   return {
     code: 'REQUIREMENT_REVISION_OPEN',
     path: '/baseRevision',
-    detail: `revision ${open.revision} is ${open.state}; a requirement has one open revision at a time. Edit or propose that one, or have it accepted or returned first.`,
+    detail: `revision ${n} is ${open.state}, the one open revision; ${way}.`,
   };
 }
 
@@ -88,12 +97,18 @@ export function stateRefusal(
     ? {
         code: 'REQUIREMENT_REVISION_NOT_DRAFT',
         path: '/revision',
-        detail: `revision ${revision} is ${state}; only a draft is edited or proposed. Write a new revision to change what it says.`,
+        detail:
+          state === 'proposed'
+            ? `revision ${revision} is proposed, so frozen; requirements.approve returns it to draft (POST …/revisions/${revision}/return), then PUT …/revisions/${revision} writes it.`
+            : `revision ${revision} is ${state}; only a draft is written. Write a new revision to change what it says (POST …/revisions).`,
       }
     : {
         code: 'REQUIREMENT_REVISION_NOT_PROPOSED',
         path: '/revision',
-        detail: `revision ${revision} is ${state}; only a proposed revision is accepted or returned.`,
+        detail:
+          state === 'draft'
+            ? `revision ${revision} is draft; only a proposed revision is accepted or returned. Propose it first (POST …/revisions/${revision}/propose).`
+            : `revision ${revision} is ${state}; only a proposed revision is accepted or returned.`,
       };
 }
 

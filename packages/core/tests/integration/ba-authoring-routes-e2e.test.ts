@@ -169,6 +169,66 @@ describe('only a draft is written', () => {
   });
 });
 
+describe('a proposed revision is a way out, not a loop', () => {
+  const detailsOf = (body: Body) =>
+    ((body.error as { refusals?: { detail: string }[] } | undefined)?.refusals ?? []).map(
+      (r) => r.detail,
+    );
+
+  it('names the return in both refusals, and the return it names frees the revision', async () => {
+    const req = await agreedRequirement();
+    const write = {
+      reason: 'weekly',
+      criteria: [{ code: 'BC-1', body: 'A clinic downloads its bookings' }],
+    };
+    await ok(
+      api(token, 'POST', at(`/requirements/${req}/revisions`), { baseRevision: 1, ...write }),
+    );
+    await ok(api(token, 'POST', at(`/requirements/${req}/revisions/2/propose`), {}));
+
+    // the loop the caller met: a new revision is refused, and so is the edit it was sent to
+    const opened = await api(token, 'POST', at(`/requirements/${req}/revisions`), {
+      baseRevision: 1,
+      ...write,
+    });
+    const edited = await api(token, 'PUT', at(`/requirements/${req}/revisions/2`), write);
+    const withdrawn = await api(token, 'POST', at(`/requirements/${req}/revisions/2/withdraw`), {
+      reason: 'planted',
+    });
+    for (const refused of [opened, edited, withdrawn]) {
+      expect(detailsOf(refused.body).join(' ')).toContain('POST …/revisions/2/return');
+    }
+    expect(detailsOf(opened.body).join(' ')).not.toContain('PUT …/revisions/2');
+
+    await ok(
+      api(token, 'POST', at(`/requirements/${req}/revisions/2/return`), { reason: 'rework' }),
+    );
+    await ok(api(token, 'PUT', at(`/requirements/${req}/revisions/2`), write));
+  });
+
+  it('names the rewrite and the withdraw for an open draft, and the propose for an accept of it', async () => {
+    const req = await agreedRequirement();
+    await ok(
+      api(token, 'POST', at(`/requirements/${req}/revisions`), {
+        baseRevision: 1,
+        reason: 'weekly',
+        criteria: [{ code: 'BC-1', body: 'A clinic downloads its bookings' }],
+      }),
+    );
+    const second = await api(token, 'POST', at(`/requirements/${req}/revisions`), {
+      baseRevision: 1,
+      reason: 'again',
+      criteria: [{ code: 'BC-1', body: 'A clinic downloads its bookings' }],
+    });
+    expect(detailsOf(second.body).join(' ')).toContain('PUT …/revisions/2');
+    expect(detailsOf(second.body).join(' ')).toContain('POST …/revisions/2/withdraw');
+    const early = await api(token, 'POST', at(`/requirements/${req}/revisions/2/accept`), {
+      reason: 'too early',
+    });
+    expect(detailsOf(early.body).join(' ')).toContain('POST …/revisions/2/propose');
+  });
+});
+
 describe('what the requirement links', () => {
   it('reads a project with no interface as linking no contract, and refuses one by name', async () => {
     const req = await agreedRequirement();

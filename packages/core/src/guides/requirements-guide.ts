@@ -30,7 +30,7 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   only by an explicit act of a person, the assistant or an agent; no read derives one from results.
 - **Each revision's state**: \`draft → proposed → current → superseded\`. \`current\` is the head, the
   revision that was accepted. A requirement holds **one open revision at a time** (a draft or a
-  proposed one): writing a second is \`REQUIREMENT_REVISION_OPEN\`.
+  proposed one): writing a second is \`REQUIREMENT_REVISION_OPEN\`, which names the act that frees it.
 - **The delivery read**, never written: the live issues and each current BC's coverage. An agreed
   requirement whose issues all closed and whose every BC passes still reads \`agreed\` until someone
   moves it, and its standing asks for that move. A BC's coverage is the newest
@@ -70,7 +70,7 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
    ask's \`about\`), and \`unclear\` counts the open ones; an answer reaches it as a decision.
    **edit** rewrites a draft in place, whole: send the criteria list you read back, codes included,
    and a code the draft itself gave keeps that code, as a live code of its base does. Anything past
-   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`. An open draft is **withdrawn** for good with
+   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`; a proposed revision goes back to a draft by \`POST …/requirements/:req/revisions/:n/return { reason }\`, which takes requirements.approve (its author included). An open draft is **withdrawn** for good with
    \`POST …/requirements/:req/revisions/:n/withdraw { reason }\` (its author may; anyone else holds
    requirements.approve), or when a person answers "withdraw" on the steward's question about a stuck
    one; it keeps why, by whom and when, no longer counts as the open revision, and editing or proposing
