@@ -2,6 +2,8 @@ import { pickFields } from '@forge/contracts/projection';
 import type { WorkflowHealthSummary } from '@forge/contracts/workflow-health';
 import {
   DESIGN_HEAD_FIELDS,
+  type DESIGN_VIEWS,
+  type DesignCurrentSummary,
   type DesignRevisionSummary,
   type DesignStepsView,
   type DesignSummaryView,
@@ -67,9 +69,19 @@ function revisionSummaryOf(r: DesignView['revisions'][number]): DesignRevisionSu
   };
 }
 
-export function designSummaryOf(design: DesignView): DesignSummaryView {
+function currentSummaryOf(current: DesignView['current']): DesignCurrentSummary {
+  return {
+    revision: current.revision,
+    stepCount: listIn(current.document, 'steps').length,
+    edgeCount: listIn(current.document, 'edges').length,
+    updatedAt: current.updatedAt,
+  };
+}
+
+function designSummaryOf(design: DesignView): DesignSummaryView {
   return {
     ...pickFields(design, DESIGN_HEAD_FIELDS),
+    current: currentSummaryOf(design.current),
     revisions: design.revisions.map(revisionSummaryOf),
     builds: design.builds,
   };
@@ -78,20 +90,30 @@ export function designSummaryOf(design: DesignView): DesignSummaryView {
 const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
 
-export function designStepsOf(
-  design: DesignView,
-  range: { revision?: number | undefined; from?: number | undefined; to?: number | undefined },
-): DesignStepsView {
+type StepRange = {
+  revision?: number | undefined;
+  from?: number | undefined;
+  to?: number | undefined;
+};
+
+/** The document a steps view reads: a proposed revision by its number, else the current one, which
+ *  is also what it reads when none is named, so a draft never proposed reads as REST's GET reads it. */
+function documentAt(design: DesignView, wanted: number): { revision: number; document: unknown } {
+  const proposed = design.revisions.find((r) => r.revision === wanted);
+  if (proposed) return proposed;
+  if (wanted === design.current.revision) return design.current;
   const held = design.revisions.map((r) => r.revision);
-  const wanted = range.revision ?? held[0];
-  const chosen = design.revisions.find((r) => r.revision === wanted);
-  if (!chosen) {
-    throw badRequest(
+  throw badRequest(
+    `design view steps: workflow ${design.workflowId} holds no revision ${wanted} to read; its current revision ${design.current.revision} reads${
       held.length === 0
-        ? `design view steps: workflow ${design.workflowId} has no proposed revision yet; read its current document with get`
-        : `design view steps: workflow ${design.workflowId} proposed no revision ${wanted}; its revisions are ${held.join(', ')}`,
-    );
-  }
+        ? ', and it has proposed none'
+        : `, and so do its proposed revisions ${held.join(', ')}`
+    }`,
+  );
+}
+
+function designStepsOf(design: DesignView, range: StepRange): DesignStepsView {
+  const chosen = documentAt(design, range.revision ?? design.current.revision);
   const steps = listIn(chosen.document, 'steps');
   const from = range.from ?? 1;
   if ((range.to !== undefined && range.to < from) || (from > 1 && from > steps.length)) {
@@ -118,4 +140,23 @@ export function designStepsOf(
       }),
     },
   };
+}
+
+/** One design read as either door asks for it; a revision or step range bounds the steps view only. */
+export function designReadOf(
+  design: DesignView,
+  view: (typeof DESIGN_VIEWS)[number],
+  range: StepRange,
+) {
+  if (
+    view !== 'steps' &&
+    (range.revision !== undefined || range.from !== undefined || range.to !== undefined)
+  ) {
+    throw badRequest(
+      `design view ${view}: revision, stepFrom and stepTo bound view=steps; send view=steps with them`,
+    );
+  }
+  if (view === 'summary') return designSummaryOf(design);
+  if (view === 'steps') return designStepsOf(design, range);
+  return design;
 }

@@ -48,8 +48,7 @@ import {
   createWorkflow,
   DESIGN_DECISIONS,
   decideDesignAs,
-  designStepsOf,
-  designSummaryOf,
+  designReadOf,
   ignoredByWrite,
   listWorkflowsWithHealthAs,
   proposeDesign,
@@ -100,7 +99,7 @@ const SHAPE = '{ action, projectId, …the fields the action names in the descri
 const DESCRIPTION = `What the product is designed as, and the decisions on it: workflow designs, suggestions and mockups. Reading is open to anyone on the project; a decision (approve, return, accept, reject) is the act of whoever holds its permission — workflow-designs.approve, suggestions.approve, mockups — and the service refuses anyone else by name. Decide only what the person asked you to.
 Workflow designs:
 - design_list { projectId, view? }: every workflow with its design status, revision, approved revision and health.
-- design_get { projectId, workflowId, view?: summary | steps | full, revision?, stepFrom?, stepTo? }: one design, whom it waits on, and \`progress\`: each issue building it, whether an agent works on it now, and when it is likely done.
+- design_get { projectId, workflowId, view?: summary | steps | full, revision?, stepFrom?, stepTo? }: one design, whom it waits on, and \`progress\`: each issue building it, whether an agent works on it now, and when it is likely done. It reads the design as it stands, a draft never proposed included: \`current\` is the working document at its revision (full carries it whole), and steps reads it unless revision names a proposed one.
 - design_create { projectId, body: { baseRevision: null, document } } and design_revise { projectId, workflowId, body: { baseRevision, document, issue? } }: write a workflow document (the revision you read is the base).
 - design_propose { projectId, workflowId, revision, issue? }: propose a revision for approval.
 - design_decide { projectId, workflowId, revision, decision: ${DESIGN_DECISIONS.join(' | ')}, reason? }: a return says why.
@@ -180,12 +179,11 @@ async function design_get(ctx: McpContext, i: Input) {
     await readDesignAs(actorOf(ctx), i.projectId, workflowId),
     `workflow ${workflowId}`,
   );
-  const view =
-    i.view === 'full'
-      ? design
-      : i.view === 'steps'
-        ? designStepsOf(design, { revision: i.revision, from: i.stepFrom, to: i.stepTo })
-        : designSummaryOf(design);
+  const view = designReadOf(design, i.view ?? 'summary', {
+    revision: i.revision,
+    from: i.stepFrom,
+    to: i.stepTo,
+  });
   const wait = design.waitingOn;
   return {
     ...view,

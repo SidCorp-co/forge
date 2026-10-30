@@ -256,7 +256,17 @@ export interface DesignBuild {
 	builtAgainst: number | null;
 }
 
+/** The design's working document as it stands now, at its own revision, proposed or not: a
+ *  draft never proposed has no entry in `revisions`, and this is the document it is redrawn from. */
+export interface DesignCurrentSummary {
+	revision: number;
+	stepCount: number;
+	edgeCount: number;
+	updatedAt: string;
+}
+
 export interface DesignSummaryView extends DesignHead {
+	current: DesignCurrentSummary;
 	revisions: DesignRevisionSummary[];
 	builds: DesignBuild[];
 }

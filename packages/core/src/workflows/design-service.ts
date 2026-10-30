@@ -134,6 +134,12 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
     revision: row.revision,
     proposedRevision: awaiting,
     approvedRevision: row.approvedRevision,
+    // the working document at its own revision, proposed or not: what a redraw of a draft reads
+    current: {
+      revision: row.revision,
+      updatedAt: row.updatedAt.toISOString(),
+      document: storedWorkflow(row),
+    },
     approver,
     canDecide,
     waitingOn: designWaitingOn({

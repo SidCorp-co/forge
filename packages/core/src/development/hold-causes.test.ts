@@ -22,7 +22,7 @@ const GENERIC_GATES = [
 
 /** The verbs a release hold's act may open with: base form, so "<who> · <act>" reads as an instruction. */
 const VERBS = new Set(
-  'judge back make route declare fix take record name clear finish try bring bind settle file write land split decide merge release'.split(
+  'judge back make route declare fix take record name clear finish try bring bind settle file write land split decide merge release run'.split(
     ' ',
   ),
 );

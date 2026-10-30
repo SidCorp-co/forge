@@ -168,7 +168,12 @@ export function requireHeld(
   permission: ProjectPermission,
   act?: string,
 ): void {
-  if (access.role === null) throw noAccess('project');
+  if (access.role === null) {
+    // a non-member holds nothing here, so the refusal names what the call needed and on which project
+    throw forbidden(
+      `not a member of this project: ${act ? `${act} needs` : 'this needs'} ${permission} on project ${access.projectId}, which only a member of it holds`,
+    );
+  }
   const refusal = permissionRefusal(access, permission, act);
   if (refusal) throw new RefusalError([refusal], refusal.code);
 }

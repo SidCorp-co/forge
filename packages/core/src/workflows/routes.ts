@@ -31,7 +31,7 @@ import { readWorkflowHealthAs } from './health-read.js';
 import { listWorkflowsWithHealthAs } from './listed.js';
 import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
 import { listObservations, observationAs, writeObservation } from './observations.js';
-import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
+import { designReadOf, workflowSummaryOf } from './projection.js';
 import { type IgnoredField, ignoredByWrite, readBackOf } from './read-back.js';
 import {
   createWorkflow,
@@ -184,14 +184,6 @@ function answerDesign(c: Context, outcome: DesignOutcome) {
 workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, designView, async (c) => {
   const { id, workflow } = c.req.valid('param');
   const q = c.req.valid('query');
-  if (
-    q.view !== 'steps' &&
-    (q.revision !== undefined || q.stepFrom !== undefined || q.stepTo !== undefined)
-  ) {
-    throw badRequest(
-      'invalid query: revision, stepFrom and stepTo bound view=steps; send view=steps with them',
-    );
-  }
   const design = await egressForRequest(
     c.get('agency'),
     id,
@@ -199,11 +191,13 @@ workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, designView,
     await readDesignAs(writerOf(c), id, workflow),
     `workflow ${workflow}`,
   );
-  if (q.view === 'summary') return c.json(designSummaryOf(design));
-  if (q.view === 'steps') {
-    return c.json(designStepsOf(design, { revision: q.revision, from: q.stepFrom, to: q.stepTo }));
-  }
-  return c.json(design);
+  return c.json(
+    designReadOf(design, q.view ?? 'full', {
+      revision: q.revision,
+      from: q.stepFrom,
+      to: q.stepTo,
+    }),
+  );
 });
 
 const graphQuery = zValidator(
