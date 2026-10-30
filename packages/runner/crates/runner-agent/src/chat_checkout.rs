@@ -420,7 +420,12 @@ mod tests {
             &path,
             &["rev-parse", "--path-format=absolute", "--git-common-dir"],
         );
-        assert_eq!(PathBuf::from(common), path.join(".git"));
+        // git names it in long form (Windows' temp dir is a short `RUNNER~1` name) and through
+        // symlinks resolved (macOS' `/var` is `/private/var`): compared as the same directory
+        assert_eq!(
+            PathBuf::from(common).canonicalize().unwrap(),
+            path.join(".git").canonicalize().unwrap()
+        );
         assert_eq!(
             t.git(&path, &["remote", "get-url", "origin"]),
             t.origin.to_string_lossy(),
