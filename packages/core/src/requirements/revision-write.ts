@@ -57,9 +57,19 @@ export interface RevisionWrite {
   picture?: DraftPicture | undefined;
 }
 
-/** The spec a write stores: the one it gives, else `carried` (the head's, or the draft's own), else none. */
+/** The spec a write stores: the one it gives, else `carried` (the head's, or the draft's own), else none.
+ *  An assumption's `corrected` is derived on every read, so a spec read back and written again
+ *  stores none: the next read derives it from the revision it is then on. */
 export const specOf = (spec: RequirementSpec | undefined, carried?: RequirementSpec | null) =>
-  spec ?? carried ?? {};
+  withoutDerived(spec ?? carried ?? {});
+
+function withoutDerived(spec: RequirementSpec): RequirementSpec {
+  if (!spec.assumptions?.some((a) => a.corrected !== undefined)) return spec;
+  return {
+    ...spec,
+    assumptions: spec.assumptions.map(({ corrected: _derived, ...kept }) => kept),
+  };
+}
 
 /** The reason as stored: its trimmed text, or null where none was given. */
 export const reasonOf = (write: Pick<RevisionWrite, 'reason'>) => write.reason?.trim() || null;
