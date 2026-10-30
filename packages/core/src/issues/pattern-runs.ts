@@ -87,6 +87,33 @@ async function sessionNamed(
   };
 }
 
+/**
+ * The ids `box` declared for its live runs over the issue on the issue's project, oldest first, so a
+ * `run` that names none of them is refused naming the ones it could have sent (an id a judge set for
+ * itself, adminhub-fe ISS-112, 2026-10-30). Null where the issue is gone.
+ */
+async function declaredOver(
+  executor: GateReader,
+  args: { issueId: string; box: string },
+): Promise<{ key: string; declared: string[] } | null> {
+  const [issue] = (await executor.execute(
+    sql`SELECT project_id, iss_seq FROM issues WHERE id = ${args.issueId}`,
+  )) as unknown as Array<{ project_id: string; iss_seq: number }>;
+  if (!issue) return null;
+  const key = canonicalIssueKey(Number(issue.iss_seq));
+  const rows = (await executor.execute(sql`
+    SELECT COALESCE(r.metadata->>'boxRunId', r.id::text) AS declared
+      FROM agent_sessions s
+      JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+     WHERE s.device_id = ${args.box}
+       AND s.project_id = ${issue.project_id}
+       AND s.status NOT IN (${terminalSessionList})
+       AND r.metadata->${RUN_GROUP_METADATA_KEY} @> ${JSON.stringify([key])}::jsonb
+     ORDER BY s.created_at
+  `)) as unknown as Array<{ declared: string }>;
+  return { key, declared: rows.map((r) => r.declared) };
+}
+
 /** The live session holding the issue's lease on `box`, or null where this box holds none. */
 async function leaseSessionOn(
   executor: GateReader,
@@ -128,9 +155,13 @@ export async function runOfCall(
     const named = await sessionNamed(executor, { projectId: args.projectId, box, run });
     if (named && 'session' in named) return { ok: true, value: { box, session: named.session } };
     if (named) return unknownRun(named.refusal);
-    return unknownRun(
-      `\`run\` ${run} is no live session of this box on this project: send the run id this box declared for the run making the call, or core's id for its session or run`,
-    );
+    const over = await declaredOver(executor, { issueId: args.issueId, box });
+    const way = over
+      ? over.declared.length > 0
+        ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call`
+        : `this box has declared no live run over ${over.key} on this project: declare one (\`forge-runner run declare\`), or send core's id for its session or run`
+      : "send the run id this box declared for the run making the call, or core's id for its session or run";
+    return unknownRun(`\`run\` ${run} is no live session of this box on this project; ${way}`);
   }
   return {
     ok: true,

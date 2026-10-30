@@ -115,9 +115,13 @@ async function recordedSession(verdictId: string): Promise<string | null> {
   return r?.run_session_id ?? null;
 }
 
+/** The run test one declares over ISS-112, which stays live: the issue holds one at a time. */
+let judge112 = '';
+
 describe('ISS-777 a judge names its declared run by the id minted for its tree', () => {
   it('records the verdict as the declared qa run when it sends the minted id', async () => {
     const judge = await declareJudge('ISS-112');
+    judge112 = judge.runId;
     // the box binds the dispatched subagent to the run in its own ledger; core is told nothing
 
     const res = await verdict(112, 'iss-112-d65cfcc4');
@@ -149,5 +153,21 @@ describe('ISS-777 a judge names its declared run by the id minted for its tree',
     expect(refusal?.detail).toContain(
       'no live run of this box on this project is declared over ISS-113',
     );
+  });
+
+  // adminhub-fe ISS-112, 2026-10-30: the judge ran with an id it set for itself, as forge-plugin's
+  // printed command asks (`FORGE_SESSION_ID=<an-id-of-its-own>`), and was refused with no way through
+  it('refuses an id the box never declared, listing the live runs it declared over the issue', async () => {
+    const res = await verdict(112, 'iss-112-judge-r3-56952');
+
+    const [refusal] = refusalsOf(res);
+    expect(refusal?.code).toBe('VERDICT_RUN_UNKNOWN');
+    expect(refusal?.detail).toContain(
+      '`run` iss-112-judge-r3-56952 is no live session of this box on this project; the live runs this box declared over ISS-112 on this project are ',
+    );
+    expect(refusal?.detail).toContain(`are ${judge112}: send the one making the call`);
+
+    const sent = await verdict(112, judge112);
+    expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
   });
 });
