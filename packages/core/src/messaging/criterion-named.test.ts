@@ -3,7 +3,12 @@
 // issue's criteria.
 
 import { describe, expect, it } from 'vitest';
-import { criterionNamed, type NamedCriterion, numberCriteria } from './criterion-named.js';
+import {
+  criterionLeadingNumber,
+  criterionNamed,
+  type NamedCriterion,
+  numberCriteria,
+} from './criterion-named.js';
 import type { ForgeRecord } from './forge-record.js';
 
 const CRITERIA: NamedCriterion[] = [
@@ -61,6 +66,30 @@ describe('criterionNamed', () => {
   it('says so where the issue has no criteria', () => {
     const named = criterionNamed('A reload shows every saved card', []);
     expect('why' in named && named.why).toContain('this issue has no criteria yet');
+  });
+});
+
+// the number is all that is read, so a label of any length leads to it (adminhub-api ISS-49,
+// whose criterion 1 is a 2,572-character line forge-plugin quotes whole)
+describe('criterionLeadingNumber', () => {
+  it.each([
+    ['1', 1],
+    [' 12 ', 12],
+    [`1 — ${'GET /api/v1/things, '.repeat(130)}`, 1],
+    ['3. a label', 3],
+  ])('reads %s as %i', (text, n) => {
+    expect(criterionLeadingNumber(text)).toBe(n);
+  });
+
+  it.each([
+    'A reload shows every saved card',
+    '0 — a label',
+    '1 - a label',
+    '1.5 a label',
+    '9'.repeat(450),
+    '1 —',
+  ])('reads no number in %s', (text) => {
+    expect(criterionLeadingNumber(text)).toBeNull();
   });
 });
 

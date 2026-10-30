@@ -11,19 +11,23 @@ already shipped. Paths are the plugin's `src/`, as cached at version 3.36.542.
 When an entry is filed on forge-plugin, delete it here. Delete it too when the plugin no longer
 does what it says.
 
-## `forge record verdict` and `finding` send the criterion's line, clipped
+## `forge record verdict` and `finding` send the criterion's whole line
 
 `flow/record/record.mjs:quoteCriteria` rewrites `--criterion N` to `criterion: N — <the line as it
-stood>`, clipped with an ellipsis where it is long (adminhub-api ISS-85, 2026-10-30:
-`1 — (REQ-8 BC-2) Route … <clipped>…`). Core refused it at both verdict doors under
-`verdict-criterion`: adminhub-fe FB-364 and FB-365, and the adminhub-api judges and builders of
-ISS-49, ISS-83, ISS-84 and ISS-85 (2026-10-29/30, FB-380).
+stood>`, the whole line with nothing cut, into the field where only the number is read. Core refused
+it at both verdict doors under `verdict-criterion`: adminhub-fe FB-364 and FB-365, and the
+adminhub-api judges and builders of ISS-49, ISS-83, ISS-84 and ISS-85 (2026-10-29/30, FB-380). A
+long line was then refused `field-budget` at the comment door instead: adminhub-api ISS-49's
+criterion 1 lists 59 GET paths in 2,572 characters against the 400 every record field holds
+(adminhub-api master, 2026-10-30).
 
 - **Core's half (shipped):** a number leading a label (`1 — <text>`, `1. <text>`) names that
   number, and the label is not read. A criterion's exact line with no number still resolves to its
   number (`messaging/criterion-named.ts:criterionNamed`). Any other text is refused, listing the
-  criteria.
-- **Plugin's half:** send the number, and keep the quote for the heading a person reads.
+  criteria. The label after a leading number is not held to the field budget, nor to the 2,000
+  characters `POST /api/issues/:id/verdicts` caps a line at (`criterionLeadingNumber`).
+- **Plugin's half:** send the number alone in `criterion`, and keep the quote for the heading a
+  person reads.
 
 ## A record writes the lease and its evidence before core has screened it
 

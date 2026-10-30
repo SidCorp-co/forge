@@ -7,6 +7,7 @@ import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
 import { CRITERION_JUDGES } from '@forge/contracts/issue-design';
 import { storefrontDraftIdentitySchema } from '@forge/contracts/verdict-identity';
 import { z } from 'zod';
+import { criterionLeadingNumber } from '../../messaging/criterion-named.js';
 import type { CriterionInput } from './store.js';
 
 const criterionItem = z
@@ -79,8 +80,21 @@ const verdictIdentitySchema = z.discriminatedUnion('kind', [
 
 export const verdictPostSchema = z
   .object({
-    /** The criterion's number, or its exact line as the issue holds it (`messaging/criterion-named.ts`). */
-    criterion: z.union([z.number().int().min(1), z.string().trim().min(1).max(2000)]),
+    /**
+     * The criterion's number, or its exact line as the issue holds it (`messaging/criterion-named.ts`).
+     * A number leading a label names that number, so the label, never read, has no length cap.
+     */
+    criterion: z.union([
+      z.number().int().min(1),
+      z
+        .string()
+        .trim()
+        .min(1)
+        .refine((text) => text.length <= 2000 || criterionLeadingNumber(text) !== null, {
+          message:
+            'a criterion named by its line is at most 2000 characters; name it by its number, or by its number leading the line',
+        }),
+    ]),
     verdict: z.string().trim().min(1).max(32),
     reason: z.string().trim().max(REASON_TEXT_MAX).nullable().optional(),
     identity: verdictIdentitySchema.nullable().optional(),

@@ -52,7 +52,7 @@ beforeEach(async () => {
 });
 
 /** A comment carrying one verdict fence, as `forge record verdict` writes it. */
-const recordVerdict = (criterion: string) =>
+const recordVerdict = (criterion: string, evidence = 'https://ci.example.test/runs/7/judge-log') =>
   api(agent, 'POST', `/api/issues/${issueId}/comments`, {
     body: [
       'The judged criterion passed at the head the review read.',
@@ -61,7 +61,7 @@ const recordVerdict = (criterion: string) =>
       `criterion: ${criterion}`,
       'verdict: pass',
       `commit: ${JUDGED}`,
-      'evidence: https://ci.example.test/runs/7/judge-log',
+      `evidence: ${evidence}`,
       FENCE,
       '',
       '`forge-record: verdict · contract 1`',
@@ -135,7 +135,65 @@ describe('a number leading a label, through the comment door', () => {
   });
 });
 
+// forge-plugin quotes `--criterion 1` as `1 — <the whole line>`, and adminhub-api ISS-49's criterion
+// 1 lists 59 GET paths in 2,572 characters: the comment door refused the record `field-budget`
+// (400) for a label it never reads (adminhub-api master, 2026-10-30)
+const LONG_LABEL = `(REQ-8 BC-1) ${'GET /api/v1/catalog/things/:id/variants, '.repeat(55)}`;
+/** Each refusal row as its rule and, for a budget refusal, the field it names. */
+const refusedRules = (res: ApiResponse) =>
+  ((res.body.error as { refusals?: Array<{ detail: string }> }).refusals ?? []).map((r) => [
+    /\(rule ([\w-]+);/.exec(r.detail)?.[1],
+    /^the `(\w+)` field is \d+ character/.exec(r.detail)?.[1],
+  ]);
+
+describe('a number leading a label past the field budget, through the comment door', () => {
+  it('records `1 — <a label over 2,000 characters>` on criterion 1', async () => {
+    expect(LONG_LABEL.length).toBeGreaterThan(2000);
+    const res = await recordVerdict(`1 — ${LONG_LABEL}`);
+    expect(res.status, said(res)).toBe(201);
+    expect(await recorded()).toEqual([1]);
+  });
+
+  it('records a bare number as before', async () => {
+    const res = await recordVerdict('2');
+    expect(res.status, said(res)).toBe(201);
+    expect(await recorded()).toEqual([2]);
+  });
+
+  it('still refuses a criterion with no leading number over the budget, by `field-budget`', async () => {
+    const res = await recordVerdict(LONG_LABEL);
+    expect(res.status, said(res)).toBe(422);
+    expect(refusedRules(res)).toContainEqual(['field-budget', 'criterion']);
+    expect(await recorded()).toEqual([]);
+  });
+
+  it('still refuses another field over the budget beside a long number-led criterion', async () => {
+    const res = await recordVerdict(
+      `1 — ${LONG_LABEL}`,
+      `https://ci.example.test/runs/7/${'judge-log-'.repeat(50)}`,
+    );
+    expect(res.status, said(res)).toBe(422);
+    expect(refusedRules(res).filter(([rule]) => rule === 'field-budget')).toEqual([
+      ['field-budget', 'evidence'],
+    ]);
+    expect(await recorded()).toEqual([]);
+  });
+});
+
 describe('a criterion named by its exact line, at POST /api/issues/:id/verdicts', () => {
+  it('records a number leading a label over 2,000 characters on that number', async () => {
+    const res = await postVerdict(`1 — ${LONG_LABEL}`);
+    expect(res.status, said(res)).toBe(201);
+    expect(await recorded()).toEqual([1]);
+  });
+
+  it('still refuses a line over 2,000 characters with no leading number', async () => {
+    const res = await postVerdict(LONG_LABEL);
+    expect(res.status, said(res)).toBe(400);
+    expect(said(res)).toContain('name it by its number, or by its number leading the line');
+    expect(await recorded()).toEqual([]);
+  });
+
   it('records a number leading a clipped label on that number', async () => {
     const res = await postVerdict('2 — The board keeps its or…');
     expect(res.status, said(res)).toBe(201);

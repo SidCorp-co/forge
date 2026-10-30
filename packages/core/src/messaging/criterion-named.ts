@@ -40,11 +40,22 @@ export function isCriterionNumber(value: string): boolean {
   return WHOLE_NUMBER.test(value.trim());
 }
 
+/**
+ * The criterion number a `criterion` value leads with — a whole number, or a number leading a label —
+ * or null. What follows the number is never read, so its length is no one's budget (adminhub-api
+ * ISS-49, whose criterion 1 is a 2,572-character line).
+ */
+export function criterionLeadingNumber(text: string): number | null {
+  const squashed = squash(text);
+  const led = WHOLE_NUMBER.test(squashed) ? squashed : NUMBER_LABEL.exec(squashed)?.[1];
+  const number = led === undefined ? 0 : Number(led);
+  return number >= 1 && Number.isSafeInteger(number) ? number : null;
+}
+
 /** The criterion `text` is the exact line of, or why it names none. */
 export function criterionNamed(text: string, criteria: readonly NamedCriterion[]): CriterionNaming {
-  const labelled = NUMBER_LABEL.exec(squash(text));
-  const number = labelled ? Number(labelled[1]) : 0;
-  if (number >= 1 && Number.isSafeInteger(number)) return { n: number };
+  const number = criterionLeadingNumber(text);
+  if (number !== null) return { n: number };
   const given = withoutTag(squash(text));
   const matched = criteria.filter((c) => {
     const own = withoutTag(squash(c.statement));

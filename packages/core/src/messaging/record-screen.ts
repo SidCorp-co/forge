@@ -10,7 +10,7 @@ import {
   type KernelOnlyRecordKind,
   RECORD_EVENT_KINDS,
 } from '@forge/contracts/record-events';
-import { type NamedCriterion, numberCriteria } from './criterion-named.js';
+import { criterionLeadingNumber, type NamedCriterion, numberCriteria } from './criterion-named.js';
 import { verdictEvidenceRefusals } from './evidence-citation.js';
 import {
   FORGE_RECORD_FIELD_BUDGET,
@@ -170,10 +170,14 @@ function refusalFor(field: ForgeRecordField): MessageRefusal {
   };
 }
 
+/** A verdict's `criterion` led by a number names that number; the label after it is never read. */
+const labelUnread = (record: ForgeRecord, field: ForgeRecordField) =>
+  record.kind === 'verdict' && field.key === 'criterion' && criterionLeadingNumber(field.value) !== null;
+
 /** Every field of this record that is past the budget, in the order written. */
 function budgetRefusals(record: ForgeRecord | null): MessageRefusal[] {
   if (!record) return [];
-  return record.fields.filter((f) => f.over > 0).map(refusalFor);
+  return record.fields.filter((f) => f.over > 0 && !labelUnread(record, f)).map(refusalFor);
 }
 
 /**
