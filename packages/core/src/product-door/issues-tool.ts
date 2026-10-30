@@ -9,12 +9,13 @@ import { ISSUES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { z } from 'zod';
 import { readIssueForecast, readProjectForecast } from '../forecast/index.js';
 import { activeIssuePrefix, listIssues, resolveIssueRouteRef } from '../issues/index.js';
-import { egressAs } from '../lib/data-egress.js';
+import { egressAs, egressOr } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { argumentRefusal, need, readingArgument } from '../lib/tool-args.js';
 import { readQuestionsForIssue } from '../questions/index.js';
+import { issueRequirementOf } from '../requirements/index.js';
 import { parseArgs } from './args.js';
 import { forecastViewerOf, readAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
@@ -64,7 +65,7 @@ const SHAPE = '{ action, projectId, issue?, status?, statusNot?, search?, limit?
 
 const DESCRIPTION = `Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none). It reads; it files nothing.
 - action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and \`progress\`. \`pause\` names a wait that holds the whole project, such as no runner online.
-- action=get { projectId, issue }: one issue with its description, the questions it waits on, and \`progress\`.
+- action=get { projectId, issue }: one issue with its description, the questions it waits on, \`progress\`, and \`requirement\`: the requirement it delivers, whichever project of its organization holds it (\`otherProject\` names a sibling's), at its current revision with its spec, its criteria (code and body) and its latest agreed baseline; null where it delivers none.
 - action=create: refused (MCP_FILES_FEEDBACK_NOT_ISSUES). ${ISSUE_CREATE_STEER}`;
 
 async function list(ctx: McpContext, i: Input) {
@@ -118,11 +119,12 @@ async function get(ctx: McpContext, i: Input) {
   const out = await egressAs(readerOf(ctx), i.projectId, 'issue', row, ref);
   if (!out.ok) throw new RefusalError([out.refusal], out.refusal.code);
   const issue = out.value;
-  const [prefix, forecast, agents, questions] = await Promise.all([
+  const [prefix, forecast, agents, questions, delivered] = await Promise.all([
     activeIssuePrefix(i.projectId),
     readIssueForecast(i.projectId, issue.issSeq, forecastViewerOf(ctx, access)),
     agentStatesOf(i.projectId, [issue.id]),
     readQuestionsForIssue(issue.id, ctx.principal.userId),
+    issueRequirementOf(issue.id),
   ]);
   const open = (questions ?? []).filter((q) => q.status === 'open');
   return {
@@ -138,7 +140,28 @@ async function get(ctx: McpContext, i: Input) {
     mergedAt: issue.mergedAt,
     openQuestions: open.map((q) => ({ id: q.id, prompt: q.prompt, blockerKind: q.blockerKind })),
     progress: issueProgress(forecast?.forecast ?? null, agents.get(issue.id) ?? null),
+    requirement: await requirementShown(ctx, delivered.requirement),
   };
+}
+
+/** The requirement the issue delivers, under its own project's data policy; one withheld says why. */
+async function requirementShown(
+  ctx: McpContext,
+  requirement: Awaited<ReturnType<typeof issueRequirementOf>>['requirement'],
+) {
+  if (!requirement) return null;
+  const out = await egressAs(
+    readerOf(ctx),
+    requirement.project.id,
+    'requirement',
+    requirement,
+    requirement.displayKey,
+  );
+  return egressOr(out, {
+    key: requirement.key,
+    displayKey: requirement.displayKey,
+    otherProject: requirement.otherProject,
+  });
 }
 
 function create(): never {

@@ -11,6 +11,7 @@ import type { IssueStatus } from "./issue-machine.js";
 import type { IssueLeaseVerdict } from "./issue-standing.js";
 import type { WorkStep } from "./issue-vocabulary.js";
 import type { MasterStanding } from "./master-standing.js";
+import type { OtherProject } from "./requirements.js";
 import type { Said } from "./said.js";
 import type {
 	Standing,
@@ -481,6 +482,8 @@ export interface RunEvent {
 export interface RunGivenIssue {
 	requirement: {
 		key: string;
+		/** Its project, where it is a sibling project's, not the run's; absent on a run opened before it was recorded. */
+		project?: OtherProject | null;
 		plannedRevision: number | null;
 		currentRevision: number | null;
 	} | null;

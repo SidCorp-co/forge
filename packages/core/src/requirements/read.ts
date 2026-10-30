@@ -201,6 +201,25 @@ export async function listRequirementsAs(
 
 const NO_PERSON: RequirementActor = { userId: '', agency: 'agent' };
 
+/** Every pin of every baseline of the requirement, as `baselineViews` reads them. */
+export function baselinePinRowsOf(requirementId: string) {
+  return db
+    .select({
+      revision: requirementBaselinePins.revision,
+      baselineSeq: requirementBaselinePins.baselineSeq,
+      workflowId: requirementBaselinePins.workflowId,
+      flow: projectWorkflows.flow,
+      designRevision: requirementBaselinePins.designRevision,
+      providerProjectId: requirementBaselinePins.providerProjectId,
+      contractSlug: requirementBaselinePins.contractSlug,
+      contractVersion: requirementBaselinePins.contractVersion,
+      mockupId: requirementBaselinePins.mockupId,
+    })
+    .from(requirementBaselinePins)
+    .leftJoin(projectWorkflows, eq(projectWorkflows.id, requirementBaselinePins.workflowId))
+    .where(eq(requirementBaselinePins.requirementId, requirementId));
+}
+
 function detailRowsOf(requirementId: string) {
   return Promise.all([
     db
@@ -218,21 +237,7 @@ function detailRowsOf(requirementId: string) {
       .from(requirementBaselines)
       .where(eq(requirementBaselines.requirementId, requirementId))
       .orderBy(desc(requirementBaselines.revision), desc(requirementBaselines.seq)),
-    db
-      .select({
-        revision: requirementBaselinePins.revision,
-        baselineSeq: requirementBaselinePins.baselineSeq,
-        workflowId: requirementBaselinePins.workflowId,
-        flow: projectWorkflows.flow,
-        designRevision: requirementBaselinePins.designRevision,
-        providerProjectId: requirementBaselinePins.providerProjectId,
-        contractSlug: requirementBaselinePins.contractSlug,
-        contractVersion: requirementBaselinePins.contractVersion,
-        mockupId: requirementBaselinePins.mockupId,
-      })
-      .from(requirementBaselinePins)
-      .leftJoin(projectWorkflows, eq(projectWorkflows.id, requirementBaselinePins.workflowId))
-      .where(eq(requirementBaselinePins.requirementId, requirementId)),
+    baselinePinRowsOf(requirementId),
     db
       .select({
         id: issues.id,
@@ -253,9 +258,10 @@ function detailRowsOf(requirementId: string) {
 
 type DetailRows = Awaited<ReturnType<typeof detailRowsOf>>;
 
-function baselineViews(
-  baselines: DetailRows[3],
-  pins: DetailRows[4],
+/** Each baseline with the pins it holds, as the requirement's read serves them. */
+export function baselineViews(
+  baselines: readonly (typeof requirementBaselines.$inferSelect)[],
+  pins: Awaited<ReturnType<typeof baselinePinRowsOf>>,
   name: (id: string | null) => string | null,
 ) {
   return baselines.map((b) => ({

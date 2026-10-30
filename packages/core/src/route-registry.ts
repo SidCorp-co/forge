@@ -162,7 +162,7 @@ import { releaseBatchRoutes } from './release-batch/routes.js';
 import { releasePageRoutes } from './release-page/routes.js';
 import { reportQueryRoutes } from './report-queries/routes.js';
 import { reportRoutes } from './reports/routes.js';
-import { requirementRoutes } from './requirements/routes.js';
+import { issueRequirementRoutes, requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
 import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
@@ -343,6 +343,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueActivityRoutes);
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
+  app.route('/api/issues', issueRequirementRoutes);
   app.route('/api/issues', issueLaneRoutes);
   app.route('/api/issues', cleanupIssueRoutes);
   app.route('/api/issues', issuePreviewRoutes);

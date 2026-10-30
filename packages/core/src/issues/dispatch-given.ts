@@ -29,9 +29,11 @@ export async function givenAtDispatch(
   );
   const issues = (await exec.execute(sql`
     SELECT i.id, i.iss_seq, i.planned_revision, r.req_seq, r.current_revision,
+           r.project_id AS req_project_id, rp.slug AS req_slug, rp.name AS req_name,
            w.flow AS builds_flow, w.approved_revision AS builds_revision
       FROM issues i
       LEFT JOIN requirements r ON r.id = i.requirement_id
+      LEFT JOIN projects rp ON rp.id = r.project_id
       LEFT JOIN workflow_builds wb ON wb.issue_id = i.id
       LEFT JOIN project_workflows w ON w.id = wb.workflow_id
      WHERE i.project_id = ${projectId} AND i.iss_seq IN (${list})
@@ -59,6 +61,15 @@ export async function givenAtDispatch(
           ? null
           : {
               key: `REQ-${Number(r.req_seq)}`,
+              // a sibling project's requirement is named with its project, so REQ-n is not read as this one's
+              project:
+                String(r.req_project_id) === projectId
+                  ? null
+                  : {
+                      id: String(r.req_project_id),
+                      slug: String(r.req_slug),
+                      name: String(r.req_name),
+                    },
               plannedRevision: r.planned_revision == null ? null : Number(r.planned_revision),
               currentRevision: r.current_revision == null ? null : Number(r.current_revision),
             },

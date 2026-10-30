@@ -58,6 +58,8 @@ interface DispatchPolicyPort {
 /** A requirement a job's issue delivers, as the design domain loaded it; jobs reads these fields. */
 export interface GivenRequirement {
   key: string;
+  /** The project holding it, whose data policy its text leaves under: a sibling's where the issue delivers one. */
+  projectId: string;
   text: string;
   pins: readonly unknown[];
 }

@@ -189,7 +189,13 @@ export async function buildJobSystemPrompt(input: {
   const pinnedContracts = await contractsPinnedFor(requirement, subject);
   const artifactBlock =
     [
-      await givenToAgent(projectId, 'requirement', requirement?.text ?? null, subject),
+      // a sibling project's requirement leaves under its own project's data policy, not the issue's
+      await givenToAgent(
+        requirement?.projectId ?? projectId,
+        'requirement',
+        requirement?.text ?? null,
+        subject,
+      ),
       await givenToAgent(
         projectId,
         'design',
@@ -212,7 +218,7 @@ export async function buildJobSystemPrompt(input: {
     ),
     'pinned-contract-context',
     await givenToAgent(
-      projectId,
+      requirement?.projectId ?? projectId,
       'requirement',
       requirement ? context.renderPinnedContracts(requirement.key, pinnedContracts) : null,
       subject,

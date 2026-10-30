@@ -407,3 +407,5 @@ requirementRoutes.post(
 requirementRoutes.route('/', requirementLinkRoutes);
 requirementRoutes.route('/', requirementChecklistRoutes);
 requirementRoutes.route('/', requirementVerdictRoutes);
+
+export { issueRequirementRoutes } from './issue-routes.js';

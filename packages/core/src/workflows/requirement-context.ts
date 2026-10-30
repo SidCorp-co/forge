@@ -4,7 +4,11 @@
  * refused by name when it cannot be given at its current revision.
  */
 
-import { type ChangedTrace, changedSincePlan } from '@forge/contracts/requirements';
+import {
+  type ChangedTrace,
+  changedSincePlan,
+  type OtherProject,
+} from '@forge/contracts/requirements';
 import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
 import { RefusalError } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
@@ -54,6 +58,12 @@ export function renderIssueMockups(
 export interface RequirementContextRow {
   requirementId: string;
   key: string;
+  /** The issue it is read through: a requirement of a sibling project is read by its run there. */
+  issueId: string;
+  /** The project holding it. */
+  projectId: string;
+  /** Its project, where it is not the issue's own (a sibling project of the issue's organization). */
+  otherProject: OtherProject | null;
   title: string;
   status: string;
   currentRevision: number | null;
@@ -78,6 +88,9 @@ export interface RequirementContextRow {
 export interface LoadedRequirement {
   requirementId: string;
   key: string;
+  /** The project holding it, whose data policy its text leaves under. */
+  projectId: string;
+  otherProject: OtherProject | null;
   revision: number;
   baselineRevision: number;
   plannedRevision: number | null;
@@ -130,8 +143,13 @@ export function requirementContext(
   const changed = changedSincePlan(row);
   const lines = [
     `## The requirement this issue delivers`,
-    `${row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
+    `${row.otherProject ? `${row.otherProject.slug}/${row.key}` : row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
   ];
+  if (row.otherProject) {
+    lines.push(
+      `It is a requirement of the sibling project ${row.otherProject.slug}, not of this one: a criterion still traces it as \`(${row.key} BC-m)\`, and it reads whole through this issue at \`GET /api/issues/${row.issueId}/requirement\` on this project's credential, never on ${row.otherProject.slug}'s routes.`,
+    );
+  }
   if (row.tldr) lines.push(row.tldr);
   if (row.goal) lines.push(`Goal: ${row.goal}`);
   lines.push(planLine(changed, row.plannedRevision, row.currentRevision, row.changedTraced));
@@ -172,6 +190,8 @@ export function requirementContext(
   return {
     requirementId: row.requirementId,
     key: row.key,
+    projectId: row.projectId,
+    otherProject: row.otherProject,
     revision: row.currentRevision,
     baselineRevision: row.baseline.revision,
     plannedRevision: row.plannedRevision,

@@ -25,6 +25,7 @@ export { feedbackLinksOf } from './feedback-links.js';
 export { nodesOfDesign } from './follow-reads.js';
 export { linkRefusalOn, plannedRevisionFor, requirementOfIssue } from './issue-links.js';
 export { issueNamingOf, namedIssue } from './issue-projects.js';
+export { issueRequirementOf } from './issue-requirement-read.js';
 export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-preview.js';
 export { requirementStandingsOf } from './list-rows.js';
 export type { ProposeDuplicate } from './near-duplicate.js';

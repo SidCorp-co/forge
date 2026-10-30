@@ -128,9 +128,11 @@ export async function issueMockupsOf(issueId: string): Promise<MockupContextRow[
 async function requirementRowOf(issueId: string): Promise<RequirementContextRow | null> {
   const [r] = (await db.execute(sql`
     SELECT r.id, r.req_seq, r.title, r.status, r.current_revision, i.planned_revision, i.plan,
-           rv.state AS head_state, rv.tldr, rv.spec->>'goal' AS goal
+           rv.state AS head_state, rv.tldr, rv.spec->>'goal' AS goal,
+           i.project_id AS issue_project_id, p.id AS project_id, p.slug, p.name
     FROM issues i
     JOIN requirements r ON r.id = i.requirement_id
+    JOIN projects p ON p.id = r.project_id
     LEFT JOIN requirement_revisions rv
       ON rv.requirement_id = r.id AND rv.revision = r.current_revision
     WHERE i.id = ${issueId}
@@ -166,9 +168,16 @@ async function requirementRowOf(issueId: string): Promise<RequirementContextRow 
   ]);
   const first = baselines[0];
   const str = (v: unknown) => (v == null ? null : String(v));
+  const projectId = String(r.project_id);
   return {
     requirementId: id,
     key: requirementKey(Number(r.req_seq)),
+    issueId,
+    projectId,
+    otherProject:
+      projectId === String(r.issue_project_id)
+        ? null
+        : { id: projectId, slug: String(r.slug), name: String(r.name) },
     title: String(r.title),
     status: String(r.status),
     currentRevision: current,

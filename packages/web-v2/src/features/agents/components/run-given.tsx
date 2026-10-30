@@ -35,8 +35,8 @@ function IssueGiven({ issueKey, g, slug }: { issueKey: string; g: RunGivenIssue;
         <Row label={t("runs.given.requirement")}>
           {g.requirement ? (
             <>
-              <Link href={requirementHref(slug, g.requirement.key)} className="font-mono font-semibold text-link hover:underline">
-                {g.requirement.key}
+              <Link href={requirementHref(g.requirement.project?.slug ?? slug, g.requirement.key)} className="font-mono font-semibold text-link hover:underline">
+                {g.requirement.project ? `${g.requirement.project.slug}/${g.requirement.key}` : g.requirement.key}
               </Link>{" "}
               {t("runs.given.revisions", { planned: g.requirement.plannedRevision ?? "–", now: g.requirement.currentRevision ?? "–" })}
             </>

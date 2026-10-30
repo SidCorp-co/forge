@@ -85,6 +85,13 @@ are numbered lines (\`1. …\`), one outcome a reader can check without opening 
 number or a number with no statement is refused \`CRITERIA_TEXT_UNPARSEABLE\`; text with no numbered
 line writes no criteria at all, so read the field back.
 
+The requirement the issue delivers reads through the issue: \`GET /api/issues/:id/requirement\`
+answers its current revision (spec, and each criterion's code and body) and its latest agreed
+baseline, authorised on the issue's project alone. That holds where a sibling project of the
+organization holds the requirement (\`otherProject\` names it, \`displayKey\` reads
+\`<slug>/REQ-n\`), so a credential fenced to the issue's project reads it there and never needs
+the sibling's routes; \`requirement: null\` is an issue delivering none.
+
 A criterion traces a BC of the issue's requirement only where its line begins with the tag:
 \`1. (REQ-n BC-m) <statement>\`, one BC per criterion, uppercase, at the revision the plan was
 written against. The same tag anywhere else in the line traces nothing, so it is refused

@@ -121,7 +121,10 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   \`project.write\` on the requirement's project and \`project.read\` on the issue's, so an agent's
   credential reaches both. Another organization's issue is \`REQUIREMENT_ISSUE_OTHER_ORG\`. It reads as
   \`<project-slug>/<key>\` with \`otherProject\` on the requirement, its verdicts count on its own
-  project's build, and the issue's \`requirement.project\` names the requirement's project.
+  project's build, and the issue's \`requirement.project\` names the requirement's project. The
+  issue's run reads the requirement through the issue, \`GET /api/issues/:id/requirement\` (and
+  \`requirement\` on \`forge_issues get\`), on its own project's credential: its current revision's
+  spec and criteria and its latest baseline, and nothing else of the sibling project.
 - An issue's plan records the revision and the baseline it was written against. A plan written while
   the requirement has no current revision is refused \`REQUIREMENT_REVISION_NOT_CURRENT\`.
 - \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another
