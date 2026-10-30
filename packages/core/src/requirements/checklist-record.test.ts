@@ -175,8 +175,8 @@ describe('the ready checklist, read from the head revision', () => {
     expect(goalAnswers(`first.\nValue: v.\nsecond.`).problem).toBe('first.\nsecond.');
     // an explicit Problem: line wins over unlabelled lines
     expect(goalAnswers(`Value: v.\n${opening}\nProblem: lost.`).problem).toBe('lost.');
-    // a label with no text states nothing, and the unlabelled line still does
-    expect(goalAnswers(`Value:\n${opening}`)).toEqual({ problem: opening });
+    // a label with no text and nothing under it states nothing, and the unlabelled line still does
+    expect(goalAnswers(`Value:\n\n${opening}`)).toEqual({ problem: opening });
   });
 
   it('reads an indented line under a label as that label continuing, never as the problem', () => {
@@ -206,6 +206,63 @@ describe('the ready checklist, read from the head revision', () => {
     const e = judge({ ...ready, head: null });
     expect(e.complete).toBe(false);
     expect(e.gaps.every((g) => g.detail.includes('REQ-7 has no current revision yet.'))).toBe(true);
+  });
+});
+
+// catalog-fe REQ-9 r1 (forge-core-61, 2026-10-29): "Đo bằng:" with four bullets below it was refused // i18n-allow: the label quoted
+// CHECKLIST_INCOMPLETE, the bullets having read as the problem (ISS-770).
+describe('a label with nothing after its colon takes the list below it', () => {
+  const opening = 'Referral managers lose referrals between intake and triage.';
+  const gapsOf = (goal: string) =>
+    checklistRefusals(judge({ ...ready, writtenLang: null, spec: { ...ready.spec, goal } }))
+      .map((r) => r.question)
+      .filter((q) => q !== null && ['problem', 'value', 'measured', 'roadmap'].includes(q));
+
+  it('reads a Vietnamese measure label with bullets as the measure, as written', () => {
+    const goal = 'Vấn đề: a.\nGiá trị: b.\nĐo bằng:\n- một\n- hai\n- ba\n- bốn'; // i18n-allow: Vietnamese labels
+    expect(goalAnswers(goal, 'vi')).toEqual({
+      problem: 'a.',
+      value: 'b.',
+      measured: '- một\n- hai\n- ba\n- bốn', // i18n-allow: Vietnamese measures
+    });
+    expect(gapsOf(goal)).toEqual([]);
+  });
+
+  it('reads English "Value:" with bullets as the value, and every other label the same', () => {
+    expect(goalAnswers('Value:\n- fast\n- cheap\nMeasured by:\n* p95\nRoadmap:\n- now')).toEqual({
+      value: '- fast\n- cheap',
+      measured: '* p95',
+      roadmap: '- now',
+    });
+    expect(goalAnswers('Problem:\n- lost\n- late')).toEqual({ problem: '- lost\n- late' });
+  });
+
+  it('stops at a blank line, and a line after it is unlabelled', () => {
+    expect(goalAnswers('Value:\n- a\n- b\n\nstray.')).toEqual({
+      value: '- a\n- b',
+      problem: 'stray.',
+    });
+  });
+
+  it("keeps a label with text of its own to today's rule", () => {
+    expect(goalAnswers('Value: v.\nunindented.')).toEqual({
+      value: 'v.',
+      problem: 'unindented.',
+    });
+  });
+
+  it('still reads a label followed directly by a label, a blank line or the end as unstated', () => {
+    expect(goalAnswers('Measured by:\nRoadmap: now.')).toEqual({ roadmap: 'now.' });
+    expect(goalAnswers('Measured by:\n\nRoadmap: now.')).toEqual({ roadmap: 'now.' });
+    expect(goalAnswers('Measured by:')).toEqual({});
+    expect(gapsOf(`${opening}\nValue: v.\nMeasured by:\nRoadmap: now.`)).toEqual(['measured']);
+  });
+
+  it('does not count a list under a label in the opening-lines problem', () => {
+    const goal = `${opening}\nValue:\n- every referral reaches a clinician.\nMeasured by:\n- lost referrals per month.`;
+    expect(goalAnswers(goal).problem).toBe(opening);
+    expect(gapsOf(goal)).toEqual([]);
+    expect(goalAnswers('Value:\n- v.\nMeasured by:\n- m.')).not.toHaveProperty('problem');
   });
 });
 

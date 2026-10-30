@@ -88,7 +88,9 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
    criteria, no blocking open question, and a linked workflow design; its kind, out of scope and roadmap
    lane take a recommended answer when unstated. The goal answers the problem, value, measure and lane on
    lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`, and where no \`Problem:\` line
-   states it, the unlabelled lines before the first label do, so adding a label never takes it away; a revision written in
+   states it, the unlabelled lines before the first label do, so adding a label never takes it away; a label's answer
+   sits after its colon on its own line, or, when nothing follows the colon, as the lines directly under it (a list
+   keeps its markers) up to a blank line or the next label; a revision written in
    Vietnamese (\`writtenLang: vi\`) may label them in its own language, ${(['problem', 'value', 'measured', 'roadmap'] as const).map((l) => `\`${GOAL_LABEL_WORDS.vi[l]}:\``).join(', ')},
    and the English labels are read in either. Each blocking gap is
    refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. \`GET …/requirements/:req/checklist\`

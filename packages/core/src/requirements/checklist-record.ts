@@ -48,11 +48,13 @@ function labelPatterns(lang: WrittenLang | null): [GoalLabel, RegExp][] {
  * The goal's labelled lines (`Problem:`, `Value:`, `Measured by:`, `Roadmap:`), read under the labels
  * of the language the requirement is written in and the English ones. A label's text is what follows
  * it on its line, and an indented line directly under it, with no blank line between, continues that
- * text. Where no `Problem:` line states it, every other line (unlabelled and not such a continuation)
+ * text. A label with nothing after its colon takes the non-empty lines below it, indented or not,
+ * as written (list markers kept), up to a blank line or the next label (ISS-770); one followed
+ * directly by a label, a blank line or the end states nothing. Where no `Problem:` line states it, every other line (unlabelled and not such a continuation)
  * states the problem, wherever it stands, so a goal that labels nothing answers the problem alone and
  * adding a `Value:` line above, between or below never takes that answer away (forge-dev REQ-5 r5,
- * 2026-10-28; ISS-732 c1). A line directly under a label that is not indented is the problem, not
- * more of that label.
+ * 2026-10-28; ISS-732 c1). A line directly under a label that has text of its own, and is not
+ * indented, is the problem, not more of that label.
  */
 export function goalAnswers(
   goal: string | null | undefined,
@@ -63,24 +65,29 @@ export function goalAnswers(
   const patterns = labelPatterns(lang ?? writtenLangOfText(text));
   const said: Partial<Record<GoalLabel, string[]>> = {};
   const unlabelled: string[] = [];
-  // The lines the label just read keeps, which an indented line directly below continues.
+  // The lines the label just read keeps, which an indented line directly below continues. A label
+  // with nothing after its colon (`bare`) is continued by every non-empty line below it.
   let open: string[] | null = null;
+  let bare = false;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (line === '') {
       open = null;
+      bare = false;
       continue;
     }
     const hits = patterns.filter(([, pattern]) => pattern.test(line));
     if (hits.length === 0) {
-      if (/^\s/.test(raw) && open !== null) open.push(line);
+      if (open !== null && (bare || /^\s/.test(raw))) open.push(line);
       else {
         unlabelled.push(line);
         open = null;
+        bare = false;
       }
       continue;
     }
     open = null;
+    bare = false;
     for (const [label, pattern] of hits) {
       if ((said[label]?.length ?? 0) > 0) {
         open = []; // a repeated label states nothing, and neither does its continuation
@@ -88,6 +95,7 @@ export function goalAnswers(
       }
       const own = line.replace(pattern, '').trim();
       open = own === '' ? [] : [own];
+      bare = own === '';
       said[label] = open;
     }
   }
@@ -105,6 +113,10 @@ const labelled = (lang: WrittenLang | null, label: GoalLabel) =>
   goalLabelWords(lang, label)
     .map((w) => `"${w}:"`)
     .join(' or ');
+
+/** The fix for a label that stated nothing: its answer sits on the label's line or as a list under it. */
+const LABEL_FIX =
+  "Write it on the label's line, or as a list on the lines directly under it (no blank line between).";
 
 /** What the head revision of a requirement holds, as the ready checklist reads it. */
 export interface ReadyFacts {
@@ -174,10 +186,13 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
     who: personas.length
       ? { value: clipped(personas.join(', ')) }
       : { gap: 'It names nobody it is for.', fix: 'Name at least one persona it is for.' },
-    value: answer(goal.value, goalGap(`the value it gives, after ${labelled(lang, 'value')}`)),
+    value: answer(
+      goal.value,
+      goalGap(`the value it gives, after ${labelled(lang, 'value')}`, LABEL_FIX),
+    ),
     measured: answer(
       goal.measured,
-      goalGap(`how success is measured, after ${labelled(lang, 'measured')}`),
+      goalGap(`how success is measured, after ${labelled(lang, 'measured')}`, LABEL_FIX),
     ),
     criteria: f.criteria.length
       ? {
@@ -219,7 +234,10 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
           gap: 'It states nothing out of scope.',
           fix: 'List what it leaves out, or leave it assumed.',
         },
-    roadmap: answer(goal.roadmap, goalGap(`its roadmap lane, after ${labelled(lang, 'roadmap')}`)),
+    roadmap: answer(
+      goal.roadmap,
+      goalGap(`its roadmap lane, after ${labelled(lang, 'roadmap')}`, LABEL_FIX),
+    ),
   };
 }
 

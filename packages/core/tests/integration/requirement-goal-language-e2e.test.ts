@@ -104,4 +104,30 @@ describe("the agree reads a goal's labels in the language it is written in", () 
       'a line of its own with no label, or after \\"Problem:\\"',
     );
   });
+
+  // ISS-770, catalog-fe REQ-9 r1: "Đo bằng:" with bullets below it read as the problem and the measure unstated
+  it('agrees a goal whose Đo bằng: and Value: stand alone over a list', async () => {
+    const vi = await written(
+      'vi',
+      'Vấn đề: DB test dựng tay.\nGiá trị: chạy được trên máy.\nĐo bằng:\n- bộ test xanh\n- DB sẵn sàng trong vài phút', // i18n-allow: the requirement as written on dev
+    );
+    const agreedVi = await as('POST', `/requirements/${vi}/agree`, { revision: 1, reason: 'ok' });
+    expect(agreedVi.status, JSON.stringify(agreedVi.json)).toBe(200);
+    const en = await written(
+      'en',
+      'Problem: runs share one database.\nValue:\n- every run has its own\nMeasured by: no run breaks another.',
+    );
+    const agreedEn = await as('POST', `/requirements/${en}/agree`, { revision: 1, reason: 'ok' });
+    expect(agreedEn.status, JSON.stringify(agreedEn.json)).toBe(200);
+  });
+
+  it('still refuses a Measured by: followed directly by another label, naming it', async () => {
+    const key = await written(
+      'en',
+      'Problem: runs share one database.\nValue: each has its own.\nMeasured by:\nRoadmap: now.',
+    );
+    const refused = await as('POST', `/requirements/${key}/agree`, { revision: 1, reason: 'ok' });
+    expect([refused.status, refused.json.code]).toEqual([422, 'CHECKLIST_INCOMPLETE']);
+    expect(JSON.stringify(refused.json)).toContain('how success is measured, after');
+  });
 });
