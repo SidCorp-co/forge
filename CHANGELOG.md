@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.383] - 2026-10-30
+
+A goal label with an empty colon takes the list under it
+
+### Fixed
+
+- **A goal label with its answer as a list below it now counts.** A label with nothing after its colon takes the lines under it, up to a blank line or the next label.
+
 ## [0.4.0-dev.382] - 2026-10-30
 
 Memory writes say when they replaced an entry; one entry reads by id
