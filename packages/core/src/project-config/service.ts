@@ -1,7 +1,9 @@
-import { secretRefOf } from '@forge/contracts/project-config';
+import { parseSecretRef, secretRefOf } from '@forge/contracts/project-config';
+import { parseVariableRef } from '@forge/contracts/variables';
 import type { z } from 'zod';
 import type { Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
+import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import {
   encryptSecret,
   getAdapter,
@@ -30,6 +32,7 @@ import {
   type SecretName,
   type StoredDocument,
 } from './store.js';
+import { keysHeld } from './variables-store.js';
 
 export interface Held<T> {
   revision: number;
@@ -312,7 +315,30 @@ export async function writeTestingProfile(input: {
         projectId,
         refs.map((r) => r.ref),
       );
+      const variables = await keysHeld(
+        projectId,
+        refs.flatMap((r) => parseVariableRef(r.ref) ?? []),
+      );
       for (const { path, ref } of refs) {
+        const key = parseVariableRef(ref);
+        if (key !== null) {
+          if (!variables.has(key)) {
+            refusals.push({
+              code: 'VARIABLE_REF_UNKNOWN',
+              path,
+              detail: `${ref} names no variable of this project; add ${key} with POST /api/projects/${projectId}/variables first.`,
+            });
+          }
+          continue;
+        }
+        if (parseSecretRef(ref)?.scope === VARIABLE_SECRET_SCOPE) {
+          refusals.push({
+            code: 'SECRET_SCOPE_RESERVED',
+            path,
+            detail: `${ref} is under \`${VARIABLE_SECRET_SCOPE}\`, the store of the project's variables, reached only by a variable's own key: name it var://<KEY>.`,
+          });
+          continue;
+        }
         if (!present.has(ref)) {
           refusals.push({
             code: 'SECRET_NOT_FOUND',
@@ -386,5 +412,8 @@ export async function putSecret(input: {
 
 export async function listSecretNames(projectId: string) {
   const rows = await drizzleConfigStore.listSecretNames(projectId);
-  return rows.map((r) => ({ ...r, ref: secretRefOf(r.scope, r.name) }));
+  // the variables' values are listed as variables (REQ-80), never as secrets of their own
+  return rows
+    .filter((r) => r.scope !== VARIABLE_SECRET_SCOPE)
+    .map((r) => ({ ...r, ref: secretRefOf(r.scope, r.name) }));
 }

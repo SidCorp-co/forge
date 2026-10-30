@@ -6,6 +6,7 @@ import {
   ISSUE_TERMINAL_STATUSES,
 } from '@forge/contracts/issue-machine';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
+import { VARIABLE_REF } from '@forge/contracts/variables';
 import { z } from 'zod';
 import type { IssueStatus } from '../db/schema.js';
 import { SHORT_NAME, sized, slug, unique } from './schema.js';
@@ -64,6 +65,8 @@ export const policyDocumentSchema = z.strictObject({
 export type PolicyDocument = z.infer<typeof policyDocumentSchema>;
 
 const secretRef = () => z.string().regex(/^secret:\/\/[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/);
+// a service's credential may instead name a stored variable, so DB and S3 credentials exist once (REQ-80 BC-7)
+const credentialRef = () => z.union([secretRef(), z.string().regex(VARIABLE_REF)]);
 
 export const testingProfileSchema = z.strictObject({
   $schema: z.literal(`${SCHEMA_BASE}/testing-profile-v1.json`),
@@ -93,7 +96,7 @@ export const testingProfileSchema = z.strictObject({
       z.string().regex(SHORT_NAME),
       z.strictObject({
         access: z.enum(['readonly', 'readwrite']),
-        credential: secretRef(),
+        credential: credentialRef(),
         endpoint: z.string().min(1).max(300).optional(),
       }),
     ),

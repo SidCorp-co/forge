@@ -53,7 +53,7 @@ export async function resolveForReviewRun(args: {
     args.refs,
   );
   if (!refs.ok) return refs;
-  const values = await decryptedValues(run.projectId, profileId, refs.wanted);
+  const values = await decryptedValues(run.projectId, profileId, refs.wanted, environment);
   if (!values.ok) return values;
 
   await projectConfigPorts().recordRunSecretResolve({

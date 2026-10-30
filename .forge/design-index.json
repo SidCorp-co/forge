@@ -320,6 +320,10 @@
   "REQ-79": {
    "title": "Fast delivery: issues ship app-alive; cleanup runs apart, on its own capacity",
    "status": "agreed"
+  },
+  "REQ-80": {
+   "title": "Forge holds and applies each project's environment variables, per environment, with audit and drift",
+   "status": "agreed"
   }
  },
  "workflows": {
@@ -507,6 +511,30 @@
     "threshold",
     "two-paths",
     "verdicts"
+   ]
+  },
+  "environment-variables": {
+   "title": "Environment variables: hold, audit, hand to runs",
+   "steps": [
+    "agent-propose",
+    "agent-read",
+    "audit",
+    "decide",
+    "decide-check",
+    "door-resolve",
+    "edit",
+    "list",
+    "open-page",
+    "profile-check",
+    "profile-ref",
+    "proposal-held",
+    "reveal",
+    "reveal-check",
+    "run-ask",
+    "run-check",
+    "run-deliver",
+    "run-read",
+    "write-check"
    ]
   },
   "feedback-lifecycle": {

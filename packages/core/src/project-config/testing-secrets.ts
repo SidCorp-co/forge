@@ -22,7 +22,7 @@ const JOB_CREDENTIAL_SHAPE =
   'The credential that reaches this route is the one a running job holds: issued to the box the job runs on and bound to the job’s project, so it names exactly one live job; or a box’s own credential with the id of a run a master on that box declared (its run id, or core’s session or run id for it) in place of the job id.';
 
 /** The one live job this credential names, which must be the job asked about. */
-async function credentialJob(
+export async function credentialJob(
   principal: PatPrincipal,
   asked: string,
 ): Promise<Refused | { ok: true; jobId: string }> {
@@ -137,7 +137,7 @@ export async function resolveTestingSecrets(args: {
   if (!refs.ok) return refs;
   const { wanted } = refs;
 
-  const values = await decryptedValues(job.projectId, profileId, wanted);
+  const values = await decryptedValues(job.projectId, profileId, wanted, environment);
   if (!values.ok) return values;
   const { secrets } = values;
 
@@ -161,7 +161,7 @@ export async function resolveTestingSecrets(args: {
  * next sweep, not at `forge-runner run declare` (catalog-fe ISS-39, run ff22a502, 2026-10-30, read
  * before that sweep and closed as never started).
  */
-function boxCallRefusal(refused: Refused, asked: string): Refused {
+export function boxCallRefusal(refused: Refused, asked: string): Refused {
   if (refused.refusal.code !== 'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL') return refused;
   if (asked === SELF_JOB) {
     return refuse(
@@ -184,7 +184,7 @@ function boxCallRefusal(refused: Refused, asked: string): Refused {
  * goes out on it (adminhub-api FB-379, run 1951bc09, 2026-10-30: a qa run's read went out on a
  * credential with no box and was told only the generic shape).
  */
-async function boxlessCallRefusal(
+export async function boxlessCallRefusal(
   refused: Refused,
   principal: PatPrincipal,
   args: { jobId: string; profileId: string },
@@ -200,7 +200,7 @@ async function boxlessCallRefusal(
   );
 }
 
-const DECLARED_RUN_REFUSAL = {
+export const DECLARED_RUN_REFUSAL = {
   ended: 'TESTING_SECRETS_RUN_ENDED',
   queued: 'TESTING_SECRETS_RUN_NOT_ADMITTED',
   foreign: 'TESTING_SECRETS_FOREIGN_RUN',
@@ -266,7 +266,7 @@ async function resolveForDeclaredRun(args: {
     args.refs,
   );
   if (!refs.ok) return refs;
-  const values = await decryptedValues(run.projectId, profileId, refs.wanted);
+  const values = await decryptedValues(run.projectId, profileId, refs.wanted, environment);
   if (!values.ok) return values;
 
   await projectConfigPorts().recordRunSecretResolve({
@@ -297,7 +297,7 @@ async function resolveForDeclaredRun(args: {
 
 // the environment a job judges is the one deploying the branch its issue's work landed on —
 // the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.
-async function judgedEnvironment(
+export async function judgedEnvironment(
   issueId: string | null,
   document: ProjectDocument,
   judge: string,

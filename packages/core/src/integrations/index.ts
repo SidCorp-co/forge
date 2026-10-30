@@ -176,5 +176,6 @@ export {
   decryptSecret,
   encryptJson,
   encryptSecret,
+  fingerprintSecret,
   isVaultConfigured,
 } from './vault.js';

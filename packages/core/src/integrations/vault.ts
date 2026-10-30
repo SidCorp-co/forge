@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from 'node:crypto';
 import { logger } from '../lib/logger.js';
 
 function readMasterKey(): string | undefined {
@@ -73,6 +73,27 @@ export function decryptSecret(enc: Buffer): string {
   decipher.setAuthTag(tag);
   const out = Buffer.concat([decipher.update(data), decipher.final()]);
   return out.toString('utf8');
+}
+
+let fingerprintKey: Buffer | null = null;
+
+/**
+ * A keyed digest of a stored value (REQ-80 BC-2): equal values within a project read equal, and no
+ * value can be guessed back from it the way a bare hash of a short password can, because the key is
+ * derived from the master key and never leaves core.
+ */
+export function fingerprintSecret(projectId: string, plain: string): string {
+  if (!fingerprintKey) {
+    fingerprintKey = Buffer.from(
+      hkdfSync('sha256', getKey(), Buffer.alloc(0), 'forge/variable-fingerprint', KEY_LEN),
+    );
+  }
+  return createHmac('sha256', fingerprintKey)
+    .update(projectId)
+    .update('\0')
+    .update(plain, 'utf8')
+    .digest('hex')
+    .slice(0, 16);
 }
 
 /** Encrypts an arbitrary JSON-serializable object. */

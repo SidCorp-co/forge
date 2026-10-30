@@ -48,6 +48,7 @@ import { STATUS_REPORT_REFUSAL_STATUSES } from "./status-reports.js";
 import { STEWARD_REFUSAL_STATUSES } from "./steward.js";
 import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
 import { SUPPORT_REFUSAL_STATUSES } from "./support.js";
+import { VARIABLE_REFUSAL_STATUSES } from "./variables.js";
 import { WHATS_NEW_REFUSAL_STATUSES } from "./whats-new.js";
 import { WIDGET_REFUSAL_STATUSES } from "./widget.js";
 import { DESIGN_REFUSAL_STATUSES } from "./workflows.js";
@@ -106,6 +107,7 @@ const DECLARED: ReadonlyArray<
 	STATUS_REPORT_REFUSAL_STATUSES,
 	SUGGESTION_REFUSAL_STATUSES,
 	DESIGN_REFUSAL_STATUSES,
+	VARIABLE_REFUSAL_STATUSES,
 	WHATS_NEW_REFUSAL_STATUSES,
 	WIDGET_REFUSAL_STATUSES,
 ];

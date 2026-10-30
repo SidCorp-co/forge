@@ -54,6 +54,10 @@ const STORED_REFUSAL_CODES = [
 	"CONNECTION_NOT_FOUND",
 	"CONNECTION_PROVIDER_MISMATCH",
 	"SECRET_NOT_FOUND",
+	/** A testing profile's `var://KEY` names no variable of this project (REQ-80 BC-7). */
+	"VARIABLE_REF_UNKNOWN",
+	/** `secret://var/…` is the variables' own store, reached only through a variable (REQ-80). */
+	"SECRET_SCOPE_RESERVED",
 ] as const;
 
 export const CONFIG_REFUSAL_CODES = [
@@ -171,6 +175,8 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 	"SECRET_VALUE_UNREADABLE",
 	"SECRET_TOO_SHORT_TO_SCRUB",
 	"VAULT_NOT_CONFIGURED",
+	/** A profile's `var://KEY` has no variable effective on the environment judged (REQ-80 BC-7). */
+	"VARIABLE_REF_UNRESOLVED",
 ] as const;
 
 export type TestingSecretsRefusalCode =

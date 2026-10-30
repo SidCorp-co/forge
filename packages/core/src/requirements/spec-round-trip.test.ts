@@ -16,17 +16,25 @@ const assumed = {
 
 describe('a spec read back is writable as it stands', () => {
   it('reads an assistant assumption the author since changed as corrected', () => {
-    const read = withCorrections({ tldr: 'what the author wrote instead', spec: { assumptions: [assumed] } }, []);
+    const read = withCorrections(
+      { tldr: 'what the author wrote instead', spec: { assumptions: [assumed] } },
+      [],
+    );
     expect(read.assumptions?.[0]?.corrected).toBe(true);
   });
 
   it('takes the read shape, corrected mark included, at the revision write', () => {
-    const read = withCorrections({ tldr: 'what the author wrote instead', spec: { assumptions: [assumed] } }, []);
+    const read = withCorrections(
+      { tldr: 'what the author wrote instead', spec: { assumptions: [assumed] } },
+      [],
+    );
     expect(requirementSpecSchema.safeParse(read).success).toBe(true);
   });
 
   it('still refuses a key the spec does not have', () => {
-    const parsed = requirementSpecSchema.safeParse({ assumptions: [{ ...assumed, invented: true }] });
+    const parsed = requirementSpecSchema.safeParse({
+      assumptions: [{ ...assumed, invented: true }],
+    });
     expect(parsed.success).toBe(false);
   });
 
@@ -39,7 +47,9 @@ describe('a spec read back is writable as it stands', () => {
   });
 
   it('keeps a carried spec untouched when no assumption carries the mark', () => {
-    const carried = { assumptions: [{ text: 'a person wrote this', owner: 'owner', confirmBy: 'by release' }] };
+    const carried = {
+      assumptions: [{ text: 'a person wrote this', owner: 'owner', confirmBy: 'by release' }],
+    };
     expect(specOf(undefined, carried)).toBe(carried);
   });
 });

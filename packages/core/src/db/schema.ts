@@ -45,6 +45,7 @@ export * from './schema-preview-recordings.js';
 export * from './schema-previews.js';
 export * from './schema-product-state.js';
 export * from './schema-project-config.js';
+export * from './schema-project-variables.js';
 export * from './schema-projects.js';
 export * from './schema-release-highlights.js';
 export * from './schema-release-naming-drafts.js';

@@ -4,6 +4,7 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { verifyDeviceCredential } from '../credentials/device-credential.js';
+import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -320,6 +321,19 @@ projectConfigRoutes.put(
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
     await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
+    if (scope === VARIABLE_SECRET_SCOPE) {
+      return refused(
+        c,
+        [
+          {
+            code: 'SECRET_SCOPE_RESERVED',
+            path: '/scope',
+            detail: `\`${VARIABLE_SECRET_SCOPE}\` holds the project's variable values and is written only as a variable: POST /api/projects/${id}/variables. Store this secret under another scope.`,
+          },
+        ],
+        'CONFIG_REFUSED',
+      );
+    }
     const outcome = await putSecret({
       projectId: id,
       scope,
@@ -434,3 +448,4 @@ export { environmentStateRoutes } from './environment-state-routes.js';
 export { reviewRunRoutes } from './review-run-routes.js';
 export { projectConfigSchemaRoutes } from './schema-routes.js';
 export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';
+export { jobVariableRoutes, variableRoutes } from './variables-routes.js';

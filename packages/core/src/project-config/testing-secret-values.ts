@@ -2,11 +2,15 @@
 // the refusal shape, the profile's refs, and the values decrypted from the project's vault.
 
 import type { TestingSecretsRefusalCode } from '@forge/contracts/project-config';
+import { parseVariableRef } from '@forge/contracts/variables';
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import type { projectConfigPorts } from './ports.js';
 import { credentialRefs, readTestingProfile } from './service.js';
 import { drizzleConfigStore } from './store.js';
+import { effectiveVariables } from './variables-rules.js';
+import { declaredEnvironments } from './variables-service.js';
+import { listVariables, valuesOf } from './variables-store.js';
 
 export interface TestingSecretsRefusal {
   status: 403 | 404 | 409 | 422 | 503;
@@ -83,13 +87,20 @@ export async function profileRefs(
   return { ok: true, wanted };
 }
 
-/** Each wanted value decrypted, long enough for the scrubber to replace in a log. */
+/**
+ * Each wanted value decrypted, long enough for the scrubber to replace in a log. A `var://KEY` ref
+ * is the variable effective on `environment`, the one judged, read from the same store (REQ-80 BC-7).
+ */
 export async function decryptedValues(
   projectId: string,
   profileId: string,
   wanted: string[],
+  environment: string | null,
 ): Promise<Refused | { ok: true; secrets: { ref: string; value: string }[] }> {
+  const variables = await variableValues(projectId, wanted, environment);
+  if (!variables.ok) return variables;
   const stored = await drizzleConfigStore.secretValues(projectId, wanted);
+  for (const [ref, enc] of variables.stored) stored.set(ref, enc);
   const missing = wanted.filter((r) => !stored.has(r));
   if (missing.length > 0) {
     return refuse(
@@ -123,4 +134,55 @@ export async function decryptedValues(
   }
 
   return { ok: true, secrets };
+}
+
+/** The encrypted values behind the `var://` refs among `wanted`, on the environment judged. */
+async function variableValues(
+  projectId: string,
+  wanted: readonly string[],
+  environment: string | null,
+): Promise<Refused | { ok: true; stored: Map<string, Buffer> }> {
+  const asked = wanted.flatMap((ref) => {
+    const key = parseVariableRef(ref);
+    return key === null ? [] : [{ ref, key }];
+  });
+  if (asked.length === 0) return { ok: true, stored: new Map() };
+  const declared = (await declaredEnvironments(projectId)).find((e) => e.name === environment);
+  if (!declared) {
+    return refuse(
+      422,
+      'VARIABLE_REF_UNRESOLVED',
+      `${asked.map((a) => a.ref).join(', ')} name stored variables, and this read judges no one environment of the project, so which scope applies cannot be named; nothing was read.`,
+    );
+  }
+  // the environment judged is the one the run's landed work deploys to, so a protected variable
+  // reaches it exactly where that environment is production-tier (REQ-80 BC-2)
+  const { effective, withheld } = effectiveVariables(
+    await listVariables(projectId),
+    declared,
+    true,
+  );
+  const unresolved = asked.filter((a) => !effective.has(a.key));
+  if (unresolved.length > 0) {
+    return refuse(
+      422,
+      'VARIABLE_REF_UNRESOLVED',
+      `${unresolved.map((a) => (withheld.includes(a.key) ? `${a.ref} (protected, and \`${declared.name}\` is ${declared.tier}-tier)` : a.ref)).join(', ')} name no variable effective on environment \`${declared.name}\`; nothing was read.`,
+      { unresolved: unresolved.map((a) => a.key), environment: declared.name },
+    );
+  }
+  const rows = asked.map((a) => ({
+    ref: a.ref,
+    row: effective.get(a.key) as NonNullable<ReturnType<typeof effective.get>>,
+  }));
+  const values = await valuesOf(
+    projectId,
+    rows.map((r) => r.row.secretName),
+  );
+  const stored = new Map<string, Buffer>();
+  for (const { ref, row } of rows) {
+    const enc = values.get(row.secretName);
+    if (enc) stored.set(ref, enc);
+  }
+  return { ok: true, stored };
 }
