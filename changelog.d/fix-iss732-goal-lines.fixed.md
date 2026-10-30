@@ -1,0 +1,1 @@
+**A requirement's problem line counts wherever it stands.** Accepting a requirement no longer refuses for the problem when a Value: or Measured by: line sits above it, and a missing problem now says where to put it.

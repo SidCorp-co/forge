@@ -126,7 +126,10 @@ describe('the ready checklist, read from the head revision', () => {
     expect(goalAnswers('Referral managers see their own referrals')).toEqual({
       problem: 'Referral managers see their own referrals',
     });
-    expect(goalAnswers('Value: x\nsomething else')).toEqual({ value: 'x' });
+    expect(goalAnswers('Value: x\nsomething else')).toEqual({
+      value: 'x',
+      problem: 'something else',
+    });
     expect(goalAnswers('   ')).toEqual({});
   });
 
@@ -145,11 +148,58 @@ describe('the ready checklist, read from the head revision', () => {
     const labelled = `${opening}\nValue: every referral reaches a clinician.\nMeasured by: lost referrals per month.`;
     expect(gapsOf(labelled)).toEqual([]);
     expect(goalAnswers(labelled).problem).toBe(opening);
-    // an explicit Problem: line still states it, and a line after a label belongs to nobody
+    // an explicit Problem: line still states it
     expect(goalAnswers(`${opening}\nProblem: lost referrals.\nValue: v.`).problem).toBe(
       'lost referrals.',
     );
-    expect(goalAnswers('Value: x\nsomething else')).toEqual({ value: 'x' });
+  });
+
+  // The judge's goal on dev.347 (ISS-732 c1): the Value: line ABOVE the unlabelled problem line made
+  // the problem read as missing, the REQ-5 refusal again.
+  it('reads an unlabelled line as the problem wherever it stands, between or after labels', () => {
+    const opening = 'Referral managers lose referrals between intake and triage.';
+    const value = 'every referral reaches a clinician.';
+    const measured = 'lost referrals per month.';
+    const gapsOf = (goal: string) =>
+      checklistRefusals(judge({ ...ready, spec: { ...ready.spec, goal } }))
+        .map((r) => r.question)
+        .filter((q) => q !== null && ['problem', 'value', 'measured'].includes(q));
+
+    const judged = `Value: ${value}\n${opening}\nMeasured by: ${measured}`;
+    expect(gapsOf(judged)).toEqual([]);
+    expect(goalAnswers(judged)).toEqual({ problem: opening, value, measured });
+    expect(goalAnswers(`Value: ${value}\nMeasured by: ${measured}\n${opening}`).problem).toBe(
+      opening,
+    );
+    // every unlabelled line is the problem, in the order written
+    expect(goalAnswers(`first.\nValue: v.\nsecond.`).problem).toBe('first.\nsecond.');
+    // an explicit Problem: line wins over unlabelled lines
+    expect(goalAnswers(`Value: v.\n${opening}\nProblem: lost.`).problem).toBe('lost.');
+    // a label with no text states nothing, and the unlabelled line still does
+    expect(goalAnswers(`Value:\n${opening}`)).toEqual({ problem: opening });
+  });
+
+  it('reads an indented line under a label as that label continuing, never as the problem', () => {
+    expect(goalAnswers('Value: every referral\n  reaches a clinician.\nMeasured by: m.')).toEqual({
+      value: 'every referral\nreaches a clinician.',
+      measured: 'm.',
+    });
+    expect(goalAnswers('Value:\n  reaches a clinician.')).toEqual({
+      value: 'reaches a clinician.',
+    });
+    // a blank line ends the continuation, and an indented line under no label is unlabelled
+    expect(goalAnswers('Value: v.\n\n  stray.')).toEqual({ value: 'v.', problem: 'stray.' });
+    expect(goalAnswers('  Value: v.\nMeasured by: m.')).toEqual({ value: 'v.', measured: 'm.' });
+    // a line under a label that is already answered continues nothing and is dropped by the label
+    expect(goalAnswers('Value: a.\nValue: b.\n  c.')).toEqual({ value: 'a.' });
+  });
+
+  it('says where the problem line goes when it is still missing', () => {
+    const gap = checklistRefusals(
+      judge({ ...ready, spec: { ...ready.spec, goal: 'Value: v.\nMeasured by: m.' } }),
+    ).find((r) => r.question === 'problem');
+    expect(gap?.path).toBe('/answers/problem');
+    expect(gap?.detail).toContain('a line of its own with no label, or after "Problem:"');
   });
 
   it('names every question a requirement with no current revision leaves open', () => {

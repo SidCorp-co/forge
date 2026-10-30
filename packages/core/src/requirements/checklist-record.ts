@@ -46,10 +46,13 @@ function labelPatterns(lang: WrittenLang | null): [GoalLabel, RegExp][] {
 
 /**
  * The goal's labelled lines (`Problem:`, `Value:`, `Measured by:`, `Roadmap:`), read under the labels
- * of the language the requirement is written in and the English ones. Where no `Problem:` line
- * states it, the unlabelled lines before the first labelled one state the problem, so a goal that
- * labels nothing answers the problem alone, and adding a `Value:` line below never takes that answer
- * away (forge-dev REQ-5 r5, 2026-10-28). A line after a labelled one belongs to no label.
+ * of the language the requirement is written in and the English ones. A label's text is what follows
+ * it on its line, and an indented line directly under it, with no blank line between, continues that
+ * text. Where no `Problem:` line states it, every other line (unlabelled and not such a continuation)
+ * states the problem, wherever it stands, so a goal that labels nothing answers the problem alone and
+ * adding a `Value:` line above, between or below never takes that answer away (forge-dev REQ-5 r5,
+ * 2026-10-28; ISS-732 c1). A line directly under a label that is not indented is the problem, not
+ * more of that label.
  */
 export function goalAnswers(
   goal: string | null | undefined,
@@ -58,21 +61,42 @@ export function goalAnswers(
   const text = goal?.normalize('NFC').trim() ?? '';
   if (text === '') return {};
   const patterns = labelPatterns(lang ?? writtenLangOfText(text));
-  const found: Partial<Record<GoalLabel, string>> = {};
-  const opening: string[] = [];
-  let labelled = false;
-  for (const line of text.split('\n').map((l) => l.trim())) {
+  const said: Partial<Record<GoalLabel, string[]>> = {};
+  const unlabelled: string[] = [];
+  // The lines the label just read keeps, which an indented line directly below continues.
+  let open: string[] | null = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line === '') {
+      open = null;
+      continue;
+    }
     const hits = patterns.filter(([, pattern]) => pattern.test(line));
-    if (hits.length === 0 && !labelled && line !== '') opening.push(line);
+    if (hits.length === 0) {
+      if (/^\s/.test(raw) && open !== null) open.push(line);
+      else {
+        unlabelled.push(line);
+        open = null;
+      }
+      continue;
+    }
+    open = null;
     for (const [label, pattern] of hits) {
-      labelled = true;
-      const said = line.replace(pattern, '').trim();
-      if (found[label] === undefined && said !== '') found[label] = said;
+      if ((said[label]?.length ?? 0) > 0) {
+        open = []; // a repeated label states nothing, and neither does its continuation
+        continue;
+      }
+      const own = line.replace(pattern, '').trim();
+      open = own === '' ? [] : [own];
+      said[label] = open;
     }
   }
-  if (found.problem === undefined && opening.length > 0) {
-    found.problem = labelled ? opening.join('\n') : text;
+  const found: Partial<Record<GoalLabel, string>> = {};
+  for (const label of GOAL_LABELS) {
+    const lines = said[label];
+    if (lines !== undefined && lines.length > 0) found[label] = lines.join('\n');
   }
+  if (found.problem === undefined && unlabelled.length > 0) found.problem = unlabelled.join('\n');
   return found;
 }
 
@@ -97,9 +121,12 @@ export interface ReadyFacts {
   writtenLang: WrittenLang | null;
 }
 
-const goalGap = (what: string): RecordAnswer => ({
+const goalGap = (
+  what: string,
+  fix = `Add a line to the goal that states ${what}.`,
+): RecordAnswer => ({
   gap: `Its goal does not state ${what}.`,
-  fix: `Add a line to the goal that states ${what}.`,
+  fix,
 });
 
 /** The record answers of the ready checklist, from what the head revision holds. */
@@ -133,7 +160,10 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
   return {
     problem: answer(
       goal.problem,
-      goalGap(`the problem it solves, after ${labelled(lang, 'problem')}`),
+      goalGap(
+        'the problem it solves',
+        `Add a line to the goal that states it: a line of its own with no label, or after ${labelled(lang, 'problem')}.`,
+      ),
     ),
     kind: f.kind
       ? { value: f.kind }

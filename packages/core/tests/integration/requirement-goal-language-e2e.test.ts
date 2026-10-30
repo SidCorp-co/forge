@@ -85,4 +85,23 @@ describe("the agree reads a goal's labels in the language it is written in", () 
     expect([refused.status, refused.json.code]).toEqual([422, 'CHECKLIST_INCOMPLETE']);
     expect(JSON.stringify(refused.json)).toContain('the value it gives, after \\"Value:\\"');
   });
+
+  // ISS-732 c1: the judge's goal on dev.347, the Value: line above the unlabelled problem line
+  it('agrees a goal whose unlabelled problem line sits below its Value: line', async () => {
+    const key = await written(
+      'en',
+      'Value: every referral reaches a clinician.\nReferral managers lose referrals between intake and triage.\nMeasured by: lost referrals per month.',
+    );
+    const agreed = await as('POST', `/requirements/${key}/agree`, { revision: 1, reason: 'ok' });
+    expect(agreed.status, JSON.stringify(agreed.json)).toBe(200);
+  });
+
+  it('refuses a goal with no problem line, naming where the line goes', async () => {
+    const key = await written('en', 'Value: v.\nMeasured by: m.');
+    const refused = await as('POST', `/requirements/${key}/agree`, { revision: 1, reason: 'ok' });
+    expect([refused.status, refused.json.code]).toEqual([422, 'CHECKLIST_INCOMPLETE']);
+    expect(JSON.stringify(refused.json)).toContain(
+      'a line of its own with no label, or after \\"Problem:\\"',
+    );
+  });
 });
