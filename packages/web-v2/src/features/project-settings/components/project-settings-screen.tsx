@@ -1,7 +1,7 @@
 
 // Per-project settings (ISS-316), grouped by what a person comes to change rather than by the
 // document each value is stored in: General, People, Work, Delivery (with the environments), Gates, Preview,
-// Testing (the accounts a run tests with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
+// Testing (the accounts a run tests with), Variables (the environment variables it runs with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
 // moved to the section that now holds its content (`sections.ts:LEGACY_TABS`). The page is the detail
 // template: the section's groups in the main column, and a rail beside it listing them (the group in
 // view marked); below 1024px the rail is not drawn and one contents menu at the top stands in.
@@ -27,6 +27,7 @@ import { ModulesTab } from "./modules-tab";
 import { PreviewSettings } from "./preview-section";
 import { ShareSettings } from "./shares-section";
 import { TestingSettings } from "./testing-tab";
+import { VariablesSettings } from "./variables-section";
 
 const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	general: "settings.project.section.general",
@@ -36,6 +37,7 @@ const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	gates: "settings.project.section.gates",
 	preview: "previews.settings.section",
 	testing: "settings.project.section.testing",
+	variables: "settings.project.section.variables",
 	connections: "settings.project.section.connections",
 	advanced: "settings.project.section.advanced",
 };
@@ -140,6 +142,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 					{tab === "gates" && <GatesSettings projectId={project.id} slug={project.slug} access={listItem} />}
 					{tab === "preview" && <PreviewSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />}
 					{tab === "testing" && <TestingSettings projectId={project.id} canEdit={canEdit} />}
+					{tab === "variables" && <VariablesSettings projectId={project.id} />}
 					{tab === "connections" && (
 						<>
 							<div id="integrations" className="scroll-mt-24" {...{ [CONTENTS_LABEL]: t("integrations.title") }}>
