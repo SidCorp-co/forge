@@ -183,7 +183,11 @@ import { whatsNewRoutes } from './whats-new/routes.js';
 import { widgetFrameAncestors } from './widget/index.js';
 import { widgetRoutes } from './widget/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
-import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
+import {
+  issueRequirementDesignRoutes,
+  workflowRoutes,
+  workflowTemplateCatalogueRoutes,
+} from './workflows/routes.js';
 
 // The issue router serves its comments too; the comments module adds them here, once, at load.
 registerIssueCommentRoutes(issueRoutes);
@@ -347,6 +351,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
   app.route('/api/issues', issueRequirementRoutes);
+  app.route('/api/issues', issueRequirementDesignRoutes);
   app.route('/api/issues', issueLaneRoutes);
   app.route('/api/issues', cleanupIssueRoutes);
   app.route('/api/issues', issuePreviewRoutes);

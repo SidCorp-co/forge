@@ -90,7 +90,9 @@ answers its current revision (spec, and each criterion's code and body) and its 
 baseline, authorised on the issue's project alone. That holds where a sibling project of the
 organization holds the requirement (\`otherProject\` names it, \`displayKey\` reads
 \`<slug>/REQ-n\`), so a credential fenced to the issue's project reads it there and never needs
-the sibling's routes; \`requirement: null\` is an issue delivering none.
+the sibling's routes; \`requirement: null\` is an issue delivering none. A design that requirement
+links or pins reads the same way, \`GET /api/issues/:id/requirement/designs/:workflow\` (its steps
+view, \`revision?\`, \`stepFrom?\`, \`stepTo?\`); any other design is refused 404 by name.
 
 A criterion traces a BC of the issue's requirement only where its line begins with the tag:
 \`1. (REQ-n BC-m) <statement>\`, one BC per criterion, uppercase, at the revision the plan was

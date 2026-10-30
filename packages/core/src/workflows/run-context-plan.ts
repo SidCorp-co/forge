@@ -22,5 +22,12 @@ export function planLine(
       : `This issue's plan was written against revision ${plannedRevision}; no BC it traces changed since, so it holds at revision ${currentRevision}.`;
 }
 
-export const fetchLine = (workflowId: string, revision: number | null) =>
-  `\`forge-runner api projects/<projectId>/workflows/${workflowId}/design?view=steps${revision === null ? '' : `&revision=${revision}`}\``;
+/**
+ * Where a run reads the whole of a design it was given cut. One its issue's requirement pins reads
+ * through the issue, so it holds where that requirement and its designs are a sibling project's,
+ * outside the run's credential; one the issue builds is its own project's.
+ */
+export const fetchLine = (workflowId: string, revision: number | null, issueId?: string | null) =>
+  issueId
+    ? `\`forge-runner api issues/${issueId}/requirement/designs/${workflowId}${revision === null ? '' : `?revision=${revision}`}\``
+    : `\`forge-runner api projects/<projectId>/workflows/${workflowId}/design?view=steps${revision === null ? '' : `&revision=${revision}`}\``;

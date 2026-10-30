@@ -167,7 +167,7 @@ export function requirementContext(
       'Pinned in the latest baseline (build to these revisions):',
       ...row.baseline.pins.map((p) =>
         p.workflowId
-          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision)}`
+          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision, row.issueId)}`
           : `- contract \`${p.contractSlug}\`@${p.contractVersion} (provider ${p.providerProjectId})`,
       ),
     );

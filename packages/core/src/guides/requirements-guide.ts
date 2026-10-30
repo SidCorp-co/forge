@@ -124,7 +124,8 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   project's build, and the issue's \`requirement.project\` names the requirement's project. The
   issue's run reads the requirement through the issue, \`GET /api/issues/:id/requirement\` (and
   \`requirement\` on \`forge_issues get\`), on its own project's credential: its current revision's
-  spec and criteria and its latest baseline, and nothing else of the sibling project.
+  spec and criteria and its latest baseline, and nothing else of the sibling project. A design the
+  requirement links or pins reads through the issue too, \`GET /api/issues/:id/requirement/designs/:workflow\`.
 - An issue's plan records the revision and the baseline it was written against. A plan written while
   the requirement has no current revision is refused \`REQUIREMENT_REVISION_NOT_CURRENT\`.
 - \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another

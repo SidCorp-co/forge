@@ -43,7 +43,8 @@ export interface TracedDesignRow {
   /** The design row holding `approvedRevision`, with its approver's note; null when no row holds it. */
   revisionRow: { document: unknown; decision: string | null; reason: string | null } | null;
   /** The requirement whose latest baseline pins `approvedRevision`, with the revision approved now. */
-  pinnedBy?: { key: string; currentApproved: number | null };
+  /** The issue it is given to, which reads it through `GET /api/issues/:id/requirement/designs/:workflow`. */
+  pinnedBy?: { key: string; currentApproved: number | null; issueId: string };
 }
 
 export interface ArtifactCut {
@@ -239,7 +240,9 @@ function renderDesign(
   const parts = [head.join('\n'), ['Steps:', ...slice.steps.map(renderStep)].join('\n')];
   if (slice.edges.length) parts.push(['Edges:', ...slice.edges.map(renderEdge)].join('\n'));
   if (cut.fields.length || cutSteps.length) {
-    const lines = [`Cut to fit the budget; read them with ${fetchLine(row.workflowId, revision)}:`];
+    const lines = [
+      `Cut to fit the budget; read them with ${fetchLine(row.workflowId, revision, row.pinnedBy?.issueId)}:`,
+    ];
     if (cut.fields.length) lines.push(`- fields: ${cut.fields.join(', ')}`);
     for (const s of cutSteps) {
       const name = s.title ?? (typeof s.node?.label === 'string' ? s.node.label : null);

@@ -99,7 +99,7 @@ function pinOnlyOf(
   return pinOnlyChange(approved, proposed, findTemplate(templates ?? [], proposed.template));
 }
 
-async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
+export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
   // who decides it, as the project's approvals.designs stands: the approve permission, or the write one
   const approver = (await personGateOf(row.projectId, 'designs')).permission;
   const [designs, builds, prefix, requirements, held, templates] = await Promise.all([

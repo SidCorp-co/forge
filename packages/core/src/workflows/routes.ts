@@ -464,4 +464,5 @@ workflowRoutes.get('/:id/workflows/:workflow/health', workflowRefParam, noQuery,
   });
 });
 
+export { issueRequirementDesignRoutes } from './issue-routes.js';
 export { workflowTemplateCatalogueRoutes } from './template-routes.js';

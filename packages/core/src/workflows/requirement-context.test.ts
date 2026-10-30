@@ -45,4 +45,21 @@ describe('requirementContext', () => {
     expect(loaded?.text).toContain('\nREQ-14 · Order history');
     expect(loaded?.text).not.toContain('/requirement`');
   });
+
+  it("points the run at a pinned design through the issue, so a sibling's design reads on its credential", () => {
+    const pin = {
+      workflowId: '277ed0fd-0d90-4a43-a0e2-ec88a1b88460',
+      flow: 'api-keys',
+      designRevision: 3,
+      contractSlug: null,
+      contractVersion: null,
+      providerProjectId: null,
+    };
+    const base = row().baseline;
+    const loaded = requirementContext(row({ baseline: base && { ...base, pins: [pin] } }));
+    expect(loaded?.text).toContain(
+      `forge-runner api issues/${ISSUE}/requirement/designs/${pin.workflowId}?revision=3`,
+    );
+    expect(loaded?.text).not.toContain('projects/<projectId>/workflows');
+  });
 });

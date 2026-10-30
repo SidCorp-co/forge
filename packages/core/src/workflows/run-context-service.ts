@@ -43,7 +43,7 @@ const designRowOf = (r: Record<string, unknown>): TracedDesignRow => ({
  */
 async function tracedDesignsOf(issueId: string): Promise<TracedDesignRow[]> {
   const [issue] = (await db.execute(sql`
-    SELECT i.requirement_id, r.req_seq, w.id AS built_id, w.flow AS built_flow
+    SELECT i.id AS issue_id, i.requirement_id, r.req_seq, w.id AS built_id, w.flow AS built_flow
     FROM issues i
     LEFT JOIN requirements r ON r.id = i.requirement_id
     LEFT JOIN workflow_builds wb ON wb.issue_id = i.id
@@ -98,6 +98,7 @@ async function pinnedDesignsOf(issue: Record<string, unknown>): Promise<TracedDe
     pinnedBy: {
       key,
       currentApproved: r.approved_revision == null ? null : Number(r.approved_revision),
+      issueId: String(issue.issue_id),
     },
   }));
 }

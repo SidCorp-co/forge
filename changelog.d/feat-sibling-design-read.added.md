@@ -1,0 +1,1 @@
+**A run reads the designs its issue's requirement pins, a sibling project's included.** `GET /api/issues/:id/requirement/designs/:workflow` serves the steps view on the issue's own credential, and the job prompt points there.
