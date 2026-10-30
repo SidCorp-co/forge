@@ -9,6 +9,23 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.375] - 2026-10-30
+
+Workflow pages give a first-time reader a path through designs
+
+### Added
+
+- **An issue's run reads the requirement it delivers, a sibling project's included.** `GET /api/issues/:id/requirement` and `forge_issues get` serve its current revision, criteria and agreed baseline on the issue's own credential.
+
+### Changed
+
+- **Workflows read in order.** The list orders designs by what they build on and names each requirement and what you owe; a design opens with every step shown, Walk through first, and its standing as three marks.
+
+### Fixed
+
+- **A criterion traced by an id that is no BC of its issue's requirement is refused by name.** It was written and counted as no proof; the refusal and `CRITERIA_TRACE_DROPPED` now say where each BC's id reads.
+- **The issue a master files for a merge naming no issue can now be marked merged.** The mark takes that merge's commit as the filed issue's landing, which clears the owed filing, and still refuses a commit declaring another issue.
+
 ## [0.4.0-dev.374] - 2026-10-30
 
 Fast delivery by default with rated cleanup debt, and MCP draft design reads

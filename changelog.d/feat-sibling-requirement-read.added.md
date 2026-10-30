@@ -1,1 +1,0 @@
-**An issue's run reads the requirement it delivers, a sibling project's included.** `GET /api/issues/:id/requirement` and `forge_issues get` serve its current revision, criteria and agreed baseline on the issue's own credential.

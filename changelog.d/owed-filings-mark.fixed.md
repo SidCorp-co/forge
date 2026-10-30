@@ -1,1 +1,0 @@
-**The issue a master files for a merge naming no issue can now be marked merged.** The mark takes that merge's commit as the filed issue's landing, which clears the owed filing, and still refuses a commit declaring another issue.
