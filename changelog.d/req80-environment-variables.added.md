@@ -1,1 +1,0 @@
-**Projects hold environment variables (REQ-80):** a Variables settings page keeps keys per environment, secrets encrypted and audited by fingerprint; `env.manage` writes them, agents propose, and a declared run reads its environment's values, protected ones on production only.

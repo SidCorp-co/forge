@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.376] - 2026-10-30
+
+Retired agent-report reads point to Forge feedback; runs read pinned sibling designs
+
+### Added
+
+- **A run reads the designs its issue's requirement pins, a sibling project's included.** `GET /api/issues/:id/requirement/designs/:workflow` serves the steps view on the issue's own credential, and the job prompt points there.
+- **Projects hold environment variables (REQ-80):** a Variables settings page keeps keys per environment, secrets encrypted and audited by fingerprint; `env.manage` writes them, agents propose, and a declared run reads its environment's values, protected ones on production only.
+
+### Fixed
+
+- **Old agent-report reads now say where reports went.** A call to the retired `/api/agent-reports` read with the old `projectId`, `scope` or `limit` query is answered that agent reports are retired and feedback about Forge is filed with `POST /api/forge/feedback`.
+
 ## [0.4.0-dev.375] - 2026-10-30
 
 Workflow pages give a first-time reader a path through designs

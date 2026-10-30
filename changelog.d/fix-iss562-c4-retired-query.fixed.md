@@ -1,1 +1,0 @@
-**Old agent-report reads now say where reports went.** A call to the retired `/api/agent-reports` read with the old `projectId`, `scope` or `limit` query is answered that agent reports are retired and feedback about Forge is filed with `POST /api/forge/feedback`.
