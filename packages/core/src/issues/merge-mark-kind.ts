@@ -79,7 +79,14 @@ export function describeMergeMark(args: {
   claimedCommit?: string | null;
   landing?: string | null;
   /** Where this call read an `observed` commit from the repository rather than a pull request. */
-  readFrom?: { repository: string; branch: string; filing?: number | null } | null;
+  readFrom?: {
+    repository: string;
+    branch: string;
+    by?: 'subject' | 'change-request' | 'filing';
+    filing?: number | null;
+  } | null;
+  /** Why the repository did not vouch for the commit a claim names, where it was asked. */
+  unvouched?: string | null;
   /** The branch an `observed` row holds as its target, and the one this call named. */
   target?: string | null;
   claimedTarget?: string | null;
@@ -103,14 +110,17 @@ export function describeMergeMark(args: {
         ? `. \`merged_target\` holds \`${args.target}\`, the branch that merge landed on as Forge read it; \`${args.claimedTarget}\`, which this call named, is recorded as its claim`
         : '';
     const source = args.readFrom
-      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue ${args.readFrom.filing ? `as the filing this project owed for change request ${args.readFrom.filing}, whose subject names no issue,` : 'by its subject'} and holds it on ${args.readFrom.branch}`
+      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue ${args.readFrom.filing ? `as the filing this project owed for change request ${args.readFrom.filing}, whose subject names no issue,` : args.readFrom.by === 'change-request' ? 'as the merge of a change request that links it' : 'by its subject'} and holds it on ${args.readFrom.branch}`
       : "read by Forge itself, from its record of the pull request or from the project's repository";
     return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}${retargeted}`;
   }
   const claim = args.claimedCommit
     ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``
     : 'no commit is recorded in `merged_commit_sha`';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue`;
+  const why = args.unvouched
+    ? `. The repository was asked and did not vouch for it as this issue's landing: ${args.unvouched}`
+    : '';
+  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${why}`;
 }
 
 /** The flow a design artifact's `<flow>@rev<n>` ref names. */

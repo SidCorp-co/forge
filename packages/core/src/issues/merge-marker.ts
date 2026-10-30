@@ -9,7 +9,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
 import { adoptionPreflight, stampAdoption } from './adoption-mark.js';
-import { type CommitLanding, readCommitLanding } from './commit-landing.js';
+import { type CommitLanding, readCommitLanding, vouchedCommit } from './commit-landing.js';
 import * as designMark from './design-mark.js';
 import { type HostMerge, hostMergeOfMark } from './host-mark.js';
 import {
@@ -26,6 +26,7 @@ import {
 } from './landing-evidence.js';
 import { refuseUncheckedMerge, resolveRecordedCommit, withCarriers } from './mark-preconditions.js';
 import { markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
+import { clearMark, recordStampPaths } from './mark-writes.js';
 import { identifiedMergeForIssue } from './merge-identity.js';
 import {
   describeAdoptionMark,
@@ -34,14 +35,7 @@ import {
   type MergeMarkKind,
   mergeMarkKindOf,
 } from './merge-mark-kind.js';
-import {
-  clearIssueMerge,
-  type MergeRecord,
-  recordIssueMerge,
-  recordMergeTarget,
-  recordReadPaths,
-} from './merge-record.js';
-import { refuseUnmarkOnClosed } from './merged-at.js';
+import { type MergeRecord, recordIssueMerge, recordMergeTarget } from './merge-record.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 import { findMissingWorkEvidence } from './work-evidence.js';
@@ -124,6 +118,8 @@ type Stamp = {
   claimedTarget?: string | null;
   /** The adoption record this mark was read from, where it is one. */
   adopted?: AdoptionHeld[] | null;
+  /** Why the repository did not vouch for the commit a claim names (`vouched`). */
+  unvouched?: string | null;
 };
 
 type Preflight = {
@@ -134,6 +130,8 @@ type Preflight = {
   adoptionDrift?: string | null;
   /** The approved design revisions a mark naming nothing stands on, where the issue carries no code. */
   designs?: designMark.DesignMark | null;
+  /** Why the repository did not vouch for the commit a claim names, where it was asked and refused. */
+  unvouched?: string | null;
 };
 
 /** The refusals a mark meets before its transaction: the landing shape, the target, contract
@@ -166,11 +164,12 @@ async function preflightMark(
     return { shape, fromRepository: await overDesign(args, args.commit, design) };
   }
   const bare = designMark.namesNothing(args);
-  if (args.actor.agency !== 'agent' && !bare) return { shape, fromRepository: null };
+  if (args.actor.agency !== 'agent' && !bare)
+    return { shape, ...(await vouchedCommit({ ...args, issueId, shape })) };
   const missing = await findMissingWorkEvidence(issueId);
   const designs = missing && bare ? await designMark.designsOfMark(prior) : null;
   if (!missing || designs || args.actor.agency !== 'agent') {
-    return { shape, fromRepository: null, designs };
+    return { shape, designs, ...(await vouchedCommit({ ...args, issueId, shape })) };
   }
   if (!args.commit || shape !== 'git') {
     throw refuse('NO_WORK_EVIDENCE', `${missing}${await designMark.designsWaiting(issueId)}`);
@@ -299,6 +298,7 @@ async function stampMark(
       }),
       claimedCommit: args.commit ?? (await resolveRecordedCommit(issueId)),
       readFrom: null,
+      unvouched: preflight.unvouched ?? null,
     };
   }
   const standing = standingMarkRefusal({
@@ -322,42 +322,6 @@ async function stampMark(
   if (read.paths) await recordStampPaths(tx, issueId, read.paths, args.actor.hookActor);
   if (args.target) await recordMergeTarget(tx, issueId, args.target);
   return { ...stamp, claimedTarget: args.target ?? null };
-}
-
-/** The box's reading of the landing commit, or the refusal where the row already holds another's. */
-async function recordStampPaths(
-  tx: Tx,
-  issueId: string,
-  paths: NonNullable<Extract<ReturnType<typeof markReadPaths>, { ok: true }>['paths']>,
-  actor: Actor,
-): Promise<void> {
-  const { wrote, held } = await recordReadPaths(tx, { issueId, paths, actor });
-  if (wrote || !held || held.commit.toLowerCase() === paths.commit.toLowerCase()) return;
-  throw refuse(
-    'MARK_ALREADY_STANDS',
-    `this issue's mark already holds the paths read at ${held.commit}, and the first reading stands, so the paths read at ${paths.commit} were not recorded and nothing changed. To change them, ${CLEAR_THE_MARK}, then mark again naming the commit that landed.`,
-    '/changedPaths',
-  );
-}
-
-/**
- * The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the decision
- * and the write. A zero-row answer is read back rather than guessed at: the row is gone, or it is
- * closed, and anything else is a state those two conditions cannot produce.
- */
-async function clearMark(tx: Tx, issueId: string): Promise<void> {
-  if (await clearIssueMerge(tx, issueId)) return;
-  const still = await findIssueById(issueId);
-  if (!still) throw notFound('issue not found');
-  const refusal = refuseUnmarkOnClosed(still.status);
-  if (!refusal) {
-    throw new Error(
-      `unmark cleared no row on issue ${issueId}, which is neither missing nor \`closed\` but ` +
-        `\`${still.status}\`. The UPDATE's only other condition is the id, so this is a state ` +
-        `clearIssueMerge cannot produce and must not be reported as either of them.`,
-    );
-  }
-  throw refuse('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
 }
 
 /** The audit comment a mark or unmark leaves, and an unmark's issue.updated, in the caller's transaction. */
@@ -396,6 +360,7 @@ async function writeMarkTrail(
           ...(readFrom && result.wrote ? { readFrom } : {}),
           target: result.target,
           claimedTarget: stamp.claimedTarget ?? null,
+          unvouched: stamp.unvouched ?? null,
         }));
   const audit = await writeAuditComment(
     issueId,

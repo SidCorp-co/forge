@@ -54,6 +54,15 @@ vi.mock('./ports.js', () => ({
     parentId: null,
   }),
 }));
+// the repository's answer is not this suite's subject: it does not vouch, so the mark is a claim
+vi.mock('./commit-landing.js', () => ({
+  readCommitLanding: async () => ({
+    ok: false,
+    code: 'COMMIT_UNVERIFIED',
+    detail: 'not read here',
+  }),
+  vouchedCommit: async () => ({ fromRepository: null, unvouched: null }),
+}));
 vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   readLandingShape: async () => 'git',

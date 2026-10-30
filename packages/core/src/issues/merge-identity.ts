@@ -37,7 +37,8 @@ import {
 } from './ports.js';
 
 export type MergeIdentity =
-  | { holds: true; by: 'subject' | 'change-request' | 'filing' }
+  | { holds: true; by: 'subject' | 'change-request'; filing?: undefined }
+  | { holds: true; by: 'filing'; filing: number }
   | { holds: false; code: CommitLandingRefusalCode; detail: string };
 
 /** The activity a refused stamp writes on the issue it would have stamped. */
@@ -135,6 +136,8 @@ export function mergeIdentityOf(args: {
   commitSha: string;
   mergedRequestId?: string | null;
   markNamed?: boolean;
+  /** The commit as the caller already read it from the repository, so it is not read again. */
+  read?: HostCommit;
 }): (issueId: string) => Promise<MergeIdentity> {
   let commit: Promise<CommitRead> | null = null;
   let branches: ReturnType<typeof readLandingBranches> | null = null;
@@ -148,7 +151,9 @@ export function mergeIdentityOf(args: {
     ) {
       return { holds: true, by: 'change-request' };
     }
-    commit ??= readCommitOnce(args.projectId, args.commitSha);
+    commit ??= args.read
+      ? Promise.resolve({ read: args.read })
+      : readCommitOnce(args.projectId, args.commitSha);
     const got = await commit;
     if ('refused' in got) return got.refused;
     context ??= (async () => ({
@@ -179,7 +184,7 @@ export function mergeIdentityOf(args: {
           declared,
         })
       : null;
-    if (filing) return { holds: true, by: 'filing' };
+    if (filing) return { holds: true, by: 'filing', filing: filing.number };
     const key = seq === null ? `issue ${issueId}` : ref(seq);
     const through = `${
       named.length === 0

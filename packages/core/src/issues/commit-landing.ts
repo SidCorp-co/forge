@@ -2,17 +2,13 @@ import type { CommitLandingRefusalCode } from '@forge/contracts/issues';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
-import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { owedFilingOfMark } from './owed-merges.js';
+import { mergeIdentityOf } from './merge-identity.js';
 import {
   type CommitHost,
-  declaredIssueSeqs,
   type HostCommit,
   isSourceHostUnavailable,
-  issueRefPattern,
   readLandingBranches,
   resolveSourceHost,
-  subjectOf,
 } from './ports.js';
 
 export type CommitLanding =
@@ -22,6 +18,9 @@ export type CommitLanding =
       committedAt: Date;
       branch: string;
       repository: string;
+      /** How the commit is this issue's: its subject, a change request it merged that links the
+       *  issue, or the owed filing it answers (`merge-identity.ts:mergeIdentityOf`). */
+      by: 'subject' | 'change-request' | 'filing';
       /** The change request whose owed filing this issue answers, where its subject declares none. */
       filing: number | null;
     }
@@ -48,10 +47,10 @@ function unreadable(commit: string, why: string): CommitLanding {
 
 /**
  * Whether `commit` is this issue's landing, read from the project's own repository: the repository
- * resolves it, its subject declares the issue by the rule `commitOwners` places commits with — or it
- * declares none and is the merge this project owes a filing for, which the issue answers
- * (`owedFilingOfMark`, ISS-774) — and the base branch or the branch production deploys from contains
- * it. Every other answer is a refusal by name, and a read that could not be taken is one of them.
+ * resolves it, it is the issue's by the rule every merge stamp is judged by
+ * (`merge-identity.ts:mergeIdentityOf`: its subject declares the issue, it merged a change request
+ * linking the issue, or it declares none and is the merge this project owes a filing for, which the
+ * issue answers), and the base branch or the branch production deploys from contains it. Every other answer is a refusal by name, and a read that could not be taken is one of them.
  */
 export async function readCommitLanding(
   args: { issueId: string; commit: string },
@@ -61,14 +60,13 @@ export async function readCommitLanding(
   const [row] = await db
     .select({
       projectId: issues.projectId,
-      issSeq: issues.issSeq,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!row) return unreadable(commit, 'the issue was not found');
-  const { projectId, issSeq } = row;
+  const { projectId } = row;
   const { defaultBranch: baseBranch, promoted: live } = await readLandingBranches(projectId);
   if (!baseBranch) {
     return unreadable(
@@ -101,20 +99,12 @@ export async function readCommitLanding(
   }
   const sha = read.sha.toLowerCase();
 
-  const message = read.message;
-  const refOf = await issueRefFormatter(projectId);
-  const ref = refOf(issSeq);
-  const pattern = issueRefPattern(await heldIssuePrefixes(projectId));
-  const declared = declaredIssueSeqs(message, pattern, baseBranch);
-  const filing = declared.includes(issSeq)
-    ? null
-    : await owedFilingOfMark({ projectId, issueId, commit: sha, declared });
-  if (!declared.includes(issSeq) && !filing) {
-    const subject = subjectOf(message);
-    return refuse(
-      'COMMIT_NOT_THIS_ISSUE',
-      `commit ${sha} in ${repository} is not ${ref}'s landing: its subject "${subject}" does not declare ${ref}${declared.length > 0 ? `; it declares ${declared.map(refOf).join(', ')}` : ', and it is the merge of no change request this project owes a filing for'}. A commit is an issue's when its subject names the key in a closing (…) group, opens with it, or merges a branch named for it; a commit naming no issue is the landing of an issue filed for it only while this project owes a filing for its merge (the master's owed filings), and only one issue answers each`,
-    );
+  // one rule with every stamp a merge writes (`merge-identity.ts`), read for a mark naming the commit
+  const identity = await mergeIdentityOf({ projectId, commitSha: sha, markNamed: true, read })(
+    issueId,
+  );
+  if (!identity.holds) {
+    return refuse(identity.code, `${identity.detail}, in ${repository}`);
   }
 
   for (const branch of branches) {
@@ -129,11 +119,44 @@ export async function readCommitLanding(
       if (Number.isNaN(at.getTime())) {
         return unreadable(commit, `${repository} answered no committer date for ${sha}`);
       }
-      return { ok: true, sha, committedAt: at, branch, repository, filing: filing?.number ?? null };
+      return {
+        ok: true,
+        sha,
+        committedAt: at,
+        branch,
+        repository,
+        by: identity.by,
+        filing: identity.filing ?? null,
+      };
     }
   }
   return refuse(
     'COMMIT_NOT_LANDED',
     `commit ${sha} is in ${repository} and ${branches.join(' and ')} ${branches.length > 1 ? 'do' : 'does'} not contain it, so it has not landed. Mark once it is merged there`,
   );
+}
+
+/**
+ * A commit a mark names on a git project, read from the repository whoever marks it and whatever work
+ * evidence the issue carries: where the repository vouches for it as this issue's landing it is a
+ * merge Forge observed, stamped as one (forge dev 2026-10-30: ISS-562 at 61043f926, its run's branch
+ * recorded, and ISS-783 at #1235's merge, a person's mark, read as claims while ISS-781's read
+ * observed). Where it does not, the mark stays the caller's claim, as it was, saying why.
+ */
+export async function vouchedCommit(args: {
+  issueId: string;
+  shape: string;
+  commit?: string | undefined;
+  landing?: string | undefined;
+}): Promise<{
+  fromRepository: Extract<CommitLanding, { ok: true }> | null;
+  unvouched: string | null;
+}> {
+  if (args.shape !== 'git' || !args.commit || args.landing) {
+    return { fromRepository: null, unvouched: null };
+  }
+  const read = await readCommitLanding({ issueId: args.issueId, commit: args.commit });
+  return read.ok
+    ? { fromRepository: read, unvouched: null }
+    : { fromRepository: null, unvouched: `${read.code}: ${read.detail}` };
 }

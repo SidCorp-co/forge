@@ -346,8 +346,10 @@ naming its own rule before the green counts.
    in \`commit\`, never only in \`note\`: it reads as asserted rather than observed, and the release
    places the issue by that commit. A commit named only in the note is no claim. To correct a mark,
    \`DELETE /api/issues/:id/merge\` clears it first. A merge mark moves no status.
-   A commit core reads is this issue's when its subject declares the key, or it is refused
-   \`COMMIT_NOT_THIS_ISSUE\`; a merge the master's pass lists as owed a filing names no issue, so
+   Core reads every commit a mark names from the repository: it is this issue's when its subject
+   declares the key or it merged a change request linking the issue, and is then stamped observed,
+   whoever marks. Otherwise it is \`COMMIT_NOT_THIS_ISSUE\` — a refusal where the issue has no other
+   work evidence, else the mark records it as your claim and its answer says why; a merge the master's pass lists as owed a filing names no issue, so
    the issue filed for it is marked at that merge's commit, one issue answering each. It stays at
    \`draft\` and closes on the shipped release whose commit contains that merge:
    \`POST /api/projects/:projectId/shipped-in-records\` \`{ issueId, version, evidence }\`

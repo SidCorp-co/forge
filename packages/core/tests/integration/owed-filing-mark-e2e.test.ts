@@ -140,7 +140,9 @@ describe('the issue filed for a merge naming no issue is marked at that merge', 
     expect(res.status).toBe(422);
     const body = JSON.stringify(res.body);
     expect(body).toContain('COMMIT_NOT_THIS_ISSUE');
-    expect(body).toContain('it is the merge of no change request this project owes a filing for');
+    expect(body).toContain(
+      'it is not the merge of a change request this project owes a filing for',
+    );
     expect((await issueRow(iss784))?.merged_at).toBeNull();
   });
 
@@ -203,14 +205,20 @@ describe('the issue filed for a merge naming no issue is marked at that merge', 
     await world_(null, CODE_FIRST);
     await unlinkedMerge(1233, PR_1233, UNLINKED_MESSAGE);
     const iss784 = await filed(784);
-    // a person's mark is the caller's claim, kept only in the trail
-    const claimed = await mark(iss784, PR_1233, world.token);
-    expect(claimed.status, JSON.stringify(claimed.body)).toBe(200);
-    expect((await issueRow(iss784))?.merged_commit_sha).toBeNull();
+    // a claim kept only in the trail, as an asserted mark keeps it: a stamped mark naming the commit
+    const trail = (action: string, payload: Record<string, unknown>, at: string) =>
+      rows(sql`
+        INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+        VALUES (${iss784}, 'user', ${world.ownerId}, 'human', ${action}, ${JSON.stringify(payload)}::jsonb,
+                ${at}::timestamptz)`);
+    await trail(
+      'issue.mergeMarked',
+      { commit: PR_1233, target: BRANCH, stamped: true, commentId: null },
+      '2026-10-29T10:00:00Z',
+    );
     expect(await owedCommits()).toEqual([]);
 
-    const unmark = await api(world.token, 'DELETE', `/api/issues/${iss784}/merge`, {});
-    expect(unmark.status, JSON.stringify(unmark.body)).toBe(200);
+    await trail('issue.mergeUnmarked', { commentId: null }, '2026-10-29T11:00:00Z');
     expect(await owedCommits()).toEqual([PR_1233]);
   });
 });

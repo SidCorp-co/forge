@@ -47,7 +47,9 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
   readLandingShape: async () => 'git',
 }));
 const readCommitLanding = vi.fn();
-vi.mock('./commit-landing.js', () => ({ readCommitLanding }));
+// any other mark naming a commit asks the repository whether it vouches (`vouchedCommit`)
+const vouchedCommit = vi.fn(async () => ({ fromRepository: null, unvouched: null }));
+vi.mock('./commit-landing.js', () => ({ readCommitLanding, vouchedCommit }));
 // the project declares no merge check and the issue no approved new pattern, so none is owed
 vi.mock('./merge-check.js', () => ({ uncheckedMergeRefusal: async () => null }));
 vi.mock('./review.js', () => ({ unreviewedMergeRefusal: async () => null }));
@@ -147,6 +149,7 @@ describe('a code mark over a design approval stamp (H2)', () => {
     answers.push([], [prior], [], [{ ...held, mergedArtifacts: null }], []);
     const out = await mark('human');
     expect(readCommitLanding).not.toHaveBeenCalled();
+    expect(vouchedCommit).toHaveBeenCalledOnce();
     expect(out.action).toBe('already_merged');
   });
 });

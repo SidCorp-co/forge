@@ -43,22 +43,29 @@ landing (`packages/core/src/issues/merge-identity.ts:identifiedMergeForIssue`, b
 finds one it stamps `merged_at` AND `merged_commit_sha`, from that record. Where it finds none it
 stamps `merged_at` alone.
 
-Where an agent marks an issue on the `git` shape that holds no other work evidence
-(`findMissingWorkEvidence`) and the call carries `commit`, the commit is the only trace
-the work left: it landed on the base branch itself, where no branch of its own exists
-(ISS-1318). `readCommitLanding` (`packages/core/src/issues/commit-landing.ts`) reads it from the
-project's repository through its GitHub binding. It counts only where the repository resolves
-it, its subject declares this issue by `declaredIssueSeqs` — the rule `commitOwners` places
-commits with, so a base-branch commit that is another issue's landing is refused — and the base
-branch or the release chain's live branch contains it. Then `merged_at` and
-`merged_commit_sha` are stamped with the full sha the repository resolved and its committer
-date, and the mark reads `observed`. Every other answer is a refusal by name and writes
-nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
-`COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked. That refusal names the asserted route instead: record the work's branch in
-`workState.branch`, then mark again with `target` and the whole sha in `commit`, which the mark
-records as its claim (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`) and a release places. A commit named only
-in `note` is no claim.
+Every mark on the `git` shape that carries `commit` reads it from the project's repository through
+its binding (`readCommitLanding`, `packages/core/src/issues/commit-landing.ts`), whoever marks it and
+whatever work evidence the issue holds. Before 2026-10-30 only an agent's mark on an issue with no
+other work evidence was read (ISS-1318), so a run's mark on an issue carrying its branch (ISS-562 at
+61043f926) and a person's mark at a request's merge (ISS-783 at #1235's e54c95e12) read as claims
+while the same shape without evidence read observed (ISS-781). The commit counts where the
+repository resolves it, it is this issue's by the rule every merge stamp is judged by
+(`packages/core/src/issues/merge-identity.ts:mergeIdentityOf`: its subject declares the issue by
+`declaredIssueSeqs`, it merged a change request that links the issue — read from the projection's
+links, so a mark made before the host's report of the merge arrives still counts — or it is the
+merge of an owed filing the issue answers), and the base branch or the release chain's live branch
+contains it. Then `merged_at` and `merged_commit_sha` are stamped with the full sha the repository
+resolved and its committer date, and the mark reads `observed`.
+
+Where the repository does not vouch for it, what follows depends on who marks. An agent's mark on
+an issue with no other work evidence has nothing else to stand on, so every such answer is a refusal
+by name and writes nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`,
+`COMMIT_NOT_LANDED`, and `COMMIT_UNVERIFIED` where the repository could not be read — a commit is
+never taken as evidence unchecked. That refusal names the asserted route instead: record the work's
+branch in `workState.branch`, then mark again with `target` and the whole sha in `commit`. Any other
+mark records the commit as its claim (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`),
+which a release places, and its answer names the refusal the repository gave. A commit named only in
+`note` is no claim.
 
 Where no host or repository resolved the mark's `commit`, so the mark records it as the caller's
 claim, it is the whole 40-character sha or the mark is refused `COMMIT_NOT_WHOLE`
