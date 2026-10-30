@@ -11,6 +11,7 @@ import {
   notLiveSentence,
   type ProviderLiveGate,
 } from '@forge/contracts/contract-waits';
+import { guideRef } from '../guides/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from '../integrations/source-host/index.js';
 import { portSlot } from '../lib/port-slot.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -28,7 +29,7 @@ export async function servedProductionCommit(projectId: string): Promise<Reading
     if (verification.kind !== 'probed') {
       return {
         ok: false,
-        why: 'its production declares no source probe, so nothing reads which commit it serves',
+        why: `its production declares no source probe, so nothing reads which commit it serves; how to declare one: \`${guideRef('release-source-probe')}\``,
       };
     }
     const commit = await readLiveCommit(verification.cfg);

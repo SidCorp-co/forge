@@ -2,6 +2,7 @@
 // record says it serves (`serving-reading.ts:readServingNow`), or not at all: a close nothing
 // checked against the commit is refused `RELEASE_NOT_VERIFIED` rather than recorded as unverified.
 
+import { guideRef } from '../guides/index.js';
 import { readServingNow, servingClause, whyUncorroborated } from './serving-reading.js';
 import { claimedCommit, deploymentConfirms, notAWholeCommit } from './verify.js';
 
@@ -9,8 +10,7 @@ export type DeploymentOutcome =
   | { ok: true; identity: string; readings: string[] }
   | { ok: false; reason: string; live: string | null };
 
-const NO_COMMIT =
-  'this production declares no runtime probe identifying the source, so the release is proved by the commit its deployment record names, and a finish naming no commit has nothing to compare it with. Call finish again with `commit`, the whole sha you pushed.';
+const NO_COMMIT = `this production declares no runtime probe identifying the source, so the release is proved by the commit its deployment record names, and a finish naming no commit has nothing to compare it with. Call finish again with \`commit\`, the whole sha you pushed. How to declare a source probe: \`${guideRef('release-source-probe')}\`.`;
 
 /** Whether production's deployment record says it serves `expected`, read once, now. */
 export async function verifyByDeploymentRecord(

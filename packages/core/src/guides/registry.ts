@@ -32,6 +32,7 @@ import {
 import { MOCKUPS_GUIDE } from './mockups-guide.js';
 import { QA_GUIDE } from './qa-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
+import { RELEASE_SOURCE_PROBE_GUIDE } from './release-source-probe-guide.js';
 import { RELEASE_TAGS_GUIDE } from './release-tags-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
@@ -319,6 +320,7 @@ section, which is why this migration is what turns the feature on.`,
   REQUIREMENT_LIFECYCLE_GUIDE,
   MOCKUPS_GUIDE,
   RELEASE_TAGS_GUIDE,
+  RELEASE_SOURCE_PROBE_GUIDE,
   FAST_DELIVERY_GUIDE,
   SUGGESTIONS_GUIDE,
   FEEDBACK_TRIAGE_GUIDE,
