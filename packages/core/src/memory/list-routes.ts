@@ -8,7 +8,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { memoryCitesSchema, memoryEntriesInputSchema, readMemoryEntries } from './entries.js';
-import { runMemoryGet } from './get-service.js';
+import { runMemoryGet, runMemoryGetOne } from './get-service.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 
 const listQuerySchema = paginationSchema.extend({
@@ -111,3 +111,19 @@ memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async 
   );
   return c.json({ ...listResponse(c, rows, total, { limit, offset }), counts });
 });
+
+const entryParamSchema = z.object({ memoryId: z.uuid() });
+const entryQuerySchema = z.object({ projectId: z.uuid() });
+
+// One entry by its id (ISS-789). Registered last: '/revisions' and '/entries' are literal paths.
+memoryListRoutes.get(
+  '/:memoryId',
+  zValidator('param', entryParamSchema),
+  zValidator('query', entryQuerySchema),
+  async (c) => {
+    const { memoryId } = c.req.valid('param');
+    const { projectId } = c.req.valid('query');
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
+    return c.json(await runMemoryGetOne(projectId, memoryId));
+  },
+);

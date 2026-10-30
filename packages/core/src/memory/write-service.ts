@@ -7,6 +7,7 @@ import { memories, memoryWritableSources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 import { type LandedAs, landingOfMirrorWrite } from './issue-learning.js';
+import { latestRevisionId } from './revisions-service.js';
 
 /**
  * Shared service for writing a memory row, behind REST `POST /api/memory`.
@@ -87,9 +88,9 @@ function assertAgentMemoryQuality(input: WriteMemoryInput): void {
  * (MJ-1). A row a person retired is refused, not revived — the upsert would otherwise clear the
  * retirement and its reason in silence.
  */
-async function carriedFromExisting(input: WriteMemoryInput): Promise<Record<string, unknown>> {
+async function carriedFromExisting(input: WriteMemoryInput): Promise<Carried> {
   const [row] = await db
-    .select({ metadata: memories.metadata, archivedAt: memories.archivedAt })
+    .select({ id: memories.id, metadata: memories.metadata, archivedAt: memories.archivedAt })
     .from(memories)
     .where(
       and(
@@ -99,7 +100,7 @@ async function carriedFromExisting(input: WriteMemoryInput): Promise<Record<stri
       ),
     )
     .limit(1);
-  if (!row) return {};
+  if (!row) return { carried: {}, existing: null };
   const md = (row.metadata ?? {}) as Record<string, unknown>;
   const retired = md.retired as { at?: unknown; reason?: unknown } | undefined;
   if (row.archivedAt !== null && retired) {
@@ -109,7 +110,16 @@ async function carriedFromExisting(input: WriteMemoryInput): Promise<Record<stri
       '/sourceRef',
     );
   }
-  return Array.isArray(md.corrections) ? { corrections: md.corrections } : {};
+  return {
+    carried: Array.isArray(md.corrections) ? { corrections: md.corrections } : {},
+    existing: { id: row.id },
+  };
+}
+
+interface Carried {
+  carried: Record<string, unknown>;
+  /** The row this write lands on, when one already holds the ref; null for a fresh write. */
+  existing: { id: string } | null;
 }
 
 /** Who is writing, stamped on the row as `metadata.writtenBy` (MJ-2). */
@@ -117,8 +127,18 @@ interface WriteBy {
   writtenBy?: string | undefined;
 }
 
-/** What a write answers: the row, and where it landed when that is not the ref it named. */
-export type MemoryWriteResult = IndexResult & { landedAs?: LandedAs };
+/**
+ * Said on a write that landed on a row already holding its (source, sourceRef) (ISS-789): the write
+ * replaced that entry's body. `revisionId` names the revision that kept the earlier text, readable at
+ * `GET /api/memory/revisions?projectId=&memoryId=<id>`; null when nothing was kept (the text was
+ * the same, or the source keeps no revisions because it mirrors another record).
+ */
+export interface MemoryReplaced {
+  revisionId: string | null;
+}
+
+/** What a write answers: the row, where it landed when that is not the ref it named, and that it replaced one. */
+export type MemoryWriteResult = IndexResult & { landedAs?: LandedAs; replaced?: MemoryReplaced };
 
 export async function runMemoryWrite(
   given: WriteMemoryInput,
@@ -126,7 +146,8 @@ export async function runMemoryWrite(
 ): Promise<MemoryWriteResult> {
   const { input, landedAs } = await landingOfMirrorWrite(given);
   assertAgentMemoryQuality(input);
-  const carried = await carriedFromExisting(input);
+  const { carried, existing } = await carriedFromExisting(input);
+  const revisionBefore = existing ? await latestRevisionId(existing.id) : null;
   const metadata = {
     ...(input.metadata ?? {}),
     ...carried,
@@ -142,5 +163,14 @@ export async function runMemoryWrite(
     },
     { nearDuplicateProbe: NEAR_DUPLICATE_PROBE_SOURCES.has(input.source) },
   );
-  return landedAs ? { ...written, landedAs } : written;
+  const replaced: MemoryReplaced | undefined = existing
+    ? { revisionId: await keptRevision(written.id, revisionBefore) }
+    : undefined;
+  return { ...written, ...(landedAs ? { landedAs } : {}), ...(replaced ? { replaced } : {}) };
+}
+
+/** The revision this write made, or null when the newest one is the one that stood before it. */
+async function keptRevision(memoryId: string, before: string | null): Promise<string | null> {
+  const after = await latestRevisionId(memoryId);
+  return after === before ? null : after;
 }

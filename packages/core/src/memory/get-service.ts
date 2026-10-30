@@ -1,7 +1,9 @@
+import type { MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 
 /**
@@ -97,4 +99,40 @@ export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResu
     .offset(input.offset);
 
   return { rows, total: Number(n) };
+}
+
+const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
+
+/**
+ * One entry by its id (ISS-789), the read a write's answer points at. An id names its row whether
+ * or not decay archived it (`archivedAt` says so); an id this project does not hold is refused by
+ * name rather than answered empty.
+ *
+ * Does NOT check authorization — callers MUST verify project membership before invoking.
+ */
+export async function runMemoryGetOne(projectId: string, memoryId: string): Promise<MemoryRow> {
+  const [row] = await db
+    .select({
+      id: memories.id,
+      projectId: memories.projectId,
+      source: memories.source,
+      sourceRef: memories.sourceRef,
+      textContent: memories.textContent,
+      metadata: memories.metadata,
+      embeddedAt: memories.embeddedAt,
+      createdAt: memories.createdAt,
+      updatedAt: memories.updatedAt,
+      archivedAt: memories.archivedAt,
+    })
+    .from(memories)
+    .where(and(eq(memories.id, memoryId), eq(memories.projectId, projectId)))
+    .limit(1);
+  if (!row) {
+    throw refuse(
+      'MEMORY_NOT_FOUND',
+      `no memory ${memoryId} in this project; find one at GET /api/memory?projectId=&source=&sourceRef=`,
+      '/memoryId',
+    );
+  }
+  return row;
 }

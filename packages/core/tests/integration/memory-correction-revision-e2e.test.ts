@@ -7,6 +7,10 @@ import { ago, issue, type World, world } from '../helpers/forecast-world.js';
 // the item's own read (the Memory tab) still holds the old text as an earlier revision, still names
 // the agent that wrote it as its writer, and names the person who corrected it, with why. Every
 // source a person may correct there keeps its revision, a decision as much as a note.
+//
+// @direct-test-of packages/core/src/memory/write-service.ts
+// @direct-test-of packages/core/src/memory/revisions-service.ts
+// @direct-test-of packages/core/src/memory/tool.ts
 
 type Entry = Record<string, unknown> & { id: string; sourceRef: string };
 
@@ -130,5 +134,76 @@ describe('a memory corrected from the item it names', () => {
     expect(noReason.status).toBe(400);
     const after = (await onItem(w, 'ISS-1')).find((r) => r.sourceRef === 'decision/board') as Entry;
     expect(after.revisions).toHaveLength(1);
+  });
+});
+
+// ISS-789: a write under a ref that already holds an entry says it replaced one, names the
+// revision that kept the old text, and the entry reads back by its id.
+describe('a memory write over an existing ref says it replaced an entry', () => {
+  let w: World;
+  const write = (sourceRef: string, textContent: string, source = 'decision') =>
+    api(w.token, 'POST', '/api/memory', { projectId: w.projectId, source, sourceRef, textContent });
+  const read = (id: string, projectId?: string) =>
+    api(w.token, 'GET', `/api/memory/${id}?projectId=${projectId ?? w.projectId}`);
+
+  beforeAll(async () => {
+    w = await world();
+  });
+
+  it('a fresh write carries no replaced field', async () => {
+    const res = await write('REQ-13', 'Flat board.');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).not.toHaveProperty('replaced');
+  });
+
+  it('a replace answers the same id, names the revision holding the earlier text', async () => {
+    const first = await write('REQ-14', 'First decision.');
+    const second = await write('REQ-14', 'Second decision.');
+    expect(second.status, JSON.stringify(second.body)).toBe(201);
+    expect(second.body.id).toBe(first.body.id);
+    const replaced = second.body.replaced as { revisionId: string };
+    expect(replaced.revisionId).toEqual(expect.any(String));
+
+    const revs = await api(
+      w.token,
+      'GET',
+      `/api/memory/revisions?projectId=${w.projectId}&memoryId=${second.body.id}`,
+    );
+    const kept = (revs.body.items as Body[]).find((r) => r.id === replaced.revisionId);
+    expect(kept?.textContent).toBe('First decision.');
+
+    const third = await write('REQ-14', 'Third decision.');
+    const next = third.body.replaced as { revisionId: string };
+    expect(next.revisionId).not.toBe(replaced.revisionId);
+  });
+
+  it('a rewrite with the same text says it replaced, and names no revision', async () => {
+    await write('REQ-15', 'Same text.');
+    const again = await write('REQ-15', 'Same text.');
+    expect(again.body.replaced).toEqual({ revisionId: null });
+  });
+
+  it('reads one entry by its id, and refuses an unknown id or another project by name', async () => {
+    const put = await write('REQ-16', 'Readable by id.');
+    const got = await read(put.body.id as string);
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    expect(got.body).toMatchObject({
+      id: put.body.id,
+      sourceRef: 'REQ-16',
+      source: 'decision',
+      textContent: 'Readable by id.',
+      archivedAt: null,
+    });
+
+    const unknown = await read('00000000-0000-4000-8000-000000000000');
+    expect(unknown.status).toBe(404);
+    expect(unknown.body.code).toBe('MEMORY_NOT_FOUND');
+
+    const other = await world();
+    const foreign = await read(put.body.id as string, other.projectId);
+    expect(foreign.status).toBe(403);
+
+    const bad = await read('not-a-uuid');
+    expect(bad.status).toBe(400);
   });
 });

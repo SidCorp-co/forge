@@ -1,0 +1,1 @@
+**A memory write over an existing source and sourceRef now says it replaced an entry.** The answer carries `replaced.revisionId`, naming the revision that kept the old text, and `GET /api/memory/:id` reads one entry by its id.

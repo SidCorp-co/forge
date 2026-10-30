@@ -71,3 +71,14 @@ export async function runMemoryRevisions(
 
   return { rows, total: Number(n) };
 }
+
+/** The id of the newest revision of one memory, or null when none was ever kept. */
+export async function latestRevisionId(memoryId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: memoryRevisions.id })
+    .from(memoryRevisions)
+    .where(eq(memoryRevisions.memoryId, memoryId))
+    .orderBy(desc(memoryRevisions.replacedAt), asc(memoryRevisions.id))
+    .limit(1);
+  return row?.id ?? null;
+}
