@@ -279,7 +279,7 @@ describe('the cleanup window fires a run on a slot of its own (BC-7, BC-8)', () 
   const windowRow = async () => {
     const [row] = await db.select().from(schedules).where(sql`${schedules.projectId} = ${projectId}`);
     if (!row) throw new Error('no cleanup window was saved');
-    return row;
+    return { ...row, params: null };
   };
   const jobs = async () =>
     (await rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM jobs WHERE project_id = ${projectId}`))[0]

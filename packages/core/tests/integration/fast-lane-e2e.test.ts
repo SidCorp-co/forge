@@ -157,6 +157,8 @@ beforeAll(async () => {
       },
       extra: {
         validation: { gate: { type: 'github-check', name: 'ci-passed' }, mergeCheck: 'required' },
+        // the fast lane is the way past the full check where fast delivery (REQ-79) is turned off
+        delivery: { fast: false },
         ...(fast ? { fastLane: FAST_LANE } : {}),
       },
     });
@@ -289,7 +291,7 @@ describe('a merge check on the fast lane (BC-7)', () => {
     expect(codes(await check(elsewhere, fastReport()))).toEqual(['FAST_LANE_UNDECLARED']);
   });
 
-  it('refuses a fast report without its patch id, and a full report holding only the fast checks', async () => {
+  it('refuses a fast report without its patch id, and a full report holding only the fast checks where fast delivery is off', async () => {
     const issue = await issueIn(declared);
     approve(issue);
     const { patchId: _dropped, ...noPatch } = fastReport();
