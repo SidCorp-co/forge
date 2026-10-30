@@ -1,13 +1,11 @@
 import { logger } from '../lib/logger.js';
-import { productionOf, readProjectDocument } from '../project-config/index.js';
+import { deploysOnLandOf, readProjectDocument } from '../project-config/index.js';
 
 /** Whether the release sweep alone cuts releases here: production deploys `on-land`. */
 // naming -> packages/core/src/project-config/schema.ts:DEPLOYMENT_TRIGGERS
 export async function productionDeploysOnLand(projectId: string): Promise<boolean> {
   try {
-    const held = await readProjectDocument(projectId);
-    const deployment = held ? productionOf(held.document)?.declaration.deployment : undefined;
-    return !!deployment && 'trigger' in deployment && deployment.trigger === 'on-land';
+    return deploysOnLandOf((await readProjectDocument(projectId))?.document);
   } catch (err) {
     logger.warn(
       { err, projectId },

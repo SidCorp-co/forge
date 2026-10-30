@@ -32,6 +32,7 @@ import { gateRefusal } from '../lib/gated.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import type { Actor } from './activity.js';
 import { checkRunSessionOf, writeCheckRuns } from './check-runs.js';
+import { cleanupLandingRefusal, cleanupOwesLandingCheck } from './cleanup-landing-port.js';
 import { readCriteriaWithDrafts } from './criteria/service.js';
 import { issueDisplayIds } from './display-ids.js';
 import { readIssueGates } from './gates.js';
@@ -66,6 +67,12 @@ export async function recordMergeCheck(args: {
   const fastDelivery = fastDeliveryOf(held?.document.delivery);
   const fault = checkRefusal(report, fastDelivery);
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
+  const landing = await cleanupLandingRefusal({
+    issueId: issue.id,
+    projectId: issue.projectId,
+    report,
+  });
+  if (landing) throw refuse(landing.code, landing.detail, landing.path);
   const criteria = await readCriteriaWithDrafts(issue);
   const probes = probeRefusals(report, criteria);
   if (probes.length) throw new RefusalError(probes, 'MERGE_CHECK_REFUSED');
@@ -135,11 +142,17 @@ export async function recordMergeCheck(args: {
 async function checkOwedBy(
   issueId: string,
   projectId: string,
-): Promise<{ by: CheckOwedBy; gate: ResolvedGate } | null> {
+): Promise<{ by: CheckOwedBy; gate: ResolvedGate | null } | null> {
   const gates = await readIssueGates(projectId);
   if (gates.merge_check.mode === 'enforce') return { by: 'project', gate: gates.merge_check };
-  if (gates.patterns.mode !== 'enforce') return null;
-  return (await hasApprovedNewPattern(issueId)) ? { by: 'pattern', gate: gates.patterns } : null;
+  if (gates.patterns.mode === 'enforce' && (await hasApprovedNewPattern(issueId))) {
+    return { by: 'pattern', gate: gates.patterns };
+  }
+  // no gate asks it: a change rated high on a project that deploys on land owes the check the
+  // cleanup rule is asked at, whatever the gate profile says (REQ-79 r4 BC-5)
+  return (await cleanupOwesLandingCheck({ issueId, projectId }))
+    ? { by: 'cleanup', gate: null }
+    : null;
 }
 
 /**
@@ -163,5 +176,6 @@ export async function uncheckedMergeRefusal(args: {
   const heads = passingHeads(records);
   if (args.commit && headMatches(heads, args.commit)) return null;
   const issueRef = (await issueDisplayIds([args.issueId])).get(args.issueId) ?? args.issueId;
-  return `${missingCheckDetail({ issueRef, owedBy, commit: args.commit, heads })} ${gateSays(owed.gate)}`;
+  const said = missingCheckDetail({ issueRef, owedBy, commit: args.commit, heads });
+  return owed.gate ? `${said} ${gateSays(owed.gate)}` : said;
 }

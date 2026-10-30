@@ -141,8 +141,18 @@ export function releaseModeOf(document: ProjectDocument | undefined): ReleaseMod
       : 'none';
   }
   if (releaseApprovalRequired(document)) return 'approval';
-  const deployment = production.declaration.deployment;
-  return 'trigger' in deployment && deployment.trigger === 'on-land' ? 'automatic' : 'manual';
+  return deploysOnLandOf(document) ? 'automatic' : 'manual';
+}
+
+/**
+ * Whether production deploys on land (`environments.<production>.deployment.trigger: on-land`): a
+ * change reaches production when it lands on the branch, so what holds it from production holds it
+ * from landing. A project with no document, no production environment, or a production deployed
+ * another way (`on-request`, `provider`, external) does not: it promotes, and a person cuts the release.
+ */
+export function deploysOnLandOf(document: ProjectDocument | undefined): boolean {
+  const deployment = document ? productionOf(document)?.declaration.deployment : undefined;
+  return !!deployment && 'trigger' in deployment && deployment.trigger === 'on-land';
 }
 
 export async function readReleaseMode(projectId: string): Promise<ReleaseMode> {

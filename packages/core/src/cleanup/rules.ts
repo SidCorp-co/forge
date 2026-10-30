@@ -11,6 +11,7 @@ import {
   HOLDING_RATING,
   type Impact,
 } from '@forge/contracts/cleanup';
+import { MERGE_CLEANUP_PENDING } from '@forge/contracts/merge-check';
 
 export interface CleanupRefusal {
   code: CleanupRefusalCode;
@@ -190,4 +191,82 @@ export function cleanupBrief(args: {
     `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the head you leave> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }], covers: [<each waiting key above whose merge the green head carries, checked with git merge-base --is-ancestor>] }.`,
     'Every open debt is named once, cleared with how or remaining with why; only a green report covers anything.',
   ].join('\n');
+}
+
+/** The cleanup window as a landing refusal names it. */
+export interface WindowSaid {
+  scheduleId: string;
+  cron: string;
+  timeZone: string | null;
+  enabled: boolean;
+  nextRunAt: string | null;
+}
+
+/** The newest cleanup report, as the landing rule reads it. */
+export interface LastReport {
+  id: string;
+  result: 'green' | 'red';
+  branch: string;
+  sha: string;
+}
+
+const NAMED_DEBTS = 8;
+
+function windowWords(w: WindowSaid | null): string {
+  if (!w) return 'The project has no cleanup window saved yet: rating a change high saves one.';
+  const at = `${w.cron}${w.timeZone ? ` ${w.timeZone}` : ' UTC'}`;
+  if (!w.enabled) {
+    return `The cleanup window (schedule ${w.scheduleId}, ${at}) is disabled: a person enables it, or runs the cleanup by hand (POST /api/projects/:id/schedules/${w.scheduleId}/run).`;
+  }
+  return `The cleanup window is schedule ${w.scheduleId} (${at}), next run ${w.nextRunAt ?? 'not scheduled'}; it can be run now with POST /api/projects/:id/schedules/${w.scheduleId}/run.`;
+}
+
+/** A landing the cleanup holds, refused by name. */
+export interface LandingRefusal {
+  code: typeof MERGE_CLEANUP_PENDING;
+  path: string;
+  detail: string;
+}
+
+/**
+ * Whether a change may land (REQ-79 r4 BC-5): on a project delivering fast whose production deploys on
+ * land, landing is reaching production, so a change rated high lands only once a cleanup has left the
+ * base green: no cleanup debt open (the report's own `debts` included, as it would leave them open) and
+ * the project's last cleanup report green, or none yet (nothing was ever left red). Every lower
+ * rating, an unrated change, a project that promotes and one that turned fast delivery off land as
+ * they did. Returns the refusal naming the cleanup and each debt by id, or null.
+ */
+export function landingRefusal(args: {
+  fast: boolean;
+  onLand: boolean;
+  rating: Impact | null;
+  issueRef: string;
+  open: readonly OpenDebt[];
+  ownDebts: number;
+  last: LastReport | null;
+  window: WindowSaid | null;
+}): LandingRefusal | null {
+  const { rating, open, last } = args;
+  if (!args.fast || !args.onLand || rating?.rating !== HOLDING_RATING) return null;
+  const redLast = last !== null && last.result !== 'green';
+  if (open.length === 0 && args.ownDebts === 0 && !redLast) return null;
+  const why: string[] = [];
+  if (open.length > 0) {
+    const shown = open.slice(0, NAMED_DEBTS).map((d) => `${d.id} (${d.where})`);
+    const more = open.length > NAMED_DEBTS ? `, and ${open.length - NAMED_DEBTS} more` : '';
+    why.push(`the base carries ${open.length} open cleanup debt: ${shown.join(', ')}${more}`);
+  }
+  if (args.ownDebts > 0) {
+    why.push(`this report would leave ${args.ownDebts} red as new cleanup debt (\`debts\`)`);
+  }
+  if (last && redLast) {
+    why.push(
+      `the last cleanup report ${last.id} is red at ${last.sha.slice(0, 12)} on ${last.branch}`,
+    );
+  }
+  return {
+    code: MERGE_CLEANUP_PENDING,
+    path: '/impact',
+    detail: `${args.issueRef} is rated high impact (${rating.type}: ${rating.reason}) and this project deploys on land, so landing it is reaching production (REQ-79 BC-5): a change rated high lands only once a cleanup has left the base green, and ${why.join('; ')}. ${windowWords(args.window)} Land after a cleanup report is green and its debt cleared or remaining by name; low and medium changes land without waiting. Nothing was recorded`,
+  };
 }

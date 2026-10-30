@@ -7,6 +7,7 @@ import type {
   CleanupReportRequest,
   CleanupReportView,
   DebtLedgerView,
+  Impact,
   ImpactView,
   RecordDebtsRequest,
   RecordImpactRequest,
@@ -18,7 +19,7 @@ import { type Actor, issueDisplayIds, resolveIssueRouteRef } from '../issues/ind
 import { loadProjectAccess } from '../lib/authz.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { requireHeld } from '../permissions/index.js';
-import { readFastDelivery } from '../project-config/index.js';
+import { readDeliveryShape, readFastDelivery } from '../project-config/index.js';
 import {
   type CleanupWindow,
   ensureCleanupWindow,
@@ -30,6 +31,8 @@ import {
   type CoverCandidate,
   debtRefusals,
   FAST_DELIVERY_OFF_DETAIL,
+  type LandingRefusal,
+  landingRefusal,
   reportRefusals,
   waitingOnCleanup,
 } from './rules.js';
@@ -40,6 +43,7 @@ import {
   insertImpact,
   insertReport,
   issueImpacts,
+  lastReport,
   openDebts,
   ratedOpenIssues,
   readDebts,
@@ -224,9 +228,12 @@ export async function listCleanupReports(projectId: string, userId: string) {
   return { reports: await readReports(projectId) };
 }
 
-/** The open issues rated high that no green cleanup since covers (BC-5), with their keys. */
+/**
+ * The open issues rated high that no green cleanup since covers (BC-5), with their keys. Where
+ * production deploys on land these are the changes waiting to land: a landed one is already live.
+ */
 async function waitingIssues(projectId: string): Promise<DebtLedgerView['waiting']> {
-  const open = await ratedOpenIssues(projectId);
+  const open = await ratedOpenIssues(projectId, (await readDeliveryShape(projectId)).onLand);
   const ids = open.map((o) => o.id);
   const [ratings, coverage] = await Promise.all([
     currentRatings(ids),
@@ -257,14 +264,18 @@ export async function readLedger(projectId: string, userId: string): Promise<Deb
 }
 
 /**
- * Which of `issueIds` wait for a green cleanup before production (BC-5): none where the project does
- * not deliver fast, else each rated high now that no green report since that rating covers (BC-6).
+ * Which of `issueIds` wait for a green cleanup before a person promotes them (BC-5, BC-6): none where
+ * the project does not deliver fast, none where production deploys on land (there the change is held
+ * from landing instead, `cleanupLandingRefusal`: a roster hold would only hold the record of a change
+ * already live), else each rated high now that no green report since that rating covers.
  */
 export async function cleanupWaiting(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<Map<string, { reason: string; type: string }>> {
-  if (issueIds.length === 0 || !(await readFastDelivery(projectId))) return new Map();
+  if (issueIds.length === 0) return new Map();
+  const shape = await readDeliveryShape(projectId);
+  if (!shape.fast || shape.onLand) return new Map();
   const [ratings, coverage] = await Promise.all([
     currentRatings(issueIds),
     greenCoverage(projectId, issueIds),
@@ -275,6 +286,60 @@ export async function cleanupWaiting(
       { reason: w.impact.reason, type: w.impact.type },
     ]),
   );
+}
+
+/** The rating a landing is judged at: the check's own where it sends one, else the issue's current. */
+async function landingRating(issueId: string, sent: Impact | undefined): Promise<Impact | null> {
+  if (sent) return sent;
+  return (await currentRatings([issueId]))[0]?.impact ?? null;
+}
+
+/**
+ * Why this change may not land now (REQ-79 r4 BC-5), or null (the issue kernel's
+ * `cleanupLandingRefusal` port). On a project delivering fast whose production deploys on land, a
+ * change rated high lands only once a cleanup has left the base green; see `rules.ts:landingRefusal`.
+ * The merge check asks it before the push; the mark asks `cleanupOwesLandingCheck`.
+ */
+export async function cleanupLandingRefusal(args: {
+  issueId: string;
+  projectId: string;
+  report: MergeCheckReport;
+}): Promise<LandingRefusal | null> {
+  const { issueId, projectId, report } = args;
+  const shape = await readDeliveryShape(projectId);
+  if (!shape.fast || !shape.onLand) return null;
+  const rating = await landingRating(issueId, report.impact);
+  if (rating?.rating !== HOLDING_RATING) return null;
+  const [open, last, window, key] = await Promise.all([
+    openDebts(db, projectId),
+    lastReport(db, projectId),
+    readCleanupWindow(projectId),
+    issueDisplayIds([issueId]),
+  ]);
+  return landingRefusal({
+    ...shape,
+    rating,
+    issueRef: key.get(issueId) ?? issueId,
+    open,
+    ownDebts: report.debts?.length ?? 0,
+    last,
+    window,
+  });
+}
+
+/**
+ * Whether the mark of this issue owes a merge check (the issue kernel's `cleanupOwesLandingCheck`
+ * port): it is rated high on a project delivering fast whose production deploys on land. Without it a
+ * project that asks no merge check (a `yolo` gate profile) would land a high change past the door
+ * above by never calling it.
+ */
+export async function cleanupOwesLandingCheck(args: {
+  issueId: string;
+  projectId: string;
+}): Promise<boolean> {
+  const shape = await readDeliveryShape(args.projectId);
+  if (!shape.fast || !shape.onLand) return false;
+  return (await landingRating(args.issueId, undefined))?.rating === HOLDING_RATING;
 }
 
 export { waitingIssues };

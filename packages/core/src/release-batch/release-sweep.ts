@@ -10,7 +10,6 @@
 // (`shipped-in.ts`) included.
 
 import { sql } from 'drizzle-orm';
-import { cleanupWaiting } from '../cleanup/index.js';
 import { db } from '../db/client.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
@@ -18,7 +17,6 @@ import { isRefusal } from '../lib/refusal.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
 import { gateOf } from '../project-config/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
-import { cleanupHold } from './cleanup-hold.js';
 import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { resolveReleaseGate } from './gate.js';
 import {
@@ -66,8 +64,6 @@ export interface AutomaticReleaseSweepResult {
   holdsWritten: number;
   /** How many waiting issues owe their agent a record of the earlier release that shipped them. */
   shippedInOwed: number;
-  /** How many waiting issues rated high impact were left for a green cleanup (REQ-79 BC-5). */
-  cleanupHeld: number;
 }
 
 interface CandidateRow {
@@ -298,12 +294,9 @@ async function sweepProject(
   for (const [id, o] of owed)
     await hold({ ...base, issueIds: [id], holdFor: () => shippedInHold(o) });
   const unowed = gate.filter((id) => !owed.has(id) && !blocked.has(id));
-  // a change rated high waits for its green cleanup; every other one goes now (REQ-79 BC-5, BC-6)
-  const cleanup = await cleanupWaiting(projectId, unowed);
-  for (const [id, rated] of cleanup)
-    await hold({ ...base, issueIds: [id], holdFor: () => cleanupHold(rated) });
-  result.cleanupHeld += cleanup.size;
-  const waiting = unowed.filter((id) => !cleanup.has(id));
+  // a change rated high waited for its green cleanup before it landed (REQ-79 r4 BC-5,
+  // `issues/merge-check.ts`): production deploys on land here, so no row waits on one now
+  const waiting = unowed;
   if (waiting.length === 0) return;
 
   const releaseGate = await readGate(projectId);
@@ -363,7 +356,6 @@ export async function sweepAutomaticReleases(
     issuesExcluded: 0,
     holdsWritten: 0,
     shippedInOwed: 0,
-    cleanupHeld: 0,
   };
   await clearStaleReleaseHolds();
   const projectIds = await candidateProjectIds(now);

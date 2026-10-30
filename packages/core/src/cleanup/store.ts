@@ -15,7 +15,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { changeImpacts, cleanupReports, deliveryDebts } from '../db/schema-cleanup.js';
 import { issueDisplayIds } from '../issues/index.js';
-import type { OpenDebt, RatedIssue } from './rules.js';
+import type { LastReport, OpenDebt, RatedIssue } from './rules.js';
 
 export async function insertImpact(
   tx: Tx,
@@ -169,16 +169,24 @@ export async function currentRatings(issueIds: readonly string[]): Promise<Rated
   }));
 }
 
-/** The project's open issues that carry a rating at all, with their status. */
+/**
+ * The project's open issues that carry a rating at all, with their status; `unlanded` leaves out
+ * those whose merge is marked (where production deploys on land, a landed change is live).
+ */
 export async function ratedOpenIssues(
   projectId: string,
+  unlanded = false,
 ): Promise<{ id: string; status: string }[]> {
   return db
     .selectDistinct({ id: issues.id, status: issues.status })
     .from(issues)
     .innerJoin(changeImpacts, eq(changeImpacts.issueId, issues.id))
     .where(
-      and(eq(issues.projectId, projectId), notInArray(issues.status, [...ISSUE_TERMINAL_STATUSES])),
+      and(
+        eq(issues.projectId, projectId),
+        notInArray(issues.status, [...ISSUE_TERMINAL_STATUSES]),
+        unlanded ? isNull(issues.mergedAt) : undefined,
+      ),
     );
 }
 
@@ -275,4 +283,23 @@ export function reportView(
     reportedBy: r.reportedBy,
     reportedAt: r.createdAt.toISOString(),
   };
+}
+
+/** The project's newest cleanup report, or null where none was ever filed. */
+export async function lastReport(
+  executor: Pick<Tx, 'select'>,
+  projectId: string,
+): Promise<LastReport | null> {
+  const [r] = await executor
+    .select({
+      id: cleanupReports.id,
+      result: cleanupReports.result,
+      branch: cleanupReports.branch,
+      sha: cleanupReports.headSha,
+    })
+    .from(cleanupReports)
+    .where(eq(cleanupReports.projectId, projectId))
+    .orderBy(desc(cleanupReports.createdAt), desc(cleanupReports.id))
+    .limit(1);
+  return r ?? null;
 }

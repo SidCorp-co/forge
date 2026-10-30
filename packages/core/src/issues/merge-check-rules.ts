@@ -400,7 +400,7 @@ export function headMatches(heads: readonly string[], commit: string): boolean {
 }
 
 /** What makes a mark owe a merge check: the project's declaration, or the issue's new pattern. */
-export type CheckOwedBy = 'project' | 'pattern';
+export type CheckOwedBy = 'project' | 'pattern' | 'cleanup';
 
 /** The mark's MERGE_CHECK_MISSING detail: what was owed, at which commit, and what stands. */
 export function missingCheckDetail(args: {
@@ -409,10 +409,11 @@ export function missingCheckDetail(args: {
   commit: string | null;
   heads: readonly string[];
 }): string {
-  const why =
-    args.owedBy === 'project'
-      ? 'this project declares `validation.mergeCheck: required`'
-      : `${args.issueRef} introduces an approved new pattern, whose catalog page the merge check asks for`;
+  const why = {
+    project: 'this project declares `validation.mergeCheck: required`',
+    pattern: `${args.issueRef} introduces an approved new pattern, whose catalog page the merge check asks for`,
+    cleanup: `${args.issueRef} is rated high impact on a project that deploys on land, so landing it is asked the cleanup rule (REQ-79 BC-5) by the merge check`,
+  }[args.owedBy];
   const at = args.commit
     ? `no passing merge check is recorded at ${args.commit}`
     : 'the mark names no commit and the issue records none, so no merge check can be matched to it';

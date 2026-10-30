@@ -1,6 +1,15 @@
+/**
+ * @direct-test-of packages/core/src/issues/cleanup-landing-port.ts
+ */
 import type { CleanupReportRequest } from '@forge/contracts/cleanup';
 import { describe, expect, it } from 'vitest';
-import { cleanupBrief, debtRefusals, reportRefusals, waitingOnCleanup } from './rules.js';
+import {
+  cleanupBrief,
+  debtRefusals,
+  landingRefusal,
+  reportRefusals,
+  waitingOnCleanup,
+} from './rules.js';
 
 const impact = (rating: 'low' | 'medium' | 'high') =>
   ({ type: 'data', rating, reason: `rated ${rating}` }) as const;
@@ -134,5 +143,59 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
     expect(brief).toContain('"f1"');
     expect(brief).toContain('/api/projects/p1/cleanup-reports');
     expect(brief).toContain("never take a delivery run's");
+  });
+});
+
+describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
+  const window = {
+    scheduleId: 'sched-1',
+    cron: '0 18 * * *',
+    timeZone: null,
+    enabled: true,
+    nextRunAt: '2026-10-30T18:00:00.000Z',
+  };
+  const base = {
+    fast: true,
+    onLand: true,
+    rating: impact('high'),
+    issueRef: 'ISS-9',
+    open,
+    ownDebts: 0,
+    last: null,
+    window,
+  };
+
+  it('refuses a change rated high on open debt, naming each debt and the cleanup window', () => {
+    const refused = landingRefusal(base);
+    expect(refused?.code).toBe('MERGE_CLEANUP_PENDING');
+    expect(refused?.detail).toContain(D1);
+    expect(refused?.detail).toContain(D2);
+    expect(refused?.detail).toContain('sched-1');
+    expect(refused?.detail).toContain('2026-10-30T18:00:00.000Z');
+  });
+
+  it('refuses on a red last cleanup with no debt, and on debt the report itself would leave', () => {
+    const last = { id: 'r1', result: 'red' as const, branch: 'dev', sha: 'c'.repeat(40) };
+    expect(landingRefusal({ ...base, open: [], last })?.detail).toContain('report r1 is red');
+    expect(landingRefusal({ ...base, open: [], ownDebts: 2 })?.detail).toContain('2 red');
+    expect(landingRefusal({ ...base, open: [], last: { ...last, result: 'green' } })).toBeNull();
+    expect(landingRefusal({ ...base, open: [], last: null })).toBeNull();
+  });
+
+  it('lets every other change land: lower or no rating, a project that promotes, fast off', () => {
+    expect(landingRefusal({ ...base, rating: impact('medium') })).toBeNull();
+    expect(landingRefusal({ ...base, rating: impact('low') })).toBeNull();
+    expect(landingRefusal({ ...base, rating: null })).toBeNull();
+    expect(landingRefusal({ ...base, onLand: false })).toBeNull();
+    expect(landingRefusal({ ...base, fast: false })).toBeNull();
+  });
+
+  it('says so where the window is missing or disabled, and names only the first debts of many', () => {
+    expect(landingRefusal({ ...base, window: null })?.detail).toContain('no cleanup window');
+    expect(landingRefusal({ ...base, window: { ...window, enabled: false } })?.detail).toContain(
+      'disabled',
+    );
+    const many = Array.from({ length: 11 }, (_, i) => ({ id: `d${i}`, where: 'x' }));
+    expect(landingRefusal({ ...base, open: many })?.detail).toContain('and 3 more');
   });
 });

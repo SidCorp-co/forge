@@ -181,9 +181,17 @@ export const MERGE_PROBE_MISSING = "MERGE_PROBE_MISSING" as const;
 /** A kept probe the report ran that answered something other than what it expects. */
 export const MERGE_PROBE_RED = "MERGE_PROBE_RED" as const;
 
+/**
+ * A change rated high on a project that deploys on land, asked to land while the base carries open
+ * cleanup debt or its last cleanup was not green (REQ-79 r4 BC-5): landing is reaching production.
+ */
+export const MERGE_CLEANUP_PENDING = "MERGE_CLEANUP_PENDING" as const;
+
 /** A mark where a merge check is owed and none passed at the commit marked. */
 export const MERGE_CHECK_MISSING = "MERGE_CHECK_MISSING" as const;
 
+// The registry of the codes a merge check refuses by: enumerating them IS the point, so each new
+// refusal is added here and `MergeCheckRefusalCode` is derived from this list.
 export const MERGE_CHECK_REFUSAL_CODES = [
 	"MERGE_CHECK_REFUSED",
 	"MERGE_CHECK_RED",
@@ -195,6 +203,7 @@ export const MERGE_CHECK_REFUSAL_CODES = [
 	PATTERN_ENTRY_MISSING,
 	/** A report passing reds as cleanup debt on a project that turned fast delivery off (REQ-79 BC-1). */
 	"MERGE_DEBT_FAST_DELIVERY_OFF",
+	MERGE_CLEANUP_PENDING,
 ] as const;
 export type MergeCheckRefusalCode = (typeof MERGE_CHECK_REFUSAL_CODES)[number];
 
