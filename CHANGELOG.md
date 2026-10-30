@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.373] - 2026-10-30
+
+A verdict may name its criterion by its exact line
+
+### Fixed
+
+- **A record tag line written above its fence is refused by name.** The comment is refused whole, saying the tag line goes after the closing fence or on the opening fence.
+- **A verdict refused for an unknown run lists the runs your box declared.** `VERDICT_RUN_UNKNOWN` names the live runs the calling box declared over that issue, so the right id can be sent.
+- **A verdict may name its criterion by the criterion's exact line.** A line with or without its number and trace tag resolves to that criterion; any other text is refused, listing the issue's criteria.
+
 ## [0.4.0-dev.372] - 2026-10-30
 
 A requirement-linked draft opens without a pre-written plan

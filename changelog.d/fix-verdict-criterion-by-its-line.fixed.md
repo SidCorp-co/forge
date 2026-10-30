@@ -1,1 +1,0 @@
-**A verdict may name its criterion by the criterion's exact line.** A line with or without its number and trace tag resolves to that criterion; any other text is refused, listing the issue's criteria.
