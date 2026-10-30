@@ -195,6 +195,7 @@ const record = (flow: string, status: string, pending: number | null, over: Reco
   revision: 2,
   writer: "u1",
   writerName: "Lan",
+  requirements: [],
   design: { shown: status, status, pendingRevision: pending, approvedRevision: 1, returnReason: null, waitingOn: nobody },
   document: { ...body(flow, over), id: `w-${flow}`, createdAt: AT, updatedAt: AT },
   health,
@@ -304,7 +305,7 @@ function BuiltinTemplates() {
 const workflowCanvasScreen = (): ReactElement => (
   <Seeded data={workflowSeed()}>
     <BuiltinTemplates />
-    <ViewBar language="business" lod={1} banded allOpen={false} onLanguage={() => {}} onLod={() => {}} onToggleAll={() => {}} onWalk={() => {}} health={overlay} />
+    <ViewBar banded allOpen={false} onToggleAll={() => {}} onWalk={() => {}} health={overlay} />
     <HealthBar health={overlay} />
     <SearchBox c={canvas} hits={[]} query="x" onQuery={() => {}} onPick={() => {}} />
     <ZoomBar zoom={1} minimap legend onZoom={() => {}} onReset={() => {}} onFit={() => {}} onMinimap={() => {}} onLegend={() => {}} />

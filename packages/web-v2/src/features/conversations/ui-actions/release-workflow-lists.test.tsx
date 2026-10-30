@@ -56,6 +56,7 @@ const workflow = (flow: string, title: string, kind: WaitingKind) => ({
   revision: 1,
   writer: "u1",
   writerName: "Lan",
+  requirements: [],
   design: { shown: "approved", pendingRevision: null, waitingOn: wait(kind), status: "approved", approvedRevision: 1 },
   document: {
     id: `w-${flow}`,

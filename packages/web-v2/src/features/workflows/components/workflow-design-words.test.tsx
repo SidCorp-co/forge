@@ -27,7 +27,7 @@ const health = (over: Partial<WorkflowHealth> = {}): WorkflowHealth =>
 const HELD = say("designs.gate.held", { why: say("designs.gate.noApproval") });
 const design = { gate: { open: false, rule: sentence(HELD), says: { rule: HELD } }, builds: [], requirements: [], revisions: [], approver: "workflow-designs.approve", approvedRevision: null } as unknown as WorkflowDesign;
 
-const OBSERVED = { id: "o", atSha: "abc", revision: 2, createdAt: "2026-10-01T00:00:00Z", writtenBy: "u", writtenByAgency: "agent" };
+const OBSERVED = { id: "o", atSha: "abc", revision: 2, createdAt: "2026-10-01T00:00:00Z", writtenBy: "u", writtenByAgency: "agent" as const };
 const ROOTED = { rooted: true, approvedRevision: 2, requirements: ["REQ-1"], missing: [] };
 
 describe("whether the code matches the design, as a mark and a word or two", () => {

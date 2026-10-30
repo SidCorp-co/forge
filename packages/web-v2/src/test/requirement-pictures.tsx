@@ -48,6 +48,7 @@ export const workflow = {
   revision: 3,
   writer: "u1",
   writerName: "Lan",
+  requirements: [],
   design: { status: "approved", approvedRevision: 3 },
   document: {
     id: "w1",
