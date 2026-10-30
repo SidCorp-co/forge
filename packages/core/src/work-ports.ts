@@ -126,6 +126,7 @@ import {
 import {
   approvalRequired,
   approvalsOfRuns,
+  criteriaWeighingOf,
   deliveryHeadsOf,
   judgedBuildOf,
   landedRecordOf,
@@ -265,6 +266,7 @@ export function provideWorkPorts(): void {
     subjectOf,
     liveReachForIssue,
     judgedBuildOf,
+    criteriaWeighingOf,
     unobservedBuildOf,
     deliveryHeadsOf,
     getLoopThresholds,

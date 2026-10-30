@@ -1,0 +1,1 @@
+**The criteria read says whether each verdict counts:** `GET /api/issues/:id/criteria` gives each criterion a `weighing` — earned, standing, reason, and where it was weighed: the landing on a promotion project, else what is served. Reads ask the source host nothing.

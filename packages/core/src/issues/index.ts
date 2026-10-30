@@ -71,6 +71,11 @@ export {
   type IssueCriteriaReport,
   unearnedCriteriaReports,
 } from './criteria-verdicts.js';
+export type {
+  CriterionWeighedOn,
+  CriterionWeighing,
+  IssueCriteriaWeighing,
+} from './criteria-weighing.js';
 export type { IssueDependencyExecutor } from './dependency-executor.js';
 export { allRelationDigests, loadIssueRelationsForIssues } from './dependency-read.js';
 export { registerDependencyHealth } from './dependency-service.js';

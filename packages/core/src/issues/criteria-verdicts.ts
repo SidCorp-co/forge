@@ -34,6 +34,7 @@ import {
   weighVerdict,
 } from './runtime-standing.js';
 import {
+  carriedSentence,
   EARNED_STANDINGS,
   type IssueIdentities,
   issueIdentities,
@@ -178,13 +179,32 @@ function standingRead(
   return { criteria: read, unverified };
 }
 
+/** Where one criterion's verdict was weighed: the declared runtime that decided (null for the
+ *  deployment), and the judged-on environment the deployment's reading was taken from (null for
+ *  production). Null both where no verdict was weighed. */
+interface WeighedWhere {
+  readonly runtime: string | null;
+  readonly environment: string | null;
+}
+
 /** One criterion an issue does not carry an earned, standing verdict on. */
-interface UnearnedCriterion {
+interface UnearnedCriterion extends WeighedWhere {
   readonly criterion: number;
   /** The latest verdict's word, or null where no verdict record has ever named this criterion. */
   readonly verdict: string | null;
   /** How that verdict's identity resolved, or null where there is no verdict. */
   readonly standing: VerdictStanding | null;
+  readonly why: string;
+}
+
+/** One criterion an issue carries an earned, standing verdict on, and what earned it. */
+export interface EarnedCriterion extends WeighedWhere {
+  readonly criterion: number;
+  readonly verdict: string;
+  /** `stands` or `uncorroborated` (`EARNED_STANDINGS`). */
+  readonly standing: VerdictStanding;
+  /** Where a served commit other than the judged one carries it, which and how; else null. */
+  readonly carried: string | null;
   readonly why: string;
 }
 
@@ -197,6 +217,8 @@ interface BrokenCitations {
 export interface IssueCriteriaReport {
   readonly issueId: string;
   readonly unearned: readonly UnearnedCriterion[];
+  /** Every criterion `unearned` does not name, with the sentence saying what earned it. */
+  readonly earned: readonly EarnedCriterion[];
   /** Named beside `unearned` so a reader gets the citation and not only the consequence. */
   readonly broken: readonly BrokenCitations[];
   /** What the project's declared probes answered when these verdicts were weighed: the judged-on
@@ -253,6 +275,7 @@ function reasonsAgainst(
 
 interface CriteriaFindings {
   readonly unearned: UnearnedCriterion[];
+  readonly earned: EarnedCriterion[];
   readonly broken: BrokenCitations[];
   readonly uncorroborated: number[];
 }
@@ -296,6 +319,7 @@ function findingsFor(
   held: ReadonlySet<string>,
 ): CriteriaFindings {
   const unearned: UnearnedCriterion[] = [];
+  const earned: EarnedCriterion[] = [];
   const broken: BrokenCitations[] = [];
   const uncorroborated: number[] = [];
   const weighed = new Map<number, WeighedVerdict>();
@@ -317,19 +341,39 @@ function findingsFor(
     const pair = latest.get(criterion);
     const w = weighed.get(criterion);
     if (!pair || !w) {
-      unearned.push({ criterion, verdict: null, standing: null, why: NEVER_JUDGED });
+      unearned.push({
+        criterion,
+        verdict: null,
+        standing: null,
+        why: NEVER_JUDGED,
+        runtime: null,
+        environment: null,
+      });
       continue;
     }
-    const { standing } = w;
+    const { standing, runtime, environment } = w;
     const unresolved = unresolvedCitations(pair.cited, held);
     if (unresolved.length > 0) broken.push({ criterion, unresolved });
     const said = { ...pair, at: spoken(pair, standing) };
     const reasons = reasonsAgainst(said, w, identities, unresolved);
-    if (standing === 'uncorroborated' && reasons.length === 0) uncorroborated.push(criterion);
-    if (reasons.length === 0) continue;
-    unearned.push({ criterion, verdict: pair.verdict, standing, why: reasons.join('; and ') });
+    const where = { runtime, environment };
+    if (reasons.length > 0) {
+      unearned.push({
+        criterion,
+        verdict: pair.verdict,
+        standing,
+        why: reasons.join('; and '),
+        ...where,
+      });
+      continue;
+    }
+    if (standing === 'uncorroborated') uncorroborated.push(criterion);
+    const why = w.carried
+      ? carriedSentence(said.at, w.carried, runtime, environment)
+      : standingSentence(standing, said.at, w.serving, identities, runtime, environment);
+    earned.push({ criterion, verdict: pair.verdict, standing, carried: w.carried, why, ...where });
   }
-  return { unearned, broken, uncorroborated };
+  return { unearned, earned, broken, uncorroborated };
 }
 
 /** The issue rows this check reads, and the only ones it reads. */
@@ -367,7 +411,7 @@ async function reportFor(
   const criteria = await withCurrentDrafts(row.projectId, stands.criteria);
   const numbers = criteria.map((c) => c.n);
   if (numbers.length === 0) {
-    return { issueId: row.id, unearned: [], broken: [], ...placed, uncorroborated: [] };
+    return { issueId: row.id, unearned: [], earned: [], broken: [], ...placed, uncorroborated: [] };
   }
   const latest = latestByNumber(criteria, stands.unverified);
   const held = await heldAttachmentNames(row.id);
@@ -376,6 +420,7 @@ async function reportFor(
   return {
     issueId: row.id,
     unearned: found.unearned,
+    earned: found.earned,
     broken: found.broken,
     ...placed,
     uncorroborated: found.uncorroborated,
@@ -437,6 +482,7 @@ export async function unearnedCriteriaReports(
       out.push({
         issueId: row.id,
         unearned: [],
+        earned: [],
         broken: [],
         serving,
         weighedOn: null,

@@ -3,7 +3,9 @@ import {
   criterionNamed as criterionOfLine,
   isCriterionNumber,
 } from '../../messaging/criterion-named.js';
+import { weighingOf } from '../criteria-weighing.js';
 import { criterionRoutesOf } from '../design-record.js';
+import { criteriaWeighingOf } from '../ports.js';
 import { namedCriteriaOf } from './criterion-names.js';
 import {
   type CriterionRef,
@@ -52,14 +54,19 @@ export async function readCriteriaWithDrafts(issue: { id: string; projectId: str
 
 /**
  * What the criteria read answers: the live criteria with their latest verdicts and the storefront's
- * current drafts, and beside them the retired ones with every verdict each earned.
+ * current drafts, each with `weighing`, what the gate that will decide the issue counts it
+ * (`criteria-weighing.ts`), and beside them the retired ones with every verdict each earned.
  */
 export async function readCriteriaAndRetired(issue: { id: string; projectId: string }) {
-  const [criteria, retired] = await Promise.all([
+  const [criteria, retired, weighing] = await Promise.all([
     readCriteriaWithDrafts(issue),
     listRetiredCriteria(db, issue.id),
+    criteriaWeighingOf(issue),
   ]);
-  return { criteria, retired };
+  return {
+    criteria: criteria.map((c) => ({ ...c, weighing: weighingOf(weighing, c.n) })),
+    retired,
+  };
 }
 
 /**

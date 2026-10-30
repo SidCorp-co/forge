@@ -48,8 +48,10 @@ Read these before judging anything, while whoever sent you can still equip you.
 - \`GET /api/issues/:id/criteria\` lists each live criterion: its statement, its \`class\`
   (\`observable\` is judged on the running build, \`server_side\` on it from inside the running server,
   \`code_property\` by the review against the diff),
-  the \`judge\` it routes to, its kept \`probe\`, and its \`latest\` verdict with the identity that
-  verdict was taken at.
+  the \`judge\` it routes to, its kept \`probe\`, its \`latest\` verdict with the identity that
+  verdict was taken at, and its \`weighing\`: whether the gate that will decide the issue counts it
+  (\`earned\`), its \`standing\`, the \`reason\`, and \`weighedOn\` — at the landing where a promotion
+  stands before production, else at what is served (the \`environment\` judged on until release).
 - \`GET /api/issues/:id/design\` gives the proof the design names for each criterion.
 - \`GET /api/issues/:id/review\` lists what the review owes: the code-property criteria are its, not
   yours.

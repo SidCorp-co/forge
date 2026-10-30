@@ -37,6 +37,9 @@ export interface LandingCriteriaReport {
   /** The landing commit weighed at; null where the issue's merge names none. */
   landing: string | null;
   unearned: Array<{ criterion: number; why: string }>;
+  /** Every criterion that counts there, and the commit its verdict was judged at: the landing
+   *  itself, or a later build that holds it (`landed-build.ts:weighOnLanded`). */
+  counted: Array<{ criterion: number; at: string }>;
 }
 
 /** Each of `issueIds` (of `projectId`) weighed at its landing commit, in the order given. */
@@ -69,12 +72,14 @@ export async function landingCriteriaReports(
       // No landing commit, so nothing a verdict names can be weighed: every owed criterion is unearned.
       const why = build?.why ?? 'nothing says where it landed';
       const owed = standing?.owes ? criteria.map((c) => c.criterion) : [];
-      return { issueId, landing: null, unearned: owed.map((criterion) => ({ criterion, why })) };
+      const unearned = owed.map((criterion) => ({ criterion, why }));
+      return { issueId, landing: null, unearned, counted: [] };
     }
     return {
       issueId,
       landing: build.sha,
       unearned: criteria.flatMap((c) => (c.counts ? [] : [{ criterion: c.criterion, why: c.why }])),
+      counted: criteria.flatMap((c) => (c.counts ? [{ criterion: c.criterion, at: c.at }] : [])),
     };
   });
 }

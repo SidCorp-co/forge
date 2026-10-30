@@ -85,6 +85,8 @@ export interface WeighedVerdict {
   readonly serving: ServingReading;
   /** What the weighing read about the served commits, said after the standing where it holds. */
   readonly beside: readonly string[];
+  /** Where a served commit other than the judged one carries it, which and how; null otherwise. */
+  readonly carried: string | null;
 }
 
 const SHOWN_FILES = 3;
@@ -103,12 +105,13 @@ function weighIn(
   runs: (file: string) => boolean,
   weighing: Weighing,
   declared: boolean,
-): { standing: VerdictStanding; beside: string[] } {
+): { standing: VerdictStanding; beside: string[]; carried: string | null } {
   // A declared runtime's reading is missing NOW, which is not ISS-1286's project with no route.
-  if (declared && serving.kind !== 'serving') return { standing: 'superseded', beside: [] };
+  if (declared && serving.kind !== 'serving')
+    return { standing: 'superseded', beside: [], carried: null };
   const standing = verdictStanding(at, serving, identities);
   if (standing !== 'superseded' || !at || serving.kind !== 'serving')
-    return { standing, beside: [] };
+    return { standing, beside: [], carried: null };
   const beside: string[] = [];
   const commits = servedCommits(serving);
   for (const served of commits) {
@@ -120,18 +123,22 @@ function weighIn(
       if (weighing.read) beside.push(`whether ${what} carries it was not read`);
       continue;
     }
-    if (carriage.kind === 'descends') return { standing: 'stands', beside: [] };
+    if (carriage.kind === 'descends')
+      return { standing: 'stands', beside: [], carried: `\`${served}\` descends from it` };
     if (carriage.kind === 'unread') {
       beside.push(`whether ${what} carries it could not be read: ${carriage.why}`);
       continue;
     }
     const differing = carriage.paths.filter(runs);
-    if (differing.length === 0) return { standing: 'stands', beside: [] };
+    if (differing.length === 0) {
+      const carried = `\`${served}\` differs from it only in files this runtime does not run`;
+      return { standing: 'stands', beside: [], carried };
+    }
     beside.push(
       `${what} does not descend from it and differs from it in ${filesClause(differing)}`,
     );
   }
-  return { standing, beside };
+  return { standing, beside, carried: null };
 }
 
 /**

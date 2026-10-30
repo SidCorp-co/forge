@@ -2,7 +2,8 @@
  * ISS-55 — an issue's criteria and the verdicts on them, over REST. Transport only: the rules are
  * `store.ts` and `verdict-input.ts`, which every door calls.
  *
- *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict, and the retired ones with all their verdicts
+ *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict and its `weighing`
+ *                                   (`criteria-weighing.ts`), and the retired ones with all their verdicts
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text),
  *                                   answering `verdicts`: which recorded verdicts it kept and voided
  *   GET  /api/issues/:id/criteria/:ref   one live criterion (`ref` its number or id) with its wording history

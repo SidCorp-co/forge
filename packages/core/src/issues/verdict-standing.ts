@@ -167,6 +167,18 @@ function servingWhere(environment: string | null): string {
     : `\`${environment}\`, the environment this project judges a change on until it is released,`;
 }
 
+/** A verdict that stands on a served commit other than the one it was judged at: `carried` says which
+ *  commit, and how it carries it (`runtime-standing.ts:weighVerdict`). */
+export function carriedSentence(
+  at: VerdictIdentity | null,
+  carried: string,
+  runtime: string | null,
+  environment: string | null,
+): string {
+  const where = runtime === null ? servingWhere(environment) : `the \`${runtime}\` runtime`;
+  return `judged at ${named(at?.value ?? null)}, which is not a commit ${where} is serving, and what it serves carries it: ${carried}`;
+}
+
 function supersededSentence(
   at: VerdictIdentity | null,
   serving: ServingReading,
@@ -257,7 +269,7 @@ export function standingSentence(
       : `judged on storefront draft ${at.value}, which the storefront source could not be read back as holding: ${at.corroborationNote}`;
   }
   if (standing === 'stands') {
-    return `judged at ${named(at?.value ?? null)}, which this project is serving`;
+    return `judged at ${named(at?.value ?? null)}, which ${servingWhere(environment)} is serving`;
   }
   if (standing === 'unanchored') {
     return at

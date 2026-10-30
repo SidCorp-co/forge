@@ -27,6 +27,7 @@ export {
 } from './coolify-controls.js';
 export { confirmPendingProdDeploy } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
+export { criteriaWeighingOf } from './criteria-weighing.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { nextDraftVersion } from './draft-version.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';

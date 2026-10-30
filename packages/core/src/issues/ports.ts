@@ -29,6 +29,7 @@ import type { Refusal } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import type { Actor } from './activity.js';
 import type { TransitionActor } from './actor-agency.js';
+import type { IssueCriteriaWeighing } from './criteria-weighing.js';
 
 /** The project document as the issue kernel reads it. */
 export interface IssueProjectDocument {
@@ -87,15 +88,11 @@ export type DispatchGateCode =
 
 export type GateReader = Pick<Tx, 'execute' | 'select'>;
 
-type UsageTotalsSelection = {
-  estimatedCost: SQL<number>;
-  inputTokens: SQL<number>;
-  outputTokens: SQL<number>;
-  cacheReadTokens: SQL<number>;
-  cacheCreationTokens: SQL<number>;
-  requests: SQL<number>;
-  sampleCount: SQL<number>;
-};
+type UsageTotalKey = 'estimatedCost' | 'inputTokens' | 'outputTokens' | 'cacheReadTokens';
+type UsageTotalsSelection = Record<
+  UsageTotalKey | 'cacheCreationTokens' | 'requests' | 'sampleCount',
+  SQL<number>
+>;
 
 type UsageTotals = { readonly [K in keyof UsageTotalsSelection]: number };
 
@@ -260,6 +257,9 @@ interface IssuePorts {
     mergedAt: Date | string | null;
     mergedCommitSha: string | null;
   }) => Promise<JudgedBuild>;
+  /** Each criterion weighed as the gate that will decide the issue weighs it
+   *  (`release-batch/criteria-weighing.ts`). */
+  criteriaWeighingOf: (issue: { id: string; projectId: string }) => Promise<IssueCriteriaWeighing>;
   /** Where the project declares no production environment, the build a verdict on the issue counts
    *  at (`release-batch/judged-build.ts:unobservedBuildOf`); null where it declares one, or nothing. */
   unobservedBuildOf: (issue: { id: string; projectId: string }) => Promise<JudgedBuild | null>;
@@ -457,6 +457,7 @@ export const declaredIssueSeqs = port('declaredIssueSeqs');
 export const subjectOf = port('subjectOf');
 export const liveReachOfIssue = port('liveReachForIssue');
 export const judgedBuildOf = port('judgedBuildOf');
+export const criteriaWeighingOf = port('criteriaWeighingOf');
 export const unobservedBuildOf = port('unobservedBuildOf');
 export const deliveryHeadsOf = port('deliveryHeadsOf');
 

@@ -34,9 +34,17 @@ import { readJudgedOnNow } from './serving-reading.js';
  *  carriages, so neither can starve the other; a cached answer costs none. */
 const WEIGHING_READ_LIMIT = 60;
 
+/** Why a read path's weighing left a pair unread: it asks the source host nothing (ISS-774), and
+ *  weighs what the release's own passes in this process have read. */
+export const READ_PATH_HELD_ONLY =
+  'a read asks the source host nothing, and no release pass of this process has read it yet';
+
 interface WeighingDeps {
   host?: (projectId: string) => Promise<SourceHost>;
   now?: () => Date;
+  /** Why this weighing asks the host nothing — a read path's, which weighs only the answers this
+   *  process already holds (ISS-774) — every other pair answering it; absent, it asks within budget. */
+  heldOnly?: string;
 }
 
 /** The build each online, enabled runner device of this project reports. */
@@ -159,7 +167,9 @@ export async function readWeighingNow(
   }
   const reader = await readerFor(projectId, deps);
   passes += 1;
-  const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget()) : new Map();
-  const carriage = await readCarriage(judged, served, reader, budget());
+  const { heldOnly } = deps;
+  const spend = () => (heldOnly === undefined ? budget() : () => heldOnly);
+  const changed = runtimes.length > 0 ? await readChanged(rows, reader, spend()) : new Map();
+  const carriage = await readCarriage(judged, served, reader, spend());
   return { read: true, runtimes, changed, carriage, judgedOn };
 }
