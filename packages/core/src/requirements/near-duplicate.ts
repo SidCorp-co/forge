@@ -82,6 +82,7 @@ export async function fileUndecidedDuplicates(
 export function nearDuplicateRefusal(
   key: string,
   near: readonly NearDuplicate[],
+  decidedAt?: number | null,
 ): RequirementRefusal | null {
   const open = near.filter((n) => !n.decided);
   if (open.length === 0) return null;
@@ -98,7 +99,7 @@ export function nearDuplicateRefusal(
   return {
     code: 'REQUIREMENT_DUPLICATE_UNDECIDED',
     path: '/revision',
-    detail: `${key} reads as a near-duplicate of ${named}. Decide a duplicate suggestion on ${key} naming each first: accept it to merge (${key} is dropped as the duplicate), or reject it with a reason to keep both.`,
+    detail: `${key} reads as a near-duplicate of ${named}. Decide a duplicate suggestion on ${key} naming each first${decidedAt == null ? '' : ` (one decided on ${key} at revision ${decidedAt}, or on the other requirement naming ${key}, counts)`}: accept it to merge (${key} is dropped as the duplicate), or reject it with a reason to keep both.`,
   };
 }
 
@@ -127,24 +128,28 @@ export interface NearDuplicateRead {
   near: NearDuplicate[];
 }
 
-/** The near-duplicates of `row`'s head, and whether its head had a vector to compare at all. */
-export async function nearDuplicatesOf(row: {
+interface NearRow {
   id: string;
   projectId: string;
   reqSeq: number;
   currentRevision: number | null;
-}): Promise<NearDuplicateRead> {
+  /**
+   * Bases at which a decision on this requirement's own duplicate suggestion counts, besides
+   * `currentRevision`. Accepting revision N+1 passes the head N it replaces: suggestion create
+   * writes only at the head, so a pair can never be decided at N+1 before the accept (ISS-776).
+   */
+  alsoDecidedAt?: readonly (number | null)[];
+}
+
+/** The near-duplicates of `row`'s head, and whether its head had a vector to compare at all. */
+export async function nearDuplicatesOf(row: NearRow): Promise<NearDuplicateRead> {
   const own = await itemEmbeddingOf({ requirementId: row.id });
   const check = checkOf(own);
   if (!check.ran || !own?.embedding || !own.model) return { check, near: [] };
   return { check, near: await nearOf(row, own.embedding, own.model) };
 }
 
-async function nearOf(
-  row: { id: string; projectId: string; reqSeq: number; currentRevision: number | null },
-  embedding: number[],
-  model: string,
-): Promise<NearDuplicate[]> {
+async function nearOf(row: NearRow, embedding: number[], model: string): Promise<NearDuplicate[]> {
   const nearest = (
     await nearestItems({
       projectId: row.projectId,
@@ -203,7 +208,9 @@ async function nearOf(
     const decided = pair.some(
       (d) =>
         (d.status === 'accepted' || d.status === 'rejected') &&
-        (d.requirementId !== row.id || d.baseRevision === row.currentRevision),
+        (d.requirementId !== row.id ||
+          d.baseRevision === row.currentRevision ||
+          (row.alsoDecidedAt ?? []).includes(d.baseRevision)),
     );
     const pending = pair.find((d) => d.status === 'proposed');
     return [{ key, similarity: n.similarity, decided, pendingId: pending?.id ?? null }];

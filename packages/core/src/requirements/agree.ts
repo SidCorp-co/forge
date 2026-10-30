@@ -164,9 +164,14 @@ export async function acceptRevision(input: {
       const { check, near } = await nearDuplicatesOf({
         ...current,
         currentRevision: target.revision,
+        alsoDecidedAt: [current.currentRevision],
       });
       readiness = baselineDedup(check);
-      const duplicate = nearDuplicateRefusal(requirementKey(current.reqSeq), near);
+      const duplicate = nearDuplicateRefusal(
+        requirementKey(current.reqSeq),
+        near,
+        current.currentRevision,
+      );
       if (duplicate) return [duplicate];
     }
     if (current.currentRevision !== null) {

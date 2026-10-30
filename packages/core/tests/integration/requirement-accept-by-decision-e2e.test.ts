@@ -81,8 +81,9 @@ const accept = (req: string, body: Record<string, unknown>, token = owner) =>
 
 const read = (req: string) => ok(api(owner, 'GET', at(`/requirements/${req}`)));
 
-async function sameVector(keys: string[]): Promise<void> {
-  const vector = `[${Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0)).join(',')}]`;
+/** Gives `keys` one shared stored vector on `axis`; pairs on different axes are not near each other. */
+async function sameVector(keys: string[], axis = 0): Promise<void> {
+  const vector = `[${Array.from({ length: 1536 }, (_, i) => (i === axis ? 1 : 0)).join(',')}]`;
   for (const key of keys) {
     const id = (await read(key)).id as string;
     await db.execute(sql`
@@ -243,5 +244,80 @@ describe('accepting a requirement whose acceptance checklist is incomplete', () 
       api(owner, 'POST', at(`/requirements/${replacement}/revisions/2/accept`), { reason: 'ok' }),
     );
     expect((await read(replacement)).currentRevision).toBe(2);
+  });
+});
+
+describe('accepting revision N+1 of a near-duplicate with its pair decided at the head (ISS-776)', () => {
+  const propose = (target: string, other: string, baseRevision: number) =>
+    api(owner, 'POST', at('/suggestions'), {
+      kind: 'duplicate',
+      requirement: target,
+      baseRevision,
+      payload: { duplicateOf: other },
+    });
+
+  const reject = async (suggestion: Body) =>
+    ok(
+      api(owner, 'POST', at(`/suggestions/${(suggestion.suggestion as Body).id}/reject`), {
+        reason: 'both stay',
+      }),
+    );
+
+  const nextRevision = async (key: string, n: number) => {
+    await ok(
+      api(owner, 'POST', at(`/requirements/${key}/revisions`), {
+        baseRevision: n - 1,
+        reason: `revision ${n}`,
+        criteria: [{ code: 'BC-1', body: `A buyer pays by card, variant ${n}.` }],
+      }),
+    );
+    await ok(api(owner, 'POST', at(`/requirements/${key}/revisions/${n}/propose`), {}));
+  };
+
+  const acceptRevision = (key: string, n: number) =>
+    api(owner, 'POST', at(`/requirements/${key}/revisions/${n}/accept`), { reason: 'ok' });
+
+  let axis = 10;
+  async function pair(): Promise<{ a: string; b: string }> {
+    const a = await agreed('Checkout takes a card first');
+    const b = await agreed('Checkout takes a card second');
+    await sameVector([a, b], axis++);
+    return { a, b };
+  }
+
+  it('is refused while the pair is undecided, naming the record it reads', async () => {
+    const { b } = await pair();
+    await nextRevision(b, 2);
+    const codes = await refused(acceptRevision(b, 2), 422);
+    expect(codes.map((c) => c.code)).toEqual(['REQUIREMENT_DUPLICATE_UNDECIDED']);
+    expect(codes[0]?.detail).toContain('at revision 1');
+  });
+
+  it('is refused while the suggestion at the head is only proposed', async () => {
+    const { a, b } = await pair();
+    await ok(propose(b, a, 1), 201);
+    await nextRevision(b, 2);
+    const codes = await refused(acceptRevision(b, 2), 422);
+    expect(codes.map((c) => c.code)).toEqual(['REQUIREMENT_DUPLICATE_UNDECIDED']);
+  });
+
+  it('accepts once the pair is decided at the head, the base create writes', async () => {
+    const { a, b } = await pair();
+    await reject(await ok(propose(b, a, 1), 201));
+    await nextRevision(b, 2);
+    await ok(acceptRevision(b, 2));
+    expect((await read(b)).currentRevision).toBe(2);
+  });
+
+  it('a pair decided at revision 1 does not carry to the accept of revision 3', async () => {
+    const { a, b } = await pair();
+    await reject(await ok(propose(b, a, 1), 201));
+    await nextRevision(b, 2);
+    await ok(acceptRevision(b, 2));
+    await nextRevision(b, 3);
+    await sameVector([a, b], axis - 1); // an accepted revision re-embeds the head; plant its vector again
+    const codes = await refused(acceptRevision(b, 3), 422);
+    expect(codes.map((c) => c.code)).toEqual(['REQUIREMENT_DUPLICATE_UNDECIDED']);
+    expect(codes[0]?.detail).toContain('at revision 2');
   });
 });

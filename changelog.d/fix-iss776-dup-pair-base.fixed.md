@@ -1,0 +1,1 @@
+**Accepting a requirement revision no longer deadlocks on its duplicate check.** A duplicate suggestion decided at the head revision now counts when accepting the next one, and the refusal names the revision it reads.
