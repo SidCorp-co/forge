@@ -111,6 +111,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
     row.designStatus === 'proposed' ? templatesOf(row.projectId) : null,
   ]);
   const names = await userNames([
+    row.writtenByUser,
     ...designs.map((d) => d.proposedByUser),
     ...designs.map((d) => d.decidedByUser),
   ]);
@@ -122,9 +123,12 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
     approvedRevision: row.approvedRevision,
   };
   const canDecide = viewer ? (await approverRefusalFor(viewer, row.projectId)) === null : false;
-  const latest = designs[0]
-    ? { revision: designs[0].revision, author: name(designs[0].proposedByUser) }
-    : null;
+  // the writer a draft waits on is the working document's, as the list names it
+  // (`service.ts:listedView`), so one actor carries one name on the list and the page
+  const latest = {
+    revision: designs[0]?.revision ?? row.revision,
+    author: name(row.writtenByUser),
+  };
   const blocked =
     awaiting !== null ? standingBaseRefusal(awaiting, designs[0]?.document, held) : null;
   return {

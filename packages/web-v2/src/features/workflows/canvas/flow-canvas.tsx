@@ -2,10 +2,11 @@
 import type { Node, Viewport } from "@xyflow/react";
 import { useReactFlow } from "@xyflow/react";
 import { useMemo, useRef, useState } from "react";
+import { useRecordView } from "@/design";
 import { type Language, ViewBar } from "./controls";
 import { EDGE_TYPES } from "./edges";
 import { Frame } from "./frame";
-import { useCanvasModel } from "./model";
+import { type Canvas, useCanvasModel } from "./model";
 import { type BandRowData, NODE_TYPES, type StepNodeData } from "./nodes";
 import { hue, tint } from "./style";
 import { useCanvasLayout } from "./use-canvas-layout";
@@ -94,12 +95,24 @@ function useDecoration({ step, edge, hits, walk, visited }: FocusMarks, lit: Lit
   );
 }
 
-/** The viewport a level of detail opens at, zoomed about the canvas's centre. */
-function levelViewport(l: Lod, vp: Viewport, el: HTMLElement | null): Viewport {
-  const k = l === 0 ? Math.min(vp.zoom, 0.4) : l === 1 ? 0.75 : 1.05;
-  const cx = (el?.clientWidth ?? 0) / 2;
-  const cy = (el?.clientHeight ?? 0) / 2;
-  return { x: cx - ((cx - vp.x) * k) / vp.zoom, y: cy - ((cy - vp.y) * k) / vp.zoom, zoom: k };
+/**
+ * What a design opens with: every stage open and every step a full card saying what it does and who
+ * owns it, its lines saying what it leads to (REQ-10 BC-15); zoom and Fold all still fold it. A step or
+ * stage the design gains while shown (the changes switch draws removed ones) opens too.
+ */
+export function useOpenDesign(c: Canvas) {
+  const bands = c.bands.map((b) => b.id);
+  const steps = c.doc.steps.map((st) => st.id);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(bands));
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(steps));
+  const drawn = `${bands.join(",")}|${steps.join(",")}`;
+  const [drawnWas, setDrawnWas] = useState(drawn);
+  if (drawnWas !== drawn) {
+    setDrawnWas(drawn);
+    setExpanded((prev) => new Set([...prev, ...bands]));
+    setOpen((prev) => new Set([...prev, ...steps]));
+  }
+  return { expanded, setExpanded, open, setOpen };
 }
 
 /** A design laid out by ELK from its template: bands, stages and steps, levels of detail by zoom. */
@@ -110,10 +123,11 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
   const banded = c.bands.length > 0;
   const f = useStepFocus(c);
   const lit = useMemo(() => litOf(f.focus, highlight), [f.focus, highlight]);
-  const [language, setLanguage] = useState<Language>("business");
+  // contract terms are the Developer view's, the page's one switch for agent text (REQ-43 BC-7)
+  const [recordView] = useRecordView();
+  const language: Language = recordView === "developer" ? "contract" : "business";
   const [lod, setLod] = useState<Lod>(1);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const { expanded, setExpanded, open, setOpen } = useOpenDesign(c);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const view = useMemo(() => buildView(c, { lod, expanded, open }), [c, lod, expanded, open]);
@@ -221,15 +235,6 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     }
   };
 
-  const setLevel = (l: Lod) => {
-    if (l === lod) return;
-    const el = wrapRef.current;
-    if (l > 0 && expanded.size === 0) setExpanded(new Set(c.bands.map((b) => b.id)));
-    layout.keep(centerAnchor());
-    setLod(l);
-    void rf.setViewport(levelViewport(l, rf.getViewport(), el));
-  };
-
   const allOpen = banded && lod >= 1 && c.bands.every((b) => expanded.has(b.id));
   const toggleAll = () => {
     layout.keep(centerAnchor());
@@ -238,6 +243,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       setOpen(new Set());
     } else {
       setExpanded(new Set(c.bands.map((b) => b.id)));
+      setOpen(new Set(c.doc.steps.map((st) => st.id)));
       if (lod === 0) setLod(1);
     }
   };
@@ -262,7 +268,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       onFit={() => void rf.fitView({ duration: 240, padding: 0.08 })}
       nodeColor={nodeColor}
       nodeStroke={nodeStroke}
-      toolbar={<ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} health={health} changes={props.changes} focus={props.focus} />}
+      toolbar={<ViewBar banded={banded} allOpen={allOpen} onToggleAll={toggleAll} onWalk={() => walkTo(0)} health={health} changes={props.changes} />}
       {...frameFocus}
     />
   );

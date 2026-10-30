@@ -50,3 +50,22 @@ export async function designRequirementsOf(workflowId: string): Promise<DesignRe
     pinnedRevision: r.pinned === null ? null : Number(r.pinned),
   }));
 }
+
+/** Each listed design's linked requirement keys, in key order: one read for the whole list. */
+export async function requirementKeysOf(
+  workflowIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const keys = new Map<string, string[]>(workflowIds.map((id) => [id, []]));
+  if (workflowIds.length === 0) return keys;
+  const rows = (await db.execute(sql`
+    SELECT rw.workflow_id, r.req_seq
+      FROM requirement_workflows rw
+      JOIN requirements r ON r.id = rw.requirement_id
+     WHERE rw.workflow_id IN (${sql.join(
+       workflowIds.map((id) => sql`${id}`),
+       sql`, `,
+     )})
+     ORDER BY r.req_seq`)) as unknown as { workflow_id: string; req_seq: number }[];
+  for (const r of rows) keys.get(r.workflow_id)?.push(requirementKey(Number(r.req_seq)));
+  return keys;
+}

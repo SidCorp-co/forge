@@ -2,13 +2,13 @@ import { SENSITIVE_DATA_LEVELS, type SensitiveDataLevel } from "@forge/contracts
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { SYSTEM_CONTEXT_TEMPLATE } from "@forge/contracts/system-graph";
 import { projectDescriptionOf } from "@/features/project-settings";
-import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { builtinTemplateTitle } from "./template-words";
 import type { FactRow, SystemGraph, WorkflowRecord } from "./types";
 
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
 
-/** What a design is for, by the template it is drawn in. The order is the order the catalogue reads in; its words are `workflows.purpose.<id>`. */
+/** What a design is for, by the template it is drawn in. */
 const PURPOSES: readonly { id: Purpose; templates: readonly string[] }[] = [
   { id: "system", templates: [SYSTEM_CONTEXT_TEMPLATE] },
   { id: "journeys", templates: ["operational-flow", "ux-flow"] },
@@ -42,21 +42,35 @@ export function templateTitle(id: string, templates: readonly WorkflowTemplate[]
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-interface CatalogueGroup {
-  id: Purpose;
-  label: string;
-  rows: WorkflowRecord[];
+/** The designs a design builds on, among those listed: its bases and the designs its steps reference. */
+function buildsOn(r: WorkflowRecord, listed: ReadonlySet<string>): Set<string> {
+  const d = r.document;
+  const named = [...(d.basedOn ?? []).map((b) => b.workflow), ...d.steps.flatMap((s) => (s.node?.refs ?? []).map((x) => x.flow))];
+  return new Set(named.filter((f) => f !== d.flow && listed.has(f)));
 }
 
-/** The designs grouped by purpose, each group most recently updated first; empty groups are left out. */
-export function catalogue(records: readonly WorkflowRecord[], t: Copy): CatalogueGroup[] {
-  return PURPOSES.map((p) => ({
-    id: p.id,
-    label: t(`workflows.purpose.${p.id}` as ProductCopyKey),
-    rows: records
-      .filter((r) => purposeOf(r) === p.id)
-      .sort((a, b) => b.document.updatedAt.localeCompare(a.document.updatedAt)),
-  })).filter((g) => g.rows.length > 0);
+/**
+ * The order a first-time reader reads the designs in (REQ-10 BC-12): each after every design it builds
+ * on, ties by title. Designs that build on one another in a ring cannot all come after each other; they
+ * follow the rest, by title.
+ */
+export function readingOrder(records: readonly WorkflowRecord[]): WorkflowRecord[] {
+  const byTitle = (a: WorkflowRecord, b: WorkflowRecord) => a.document.title.localeCompare(b.document.title) || a.document.flow.localeCompare(b.document.flow);
+  const listed = new Set(records.map((r) => r.document.flow));
+  const waits = new Map(records.map((r) => [r.document.flow, buildsOn(r, listed)]));
+  const out: WorkflowRecord[] = [];
+  let left = [...records].sort(byTitle);
+  while (left.length > 0) {
+    const placed = new Set(out.map((r) => r.document.flow));
+    const next = left.find((r) => [...(waits.get(r.document.flow) ?? [])].every((f) => placed.has(f)));
+    if (!next) {
+      out.push(...left);
+      break;
+    }
+    out.push(next);
+    left = left.filter((r) => r !== next);
+  }
+  return out;
 }
 
 /** The design the overview is drawn from: an approved system context first, else the latest one. */

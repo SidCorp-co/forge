@@ -117,6 +117,8 @@ export interface WorkflowBody {
   lanes?: WorkflowLane[];
   personas?: WorkflowLane[];
   edges?: WorkflowEdgeContract[];
+  /** The designs this one builds on, each at the revision it names. */
+  basedOn?: { workflow: string; revision: number }[];
   writtenBy: { runId?: string; sessionId?: string; sha?: string };
 }
 
@@ -140,6 +142,8 @@ export interface WorkflowRecord {
   document: WorkflowDocument;
   /** The design's marker counts and needs-you figure, from core's health read model (workflow-step-health `d-list-summary`). */
   health: WorkflowHealthSummary;
+  /** The keys of the requirements linked to the design, in key order. */
+  requirements: string[];
 }
 
 /** `GET /api/projects/:id/workflows`. */

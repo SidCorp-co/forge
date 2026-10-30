@@ -2,7 +2,7 @@
 import { HEALTH_MARKER_KINDS, type WorkflowHealth } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { Link, useRouter } from "@/lib/navigation/router";
-import { Button, Fact, FactsEmpty, FactsGroup, StatusBadge, useRecordView } from "@/design";
+import { Button, Fact, FactsEmpty, FactsGroup, Icon, StatusBadge, useRecordView } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { TONE_META } from "@/design/status";
@@ -10,7 +10,8 @@ import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
-import type { Copy } from "@/lib/i18n/product-copy";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
+import type { ReactNode } from "react";
 import { revisionReason } from "../decision-words";
 import { useDraftRequirementFromDesign } from "../hooks";
 import { markersByKind, sourceHref, targetWords } from "../health";
@@ -168,31 +169,26 @@ function DraftFromDesign({ projectId, slug, workflowId, flow, title }: { project
   );
 }
 
-function Requirements({ d, slug, projectId, title, developer }: { d: WorkflowDesign; slug: string; projectId: string | undefined; title: string; developer: boolean }) {
+/** The linked requirements in full, each by its derived state and its pin: the Developer view's. */
+function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
   const t = useCopy();
+  if (d.requirements.length === 0) return null;
   return (
     <FactsGroup title={t("workflows.facts.requirement")} count={d.requirements.length > 1 ? t("workflows.facts.linked", { n: d.requirements.length }) : undefined} testId="facts-requirement">
-      {d.requirements.length === 0 ? (
-        <>
-          <FactsEmpty>{t("workflows.facts.noRequirementLinks")}</FactsEmpty>
-          {projectId ? <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} /> : null}
-        </>
-      ) : (
-        <ul className="grid gap-1.5">
-          {d.requirements.map((r) => (
-            <li key={r.key} className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-requirement">
-              <Link href={requirementHref(slug, r.key)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
-                {r.key}
-              </Link>
-              <span className="min-w-0 flex-1 truncate" title={r.title}>
-                {r.title}
-              </span>
-              {developer && r.pinnedRevision !== null ? <Pin r={r} approved={d.approvedRevision} /> : null}
-              <StatusBadge family="requirement" value={r.state} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="grid gap-1.5">
+        {d.requirements.map((r) => (
+          <li key={r.key} className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-requirement">
+            <Link href={requirementHref(slug, r.key)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
+              {r.key}
+            </Link>
+            <span className="min-w-0 flex-1 truncate" title={r.title}>
+              {r.title}
+            </span>
+            {r.pinnedRevision !== null ? <Pin r={r} approved={d.approvedRevision} /> : null}
+            <StatusBadge family="requirement" value={r.state} />
+          </li>
+        ))}
+      </ul>
     </FactsGroup>
   );
 }
@@ -269,45 +265,71 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
   );
 }
 
-/** What the design's health says, in a BA's words; the kernel's terms sit behind Technical detail. */
-export function healthSentences(health: WorkflowHealth, t: Copy): string[] {
-  const out: string[] = [];
-  if (!health.rooted.rooted) {
-    const why = health.rooted.missing.map((m) => (m === "approved_revision" ? t("workflows.plain.noApproved") : t("workflows.plain.noRequirement")));
-    out.push(t("workflows.plain.notCompared", { why: why.join(t("workflows.facts.and")) }));
-  } else if (health.observation === null) {
-    out.push(t("workflows.plain.notComparedYet"));
-  } else {
-    const n = health.markers.length;
-    out.push(n === 0 ? t("workflows.plain.agrees") : t(n === 1 ? "workflows.plain.differs.one" : "workflows.plain.differs.many", { n }));
-  }
-  if (health.needsYou > 0) {
-    out.push(t(health.needsYou === 1 ? "workflows.plain.needDecide.one" : "workflows.plain.needDecide.many", { n: health.needsYou }));
-  }
-  return out;
+type Stand = "yes" | "no" | "differs";
+
+const STAND: Record<Stand, { icon: "check" | "dot" | "alert"; colour: string }> = {
+  yes: { icon: "check", colour: TONE_META.success.fg },
+  no: { icon: "dot", colour: TONE_META.neutral.fg },
+  differs: { icon: "alert", colour: TONE_META.attention.fg },
+};
+
+/** One fact of Where it stands: a mark and at most three words, never a sentence (REQ-43 BC-1, BC-4). */
+function StandingMark({ label, stand, testId, title, children }: { label: string; stand: Stand; testId: string; title?: string | undefined; children: ReactNode }) {
+  const m = STAND[stand];
+  return (
+    <Fact label={label} testId={testId}>
+      <span className="inline-flex min-w-0 items-center gap-1.5" title={title} data-stand={stand}>
+        <span className="flex-none" style={{ color: m.colour }} aria-hidden>
+          <Icon name={m.icon} size={14} />
+        </span>
+        {children}
+      </span>
+    </Fact>
+  );
 }
 
-/** Whether the code and the approved design are confirmed to match, as one sentence. */
-export function reconciliationSentence(health: WorkflowHealth, t: Copy): string {
-  const r = health.reconciliation;
-  if (r.state === "reconciled") return r.version ? t("workflows.plain.matchesReleased", { version: r.version.version }) : t("workflows.plain.matches");
-  return t("workflows.plain.notConfirmed");
+/** Whether the code matches the approved design, as a mark and a word or two. */
+export function codeMatchOf(health: WorkflowHealth | undefined): { stand: Stand; key: ProductCopyKey } {
+  if (!health || !health.rooted.rooted || health.observation === null) return { stand: "no", key: "workflows.stands.notCompared" };
+  if (health.markers.length > 0) return { stand: "differs", key: "workflows.stands.differs" };
+  if (health.reconciliation.state === "reconciled") return { stand: "yes", key: "workflows.stands.matches" };
+  return { stand: "no", key: "workflows.stands.notConfirmed" };
 }
 
-/** Whether work may start from the design, as one sentence. */
-export function buildGateSentence(d: WorkflowDesign, t: Copy): string {
-  return d.gate.open ? t("workflows.plain.canStart") : t("workflows.plain.onHold");
-}
-
-function PlainStatus({ d, health }: { d: WorkflowDesign; health: WorkflowHealth | undefined }) {
+/** Where the design stands, as marks (REQ-10, ISS-781): approved, its requirement, whether the code matches. */
+function WhereItStands({ d, health, slug, projectId, title }: { d: WorkflowDesign; health: WorkflowHealth | undefined; slug: string; projectId: string | undefined; title: string }) {
   const t = useCopy();
+  const time = useTimeFormat();
+  const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
+  const by = approved ? [approved.decidedByName, approved.decidedAt ? time.dateTime(approved.decidedAt) : null].filter(Boolean).join(" · ") : undefined;
+  const code = codeMatchOf(health);
   return (
     <FactsGroup title={t("workflows.facts.whereItStands")} testId="facts-plain-status">
-      <ul className="grid gap-1 text-13 leading-relaxed-1-6" data-testid="plain-status">
-        {health ? healthSentences(health, t).map((s) => <li key={s}>{s}</li>) : null}
-        {health ? <li>{reconciliationSentence(health, t)}</li> : null}
-        <li>{buildGateSentence(d, t)}</li>
-      </ul>
+      <div data-testid="plain-status">
+        <StandingMark label={t("workflows.facts.approved")} stand={d.approvedRevision !== null ? "yes" : "no"} testId="stands-approved" title={by || undefined}>
+          {d.approvedRevision !== null ? t("workflows.stands.yes") : t("workflows.stands.no")}
+        </StandingMark>
+        <StandingMark label={t("workflows.facts.requirement")} stand={d.requirements.length ? "yes" : "no"} testId="stands-requirement">
+          {d.requirements.length ? (
+            d.requirements.map((r) => (
+              <Link key={r.key} href={requirementHref(slug, r.key)} className="font-mono text-12 font-semibold text-link hover:underline" title={r.title}>
+                {r.key}
+              </Link>
+            ))
+          ) : (
+            <span className="text-muted">{t("workflows.facts.none")}</span>
+          )}
+        </StandingMark>
+        {d.requirements.length === 0 && projectId ? <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} /> : null}
+        <StandingMark label={t("workflows.stands.code")} stand={code.stand} testId="stands-code">
+          {t(code.key)}
+        </StandingMark>
+        {health && health.needsYou > 0 ? (
+          <StandingMark label={t("workflows.needsYou")} stand="differs" testId="stands-needs-you">
+            {String(health.needsYou)}
+          </StandingMark>
+        ) : null}
+      </div>
     </FactsGroup>
   );
 }
@@ -335,8 +357,8 @@ interface DesignFactsProps {
   projectId?: string | undefined;
 }
 
-/** Who approved the design: a person's view names them, the developer view the revision and its note too. */
-function ApprovedFact({ d, developer }: { d: WorkflowDesign; developer: boolean }) {
+/** Who approved the design, at which revision, and the note it carried: the Developer view's. */
+function ApprovedFact({ d }: { d: WorkflowDesign }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
@@ -345,9 +367,7 @@ function ApprovedFact({ d, developer }: { d: WorkflowDesign; developer: boolean 
   const approvedAt = approved?.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined;
   return (
     <Fact label={t("workflows.facts.approved")} testId="fact-approved">
-      {approved && !developer ? (
-        <span title={approvedAt}>{approved.decidedByName ?? (approved.decidedAt ? time.relative(approved.decidedAt) : t("workflows.facts.approved"))}</span>
-      ) : approved ? (
+      {approved ? (
         <span className="grid min-w-0 basis-full gap-0.5">
           <span title={approvedAt}>
             {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
@@ -359,9 +379,9 @@ function ApprovedFact({ d, developer }: { d: WorkflowDesign; developer: boolean 
           ) : null}
         </span>
       ) : d.approvedRevision !== null ? (
-        <span>{developer ? t("workflows.facts.rev", { r: d.approvedRevision }) : t("workflows.facts.approved")}</span>
+        <span>{t("workflows.facts.rev", { r: d.approvedRevision })}</span>
       ) : (
-        <span className="text-muted">{t("workflows.facts.notApproved")}</span>
+        <span className="text-muted">{t("workflows.facts.none")}</span>
       )}
     </Fact>
   );
@@ -386,8 +406,8 @@ export function WorkflowDesignProperties({ d, record, shown, shownRevision, temp
           </p>
         </FactsGroup>
       ) : null}
-      <PlainStatus d={d} health={health} />
-      <Requirements d={d} slug={slug} projectId={projectId} title={shown.title} developer={developer} />
+      <WhereItStands d={d} health={health} slug={slug} projectId={projectId} title={shown.title} />
+      {developer ? <Requirements d={d} slug={slug} /> : null}
       <FactsGroup title={t("workflows.facts.properties")} testId="facts-properties">
         {/* the header badge says the design's state; the revision number and its state are the Developer view's (REQ-43 BC-5, BC-7) */}
         {developer ? (
@@ -396,7 +416,8 @@ export function WorkflowDesignProperties({ d, record, shown, shownRevision, temp
             {shownState ? <StatusBadge family="designRevision" value={shownState} /> : null}
           </Fact>
         ) : null}
-        <ApprovedFact d={d} developer={developer} />
+        {/* the approval is Where it stands' mark; who approved it and the note are the Developer view's (REQ-43 BC-5) */}
+        {developer ? <ApprovedFact d={d} /> : null}
         {developer ? (
           <Fact label={t("workflows.facts.approver")}>
             <span>{t("workflows.facts.approverAnyone")}</span>

@@ -12,7 +12,7 @@ import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language"
 import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useQueryParam } from "@/lib/utils/use-query-param";
-import { catalogue, systemContextOf, templateIdOf, templateTitle } from "../catalogue";
+import { readingOrder, systemContextOf, templateIdOf, templateTitle } from "../catalogue";
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowHref } from "@/lib/routes/workflows";
 import type { WorkflowRecord } from "../types";
@@ -28,8 +28,32 @@ function size(r: WorkflowRecord, t: Copy): string {
     : t(n === 1 ? "workflows.count.step.one" : "workflows.count.step.many", { n });
 }
 
-/** A design in the list: its whole title, wrapped and never cut (REQ-17 BC-29), what it is drawn in, its size and age, then its state and health. */
-function DesignItem({ r, slug, templates, narrow }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[]; narrow: boolean }) {
+/** The keys of a design's linked requirements, or None (REQ-10 BC-13). */
+function RequirementKeys({ keys }: { keys: readonly string[] }) {
+  const t = useCopy();
+  return (
+    <span className={cn("font-mono text-12", keys.length ? "font-semibold text-fg" : "text-subtle")} data-testid="workflow-requirements">
+      {keys.length ? keys.join(" · ") : t("workflows.facts.none")}
+    </span>
+  );
+}
+
+/** The state every listed design shares, said once above the list rather than on each row (REQ-43 BC-5). */
+interface SharedState {
+  status: boolean;
+  waits: boolean;
+}
+
+const statusKey = (r: WorkflowRecord) => JSON.stringify([r.design.shown, r.design.returnReason ?? null, r.design.pendingRevision]);
+const waitKey = (r: WorkflowRecord) => JSON.stringify([r.design.waitingOn.kind, r.design.waitingOn.who, r.design.waitingOn.act]);
+
+function sharedState(rows: readonly WorkflowRecord[]): SharedState {
+  const one = (key: (r: WorkflowRecord) => string) => rows.length > 1 && new Set(rows.map(key)).size === 1;
+  return { status: one(statusKey), waits: one(waitKey) };
+}
+
+/** A design in the list: its whole title, wrapped and never cut (REQ-17 BC-29), what it is drawn in, its requirement, its size and age, then its state and health. */
+function DesignItem({ r, slug, templates, narrow, shared }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[]; narrow: boolean; shared: SharedState }) {
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
@@ -44,16 +68,33 @@ function DesignItem({ r, slug, templates, narrow }: { r: WorkflowRecord; slug: s
       wrap
       rowKey={w.flow}
       title={<span title={w.summary}>{w.title}</span>}
-      facts={[<span key="t" data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span>, size(r, t), <span key="u" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>{time.relative(w.updatedAt)}</span>]}
+      facts={[
+        <span key="t" data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span>,
+        <RequirementKeys key="r" keys={r.requirements} />,
+        size(r, t),
+        <span key="u" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>{time.relative(w.updatedAt)}</span>,
+      ]}
       trailing={
         <>
-          {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
-          <ProposedMarker r={r} />
-          <DesignWaits r={r} />
+          {status && !shared.status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
+          {shared.status ? null : <ProposedMarker r={r} />}
+          {shared.waits ? null : <DesignWaits r={r} />}
           <HealthSummaryChips health={r.health} />
         </>
       }
     />
+  );
+}
+
+/** Whether the viewer owes an act on any design, said once (REQ-10 BC-14): the count, or None. */
+function NeedsYou({ rows }: { rows: readonly WorkflowRecord[] }) {
+  const t = useCopy();
+  const n = rows.filter((r) => r.design.waitingOn.kind === "you").length;
+  return (
+    <span className="inline-flex items-baseline gap-1.5 text-13" data-testid="workflows-needs-you" data-count={n}>
+      <span className="text-muted">{t("workflows.needsYou")}</span>
+      <b className={cn("font-semibold", n ? "text-accent-text" : "text-fg")}>{n ? n : t("workflows.facts.none")}</b>
+    </span>
   );
 }
 
@@ -83,8 +124,10 @@ function Designs({
       (!filter || templateIdOf(r) === filter) &&
       matchesListFilter(narrowing, { waiting: waitingFilterOf({ waitingOn: r.design.waitingOn }), text: `${r.document.flow} ${r.document.title} ${r.document.summary}` }),
   );
-  const groups = catalogue(narrowed, t);
-  useReportShown(groups.flatMap((g) => g.rows.map((r) => r.document.flow)));
+  const rows = readingOrder(narrowed);
+  useReportShown(rows.map((r) => r.document.flow));
+  const shared = sharedState(rows);
+  const first = rows[0];
   const pad = "px-3";
   return (
     <section aria-labelledby="designs-title" className={cn(narrow ? "pt-3.5" : "pt-5")} data-testid="designs">
@@ -92,6 +135,7 @@ function Designs({
         <h2 id="designs-title" className="fg-h3 m-0">
           {t("workflows.designs")} <span className="font-mono text-13 font-semibold text-muted">{all.length}</span>
         </h2>
+        <NeedsYou rows={all} />
         {chips.length > 1 ? (
           <span className="flex flex-wrap gap-1.5" role="tablist" aria-label={t("workflows.diagramType")}>
             {[null, ...chips].map((k) => (
@@ -121,21 +165,18 @@ function Designs({
           <NewDesign projectId={projectId} slug={slug} templates={templates} />
         </span>
       </header>
-      <div className="border-t border-line-subtle" data-testid="workflow-list">
-        {groups.map((g) => (
-          <div key={g.id} data-testid="workflow-group" data-group={g.id}>
-            <div className={cn("flex min-h-8.5 items-center gap-2 bg-sunken py-1.25 text-13", pad)}>
-              <span className="font-bold">{g.label}</span>
-              <span className="font-mono text-12 font-bold text-muted">{g.rows.length}</span>
-            </div>
-            <ul>
-              {g.rows.map((r) => (
-                <DesignItem key={r.document.id} r={r} slug={slug} templates={templates} narrow={narrow} />
-              ))}
-            </ul>
-          </div>
+      {first && (shared.status || shared.waits) ? (
+        <div className={cn("flex min-h-8.5 flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle bg-sunken py-1.25 text-13", pad)} data-testid="workflows-shared">
+          {shared.status && first.design.shown ? <DesignPill status={first.design.shown} reason={first.design.returnReason ?? null} /> : null}
+          {shared.status ? <ProposedMarker r={first} /> : null}
+          {shared.waits ? <DesignWaits r={first} /> : null}
+        </div>
+      ) : null}
+      <ul className="border-t border-line-subtle" data-testid="workflow-list">
+        {rows.map((r) => (
+          <DesignItem key={r.document.id} r={r} slug={slug} templates={templates} narrow={narrow} shared={shared} />
         ))}
-      </div>
+      </ul>
     </section>
   );
 }

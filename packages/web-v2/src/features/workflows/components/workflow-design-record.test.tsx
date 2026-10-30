@@ -84,7 +84,8 @@ describe("the workflow design page's person view (BC-7)", () => {
     facts();
     const rail = screen.getByTestId("design-facts");
     expect(screen.queryByTestId("fact-revision")).toBeNull();
-    expect(within(screen.getByTestId("fact-approved")).getByText("Bo")).toBeInTheDocument();
+    expect(screen.queryByTestId("fact-approved")).toBeNull();
+    expect(screen.getByTestId("stands-approved").querySelector("[data-stand]")).toHaveAttribute("title", expect.stringContaining("Bo"));
     expect(rail.textContent).not.toMatch(/\br\d|Rev \d|REQ-36|BC-16|Anyone allowed/);
     expect(screen.queryByTestId("fact-approved-note")).toBeNull();
     expect(screen.queryByTestId("rail-requirement-pin")).toBeNull();

@@ -56,7 +56,7 @@
     "conversations.list.tableNoWaiting": "The Table shows no waits.",
     "conversations.list.waiting": "Waiting on",
     "conversations.list.waiting.agent": "An agent",
-    "conversations.list.waiting.any": "Anyone",
+    "conversations.list.waiting.any": "All",
     "conversations.list.waiting.running": "Running",
     "conversations.list.waiting.you": "You",
     "conversations.listAnd": "{head} and {last}",

@@ -7,7 +7,7 @@ import type { WaitingKind } from "@forge/contracts/standing";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { assistantFilters } from "@/features/chat-dock/assistant-filters";
+import { assistantFilters } from "@/features/chat-dock";
 import { notifyLocationChange } from "@/lib/utils/use-location-search";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
@@ -30,7 +30,7 @@ vi.mock("@/features/forecast/hooks", () => ({
 }));
 
 const { useUiActions, useUiSnapshot } = await import("./use-ui-actions");
-const { IssuesBoard } = await import("@/features/issues/components/issues-board");
+const { IssuesBoard } = await import("@/features/issues");
 
 const AT = "2026-10-08T10:00:00.000Z";
 const issue = (n: number, kind: WaitingKind, attentionGroup: string): IssueStandingRow =>
@@ -148,11 +148,11 @@ describe("the Issues list filters by whom an issue waits on (BC-5)", () => {
     await waitFor(() => expect(shownRows()).toEqual(["ISS-3"]));
     fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "You" }));
     await waitFor(() => expect(shownRows()).toEqual(["ISS-1"]));
-    fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "Anyone" }));
+    fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "All" }));
     await waitFor(() => expect(shownRows()).toEqual(["ISS-1", "ISS-3", "ISS-2"]));
   });
 
-  it("moves a waiting filter sent to the Table onto the grouped view that reads it", async () => {
+  it("moves a waiting filter sent to the Table onto the grouped view that reads it", () => {
     const send = page("/projects/demo/issues?group=table");
     send(turn("ui_issues_filter", { mode: "merge", set: [{ field: "waitingOn", value: "you" }] }));
     expect(window.location.search).toBe("?waiting=you");

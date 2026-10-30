@@ -5,6 +5,7 @@ export { IssueDetailScreen } from "./components/issue-detail-screen";
 export { IssueQuickActions } from "./components/issue-quick-actions";
 export { IssueRefBadge } from "./components/issue-ref-badge";
 export { endsTheIssue, MootQuestions, useMootQuestions } from "./components/moot-questions";
+export { IssuesBoard } from "./components/issues-board";
 export { IssuesScreen } from "./components/issues-screen";
 export { runStatusChip, statusToChip, statusToTone, workStepOf } from "./derive";
 export { useIssue } from "./detail-hooks";

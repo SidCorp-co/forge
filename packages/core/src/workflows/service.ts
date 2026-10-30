@@ -20,6 +20,7 @@ import {
   withdrawnDetail,
 } from './design.js';
 import { baseRefusals, standingBaseRefusal } from './design-bases.js';
+import { requirementKeysOf } from './design-requirements.js';
 import { designListReadingOf } from './design-standing.js';
 import { reaskSupersededDesignQuestions } from './ports.js';
 import {
@@ -399,6 +400,7 @@ function listedView(
   writerName: string | undefined,
   returnReason: string | null | undefined,
   held: readonly StoredWorkflow[],
+  requirements: readonly string[],
 ) {
   const view = workflowView(row, storedWorkflow(row), writerName, returnReason);
   const reading = designListReadingOf(
@@ -415,12 +417,13 @@ function listedView(
     },
     row.revision,
   );
-  return { ...view, design: { ...view.design, ...reading } };
+  // the linked requirement keys, so the list names each design's requirement (REQ-10 BC-13)
+  return { ...view, requirements, design: { ...view.design, ...reading } };
 }
 
 /** The list and the single read answer one view: writer name, return reason and the viewer's acts. */
 async function listedViews(userId: string, projectId: string, rows: readonly StoredWorkflow[]) {
-  const [names, reasons, canDecide, held] = await Promise.all([
+  const [names, reasons, canDecide, held, requirements] = await Promise.all([
     userNames(rows.map((r) => r.writtenByUser)),
     returnReasonsOf(
       db,
@@ -428,9 +431,17 @@ async function listedViews(userId: string, projectId: string, rows: readonly Sto
     ),
     mayDecideDesigns(userId, projectId),
     rows.some((r) => r.designStatus === 'proposed') ? workflowsOf(db, projectId) : [],
+    requirementKeysOf(rows.map((r) => r.id)),
   ]);
   return rows.map((row) =>
-    listedView(row, canDecide, names.get(row.writtenByUser), reasons.get(row.id), held),
+    listedView(
+      row,
+      canDecide,
+      names.get(row.writtenByUser),
+      reasons.get(row.id),
+      held,
+      requirements.get(row.id) ?? [],
+    ),
   );
 }
 

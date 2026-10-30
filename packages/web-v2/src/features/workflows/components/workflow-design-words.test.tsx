@@ -5,11 +5,8 @@ import { say, sentence } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { productCopy } from "@/lib/i18n/product-copy";
 import type { WorkflowDesign } from "../types";
-import { buildGateSentence, healthSentences, reconciliationSentence, WorkflowDesignProperties } from "./workflow-design-facts";
-
-const en = productCopy("en");
+import { codeMatchOf, WorkflowDesignProperties } from "./workflow-design-facts";
 
 const KERNEL = /Unrooted|Not reconciled|Held|Markers|workflow-designs\.approve|rooted/;
 
@@ -30,23 +27,21 @@ const health = (over: Partial<WorkflowHealth> = {}): WorkflowHealth =>
 const HELD = say("designs.gate.held", { why: say("designs.gate.noApproval") });
 const design = { gate: { open: false, rule: sentence(HELD), says: { rule: HELD } }, builds: [], requirements: [], revisions: [], approver: "workflow-designs.approve", approvedRevision: null } as unknown as WorkflowDesign;
 
-describe("the design rail's plain sentences", () => {
-  it("say why the code is not compared, without the word Unrooted", () => {
-    const [first] = healthSentences(health(), en);
-    expect(first).toBe("The code is not being compared with this design: not approved and no requirement.");
-    expect(first).not.toMatch(KERNEL);
-    expect(reconciliationSentence(health(), en)).not.toMatch(KERNEL);
-    expect(buildGateSentence(design, en)).toBe("Work on this design is on hold until it is approved.");
+const OBSERVED = { id: "o", atSha: "abc", revision: 2, createdAt: "2026-10-01T00:00:00Z", writtenBy: "u", writtenByAgency: "agent" };
+const ROOTED = { rooted: true, approvedRevision: 2, requirements: ["REQ-1"], missing: [] };
+
+describe("whether the code matches the design, as a mark and a word or two", () => {
+  it("reads Not compared while the design is unrooted or unobserved", () => {
+    expect(codeMatchOf(health())).toEqual({ stand: "no", key: "workflows.stands.notCompared" });
+    expect(codeMatchOf(health({ rooted: ROOTED }))).toEqual({ stand: "no", key: "workflows.stands.notCompared" });
+    expect(codeMatchOf(undefined).key).toBe("workflows.stands.notCompared");
   });
 
-  it("count the differences and the ones that wait on a person", () => {
-    const h = health({
-      rooted: { rooted: true, approvedRevision: 2, requirements: ["REQ-1"], missing: [] },
-      observation: { id: "o", atSha: "abc", revision: 2, createdAt: "2026-10-01T00:00:00Z", writtenBy: "u", writtenByAgency: "agent" },
-      markers: [{}, {}] as never,
-      needsYou: 1,
-    });
-    expect(healthSentences(h, en)).toEqual(["The code differs from this design in 2 places.", "1 difference needs a person to decide."]);
+  it("reads Differs while a marker stands, Matches once reconciled, else Not confirmed", () => {
+    expect(codeMatchOf(health({ rooted: ROOTED, observation: OBSERVED, markers: [{}] as never })).stand).toBe("differs");
+    const reconciled = health({ rooted: ROOTED, observation: OBSERVED });
+    expect(codeMatchOf({ ...reconciled, reconciliation: { ...reconciled.reconciliation, state: "reconciled" } })).toEqual({ stand: "yes", key: "workflows.stands.matches" });
+    expect(codeMatchOf(reconciled)).toEqual({ stand: "no", key: "workflows.stands.notConfirmed" });
   });
 });
 
@@ -71,6 +66,20 @@ describe("the rail keeps kernel terms behind the Developer view", () => {
     expect(screen.getByTestId("plain-status")).toBeInTheDocument();
     expect(screen.getByTestId("design-facts").textContent).not.toMatch(KERNEL);
     expect(screen.queryByTestId("facts-health")).toBeNull();
+  });
+
+  // ISS-781 C7: Where it stands is three marked rows, each at most three words, and no sentence
+  it("says where the design stands as three marks of at most three words, no sentence", () => {
+    rail();
+    const rows = ["stands-approved", "stands-requirement", "stands-code"].map((id) => screen.getByTestId(id));
+    expect(rows.map((r) => r.querySelector("[data-stand]")?.getAttribute("data-stand"))).toEqual(["no", "no", "no"]);
+    expect(rows.map((r) => r.textContent)).toEqual(["ApprovedNo", "RequirementNone", "Code matchNot compared"]);
+    for (const r of rows) {
+      const value = r.querySelector("[data-stand]")?.textContent ?? "";
+      expect(value.trim().split(/\s+/).length, `"${value}" is more than three words`).toBeLessThanOrEqual(3);
+    }
+    expect(screen.getByTestId("plain-status").textContent).not.toMatch(/[.:]/);
+    expect(screen.getByTestId("design-facts").textContent).not.toMatch(/on hold|not approved yet/i);
   });
 
   it("draws the kernel's terms in the Developer view", () => {

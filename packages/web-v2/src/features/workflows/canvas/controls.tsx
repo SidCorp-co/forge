@@ -8,103 +8,81 @@ import type { CanvasChanges, CanvasFocus, CanvasHealth } from "./workflow-canvas
 import type { Canvas } from "./model";
 import { titleOf } from "./model";
 import { DASH, edgeHue, hue } from "./style";
-import type { Lod } from "./view";
 
 export type Language = "business" | "contract";
 
+/**
+ * The canvas's one row of controls (REQ-10 BC-16, REQ-12 BC-6): Walk through first, the first read;
+ * then Open or Fold all, Health and the changes switch. Zoom decides how much a step shows, and the
+ * page's Person / Developer switch decides whether the canvas speaks contract terms.
+ */
 export function ViewBar(p: {
-  language: Language;
-  lod: Lod;
   banded: boolean;
   allOpen: boolean;
-  onLanguage: (l: Language) => void;
-  onLod: (l: Lod) => void;
   onToggleAll: () => void;
   onWalk: () => void;
   health?: CanvasHealth | null | undefined;
   changes?: CanvasChanges | null | undefined;
-  focus?: CanvasFocus | null | undefined;
 }) {
   const t = useCopy();
   return (
-    <div className="wfc-float wfc-tl" role="toolbar" aria-label={t("workflows.canvas.view")}>
-      <SegmentedControl<Language>
-        value={p.language}
-        onChange={p.onLanguage}
-        options={[
-          { value: "business", label: t("workflows.canvas.business") },
-          { value: "contract", label: t("workflows.panel.contract") },
-        ]}
-      />
+    <div className="wfc-float wfc-tl" role="toolbar" aria-label={t("workflows.canvas.view")} data-testid="canvas-toolbar">
+      <WalkStart onWalk={p.onWalk} />
       {p.banded ? (
-        <>
-          <span className="wfc-sep" />
-          <span className="wfc-lod">
-            <SegmentedControl<"0" | "1" | "2">
-              value={String(p.lod) as "0" | "1" | "2"}
-              onChange={(v) => p.onLod(Number(v) as Lod)}
-              options={[
-                { value: "0", label: t("workflows.canvas.stages") },
-                { value: "1", label: t("workflows.tab.steps") },
-                { value: "2", label: t("workflows.canvas.detail") },
-              ]}
-            />
-          </span>
-          <Button type="button" variant="ghost" size="sm" className="wfc-ib" onClick={p.onToggleAll} data-testid="toggle-all">
-            {p.allOpen ? <Icon name="chevronUp" size={16} /> : <Icon name="chevronDown" size={16} />}
-            <span className="wfc-t">{p.allOpen ? t("workflows.canvas.foldAll") : t("workflows.canvas.openAll")}</span>
-          </Button>
-        </>
+        <Button type="button" variant="ghost" size="sm" className="wfc-ib" onClick={p.onToggleAll} data-testid="toggle-all">
+          {p.allOpen ? <Icon name="chevronUp" size={16} /> : <Icon name="chevronDown" size={16} />}
+          <span className="wfc-t">{p.allOpen ? t("workflows.canvas.foldAll") : t("workflows.canvas.openAll")}</span>
+        </Button>
       ) : null}
-      <span className="wfc-sep" />
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={p.onWalk} data-testid="walk-start-bar">
-        <Icon name="play" size={16} />
-        <span className="wfc-t">{t("workflows.canvas.walk")}</span>
-      </Button>
       {p.health ? <HealthBar health={p.health} /> : null}
-      <PageBar changes={p.changes} focus={p.focus} />
+      <ChangesBar changes={p.changes} />
     </div>
   );
 }
 
-/**
- * What the design page adds to a canvas's toolbar: the switch that marks what changed since the
- * approved revision, and focus mode (the canvas alone, filling the viewport; F to enter or leave).
- */
-export function PageBar({ changes, focus }: { changes?: CanvasChanges | null | undefined; focus?: CanvasFocus | null | undefined }) {
+/** Walk through: the first control of every design canvas. */
+export function WalkStart({ onWalk }: { onWalk: () => void }) {
   const t = useCopy();
-  const focusLabel = focus?.on ? t("workflows.canvas.focusExit") : t("workflows.canvas.focus");
+  return (
+    <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} data-testid="walk-start-bar">
+      <Icon name="play" size={16} />
+      <span className="wfc-t">{t("workflows.canvas.walk")}</span>
+    </Button>
+  );
+}
+
+/** The switch that marks what changed since the approved revision, where the page offers it. */
+export function ChangesBar({ changes }: { changes?: CanvasChanges | null | undefined }) {
+  if (!changes) return null;
   return (
     <>
-      {changes ? (
-        <>
-          <span className="wfc-sep" />
-          <span className="inline-flex items-center gap-1.5 px-1 text-13 font-semibold" title={changes.title} data-testid="design-changes-toggle">
-            <Toggle checked={changes.on} onChange={changes.onToggle} aria-label={changes.title} />
-            {changes.label}
-          </span>
-        </>
-      ) : null}
-      {focus ? (
-        <>
-          <span className="wfc-sep" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="wfc-ib"
-            aria-pressed={focus.on}
-            aria-label={focusLabel}
-            title={focus.on ? t("workflows.canvas.focusExitShortcut") : t("workflows.canvas.focusShortcut")}
-            onClick={focus.onToggle}
-            data-testid="canvas-focus"
-          >
-            {focus.on ? <Icon name="shrink" size={16} /> : <Icon name="expand" size={16} />}
-            <span className="wfc-t">{focusLabel}</span>
-          </Button>
-        </>
-      ) : null}
+      <span className="wfc-sep" />
+      <span className="inline-flex items-center gap-1.5 px-1 text-13 font-semibold" title={changes.title} data-testid="design-changes-toggle">
+        <Toggle checked={changes.on} onChange={changes.onToggle} aria-label={changes.title} />
+        {changes.label}
+      </span>
     </>
+  );
+}
+
+/** Focus mode (the canvas alone, filling the viewport; F to enter or leave), on the zoom bar. */
+function FocusButton({ focus }: { focus: CanvasFocus }) {
+  const t = useCopy();
+  const label = focus.on ? t("workflows.canvas.focusExit") : t("workflows.canvas.focus");
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="wfc-ib"
+      aria-pressed={focus.on}
+      aria-label={label}
+      title={focus.on ? t("workflows.canvas.focusExitShortcut") : t("workflows.canvas.focusShortcut")}
+      onClick={focus.onToggle}
+      data-testid="canvas-focus"
+    >
+      {focus.on ? <Icon name="shrink" size={16} /> : <Icon name="expand" size={16} />}
+    </Button>
   );
 }
 
@@ -189,6 +167,7 @@ export function ZoomBar(p: {
   zoom: number;
   minimap: boolean;
   legend: boolean;
+  focus?: CanvasFocus | null | undefined;
   onZoom: (factor: number) => void;
   onReset: () => void;
   onFit: () => void;
@@ -217,6 +196,7 @@ export function ZoomBar(p: {
       <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.legend} title={t("workflows.canvas.legend")} aria-label={t("workflows.canvas.legend")} onClick={p.onLegend}>
         <Icon name="help" size={16} />
       </Button>
+      {p.focus ? <FocusButton focus={p.focus} /> : null}
     </div>
   );
 }

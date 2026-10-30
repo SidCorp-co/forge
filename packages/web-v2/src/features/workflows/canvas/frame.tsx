@@ -151,6 +151,7 @@ export function Frame(p: FrameProps) {
           onFit={p.onFit}
           onMinimap={() => setMinimapPick(!minimap)}
           onLegend={() => setLegend(!legend)}
+          focus={p.compact ? null : p.focus}
         />
         {legend ? <Legend template={p.template} /> : null}
         {p.walkBar}

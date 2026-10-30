@@ -1,7 +1,7 @@
 
 import { type Edge, MarkerType, type Node, useReactFlow, useViewport } from "@xyflow/react";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, SegmentedControl, Icon } from "@/design";
+import { SegmentedControl } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -12,7 +12,7 @@ import { useSystemGraph } from "../hooks";
 import type { SystemGraph } from "../types";
 import { C4_EDGE_TYPES, C4_NODE_TYPES, type C4BoxData, type C4FrameData, type C4LineData } from "./c4-nodes";
 import { HEALTH_MARKER_KINDS } from "@forge/contracts/workflow-health";
-import { HealthBar, PageBar } from "./controls";
+import { ChangesBar, HealthBar, WalkStart } from "./controls";
 import { Frame } from "./frame";
 import { useCanvasModel } from "./model";
 import { hue } from "./style";
@@ -186,7 +186,6 @@ function C4View(props: WorkflowCanvasProps) {
       onWalk={() => walkTo(0)}
       health={health}
       changes={props.changes}
-      focus={props.focus}
     />
   );
 
@@ -283,7 +282,6 @@ function C4Toolbar({
   onWalk,
   health,
   changes,
-  focus,
 }: {
   compact: boolean;
   level: Level;
@@ -294,13 +292,16 @@ function C4Toolbar({
   onWalk: () => void;
   health: WorkflowCanvasProps["health"];
   changes: WorkflowCanvasProps["changes"];
-  focus: WorkflowCanvasProps["focus"];
 }) {
   const t = useCopy();
   return (
     <div className="wfc-float wfc-tl" role="toolbar" aria-label={t("workflows.canvas.view")} data-testid="c4-toolbar">
       {compact ? null : (
-        <SegmentedControl<Level> options={LEVELS.map((v) => ({ value: v, label: t(`workflows.c4.level.${v}`) }))} value={level} onChange={onLevel} />
+        <>
+          <WalkStart onWalk={onWalk} />
+          <span className="wfc-sep" />
+          <SegmentedControl<Level> options={LEVELS.map((v) => ({ value: v, label: t(`workflows.c4.level.${v}`) }))} value={level} onChange={onLevel} />
+        </>
       )}
       {detail ? (
         <>
@@ -308,17 +309,8 @@ function C4Toolbar({
           <SegmentedControl<Detail> options={DETAILS.map((v) => ({ value: v, label: t(`workflows.c4.detail.${v}`) }))} value={detail} onChange={onDetail} />
         </>
       ) : null}
-      {compact ? null : (
-        <>
-          <span className="wfc-sep" />
-          <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} data-testid="walk-start-bar">
-            <Icon name="play" size={16} />
-            <span className="wfc-t">{t("workflows.canvas.walk")}</span>
-          </Button>
-        </>
-      )}
       {health ? <HealthBar health={health} /> : null}
-      {compact ? null : <PageBar changes={changes} focus={focus} />}
+      {compact ? null : <ChangesBar changes={changes} />}
     </div>
   );
 }

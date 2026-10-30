@@ -29,6 +29,7 @@ const record = (flow: string, title: string, template: string, steps: number, h 
   revision: 3,
   writer: "u1",
   writerName: "Lan",
+  requirements: [],
   design: { shown: "approved", status: "approved", pendingRevision: null, approvedRevision: 3, returnReason: null, waitingOn: nobody },
   document: {
     version: 2,

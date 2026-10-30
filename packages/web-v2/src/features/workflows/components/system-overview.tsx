@@ -3,8 +3,6 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { Link } from "@/lib/navigation/router";
 import { type FormEvent, useMemo, useState } from "react";
 import { Button, HoverCard, Icon, Input, rememberListOrigin, fixedHeight, focusOnMount } from "@/design";
-import { useAskForDesigns } from "@/features/onboarding";
-import { useOnboardingState } from "@/features/onboarding";
 import { useWriteProjectDocument } from "@/features/project-config";
 import type { V1Read } from "@/features/project-config";
 import { formatApiError } from "@/lib/api/error";
@@ -181,43 +179,17 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
 }
 
 /**
- * One quiet line when the project has no system-context design yet. On Workflows it offers to ask for
- * the designs (onboarding, ISS-63), confirmed before its job runs; the dashboard carries onboarding's
- * own line, so it does not.
+ * One quiet line on the project dashboard when the project has no system-context design yet. Workflows
+ * itself says nothing here: with designs the line would state nothing true, and with none its empty
+ * state already asks for them (ISS-781).
  */
-function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) {
+function NoContext() {
   const t = useCopy();
-  const state = useOnboardingState(quiet ? undefined : projectId);
-  const { ask, dialog, pending, error } = useAskForDesigns(projectId);
-  const hint = state.data?.hint;
-  const action = hint?.action ?? "start";
   return (
     <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label={t("workflows.overview.title")} data-testid="system-overview" data-empty>
-      <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-14">
+      <p className="m-0 text-14">
         <b className="font-semibold">{t("workflows.overview.noContext")}</b>
-        {quiet ? null : (
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-auto p-0 text-14 font-semibold text-link hover:bg-transparent hover:underline"
-              loading={pending}
-              disabled={!state.data}
-              onClick={() => ask(action)}
-              data-testid="start-onboarding"
-            >
-              {hint?.actionLabel ?? t("workflows.askForDesigns")}
-            </Button>
-          </>
-        )}
       </p>
-      {error ? (
-        <p role="alert" className="mt-1 text-12 text-danger-11">
-          {error}
-        </p>
-      ) : null}
-      {dialog}
     </section>
   );
 }
@@ -253,7 +225,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
   const compact = variant === "compact";
   const workflows = `/projects/${encodeURIComponent(slug)}/workflows`;
 
-  if (!o) return <NoContext projectId={projectId} quiet={compact} />;
+  if (!o) return compact ? <NoContext /> : null;
   const design = o.record;
   const status = design.design.status;
   const template = templateFor(design.document, templates);
