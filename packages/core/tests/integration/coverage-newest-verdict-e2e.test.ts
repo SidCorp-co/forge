@@ -496,7 +496,7 @@ describe('a verdict nobody could check against the live build does not count', (
       expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
       expect(c.issues[0]).toMatchObject({ inLiveBuild: null });
       expect(c.issues[0]?.notCounted).toBe(
-        `judged at ${judged}, and whether the live build (888888888888) holds it could not be checked: no release Forge verified shows whether the live build \`${live}\` holds it`,
+        `judged at ${judged}, and whether the live build (888888888888) holds it could not be checked: no release Forge verified, and no answer the source host gave Forge, shows whether the live build \`${live}\` holds it`,
       );
     }
   });

@@ -1017,7 +1017,13 @@
     "release-batch": {
       "kind": "domain",
       "context": "release",
-      "owns": ["releaseApprovals", "releaseAttempts", "releaseDraftNamings", "releaseHolds"],
+      "owns": [
+        "releaseApprovals",
+        "releaseAttempts",
+        "releaseDraftNamings",
+        "releaseHolds",
+        "servedAncestry"
+      ],
       "serves": [
         "issue-delivery#case-release",
         "issue-delivery#task-release",

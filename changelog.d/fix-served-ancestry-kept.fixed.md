@@ -1,0 +1,1 @@
+**What a served commit carries is kept:** the pipeline sweep asks the source host once per served and judged pair and keeps the answer, so reads and coverage place verdicts on unreleased deploys. A pre-reopen verdict no longer counts.

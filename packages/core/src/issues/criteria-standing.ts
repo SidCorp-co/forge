@@ -9,13 +9,9 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { recognisableIdentity } from '../messaging/verdict-identity.js';
 import { listCriteria } from './criteria/store.js';
-import {
-  type CriterionVerdict,
-  latestByNumber,
-  standingOn,
-  standingsOn,
-} from './criteria-verdicts.js';
+import { type CriterionVerdict, latestByNumber } from './criteria-verdicts.js';
 import { readJudge, readProjectDocument } from './ports.js';
+import { declaresProduction, standingOn, standingsOn } from './standing-on.js';
 import { issueIdentities } from './verdict-standing.js';
 
 /** One live criterion and the verdict it stands on by the verified rule; null where none was recorded. */
@@ -48,7 +44,12 @@ export async function standingCriteriaOf(
     .where(inArray(issues.id, [...issueIds]));
   const projects = new Map<
     string,
-    { owes: boolean; judgedOn: string | null; judge: Awaited<ReturnType<typeof readJudge>> }
+    {
+      owes: boolean;
+      judgedOn: string | null;
+      production: boolean;
+      judge: Awaited<ReturnType<typeof readJudge>>;
+    }
   >();
   for (const { projectId } of rows) {
     if (projects.has(projectId)) continue;
@@ -57,12 +58,15 @@ export async function standingCriteriaOf(
     projects.set(projectId, {
       owes: projectGate(document, null, 'release_criteria').mode !== 'off',
       judgedOn: judgedOnOf(delivery),
+      production: declaresProduction(document),
       judge: await readJudge(projectId),
     });
   }
+  const projectOf = (id: string) => projects.get(rows.find((r) => r.id === id)?.projectId ?? '');
   const standings = await standingsOn(
     rows.map((r) => r.id),
-    (id) => projects.get(rows.find((r) => r.id === id)?.projectId ?? '')?.judge ?? null,
+    (id) => projectOf(id)?.judge ?? null,
+    (id) => projectOf(id)?.production ?? true,
   );
   for (const row of rows) {
     const project = projects.get(row.projectId);
@@ -100,8 +104,8 @@ export async function verdictWeighingInputs(
   const judged = new Set<string>();
   const judge = rows.length === 0 ? null : await readJudge(projectId);
   for (const row of rows) {
-    // the verdict each criterion stands on, which the hold weighs (`standingOn`)
-    const stands = await standingOn(row.id, await listCriteria(db, row.id), judge);
+    // the commit each criterion's verdict names, which a reopen's void does not move (`standingOn`)
+    const stands = await standingOn(row.id, await listCriteria(db, row.id), judge, true);
     for (const verdict of latestByNumber(stands.criteria, stands.unverified).values()) {
       if (verdict.at && recognisableIdentity(verdict.at.value)) judged.add(verdict.at.value.trim());
     }

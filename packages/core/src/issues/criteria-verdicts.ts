@@ -8,23 +8,15 @@
 import { projectGate } from '@forge/contracts/gate-profiles';
 import type { ServingReading } from '@forge/contracts/releases';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
-import { verifiedOf } from '@forge/contracts/verified-rule';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
 import { longestSpelling } from '../messaging/verdict-identity.js';
-import { type AuthoredVerdict, liveVerdictsOfIssues } from './criteria/live-verdicts.js';
-import {
-  type CriterionWithVerdict,
-  type LatestVerdict,
-  listCriteria,
-  listCriteriaOf,
-} from './criteria/store.js';
+import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { currentContracts, designRevisions, pinnedAnchorsOf } from './criteria-anchors.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import { readJudge, readProjectDocument } from './ports.js';
-import { reopenedAtOf } from './release-evidence.js';
 import {
   type OwedRuntimes,
   owedRuntimes,
@@ -33,6 +25,7 @@ import {
   weighedOn,
   weighVerdict,
 } from './runtime-standing.js';
+import { declaresProduction, standingOn } from './standing-on.js';
 import {
   carriedSentence,
   EARNED_STANDINGS,
@@ -109,74 +102,6 @@ export function latestByNumber(
     });
   }
   return latest;
-}
-
-/**
- * The verdict each live criterion stands on, by the verified rule: of its verdicts since the issue's
- * last reopen (its newest always read), the judge's (`judgesVerdict`), with why it does not prove the
- * criterion where it is a pass or short the rule does not count.
- */
-export async function standingOn(
-  issueId: string,
-  criteria: readonly CriterionWithVerdict[],
-  judge: Awaited<ReturnType<typeof readJudge>>,
-): Promise<{ criteria: CriterionWithVerdict[]; unverified: Map<number, string | null> }> {
-  const [history, reopened] = await Promise.all([
-    liveVerdictsOfIssues(db, [issueId]),
-    reopenedAtOf(db, [issueId]),
-  ]);
-  return standingRead(
-    criteria,
-    history.get(issueId) ?? new Map(),
-    reopened.get(issueId) ?? null,
-    judge,
-  );
-}
-
-type Standing = { criteria: CriterionWithVerdict[]; unverified: Map<number, string | null> };
-
-/** `standingOn` for many issues, each read in one statement for all of them rather than one each. */
-export async function standingsOn(
-  issueIds: readonly string[],
-  judgeOf: (issueId: string) => Awaited<ReturnType<typeof readJudge>>,
-): Promise<Map<string, Standing>> {
-  const [criteria, history, reopened] = await Promise.all([
-    listCriteriaOf(db, issueIds),
-    liveVerdictsOfIssues(db, issueIds),
-    reopenedAtOf(db, issueIds),
-  ]);
-  return new Map(
-    issueIds.map((id) => [
-      id,
-      standingRead(
-        criteria.get(id) ?? [],
-        history.get(id) ?? new Map(),
-        reopened.get(id) ?? null,
-        judgeOf(id),
-      ),
-    ]),
-  );
-}
-
-function standingRead(
-  criteria: readonly CriterionWithVerdict[],
-  history: ReadonlyMap<number, readonly AuthoredVerdict[]>,
-  reopenedAt: Date | null,
-  judge: Awaited<ReturnType<typeof readJudge>>,
-): Standing {
-  const since = reopenedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-  const unverified = new Map<number, string | null>();
-  const read = criteria.map((c) => {
-    const [newest, ...earlier] = history.get(c.n) ?? [];
-    if (!newest) return c;
-    const verified = verifiedOf(
-      [newest, ...earlier.filter((v) => new Date(v.createdAt).getTime() > since)],
-      judge,
-    );
-    unverified.set(c.n, verified.proven ? null : verified.why);
-    return { ...c, latest: verified.stands ?? c.latest };
-  });
-  return { criteria: read, unverified };
 }
 
 /** Where one criterion's verdict was weighed: the declared runtime that decided (null for the
@@ -410,6 +335,7 @@ async function reportFor(
   weighing: Weighing,
   anchors: Pick<IssueIdentities, 'designs' | 'contracts' | 'pinnedBy'>,
   judge: Awaited<ReturnType<typeof readJudge>>,
+  production: boolean,
 ): Promise<IssueCriteriaReport> {
   const { runtimes } = weighing;
   // a closed issue's change was released; until then it is weighed where it was judged
@@ -417,7 +343,7 @@ async function reportFor(
   const placed = { serving: on.serving, weighedOn: on.environment, runtimes };
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), ...anchors };
-  const stands = await standingOn(row.id, await listCriteria(db, row.id), judge);
+  const stands = await standingOn(row.id, await listCriteria(db, row.id), judge, production);
   const criteria = await withCurrentDrafts(row.projectId, stands.criteria);
   const numbers = criteria.map((c) => c.n);
   if (numbers.length === 0) {
@@ -475,15 +401,14 @@ export async function unearnedCriteriaReports(
     pinnedAnchorsOf(rows.map((row) => row.id)),
   ]);
   const required = new Map<string, boolean>();
+  const production = new Map<string, boolean>();
   const judges = new Map<string, Awaited<ReturnType<typeof readJudge>>>();
   for (const id of projectIds) {
+    const document = (await readProjectDocument(id))?.document;
     // gate `release_criteria` (REQ-76): off owes no verdict; advise and enforce weigh them, and the
     // release hold decides whether an unearned one blocks or warns
-    required.set(
-      id,
-      projectGate((await readProjectDocument(id))?.document, null, 'release_criteria').mode !==
-        'off',
-    );
+    required.set(id, projectGate(document, null, 'release_criteria').mode !== 'off');
+    production.set(id, declaresProduction(document));
     judges.set(id, await readJudge(id));
   }
   const out: IssueCriteriaReport[] = [];
@@ -514,6 +439,7 @@ export async function unearnedCriteriaReports(
               contracts: contracts.get(row.projectId) ?? new Map(),
             },
         judges.get(row.projectId) ?? null,
+        production.get(row.projectId) ?? true,
       ),
     );
   }

@@ -16,7 +16,7 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import { db } from '../db/client.js';
-import { shipsWithdrawnOf } from '../issues/index.js';
+import { type Carriage, carriageKey, shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
@@ -24,6 +24,7 @@ import { type AncestrySource, ancestrySourceFor } from './ancestry-source.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
+import { persistedCarriage } from './served-ancestry.js';
 import { servedOnJudgedOn } from './serving-reading.js';
 import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 import { deploymentConfirms } from './verify.js';
@@ -50,6 +51,9 @@ export interface JudgedBuildDeps {
   /** What the environment the project's releases are judged on (`delivery.judgedOn`) serves; null
    *  where it names none. Absent, none is named. */
   testing?(projectId: string): Promise<{ name: string; served: Reading<string> } | null>;
+  /** What the source host answered about served and judged commits, as kept (`served-ancestry.ts`);
+   *  absent, nothing was kept. */
+  heldAncestry?: typeof persistedCarriage;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
@@ -59,6 +63,7 @@ const LIVE_DEPS: JudgedBuildDeps = {
   withdrawn: async (issueId) => (await shipsWithdrawnOf(db, [issueId])).has(issueId),
   landed: landedJudgedBuild,
   testing: servedOnJudgedOn,
+  heldAncestry: persistedCarriage,
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
@@ -296,6 +301,7 @@ export async function liveBuildHolds(
   }
   const releases = await deps.releases(projectId);
   const liveRun = releases.find((r) => r.commit === live.sha) ?? null;
+  const unplaced: string[] = [];
   for (const commit of commits) {
     if (commit.length >= 7 && live.sha.startsWith(commit)) {
       holds.set(commit, true);
@@ -305,10 +311,21 @@ export async function liveBuildHolds(
     const run = releases.find((r) => r.commit === commit);
     // and one cut after it is not.
     if (run && liveRun) holds.set(commit, run.cutAt.getTime() <= liveRun.cutAt.getTime());
+    else unplaced.push(commit);
+  }
+  // a live build no release recorded (every push deploys on forge-dev): what the host answered the
+  // pass that asks once per pair (`served-ancestry.ts`), never asked from here
+  const held = deps.heldAncestry
+    ? await deps.heldAncestry(projectId, unplaced, [live.sha])
+    : new Map<string, Carriage>();
+  for (const commit of unplaced) {
+    const answer = held.get(carriageKey(commit, live.sha));
+    if (answer?.kind === 'descends') holds.set(commit, true);
+    else if (answer?.kind === 'differs') holds.set(commit, false);
     else
       unanswered.set(
         commit,
-        `no release Forge verified shows whether the live build \`${live.sha}\` holds it`,
+        `no release Forge verified, and no answer the source host gave Forge, shows whether the live build \`${live.sha}\` holds it`,
       );
   }
   return { sha: live.sha, holds, runtimes, unanswered };

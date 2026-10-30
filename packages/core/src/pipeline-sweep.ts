@@ -41,7 +41,12 @@ import {
   type StrandedIssuesResult,
   type ZombieSweepResult,
 } from './pipeline/index.js';
-import { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-batch/index.js';
+import {
+  type AutomaticReleaseSweepResult,
+  readServedAncestry,
+  type ServedAncestryPassResult,
+  sweepAutomaticReleases,
+} from './release-batch/index.js';
 
 export interface SweepResult {
   durationMs: number;
@@ -68,6 +73,7 @@ export interface SweepResult {
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   releaseSweep: AutomaticReleaseSweepResult;
+  servedAncestry: ServedAncestryPassResult;
   /** ISS-1050 — issues asserting work in progress with no live run behind them (report only). */
   orphanedRunAssertions: IssueRunInvariantResult;
   /** ISS-1122 — non-terminal issues with nothing working them, named on the row itself. */
@@ -129,6 +135,8 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     reapStaleReleaseBatchClaims(),
   );
   const releaseSweep = await runPass('releaseSweep', () => sweepAutomaticReleases(now));
+  // after the release sweep, which may already have asked the host and left its answers in the process
+  const servedAncestry = await runPass('servedAncestry', () => readServedAncestry());
   const orphanedRunAssertions = await runPass('detectOrphanedRunAssertions', () =>
     detectOrphanedRunAssertions(now),
   );
@@ -166,6 +174,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     rejectionStreaks: rejectionStreaks as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     releaseSweep: releaseSweep as AutomaticReleaseSweepResult,
+    servedAncestry: servedAncestry as ServedAncestryPassResult,
     orphanedRunAssertions: orphanedRunAssertions as IssueRunInvariantResult,
     idleIssues: idleIssues as IdleIssuesResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,

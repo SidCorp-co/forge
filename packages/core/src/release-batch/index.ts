@@ -75,6 +75,7 @@ export { listReleases, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { registerReleaseTag } from './release-tag.js';
 export type { ViewerFacts } from './release-view.js';
+export { readServedAncestry, type ServedAncestryPassResult } from './served-ancestry.js';
 export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
 export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 export { stewardReleaseFacts } from './steward-release-facts.js';

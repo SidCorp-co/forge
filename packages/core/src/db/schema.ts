@@ -55,6 +55,7 @@ export * from './schema-report-runs.js';
 export * from './schema-runners.js';
 export * from './schema-schedule-runs.js';
 export * from './schema-schedules.js';
+export * from './schema-served-ancestry.js';
 export * from './schema-shares.js';
 export * from './schema-skills.js';
 export * from './schema-status-reports.js';

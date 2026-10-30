@@ -29,6 +29,7 @@ import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identit
 import { readProjectDocument } from '../project-config/index.js';
 import { carriageOf, changedPathsOf } from './carriage.js';
 import { recordedCarriage } from './recorded-carriage.js';
+import { persistedCarriage } from './served-ancestry.js';
 import { readJudgedOnNow } from './serving-reading.js';
 
 /** Uncached reads (one or two compares each) one weighing may make of each kind — landings and
@@ -36,10 +37,10 @@ import { readJudgedOnNow } from './serving-reading.js';
 const WEIGHING_READ_LIMIT = 60;
 
 /** Why a read path's weighing left a pair unread: no release Forge recorded places it
- *  (`recorded-carriage.ts`), and a read asks the source host nothing (ISS-774), so only what a
- *  release pass of this process read answers it. */
+ *  (`recorded-carriage.ts`), the host has not answered it to the pass that asks once per pair
+ *  (`served-ancestry.ts`), and a read asks the source host nothing (ISS-774). */
 export const READ_PATH_HELD_ONLY =
-  'no release Forge recorded shipping places it, a read asks the source host nothing, and no release pass of this process has read it';
+  'no release Forge recorded shipping places it, and the source host has not answered it yet: the pipeline sweep asks once per pair, and a read asks nothing';
 
 interface WeighingDeps {
   host?: (projectId: string) => Promise<SourceHost>;
@@ -174,7 +175,10 @@ export async function readWeighingNow(
   const { heldOnly } = deps;
   const spend = () => (heldOnly === undefined ? budget() : () => heldOnly);
   const changed = runtimes.length > 0 ? await readChanged(rows, reader, spend()) : new Map();
-  const recorded = await recordedCarriage(projectId, judged, served);
+  const recorded = new Map([
+    ...(await recordedCarriage(projectId, judged, served)),
+    ...(await persistedCarriage(projectId, judged, served)),
+  ]);
   const carriage = await readCarriage(judged, served, reader, spend(), recorded);
   return { read: true, runtimes, changed, carriage, judgedOn };
 }

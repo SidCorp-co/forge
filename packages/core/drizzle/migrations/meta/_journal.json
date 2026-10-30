@@ -3592,6 +3592,13 @@
       "when": 1831852800000,
       "tag": "0566_a_requirement_verdict_names_the_run_that_recorded_it",
       "breakpoints": true
+    },
+    {
+      "idx": 568,
+      "version": "7",
+      "when": 1832025600000,
+      "tag": "0568_a_served_commit_keeps_what_it_carries",
+      "breakpoints": true
     }
   ]
 }
