@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.380] - 2026-10-30
+
+A runner loads its own forge plugin checkout; high-rated landings need a green base
+
+### Added
+
+- **A runner can load its forge plugin from its own checkout.** `[plugins] checkout` and `ref` make its panes load that checkout, kept at the branch, with the shared registered plugin off; a wrong path or branch is refused.
+
+### Changed
+
+- **A high-impact change now waits before it lands.** Where production deploys on land, a change rated high lands once the latest cleanup on the base is green and no high-rated debt is open; the refusal names both.
+
+### Fixed
+
+- **What a served commit carries is kept:** the pipeline sweep asks the source host once per served and judged pair and keeps the answer, so reads and coverage place verdicts on unreleased deploys. A pre-reopen verdict no longer counts.
+
 ## [0.4.0-dev.379] - 2026-10-30
 
 A release that closes none of its roster is failed, not shipped
