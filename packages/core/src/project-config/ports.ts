@@ -54,6 +54,11 @@ interface ProjectConfigPorts {
     caller: Pick<PatPrincipal, 'deviceId' | 'boundProjectId' | 'projectIds'>,
     asked: string,
   ): Promise<DeclaredRunRead>;
+  /** A live declared run `asked` names on any box of a project the caller's account belongs to. */
+  declaredRunElsewhere(
+    caller: Pick<PatPrincipal, 'userId'>,
+    asked: string,
+  ): Promise<{ box: string; keys: string[] } | null>;
   /** Audit a declared run's resolve on the issue it judges, committed before any value leaves. */
   recordRunSecretResolve(audit: RunSecretResolveAudit): Promise<void>;
 }

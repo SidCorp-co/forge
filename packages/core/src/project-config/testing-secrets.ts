@@ -203,7 +203,10 @@ export async function resolveTestingSecrets(args: {
     if (declared.kind === 'run') return resolveForDeclaredRun({ ...args, run: declared });
   }
   const own = await credentialJob(principal, args.jobId);
-  if (!own.ok) return principal.deviceId ? boxCallRefusal(own, args.jobId) : own;
+  if (!own.ok) {
+    if (principal.deviceId) return boxCallRefusal(own, args.jobId);
+    return args.jobId === SELF_JOB ? own : boxlessCallRefusal(own, principal, args);
+  }
   const { jobId } = own;
 
   const judging = await judgingJob(jobId);
@@ -271,6 +274,28 @@ function boxCallRefusal(refused: Refused, asked: string): Refused {
     'TESTING_SECRETS_RUN_NOT_RECORDED',
     `core holds no run this box declared under ${asked}, and this credential runs no job. A run declared moments ago is recorded at core by the box's next sweep, seconds after \`forge-runner run declare\` (the runner log then says \`[run-record] run ${asked} is now core session …\`): read again with the same id once it has, and dispatch the judge after that read. An id that stays unrecorded is no run of this box: a run declared on another box is read under that box's credential. Nothing was read.`,
     { asked },
+  );
+}
+
+/**
+ * What a credential carrying no box is told when the id it sends is a run a master declared: a
+ * declared run reads under its box's credential, so the refusal names that box and the call that
+ * goes out on it (adminhub-api FB-379, run 1951bc09, 2026-10-30: a qa run's read went out on a
+ * credential with no box and was told only the generic shape).
+ */
+async function boxlessCallRefusal(
+  refused: Refused,
+  principal: PatPrincipal,
+  args: { jobId: string; profileId: string },
+): Promise<Refused> {
+  if (refused.refusal.code !== 'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL') return refused;
+  const run = await projectConfigPorts().declaredRunElsewhere(principal, args.jobId);
+  if (!run) return refused;
+  const over = run.keys.length > 0 ? ` over ${run.keys.join(', ')}` : '';
+  return refuse(
+    403,
+    'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL',
+    `${args.jobId} is a run declared on box ${run.box}${over}, and this credential carries no box, so it reads under no run: a declared run reads its testing secrets under its box's credential. Send the same call from a pane on ${run.box}: \`forge-runner api jobs/${args.jobId}/testing-profiles/${args.profileId}/secrets\` goes out on that pane's checkout credential, which carries the box. A personal token, or $FORGE_PAT outside such a pane, carries none. Nothing was read.`,
   );
 }
 

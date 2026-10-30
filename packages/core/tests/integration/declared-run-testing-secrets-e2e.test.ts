@@ -301,6 +301,42 @@ describe('everything else stays refused by name', () => {
   });
 });
 
+// adminhub-api FB-379 (run 1951bc09, ISS-49, 2026-10-30): a declared qa run's read went out on a
+// credential that carries no box and was told only the generic job-credential shape, so it fell back
+// to a local file. The refusal now names the box the run was declared on and the call that goes out
+// under that box's credential.
+describe('a declared run read under a credential that carries no box', () => {
+  it('is refused naming the box the run was declared on and the call to send from its pane', async () => {
+    await landedIssue(world.projectId, 49);
+    const run = await declaredRun(world.projectId, 49);
+    const [box] = await rows<{ name: string }>(
+      sql`SELECT name FROM devices WHERE id = ${world.box}`,
+    );
+    const person = await mintPat({ userId: world.ownerId, name: 'mine', permissions: ['*'] });
+    for (const id of [run.boxRunId, run.session]) {
+      const res = await secrets(person.plaintext, id);
+      expect(res.status, JSON.stringify(res.body)).toBe(403);
+      expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_A_JOB_CREDENTIAL');
+      const said = JSON.stringify(res.body);
+      expect(said).toContain(`${id} is a run declared on box ${box?.name} over ISS-49`);
+      expect(said).toContain(`forge-runner api jobs/${id}/testing-profiles/stg/secrets`);
+      expect(said).not.toContain(VALUE);
+    }
+  });
+
+  it('names no run of a project the account is no member of', async () => {
+    await judgedProject(world.otherId);
+    await landedIssue(world.otherId, 3);
+    const run = await declaredRun(world.otherId, 3);
+    const stranger = (await createTestUser({ verified: true })).id;
+    const theirs = await mintPat({ userId: stranger, name: 'theirs', permissions: ['*'] });
+    const res = await secrets(theirs.plaintext, run.boxRunId);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_A_JOB_CREDENTIAL');
+    expect(JSON.stringify(res.body)).not.toContain('is a run declared on box');
+  });
+});
+
 // adminhub-api run 194c71e4 on dev core, 2026-10-30: a declared qa run over profile stg read seven
 // routes looking for the value, found neither a value nor a pointer, and gave up. Each read it made
 // now names the one door; none serves the value.

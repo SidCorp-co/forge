@@ -128,3 +128,42 @@ export async function declaredRunOfCall(
     issueIds: issues.map((i) => i.id),
   };
 }
+
+/** A live run a master declared on some box, as told to a credential that carries no box. */
+export interface DeclaredRunElsewhere {
+  /** The box the run was declared on, by its name. */
+  box: string;
+  /** The issues it was declared over, as keys. */
+  keys: string[];
+}
+
+/**
+ * The live run `asked` names on any box, where the caller's account is a member of its project: a
+ * credential that carries no box cannot read under a run, so the refusal names the box whose
+ * credential can (adminhub-api FB-379). A run of a project the account is no member of is not named.
+ */
+export async function declaredRunElsewhere(
+  caller: { userId: string },
+  asked: string,
+): Promise<DeclaredRunElsewhere | null> {
+  const [row] = (await db.execute(sql`
+    SELECT d.name AS box, r.metadata -> ${RUN_GROUP_METADATA_KEY} AS run_group
+      FROM agent_sessions s
+      JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+      JOIN devices d ON d.id = s.device_id
+      JOIN project_members m ON m.project_id = s.project_id AND m.user_id = ${caller.userId}
+     WHERE s.kind = ${RUN_SESSION_KIND}
+       AND s.status NOT IN (${sql.join(
+         terminalAgentSessionStatuses.map((st) => sql`${st}`),
+         sql`, `,
+       )})
+       AND (s.id::text = ${asked} OR r.id::text = ${asked} OR r.metadata->>'boxRunId' = ${asked})
+     ORDER BY s.created_at DESC
+     LIMIT 1
+  `)) as unknown as Array<{ box: string; run_group: unknown }>;
+  if (!row) return null;
+  const keys = Array.isArray(row.run_group)
+    ? row.run_group.filter((k): k is string => typeof k === 'string')
+    : [];
+  return { box: row.box, keys };
+}

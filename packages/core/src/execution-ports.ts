@@ -6,6 +6,7 @@ import { provideAgentSessionsPorts } from './agent-sessions/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
 import {
+  declaredRunElsewhere,
   declaredRunOfCall,
   deviceHolderUserId,
   provideDevicesPorts,
@@ -144,7 +145,11 @@ async function checkoutRemoteOf(projectId: string, repository: string): Promise<
 }
 
 /** What the testing-secrets door reads and writes for a run a master declared, where no job holds it. */
-export const declaredRunSecretPorts = { declaredRunOfCall, recordRunSecretResolve };
+export const declaredRunSecretPorts = {
+  declaredRunOfCall,
+  declaredRunElsewhere,
+  recordRunSecretResolve,
+};
 
 export function provideExecutionPorts(): void {
   provideReleaseBatchPorts({
