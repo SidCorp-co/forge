@@ -8,7 +8,6 @@ import {
 } from '@forge/contracts/mcp-tools';
 import { Hono } from 'hono';
 import { type Refusal, refused } from '../lib/refusal.js';
-import { noQuery } from '../middleware/zod-validator.js';
 
 const NEW_DOOR = {
   rest: 'POST /api/forge/feedback { kind, title, whereSeen, body?, signalKey?, clientVersion? }',
@@ -67,9 +66,14 @@ export const RETIRED_MCP_TOOLS: Readonly<Record<string, Refusal>> = {
 const answer = (c: Parameters<typeof refused>[0]) =>
   refused(c, [agentReportRetired('rest')], 'AGENT_REPORT_RETIRED');
 
-/** `/api/agent-reports`: every route it served, answering where reports about Forge go now. */
+/**
+ * `/api/agent-reports`: every route it served, answering where reports about Forge go now. No
+ * validator stands in front of an answer: the old read REQUIRED `?projectId` unless `scope=all`, so
+ * a caller holding the old shape sends a query and is told where reports went, never that the
+ * route takes none. The read's open query is a priced amnesty in `api-contract/open-queries.ts`.
+ */
 export const agentReportsRetiredRoutes = new Hono();
-agentReportsRetiredRoutes.get('/', noQuery, answer);
+agentReportsRetiredRoutes.get('/', answer);
 agentReportsRetiredRoutes.post('/', answer);
 agentReportsRetiredRoutes.post('/triage', answer);
 agentReportsRetiredRoutes.post('/:id/triage', answer);

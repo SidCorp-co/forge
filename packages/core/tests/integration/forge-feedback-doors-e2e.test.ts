@@ -303,6 +303,36 @@ describe('the retired agent-report doors say where reports go now (BC-8)', () =>
     },
   );
 
+  // the old read REQUIRED ?projectId unless scope=all, so every old caller sends a query: the
+  // retirement is answered before any shape check, never "this route takes no query parameters"
+  it.each([
+    ['?projectId=<uuid>', () => `?projectId=${w.client}`],
+    ['?scope=all', () => '?scope=all'],
+    ['?limit=5', () => '?limit=5'],
+    ['?projectId=<uuid>&status=open&limit=5', () => `?projectId=${w.client}&status=open&limit=5`],
+  ] as const)(
+    'GET /api/agent-reports%s answers AGENT_REPORT_RETIRED, not a query refusal',
+    async (_shape, query) => {
+      const res = await api(tokens.agentPat, 'GET', `/api/agent-reports${query()}`);
+      expect(res.status).toBe(404);
+      expect(refusalOf(res.body)?.code, JSON.stringify(res.body)).toBe('AGENT_REPORT_RETIRED');
+      expect(refusalOf(res.body)?.detail).toContain('POST /api/forge/feedback');
+    },
+  );
+
+  it.each([
+    ['/api/agent-reports', { projectId: 'x', title: 7 }],
+    ['/api/agent-reports/triage', { ids: 'not-an-array', verdict: 'nonsense' }],
+    ['/api/agent-reports/0b6f6a52-4a0e-4b8a-9d2e-2f1f7a0c9f11/triage', { status: 42 }],
+  ] as const)(
+    'POST %s with the old body shape answers AGENT_REPORT_RETIRED',
+    async (path, body) => {
+      const res = await api(tokens.agentPat, 'POST', path, body);
+      expect(res.status).toBe(404);
+      expect(refusalOf(res.body)?.code, JSON.stringify(res.body)).toBe('AGENT_REPORT_RETIRED');
+    },
+  );
+
   it('answers the MCP tool forge_agent_report with the same refusal, naming forge_feedback', async () => {
     const called = await callTool(tokens.agentPat, 'forge_agent_report', { action: 'submit' });
     expect(called.isError).toBe(true);

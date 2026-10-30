@@ -39,6 +39,13 @@ export const OPEN_QUERY_READS: Readonly<Record<string, OpenQuery>> = {
       'GitHub redirects here after an app manifest is created and chooses the keys it appends beside code and state',
     ...THIRD_PARTY_REDIRECT,
   },
+  'GET /api/agent-reports': {
+    reason:
+      "the retired agent-report read answers its retirement whatever the old caller sends; that read required ?projectId unless scope=all, so every old caller's query is a shape Forge no longer names, and a query refusal in front would hide where reports went (REQ-47 BC-8)",
+    trades:
+      'a key on this GET is not refused by name; the answer is the same AGENT_REPORT_RETIRED with or without it, so no key is served as if absent',
+    endsWhen: 'the retired /api/agent-reports door is removed from the route registry',
+  },
   'GET /mcp': {
     reason:
       "the MCP transport answers 405 to every GET, telling an MCP client this server opens no stream; a client's configured server URL may carry a query, and a 400 there reads as a broken server rather than as no stream",
