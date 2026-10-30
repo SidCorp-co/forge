@@ -5,7 +5,13 @@
 // of its line, as a header's value may run on in parts (a cookie's pairs).
 
 import { describe, expect, it } from 'vitest';
-import { containsSecret, FILTERED, scrubLogText, secretSpans } from './index.js';
+import {
+  containsSecret,
+  FILTERED,
+  isCredentialHeader,
+  scrubLogText,
+  secretSpans,
+} from './index.js';
 
 /** Every header name the scrubber reads, as a writer would spell it. */
 const HEADERS = [
@@ -86,4 +92,19 @@ describe('a credential header carrying a value', () => {
     const once = scrubLogText(`Send Authorization: Bearer ${JWT}`);
     expect(scrubLogText(once)).toBe(once);
   });
+});
+
+// A request probe is kept and replayed, so a header carrying a credential is refused by its name,
+// whatever it holds: the value rule above lets `Authorization: x` through as prose (probe-rules.ts).
+describe('a credential header read by its name', () => {
+  it.each([...HEADERS, 'authorization', 'Proxy-Authorization', ' Cookie '])('%s is one', (name) => {
+    expect(isCredentialHeader(name)).toBe(true);
+  });
+
+  it.each(['Accept', 'Content-Type', 'X-Authorization-Hint', 'Cookies-Enabled', 'X-Request-Id'])(
+    '%s is not',
+    (name) => {
+      expect(isCredentialHeader(name)).toBe(false);
+    },
+  );
 });

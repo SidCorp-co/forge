@@ -533,6 +533,20 @@ export function secretSpans(text: string): SecretSpan[] {
 	return out;
 }
 
+const CREDENTIAL_HEADER_NAME = new RegExp(
+	`(?:^|-)(?:${Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join("|")})$`,
+	"i",
+);
+
+/**
+ * Whether a header of this name carries a credential whatever it holds: a scrubbed header's name,
+ * alone or as the last part of one (`Proxy-Authorization`). Read by name, not by its value, since a
+ * request that is kept or replayed must never hold one at all.
+ */
+export function isCredentialHeader(name: string): boolean {
+	return CREDENTIAL_HEADER_NAME.test(name.trim());
+}
+
 /** Whether `text` carries anything the scrubber would redact, or a label that says a secret is
  *  there with its value cut off. The one detector a content check refuses by. */
 export function containsSecret(text: string): boolean {

@@ -25,7 +25,7 @@ import {
 } from '@forge/contracts/criterion-probes';
 import type { CriterionClass } from '@forge/contracts/issue-design';
 import { verdictEarns, verdictExercised } from '@forge/contracts/verdict-identity';
-import { containsSecret } from '@forge/observability';
+import { containsSecret, isCredentialHeader } from '@forge/observability';
 import { jsonPointer } from '../../lib/refusal.js';
 
 export interface ProbeRefusal {
@@ -54,14 +54,14 @@ export function probeSecretRefusals(probe: CriterionProbe): ProbeRefusal[] {
   const out: ProbeRefusal[] = [];
   const headers = probe.kind === 'request' ? (probe.request.headers ?? {}) : {};
   for (const [name, value] of Object.entries(headers)) {
-    if (!containsSecret(`${name}: ${value}`)) continue;
+    if (!isCredentialHeader(name) && !containsSecret(`${name}: ${value}`)) continue;
     out.push({
       code: 'VERDICT_PROBE_SECRET',
       path: jsonPointer(['probe', 'request', 'headers', name]),
       detail: secretHeader(name),
     });
   }
-  // a header's value is read with its name above, so `Authorization` is refused whatever it holds
+  // a header is read by its name above, so `Authorization` is refused whatever it holds
   const headersAt = `${jsonPointer(['probe', 'request', 'headers'])}/`;
   for (const [path, value] of stringsIn(probe, ['probe'])) {
     if (path.startsWith(headersAt) || !containsSecret(value)) continue;

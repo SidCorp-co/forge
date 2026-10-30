@@ -355,12 +355,14 @@ describe('a pass on a later build that holds the landing', () => {
     );
   });
 
-  it('reads an unread hold as unchecked, never as passing nor as another build', () => {
-    const c = onStg(new Map([[S, { unread: 'GitLab answered 503' }]]));
+  // a hold is read from Forge's landing records alone (f6794c5f8): one no record answers names that record
+  it('reads a hold no record answers as unchecked, never as passing nor as another build', () => {
+    const missing = `no merge mark records a landing at ${S.slice(0, 12)}, so nothing on record says it holds ${L.slice(0, 12)}; a landing recorded there would`;
+    const c = onStg(new Map([[S, { unread: missing }]]));
     expect(c?.verdict).toBe('not_judged');
     expect(c?.issues[0]?.inLiveBuild).toBeNull();
-    expect(c?.issues[0]?.notCounted).toContain(
-      `whether it holds that landing could not be read: GitLab answered 503`,
+    expect(c?.issues[0]?.notCounted).toBe(
+      `judged at commit ${S.slice(0, 12)}, not at its issue's landing ${L.slice(0, 12)}, and no record of Forge's says it holds that landing: ${missing}`,
     );
   });
 });
