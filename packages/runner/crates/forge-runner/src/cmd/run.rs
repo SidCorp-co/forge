@@ -59,7 +59,7 @@ pub struct DeclareArgs {
     /// The worktree the subagent will work in.
     #[arg(long)]
     pub worktree: String,
-    /// The role the subagent for this run is dispatched as (e.g. qa). A qa run may be declared over closed issues to judge them; any other role is refused a closed issue.
+    /// The role the subagent for this run is dispatched as (e.g. qa). A qa or reviewer run may be declared over closed issues to judge them; any other role is refused a closed issue.
     #[arg(long)]
     pub role: Option<String>,
 }

@@ -210,7 +210,7 @@ export async function recordReview(args: {
   if ((ISSUE_TERMINAL_STATUSES as readonly string[]).includes(issue.status)) {
     throw one(
       'REVIEW_ISSUE_FINISHED',
-      `${ref} is ${issue.status}; a finished issue takes no review`,
+      `${ref} is ${issue.status}; a finished issue takes no review, as no merge waits on one. Its code-property criteria are judged by a run declared \`--role reviewer\` over it, which carries it untaken and records each with \`POST /api/issues/:id/verdicts\`, \`judge: "review"\` and its \`run\``,
     );
   }
   const owed = await owedFor(issue);

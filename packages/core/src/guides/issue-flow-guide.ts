@@ -164,8 +164,10 @@ with a plan written against a revision of it (\`PLAN_REQUIRED\`): the draft open
 since the plan is yours to write in the plan step. Where the project's gate \`plan_approval\` is enforced, the same move into build also waits until a
 holder of \`plans.approve\` has moved the issue to \`approved\` since its plan was last written
 (\`PLAN_APPROVAL_PENDING\`), and a claim resumes at design until then. A verdict
-on a code-property criterion is the review's (\`judge: 'review'\`); one recorded as QA's is refused
-\`VERDICT_JUDGED_BY_REVIEW\`.
+on a code-property criterion is the review's (\`judge: 'review'\`), recorded by a run declared
+\`--role reviewer\`, over an issue that is closed too; one recorded as QA's is refused
+\`VERDICT_JUDGED_BY_REVIEW\`, and a run sending another role's judgement than its own is refused
+\`VERDICT_JUDGE_NOT_RUN_ROLE\`.
 
 A question only a person can answer parks the issue:
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', reason, waitingKind, needs }\`, with

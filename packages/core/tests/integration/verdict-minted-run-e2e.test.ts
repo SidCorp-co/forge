@@ -101,7 +101,6 @@ const verdict = (seq: number, run: string) =>
     reason: 'pass on the running build',
     identity: { kind: 'commit', sha: BUILT },
     evidence: ['shot.png'],
-    judge: 'review',
     run,
   });
 

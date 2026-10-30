@@ -135,8 +135,8 @@ which core reads as terminal, so the job is not retried
 
 `forge-runner run declare --project` takes the project's id or its slug, and
 names the pane's own project when it refuses another. `--role` names the role the
-run is dispatched as: core admits a `qa` run over closed issues untaken, refuses any
-other role a closed issue, and the box refuses a dispatch of another role onto it.
+run is dispatched as: core admits a `qa` or `reviewer` run over closed issues untaken,
+refuses any other role a closed issue, and the box refuses a dispatch of another role onto it.
 
 ### A chat session's credential
 

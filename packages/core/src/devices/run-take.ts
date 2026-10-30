@@ -5,11 +5,12 @@ import { judgesOnly } from '../issues/index.js';
 
 /**
  * The issues a run takes: each one it holds a lease on and restarts a step for. An issue that is over
- * (closed or dropped) is taken by no run. A run declared `qa` judges: it carries every issue that is
- * over untaken, beside the work it does take, writes verdicts on it and moves no status; a fail
- * reopens it through the finding path (forge-core-61's ruling, 2026-10-29, under `VISION:
- * state-never-lies`: never reopen an issue so it can be judged). A run declared under another role
- * builds, so every issue it names is taken and one that is over is refused by name
+ * (closed or dropped) is taken by no run. A run declared to judge — `qa` on the running build,
+ * `reviewer` on a code property against the diff (`issues/issue-resting.ts:JUDGING_RUN_ROLES`) —
+ * carries every issue that is over untaken, beside the work it does take, writes verdicts on it and
+ * moves no status; a fail reopens it through the finding path (forge-core-61's ruling, 2026-10-29,
+ * under `VISION: state-never-lies`: never reopen an issue so it can be judged). A run declared under
+ * another role builds, so every issue it names is taken and one that is over is refused by name
  * (`issues/issue-resting.ts`). A run that names no role is the declaration before roles: a group
  * that is over throughout opens taking nothing (a release judge, ISS-576), and any other group is
  * taken whole. That reading is an amnesty for boxes whose `run declare` sends no role; it ends when

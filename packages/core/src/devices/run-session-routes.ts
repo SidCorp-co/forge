@@ -53,7 +53,7 @@ const runSessionBodySchema = z.object({
   // rather than a field quietly dropped. The heartbeat is the other way round,
   // and for its own stated reason (ISS-1192).
   gate: gateConditionSchema.optional(),
-  /** The role the run is dispatched as (`run declare --role`): `qa` judges, any other builds. */
+  /** The role the run is dispatched as (`run declare --role`): `qa` and `reviewer` judge, any other builds. */
   role: runRoleSchema.optional(),
 });
 

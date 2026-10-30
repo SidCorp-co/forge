@@ -6,10 +6,14 @@
  * admitted only a group closed throughout), so ten of K152's fifteen could not be judged. The run
  * names its role at declare: a `qa` run carries a closed issue untaken, reads its environment's
  * testing secret and posts verdicts on it, and moves no status; any other role is refused the closed
- * issue by name, alone or beside work. Against real Postgres, through the box's routes.
+ * issue by name, alone or beside work. A code-property criterion is the review's (REQ-36 BC-13), so a
+ * closed issue's is judged by a run declared `--role reviewer`, carried untaken as a `qa` run is; a
+ * `qa` run is refused it, whether it records it as its own or as the review's. Against real
+ * Postgres, through the box's routes.
  *
  * @direct-test-of packages/core/src/devices/run-session.ts
  * @direct-test-of packages/core/src/issues/issue-resting.ts
+ * @direct-test-of packages/core/src/issues/criteria/verdict-role.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -70,6 +74,28 @@ const declare = (runId: string, issueKeys: string[], role?: string) =>
     name: `run-${runId.slice(0, 4)}`,
     ...(role ? { role } : {}),
   });
+
+async function judgeToken(): Promise<string> {
+  return (
+    await mintPat({ permissions: ['*'], userId: world.ownerId, name: 'judge', deviceId: world.box })
+  ).plaintext;
+}
+
+/** The judge's verdict on the closed issue's code-property criterion, as its run records it. */
+const propertyVerdict = (token: string, runId: string, judge?: string) =>
+  api(token, 'POST', `/api/issues/${world.closedId}/verdicts`, {
+    criterion: 2,
+    verdict: 'pass',
+    reason: 'the diff reads the reference code from one module',
+    identity: { kind: 'commit', sha: SHA },
+    ...(judge ? { judge } : {}),
+    run: runId,
+  });
+
+const detailOf = (body: unknown): string =>
+  (((body as { error?: { refusals?: Doc[] } }).error?.refusals ?? []) as Doc[])
+    .map((r) => String(r.detail))
+    .join(' ');
 
 async function statusOf(id: string): Promise<string> {
   const [row] = await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${id}`);
@@ -140,6 +166,16 @@ beforeEach(async () => {
   await db.execute(sql`
     INSERT INTO issue_criteria (issue_id, n, statement, position)
     VALUES (${closed.id}, 1, 'the page keeps the reference code on screen', 0)`);
+  // criterion 2 is a code property in the closed issue's design: the review's, judged against the diff
+  const [property] = await rows<{ id: string }>(sql`
+    INSERT INTO issue_criteria (issue_id, n, statement, position)
+    VALUES (${closed.id}, 2, 'the reference code is read from one module', 1) RETURNING id`);
+  await db.execute(sql`
+    INSERT INTO issue_designs (issue_id, project_id, revision, modules, contracts, recorded_by)
+    VALUES (${closed.id}, ${world.projectId}, 1, '{}', '{}', ${world.ownerId})`);
+  await db.execute(sql`
+    INSERT INTO issue_design_criteria (criterion_id, issue_id, criterion_class, proof)
+    VALUES (${property?.id}, ${closed.id}, 'code_property', 'the diff reads the code from one module')`);
   await createTestIssue(world.projectId, world.ownerId, 2, {
     status: 'in_progress',
     createdAt: new Date(),
@@ -182,7 +218,6 @@ describe('a judge declared over a closed issue', () => {
       verdict: 'pass',
       reason: 'the reference code stays on screen on the served build',
       identity: { kind: 'commit', sha: SHA },
-      judge: 'review',
       run: runId,
     });
     expect(verdict.status, JSON.stringify(verdict.body)).toBe(201);
@@ -226,5 +261,78 @@ describe('a build declared over a closed issue', () => {
     const opened = await declare(randomUUID(), ['ISS-2'], 'runner');
     expect([opened.status, codes(opened.body)]).toEqual([200, []]);
     expect(await leasesOn('ISS-2')).toBe(1);
+  });
+});
+
+describe("a closed issue's code-property criterion", () => {
+  it('is judged by a reviewer run, declared over it beside work, which takes nothing on it and moves no status', async () => {
+    const pre = await preflight(['ISS-2', 'ISS-1'], 'reviewer');
+    expect([pre.status, codes(pre.body)], JSON.stringify(pre.body)).toEqual([200, []]);
+    const runId = randomUUID();
+    const opened = await declare(runId, ['ISS-2', 'ISS-1'], 'forge:reviewer');
+    expect([opened.status, codes(opened.body)], JSON.stringify(opened.body)).toEqual([200, []]);
+    expect(await leasesOn('ISS-1'), 'a reviewer took a lease on a closed issue').toBe(0);
+
+    const verdict = await propertyVerdict(await judgeToken(), runId, 'review');
+    expect(verdict.status, JSON.stringify(verdict.body)).toBe(201);
+    const [kept] = await rows<{ judge: string; n: number }>(sql`
+      SELECT v.judge, c.n FROM criterion_verdicts v JOIN issue_criteria c ON c.id = v.criterion_id
+       WHERE v.issue_id = ${world.closedId}`);
+    expect(kept).toEqual({ judge: 'review', n: 2 });
+    expect(await statusOf(world.closedId), 'judging moved a closed issue').toBe('closed');
+  });
+
+  it("is refused to a qa run as QA's, naming the reviewer run that records it", async () => {
+    const runId = randomUUID();
+    expect(codes((await declare(runId, ['ISS-1'], 'qa')).body)).toEqual([]);
+    const verdict = await propertyVerdict(await judgeToken(), runId);
+    expect(codes(verdict.body), JSON.stringify(verdict.body)).toEqual(['VERDICT_JUDGED_BY_REVIEW']);
+    expect(detailOf(verdict.body)).toContain('--role reviewer');
+  });
+
+  it("is refused to a qa run sending it as the review's: a run records only its own role's judgement", async () => {
+    const runId = randomUUID();
+    expect(codes((await declare(runId, ['ISS-1'], 'qa')).body)).toEqual([]);
+    const verdict = await propertyVerdict(await judgeToken(), runId, 'review');
+    expect(codes(verdict.body), JSON.stringify(verdict.body)).toEqual([
+      'VERDICT_JUDGE_NOT_RUN_ROLE',
+    ]);
+    const said = detailOf(verdict.body);
+    expect(said).toContain(runId);
+    expect(said).toContain('--role qa');
+    expect(said).toContain('--role reviewer');
+    const [n] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM criterion_verdicts WHERE issue_id = ${world.closedId}`);
+    expect(n?.n, 'a refused verdict was written').toBe(0);
+  });
+
+  it("is refused to a reviewer run sending an observable criterion as QA's", async () => {
+    const runId = randomUUID();
+    expect(codes((await declare(runId, ['ISS-1'], 'reviewer')).body)).toEqual([]);
+    const verdict = await api(
+      await judgeToken(),
+      'POST',
+      `/api/issues/${world.closedId}/verdicts`,
+      {
+        criterion: 1,
+        verdict: 'pass',
+        reason: 'read in the diff',
+        identity: { kind: 'commit', sha: SHA },
+        run: runId,
+      },
+    );
+    expect(codes(verdict.body), JSON.stringify(verdict.body)).toEqual([
+      'VERDICT_JUDGE_NOT_RUN_ROLE',
+    ]);
+    expect(detailOf(verdict.body)).toContain('--role qa');
+  });
+
+  it('is never built: a runner is still refused the closed issue, naming both judging roles', async () => {
+    const pre = await preflight(['ISS-1'], 'runner');
+    expect(codes(pre.body)).toEqual(['ISSUE_AT_REST']);
+    const said = detailOf(pre.body);
+    expect(said).toContain('--role qa');
+    expect(said).toContain('--role reviewer');
+    expect(await statusOf(world.closedId)).toBe('closed');
   });
 });

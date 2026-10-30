@@ -33,6 +33,7 @@ vi.mock('./patterns.js', () => ({
 vi.mock('./issue-scope.js', () => ({ refuseScopeHeldForKeys: vi.fn() }));
 
 const { refuseHeldTakeForSeqs } = await import('./blocked-by.js');
+const { judgeOfRole, judgesOnly } = await import('./issue-resting.js');
 
 const issue = (seq: number, status: string) => ({
   id: `id-${seq}`,
@@ -70,6 +71,8 @@ describe('a run over an issue at rest', () => {
       expect(detail).toContain(`\`${status}\``);
       // never "reopen it to judge it": an issue that is over is judged by a `qa` run (forge-core-61, 2026-10-29)
       expect(detail).toMatch(status === 'closed' || status === 'dropped' ? /--role qa/ : /park/);
+      // and its code-property criteria by a `reviewer` run, the one judge the verdict door routes them to
+      if (status === 'closed' || status === 'dropped') expect(detail).toMatch(/--role reviewer/);
       expect(detail).not.toMatch(/Reopen it first/);
     },
   );
@@ -106,4 +109,24 @@ describe('a run over an issue at rest', () => {
     );
     expect(status).toMatch(/pub const AT_REST_CODE: &str = "ISSUE_AT_REST";/u);
   });
+});
+
+describe('the roles that judge', () => {
+  it.each([
+    ['qa', 'qa'],
+    ['forge:qa', 'qa'],
+    ['reviewer', 'review'],
+    ['forge:reviewer', 'review'],
+  ])('reads %s as a judge recording as %s', (role, judge) => {
+    expect(judgesOnly(role), `${role} was read as a role that builds`).toBe(true);
+    expect(judgeOfRole(role)).toBe(judge);
+  });
+
+  it.each(['runner', 'forge:runner', 'triage', 'review', 'constructor', 'toString'])(
+    'reads %s as no judge',
+    (role) => {
+      expect(judgesOnly(role), `${role} was read as a judge`).toBe(false);
+      expect(judgeOfRole(role)).toBeNull();
+    },
+  );
 });

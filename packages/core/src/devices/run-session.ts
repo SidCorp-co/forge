@@ -165,7 +165,7 @@ export async function openRunSession(args: {
   name: string;
   boxRunId?: string;
   gate?: GateCondition;
-  /** The role the run is dispatched as, where its box said: `qa` judges, any other builds. */
+  /** The role the run is dispatched as, where its box said: `qa` and `reviewer` judge, any other builds. */
   role?: string;
 }): Promise<RunSession> {
   if (args.issueKeys.length === 0) {

@@ -251,10 +251,13 @@ call is refused before it runs, in these words:
 
 > Refused: nothing on this box has been told about the work you are handing out.
 
-Name the role you will dispatch it as with `--role` (`qa`, `runner`, ...): the box refuses a
-dispatch of another role onto that run. A `qa` run judges, so it may name `closed` and `dropped`
-issues, alone or beside work: it takes nothing on them, writes verdicts and moves no status, and a
-fail reopens the issue through the finding path. Any other role is refused a closed issue by name.
+Name the role you will dispatch it as with `--role` (`qa`, `reviewer`, `runner`, ...): the box
+refuses a dispatch of another role onto that run. A `qa` run judges on the running build and a
+`reviewer` run judges code-property criteria against the diff, so either may name `closed` and
+`dropped` issues, alone or beside work: it takes nothing on them, writes verdicts and moves no
+status, and a fail reopens the issue through the finding path. Each records only its own role's
+judgement, so a closed issue's code-property criteria go to a `reviewer` run. Any other role is
+refused a closed issue by name.
 Never reopen an issue so it can be judged.
 
 The tree you declare is a worktree that exists. A path that is gone — the one a run you just closed

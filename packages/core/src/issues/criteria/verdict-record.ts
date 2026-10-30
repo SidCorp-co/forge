@@ -43,6 +43,7 @@ import {
   verdictDraftFault,
 } from './verdict-input.js';
 import { repeatedVerdict } from './verdict-repeat.js';
+import { judgeRoleFault } from './verdict-role.js';
 
 type VerdictColumns = Partial<typeof criterionVerdicts.$inferInsert>;
 
@@ -97,6 +98,7 @@ function verdictRecordFields(args: {
 const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
   VERDICT_JUDGED_BY_REVIEW: '/judge',
   VERDICT_JUDGED_BY_QA: '/judge',
+  VERDICT_JUDGE_NOT_RUN_ROLE: '/judge',
   VERDICT_VALUE_UNKNOWN: '/verdict',
   VERDICT_SKIP_REASON_REQUIRED: '/reason',
   VERDICT_CLIP_REQUIRED: '/evidence',
@@ -243,7 +245,7 @@ function misrouted(criterion: number, routed: CriterionJudge): VerdictRefusal {
     ? {
         code: 'VERDICT_JUDGED_BY_REVIEW',
         criterion,
-        detail: `criterion ${criterion} is a code property in the issue's design, so the review judges it against the diff, not QA on the running build. Record it as the review's (\`judge: "review"\`), or reclass it in the design (PUT /api/issues/:id/design)`,
+        detail: `criterion ${criterion} is a code property in the issue's design, so the review judges it against the diff, not QA on the running build. A run declared \`--role reviewer\` records it (over an issue that is closed too, carried untaken): through its review (\`POST /api/issues/:id/review\`) while the issue is open, or here with \`judge: "review"\` and its \`run\`. Or reclass it in the design (PUT /api/issues/:id/design)`,
       }
     : {
         code: 'VERDICT_JUDGED_BY_QA',
@@ -385,6 +387,13 @@ export async function recordVerdict(
     run: args.run,
     runSession: args.runSession,
   });
+  const notOwn = await judgeRoleFault(tx, {
+    session: runSessionId,
+    criterion: draft.criterion,
+    judge,
+    routed: route?.judge ?? null,
+  });
+  if (notOwn) throw verdictRefused(notOwn);
   const repeat = { criterionId: criterion.id, runSessionId, draft, identity, judge };
   const repeated = await repeatedVerdict(tx, repeat);
   if (repeated) {

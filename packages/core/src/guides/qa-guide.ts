@@ -54,7 +54,8 @@ Read these before judging anything, while whoever sent you can still equip you.
   stands before production, else at what is served (the \`environment\` judged on until release).
 - \`GET /api/issues/:id/design\` gives the proof the design names for each criterion.
 - \`GET /api/issues/:id/review\` lists what the review owes: the code-property criteria are its, not
-  yours.
+  yours. A run declared \`--role reviewer\` judges them, a closed issue's too; ask for one rather than
+  sending \`judge: "review"\` yourself, which a \`qa\` run is refused (\`VERDICT_JUDGE_NOT_RUN_ROLE\`).
 - \`GET /api/issues/:id/judged-build\` answers the build a verdict on the issue defaults to: the sha the
   environment serves, and in \`basis\` whether it holds the issue's landed commit. Where the project
   names its testing environment (\`delivery.judgedOn\`), that is the build that environment serves
@@ -107,7 +108,7 @@ its id or its download URL, the
 probe an observable criterion keeps, and its clip or \`withoutClip\`. A server-side criterion cites the
 capture of what you ran inside the running server instead, and keeps no probe and no clip
 (\`VERDICT_CAPTURE_REQUIRED\`, \`VERDICT_PROBE_SERVER_SIDE\`). A code-property criterion is the
-review's, and a verdict recorded on it as QA's is refused. On a project that declares no production
+review's, and a verdict recorded on it as QA's is refused (\`VERDICT_JUDGED_BY_REVIEW\`). On a project that declares no production
 environment nothing runs that Forge observes: the build is the commit \`judged-build\` names, its
 identity is \`{ kind: 'commit', sha }\` at that commit, and a \`runtime\` identity there is refused
 \`VERDICT_RUNTIME_UNOBSERVED\`.
