@@ -38,6 +38,19 @@ export interface FilingOwed {
   url: string | null;
 }
 
+/**
+ * A draft filed for an owed merge and marked at it, owed its record on the shipped release holding
+ * that merge (ISS-774): no cut claims a draft.
+ */
+export interface FilingRecordOwed {
+  issueId: string;
+  key: string;
+  number: number;
+  commit: string;
+  /** The oldest shipped release cut after the merge landed, which the record checks; null while none has shipped. */
+  release: string | null;
+}
+
 /** A request a person left waiting: a draft issue they filed, or a draft requirement proposed from a chat. */
 export interface WaitingRequest {
   kind: 'issue' | 'requirement';
@@ -124,7 +137,9 @@ interface MastersPorts {
    * The merges the host reported that no Forge record carries (ISS-774): issues owing their mark, and,
    * under a profile with `issue_before_code` off, merges owing an issue. Forge writes neither.
    */
-  mergesOwed(projectId: string): Promise<{ marks: MarkOwed[]; filings: FilingOwed[] }>;
+  mergesOwed(
+    projectId: string,
+  ): Promise<{ marks: MarkOwed[]; filings: FilingOwed[]; recordings: FilingRecordOwed[] }>;
   /** Agreed requirements whose steward intake question nobody has answered yet, held out of the breakdowns owed (REQ-48 BC-2). */
   breakdownsHeldBySteward(projectId: string): Promise<string[]>;
   /** The project's gate `master_admitted_only` (REQ-76): off, a master is placed for a waiting request too. */

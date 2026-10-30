@@ -3,6 +3,7 @@ import { masterWork, owedLine, workDigest } from './owed.js';
 import type {
   AgentConfirmOwed,
   FilingOwed,
+  FilingRecordOwed,
   MarkOwed,
   ReleaseMergeOwed,
   StewardAsk,
@@ -37,6 +38,7 @@ const none = {
   }[],
   marks: [] as MarkOwed[],
   filings: [] as FilingOwed[],
+  recordings: [] as FilingRecordOwed[],
   requests: [] as WaitingRequest[],
   contentLanguage: 'en',
 };
@@ -455,5 +457,31 @@ describe('owedLine: a filing is asked for as the mark takes it', () => {
     expect(line).toContain('issues/<id>/merge -X POST');
     expect(line).toContain('The mark takes a merge listed here as the landing of the one issue');
     expect(line).toContain('a commit naming one issue is never another');
+  });
+});
+
+// ISS-774: a draft filed for an owed merge and marked at it is claimed by no cut, so it stays named
+// until its record closes it: waiting while no release holds it, then with the record to make
+describe('owedLine: a marked filing waits on its release record', () => {
+  const base = { issueId: 'u784', key: 'ISS-784', number: 1233, commit: 'a'.repeat(40) };
+
+  it('says it awaits a release that contains the merge while none has shipped', () => {
+    const line = owedLine({ ...none, recordings: [{ ...base, release: null }] });
+    expect(line).toContain('ISS-784 u784: !1233 at');
+    expect(line).toContain('marked, awaiting a release that contains the merge');
+    expect(line).not.toContain('shipped-in-records');
+  });
+
+  it('names the shipped-in record and the release once one has shipped', () => {
+    const waiting = { ...base, release: null };
+    const ready = { ...base, release: '0.4.0-dev.348' };
+    const line = owedLine({ ...none, recordings: [ready] });
+    expect(line).toContain('0.4.0-dev.348');
+    expect(line).toContain('projects/<projectId>/shipped-in-records -X POST');
+    expect(masterWork([], { ...none, recordings: [ready] }).owed).toBe(1);
+    // a release shipping moves the digest, so the master is asked again
+    expect(workDigest([], { ...none, recordings: [ready] })).not.toBe(
+      workDigest([], { ...none, recordings: [waiting] }),
+    );
   });
 });

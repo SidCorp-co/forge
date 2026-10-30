@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { mastersPorts } from '../../src/masters/ports.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestDevice, createTestProject } from '../helpers/factories.js';
@@ -217,5 +218,24 @@ describe('a draft filed for an owed merge closes on the release that shipped it'
     expect(JSON.stringify(other.body)).toContain('DESIGN_NOT_DELIVERED');
     expect(await statusOf(iss784)).toBe('draft');
     expect(await statusOf(plain)).toBe('draft');
+  });
+
+  // the master is told of the draft until its record closes it: no cut claims a draft
+  it('keeps the marked draft on the master’s owed work until it is recorded', async () => {
+    await codeFirstWorld();
+    await unlinkedMerge(1233, PR_1233);
+    const iss784 = await filedAndMarked(784, PR_1233);
+    const recordings = async () => (await mastersPorts().mergesOwed(world.projectId)).recordings;
+
+    expect(await recordings()).toEqual([
+      expect.objectContaining({ issueId: iss784, number: 1233, commit: PR_1233, release: null }),
+    ]);
+    await shipped('0.4.0-dev.348', TAG_348, [PR_1233]);
+    expect(await recordings()).toEqual([
+      expect.objectContaining({ issueId: iss784, release: '0.4.0-dev.348' }),
+    ]);
+
+    expect((await record(iss784, '0.4.0-dev.348')).status).toBe(201);
+    expect(await recordings()).toEqual([]);
   });
 });

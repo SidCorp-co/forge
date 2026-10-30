@@ -414,7 +414,10 @@ read, so the first release to ship the merge or any later one descending from it
 `draft` → `closed` edge (issue-lifecycle revision 24), whose `filing_released` guard asks that a
 release claimed it (`packages/core/src/issues/filing-close-guard.ts:filingReleasedGuard`); a
 design-only draft closes along it on its approved design as before, and any other draft is refused
-`DESIGN_NOT_DELIVERED`.
+`DESIGN_NOT_DELIVERED`. Until its record closes it, such a draft stays on its master's owed work
+(`packages/core/src/issues/owed-merges.ts:filingsMarked`): "marked, awaiting a release that contains
+the merge" while no shipped release was cut after it landed, then naming the oldest such release and
+the shipped-in call to make, read from Forge's rows and never the repository.
 
 ## What counts as landed depends on the project's shape
 

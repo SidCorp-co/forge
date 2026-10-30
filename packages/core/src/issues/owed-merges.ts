@@ -190,6 +190,44 @@ export async function filingAnsweredBy(issueId: string): Promise<OwedFiling | nu
   return filing ? filingOf(filing) : null;
 }
 
+/** A draft filed for an owed merge and marked at it, as the master reads it. */
+export interface MarkedFiling {
+  issueId: string;
+  key: string;
+  number: number;
+  commit: string;
+  landedAt: Date;
+}
+
+/**
+ * Every draft of the project filed for an owed merge and marked at it (`filingAnsweredBy`): no cut
+ * claims a draft, so each waits on its record on the shipped release that holds the merge
+ * (`release-batch/shipped-in.ts:recordShippedIn`), and is listed until it closes there.
+ */
+export async function filingsMarked(projectId: string): Promise<MarkedFiling[]> {
+  const rows = (await db.execute(sql`
+    SELECT i.id, i.iss_seq, i.merged_at FROM issues i
+     WHERE i.project_id = ${projectId}::uuid AND i.status = 'draft' AND i.archived_at IS NULL
+       AND i.merged_at IS NOT NULL AND i.merged_commit_sha IS NOT NULL
+     ORDER BY i.iss_seq
+  `)) as unknown as Array<{ id: string; iss_seq: number; merged_at: Date | string }>;
+  if (rows.length === 0) return [];
+  const prefix = await activeIssuePrefix(projectId);
+  const out: MarkedFiling[] = [];
+  for (const row of rows) {
+    const filing = await filingAnsweredBy(row.id);
+    if (!filing) continue;
+    out.push({
+      issueId: row.id,
+      key: formatIssueRef(prefix, Number(row.iss_seq)),
+      number: filing.number,
+      commit: filing.commit,
+      landedAt: new Date(row.merged_at),
+    });
+  }
+  return out;
+}
+
 /** Every issue of the project owing its mark for a merged change request, as the master reads them. */
 export async function owedMarks(projectId: string): Promise<OwedMarkRow[]> {
   const rows = (await db.execute(sql`

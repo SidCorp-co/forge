@@ -167,6 +167,8 @@ export { recordIssueMerge } from './merge-record.js';
 export { mergeNotRecorded } from './merged-at.js';
 export {
   filingAnsweredBy,
+  filingsMarked,
+  type MarkedFiling,
   type OwedFiling,
   type OwedMark,
   type OwedMarkRow,

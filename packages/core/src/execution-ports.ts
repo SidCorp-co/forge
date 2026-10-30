@@ -41,6 +41,7 @@ import {
 } from './integrations/source-host/index.js';
 import {
   draftIssuesPeopleFiled,
+  filingsMarked,
   owedFilings,
   owedMarks,
   recordRunSecretResolve,
@@ -98,6 +99,7 @@ import {
   provideReleaseBatchPorts,
   releaseApprovalsOwed,
   releaseMergesOwed,
+  shippedReleaseRuns,
   unnamedReleases,
   warnedReleaseNotes,
 } from './release-batch/index.js';
@@ -134,6 +136,24 @@ import {
 import { boxIsListening, sendToBoxNow, wakeMastersForProject } from './ws/index.js';
 
 /** Forge's git relay URL for a repository whose binding reaches git only through it (REQ-73 BC-5), else null. */
+/**
+ * Each draft filed for an owed merge and marked at it, with the oldest shipped release cut after the
+ * merge landed (ISS-774): read from Forge's rows, never the repository, so it is the release the
+ * master names in its shipped-in record, which checks containment itself; null while none shipped.
+ */
+async function filingRecordsOwed(projectId: string) {
+  const marked = await filingsMarked(projectId);
+  if (marked.length === 0) return [];
+  const shipped = await shippedReleaseRuns(projectId);
+  return marked.map((m) => ({
+    issueId: m.issueId,
+    key: m.key,
+    number: m.number,
+    commit: m.commit,
+    release: shipped.find((r) => r.cutAt >= m.landedAt)?.version ?? null,
+  }));
+}
+
 async function relayRemoteOf(projectId: string, repository: string): Promise<string | null> {
   const ref = parseRepository(repository);
   return ref.kind === 'hosted'
@@ -300,6 +320,7 @@ export function provideExecutionPorts(): void {
         title: f.title,
         url: f.url,
       })),
+      recordings: await filingRecordsOwed(projectId),
     }),
     masterGate: (projectId) => gateOf(projectId, 'master_admitted_only'),
     requestsWaiting: async (projectId) => [

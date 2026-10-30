@@ -77,6 +77,7 @@ const none = {
   landedWork: [] as Parameters<typeof owedLine>[0]['landedWork'],
   marks: [] as Parameters<typeof owedLine>[0]['marks'],
   filings: [] as Parameters<typeof owedLine>[0]['filings'],
+  recordings: [] as Parameters<typeof owedLine>[0]['recordings'],
   requests: [] as Parameters<typeof owedLine>[0]['requests'],
   contentLanguage: 'vi',
 };
@@ -108,6 +109,10 @@ const OWED_KINDS = {
   },
   filings: {
     item: { number: 13, commit: 'd'.repeat(40), title: 'Fix the header', url: null },
+    guide: 'issue-flow',
+  },
+  recordings: {
+    item: { issueId: 'u10', key: 'ISS-10', number: 14, commit: 'e'.repeat(40), release: '0.1.0' },
     guide: 'issue-flow',
   },
   landedWork: {

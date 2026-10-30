@@ -13,6 +13,7 @@ import { type GuideSlug, guideCall } from '../guides/index.js';
 import {
   type AgentConfirmOwed,
   type FilingOwed,
+  type FilingRecordOwed,
   type MarkOwed,
   mastersPorts,
   type ReleaseMergeOwed,
@@ -64,6 +65,8 @@ interface Owed {
   marks: MarkOwed[];
   /** Merges into the default branch delivering no issue, owed an issue (REQ-76 BC-8, ISS-774). */
   filings: FilingOwed[];
+  /** Drafts filed for such a merge and marked at it, owed their record on the release that ships it. */
+  recordings: FilingRecordOwed[];
   /**
    * Requests a person left waiting — a draft issue they filed, a draft requirement proposed from a
    * chat — owed to the master only where the project's gate `master_admitted_only` is off (REQ-76 BC-9).
@@ -186,6 +189,28 @@ function mergesLine(marks: MarkOwed[], filings: FilingOwed[]): string {
   return line;
 }
 
+/**
+ * ISS-774: a draft filed for an owed merge and marked at it closes only on a shipped release whose
+ * commit holds the merge; no cut claims a draft. Named while it waits for one, and with the record to
+ * make once one has shipped.
+ */
+function recordingsLine(recordings: FilingRecordOwed[]): string {
+  const ready = recordings.filter((r) => r.release !== null);
+  const waiting = recordings.filter((r) => r.release === null);
+  let line = '';
+  if (ready.length > 0) {
+    const keys = ready.map(
+      (r) => `${r.key} ${r.issueId}: !${r.number} at ${r.commit}, ${r.release}`,
+    );
+    line += ` ${ready.length} draft${plural(ready.length, '', 's')} filed for an owed merge and marked at it ${plural(ready.length, 'waits', 'wait')} on ${plural(ready.length, 'its', 'their')} record on a release that shipped the merge, and a release cut after it landed has shipped (${keys.join('; ')}): record each on that release (\`forge-runner api projects/<projectId>/shipped-in-records -X POST -d '{"issueId":"<id>","version":"<version>","evidence":"<git>"}'\`), which checks the release's commit contains the merge and closes the draft there; where it does not, name the shipped release whose commit does, as ${method('issue-flow')} (Land, mark, move) says.`;
+  }
+  if (waiting.length > 0) {
+    const keys = waiting.map((r) => `${r.key} ${r.issueId}: !${r.number} at ${r.commit}`);
+    line += ` ${waiting.length} draft${plural(waiting.length, '', 's')} filed for an owed merge ${plural(waiting.length, 'is', 'are')} marked, awaiting a release that contains the merge (${keys.join('; ')}): no cut claims a draft, so nothing is owed until one ships; this line then names the record to make.`;
+  }
+  return line;
+}
+
 /** REQ-76 BC-8: an issue a merge filed under a profile that lets code come first, owed its claim and move. */
 function mergeFiledLine(filed: Owed['landedWork']): string {
   if (filed.length === 0) return '';
@@ -225,6 +250,7 @@ export function owedLine(owed: Owed): string {
     stewardAsksLine(owed.stewardAsks) +
     landedWorkLine(owed.landedWork) +
     mergesLine(owed.marks, owed.filings) +
+    recordingsLine(owed.recordings) +
     confirmsLine(owed.confirms) +
     requestsLine(owed.requests);
   const {
@@ -321,6 +347,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.landedWork.map((l) => `landed-work:${l.issueId}|${l.mergedAt}`),
     ...owed.marks.map((m) => `mark:${m.issueId}|${m.commit}`),
     ...owed.filings.map((f) => `filing:${f.commit}`),
+    ...owed.recordings.map((r) => `filing-record:${r.issueId}|${r.release ?? ''}`),
     ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
@@ -437,6 +464,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     landedWork,
     marks: merges.marks,
     filings: merges.filings,
+    recordings: merges.recordings,
     requests,
     contentLanguage,
   });
