@@ -1,35 +1,38 @@
 import type { CoreGuide } from './types.js';
 
 /**
- * The runtime probe a production environment declares so a release, and a requirement's coverage,
- * can read which commit production serves. Written from `release-batch/channel.ts:releaseProbesOf`,
- * `closeVerification`, `release-batch/verify.ts:verifyDeployed` and
+ * The runtime probe an environment declares so a release, and a requirement's coverage, can read
+ * which commit it serves. Written from `release-batch/channel.ts:releaseProbesOf`,
+ * `closeVerification`, `release-batch/verify.ts:verifyDeployed`,
+ * `release-batch/provider-live.ts:servedBySourceProbes` and
  * `integrations/deploy/runtime-probe.ts:readRuntimeProbe`; adminhub-api, 2026-10-30, met only the
  * sentence that production "declares no source probe" and found no shape to declare one by.
  */
 export const RELEASE_SOURCE_PROBE_GUIDE: CoreGuide = {
   slug: 'release-source-probe',
   audience: 'agent',
-  title: 'Release source probe: how production says which commit it serves',
+  title: 'Release source probe: how an environment says which commit it serves',
   summary:
-    'The runtime probe a production environment declares in the project document, what the URL it names must answer, and what a release and requirement coverage do with the commit it reads. Where none is declared, coverage says production "declares no source probe".',
+    'The runtime probe an environment declares in the project document, bound or deployed outside Forge, what the URL it names must answer, and what requirement coverage and a release do with the commit it reads. Where none is declared, coverage says production "declares no source probe".',
   version: 1,
-  body: `## Release source probe: how production says which commit it serves
+  body: `## Release source probe: how an environment says which commit it serves
 
-A release is proved against the commit production serves, and a requirement's coverage asks the
-same question of the live build. Forge reads that commit from a **source probe**: a URL on the
-production environment that answers the commit it was built from. Without one, coverage says the
-live build could not be read because production "declares no source probe".
+A requirement's coverage asks which commit the live build is, and a release is proved against the
+commit production serves. Forge reads that commit from a **source probe**: a URL on the environment
+that answers the commit its build was made from. Without one, coverage says the live build could not
+be read because production "declares no source probe".
 
 ### Where it is declared
-In the project document, on the production environment (the one whose \`tier\` is
-\`production\`), never on a deploy binding:
+In the project document, on the environment itself, never on a deploy binding. An environment
+deployed outside Forge (\`"deployment": { "mode": "external" }\`, no binding) declares it the same
+way:
 
 \`\`\`json
 "environments": {
   "production": {
     "tier": "production",
-    "deployment": { "binding": "<binding id>", "trigger": "on-land" },
+    "deployment": { "mode": "external" },
+    "url": "https://app.example.com",
     "verification": {
       "runtime": [
         { "type": "http", "url": "https://app.example.com/version.json", "path": "commit", "identifies": "source" }
@@ -40,13 +43,23 @@ In the project document, on the production environment (the one whose \`tier\` i
 \`\`\`
 
 - \`runtime\` holds 1 to 3 probes, each with all four fields. \`url\` is https. \`path\` is a dot path
-  into the JSON body (\`commit\`, \`build.sha\`). \`identifies\` is \`source\` for a commit of the
-  project's repository; \`artifact\` names an image or a build and never proves a release.
+  into the JSON body (\`commit\`, \`build.sha\`). Only \`identifies: "source"\`, a commit of the
+  project's repository, proves a commit; \`artifact\` names an image or a build and never does.
 - Write it with \`GET /api/projects/:id/config\`, then \`PUT /api/projects/:id/config\` with
   \`{ baseRevision, document }\`: the document is written whole, at the revision you read.
 - A \`verify\` key on a binding or a connection is refused: probes live on the environment only.
 - How long a release waits and how many readings it wants are not declared: 300 seconds, and two
   matching readings in a row.
+
+### Who reads it
+- **Coverage's live build** is what production's source probe answers, however production is
+  deployed. A project declaring no production reads each issue's landing instead.
+- **The judged-on environment** (\`delivery.judgedOn\`): deployed outside Forge, its own source
+  probe is what it serves, and it must answer a whole sha; deployed through a binding, its deployment
+  record is read, beside its probes.
+- **A release** reads production's probes where production deploys through a binding. A production
+  deployed outside Forge is released through its promotion's change request and closed by the
+  operator's record of the deploy, not by the probe.
 
 ### What the URL must answer
 - Exactly HTTP 200 to a plain \`GET\` with no credential, within 5 seconds. Redirects are followed,

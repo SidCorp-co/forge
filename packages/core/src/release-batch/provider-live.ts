@@ -15,27 +15,62 @@ import { guideRef } from '../guides/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from '../integrations/source-host/index.js';
 import { portSlot } from '../lib/port-slot.js';
 import { RefusalError } from '../lib/refusal.js';
+import {
+  type NamedEnvironment,
+  productionOf,
+  readProjectDocument,
+} from '../project-config/index.js';
 import { carriageOf } from './carriage.js';
-import { closeVerification, resolveReleasePlan } from './channel.js';
-import { deploymentConfirms, readLiveCommit } from './verify.js';
+import { releaseProbesOf } from './channel.js';
+import { deploymentConfirms, readLiveState } from './verify.js';
 
 export type Reading<T> = { ok: true; value: T } | { ok: false; why: string };
 
 const why = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+const HOW_TO_DECLARE = `how to declare one: \`${guideRef('release-source-probe')}\``;
+
+/**
+ * What an environment's declared source probes answer now, read straight off its declaration. A
+ * probe is the environment's, not its binding's, so one deployed outside Forge (\`deployment.mode:
+ * external\`) is read the same as a bound one; before, both readers below took their probes only
+ * through a production binding or a deployment record, and a probe an external environment declared
+ * was read by nothing (adminhub-api's \`stg\` build-info probe, 2026-10-30).
+ */
+export async function servedBySourceProbes(
+  env: NamedEnvironment,
+  named = `environment \`${env.name}\``,
+): Promise<Reading<string>> {
+  const { verify, verifySource } = releaseProbesOf(env);
+  if (!verify) {
+    return {
+      ok: false,
+      why:
+        verifySource === 'declared-unusable'
+          ? `${named} declares runtime probes that each identify an artifact, never the source, so nothing reads which commit it serves; ${HOW_TO_DECLARE}`
+          : `${named} declares no source probe, so nothing reads which commit it serves; ${HOW_TO_DECLARE}`,
+    };
+  }
+  const state = await readLiveState(verify);
+  return state.identity
+    ? { ok: true, value: state.identity }
+    : {
+        ok: false,
+        why: `${named}'s source probe answered no one commit: ${state.readings.join('; ')}`,
+      };
+}
+
 export async function servedProductionCommit(projectId: string): Promise<Reading<string>> {
   try {
-    const verification = closeVerification((await resolveReleasePlan(projectId)).channels);
-    if (verification.kind !== 'probed') {
+    const held = await readProjectDocument(projectId);
+    const production = held ? productionOf(held.document) : null;
+    if (!production) {
       return {
         ok: false,
-        why: `its production declares no source probe, so nothing reads which commit it serves; how to declare one: \`${guideRef('release-source-probe')}\``,
+        why: 'the project declares no production environment, so no build is live',
       };
     }
-    const commit = await readLiveCommit(verification.cfg);
-    return commit
-      ? { ok: true, value: commit }
-      : { ok: false, why: 'its production probe answered no commit' };
+    return await servedBySourceProbes(production, 'its production');
   } catch (err) {
     return { ok: false, why: why(err) };
   }

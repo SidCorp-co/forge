@@ -11,7 +11,7 @@ import {
   readProjectDocument,
   readReleasePath,
 } from '../project-config/index.js';
-import type { Reading } from './provider-live.js';
+import { type Reading, servedBySourceProbes } from './provider-live.js';
 
 export type { ServedAt, ServingReading } from '@forge/contracts/releases';
 export { servedCommits } from '@forge/contracts/releases';
@@ -89,6 +89,18 @@ export async function servedOnJudgedOn(
   const declaration = held.document.environments[name];
   if (!declaration) {
     return { name, served: { ok: false, why: `the project document declares no \`${name}\`` } };
+  }
+  if ('mode' in declaration.deployment) {
+    // no binding records its deployments, so its own source probes are the one reading there is
+    const served = await servedBySourceProbes({ name, declaration });
+    if (!served.ok || /^[0-9a-f]{40}$/.test(served.value.toLowerCase())) return { name, served };
+    return {
+      name,
+      served: {
+        ok: false,
+        why: `its source probe answers \`${served.value}\`, not one whole commit`,
+      },
+    };
   }
   const state = await readEnvironmentState(projectId, held.document, { name, declaration });
   if (state.state === 'unknown') return { name, served: { ok: false, why: state.reason.message } };

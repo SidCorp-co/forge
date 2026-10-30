@@ -375,3 +375,63 @@ describe('the build a verdict defaults to on a project judged on dev', () => {
     }
   });
 });
+
+// adminhub-api, 2026-10-30: its `stg` is deployed outside Forge (`deployment.mode: external`) and
+// declares a source probe on its build-info route, and nothing read it: the judged-on reading went
+// through the deployment record no binding keeps, and answered "deployed outside Forge"
+describe('the build a verdict defaults to where the judged-on environment is deployed outside Forge', () => {
+  const PROBE = 'https://catalog-dev-api.example.test/api/v1/build-info';
+  let answers: string | null = F4;
+
+  beforeEach(async () => {
+    await seedLandedWorld();
+    answers = F4;
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (!url.startsWith(PROBE)) return real(input, init);
+      return answers === null
+        ? new Response('down', { status: 503 })
+        : new Response(JSON.stringify({ commit: answers }), { status: 200 });
+    });
+    await seedProjectDocument(world.projectId, world.ownerId, {
+      environments: {
+        dev: {
+          ...DEV.dev,
+          verification: {
+            runtime: [{ type: 'http', url: PROBE, path: 'commit', identifies: 'source' }],
+          },
+        },
+      },
+      defaultBranch: BRANCH,
+      extra: {
+        delivery: { verdictsRequired: true, judgedOn: 'dev' },
+        release: { approval: { required: true }, changeRequests: false },
+      },
+    });
+    return () => vi.restoreAllMocks();
+  });
+
+  it('is the commit its own source probe answers', async () => {
+    const { issue } = await landedOnCommitVerdicts();
+
+    const build = await ok(api(world.token, 'GET', `/api/issues/${issue}/judged-build`));
+
+    expect(build).toMatchObject({ sha: F4, source: 'judged-on' });
+    expect(String(build.basis)).toContain('`dev` serves');
+    expect(String(build.basis)).not.toContain('deployed outside Forge');
+  });
+
+  it('stays the landing, naming the probe, where the probe answers no commit', async () => {
+    const { issue } = await landedOnCommitVerdicts();
+    answers = null;
+
+    const build = await ok(api(world.token, 'GET', `/api/issues/${issue}/judged-build`));
+
+    expect(build).toMatchObject({ sha: F4, source: 'landed' });
+    expect(String(build.basis)).toContain(
+      "environment `dev`'s source probe answered no one commit",
+    );
+    expect(String(build.basis)).toContain('answered HTTP 503');
+  });
+});

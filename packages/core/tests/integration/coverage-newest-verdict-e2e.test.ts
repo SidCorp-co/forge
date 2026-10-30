@@ -469,7 +469,7 @@ describe('a verdict nobody could check against the live build does not count', (
     ] as const) {
       expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
       expect(c.issues[0]?.notCounted).toBe(
-        `judged at ${judged}, and whether the live build holds it could not be checked: the live build could not be read: its production declares no source probe, so nothing reads which commit it serves; how to declare one: \`GET /api/guides/release-source-probe.md\``,
+        `judged at ${judged}, and whether the live build holds it could not be checked: the live build could not be read: the project declares no production environment, so no build is live`,
       );
       expect(c.why).toContain('no verdict counts yet:');
     }
