@@ -395,6 +395,20 @@ version no release of the project shipped (`RELEASE_SHIPPED_IN_UNKNOWN`), a rele
 issue landed, which cannot hold it (`RELEASE_SHIPPED_IN_BEFORE_LANDING`, ISS-759), and an issue not
 waiting unclaimed with a mark (`RELEASE_SHIPPED_IN_NOT_WAITING`).
 
+An issue filed for a merge its project owed a filing for, and marked at that merge, landed before it
+was filed, and no cut claims a `draft`. The same record takes it from `draft`
+(`packages/core/src/issues/owed-merges.ts:filingAnsweredBy`): its observed landing is a merge the
+project owed a filing for that no other issue answers. Forge's rows say nothing about which release
+holds such a merge, so the record asks the repository whether the release's own commit, the one it
+was verified serving, contains it: `RELEASE_SHIPPED_IN_NOT_CONTAINED` where it does not,
+`RELEASE_SHIPPED_IN_UNVERIFIED` where the repository cannot answer. What production serves now is not
+read, so the first release to ship the merge or any later one descending from it holds it.
+`version: null` is refused for it, since no cut carries a draft. The issue closes along the
+`draft` → `closed` edge (issue-lifecycle revision 24), whose `filing_released` guard asks that a
+release claimed it (`packages/core/src/issues/filing-close-guard.ts:filingReleasedGuard`); a
+design-only draft closes along it on its approved design as before, and any other draft is refused
+`DESIGN_NOT_DELIVERED`.
+
 ## What counts as landed depends on the project's shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides

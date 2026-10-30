@@ -95,8 +95,10 @@ import {
   failReturnNote,
   readFailReturn,
 } from './fail-return.js';
+import { filingReleasedGuard } from './filing-close-guard.js';
 import type { IssueGates } from './gates.js';
 import { mergeNotRecorded } from './merged-at.js';
+import { filingAnsweredBy, type OwedFiling } from './owed-merges.js';
 import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pattern-entry.js';
 import type { CatalogReading } from './pattern-rules.js';
 import { catalogOf, patternReleaseRefusal } from './patterns.js';
@@ -162,6 +164,8 @@ interface IssueMoveFacts {
   catalog: CatalogReading | null;
   /** The way back from `reopen` to a landed status: the reopen it would undo (ISS-760). */
   failReturn: FailReturnFacts | null;
+  /** The move from `draft` to `closed`: the owed filing the issue answers, if it answers one (ISS-774). */
+  filing?: OwedFiling | null;
 }
 
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
@@ -204,6 +208,7 @@ export async function readIssueMoveFacts(args: {
     patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
     catalog: args.to === 'approved' ? await catalogOf(issue.projectId) : null,
     failReturn: asksFailReturn(args.from, args.to) ? await readFailReturn(db, issue) : null,
+    filing: args.from === 'draft' && args.to === 'closed' ? await filingAnsweredBy(issue.id) : null,
   };
 }
 
@@ -478,6 +483,8 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     },
     released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
+    filing_released: async (input) =>
+      refusalOf(await filingReleasedGuard(ctxOf(input), base.facts.filing ?? null)),
     not_releasing: (input) =>
       releaseClaimRefusal(input.tx, input.row.id, base.releaseReplayRunId ?? null),
     // back the way a requirement-level fail's reopen came (ISS-760); the edge to `closed` is also a

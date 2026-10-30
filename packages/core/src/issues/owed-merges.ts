@@ -172,6 +172,24 @@ export async function owedFilingOfMark(args: {
   return row ? filingOf(row) : null;
 }
 
+/**
+ * The owed filing `issueId` answers, or null: its observed landing (`merged_commit_sha`) is a merge
+ * its project owed a filing for, which no other issue answers. Such an issue was filed for code that
+ * landed before it, so it closes on the release that already shipped that merge, from where it
+ * stands (`release-batch/shipped-in.ts:recordShippedIn`, the `filing_released` edge). A mark that
+ * is only a caller's claim records no commit here, and answers no filing this reads.
+ */
+export async function filingAnsweredBy(issueId: string): Promise<OwedFiling | null> {
+  const [row] = await db
+    .select({ projectId: issues.projectId, commit: issues.mergedCommitSha })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!row?.commit) return null;
+  const [filing] = await owedFilingRows(row.projectId, { commit: row.commit, except: issueId });
+  return filing ? filingOf(filing) : null;
+}
+
 /** Every issue of the project owing its mark for a merged change request, as the master reads them. */
 export async function owedMarks(projectId: string): Promise<OwedMarkRow[]> {
   const rows = (await db.execute(sql`

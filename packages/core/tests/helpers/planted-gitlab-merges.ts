@@ -10,6 +10,8 @@ export const merges: number[] = [];
 export const trees: { same: boolean | Error } = { same: true };
 /** Each merge commit's message, as GitLab writes one: the branch it merged and the request it was. */
 export const messages = new Map<string, string>();
+/** Which commits each commit contains, besides itself: what `compare(base, head)` answers. */
+export const contains = new Map<string, Set<string>>();
 /** Each stored request's branch, as the planted host merges it. */
 export const heads = new Map<number, string>();
 /** Requests the planted host answers as already merged, at the commit that landed them. */
@@ -29,6 +31,7 @@ export function resetPlanted(): void {
   merges.length = 0;
   trees.same = true;
   messages.clear();
+  contains.clear();
   heads.clear();
   alreadyMerged.clear();
   callFails.clear();
@@ -47,6 +50,12 @@ export const plantedRepository = () => ({
       : null;
   },
   branchContains: async () => true,
+  compare: async (base: string, head: string) =>
+    base.toLowerCase() === head.toLowerCase()
+      ? 'identical'
+      : contains.get(head.toLowerCase())?.has(base.toLowerCase())
+        ? 'ahead'
+        : 'diverged',
 });
 
 export const plantedSourceHost = () => ({

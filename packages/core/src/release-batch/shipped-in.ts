@@ -18,10 +18,12 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
+import { resolveSourceHost } from '../integrations/source-host/index.js';
 import {
   accountActor,
   claimIssuesForRelease,
   currentMarkTimes,
+  filingAnsweredBy,
   heldByEndedRelease,
   issueDisplayIds,
   type MarkedCommit,
@@ -185,7 +187,12 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
     .where(and(eq(issues.projectId, args.projectId), eq(issues.id, args.issueId)))
     .limit(1);
   const live = row?.claimedBy != null && !row.endedClaim;
-  if (!row || row.status !== RELEASE_GATE_STATUS || live || !row.landedAt) {
+  // a draft filed for a merge its project owed a filing for closes on the release that shipped that
+  // merge, from `draft`: its code landed before it was filed (ISS-774, the `filing_released` edge)
+  const filing =
+    row && row.status === 'draft' && !live && row.landedAt ? await filingAnsweredBy(row.id) : null;
+  const waiting = row?.status === RELEASE_GATE_STATUS || filing !== null;
+  if (!row || !waiting || live || !row.landedAt) {
     throw refuseRelease(
       'RELEASE_SHIPPED_IN_NOT_WAITING',
       !row
@@ -194,8 +201,17 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
           ? `ISS-${row.issSeq} is claimed by release run ${row.claimedBy}, still at work; that release closes it, not a shipped-in record.`
           : !row.landedAt
             ? `ISS-${row.issSeq} holds no merged mark, so there is no landing a release could have shipped: mark it merged first.`
-            : `ISS-${row.issSeq} is \`${row.status}\`; only an issue waiting at \`${RELEASE_GATE_STATUS}\` can be recorded as shipped by an earlier release.`,
+            : row.status === 'draft'
+              ? `ISS-${row.issSeq} is \`draft\`, and its landing is no merge this project owed a filing for: only such a draft, marked merged at that merge's commit and answering it alone, is recorded on the release that shipped it from \`draft\`.`
+              : `ISS-${row.issSeq} is \`${row.status}\`; only an issue waiting at \`${RELEASE_GATE_STATUS}\`, or a draft filed for a merge its project owed a filing for, can be recorded as shipped by an earlier release.`,
       '/issueId',
+    );
+  }
+  if (filing && args.version === null) {
+    throw refuseRelease(
+      'RELEASE_SHIPPED_IN_NOT_WAITING',
+      `ISS-${row.issSeq} is a draft filed for change request ${filing.number}, which landed at ${filing.commit}: no release cut carries a draft, so it is recorded only on a release that shipped that merge. Record it once one has, naming that release's version.`,
+      '/version',
     );
   }
   const actor = await accountActor(args.userId);
@@ -229,10 +245,11 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
       '/version',
     );
   }
+  if (filing) await refuseUncontained(args.projectId, filing, release);
   const took = await claimIssuesForRelease({
     projectId: args.projectId,
     issueIds: [row.id],
-    gateStatus: RELEASE_GATE_STATUS,
+    gateStatus: row.status,
     runId: release.runId,
     fromEndedRelease: true,
   });
@@ -270,10 +287,14 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
   await postIssueNotice({
     issueId: row.id,
     authorId: args.userId,
-    body:
-      `Shipped in ${release.version}, recorded by its agent: ${args.evidence}. ` +
-      `That release was cut before this issue's merged mark was written, so it never claimed it; ` +
-      `it is closed into ${release.version}, which was verified serving \`${release.commit}\`.`,
+    body: filing
+      ? `Shipped in ${release.version}, recorded by its agent: ${args.evidence}. ` +
+        `This issue was filed for change request ${filing.number} after that merge landed at \`${filing.commit}\`, ` +
+        `and ${release.version}'s commit \`${release.commit}\` contains it, as the repository answered; ` +
+        `it is closed into ${release.version} from \`draft\`.`
+      : `Shipped in ${release.version}, recorded by its agent: ${args.evidence}. ` +
+        `That release was cut before this issue's merged mark was written, so it never claimed it; ` +
+        `it is closed into ${release.version}, which was verified serving \`${release.commit}\`.`,
   });
   // The release's own `release.shipped` went out before this issue was closed into it, so it named
   // none of it: tell the outbox again, naming only this one, or a reporter whose feedback it carries
@@ -286,4 +307,34 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
   });
   await clearReleaseHolds([row.id]);
   return { issueId: row.id, version: release.version, runId: release.runId, closed: true };
+}
+
+/**
+ * A filing's record is checked against the repository, since nothing in Forge's rows says which
+ * release holds a merge filed after it shipped: the release's own commit, the one it was verified
+ * serving, must contain the merge. What production serves now is not asked, so the release that
+ * first shipped it, or any later one whose commit descends from it, holds it.
+ */
+async function refuseUncontained(
+  projectId: string,
+  filing: { number: number; commit: string },
+  release: ShippedReleaseRun,
+): Promise<void> {
+  let status: string;
+  try {
+    const host = await resolveSourceHost(projectId, 'kernel');
+    status = await host.compare(filing.commit, release.commit);
+  } catch (err) {
+    throw refuseRelease(
+      'RELEASE_SHIPPED_IN_UNVERIFIED',
+      `Whether ${release.version}'s commit \`${release.commit}\` contains \`${filing.commit}\` could not be read from this project's repository, so it is not recorded unchecked: ${err instanceof Error ? err.message : String(err)}. Record it again once the repository answers.`,
+      '/version',
+    );
+  }
+  if (status === 'ahead' || status === 'identical') return;
+  throw refuseRelease(
+    'RELEASE_SHIPPED_IN_NOT_CONTAINED',
+    `${release.version}'s commit \`${release.commit}\` does not contain \`${filing.commit}\`, the merge of change request ${filing.number} this issue was filed for (the repository answers \`${status}\`), so that release did not ship it. Name a shipped release whose commit contains it.`,
+    '/version',
+  );
 }

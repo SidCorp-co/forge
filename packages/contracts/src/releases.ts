@@ -894,6 +894,10 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_SHIPPED_IN_UNKNOWN",
 	/** A shipped-in record naming a release cut before the issue landed, which cannot hold it (ISS-759). */
 	"RELEASE_SHIPPED_IN_BEFORE_LANDING",
+	/** A filing's shipped-in record naming a release whose commit does not contain the merge it was filed for (ISS-774). */
+	"RELEASE_SHIPPED_IN_NOT_CONTAINED",
+	/** A filing's shipped-in record whose containment the repository could not answer, so nothing is recorded. */
+	"RELEASE_SHIPPED_IN_UNVERIFIED",
 	"RELEASE_ALL_DESIGN_ONLY",
 	"RELEASE_CARRIED_CONTRADICTS",
 	"RELEASE_CARRIED_SHAPE",

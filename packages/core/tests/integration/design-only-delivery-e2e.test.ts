@@ -126,6 +126,18 @@ describe('the design-only close (REQ-45 BC-4)', () => {
     expect(await statusOf(id)).toBe('closed');
   });
 
+  // issue-lifecycle revision 24: draft → closed is the owed filing's edge, which a design-only draft
+  // still closes along on its approved design (ISS-774)
+  it('closes a design-only draft once its revision is approved', async () => {
+    const id = await issueAt('draft', 'design');
+    await drawRevision(id, 'approve');
+
+    const res = await api(token, 'POST', `/api/issues/${id}/transition`, { toStatus: 'closed' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(id)).toBe('closed');
+  });
+
   it('refuses the close while the revision it delivers waits on its approver', async () => {
     const id = await issueAt('in_progress', 'design');
     await drawRevision(id, null);

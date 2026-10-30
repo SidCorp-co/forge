@@ -166,6 +166,7 @@ export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
 export { mergeNotRecorded } from './merged-at.js';
 export {
+  filingAnsweredBy,
   type OwedFiling,
   type OwedMark,
   type OwedMarkRow,

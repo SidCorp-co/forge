@@ -166,7 +166,12 @@ function claimedSentences(projectId: string, runId: string, list: Standing<'clai
   return out;
 }
 
-function statusSentence(status: string, gateStatus: string, list: ClaimConflict[]): string {
+function statusSentence(
+  projectId: string,
+  status: string,
+  gateStatus: string,
+  list: ClaimConflict[],
+): string {
   const subject = `${keys(list)} ${isAre(list)} at \`${status}\``;
   if (status === 'closed') {
     const it = agrees(list.length, 'one', 'any of them');
@@ -174,6 +179,9 @@ function statusSentence(status: string, gateStatus: string, list: ClaimConflict[
   }
   if (status === 'dropped') {
     return `${subject}: set down as not work, so no release carries ${agrees(list.length, 'it', 'them')}.`;
+  }
+  if (status === 'draft') {
+    return `${subject}, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate. A draft filed for a merge its project owed a filing for, marked merged at that merge, is recorded on the shipped release that already holds it instead: POST /api/projects/${projectId}/shipped-in-records { issueId, version, evidence }, which closes it from \`draft\`.`;
   }
   return `${subject}, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate.`;
 }
@@ -190,7 +198,7 @@ export function claimConflictSentence(
     parts.push(...claimedSentences(projectId, runId, list));
   }
   for (const [status, list] of groupBy(ofStanding(conflicts, 'status'), (c) => c.status)) {
-    parts.push(statusSentence(status, gateStatus, list));
+    parts.push(statusSentence(projectId, status, gateStatus, list));
   }
   const absent = ofStanding(conflicts, 'absent');
   if (absent.length > 0) {

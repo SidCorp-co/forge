@@ -1,4 +1,4 @@
-// The issue machine: workflow `issue-lifecycle`, revision 23. A status answers only "who is
+// The issue machine: workflow `issue-lifecycle`, revision 24. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
 // landing moves no status: it records the merge, and the agent holding the issue moves it on. Work
 // that landed moves to `awaiting_release` without verdicts, which are judged on the release that
@@ -6,6 +6,8 @@
 // is a design, once its design revisions are approved (REQ-45 BC-4). A draft opens through the
 // issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`). A reopen a requirement-level
 // fail made goes back to the status it came from once that fail is routed past the issue (ISS-760).
+// A draft filed for a merge its project owed a filing for closes on the release that already shipped
+// that merge, straight from `draft`: its code landed before it was filed (ISS-774).
 
 import { ISSUE_READY_CHECKLIST } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
@@ -224,6 +226,7 @@ export const ISSUE_GUARDS = [
 	"design_delivered",
 	"not_releasing",
 	"fail_routed",
+	"filing_released",
 ] as const;
 export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 
@@ -235,10 +238,10 @@ const MOVE = "project.write";
 
 /** Where a design-only issue may close from once its design revisions are approved: every live
  *  status but the two parks, which return only to the status they left, cross or drop (REQ-2 BC-9),
- *  `awaiting_release`, whose own edge to `closed` takes that delivery too, and `reopen`, whose
- *  edge to `closed` is the way back (`fail_routed`), which takes it too. */
+ *  `awaiting_release`, whose own edge to `closed` takes that delivery too, `reopen`, whose
+ *  edge to `closed` is the way back (`fail_routed`), which takes it too, and `draft`, whose edge to
+ *  `closed` is an owed filing's release (`filing_released`), which takes it too. */
 const DESIGN_CLOSABLE_STATUSES: readonly IssueStatus[] = [
-	"draft",
 	"open",
 	"in_progress",
 	"approved",
@@ -293,8 +296,9 @@ export const ISSUE_MACHINE = defineMachine({
 		"9ee504ee",
 		"d0460eb0",
 		"011aa9bf",
+		"16f5e49d",
 	],
-	design: { flow: "issue-lifecycle", revision: 23 },
+	design: { flow: "issue-lifecycle", revision: 24 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
 	terminal: ISSUE_TERMINAL_STATUSES,
@@ -438,6 +442,15 @@ export const ISSUE_MACHINE = defineMachine({
 			permission: MOVE,
 			guards: ["design_delivered", "merged"],
 		}),
+		// a draft filed for a merge that already shipped closes on the release that carried it, which a
+		// shipped-in record claims it onto (ISS-774); a design-only draft closes along it as before
+		{
+			from: "draft",
+			to: "closed",
+			act: "delivered",
+			permission: MOVE,
+			guards: ["filing_released", "merged"],
+		},
 
 		recovery("open", []),
 		recovery("approved", ["plan_checkpoint"]),
@@ -472,7 +485,8 @@ const DISCARD_TARGETS = ISSUE_TERMINAL_STATUSES;
  * The design-only close is offered only where the issue's merge mark is design-only (`designOnly`);
  * its guard still asks that the revisions are approved.
  * The way back from a requirement-level fail's reopen (`fail_routed`) is not offered: the menu
- * cannot read the fail, and the move is made through the transition door.
+ * cannot read the fail, and the move is made through the transition door. Nor is a draft's close
+ * on an owed filing's release (`filing_released`), which the shipped-in record makes.
  */
 export function issueMovesFrom(
 	from: IssueStatus,
@@ -494,6 +508,12 @@ export function issueMovesFrom(
 		.filter(
 			(e) =>
 				!e.guards.includes("fail_routed") || (designOnly && e.to === "closed"),
+		)
+		// an owed filing's close is its release's, made by the shipped-in record and never from a menu
+		.filter(
+			(e) =>
+				!e.guards.includes("filing_released") ||
+				(designOnly && e.to === "closed"),
 		)
 		.map((e) => e.to);
 	const targets = [...new Set([...back, ...rest])];

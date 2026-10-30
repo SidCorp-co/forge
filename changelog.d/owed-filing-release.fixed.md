@@ -1,0 +1,1 @@
+**An issue filed for a merge that already shipped now closes on that release.** Recording the shipped release checks that its commit contains the merge, then closes the issue straight from draft, with no new cut or run.
