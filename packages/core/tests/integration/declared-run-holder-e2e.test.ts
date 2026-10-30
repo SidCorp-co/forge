@@ -191,3 +191,56 @@ describe('a declared run is the run holding its issue', () => {
     expect([refused.status, codeOf(refused.body)]).toEqual([403, 'NOT_THE_HOLDER']);
   });
 });
+
+// A master whose run is closed, so its judges' verdicts count, owes the move itself and found no way
+// through: NOT_THE_HOLDER said only "no run holds it" (coordinator, 2026-10-30). Where nobody holds
+// the issue the refusal names the claim door, and following it moves the issue and lets it go.
+describe('an issue nobody holds names the claim door on its refusal', () => {
+  beforeEach(seedWorld);
+
+  const detailOf = (body: unknown) =>
+    ((body as { error?: { refusals?: Array<{ detail: string }> } }).error?.refusals ?? [])
+      .map((r) => r.detail)
+      .join(' | ');
+
+  it('names the claim, the move and the hand-back on NOT_THE_HOLDER, and that sequence moves it', async () => {
+    const id = await iss8();
+    await seedIssueStatus(id, 'in_progress');
+    await merged(id);
+    const refused = await move(id, world.boxPat, 'awaiting_release');
+    expect([refused.status, codeOf(refused.body)]).toEqual([403, 'NOT_THE_HOLDER']);
+    const said = detailOf(refused.body);
+    expect(said).toContain('no run holds it');
+    expect(said).toContain(
+      `Nobody holds it, so claim it first: write its lease (PATCH /api/issues/${id}`,
+    );
+    expect(said).toContain(
+      'make the move, then hand it back by writing that lease again with minutes 1',
+    );
+
+    await declare(id, world.boxPat);
+    const moved = await move(id, world.boxPat, 'awaiting_release');
+    expect([moved.status, codeOf(moved.body)], JSON.stringify(moved.body)).toEqual([200, null]);
+    await declare(id, world.boxPat, 1);
+    expect(await statusOf(id)).toBe('awaiting_release');
+  });
+
+  it('names the same door on NO_HOLDER, for a claim into in_progress', async () => {
+    const id = await iss8();
+    const refused = await move(id, world.boxPat, 'in_progress');
+    expect(codeOf(refused.body)).toBe('NO_HOLDER');
+    expect(detailOf(refused.body)).toContain(`write its lease (PATCH /api/issues/${id}`);
+  });
+
+  it('keeps naming the holding run where one holds it', async () => {
+    const id = await iss8();
+    await declare(id, world.boxPat);
+    expect((await move(id, world.boxPat, 'in_progress')).status).toBe(200);
+    await merged(id);
+    const refused = await move(id, world.otherPat, 'awaiting_release');
+    expect(codeOf(refused.body)).toBe('NOT_THE_HOLDER');
+    const said = detailOf(refused.body);
+    expect(said).toContain('Make the move from the holding run');
+    expect(said).not.toContain('Nobody holds it');
+  });
+});

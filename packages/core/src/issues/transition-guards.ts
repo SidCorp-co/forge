@@ -246,6 +246,14 @@ async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
 }
 
 /**
+ * How an issue nobody holds is claimed, moved and handed back, named on every refusal that finds no
+ * holder: the lease a master's claim writes on the work state (`run-holder.ts`), from the caller's
+ * own box or token, and the same lease written again with one minute to let it go.
+ */
+const claimDoor = (issueId: string) =>
+  `claim it first: write its lease (PATCH /api/issues/${issueId} with the \`sessionContext\` you read, its \`lease\` set to { holder, renewedAt, minutes }), make the move, then hand it back by writing that lease again with minutes 1`;
+
+/**
  * in_progress, entered by a claim: a run or a lease holds the issue, and where a run holds it, the
  * caller is that run (ISS-589 r2) — the same reading and refusal as awaiting_release. A job or
  * pipeline run over it, with no run holding it, holds it as before.
@@ -257,7 +265,7 @@ async function holderGuard(ctx: GuardContext): Promise<GuardFault | null> {
   if (holder) return null;
   return {
     code: 'NO_HOLDER',
-    detail: `\`in_progress\` says a run is working this issue, and nothing holds it: no live lease on its work state, no live run session over it, and no job or run over it. Claim it first (a lease, or a run session), then move it — an issue nobody holds stays at ${quote(ctx.from)} where a master can take it.`,
+    detail: `\`in_progress\` says a run is working this issue, and nothing holds it: no live lease on its work state, no live run session over it, and no job or run over it. To take it, ${claimDoor(ctx.issue.id)}, or declare a run session over it; an issue nobody holds stays at ${quote(ctx.from)} where a master can take it.`,
     details: { from: ctx.from, to: ctx.to },
   };
 }
@@ -290,9 +298,13 @@ function notTheHolder(ctx: GuardContext, holders: readonly RunHolder[]): GuardFa
       ? 'the caller is a token bound to no box that wrote no lease held here'
       : 'the caller is not a paired box or its token';
   const session = holders.find((h) => h.kind === 'run-session');
+  const from =
+    holders.length > 0
+      ? 'Make the move from the holding run'
+      : `Nobody holds it, so ${claimDoor(ctx.issue.id)}`;
   return {
     code: 'NOT_THE_HOLDER',
-    detail: `${quote(ctx.to)} is the move of the run holding the issue, and ${held} while ${asking}. Make the move from the holding run, or as someone holding ${HOLD_OVERRIDES.map(quote).join(' or ')} on the project.`,
+    detail: `${quote(ctx.to)} is the move of the run holding the issue, and ${held} while ${asking}. ${from}; or make it as someone holding ${HOLD_OVERRIDES.map(quote).join(' or ')} on the project.`,
     details: {
       from: ctx.from,
       to: ctx.to,
