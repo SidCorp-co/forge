@@ -457,6 +457,23 @@ export function heldBackWarningSentence(
   return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
 }
 
+/**
+ * The warning gate `release_criteria` gives where it advises (REQ-76 BC-7): the sweep carries every
+ * one of these issues, so the sentence says they ship owing their criteria, never that they are held.
+ */
+export function advisedCriteriaWarningSentence(
+  held: HeldIssueRef[],
+  serving: ServingReading | null,
+  gateLine: string,
+): string {
+  const lead = `${counted(held.length, 'issue')} ${held.length === 1 ? 'ships' : 'ship'} in this release still owing an acceptance criterion's judging run, and the release names each`;
+  const why =
+    serving?.kind === 'undeclared'
+      ? `${lead}; nothing here can read what this project is serving, so no judging run can earn one until it can. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
+      : `${lead}; a judging run still earns each after it ships.`;
+  return `${heldIssuesSentence(why, held)} ${gateLine}`;
+}
+
 /** The declared release label no box carries. Here, not at the call site: this module owns every
  *  sentence a door prints (ISS-1127). Each act names the screen it is taken on, the free one
  *  having been offered for a round with none. The label matches `runners.labels`, the box a

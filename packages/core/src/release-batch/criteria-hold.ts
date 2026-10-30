@@ -10,6 +10,7 @@ import {
 import { gateOf } from '../project-config/index.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
+  advisedCriteriaWarningSentence,
   type HeldIssueRef,
   heldBackWarningSentence,
   type ReleaseBlocker,
@@ -145,7 +146,7 @@ async function heldOrWarned(
   if (gate.mode === 'advise') {
     warnings.push({
       code: 'RELEASE_CRITERIA_HELD_BACK',
-      message: `${heldBackWarningSentence(held, serving)} It is shipped anyway: ${gateSays(gate)}`,
+      message: advisedCriteriaWarningSentence(held, serving, gateSays(gate)),
       details: { held, advised: true, gate: gate.id, profile: gate.profile },
     });
     return;
