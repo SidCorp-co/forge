@@ -1,4 +1,5 @@
 import type { Tx } from '../db/client.js';
+import { namedCriteriaOf } from '../issues/index.js';
 import { ROLE_HOLDER } from '../messaging/audiences.js';
 import { type MessageRefusal, MessageRefusedError } from '../messaging/contract.js';
 import { type ForgeRecord, readForgeRecords } from '../messaging/forge-record.js';
@@ -54,11 +55,12 @@ function recordsIn(body: string): ForgeRecord[] {
 
 /** Screen an agent's comment; `at` is where its text sat in the caller's request. */
 export async function screenAgentComment(
-  projectId: string,
+  scope: { projectId: string; issueId: string },
   body: string,
   tx: Tx,
   at?: string,
 ): Promise<void> {
+  const { projectId } = scope;
   const segments = [body];
   const facts = await gatherFacts({
     projectId,
@@ -70,8 +72,13 @@ export async function screenAgentComment(
   const verdict = screenMessage({ audience: ROLE_HOLDER, intent: 'report', segments, facts });
   const onBody = verdict.ok ? [] : verdict.refusals;
   const onRecords: MessageRefusal[] = [];
-  for (const record of recordsIn(body)) {
-    onRecords.push(...(await recordRefusals(projectId, record, tx)));
+  const records = recordsIn(body);
+  // a verdict may name its criterion by the issue's exact line of it, read once for every fence
+  const criteria = records.some((r) => r.kind === 'verdict')
+    ? await namedCriteriaOf(tx, scope.issueId)
+    : [];
+  for (const record of records) {
+    onRecords.push(...(await recordRefusals(projectId, record, criteria, tx)));
   }
   const refusals = [...onBody, ...onRecords];
   if (refusals.length > 0) throw new MessageRefusedError('comment-write', refusals, at);

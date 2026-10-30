@@ -49,6 +49,8 @@ export interface ForgeRecordFault {
   /** The line that opened it, so whoever wrote it sees what was read. */
   readonly quote: string;
   readonly why: string;
+  /** What storing the comment anyway would do, where it is not "carries no record at all". */
+  readonly consequence?: string;
 }
 
 const UNREADABLE_INFO =
@@ -216,11 +218,33 @@ function blocksIn(body: string): { block: Block | null; fault: ForgeRecordFault 
     const opener = openerFrom(lines, from);
     if (!opener) break;
     const { block, fault, next } = blockAt(lines, starts, opener);
-    out.push({ block, fault });
+    const above = tagAbove(lines, from, opener.at);
+    out.push(above === null ? { block, fault } : { block: null, fault: markerAbove(above) });
     from = next;
   }
   return out;
 }
+
+/**
+ * A tag line standing above a fence, where no reader looks, that the block before it did not take
+ * as its own closing tag: the line it sits on, or null. Read as written it tags no block, or tags
+ * the block above as some other record; either way the record it was written for is never read.
+ */
+function tagAbove(lines: readonly string[], from: number, opener: number): string | null {
+  for (let at = opener - 1; at >= from; at -= 1) {
+    const line = (lines[at] ?? '').trim();
+    if (line === '') continue;
+    return TAG.test(line) ? line : null;
+  }
+  return null;
+}
+
+const markerAbove = (line: string): ForgeRecordFault => ({
+  quote: line,
+  why: `the tag line \`${line.replace(/^`|`$/gu, '')}\` sits above its \`forge-record\` fence, where no reader looks: it goes on the line after the closing fence, or on the opening fence itself (\`\`\`forge-record: <kind> · contract <n>)`,
+  consequence:
+    'so the record written under that fence would be read as another record or as none, and the comment is refused whole rather than stored half-read',
+});
 
 /** How far past the budget a value runs, counted in code points as the caps are. */
 export function overBudget(value: string): number {

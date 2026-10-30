@@ -179,7 +179,7 @@ issueCriteriaRoutes.post(
       },
       run: body.run,
     });
-    const criterion = (await readCriteria(issue)).find((row) => row.n === body.criterion);
+    const criterion = (await readCriteria(issue)).find((row) => row.n === written.criterion);
     return c.json(
       {
         verdictId: written.id,

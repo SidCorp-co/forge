@@ -189,7 +189,12 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
   const byAnAgent = await writtenByAnAgent(input, tx);
   const { intent, warning } = resolveIntent(input.intent);
   if (context && byAnAgent) {
-    await screenAgentComment(context.projectId, input.body, tx, input.screenedAt);
+    await screenAgentComment(
+      { projectId: context.projectId, issueId: input.issueId },
+      input.body,
+      tx,
+      input.screenedAt,
+    );
   }
   const level = context ? await dataPolicyOf(context.projectId) : 'off';
 
@@ -316,7 +321,9 @@ export async function updateCommentBody(
     throw new Error(`comment ${commentId} sits on no issue; edit it at its own target`);
   const byAnAgent = await writtenByAnAgent(existing, db);
   const context = await loadStageContext(issueId);
-  if (byAnAgent && context) await screenAgentComment(context.projectId, input.body, db);
+  if (byAnAgent && context) {
+    await screenAgentComment({ projectId: context.projectId, issueId }, input.body, db);
+  }
   const level = context ? await dataPolicyOf(context.projectId) : 'off';
   const writtenLang = context
     ? await writtenLangFor(

@@ -89,6 +89,47 @@ describe('readForgeRecords', () => {
   });
 });
 
+// adminhub-api ISS-83 and ISS-84 (2026-10-30): a marker written above its fence tagged nothing, or
+// the fence above it, and the record written under it was never read as itself
+describe('a tag line above its fence', () => {
+  const MARKER = '`forge-record: verdict · contract 1`';
+  const bare = (n: number) => [`${F}forge-record`, `criterion: ${n}`, 'verdict: pass', F];
+
+  it('faults the fence it stands above, naming where the tag line goes', () => {
+    const [read] = readForgeRecords(['Judged.', '', MARKER, ...bare(1)].join('\n'));
+    expect(read?.record).toBeNull();
+    expect(read?.fault?.quote).toBe(MARKER);
+    expect(read?.fault?.why).toContain(
+      'sits above its `forge-record` fence, where no reader looks',
+    );
+    expect(read?.fault?.why).toContain(
+      'it goes on the line after the closing fence, or on the opening fence itself',
+    );
+  });
+
+  it('faults the first of two fences each with its marker above, though the second marker would tag it', () => {
+    const reads = readForgeRecords([MARKER, ...bare(1), '', MARKER, ...bare(2)].join('\n'));
+    expect(reads.map((r) => [r.index, r.fault?.quote ?? null])).toEqual([
+      [1, MARKER],
+      [2, null],
+    ]);
+    expect(reads[1]?.record?.kind).toBeNull();
+  });
+
+  it('faults a marker above a fence that already names its kind', () => {
+    const [read] = readForgeRecords([MARKER, '', ...onFence(1)].join('\n'));
+    expect(read?.fault?.quote).toBe(MARKER);
+  });
+
+  it("takes a tag line closing one block, straight above the next, as that block's own", () => {
+    const reads = readForgeRecords([...tagAfter(1), ...tagAfter(2)].join('\n'));
+    expect(reads.map((r) => [criterionOf(r), r.fault])).toEqual([
+      ['1', null],
+      ['2', null],
+    ]);
+  });
+});
+
 describe('parseForgeRecord', () => {
   it('stays the first fence, for the paths that draw one record per comment', () => {
     const body = [...tagAfter(1), ...tagAfter(2)].join('\n');

@@ -107,7 +107,7 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
 };
 
 /** A verdict refused by name, in the envelope both doors answer. */
-function verdictRefused(refusal: VerdictRefusal): RefusalError {
+export function verdictRefused(refusal: VerdictRefusal): RefusalError {
   return new RefusalError(
     [
       {

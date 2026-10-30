@@ -79,7 +79,8 @@ const verdictIdentitySchema = z.discriminatedUnion('kind', [
 
 export const verdictPostSchema = z
   .object({
-    criterion: z.number().int().min(1),
+    /** The criterion's number, or its exact line as the issue holds it (`messaging/criterion-named.ts`). */
+    criterion: z.union([z.number().int().min(1), z.string().trim().min(1).max(2000)]),
     verdict: z.string().trim().min(1).max(32),
     reason: z.string().trim().max(REASON_TEXT_MAX).nullable().optional(),
     identity: verdictIdentitySchema.nullable().optional(),

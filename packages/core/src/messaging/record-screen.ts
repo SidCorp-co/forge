@@ -10,6 +10,7 @@ import {
   type KernelOnlyRecordKind,
   RECORD_EVENT_KINDS,
 } from '@forge/contracts/record-events';
+import { type NamedCriterion, numberCriteria } from './criterion-named.js';
 import { verdictEvidenceRefusals } from './evidence-citation.js';
 import {
   FORGE_RECORD_FIELD_BUDGET,
@@ -112,7 +113,7 @@ export function recordFenceRefusal(
   if (!fault) return null;
   return {
     rule: 'record-fence-shape',
-    why: `${fence}${fault.why} — so this comment would be stored carrying no record at all, which is the one outcome that is not allowed: a body meant to carry a record either carries one or is told it does not. The shapes that are read are below, and the store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``,
+    why: `${fence}${fault.why} — ${fault.consequence ?? 'so this comment would be stored carrying no record at all, which is the one outcome that is not allowed: a body meant to carry a record either carries one or is told it does not'}. The shapes that are read are below, and the store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``,
     quote: fault.quote,
     shape: FENCE_SHAPE,
     example: FENCE_EXAMPLE,
@@ -212,15 +213,18 @@ function screenLead(lead: string, audience: Audience): MessageVerdict {
  */
 export async function recordRefusals(
   projectId: string,
-  record: ForgeRecord | null,
+  given: ForgeRecord | null,
+  criteria: readonly NamedCriterion[],
   executor?: Tx,
   designs: DesignLookup = designLookup(executor),
   contracts: ContractLookup = contractLookup(executor),
 ): Promise<MessageRefusal[]> {
-  if (!record) return [];
+  if (!given) return [];
+  // a criterion named by its exact line is screened as the number it names (`criterion-named.ts`)
+  const record = numberCriteria(given, criteria);
   const refusals = [
-    ...budgetRefusals(record),
-    ...verdictIdentityRefusals(record),
+    ...budgetRefusals(given),
+    ...verdictIdentityRefusals(record, criteria),
     ...(await verdictDesignRefusals(projectId, record, designs)),
     ...(await verdictContractRefusals(projectId, record, contracts)),
     ...verdictEvidenceRefusals(record),

@@ -8,6 +8,7 @@
  */
 
 import type { MessageRefusal } from './contract.js';
+import { criterionNamed, type NamedCriterion } from './criterion-named.js';
 import type { ForgeRecord } from './forge-record.js';
 
 /** The field a criterion block names the runtime it held in, and the one it names its source in. */
@@ -341,19 +342,32 @@ export async function namedIdentityRefusals<N, F>(
   return out;
 }
 
-/** Everything a `verdict` record is refused for about the identities its blocks name. */
-export function verdictIdentityRefusals(record: ForgeRecord | null): MessageRefusal[] {
+/**
+ * Everything a `verdict` record is refused for about the criteria and identities its blocks name.
+ * A `criterion` line holding one criterion's exact line names it (`criterion-named.ts`); the caller
+ * screens the record with those lines numbered (`numberCriteria`), so a line still holding text
+ * here names no criterion of `criteria`, the issue's live ones, and is refused listing them.
+ */
+export function verdictIdentityRefusals(
+  record: ForgeRecord | null,
+  criteria: readonly NamedCriterion[],
+): MessageRefusal[] {
   const out: MessageRefusal[] = [];
   if (record?.kind === 'verdict') {
     for (const field of record.fields) {
       const value = field.value.trim();
       if (field.key !== 'criterion' || criterionNumber(value) !== null) continue;
+      const named = value === '' ? null : criterionNamed(value, criteria);
+      if (named && 'n' in named) continue;
       out.push({
         rule: 'verdict-criterion',
-        why: `a \`criterion\` line holds \`${value}\`, which is not a criterion number: it is the whole number of 1 or more the issue's criterion carries, so the block under it is neither read nor recorded until it is written as one`,
+        why:
+          named && 'why' in named
+            ? named.why
+            : `a \`criterion\` line holds \`${value}\`, which is not a criterion number: it is the whole number of 1 or more the issue's criterion carries, so the block under it is neither read nor recorded until it is written as one`,
         quote: `criterion: ${value}`,
         shape:
-          'a `criterion:` line names one criterion of the issue by its whole number, 1 or more, and nothing else',
+          'a `criterion:` line names one criterion of the issue by its whole number, 1 or more, or by its exact line as the issue holds it',
         example: EXAMPLE,
       });
     }

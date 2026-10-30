@@ -9,9 +9,17 @@ import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { isRefusal, type RefusalError } from '../../lib/refusal.js';
 import { type MessageRefusal, MessageRefusedError } from '../../messaging/contract.js';
+import {
+  criterionNamed,
+  isCriterionNumber,
+  type NamedCriterion,
+  numberCriteria,
+} from '../../messaging/criterion-named.js';
 import type { ForgeRecord } from '../../messaging/forge-record.js';
 import { criterionBlocksIn } from '../../messaging/verdict-identity.js';
 import type { Actor } from '../activity.js';
+import { namedCriteriaOf } from './criterion-names.js';
+import { lockIssue } from './store.js';
 import { draftFromBlock } from './verdict-input.js';
 import { recordVerdict, type VerdictAuthor } from './verdict-record.js';
 
@@ -38,6 +46,16 @@ function asMessageRefusal(err: RefusalError, criterion: number): MessageRefusal 
   };
 }
 
+/** Whether a verdict record names any criterion by text rather than by its number. */
+function namesCriterionByText(record: ForgeRecord): boolean {
+  return (
+    record.kind === 'verdict' &&
+    record.fields.some(
+      (f) => f.key === 'criterion' && f.value.trim() !== '' && !isCriterionNumber(f.value),
+    )
+  );
+}
+
 /** The verdict's author as the event's actor names it: a box is an agent, an account its agency. */
 function authorOfActor(actor: Actor): VerdictAuthor {
   return {
@@ -47,8 +65,14 @@ function authorOfActor(actor: Actor): VerdictAuthor {
   };
 }
 
-/** A criterion line that is not a whole number, or a block that names no verdict: never dropped. */
-function unparsedBlocks(record: ForgeRecord): MessageRefusal[] {
+/**
+ * A criterion line that is neither a whole number nor one criterion's exact line, or a block that
+ * names no verdict: never dropped. `record` is read with its exact lines numbered already.
+ */
+function unparsedBlocks(
+  record: ForgeRecord,
+  criteria: readonly NamedCriterion[],
+): MessageRefusal[] {
   const refusal = (rule: string, why: string, quote: string): MessageRefusal => ({
     rule,
     why,
@@ -58,11 +82,13 @@ function unparsedBlocks(record: ForgeRecord): MessageRefusal[] {
   });
   const out: MessageRefusal[] = [];
   for (const field of record.kind === 'verdict' ? record.fields : []) {
-    if (field.key === 'criterion' && !/^\d+$/.test(field.value.trim())) {
+    const value = field.value.trim();
+    if (field.key === 'criterion' && !/^\d+$/.test(value)) {
+      const named = value === '' ? null : criterionNamed(value, criteria);
       out.push(
         refusal(
           'VERDICT_CRITERION_UNKNOWN',
-          'a criterion is named by its whole number',
+          named && 'why' in named ? named.why : 'a criterion is named by its whole number',
           `criterion: ${field.value}`,
         ),
       );
@@ -103,22 +129,32 @@ export async function recordEventVerdicts(
   },
 ): Promise<number[]> {
   const door = event.commentId ? 'comment-write' : 'record-event-write';
-  const unparsed = event.records.flatMap(({ record, fence }) =>
-    named(unparsedBlocks(record), fence),
+  // a criterion named by its exact line is recorded on the number it names (`criterion-named.ts`)
+  // read under the issue's row lock, as a criteria replacement takes it, so no renumbering lands
+  // between the reading and the write
+  const byText = event.records.some(({ record }) => namesCriterionByText(record));
+  if (byText) await lockIssue(tx, event.issueId);
+  const criteria = byText ? await namedCriteriaOf(tx, event.issueId) : [];
+  const records = event.records.map(({ record, fence }) => ({
+    record: numberCriteria(record, criteria),
+    fence,
+  }));
+  const unparsed = records.flatMap(({ record, fence }) =>
+    named(unparsedBlocks(record, criteria), fence),
   );
   if (unparsed.length > 0) throw new MessageRefusedError(door, unparsed);
-  if (event.records.every(({ record }) => criterionBlocksIn(record).length === 0)) {
-    return event.records.map(() => 0);
+  if (records.every(({ record }) => criterionBlocksIn(record).length === 0)) {
+    return records.map(() => 0);
   }
   const [issue] = await tx
     .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, event.issueId))
     .limit(1);
-  if (!issue) return event.records.map(() => 0);
+  if (!issue) return records.map(() => 0);
   const refusals: MessageRefusal[] = [];
   const written: number[] = [];
-  for (const { record, fence } of event.records) {
+  for (const { record, fence } of records) {
     let count = 0;
     for (const block of criterionBlocksIn(record)) {
       const draft = draftFromBlock({ ...block, verdict: block.verdict as string });
