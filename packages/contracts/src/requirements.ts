@@ -674,12 +674,17 @@ export const recordRequirementVerdictRequestSchema = z.strictObject({
 		.nullable()
 		.optional(),
 	evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
+	/**
+	 * The run recording it, as on an issue verdict (core `issues/criteria/input-schemas.ts` `run`): the box's declared run id, or
+	 * core's session or run id, held to a live run of the calling box on this project.
+	 */
+	run: z.string().trim().min(1).max(200).optional(),
 });
 export type RecordRequirementVerdictRequest = z.infer<
 	typeof recordRequirementVerdictRequestSchema
 >;
 export const RECORD_REQUIREMENT_VERDICT_SHAPE =
-	"{ criterion: 'BC-n', verdict: pass | short | fail | skipped, reason?, identity?: { kind: 'commit', sha: <40 hex> }, evidence?: [link or repository path] } — a pass, short or fail names the commit judged and cites evidence; a skip gives its reason";
+	"{ criterion: 'BC-n', verdict: pass | short | fail | skipped, reason?, identity?: { kind: 'commit', sha: <40 hex> }, evidence?: [link or repository path], run?: <the run recording it, as on an issue verdict> } — a pass, short or fail names the commit judged and cites evidence; a skip gives its reason";
 
 /** One requirement-level verdict as its list answers it, the criterion it judged by code. */
 export interface RequirementVerdictRow {
@@ -689,6 +694,8 @@ export interface RequirementVerdictRow {
 	reason: string | null;
 	evidence: string[];
 	commit: string | null;
+	/** The run session that recorded it, as the call's `run` named it; null for a call naming none. */
+	run: string | null;
 	/** Who wrote it: a person or an agent account; null where the account is gone. */
 	by: { id: string; name: string | null; agency: "human" | "agent" } | null;
 	at: string;
@@ -850,6 +857,9 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"VERDICT_IDENTITY_REQUIRED",
 	"VERDICT_COMMIT_NOT_FULL",
 	"VERDICT_SECRET",
+	// the run a verdict names, held by the issue door's rule (`issues/pattern-runs.ts:runOfCall`)
+	"VERDICT_RUN_UNKNOWN",
+	"VERDICT_SESSION_NOT_ADMITTED",
 	"REQUIREMENT_PINS_CURRENT",
 	"REQUIREMENT_CONTRACT_UNKNOWN",
 	"REQUIREMENT_SIGNOFF_FORBIDDEN",

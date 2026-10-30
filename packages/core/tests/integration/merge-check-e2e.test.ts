@@ -210,7 +210,8 @@ describe('a passing check is recorded on its issue', () => {
     const field = (key: string) => fields.find((f) => f.key === key)?.value;
     expect([field('check'), field('result'), field('head')]).toEqual(['merge', 'pass', HEAD]);
     expect(field('checks')).toContain('direct-tests (workspace)');
-    expect([field('lane'), field('patch-id')]).toEqual(['full', sent.patchId]);
+    // every project delivers fast unless it turns it off (REQ-79 BC-1), so this one was held to fast delivery's checks
+    expect([field('lane'), field('patch-id')]).toEqual(['fast-delivery', sent.patchId]);
     expect(fields.some((f) => /\d+\.\ds\b/.test(String(f.value)))).toBe(false);
 
     const read = (await call('GET', `/api/issues/${issue}/checks`)).body;

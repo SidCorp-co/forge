@@ -419,8 +419,11 @@ interface IssuePorts {
   fastLaneMergeRefusal: (
     args: MergeCheckOf,
   ) => Promise<{ code: FastLaneRefusalCode; path: string; detail: string } | null>;
-  /** A passing check's rating and cleanup debt, kept in its transaction (`cleanup/index.ts`, REQ-79). */
-  recordMergeCheckCleanup: (tx: Tx, args: MergeCheckOf & { actor: Actor }) => Promise<void>;
+  /**
+   * A passing check's rating and cleanup debt, kept in its transaction (`cleanup/index.ts`, REQ-79),
+   * answering the id of each of the report's `debts` in its order, for the record to name.
+   */
+  recordMergeCheckCleanup: (tx: Tx, args: MergeCheckOf & { actor: Actor }) => Promise<string[]>;
 }
 
 const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');

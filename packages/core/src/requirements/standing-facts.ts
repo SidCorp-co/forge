@@ -505,6 +505,8 @@ export type RequirementVerdictRead = StandingRequirementVerdict & {
   requirementId: string;
   authorUserId: string | null;
   authorAgency: 'human' | 'agent';
+  /** The run session that recorded it; null where the call named none (`verdicts.ts`). */
+  runSession: string | null;
 };
 
 type RequirementVerdictRow = typeof requirementCriterionVerdicts.$inferSelect;
@@ -523,6 +525,7 @@ export function verdictReadOf(r: RequirementVerdictRow): RequirementVerdictRead 
     authored: r.authorUserId !== null || r.authorDeviceId !== null,
     authorUserId: r.authorUserId,
     authorAgency: r.authorAgency,
+    runSession: r.runSessionId,
   };
 }
 

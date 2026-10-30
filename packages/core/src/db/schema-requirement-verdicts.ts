@@ -10,6 +10,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { requirementCriteria, requirements } from './schema-requirements.js';
 import { actorAgencies } from './schema-vocabulary.js';
@@ -37,6 +38,10 @@ export const requirementCriterionVerdicts = pgTable(
     authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     authorDeviceId: uuid('author_device_id'),
     authorAgency: text('author_agency', { enum: actorAgencies }).notNull(),
+    /** The run session that recorded it: the `run` the call named (0566); null where it named none. */
+    runSessionId: uuid('run_session_id').references(() => agentSessions.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

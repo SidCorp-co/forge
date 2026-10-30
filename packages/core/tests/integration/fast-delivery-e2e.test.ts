@@ -11,6 +11,7 @@
  * @direct-test-of packages/core/src/cleanup/fire.ts
  * @direct-test-of packages/core/src/cleanup/routes.ts
  * @direct-test-of packages/core/src/release-batch/cleanup-hold.ts
+ * @direct-test-of packages/core/src/issues/merge-check.ts
  * @direct-test-of packages/core/src/schedules/cleanup-dispatch.ts
  * @direct-test-of packages/core/src/schedules/cleanup-window.ts
  */
@@ -80,6 +81,15 @@ const red = (rating: 'low' | 'medium' | 'high') => ({
   detail: 'copy budget over by 12 lines',
   impact: { type: 'config', rating, reason: 'a budget gate, the app is untouched' },
 });
+
+/** A field of the issue's newest merge-check record, as core wrote it. */
+async function mergeRecord(issue: string): Promise<(key: string) => string | undefined> {
+  const items = (await call('GET', `/api/issues/${issue}/events`)).body.items as Doc[];
+  const [record] = items.filter(
+    (e) => e.kind === 'verification' && (e.fields as Doc[]).some((f) => f.key === 'check'),
+  );
+  return (key) => (record?.fields as Doc[] | undefined)?.find((f) => f.key === key)?.value;
+}
 
 const debts = (body: unknown) => call('POST', `/api/projects/${projectId}/debts`, body);
 const ledger = () => call('GET', `/api/projects/${projectId}/debts`);
@@ -175,7 +185,15 @@ describe('a merge check on a project delivering fast (BC-2, BC-3)', () => {
       rating: 'medium',
       commit: head,
     });
-    expect((await ledger()).body.open.map((d: Doc) => d.issueId)).toEqual([issue]);
+    const open = (await ledger()).body.open as Doc[];
+    expect(open.map((d) => d.issueId)).toEqual([issue]);
+    // the record names the red it passed and its debt, and the lane it was held to
+    const record = await mergeRecord(issue);
+    expect(record('lead')).toContain(
+      `\`verify\` ended red and passed as cleanup debt ${open[0]?.id}`,
+    );
+    expect(record('debts')).toContain(`red \`verify\` passed, debt ${open[0]?.id}`);
+    expect(record('lane')).toBe('fast-delivery');
   });
 
   it('asks every check and passes no red where the project turned fast delivery off (BC-1)', async () => {
@@ -196,6 +214,15 @@ describe('a merge check on a project delivering fast (BC-2, BC-3)', () => {
       report(checks, { debts: [red('low')] }),
     );
     expect(codes(owed)).toEqual(['MERGE_DEBT_FAST_DELIVERY_OFF']);
+    const whole = await call(
+      'POST',
+      `/api/issues/${issue}/merge-check`,
+      report(REQUIRED_MERGE_CHECKS.map((n) => passingCheck(n))),
+    );
+    expect(whole.status, JSON.stringify(whole.body)).toBe(201);
+    const record = await mergeRecord(issue);
+    expect([record('lane'), record('debts')]).toEqual(['full', undefined]);
+    expect(record('lead')).not.toContain('debt');
   });
 });
 

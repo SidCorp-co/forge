@@ -16,7 +16,8 @@
  *
  * On a project delivering fast (REQ-79, every project's default) a report needs only build and the
  * scoped tests, and a red it names as cleanup debt rated below high passes; its rating and that debt
- * go to the cleanup ledger in the check's transaction (`recordMergeCheckCleanup`).
+ * go to the cleanup ledger in the check's transaction (`recordMergeCheckCleanup`), and the record names
+ * each red it passed by its check and that debt's id, and the lane the merge was held to.
  *
  * The report is the box's word, as a mark without an observed commit is: core cannot rerun the
  * checks, so the record says what the box ran and when, and is written by core only after core's own
@@ -61,7 +62,8 @@ export async function recordMergeCheck(args: {
 }): Promise<RecordEvent> {
   const { issue, report } = args;
   const held = await readProjectDocument(issue.projectId);
-  const fault = checkRefusal(report, fastDeliveryOf(held?.document.delivery));
+  const fastDelivery = fastDeliveryOf(held?.document.delivery);
+  const fault = checkRefusal(report, fastDelivery);
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
   const criteria = await readCriteriaWithDrafts(issue);
   const probes = probeRefusals(report, criteria);
@@ -93,8 +95,9 @@ export async function recordMergeCheck(args: {
       actor: args.actor,
     });
     if (!written.ok) throw new RefusalError(written.refusals, 'MERGE_CHECK_REFUSED');
-    // the rating and the reds passed as cleanup debt are the cleanup ledger's (REQ-79 BC-3, BC-4)
-    await recordMergeCheckCleanup(tx, {
+    // the rating and the reds passed as cleanup debt are the cleanup ledger's (REQ-79 BC-3, BC-4);
+    // the record names each red it passed by the debt id the ledger gave it
+    const debtIds = await recordMergeCheckCleanup(tx, {
       issueId: issue.id,
       projectId: issue.projectId,
       report,
@@ -106,7 +109,10 @@ export async function recordMergeCheck(args: {
       kind: 'verification',
       // the catalog pages the change carried, whatever is approved now: a pattern approved after
       // this check, or a mark made before it, is asked against them at awaiting_release
-      fields: [...recordFields(report, criteria), ...catalogPageFields(report.touched)],
+      fields: [
+        ...recordFields(report, criteria, { fastDelivery, debtIds }),
+        ...catalogPageFields(report.touched),
+      ],
     });
   });
 }

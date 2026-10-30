@@ -22,13 +22,13 @@ interface QueuedRow {
 
 /**
  * Where `session` is a run session still `queued`, the refusal naming it and the refusal its
- * declaration waits behind; null for any other session.
+ * declaration waits behind, the verdict named as `judged` says it; null for any other session.
  */
-async function unadmittedFault(
+async function unadmittedDetail(
   tx: Pick<Tx, 'execute'>,
   session: string,
-  criterion: number,
-): Promise<VerdictRefusal | null> {
+  judged: string,
+): Promise<string | null> {
   const [row] = (await tx.execute(sql`
     SELECT r.metadata ->> 'boxRunId' AS box_run_id, r.id AS run_id,
            r.metadata -> ${RUN_DECLARATION_REFUSAL_METADATA_KEY} AS refusal
@@ -41,14 +41,56 @@ async function unadmittedFault(
     ? `it waits behind ${row.refusal.code}: ${row.refusal.detail ?? 'no detail recorded'}`
     : 'it waits behind a refusal its declaration did not record';
   const said = behind.trim().endsWith('.') ? behind.trim() : `${behind.trim()}.`;
-  return {
-    code: 'VERDICT_SESSION_NOT_ADMITTED',
-    criterion,
-    detail: `criterion ${criterion}'s verdict is recorded by run ${run}, which core has not admitted: its declaration is queued, and ${said} Nothing was written. Record the verdict once the run is admitted.`,
-  };
+  return `${judged} is recorded by run ${run}, which core has not admitted: its declaration is queued, and ${said} Nothing was written. Record the verdict once the run is admitted.`;
+}
+
+async function unadmittedFault(
+  tx: Pick<Tx, 'execute'>,
+  session: string,
+  criterion: number,
+): Promise<VerdictRefusal | null> {
+  const detail = await unadmittedDetail(tx, session, `criterion ${criterion}'s verdict`);
+  return detail ? { code: 'VERDICT_SESSION_NOT_ADMITTED', criterion, detail } : null;
 }
 
 type Recording = { ok: true; session: string | null } | { ok: false; refusal: VerdictRefusal };
+
+/** Why a verdict at a requirement may not name its run, in the issue door's codes. */
+export interface RunRefusal {
+  code: 'VERDICT_RUN_UNKNOWN' | 'VERDICT_SESSION_NOT_ADMITTED';
+  path: '/run';
+  detail: string;
+}
+
+/**
+ * The run session recording a verdict at a requirement (`requirements/verdicts.ts`), by the issue
+ * door's rule: the `run` the call names, a live run of the calling box on this project, refused on a
+ * person's call and where core has not admitted it; none on a box's call naming none, as no issue's
+ * lease says which run it is.
+ */
+export async function requirementRecordingSessionOf(
+  tx: Tx,
+  args: { projectId: string; box: string | null; run?: string | undefined; judged: string },
+): Promise<{ ok: true; session: string | null } | { ok: false; refusal: RunRefusal }> {
+  const resolved = await runOfCall(
+    { projectId: args.projectId, issueId: null, box: args.box, run: args.run },
+    tx,
+  );
+  if (!resolved.ok) {
+    const detail =
+      resolved.refusals[0]?.detail ?? `\`run\` ${args.run ?? ''} names no live run of this box`;
+    return { ok: false, refusal: { code: 'VERDICT_RUN_UNKNOWN', path: '/run', detail } };
+  }
+  const session = resolved.value.session;
+  const unadmitted = session ? await unadmittedDetail(tx, session, args.judged) : null;
+  if (unadmitted) {
+    return {
+      ok: false,
+      refusal: { code: 'VERDICT_SESSION_NOT_ADMITTED', path: '/run', detail: unadmitted },
+    };
+  }
+  return { ok: true, session };
+}
 
 /**
  * The run session recording a verdict (ISS-475): the one a door already resolved, else the `run` the

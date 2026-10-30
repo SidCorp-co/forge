@@ -20,6 +20,8 @@ import {
 type Doc = Partial<MergeCheckReport['checks'][number]>;
 
 const HEAD = 'a'.repeat(40);
+/** A project that turned fast delivery off, whose report recorded no debt. */
+const FULL = { fastDelivery: false, debtIds: [] } as const;
 const BASE = 'b'.repeat(40);
 
 const run = (name: RequiredMergeCheck, over: Partial<MergeCheckReport['checks'][number]> = {}) => ({
@@ -128,7 +130,7 @@ describe("the change's kept probes (REQ-36 BC-1, BC-9)", () => {
     ]);
     expect(probeRefusals(r, [observable(1, PROBE_A), observable(3, PROBE_B)])).toEqual([]);
     expect(checkRefusal(r)).toBeNull();
-    expect(recordFields(r).find((f) => f.key === 'probes')?.value).toBe(
+    expect(recordFields(r, [], FULL).find((f) => f.key === 'probes')?.value).toBe(
       '2 kept probe(s) ran and held, for criteria 1, 3',
     );
   });
@@ -196,7 +198,7 @@ describe("the change's kept probes (REQ-36 BC-1, BC-9)", () => {
       { n: 2, class: null, probe: null },
     ];
     expect(probeRefusals(withProbes([]), criteria)).toEqual([]);
-    expect(recordFields(withProbes([])).find((f) => f.key === 'probes')?.value).toBe(
+    expect(recordFields(withProbes([]), [], FULL).find((f) => f.key === 'probes')?.value).toBe(
       'no kept probe to run',
     );
   });
@@ -240,7 +242,7 @@ describe("owes the change's probes only (ISS-472 round 5, comment 826f551d)", ()
   it('takes ISS-439 round 6: 23 criteria standing on verdicts the base carries, one code property', () => {
     const r = { ...withProbes([]), standing: standingAll };
     expect(probeRefusals(r, iss439Round6())).toEqual([]);
-    expect(recordFields(r).find((f) => f.key === 'probes')?.value).toBe(
+    expect(recordFields(r, [], FULL).find((f) => f.key === 'probes')?.value).toBe(
       `no kept probe to run; criteria ${standingAll.map((s) => s.criterion).join(', ')} stand on verdicts their base carries`,
     );
   });
@@ -350,7 +352,7 @@ describe('a standing fail: a fail the base carries, which the change did not cla
       ...withProbes([{ criterion: 2, probe: PROBE_A }]),
       standing: [{ criterion: 1, verdict: verdictId(1) }, ...standing5],
     };
-    expect(recordFields(r, criteria).find((f) => f.key === 'probes')?.value).toBe(
+    expect(recordFields(r, criteria, FULL).find((f) => f.key === 'probes')?.value).toBe(
       '1 kept probe(s) ran and held, for criteria 2; criteria 1 stand on verdicts their base carries; standing fail, not this change: criteria 5',
     );
   });
@@ -402,17 +404,19 @@ describe('a report on the fast lane (REQ-39 BC-7)', () => {
   });
 
   it('records the lane and the patch id it checked, on either lane', () => {
-    const fields = recordFields(fast());
+    const fields = recordFields(fast(), [], FULL);
     expect(fields.find((f) => f.key === 'lane')?.value).toBe('fast');
     expect(fields.find((f) => f.key === 'patch-id')?.value).toBe(PATCH);
-    expect(recordFields(report()).find((f) => f.key === 'lane')?.value).toBe('full');
-    expect(recordFields(report()).find((f) => f.key === 'patch-id')?.value).toBe('7'.repeat(40));
+    expect(recordFields(report(), [], FULL).find((f) => f.key === 'lane')?.value).toBe('full');
+    expect(recordFields(report(), [], FULL).find((f) => f.key === 'patch-id')?.value).toBe(
+      '7'.repeat(40),
+    );
     expect(warningsOf(report())).toEqual([]);
   });
 
   it('records an old-shape full report as absent and warns by name', () => {
     const { patchId: _old, ...old } = report();
-    expect(recordFields(old).find((f) => f.key === 'patch-id')?.value).toBe(
+    expect(recordFields(old, [], FULL).find((f) => f.key === 'patch-id')?.value).toBe(
       'absent (script predates patch ids)',
     );
     expect(warningsOf(old)[0]).toContain('PATCH_ID_ABSENT');
@@ -425,7 +429,7 @@ describe('the record a passing check is kept as', () => {
       ...REQUIRED_MERGE_CHECKS.map((n) => run(n)),
       run('direct-tests', { scope: 'runner/runner-core', files: ['a.rs'], durationMs: 2500 }),
     ];
-    const fields = recordFields(report(checks));
+    const fields = recordFields(report(checks), [], FULL);
     const keys = fields.map((f) => f.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(fields.find((f) => f.key === 'check')?.value).toBe('merge');
@@ -448,14 +452,15 @@ describe('the record a passing check is kept as', () => {
       ...REQUIRED_MERGE_CHECKS.map((n) => run(n)),
       ...Array.from({ length: 40 }, (_, i) => run('direct-tests', { scope: `collection-${i}` })),
     ];
-    const named = recordFields(report(checks)).find((f) => f.key === 'checks')?.value ?? '';
+    const named =
+      recordFields(report(checks), [], FULL).find((f) => f.key === 'checks')?.value ?? '';
     expect(named.length).toBeLessThanOrEqual(400);
     expect(named).toMatch(/, \+\d+ more$/);
   });
 });
 
 describe('whether a mark finds a passing check at the commit it marks', () => {
-  const recorded = { fields: recordFields(report()) };
+  const recorded = { fields: recordFields(report(), [], FULL) };
   const other = {
     fields: [
       { key: 'check', value: 'something-else' },

@@ -1,0 +1,1 @@
+**A merge check that passed a red as cleanup debt now says so.** Its record names each such check and its debt id, and reads `lane: fast-delivery` where fast delivery applied. Requirement verdicts name their run, as issue verdicts do.

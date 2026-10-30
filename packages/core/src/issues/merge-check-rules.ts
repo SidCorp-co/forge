@@ -291,28 +291,91 @@ function namedChecks(checks: readonly CheckRun[]): string {
 }
 
 /**
- * The fields a passing check is recorded as on its issue: what passed, where, and which checks it
- * ran. Each check's duration is its own row (`check-runs.ts`), never repeated here: one check is
- * one record (ISS-474).
+ * What a passing check was held to beyond its report: whether its project delivers fast (REQ-79),
+ * and the id the cleanup ledger gave each of the report's `debts`, in the report's order.
+ */
+export interface AppliedGate {
+  fastDelivery: boolean;
+  debtIds: readonly string[];
+}
+
+/** The lane a record reads: the one whose checks the merge was held to, never the one the report omitted. */
+export type RecordedLane = 'fast' | 'fast-delivery' | 'full';
+
+/**
+ * The lane a passing check was held to (`requiredMergeChecksOf`): the fast lane where the report took
+ * it (REQ-39 BC-7), else fast delivery where the project delivers fast (REQ-79 BC-2: build and scoped
+ * tests), else the full lane. A report that names no lane on a project delivering fast was held to
+ * fast delivery's checks, so it never reads `full`.
+ */
+export function recordedLane(report: MergeCheckReport, fastDelivery: boolean): RecordedLane {
+  if (report.lane === 'fast') return 'fast';
+  return fastDelivery ? 'fast-delivery' : 'full';
+}
+
+/** Each debt of the report with the ledger's id for it, and whether it passed a check that ended red. */
+function debtsOf(report: MergeCheckReport, debtIds: readonly string[]) {
+  const debts = report.debts ?? [];
+  if (debts.length !== debtIds.length) {
+    throw new Error(
+      `merge check: the report names ${debts.length} debt(s) and the cleanup ledger answered ${debtIds.length} id(s) for them, so the record could not say which debt each is`,
+    );
+  }
+  const red = new Set(
+    report.checks.filter((c) => c.result === 'fail' && c.kind !== 'probes').map((c) => c.name),
+  );
+  return debts.map((d, i) => ({
+    ...d,
+    id: debtIds[i] as string,
+    passed: d.kind === 'red' && d.check !== undefined && red.has(d.check),
+  }));
+}
+
+/** What the record says of the cleanup debt the check recorded: each by kind, check or place, and id. */
+function debtField(debts: ReturnType<typeof debtsOf>): string {
+  const each = debts.map((d) =>
+    d.kind === 'red' && d.check
+      ? `red \`${d.check}\`${d.passed ? ' passed' : ''}, debt ${d.id}`
+      : `${d.kind} at ${d.where}, debt ${d.id}`,
+  );
+  return `${debts.length} recorded as cleanup debt (GET /api/projects/:id/debts): ${each.join('; ')}`.slice(
+    0,
+    FIELD_MAX,
+  );
+}
+
+/**
+ * The fields a passing check is recorded as on its issue: what passed, where, the lane it was held to,
+ * which checks it ran, and each red it passed as cleanup debt, by its check and its debt id, in the
+ * lead itself, so a pass that carries debt never reads as a clean one (`VISION: state-never-lies`).
+ * Each check's duration is its own row (`check-runs.ts`), never repeated here: one check is one
+ * record (ISS-474).
  */
 export function recordFields(
   report: MergeCheckReport,
-  criteria: readonly MergeCriterion[] = [],
+  criteria: readonly MergeCriterion[],
+  applied: AppliedGate,
 ): { key: string; value: string }[] {
+  const debts = debtsOf(report, applied.debtIds);
+  const passed = debts.filter((d) => d.passed);
+  const carried = passed.length
+    ? `; ${passed.map((d) => `\`${d.check}\` ended red and passed as cleanup debt ${d.id}`).join('; ')}`
+    : '';
   return [
     {
       key: 'lead',
-      value: `Merge check passed at ${report.head.slice(0, 12)} on ${report.base.branch} ${report.base.sha.slice(0, 12)}: ${report.checks.length} checks`,
+      value: `Merge check passed at ${report.head.slice(0, 12)} on ${report.base.branch} ${report.base.sha.slice(0, 12)}: ${report.checks.length} checks${carried}`,
     },
     { key: 'check', value: MERGE_CHECK_RECORD },
     { key: 'result', value: 'pass' },
     { key: 'mode', value: report.mode },
-    { key: 'lane', value: report.lane ?? 'full' },
+    { key: 'lane', value: recordedLane(report, applied.fastDelivery) },
     { key: 'patch-id', value: report.patchId ?? PATCH_ID_ABSENT },
     { key: 'base', value: `${report.base.branch}@${report.base.sha}` },
     { key: 'head', value: report.head },
     { key: 'touched', value: `${report.touched.length} file(s)` },
     { key: 'checks', value: namedChecks(report.checks) },
+    ...(debts.length ? [{ key: 'debts', value: debtField(debts) }] : []),
     { key: 'probes', value: probesRan(report, criteria) },
     { key: 'not-checked', value: NOT_YET_CHECKED },
   ];

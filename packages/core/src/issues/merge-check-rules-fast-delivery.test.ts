@@ -10,7 +10,7 @@ import {
   type RequiredMergeCheck,
 } from '@forge/contracts/merge-check';
 import { describe, expect, it } from 'vitest';
-import { checkRefusal } from './merge-check-rules.js';
+import { checkRefusal, recordFields } from './merge-check-rules.js';
 
 type Doc = Partial<MergeCheckReport['checks'][number]>;
 
@@ -96,5 +96,56 @@ describe('a merge on a project delivering fast (REQ-79)', () => {
     expect(checkRefusal({ ...report(checks), debts: [debt] }, false)?.code).toBe(
       'MERGE_DEBT_FAST_DELIVERY_OFF',
     );
+  });
+
+  describe('the record a pass is kept as', () => {
+    const DEBT = '0d5c1a8e-5f4b-4a3e-9c1d-2b7e6f8a9c10';
+    const debt = {
+      kind: 'red',
+      check: 'verify',
+      where: 'scripts',
+      detail: 'copy budget',
+      impact,
+    } as const;
+    const field = (fields: { key: string; value: string }[], key: string) =>
+      fields.find((f) => f.key === key)?.value;
+
+    it('names the red it passed as cleanup debt, by its check and its debt id, never as a clean pass', () => {
+      const checks = [...fastChecks(), run('verify', { result: 'fail' })];
+      const fields = recordFields({ ...report(checks), debts: [debt] }, [], {
+        fastDelivery: true,
+        debtIds: [DEBT],
+      });
+      const lead = field(fields, 'lead') ?? '';
+      expect(lead).toContain('`verify` ended red and passed as cleanup debt');
+      expect(lead).toContain(DEBT);
+      expect(field(fields, 'debts')).toContain(`red \`verify\` passed, debt ${DEBT}`);
+    });
+
+    it('says nothing of debt where every check held', () => {
+      const fields = recordFields(report(fastChecks()), [], { fastDelivery: true, debtIds: [] });
+      expect(field(fields, 'lead')).not.toContain('debt');
+      expect(field(fields, 'debts')).toBeUndefined();
+    });
+
+    it('refuses to write a record whose debts the ledger did not answer an id for', () => {
+      const checks = [...fastChecks(), run('verify', { result: 'fail' })];
+      expect(() =>
+        recordFields({ ...report(checks), debts: [debt] }, [], { fastDelivery: true, debtIds: [] }),
+      ).toThrow(/1 debt\(s\).*0 id\(s\)/);
+    });
+
+    it('reads the lane the merge was held to: fast delivery, the fast lane, or the full one', () => {
+      const lane = (fastDelivery: boolean, over: Partial<MergeCheckReport> = {}) =>
+        field(
+          recordFields({ ...report(fastChecks()), ...over }, [], { fastDelivery, debtIds: [] }),
+          'lane',
+        );
+      expect(lane(true)).toBe('fast-delivery');
+      expect(lane(true, { lane: 'full' })).toBe('fast-delivery');
+      expect(lane(true, { lane: 'fast' })).toBe('fast');
+      expect(lane(false)).toBe('full');
+      expect(lane(false, { lane: 'fast' })).toBe('fast');
+    });
   });
 });

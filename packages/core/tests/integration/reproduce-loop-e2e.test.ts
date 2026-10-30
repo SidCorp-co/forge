@@ -136,7 +136,7 @@ async function shippedWithConfirm(args: {
     issueId: issue.id,
     actor: { type: 'device', id: deviceId, agency: 'agent' },
     kind: 'verification',
-    fields: recordFields(report),
+    fields: recordFields(report, [], { fastDelivery: false, debtIds: [] }),
   });
   return fb;
 }

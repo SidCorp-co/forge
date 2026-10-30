@@ -37,6 +37,10 @@ a red is fixed in its issue, and nothing waits on a cleanup.
   or, in a merge check report, \`debts\` naming each red check by its \`check\` name. A red you rate
   high holds the issue and is fixed in it (\`DEBT_RED_HOLDS_THE_ISSUE\`). Debt you saw and did not
   cause, or code worth simplifying, is recorded the same way, as \`debt\` or \`simplify\`.
+- **The record says what passed.** A passing merge check's record reads \`lane: fast-delivery\`, the
+  checks above (\`fast\` on a preview-approved fast-lane change, \`full\` where the project turned fast
+  delivery off). Its lead and its \`debts\` field name each red that passed as cleanup debt, by its
+  check and the debt's id, so a pass carrying debt never reads as a clean one.
 
 ### The cleanup run
 The project's cleanup window is its \`cleanup\` schedule, saved at end of day (\`0 18 * * *\` UTC) the

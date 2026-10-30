@@ -17,7 +17,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
 import { requirementCriteria } from '../db/schema-requirements.js';
-import { issueDisplayIds } from '../issues/index.js';
+import { issueDisplayIds, requirementRecordingSessionOf } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
 import { emitEvents } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -174,7 +174,15 @@ export async function recordRequirementVerdict(input: {
           .get(row.id)
           ?.coverage.find((c) => c.code === judged.criterion.code)
       : undefined;
-  const { written, routed } = await db.transaction(async (tx) => {
+  const recorded = await db.transaction(async (tx) => {
+    // the run named is held by the issue door's rule, so one rule covers a verdict at either door
+    const run = await requirementRecordingSessionOf(tx, {
+      projectId,
+      box: input.deviceId,
+      run: body.run,
+      judged: `${bc}'s verdict`,
+    });
+    if (!run.ok) return { ok: false as const, refusal: run.refusal };
     const [inserted] = await tx
       .insert(requirementCriterionVerdicts)
       .values({
@@ -187,10 +195,11 @@ export async function recordRequirementVerdict(input: {
         authorUserId: actor.userId,
         authorDeviceId: input.deviceId,
         authorAgency: actor.agency,
+        runSessionId: run.session,
       })
       .returning({ id: requirementCriterionVerdicts.id });
     if (!inserted) throw new Error(`requirements: the verdict on ${row.id} was not written`);
-    if (body.verdict !== 'fail') return { written: inserted, routed: [] };
+    if (body.verdict !== 'fail') return { ok: true as const, written: inserted, routed: [] };
     const tracing = await tracingIssuesOf(tx, row.id, judged.criterion.code);
     const keys = await issueDisplayIds(
       tracing.map((i) => i.id),
@@ -220,8 +229,10 @@ export async function recordRequirementVerdict(input: {
         },
       })),
     );
-    return { written: inserted, routed: routes };
+    return { ok: true as const, written: inserted, routed: routes };
   });
+  if (!recorded.ok) return { ok: false, refusals: [recorded.refusal] };
+  const { written, routed } = recorded;
   const standing = (await standingsOf(projectId, [row], null)).get(row.id);
   const coverage = standing?.coverage.find((c) => c.code === judged.criterion.code);
   if (!coverage) {
@@ -257,6 +268,7 @@ export async function listRequirementVerdicts(input: {
     reason: v.note,
     evidence: [...v.evidence],
     commit: v.commit,
+    run: v.runSession,
     by: v.authorUserId
       ? {
           id: v.authorUserId,

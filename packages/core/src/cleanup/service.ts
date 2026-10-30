@@ -145,25 +145,27 @@ export async function recordDebts(args: {
 
 /**
  * A passing merge check's rating and the reds it passed as cleanup debt, in the check's own
- * transaction (the issue kernel's `recordMergeCheckCleanup` port). The check's rules already held:
- * debt reaches here only on a project delivering fast, and never a red rated high.
+ * transaction (the issue kernel's `recordMergeCheckCleanup` port), answering each debt's id in the
+ * report's order so the check's record names it. The check's rules already held: debt reaches here
+ * only on a project delivering fast, and never a red rated high.
  */
 export async function recordMergeCheckCleanup(
   tx: Tx,
   args: { issueId: string; projectId: string; report: MergeCheckReport; actor: Actor },
-): Promise<void> {
+): Promise<string[]> {
   const { issueId, projectId, report, actor } = args;
   const by = actor.type === 'user' ? actor.id : null;
   if (report.impact) {
     const commit = report.head.toLowerCase();
     await insertImpact(tx, { projectId, issueId, impact: report.impact, commit, ratedBy: by });
   }
-  if (report.debts?.length) {
-    await insertDebts(tx, { projectId, issueId, items: report.debts, recordedBy: by });
-  }
-  if (report.debts?.length || report.impact?.rating === HOLDING_RATING) {
+  const debts = report.debts?.length
+    ? await insertDebts(tx, { projectId, issueId, items: report.debts, recordedBy: by })
+    : [];
+  if (debts.length || report.impact?.rating === HOLDING_RATING) {
     await ensureCleanupWindow(projectId);
   }
+  return debts;
 }
 
 /**

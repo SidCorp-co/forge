@@ -138,10 +138,12 @@ async function leaseSessionOn(
 
 /**
  * The run this call is: on a person's credential none (and `run` is refused, a person being no run);
- * on a box's, the run `run` names, or else the run holding the issue on that box, or none.
+ * on a box's, the run `run` names, or else the run holding the issue on that box, or none. A call
+ * about no issue (`issueId` null: a verdict at a requirement) has no lease to read a run off, so it
+ * is the run `run` names or none.
  */
 export async function runOfCall(
-  args: { projectId: string; issueId: string; box: string | null; run?: string | undefined },
+  args: { projectId: string; issueId: string | null; box: string | null; run?: string | undefined },
   executor: GateReader = db,
 ): Promise<Resolved> {
   const { box, run } = args;
@@ -155,7 +157,7 @@ export async function runOfCall(
     const named = await sessionNamed(executor, { projectId: args.projectId, box, run });
     if (named && 'session' in named) return { ok: true, value: { box, session: named.session } };
     if (named) return unknownRun(named.refusal);
-    const over = await declaredOver(executor, { issueId: args.issueId, box });
+    const over = args.issueId ? await declaredOver(executor, { issueId: args.issueId, box }) : null;
     const way = over
       ? over.declared.length > 0
         ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call`
@@ -163,10 +165,10 @@ export async function runOfCall(
       : "send the run id this box declared for the run making the call, or core's id for its session or run";
     return unknownRun(`\`run\` ${run} is no live session of this box on this project; ${way}`);
   }
-  return {
-    ok: true,
-    value: { box, session: await leaseSessionOn(executor, { issueId: args.issueId, box }) },
-  };
+  const session = args.issueId
+    ? await leaseSessionOn(executor, { issueId: args.issueId, box })
+    : null;
+  return { ok: true, value: { box, session } };
 }
 
 /** Whether `session` is still a live session on `box`. */

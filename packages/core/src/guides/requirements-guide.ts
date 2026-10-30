@@ -212,9 +212,12 @@ reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES
 ### A capability that already shipped
 A requirement agreed over a capability that already shipped owes no issue whose only work is verifying
 it (REQ-45 r3 BC-8). Judge each criterion on the running build at the requirement itself instead:
-**verdicts** \`{ criterion: 'BC-n', verdict, reason?, identity: { kind: 'commit', sha }, evidence }\`
+**verdicts** \`{ criterion: 'BC-n', verdict, reason?, identity: { kind: 'commit', sha }, evidence, run? }\`
 (\`project.write\`), the commit the live build serves and what the verdict was taken from (a link, or a
-repository path at that commit). Refused by name: \`REQUIREMENT_VERDICT_NOT_DELIVERING\` (not agreed, in
+repository path at that commit). A run sends its \`run\` as it does on an issue verdict, and the
+verdict and its list name that run; a \`run\` that is no live run of the calling box on this project,
+or sent on a person's credential, is \`VERDICT_RUN_UNKNOWN\`, and one core has not admitted
+\`VERDICT_SESSION_NOT_ADMITTED\`. Refused by name: \`REQUIREMENT_VERDICT_NOT_DELIVERING\` (not agreed, in
 delivery or delivered), \`REQUIREMENT_VERDICT_CRITERION_UNKNOWN\` (no live wording of that code, naming
 each one), \`REQUIREMENT_VERDICT_UNCITED\` (a pass, short or fail citing nothing) and the \`VERDICT_*\`
 rules every verdict meets. The answer is the criterion's coverage, so you see at once whether it counts:

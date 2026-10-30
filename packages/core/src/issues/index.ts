@@ -58,6 +58,7 @@ export {
   recordReplayVerdicts,
   replayTargetsOf,
 } from './criteria/probe-replay.js';
+export { requirementRecordingSessionOf } from './criteria/recording-session.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export { type VerdictRefusal, verdictDraftFault } from './criteria/verdict-input.js';
 export {
