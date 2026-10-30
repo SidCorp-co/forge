@@ -70,7 +70,8 @@ read from `scripts/export-legacy-project-config.mjs` run against the database be
   id)
   (`packages/core/src/project-config/testing-secrets.ts:resolveTestingSecrets`): it answers only a
   running job's own credential, or a box's credential naming, in place of the job id, a live run a
-  master on that box declared for a project the box serves (2026-10-27, adminhub-fe's stg judges);
+  master on that box declared for a project the box serves (2026-10-27, adminhub-fe's stg judges),
+  which `forge-runner api` sends in place of `self` said from inside that run's own checkout;
   only for the profile named by the environment whose `deploysFrom` is the target its issue's merge
   mark recorded; it audits each read (a job's on its event log, a run's on the issue) and scrubs each
   value from that job's or run's output.

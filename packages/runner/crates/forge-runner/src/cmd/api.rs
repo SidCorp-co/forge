@@ -1,8 +1,10 @@
 use std::io::Read;
 
 mod mark_paths;
+mod run_self;
 
 use clap::Args as ClapArgs;
+use runner_core::ledger::Ledger;
 use runner_platform::config::Config;
 use runner_platform::cred_store;
 use runner_transport::api::{
@@ -157,10 +159,28 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         (false, d) => d,
     };
 
+    let path = match std::env::current_dir() {
+        Ok(here) => match run_self::name_self(&args.path, &here, || {
+            Ledger::default_path()
+                .and_then(|p| Ledger::open_read_only(&p))
+                .map_err(|e| e.to_string())
+        }) {
+            run_self::SelfNamed::Untouched => args.path.clone(),
+            run_self::SelfNamed::Run { path, note } => {
+                eprintln!("{note}");
+                path
+            }
+            run_self::SelfNamed::AsWritten(note) => {
+                eprintln!("{note}");
+                args.path.clone()
+            }
+        },
+        Err(_) => args.path.clone(),
+    };
     let env_slug = std::env::var("FORGE_PROJECT_SLUG").ok();
     let bindings: Vec<String> = cfg.bindings.keys().cloned().collect();
     let spec = RequestSpec {
-        path: &args.path,
+        path: &path,
         method: args.method.as_deref(),
         data,
         fields: &args.fields,

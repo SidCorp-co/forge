@@ -577,6 +577,33 @@ impl Ledger {
         Ok(out)
     }
 
+    /// The newest unended run declared over exactly the checkout `tree`, if one is.
+    ///
+    /// A run is its checkout: a call made from inside one is that run's, whatever process makes it,
+    /// which is the one fact a subagent's shell carries without being told (adminhub-api's ISS-49
+    /// and ISS-85 judges, 2026-10-30, sent `self` and ids of their own making for want of it). Only
+    /// the checkout itself matches, never one that encloses it: a pool job's tree inside a master's
+    /// checkout is not a run declared over that checkout.
+    pub fn open_run_at_tree(&self, tree: &Path) -> Result<Option<Run>> {
+        let wanted = std::fs::canonicalize(tree).unwrap_or_else(|_| tree.to_path_buf());
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE ended_by IS NULL ORDER BY created_at DESC, run_id"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt.query_map([], map_run).map_err(sql_err)?;
+        for row in rows {
+            let run = row.map_err(sql_err)?;
+            let held = std::fs::canonicalize(&run.worktree_path)
+                .unwrap_or_else(|_| run.worktree_path.clone());
+            if held == wanted {
+                return Ok(Some(run));
+            }
+        }
+        Ok(None)
+    }
+
     /// The run bound to this subagent, if one is.
     pub fn run_for_agent(&self, agent_id: &str) -> Result<Option<Run>> {
         self.conn
@@ -769,6 +796,33 @@ mod role_tests {
             role: role.map(str::to_string),
         })
         .unwrap();
+    }
+
+    /// A call from a run's own checkout is that run's: the newest unended run declared over exactly
+    /// that tree, never one over a tree enclosing it, and none once it has ended.
+    #[test]
+    fn the_open_run_at_a_tree_is_the_newest_unended_run_declared_over_exactly_it() {
+        let mut led = Ledger::from_conn(Connection::open_in_memory().unwrap()).unwrap();
+        declare(&mut led, "1", Some("qa"));
+        let at = |led: &Ledger, tree: &str| {
+            led.open_run_at_tree(Path::new(tree))
+                .unwrap()
+                .map(|r| r.run_id)
+        };
+        assert_eq!(at(&led, "/w/1").as_deref(), Some("1"));
+        assert_eq!(at(&led, "/w/1/").as_deref(), Some("1"));
+        assert_eq!(
+            at(&led, "/w/1/sub"),
+            None,
+            "a tree inside the run's is not the run's"
+        );
+        assert_eq!(
+            at(&led, "/w"),
+            None,
+            "a tree enclosing the run's is not the run's"
+        );
+        led.end_run("1", "master", "judged").unwrap();
+        assert_eq!(at(&led, "/w/1"), None, "an ended run is no open run");
     }
 
     /// The role a master declared is what the sweep reads back to send on the open, and a run

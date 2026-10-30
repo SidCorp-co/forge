@@ -266,7 +266,7 @@ function boxCallRefusal(refused: Refused, asked: string): Refused {
     return refuse(
       403,
       'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL',
-      `${refused.refusal.message} Under a box's credential \`self\` names no job; call with the declared run's id in place of \`self\`.`,
+      `${refused.refusal.message} Under a box's credential \`self\` names no job; call with the declared run's id in place of \`self\`. Sent with \`forge-runner api\` from inside a declared run's own checkout, \`self\` arrives here as that run's id; it arrived as \`self\`, so the call came from no checkout an open run on this box was declared over, or from a runner that does not name the run.`,
     );
   }
   return refuse(

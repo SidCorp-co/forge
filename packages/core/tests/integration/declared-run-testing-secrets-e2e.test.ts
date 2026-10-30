@@ -226,6 +226,11 @@ describe('everything else stays refused by name', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_A_JOB_CREDENTIAL');
     expect(JSON.stringify(res.body)).toContain('in place of `self`');
+    // adminhub-api's ISS-49 and ISS-85 judges (2026-10-30) sent `self` from their own checkouts:
+    // the refusal says the box names the run there, so a `self` arriving here came from elsewhere
+    expect(JSON.stringify(res.body)).toContain(
+      "Sent with `forge-runner api` from inside a declared run's own checkout, `self` arrives here as that run's id",
+    );
   });
 
   it('refuses a run another box declared', async () => {

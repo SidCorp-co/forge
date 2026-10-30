@@ -60,9 +60,10 @@ Read these before judging anything, while whoever sent you can still equip you.
 - \`GET /api/projects/:id/config\` answers the project document: each environment's address and the
   testing profile its testers get in through, whose \`limits\` say what that environment does not have.
 - \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets\` answers the values behind that profile's
-  \`secret://\` references, to log in with. A run a master declared sends the run id its box declared
-  for it as \`<run>\` (\`forge-runner api jobs/<run>/testing-profiles/<profile>/secrets\`, under the
-  box's credential); a job sends \`self\`. Core learns of a declared run on the box's next sweep,
+  \`secret://\` references, to log in with. A job sends \`self\`. A run a master declared reads under
+  its box's credential with \`forge-runner api jobs/self/testing-profiles/<profile>/secrets\` from
+  inside its own checkout, where the box sends the id of the run declared over that checkout in place
+  of \`self\` and says so on stderr; from anywhere else it sends that run id as \`<run>\` itself. Core learns of a declared run on the box's next sweep,
   seconds after \`forge-runner run declare\`: a read before it is refused
   \`TESTING_SECRETS_RUN_NOT_RECORDED\`, and the same call answers once it has. Only the profile of the environment deploying the branch the
   issue's work landed on is answered, while the run runs; each read is audited on the issue and each
