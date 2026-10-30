@@ -6,6 +6,9 @@
 //! trees hold from git, read now against `origin/<baseBranch>`. Never against `origin/HEAD`: that
 //! records the remote's default, which on a project whose base is another branch reports every file
 //! the two branches differ by as held (ISS-294, from the ISS-253 run that skipped its changelog).
+//!
+//! A remote that holds no base branch yet (a greenfield repo) is briefed, and says so; a base the
+//! remote has but this checkout has not fetched, and a remote that cannot be read, are refused.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -47,7 +50,8 @@ pub struct Facts {
     pub project_slug: String,
     pub project_id: String,
     pub base: String,
-    pub base_sha: String,
+    /// The base's commit, `None` when the remote holds no base branch yet.
+    pub base_sha: Option<String>,
     pub tree: Tree,
     pub others: Vec<Held>,
 }
@@ -115,20 +119,43 @@ pub fn compose(f: &Facts) -> String {
         f.tree.branch.as_deref().unwrap_or("detached"),
         f.tree.head.as_deref().map(short).unwrap_or("none")
     ));
-    lines.push(format!(
-        "Base branch: {} (the project's baseBranch); held trees read against origin/{} at {}",
-        f.base,
-        f.base,
-        short(&f.base_sha)
-    ));
-    if f.others.is_empty() {
-        lines.push("Held by the other trees: there are no other trees in this checkout.".into());
-    } else {
-        lines.push(
-            "Held by the other trees, read now — committed against the base, and uncommitted:"
-                .into(),
-        );
-        lines.extend(f.others.iter().map(held_line));
+    match &f.base_sha {
+        Some(sha) => {
+            lines.push(format!(
+                "Base branch: {} (the project's baseBranch); held trees read against origin/{} at {}",
+                f.base,
+                f.base,
+                short(sha)
+            ));
+            if f.others.is_empty() {
+                lines.push(
+                    "Held by the other trees: there are no other trees in this checkout.".into(),
+                );
+            } else {
+                lines.push(
+                    "Held by the other trees, read now — committed against the base, and uncommitted:"
+                        .into(),
+                );
+                lines.extend(f.others.iter().map(held_line));
+            }
+        }
+        None => {
+            lines.push(format!(
+                "Base branch: {} (the project's baseBranch); the remote has no {} branch yet, so this run's landing creates it",
+                f.base, f.base
+            ));
+            if f.others.is_empty() {
+                lines.push(
+                    "Held by the other trees: there are no other trees in this checkout.".into(),
+                );
+            } else {
+                lines.push(
+                    "Held by the other trees, read now without a base — committed is every file in the tree's HEAD commits, and uncommitted:"
+                        .into(),
+                );
+                lines.extend(f.others.iter().map(held_line));
+            }
+        }
     }
     lines.push(format!("Method: {METHOD}"));
     lines.join("\n")
@@ -189,13 +216,38 @@ fn same_path(a: &Path, b: &Path) -> bool {
     canon(a) == canon(b)
 }
 
+/// Whether the remote holds `refs/heads/<base>`, asked of the remote itself. An unreadable remote
+/// is a refusal and never an answer of no: only a remote that answered and named no such branch
+/// lets the brief say it has none.
+fn remote_has_branch(worktree: &Path, base: &str) -> Result<bool, String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(worktree)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args([
+            "ls-remote",
+            "--heads",
+            "origin",
+            &format!("refs/heads/{base}"),
+        ])
+        .output()
+        .map_err(|e| format!("git could not run to read the remote `origin`: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "the remote `origin` cannot be read, so whether it has a {base} branch is unknown and the run is not briefed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(!String::from_utf8_lossy(&out.stdout).trim().is_empty())
+}
+
 /// The run's own tree and what every other tree of its checkout holds against `origin/<base>`, or
 /// the refusal naming what could not be read.
 pub fn read_trees(
     worktree: &Path,
     base: &str,
     keys_of: &dyn Fn(&Path) -> Vec<String>,
-) -> Result<(Tree, String, Vec<Held>), String> {
+) -> Result<(Tree, Option<String>, Vec<Held>), String> {
     let listed = git(worktree, &["worktree", "list", "--porcelain"]).ok_or_else(|| {
         format!(
             "{} is not a git checkout this box can read — the run was declared over a tree that is gone or was never one",
@@ -214,25 +266,50 @@ pub fn read_trees(
             )
         })?;
     let base_ref = format!("origin/{base}");
-    let base_sha = git(
+    let local = git(
         worktree,
-        &["rev-parse", "--verify", "--quiet", &format!("{base_ref}^{{commit}}")],
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{base_ref}^{{commit}}"),
+        ],
     )
     .map(|s| s.trim().to_string())
-    .filter(|s| !s.is_empty())
-    .ok_or_else(|| {
-        format!(
-            "{base_ref} is not a ref in this checkout, and the project's base branch is {base} — `git fetch origin {base}` and brief again; the held trees are never read against another branch"
-        )
-    })?;
-    let range = format!("{base_ref}...HEAD");
+    .filter(|s| !s.is_empty());
+    let base_sha = match local {
+        Some(sha) => Some(sha),
+        None => match remote_has_branch(worktree, base)? {
+            true => {
+                return Err(format!(
+                    "{base_ref} is not a ref in this checkout, and the project's base branch is {base} — `git fetch origin {base}` and brief again; the held trees are never read against another branch"
+                ))
+            }
+            false => None,
+        },
+    };
+    // With no base there is nothing landed: committed is everything the tree's HEAD holds.
+    let range = match &base_sha {
+        Some(_) => vec![format!("{base_ref}...HEAD")],
+        None => {
+            let empty = git(worktree, &["hash-object", "-t", "tree", "/dev/null"])
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "git could not name the empty tree, so the held trees cannot be read without a base".to_string())?;
+            vec![empty, "HEAD".to_string()]
+        }
+    };
     let others = trees
         .into_iter()
         .filter(|t| !same_path(&t.path, &target.path))
         .map(|tree| {
             let readable = !tree.prunable && tree.path.is_dir();
             let committed = readable
-                .then(|| git(&tree.path, &["diff", "--name-only", "-z", &range]))
+                .then(|| {
+                    let mut args = vec!["diff", "--name-only", "-z"];
+                    args.extend(range.iter().map(String::as_str));
+                    git(&tree.path, &args)
+                })
                 .flatten()
                 .map(|t| nul_paths(&t, false));
             let uncommitted = readable
@@ -411,7 +488,7 @@ mod tests {
             project_slug: "forge".into(),
             project_id: "d1bb4907".into(),
             base: "dev".into(),
-            base_sha: "1aae01978374e30b3c35f799789b4441a9798a78".into(),
+            base_sha: Some("1aae01978374e30b3c35f799789b4441a9798a78".into()),
             tree: tree("/r/.claude/worktrees/ISS-294", Some("dev-ISS-294")),
             others: vec![
                 Held {
@@ -577,7 +654,7 @@ mod tests {
         let none = |_: &Path| Vec::new();
         let (target, base_sha, others) = read_trees(&root.join("one"), "dev", &none).unwrap();
         assert_eq!(target.branch.as_deref(), Some("dev-one"));
-        assert_eq!(base_sha.len(), 40);
+        assert_eq!(base_sha.map(|s| s.len()), Some(40));
         let two = others
             .iter()
             .find(|h| h.tree.branch.as_deref() == Some("dev-two"))
@@ -595,12 +672,107 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    fn git_in(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    fn bare_remote(root: &Path) -> PathBuf {
+        let remote = root.join("remote.git");
+        std::fs::create_dir_all(&remote).unwrap();
+        git_in(&remote, &["init", "-q", "--bare"]);
+        remote
+    }
+
     #[test]
-    fn a_base_with_no_remote_ref_is_refused_by_name() {
+    fn a_base_the_remote_has_but_this_checkout_never_fetched_is_refused_by_name() {
         let root = scratch_repo();
+        let remote = bare_remote(&root);
+        let repo = root.join("repo");
+        git_in(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        git_in(&repo, &["push", "-q", "origin", "dev:release"]);
+        // the push recorded origin/release; drop it, so this checkout never fetched the branch.
+        git_in(&repo, &["update-ref", "-d", "refs/remotes/origin/release"]);
         let none = |_: &Path| Vec::new();
         let why = read_trees(&root.join("one"), "release", &none).unwrap_err();
         assert!(why.contains("origin/release is not a ref"), "{why}");
+        assert!(why.contains("git fetch origin release"), "{why}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_remote_with_no_base_branch_is_briefed_and_says_so() {
+        let root = scratch_repo();
+        let remote = bare_remote(&root);
+        let repo = root.join("repo");
+        git_in(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        let none = |_: &Path| Vec::new();
+        let (_, base_sha, others) = read_trees(&root.join("one"), "release", &none).unwrap();
+        assert_eq!(base_sha, None);
+        let two = others
+            .iter()
+            .find(|h| h.tree.branch.as_deref() == Some("dev-two"))
+            .expect("the other tree is listed");
+        let committed = two.committed.clone().expect("committed is read");
+        for f in ["base.txt", "landed.txt", "committed.rs"] {
+            assert!(committed.contains(&f.to_string()), "{committed:?}");
+        }
+        assert_eq!(two.uncommitted, Some(vec!["open file.rs".to_string()]));
+        let text = compose(&Facts {
+            run_id: "r".into(),
+            issues: vec![],
+            project_slug: "p".into(),
+            project_id: "i".into(),
+            base: "release".into(),
+            base_sha,
+            tree: tree("/r/one", Some("dev-one")),
+            others,
+        });
+        assert!(
+            text.contains("the remote has no release branch yet, so this run's landing creates it"),
+            "{text}"
+        );
+        assert!(
+            text.contains("without a base — committed is every file"),
+            "{text}"
+        );
+        assert!(!text.contains("read against origin/release"), "{text}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_remote_that_cannot_be_read_is_refused_never_taken_for_empty() {
+        let root = scratch_repo();
+        let repo = root.join("repo");
+        let gone = root.join("no-such-remote.git");
+        git_in(&repo, &["remote", "add", "origin", gone.to_str().unwrap()]);
+        let none = |_: &Path| Vec::new();
+        let why = read_trees(&root.join("one"), "release", &none).unwrap_err();
+        assert!(why.contains("the remote `origin` cannot be read"), "{why}");
+        assert!(why.contains("not briefed"), "{why}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

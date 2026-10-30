@@ -109,8 +109,10 @@ run, declared over work that has landed, writes no code: it neither holds a scop
 2. \`forge-runner run brief <run id>\` prints that run's brief: its issues with their uuids, the
    project, the base branch read from the project, its tree, branch and head, what every other
    tree holds against \`origin/<baseBranch>\`, and the method. A run the box never declared, one
-   already ended, or a checkout with no \`origin/<baseBranch>\` ref is refused by name. The
-   project's standing rules are added below it. Where the forge plugin's brief gate also runs in
+   already ended, a base the remote has but the checkout never fetched, and a remote the box cannot
+   read are refused by name. A remote that holds no base branch yet (a new repo's first run) is
+   briefed: the brief says the run's landing creates the branch, and reads every other tree
+   without a base, committed meaning every file in that tree's HEAD commits. The project's standing rules are added below it. Where the forge plugin's brief gate also runs in
    the pane, it refuses any prompt its own brief verb did not print, so the prompt is that verb's
    output for the same issues and tree, whole and unchanged: the run is bound by the declaration
    and the tool call, never by the prompt's words.
