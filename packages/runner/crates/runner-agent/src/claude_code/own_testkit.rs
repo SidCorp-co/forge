@@ -73,7 +73,8 @@ pub async fn run(b: &OwnBox, script: &str) -> Result<std::process::Output, Strin
         egress_allow: vec![],
     };
     let args = vec!["-c".to_string(), script.to_string()];
-    let (mut cmd, egress) = SessionCommand {
+    // the egress bridge stands until the session has ended: dropped at the end of this scope
+    let (mut cmd, _egress) = SessionCommand {
         spec: &spec,
         program: std::ffi::OsStr::new("/bin/sh"),
         args: &args,
@@ -86,11 +87,8 @@ pub async fn run(b: &OwnBox, script: &str) -> Result<std::process::Output, Strin
     .build(Some(view))
     .await
     .map_err(|e| e.to_string())?;
-    let out = cmd
-        .stdin(std::process::Stdio::null())
+    cmd.stdin(std::process::Stdio::null())
         .output()
         .await
-        .map_err(|e| e.to_string());
-    drop(egress);
-    out
+        .map_err(|e| e.to_string())
 }
