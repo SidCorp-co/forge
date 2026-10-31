@@ -321,7 +321,7 @@ describe('the same root on a requirement, and an issue as before (boundary)', ()
     expect(await openAbout(issue.key)).toHaveLength(1);
     const text = await nudge();
     expect(text).toContain(
-      `on an issue (${issue.key}), \`forge-runner api issues/<id>/events -X POST\` with \`kind: decision\``,
+      `on an issue (${issue.key}), \`forge-runner api issues/<id>/events -X POST\` with the body \`{"kind":"decision","contract":1,`,
     );
     ok(
       await say('owner', 'POST', `/api/issues/${issue.id}/events`, {
