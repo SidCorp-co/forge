@@ -13,11 +13,14 @@ import { agrees, counted } from '../lib/plural.js';
 import { CLAIM_MIN_RUNNER, type RunnerHold, type RunnerHoldReason } from '../runners/index.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
 import type { ReleaseDeclaration } from './gate.js';
+import { gateCheckLead } from './gate-check-sentence.js';
 import type { ReleaseChannel } from './plan.js';
 import type { ServingReading } from './serving-reading.js';
+import { atUtcMinute } from './utc-minute.js';
 
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
 export type { ReleaseBlockerCode };
+export { atUtcMinute };
 
 type ReleaseWarningCode =
   | 'RELEASE_RUNNER_PREFERENCE_UNMET'
@@ -109,6 +112,14 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     '{named} {have} a merged mark written only after release {versions} was cut, which may already hold {their} landing, so a new release could find nothing of {them} new. The agent checks with git which release holds each landing and records it (`POST /api/projects/:id/shipped-in-records` with `issueId`, `version` and `evidence`, `version: null` where none does), then cut again.',
   RELEASE_CLEANUP_PENDING:
     "{named} {are} rated high impact, and this project delivers fast (REQ-79): a change rated high reaches production only once a green cleanup run covers it, while every lower-rated change goes now. Cut the release without {them}, or have the cleanup run (the project's `cleanup` schedule, or `POST /api/projects/:id/schedules/:scheduleId/run`) report green with `covers` naming {them}: `POST /api/projects/:id/cleanup-reports`.",
+  RELEASE_GATE_CHECK_RED:
+    'Fix the check so it passes on a new commit; the release is cut again once it does.',
+  RELEASE_GATE_CHECK_PENDING:
+    'The release waits for it and is cut on the next attempt once it passes.',
+  RELEASE_GATE_CHECK_SILENT:
+    'Get the check to run on that commit, or have a project admin declare `validation.gate` as `{ "type": "none" }` if the project has no such check.',
+  RELEASE_GATE_CHECK_UNREAD:
+    'Nothing was cut: a check that cannot be read is not a pass. Restore the repository binding or the host, then cut again.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -148,6 +159,10 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_PROMOTION_MISSING: [],
   RELEASE_SHIPPED_IN_OWED: [],
   RELEASE_CLEANUP_PENDING: [],
+  RELEASE_GATE_CHECK_RED: [],
+  RELEASE_GATE_CHECK_PENDING: [],
+  RELEASE_GATE_CHECK_SILENT: [],
+  RELEASE_GATE_CHECK_UNREAD: [],
   RELEASE_CHECK_UNEVALUATED: [],
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
@@ -175,21 +190,6 @@ export interface HeldIssueRef {
 const RUNNERS_TAB = 'Settings → Runners';
 const INTEGRATIONS_TAB = 'Settings → Integrations';
 const CONNECTIONS_DIRECTORY = 'Integrations in the workspace rail';
-
-const MINUTE_MS = 60_000;
-
-/**
- * A hold's time as the sentence around it reads (ISS-279): `16:23 UTC on 2026-10-06`, never the raw
- * ISO stamp the reading carries. It is rounded UP to the minute (ISS-278), so a next try at 16:23:59
- * reads 16:24 and the hold never outlasts the time it shows. A value that is not a time is kept as
- * written rather than read as one.
- */
-export function atUtcMinute(stamp: string): string {
-  const at = new Date(stamp).getTime();
-  if (Number.isNaN(at)) return stamp;
-  const iso = new Date(Math.ceil(at / MINUTE_MS) * MINUTE_MS).toISOString();
-  return `${iso.slice(11, 16)} UTC on ${iso.slice(0, 10)}`;
-}
 
 /**
  * What clears this reading, per reading. Every one of them answers: a reading with no
@@ -289,6 +289,7 @@ export function releaseBlockerSentence(
 
 function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>): string {
   const remedy = fillNamed(REMEDY[code], details);
+  if (code.startsWith('RELEASE_GATE_CHECK_')) return `${gateCheckLead(code, details)} ${remedy}`;
   if (code === 'NO_RUNNER_ONLINE') {
     const holds = (details?.runners as RunnerHold[] | undefined) ?? [];
     return runnersHeldSentence(holds) ?? remedy;

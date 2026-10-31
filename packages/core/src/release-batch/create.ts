@@ -24,6 +24,7 @@ import { admitRoster } from './blockers.js';
 import { label, mergeOrderOf, openChangeRequestsOf } from './change-request-roster.js';
 import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimRoster } from './claim-conflicts.js';
+import { assertDeclaredGate, gateAtProduction } from './declared-gate.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { landedOnTargetOf } from './landed-on-target.js';
 import { carryNaming } from './naming.js';
@@ -246,6 +247,8 @@ export async function createReleaseBatch(
 
   const decl = report.declaration;
   if (decl?.kind !== 'gated') throw blockerRefusal('NO_RELEASE_GATE');
+  // the project's declared validation gate, read at the commit this release would put on production
+  await assertDeclaredGate(projectId, gateAtProduction(decl));
   const { defaultBranch, promotePlanned } = releaseBranches(decl.path);
   const deployPlanned = plan.channels.length > 0;
   const verification = closeVerification(plan.channels);

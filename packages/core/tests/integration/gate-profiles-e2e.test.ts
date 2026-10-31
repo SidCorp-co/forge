@@ -315,6 +315,15 @@ describe('BC-10: the kernel holds under yolo', () => {
     const kernel = await setGates(owner, { profile: 'yolo', overrides: { merged: 'off' } });
     expect(codes(kernel)).toEqual(['GATE_UNKNOWN']);
     expect(JSON.stringify(kernel.body)).toContain('no profile or override relaxes it');
+    // ISS-809: the declared validation gate is a kernel rule too, in every mode
+    for (const mode of ['off', 'advise']) {
+      const declared = await setGates(owner, {
+        profile: 'yolo',
+        overrides: { declared_gate: mode },
+      });
+      expect(codes(declared), mode).toEqual(['GATE_UNKNOWN']);
+      expect(JSON.stringify(declared.body)).toContain('declared_gate');
+    }
     const triage = await setGates(owner, {
       profile: 'yolo',
       overrides: { feedback_triage: 'off' },

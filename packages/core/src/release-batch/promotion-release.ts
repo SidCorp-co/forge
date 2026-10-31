@@ -15,6 +15,7 @@ import { closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
 import { label, type ReleaseMergeStep } from './change-request-roster.js';
 import { releaseProbesOf } from './channel.js';
+import { assertDeclaredGate } from './declared-gate.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
 import { admissibleIssues, closeRecorded, writeLedger } from './recorded.js';
@@ -76,6 +77,10 @@ export async function cutPromotionRelease(
       '/promotion/request',
     );
   }
+  // the promotion carries the request's head to production: the declared gate is read at that head
+  await assertDeclaredGate(projectId, {
+    request: { number: request.number, headSha: request.headSha },
+  });
   const step: ReleaseMergeStep = {
     pullRequestId: request.id,
     host: request.host,

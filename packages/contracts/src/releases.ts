@@ -829,6 +829,14 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_SHIPPED_IN_OWED",
 	/** A roster issue rated high impact that no green cleanup covers yet: it waits for one before production (REQ-79 BC-5). */
 	"RELEASE_CLEANUP_PENDING",
+	/** The project's declared validation gate check is red at the commit the release would put on production (REQ-71 BC-9). */
+	"RELEASE_GATE_CHECK_RED",
+	/** The check is queued or running, or has not yet reported on a young commit: the release waits for it. */
+	"RELEASE_GATE_CHECK_PENDING",
+	/** No run of the check exists past the report window: a person owes the check or the declaration. */
+	"RELEASE_GATE_CHECK_SILENT",
+	/** The host would not say what the check reads: refused, never read as a pass. */
+	"RELEASE_GATE_CHECK_UNREAD",
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 

@@ -5,6 +5,11 @@
  * 105eb7d6 and 307f35d8 through Forge's merge door on 2026-10-27, both deployed by hand). A push the
  * host reports onto that branch is the landing, whichever door merged it, so the push deploys it.
  *
+ * The declared validation gate (`validation.gate`, REQ-71 BC-9, ISS-809) is read at the landed commit
+ * before any environment deploys it, and no profile relaxes it. A check still running is held: the
+ * delivery fails by name and the outbox retries it, so a landing is never skipped for a check that has
+ * not finished. A red, silent or unreadable check is refused by name, and the next landing reads it again.
+ *
  * Production is the release's: its `on-land` is the release sweep's cut (`release-sweep.ts`), and a
  * binding reaching production's box parks for a person (`dispatchCoolifyDeployDirect`).
  */
@@ -12,6 +17,7 @@
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { environmentsOf, readProjectDocument } from '../project-config/index.js';
+import { declaredGateBlocker, readDeclaredGate } from './declared-gate.js';
 import { dispatchCoolifyDeployDirect } from './release-coolify.js';
 
 /** Where a landing on `branch` at `commit` deploys: each binding dispatched, or why one was not. */
@@ -34,11 +40,38 @@ export async function deployLanding(p: {
   const source = held.document.source;
   const landing = source.type === 'git' ? source.git.defaultBranch : null;
   const out: LandingDeploy[] = [];
-  for (const { name, declaration } of environmentsOf(held.document)) {
+  const due = environmentsOf(held.document).filter(({ declaration }) => {
     const d = declaration.deployment;
-    if (declaration.tier === 'production' || !('binding' in d) || d.trigger !== 'on-land') continue;
-    // an environment naming no branch deploys from where work lands
-    if ((declaration.deploysFrom ?? landing) !== p.branch) continue;
+    return (
+      declaration.tier !== 'production' &&
+      'binding' in d &&
+      d.trigger === 'on-land' &&
+      // an environment naming no branch deploys from where work lands
+      (declaration.deploysFrom ?? landing) === p.branch
+    );
+  });
+  if (due.length === 0) return out;
+  // read once, at the landed commit: the gate is the project's, the same for every environment
+  const reading = await readDeclaredGate(p.projectId, { branch: p.branch, commit: p.commit });
+  const gate = declaredGateBlocker(reading);
+  if (gate) {
+    const why = `${gate.code}: ${gate.message}`;
+    // thrown, so the outbox delivers the landing again: a pending check is held, never skipped
+    if (reading.state === 'pending') throw new Error(why);
+    logger.error(
+      { projectId: p.projectId, branch: p.branch, commit: p.commit, code: gate.code },
+      `on-land deploy refused: ${why}`,
+    );
+    return due.map(({ name, declaration }) => ({
+      environment: name,
+      binding: 'binding' in declaration.deployment ? declaration.deployment.binding : '',
+      dispatched: false,
+      why,
+    }));
+  }
+  for (const { name, declaration } of due) {
+    const d = declaration.deployment;
+    if (!('binding' in d)) continue;
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: p.projectId,
       integrationId: d.binding,

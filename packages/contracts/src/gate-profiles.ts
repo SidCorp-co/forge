@@ -393,6 +393,7 @@ export const KERNEL_RULES = [
 	{ id: "review_by_builder", holds: "a recorded review is never the builder's own", codes: ["REVIEW_BY_BUILDER"] },
 	{ id: "verdict_shape", holds: "a verdict names a known criterion and carries no secret", codes: ["VERDICT_CRITERION_UNKNOWN", "VERDICT_SECRET"] },
 	{ id: "requirement_proven", holds: "a requirement reads delivered only where every BC is proven", codes: ["REQUIREMENT_CRITERIA_UNPROVEN", "REQUIREMENT_NO_LIVE_ISSUE"] },
+	{ id: "declared_gate", holds: "no release puts a commit on production while the project's declared validation gate check is red, pending, silent or unread there", codes: ["RELEASE_GATE_CHECK_RED", "RELEASE_GATE_CHECK_PENDING", "RELEASE_GATE_CHECK_SILENT", "RELEASE_GATE_CHECK_UNREAD"] },
 	{ id: "pat_fence", holds: "a fenced token reaches only its own project", codes: ["PAT_PROJECT_OUTSIDE_FENCE", "PAT_ACCOUNT_ROUTE"] },
 ] as const;
 

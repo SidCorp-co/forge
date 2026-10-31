@@ -161,6 +161,26 @@ const WORDS: Readonly<Record<string, Words>> = {
     act: 'issues.releaseHold.act.releaseShippedInOwed',
     actor: 'agent',
   },
+  RELEASE_GATE_CHECK_RED: {
+    cause: 'issues.releaseHold.cause.releaseGateCheckRed',
+    act: 'issues.releaseHold.act.releaseGateCheckRed',
+    actor: 'agent',
+  },
+  RELEASE_GATE_CHECK_PENDING: {
+    cause: 'issues.releaseHold.cause.releaseGateCheckPending',
+    act: 'issues.releaseHold.act.releaseGateCheckPending',
+    actor: 'release',
+  },
+  RELEASE_GATE_CHECK_SILENT: {
+    cause: 'issues.releaseHold.cause.releaseGateCheckSilent',
+    act: 'issues.releaseHold.act.releaseGateCheckSilent',
+    actor: 'person',
+  },
+  RELEASE_GATE_CHECK_UNREAD: {
+    cause: 'issues.releaseHold.cause.releaseGateCheckUnread',
+    act: 'issues.releaseHold.act.releaseGateCheckUnread',
+    actor: 'person',
+  },
   RELEASE_CLEANUP_PENDING: {
     cause: 'issues.releaseHold.cause.releaseCleanupPending',
     act: 'issues.releaseHold.act.releaseCleanupPending',

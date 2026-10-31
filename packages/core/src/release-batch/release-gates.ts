@@ -108,6 +108,19 @@ const plain =
   () =>
     say(key);
 
+const GATE_CHECK = {
+  Red: ['standing.gate.title.checkRed', 'standing.gate.checkRed'],
+  Pending: ['standing.gate.title.checkPending', 'standing.gate.checkPending'],
+  Silent: ['standing.gate.title.checkSilent', 'standing.gate.checkSilent'],
+  Unread: ['standing.gate.title.checkUnread', 'standing.gate.checkUnread'],
+} as const;
+
+/** The declared gate check's reading: the check the project named, whatever state it was found in. */
+const gateCheck = (state: keyof typeof GATE_CHECK): Reading => ({
+  title: GATE_CHECK[state][0],
+  plain: (d) => say(GATE_CHECK[state][1], { check: typeof d?.check === 'string' ? d.check : '?' }),
+});
+
 const versionOf = (d: Details): string => (typeof d?.version === 'string' ? d.version : '?');
 
 const READINGS: Record<ReleaseReasonCode, Reading> = {
@@ -189,6 +202,10 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'standing.gate.title.cleanupPending',
     plain: (d) => withSubject('standing.gate.cleanupPending', d, ['is', 'are']),
   },
+  RELEASE_GATE_CHECK_RED: gateCheck('Red'),
+  RELEASE_GATE_CHECK_PENDING: gateCheck('Pending'),
+  RELEASE_GATE_CHECK_SILENT: gateCheck('Silent'),
+  RELEASE_GATE_CHECK_UNREAD: gateCheck('Unread'),
   RELEASE_PROBES_UNREADABLE: {
     title: 'standing.gate.title.unprovable',
     plain: plain('standing.gate.unprovable'),
@@ -309,6 +326,10 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
   RELEASE_SHIPPED_IN_OWED: { by: 'master', act: onThem('standing.act.recordShippedIn') },
   RELEASE_CLEANUP_PENDING: { by: 'master', act: onThem('standing.act.runCleanup') },
+  RELEASE_GATE_CHECK_RED: { by: 'master', act: act('standing.act.fixGateCheck') },
+  RELEASE_GATE_CHECK_PENDING: { by: 'system', act: act('standing.act.waitGateCheck') },
+  RELEASE_GATE_CHECK_SILENT: { by: 'admin', act: act('standing.act.reviveGateCheck') },
+  RELEASE_GATE_CHECK_UNREAD: { by: 'admin', act: act('standing.act.restoreHostRead') },
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: act('standing.act.declareProbe') },
   RELEASE_POOL_EMPTY: { by: 'admin', act: act('standing.act.pairRunner') },
   NO_RUNNER_ONLINE: { by: 'admin', act: act('standing.act.runnerOnline') },

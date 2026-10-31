@@ -39,6 +39,8 @@ export async function seedProjectDocument(
     promotions?: ProjectDocument['promotions'];
     defaultBranch?: string;
     source?: ProjectDocument['source'];
+    /** The check the project's changes must pass; no fixture here binds a host, so none by default. */
+    gate?: ProjectDocument['validation']['gate'];
     extra?: Partial<ProjectDocument>;
   },
 ): Promise<ProjectDocument> {
@@ -54,7 +56,7 @@ export async function seedProjectDocument(
       git: { repository: 'github.com/acme/test-project', defaultBranch, branches },
     },
     workspace: { isolation: 'worktree', setup: 'pnpm install' },
-    validation: { gate: { type: 'github-check', name: 'ci-passed' } },
+    validation: { gate: opts.gate ?? { type: 'none' } },
     environments: opts.environments,
     promotions,
     rollback: { strategy: 'revert-and-redeploy' },
@@ -73,6 +75,26 @@ export async function seedProjectDocument(
                                            revision = project_config_documents.revision + 1
   `);
   return document;
+}
+
+/** The project document's declared validation gate, set in place and nothing else touched. */
+export async function declareGate(
+  projectId: string,
+  gate: ProjectDocument['validation']['gate'],
+  profile?: 'strict' | 'standard' | 'yolo',
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE project_config_documents
+       SET document = jsonb_set(document, '{validation,gate}', ${JSON.stringify(gate)}::jsonb),
+           revision = revision + 1
+     WHERE project_id = ${projectId}
+  `);
+  if (!profile) return;
+  await db.execute(sql`
+    UPDATE project_config_documents
+       SET document = jsonb_set(document, '{gates}', ${JSON.stringify({ profile })}::jsonb)
+     WHERE project_id = ${projectId}
+  `);
 }
 
 /** Production re-triggered in place where a document declares one, else bound to nothing held. */

@@ -52,7 +52,7 @@ export {
   storeRefreshRefusal,
 } from './projection.js';
 export { describeEmptyProjection, projectionPipeReport } from './projection-health.js';
-export { rollupOf } from './projection-shape.js';
+export { currentHeadRuns, rollupOf, runPassed } from './projection-shape.js';
 export { rateLimitHeadersOf } from './rate-headers.js';
 export { projectReadChangeRequest } from './read-projection.js';
 export {

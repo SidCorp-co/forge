@@ -24,6 +24,8 @@ import {
 import { refuser } from '../lib/refusal.js';
 import { gateOf, readDeployMap } from '../project-config/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
+import { assertDeclaredGate, gateAtProduction } from './declared-gate.js';
+import { resolveReleaseDeclaration } from './gate.js';
 import { readRunMethod } from './method.js';
 import { isOpenReleaseBatchRun } from './queries.js';
 import { refuseRelease } from './refuse.js';
@@ -162,6 +164,10 @@ export async function runCoolifyDeploy(input: {
     }
     // A release run's deploy is one of its production acts, held to the same approval its attempts are.
     await assertApprovalAllowsAttempt(input.pipelineRunId, projectId);
+    // the head moves between a cut and the agent's deploy: the declared gate is read again at the
+    // commit the deploy would put on production (ISS-809)
+    const declared = await resolveReleaseDeclaration(projectId);
+    if (declared?.kind === 'gated') await assertDeclaredGate(projectId, gateAtProduction(declared));
     // ISS-1279 — the release path, and the only caller that takes the deploy lock: a release
     // reaching an environment another is mid-deploy to is refused rather than queued.
     return shape(

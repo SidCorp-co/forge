@@ -26,9 +26,14 @@ import {
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import { declareGate, seedProjectDocument } from '../helpers/release-world.js';
 
-const planted = vi.hoisted(() => ({ compares: 0 }));
+const planted = vi.hoisted(() => ({
+  compares: 0,
+  /** The checks GitLab answers for a request's head, and every head it was asked about. */
+  checks: [] as Array<Record<string, unknown>>,
+  askedAbout: [] as string[],
+}));
 
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/integrations/source-host/resolve.js')>()),
@@ -39,6 +44,10 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
     compare: async () => {
       planted.compares += 1;
       return 'diverged';
+    },
+    readChangeRequestChecks: async ({ headSha }: { headSha: string }) => {
+      planted.askedAbout.push(headSha);
+      return planted.checks.map((c) => ({ ...c, headSha }));
     },
   }),
 }));
@@ -63,6 +72,8 @@ const codeOf = (body: unknown) => {
 async function seed(environment: Record<string, unknown>) {
   await truncateAll();
   planted.compares = 0;
+  planted.checks = [];
+  planted.askedAbout = [];
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
   await addProjectMember(world.projectId, world.ownerId, 'admin');
@@ -225,6 +236,54 @@ describe('BC-9: an external production with one declared promotion is a release 
       sql`SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${world.projectId}`,
     );
     expect(runs[0]?.n).toBe(0);
+  });
+});
+
+/** ISS-809 (REQ-71 BC-9): the declared validation gate is read at the head the promotion carries. */
+describe('a promotion release is cut only where the declared gate check passes at the request head', () => {
+  const pipeline = (conclusion: string | null, status = 'completed') => ({
+    id: '77',
+    name: 'pipeline',
+    app: 'gitlab-ci',
+    status,
+    conclusion,
+    detailsUrl: null,
+    startedAt: '2026-10-30T10:00:00Z',
+    completedAt: status === 'completed' ? '2026-10-30T10:05:00Z' : null,
+  });
+
+  beforeEach(async () => {
+    await declareGate(world.projectId, { type: 'gitlab-pipeline', name: 'pipeline' });
+  });
+
+  it('refuses the cut by name while the pipeline at the request head is red, and opens no run', async () => {
+    const ids = await landedIssues();
+    await promotionRequest(5053, HEAD);
+    planted.checks = [pipeline('failed')];
+
+    const cut = await cutNaming(ids, 5053);
+
+    expect(codeOf(cut.body), JSON.stringify(cut.body)).toBe('RELEASE_GATE_CHECK_RED');
+    expect(JSON.stringify(cut.body)).toContain('`pipeline`');
+    expect(JSON.stringify(cut.body)).toContain(HEAD.slice(0, 12));
+    expect(planted.askedAbout).toEqual([HEAD]);
+    const runs = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${world.projectId}`,
+    );
+    expect(runs[0]?.n).toBe(0);
+  });
+
+  it('holds it while the pipeline runs, and cuts it once the pipeline passes at that head', async () => {
+    const ids = await landedIssues();
+    await promotionRequest(5053, HEAD);
+    planted.checks = [pipeline(null, 'running')];
+
+    const waiting = await cutNaming(ids, 5053);
+    expect(codeOf(waiting.body), JSON.stringify(waiting.body)).toBe('RELEASE_GATE_CHECK_PENDING');
+
+    planted.checks = [pipeline('success')];
+    const cut = await cutNaming(ids, 5053);
+    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
   });
 });
 

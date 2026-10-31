@@ -111,6 +111,29 @@ describe("REQ-76 BC-3: one gate is overridden on its own", () => {
 	});
 });
 
+describe("ISS-809: the project's declared validation gate is a kernel rule, relaxed by no profile", () => {
+	it("is listed with the codes it refuses by, and is no policy gate with a mode", () => {
+		const rule = KERNEL_RULES.find((k) => k.id === "declared_gate");
+		expect(rule?.codes).toEqual([
+			"RELEASE_GATE_CHECK_RED",
+			"RELEASE_GATE_CHECK_PENDING",
+			"RELEASE_GATE_CHECK_SILENT",
+			"RELEASE_GATE_CHECK_UNREAD",
+		]);
+		expect(GATE_IDS as readonly string[]).not.toContain("declared_gate");
+		for (const profile of ["strict", "standard", "yolo"] as const) {
+			expect(projectGates({ gates: { profile } }, null).map((g) => g.id)).not.toContain("declared_gate");
+		}
+	});
+
+	it("refuses an override naming it, in every mode", () => {
+		for (const mode of ["enforce", "advise", "off"]) {
+			const parsed = gatesConfigSchema.safeParse({ profile: "yolo", overrides: { declared_gate: mode } });
+			expect(parsed.success, mode).toBe(false);
+		}
+	});
+});
+
 describe("REQ-76 BC-11: a refusal names the gate, the profile and the key", () => {
 	it("says which gate, by what, and the override that relaxes it", () => {
 		expect(gateSays(projectGate({ gates: { profile: "strict" } }, null, "scope_hold"))).toBe(

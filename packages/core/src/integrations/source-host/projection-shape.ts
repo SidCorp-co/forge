@@ -64,7 +64,14 @@ function pruneChecks(checks: ProjectedChecks, currentHeadSha: string): Projected
   return out;
 }
 
-function currentHeadRuns(checks: ProjectedChecks, currentHeadSha: string): ProjectedCheckRun[] {
+/**
+ * The latest run of each check on `currentHeadSha`: a re-run replaces the run it re-ran, per app and
+ * name, and a run on another commit is not this commit's.
+ */
+export function currentHeadRuns(
+  checks: ProjectedChecks,
+  currentHeadSha: string,
+): ProjectedCheckRun[] {
   const latest = new Map<string, ProjectedCheckRun>();
   for (const run of Object.values(checks)) {
     if (run.headSha !== currentHeadSha) continue;
@@ -100,6 +107,11 @@ export interface CheckRollup {
 
 const SUCCESS_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
 
+/** Whether a finished run counts as a pass; the one rule the rollup and the declared gate share. */
+export function runPassed(run: Pick<ProjectedCheckRun, 'status' | 'conclusion'>): boolean {
+  return run.status === 'completed' && SUCCESS_CONCLUSIONS.has(run.conclusion ?? '');
+}
+
 /** What the current head's checks say, counted from {@link currentHeadRuns}. */
 export function rollupOf(checks: ProjectedChecks, currentHeadSha: string): CheckRollup {
   const runs = currentHeadRuns(checks, currentHeadSha);
@@ -108,7 +120,7 @@ export function rollupOf(checks: ProjectedChecks, currentHeadSha: string): Check
   let pending = 0;
   for (const run of runs) {
     if (run.status !== 'completed') pending += 1;
-    else if (SUCCESS_CONCLUSIONS.has(run.conclusion ?? '')) success += 1;
+    else if (runPassed(run)) success += 1;
     else failure += 1;
   }
   return { total: runs.length, success, failure, pending };

@@ -49,7 +49,10 @@ environment), landing is reaching production, so the hold is on the landing. The
 \`impact\` rates it high, \`MERGE_CLEANUP_PENDING\` when the project's latest cleanup report on the base
 branch is red, when no report on that branch follows the last change rated high that landed, or when
 an open debt is rated high (the report's own \`debts\` included), naming that debt. A green latest
-report with only medium or low debt open lets it land. The refusal names the cleanup window, its
+report with only medium or low debt open lets it land. **The bootstrap pass is no hole:** a project with
+no cleanup report and no earlier change rated high that landed passes the landing gate, because
+nothing unclean is owed yet; that landing is the one the first green cleanup report must \`cover\`
+before it reaches production. The refusal names the cleanup window, its
 schedule and next run, and records nothing; land after a green cleanup report on the base. The mark of such a change owes a passing merge
 check at its commit (\`MERGE_CHECK_MISSING\`), whatever the gate profile asks. Low, medium and unrated
 changes land as before, and the release sweep holds nothing for the cleanup there. Where a person

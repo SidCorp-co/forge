@@ -274,6 +274,8 @@ export const NO_ACTOR_HOLD: ReleaseHold = {
 const SELF_CLEARING: Readonly<Record<string, string>> = {
   BATCH_IN_FLIGHT: 'the release already in flight to finish',
   CLAIM_CONFLICT: 'the next sweep, after the claim another writer took is settled',
+  RELEASE_GATE_CHECK_PENDING:
+    "the project's declared gate check to finish; the next sweep reads it again",
 };
 
 /**
