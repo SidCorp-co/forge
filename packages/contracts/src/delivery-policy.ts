@@ -1,5 +1,5 @@
 // one declaration of what a project's release asks of an issue (owner ruling on dev, 2026-10-04):
-// `verdictsRequired: false` lets code ship and QA record its verdicts afterwards. The project
+// `verdictsRequired: true` holds a release on its verdicts; absent, code ships and they are recorded afterwards. The project
 // document and the release hold (`issues/criteria-verdicts.ts:unearnedCriteriaReports`) read it here;
 // `awaiting_release` asks no verdict at all (REQ-45 BC-2).
 //
@@ -17,7 +17,8 @@
 
 import { z } from "zod";
 
-const VERDICTS_REQUIRED_DEFAULT = true;
+// off by default (REQ-79 r6): a criterion's verdict is cleanup work, never what holds a release
+const VERDICTS_REQUIRED_DEFAULT = false;
 
 // the project document's environment-name grammar (core `project-config/schema.ts:slug`)
 const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]{0,62}$/u;

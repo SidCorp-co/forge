@@ -11,6 +11,7 @@ import { clearReleaseHolds } from '../../src/release-batch/hold.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import {
   fakeCoolify,
   landOnProduction,
@@ -45,6 +46,8 @@ beforeEach(async () => {
   coolify.applications.clear();
   ownerId = (await createTestUser()).id;
   projectId = (await createTestProject(ownerId)).id;
+  // REQ-79 r6: release_criteria is strict's now; this test asks for it
+  await declareControls(projectId, ownerId, { delivery: { verdictsRequired: true } });
   await seedProductionDeployTrigger(projectId, ownerId);
   await fx.seedReleaseRunner();
 });

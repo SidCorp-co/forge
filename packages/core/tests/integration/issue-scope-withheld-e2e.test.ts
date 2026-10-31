@@ -86,13 +86,16 @@ async function call(
 const details = (res: Res): string =>
   (res.body?.error?.refusals ?? []).map((r: Doc) => r.detail).join(' | ');
 
-async function setGates(profile: string): Promise<void> {
+// REQ-79 r6: scope_hold and patterns are strict's now; standard here asks for them as overrides
+const HELD = { scope_hold: 'enforce', patterns: 'enforce' };
+
+async function setGates(profile: string, overrides: Record<string, string> = {}): Promise<void> {
   const read = await call(owner, 'GET', `/api/projects/${projectId}/gates`);
   expect(read.status, JSON.stringify(read.body)).toBe(200);
   const put = await call(owner, 'PUT', `/api/projects/${projectId}/gates`, {
     baseRevision: read.body.revision,
     profile,
-    overrides: {},
+    overrides,
     reason: `planted: ${profile} for the scope-withheld test`,
   });
   expect(put.status, JSON.stringify(put.body)).toBe(200);
@@ -169,7 +172,7 @@ async function admittedKeys(): Promise<string[]> {
 
 describe('an issue another live run holds the scope of', () => {
   it('criterion 1, criterion 2: reads withheld ISSUE_SCOPE_HELD naming the holder and its run, and nothing once it ends', async () => {
-    await setGates('standard');
+    await setGates('standard', HELD);
     const holder = await issue(true);
     const held = await issue(true);
     const run = await opened(holder.key);
@@ -199,7 +202,7 @@ describe('an issue another live run holds the scope of', () => {
   });
 
   it('criterion 1: a row with no design declares no scope and reads withheld by nothing', async () => {
-    await setGates('standard');
+    await setGates('standard', HELD);
     const holder = await issue(true);
     const bare = await issue(false);
     const run = await opened(holder.key);
@@ -211,8 +214,8 @@ describe('an issue another live run holds the scope of', () => {
 });
 
 describe('a gate the profile turns off withholds nothing on the standing or the list (REQ-76)', () => {
-  it('criterion 3: reads the scope hold and a pending pattern withheld under standard, and neither under yolo', async () => {
-    await setGates('standard');
+  it('criterion 3: reads the scope hold and a pending pattern withheld under standard with both enforced, and neither under yolo', async () => {
+    await setGates('standard', HELD);
     const holder = await issue(true);
     const held = await issue(true);
     const pending = await issue(false);
@@ -236,6 +239,6 @@ describe('a gate the profile turns off withholds nothing on the standing or the 
       expect((await listRowOf(i)).withheld, `${i.key} list row under yolo`).toBeNull();
     }
     await close(run.sessionId);
-    await setGates('standard');
+    await setGates('standard', HELD);
   });
 });

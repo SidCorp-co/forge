@@ -1,0 +1,1 @@
+**Agents act first by default:** under `standard`, or no profile, a builder verdict, design record, pattern review, scope hold and release criteria hold only where a project asks (`strict` or an override); the master works direct.

@@ -31,6 +31,7 @@ import {
   projectBuiltFrom,
   statusOf,
 } from '../helpers/pattern-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 /** What the stand-in host answers for `<ref>:<path>`; anything unset is missing at that ref. */
 const host = vi.hoisted(() => ({
@@ -72,6 +73,8 @@ beforeAll(async () => {
   const author = await createTestUser({ kind: 'agent' });
   reviewerId = reviewer.id;
   forge = await projectBuiltFrom(reviewer.id, THIS_REPOSITORY);
+  // REQ-79 r6: patterns is strict's now; this test asks for it
+  await declareControls(forge, reviewer.id, { gates: { overrides: { patterns: 'enforce' } } });
   await addProjectMember(forge, reviewer.id, 'admin');
   await addProjectMember(forge, author.id, 'member');
   tokens.reviewer = await userToken(reviewer.id);

@@ -25,6 +25,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 /** The commit production serves, holding SHIPPED and not ELSEWHERE. */
 const LIVE = '9999999999999999999999999999999999999999';
@@ -43,6 +44,8 @@ beforeEach(async () => {
   projectId = (
     await createTestProject(ownerId, { policy: { ...DEFAULT_POLICY, qa: 'independent' } })
   ).id;
+  // REQ-79 r6: a standard master works direct and judges itself; the independent judge is strict's
+  await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
   token = await userToken(ownerId);
   // a runner is bound, so a wait on the master reads as the master's (FB-77)
   await bindTestRunner(projectId, await createTestDevice(ownerId));

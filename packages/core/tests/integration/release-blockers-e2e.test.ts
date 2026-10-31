@@ -28,6 +28,7 @@ import {
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import {
   type DeclaredProbes,
   seedProduction,
@@ -71,6 +72,8 @@ async function seed(
     deploysFrom: 'production',
     probes: over.probes ?? 'source',
   });
+  // REQ-79 r6: release_criteria is strict's now; this test asks for it
+  await declareControls(project.id, user.id, { delivery: { verdictsRequired: true } });
   return { projectId: project.id, userId: user.id, token: await userToken(user.id) };
 }
 

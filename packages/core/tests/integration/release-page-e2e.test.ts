@@ -27,6 +27,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { BUILD, CLIP_BYTES, MERGED, releasePageWorld } from '../helpers/release-page-world.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
 
@@ -205,6 +206,8 @@ describe('a release page claims a criterion only with a pass verdict on the buil
 describe('the page reads off the release record', () => {
   it('heads with version, date, where it runs, commit and who approved it, asked only where the setting asks', async () => {
     const w = await releaseWorldOfFour();
+    // REQ-79 r6: a release held on its criteria is what a project asks for; this one asks
+    await declareControls(projectId, ownerId, { delivery: { verdictsRequired: true } });
     const before = await page('member');
     expect(before.header.approval).toEqual({
       required: false,

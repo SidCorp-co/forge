@@ -49,7 +49,8 @@ let ownerId: string;
 let token: string;
 
 beforeEach(async () => {
-  await seedLandedWorld();
+  // REQ-79 r6: release_criteria is strict's now; this world asks for it
+  await seedLandedWorld({ verdictsRequired: true });
   ({ projectId, ownerId, token } = world);
 });
 

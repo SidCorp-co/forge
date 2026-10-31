@@ -31,6 +31,7 @@ import {
   statusOf,
   world,
 } from '../helpers/landed-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProduction } from '../helpers/release-world.js';
 
 // hoisted, so the planted host below reads them: `vi.mock` runs before the module body
@@ -103,6 +104,10 @@ let qaId = '';
 beforeEach(async () => {
   // adminhub-api's own policy: verdicts are required, judged on stg
   await seedLandedWorld({ verdictsRequired: true, approvalRequired: true });
+  // REQ-79 r6: builder_verdict is strict's now; this test asks for it
+  await declareControls(world.projectId, world.ownerId, {
+    gates: { overrides: { builder_verdict: 'enforce' } },
+  });
   qaId = (await createTestUser({ verified: true })).id;
 });
 

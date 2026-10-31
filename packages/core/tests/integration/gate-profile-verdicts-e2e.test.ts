@@ -82,13 +82,16 @@ const onProject = (method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown)
   api(token, method, `/api/projects/${projectId}${path}`, body);
 
 /** The project's gate profile, through the gates door with a reason, as a person sets it. */
-async function profile(name: 'standard' | 'yolo'): Promise<void> {
+async function profile(
+  name: 'standard' | 'yolo',
+  overrides: Record<string, string> = {},
+): Promise<void> {
   const read = await ok(onProject('GET', '/gates'));
   await ok(
     onProject('PUT', '/gates', {
       baseRevision: read.revision,
       profile: name,
-      overrides: {},
+      overrides,
       reason: `planted: ${name} for the verdict and approval test`,
     }),
   );
@@ -192,8 +195,19 @@ async function bc2(req: string): Promise<{ verdict: string; notCounted: string |
 }
 
 describe("REQ-76 BC-7: the builder's own verdict", () => {
-  it('standard with qa independent keeps it uncounted, named VERDICT_BY_BUILDER', async () => {
+  // REQ-79 r6: builder_verdict is strict's now; standard counts it unless the project enforces it
+  it('standard counts it: the write names nothing uncounted and the BC reads passing', async () => {
     await profile('standard');
+    const req = await agreedRequirement();
+    const issue = await issueTracing(req);
+    await buildingRun(issue.key);
+    const res = await builderPass(issue.id);
+    expect(res.notCounted).toBeNull();
+    expect(await bc2(req)).toEqual({ verdict: 'passing', notCounted: null });
+  });
+
+  it('standard with builder_verdict enforced keeps it uncounted, named VERDICT_BY_BUILDER', async () => {
+    await profile('standard', { builder_verdict: 'enforce' });
     const req = await agreedRequirement();
     const issue = await issueTracing(req);
     await buildingRun(issue.key);

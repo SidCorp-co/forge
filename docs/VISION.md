@@ -58,7 +58,14 @@ Forge changes the unit economics — from **more projects → more handoffs → 
 projects → more agents → humans concentrated on judgment**. The organization does not become
 humanless; it becomes **less bottlenecked by human execution and coordination**.
 
-> **Agents execute. Humans decide. Forge makes sure the right one is involved at the right time.**
+> **Agents decide and execute, on the record. Humans set policy, and step in where a project asks
+> for control and the agent judges the decision serious.**
+
+An agent decides what it can and records each decision — what it chose, the options, why, and the
+evidence — on the item that decision shapes: the requirement, the workflow, the design or the issue.
+Human control is a setting a project chooses (`strict`), not the default; and even under it, the
+agent itself judges which decisions are serious enough for a person — irreversible, real money,
+credentials, product direction — and decides the rest (owner ruling, 2026-10-31).
 
 Every product decision should strengthen the ability to operate more software with less unnecessary
 human work, while preserving correctness, accountability, and trust.
@@ -122,9 +129,9 @@ highest leverage.**
 
 | Participant | Owns |
 |---|---|
-| **Agents** | work that can be safely delegated |
+| **Agents** | deciding and doing the work, and recording every decision where it shapes the product |
 | **Developers / architects** | technical judgment, architecture, risk, complex debugging, constraints, decisions where wrong automation is costly |
-| **Business / product** | intent, requirements, business logic, prioritization, acceptance |
+| **Business / product** | intent and policy: what is wanted, and how much control the project keeps |
 
 ---
 
@@ -162,16 +169,18 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
    storage. Its provenance, correctness, relevance and lifecycle are core system concerns.
 9. **requirement-leads-delivery** — the Product (requirements, workflows, feedback, releases) says
    what is expected, and it is made right first; Delivery conforms to it. Where what was built and what is expected
-   disagree, the requirement or the workflow is corrected before more is built, never left to drift
-   behind the code. Work is delivered when a criterion it names holds on the running build, not when
-   it ships. Old code is cleaned as the work meets it, inside that work, not in a separate sweep.
+   disagree, the requirement or the workflow is corrected and recorded, never left to drift behind
+   the code. Work is delivered when a criterion it names holds on the running build, not when it
+   ships; proving it, and cleaning what it left, may follow the landing in the cleanup window
+   (REQ-79) rather than hold it.
 
 ### Who acts
 
 10. **agents-and-humans-share-the-lifecycle** — not separate workflows. The system decides who acts
     next by capability, context and authority.
-11. **route-judgment-not-bottlenecks** — not approval everywhere, not involvement nowhere: **the
-    right human, at the right decision, with the right context, at the right time.**
+11. **route-judgment-not-bottlenecks** — not approval everywhere, not involvement nowhere: the
+    agent decides and records, and **a person is brought in only for a decision serious enough to
+    need one, on a project that asked for control.**
 12. **measured-together-never-apart** — a single operating number is a number that can be gamed.
     Driving interventions toward zero by no longer surfacing what needs one is `state-never-lies`
     wearing an improving metric. No number is read alone.
@@ -216,7 +225,7 @@ not taken, and a document that prices everything except itself has taken one unp
 | One instance, one tenant | you install, upgrade, back up and monitor it, once per team. No shared plane absorbs an outage on your behalf, and nobody else's upgrade fixes your instance |
 | `issue-is-the-currency` | work that would have been a message becomes an issue with a state and an audit trail. On the day you only wanted a quick fix, that discipline is friction — and it is the product, not an accident of it |
 | `kernel-hard-policy-soft` | the policy is yours to write. Pipelines, skills, gates and routing are configuration, so a project nobody has configured runs a default that fits nobody exactly. The kernel will not guess on your behalf |
-| `state-never-lies` | evidence takes time, and a step that cannot show any is stopped rather than waved through. You will watch work park where a more agreeable system would have reported success |
-| `route-judgment-not-bottlenecks` | someone still has to answer. The loop halts at a routed decision, and a question nobody picks up is work that does not continue — fewer bottlenecks, not none |
+| `state-never-lies` | evidence takes time. A change that builds and passes its own tests ships, and what it still owes is recorded as debt and proven in the cleanup window — never reported as done before it is |
+| `route-judgment-not-bottlenecks` | agents will decide things you would have decided differently. Every decision is recorded where it shapes the product, so it can be read and reversed; a project that wants a person on more of them sets `strict` and pays in waiting |
 | `trust-gates-capability` | capability whose value is obvious to you waits behind kernel work you did not ask for. Reach is earned rather than scheduled, which means asking for it does not move it |
 | Apache-2.0 core | nobody is contractually on the hook for it. No warranty, no support you have not arranged, and a fork you diverge is a fork you maintain — the licence that makes it yours to run is the licence that makes it yours to carry |

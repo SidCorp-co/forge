@@ -35,6 +35,7 @@ import {
   type Res,
   statusOf,
 } from '../helpers/pattern-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 interface World {
   id: string;
@@ -64,6 +65,10 @@ beforeAll(async () => {
   const repositories = { forge: THIS_REPOSITORY, other: 'github.com/acme/shop', nodoc: null };
   for (const name of ['forge', 'other', 'nodoc'] as const) {
     const id = await projectBuiltFrom(admin.id, repositories[name]);
+    // REQ-79 r6: patterns is strict's now; this test asks for it
+    if (repositories[name]) {
+      await declareControls(id, admin.id, { gates: { overrides: { patterns: 'enforce' } } });
+    }
     await createTestModule(id, 'issues');
     await addProjectMember(id, admin.id, 'admin');
     await addProjectMember(id, author.id, 'member');

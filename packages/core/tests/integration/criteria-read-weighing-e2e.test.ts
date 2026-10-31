@@ -321,7 +321,20 @@ describe('an unreleased issue: the criteria read weighs on the environment it is
 });
 
 describe('where no basis can be computed, every criterion says why', () => {
-  it('names the unread release path on each criterion of a project with no document', async () => {
+  it('names the unread release path on each criterion of a project whose production no promotion reaches', async () => {
+    // REQ-79 r6: release_criteria is strict's now; this test asks for it. A project with no document
+    // reads its gate off, so the unread path is a document naming production and no way to it.
+    await seedProjectDocument(projectId, ownerId, {
+      defaultBranch: 'main',
+      environments: {
+        production: {
+          tier: 'production',
+          deploysFrom: 'production',
+          deployment: { mode: 'external' },
+        },
+      },
+      extra: { delivery: { verdictsRequired: true } },
+    });
     const id = await landedIssue('main', [
       ['runtime', LANDING],
       ['commit', LANDING],

@@ -64,6 +64,25 @@ describe("REQ-76 BC-2: no gates declared reads as today's gates", () => {
 	});
 });
 
+// REQ-79 r6 (owner ruling 2026-10-31): a project that never chose a profile lets its agents act
+// first; a builder verdict, a design record, a pattern review, a scope hold and release criteria are
+// the human control `strict` asks for. ISS-78 on adminhub-api (standard) voided 237 verdicts on these.
+describe("REQ-79 r6: standard acts first, and strict holds", () => {
+	const HELD_BY_STRICT = ["builder_verdict", "design_record", "patterns", "scope_hold", "release_criteria"] as const;
+
+	it("asks none of them of a project with no gates, or under standard", () => {
+		for (const id of HELD_BY_STRICT) {
+			expect(modeOf(null, id), id).toBe("off");
+			expect(modeOf({ gates: { profile: "standard" } }, id), id).toBe("off");
+		}
+	});
+
+	it("enforces every one under strict, and release criteria where a project still asks for them", () => {
+		for (const id of HELD_BY_STRICT) expect(modeOf({ gates: { profile: "strict" } }, id), id).toBe("enforce");
+		expect(modeOf({ delivery: { verdictsRequired: true } }, "release_criteria")).toBe("enforce");
+	});
+});
+
 describe("REQ-76 profiles", () => {
 	it("strict enforces every gate that has no switch of its own to read", () => {
 		const doc = { gates: { profile: "strict" as const } };

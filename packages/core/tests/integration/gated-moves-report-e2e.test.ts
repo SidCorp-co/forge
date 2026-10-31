@@ -55,6 +55,10 @@ beforeAll(async () => {
       type: 'git',
       git: { repository: THIS_REPOSITORY, defaultBranch: 'main', branches: ['main'] },
     },
+    // REQ-79 r6: design_record and patterns are strict's now; this test asks for them
+    extra: {
+      gates: { profile: 'standard', overrides: { design_record: 'enforce', patterns: 'enforce' } },
+    },
   });
   await createTestModule(forge, 'issues');
   ({ id: ready } = await createTestProject(admin.id));

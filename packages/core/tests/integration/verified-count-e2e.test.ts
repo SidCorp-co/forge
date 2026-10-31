@@ -29,6 +29,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 const NEW = '2222222222222222222222222222222222222222';
 const LIVE = '9999999999999999999999999999999999999999';
@@ -42,12 +43,17 @@ let token: string;
 let box: string;
 let unplant: (() => void) | null = null;
 
+// REQ-79 r6: builder_verdict is strict's now; this test asks for it
+const enforceBuilderVerdict = () =>
+  declareControls(projectId, ownerId, { gates: { overrides: { builder_verdict: 'enforce' } } });
+
 beforeEach(async () => {
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (
     await createTestProject(ownerId, { policy: { ...DEFAULT_POLICY, qa: 'independent' } })
   ).id;
+  await enforceBuilderVerdict();
   token = await userToken(ownerId);
   box = await createTestDevice(ownerId);
   unplant = plantLiveBuild(LIVE, { [NEW]: true });
@@ -295,6 +301,7 @@ describe("the builder's own pass is not verified", () => {
 
   it('under self QA the same builder pass recorded after the cutover does not count either (REQ-74 BC-2)', async () => {
     projectId = (await createTestProject(ownerId)).id;
+    await enforceBuilderVerdict();
     const req = await agreedRequirement();
     const issue = await closedIssueTracing(req, 1, ['BC-1']);
     await checked(issue, await runOn(box));
@@ -305,6 +312,7 @@ describe("the builder's own pass is not verified", () => {
 
   it('under self QA the same builder pass recorded before the cutover still counts (BUILDER_PASS_CUTOVER)', async () => {
     projectId = (await createTestProject(ownerId)).id;
+    await enforceBuilderVerdict();
     const req = await agreedRequirement();
     const issue = await closedIssueTracing(req, 1, ['BC-1']);
     await checked(issue, await runOn(box));

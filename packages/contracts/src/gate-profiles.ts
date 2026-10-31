@@ -7,7 +7,9 @@
 // 1. `gates.overrides.<gate>` where the project set one (BC-3);
 // 2. the profile's default; under `standard` a gate that already had its own switch reads that
 //    switch (`approvals.admit`, `plan.approval.required`, `validation.mergeCheck`, `policy.qa`, ...),
-//    so a project with no `gates` behaves exactly as before (BC-2).
+//    so a project with no `gates` keeps every switch it set (BC-2). `standard` otherwise acts first
+//    (REQ-79 r6, owner ruling 2026-10-31): a builder verdict, a design record, a pattern review and a
+//    scope hold are `strict`'s, the human control a project asks for, and never hold an agent by default.
 // A profile Forge raised after an incident (BC-13) is an ordinary profile with `raised` beside it;
 // only a person lowers it again.
 //
@@ -118,7 +120,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["DESIGN_RECORD_MISSING", "DESIGN_RECORD_INCOMPLETE", "PLAN_REQUIRED"],
 		at: "issue in_progress → approved, work step design → build",
 		modes: ENFORCE_OFF,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		defaults: { strict: "enforce", standard: "off", yolo: "off" },
 		relaxed: "off: build starts with no design record or plan",
 	},
 	{
@@ -138,7 +140,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["ISSUE_SCOPE_HELD"],
 		at: "issue take, work step build",
 		modes: ENFORCE_OFF,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		defaults: { strict: "enforce", standard: "off", yolo: "off" },
 		relaxed: "off: both runs work the scope; the overlap is theirs to merge",
 	},
 	{
@@ -148,7 +150,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["PATTERN_REVIEW_PENDING", "PATTERN_RETURNED", "PATTERN_ENTRY_MISSING"],
 		at: "issue take; issue in_progress → awaiting_release",
 		modes: ENFORCE_OFF,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		defaults: { strict: "enforce", standard: "off", yolo: "off" },
 		relaxed: "off: a new pattern lands unreviewed",
 	},
 	{
@@ -198,7 +200,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["VERDICT_BY_BUILDER"],
 		at: "criterion verdicts, release and acceptance",
 		modes: ENFORCE_OFF,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		defaults: { strict: "enforce", standard: "off", yolo: "off" },
 		relaxed: "off: the builder's own pass counts",
 	},
 	{

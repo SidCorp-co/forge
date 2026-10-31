@@ -65,7 +65,11 @@ beforeEach(async () => {
       beta: { tier: 'staging', deploysFrom: 'main', deployment: { mode: 'external' } },
     } as never,
     source: { type: 'storefront', storefront: { provider: 'autoflow', binding: randomUUID() } },
-    extra: { workspace: { isolation: 'remote-draft' } } as never,
+    // REQ-79 r6: release_criteria is strict's now; this test asks for it
+    extra: {
+      workspace: { isolation: 'remote-draft' },
+      delivery: { verdictsRequired: true },
+    } as never,
   });
   issueId = (
     await createTestIssue(projectId, ownerId, 1, { status: 'open', createdAt: new Date() })

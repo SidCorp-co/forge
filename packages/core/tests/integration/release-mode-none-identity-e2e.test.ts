@@ -227,7 +227,8 @@ describe('where none is owed', () => {
 
 describe('where verdicts are owed', () => {
   it('reads the same stored runtime identity as runtime, and records the landing', async () => {
-    await seedLandedWorld();
+    // REQ-79 r6: release_criteria is strict's now; this world asks for it
+    await seedLandedWorld({ verdictsRequired: true });
     const issue = await landedIssue(11, F4);
     for (const n of [1, 2, 3]) await storedRuntime(issue, n, F4);
 

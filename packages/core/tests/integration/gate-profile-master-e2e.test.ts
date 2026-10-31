@@ -121,7 +121,7 @@ afterAll(async () => {
 });
 
 /** `project`'s gate profile, through the gates door with a reason, as a person sets it. */
-async function profile(project: string, name: 'standard' | 'yolo'): Promise<void> {
+async function profile(project: string, name: 'standard' | 'yolo' | 'strict'): Promise<void> {
   const read = ok(await say('owner', 'GET', `/api/projects/${project}/gates`));
   ok(
     await say('owner', 'PUT', `/api/projects/${project}/gates`, {
@@ -190,9 +190,9 @@ describe('REQ-76 BC-9: a master for a chat or direct request', () => {
 });
 
 // owner, 2026-10-30: the pass prompt the box types is core's, so which way the master works is read
-// from the project's declarations here: yolo with fast delivery on builds direct, anything else
-// dispatches as before.
-describe('the pass prompt under direct mode (gate profile yolo, fast delivery on)', () => {
+// from the project's declarations here: fast delivery on and any profile but strict builds direct
+// (REQ-79 r6), anything else dispatches as before.
+describe('the pass prompt under direct mode (fast delivery on, a profile short of strict)', () => {
   const nudge = async () => String((await verdict()).work.nudge);
   const fast = async (on: boolean) =>
     db.execute(sql`
@@ -208,17 +208,30 @@ describe('the pass prompt under direct mode (gate profile yolo, fast delivery on
     expect(said).not.toContain('Run the wave by');
   });
 
-  it('dispatches as before once fast delivery is off, and under standard', async () => {
+  // REQ-79 r6: agents act first; standard works direct too, and only strict dispatches
+  it('tells a standard master that delivers fast to work direct as well', async () => {
+    await profile(projectId, 'standard');
+    const said = await nudge();
+    expect(said).toContain("This project's master works direct");
+    expect(said).toContain('Dispatch no runner role');
+    expect(said).not.toContain('Run the wave by');
+  });
+
+  it('dispatches as before once fast delivery is off, and under strict', async () => {
     await profile(projectId, 'yolo');
     await fast(false);
     try {
       expect(await nudge()).toMatch(
         /^Pass\. Run the wave by `forge-runner api guides\/dispatch\.md`/,
       );
+      await profile(projectId, 'standard');
+      expect(await nudge()).toMatch(
+        /^Pass\. Run the wave by `forge-runner api guides\/dispatch\.md`/,
+      );
     } finally {
       await fast(true);
     }
-    await profile(projectId, 'standard');
+    await profile(projectId, 'strict');
     const said = await nudge();
     expect(said).toMatch(/^Pass\. Run the wave by `forge-runner api guides\/dispatch\.md`/);
     expect(said).not.toContain('works direct');

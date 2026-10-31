@@ -38,6 +38,7 @@ import {
   seedIssueStatus,
 } from '../helpers/factories.js';
 import { refusalCodes as codes, projectBuiltFrom, type Res } from '../helpers/pattern-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 let projectId = '';
 /** A project that declares no module label: a design there names none and holds it whole (ISS-609). */
@@ -81,6 +82,8 @@ beforeAll(async () => {
   bareId = await projectBuiltFrom(admin.id, null);
   deviceId = await createTestDevice(admin.id);
   for (const p of [projectId, bareId]) {
+    // REQ-79 r6: scope_hold is strict's now; this test asks for it
+    await declareControls(p, admin.id, { gates: { overrides: { scope_hold: 'enforce' } } });
     await addProjectMember(p, admin.id, 'admin');
     await addProjectMember(p, agent.id, 'member');
     await bindTestRunner(p, deviceId);

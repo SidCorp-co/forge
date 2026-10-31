@@ -35,6 +35,7 @@ import {
   refusalCodes as refused,
   statusOf,
 } from '../helpers/pattern-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 let readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
 
@@ -58,6 +59,10 @@ beforeAll(async () => {
   reviewerId = reviewer.id;
   forge = await projectBuiltFrom(reviewer.id, THIS_REPOSITORY);
   other = await projectBuiltFrom(reviewer.id, 'github.com/acme/shop');
+  // REQ-79 r6: patterns is strict's now; this test asks for it
+  for (const p of [forge, other]) {
+    await declareControls(p, reviewer.id, { gates: { overrides: { patterns: 'enforce' } } });
+  }
   await createTestModule(forge, 'issues');
   for (const p of [forge, other]) {
     await addProjectMember(p, reviewer.id, 'admin');

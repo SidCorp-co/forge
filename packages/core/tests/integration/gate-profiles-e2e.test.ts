@@ -119,7 +119,8 @@ describe('BC-1: the gate catalog', () => {
     expect(body.profiles).toEqual(['strict', 'standard', 'yolo']);
     const scope = body.gates.find((g) => g.id === 'scope_hold');
     expect(scope?.refuses).toContain('a scope another live run holds');
-    expect(scope?.defaults).toEqual({ strict: 'enforce', standard: 'enforce', yolo: 'off' });
+    // REQ-79 r6: agents act first; scope_hold is strict's alone
+    expect(scope?.defaults).toEqual({ strict: 'enforce', standard: 'off', yolo: 'off' });
     expect(body.kernel.map((k) => k.id)).toEqual(
       expect.arrayContaining(['merged', 'close_by_release', 'pat_fence']),
     );
@@ -132,7 +133,7 @@ describe('BC-2: a project that set no profile keeps its gates as they were', () 
     const view = await gatesOf(member);
     expect(view.profile).toBe('standard');
     expect(view.raised).toBeNull();
-    expect(modeOf(view, 'scope_hold')).toMatchObject({ mode: 'enforce', from: 'profile' });
+    expect(modeOf(view, 'scope_hold')).toMatchObject({ mode: 'off', from: 'profile' });
     expect(modeOf(view, 'approval_admit')).toMatchObject({
       mode: 'off',
       from: 'key',

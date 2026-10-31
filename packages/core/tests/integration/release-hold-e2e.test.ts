@@ -24,6 +24,7 @@ import {
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import {
   AT_RELEASE,
   fakeCoolify,
@@ -58,6 +59,8 @@ beforeEach(async () => {
   await truncateAll();
   ownerId = (await createTestUser()).id;
   projectId = (await createTestProject(ownerId)).id;
+  // REQ-79 r6: release_criteria is strict's now; this test asks for it
+  await declareControls(projectId, ownerId, { delivery: { verdictsRequired: true } });
   coolify.applications.clear();
   await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
   await seedProductionDeployTrigger(projectId, ownerId, 'on-land');

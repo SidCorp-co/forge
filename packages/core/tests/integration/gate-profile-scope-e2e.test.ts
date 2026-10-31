@@ -133,13 +133,35 @@ const close = (sessionId: string) =>
   call(box, 'POST', `/api/devices/me/run-sessions/${sessionId}/close`, { outcome: 'ended' });
 
 describe('REQ-76 BC-6: a held scope under each profile', () => {
-  it('standard refuses the second run ISSUE_SCOPE_HELD', async () => {
-    await setGates('standard');
+  // REQ-79 r6: agents act first; scope_hold is strict's, standard takes both runs
+  it('strict refuses the second run ISSUE_SCOPE_HELD', async () => {
+    await setGates('strict');
     const [first, second] = await pair();
     const holder = await opened(first);
     const pre = await preflight(second);
     expect([pre.status, codes(pre)]).toEqual([422, ['ISSUE_SCOPE_HELD']]);
     expect(details(pre)).toContain(`${second} shares the whole project with ${first}`);
+    expect(details(pre)).toContain('gate profile strict');
+    await close(holder);
+  });
+
+  it('standard never refuses the second run: both are taken while the scopes meet', async () => {
+    await setGates('standard');
+    const [first, second] = await pair();
+    const holder = await opened(first);
+    const pre = await preflight(second);
+    expect([pre.status, codes(pre)], details(pre)).toEqual([200, []]);
+    const both = await opened(second);
+    await close(both);
+    await close(holder);
+  });
+
+  it('standard with scope_hold overridden to enforce refuses the second run', async () => {
+    await setGates('standard', { scope_hold: 'enforce' });
+    const [first, second] = await pair();
+    const holder = await opened(first);
+    const pre = await preflight(second);
+    expect([pre.status, codes(pre)]).toEqual([422, ['ISSUE_SCOPE_HELD']]);
     await close(holder);
   });
 

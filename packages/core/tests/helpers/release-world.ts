@@ -71,7 +71,11 @@ export async function seedProjectDocument(
   await db.execute(sql`
     INSERT INTO project_config_documents (project_id, revision, document, updated_by)
     VALUES (${projectId}, 1, ${JSON.stringify(document)}::jsonb, ${updatedBy})
-    ON CONFLICT (project_id) DO UPDATE SET document = EXCLUDED.document,
+    -- a reseed keeps the declared gates and delivery, unless the new document names them
+    ON CONFLICT (project_id) DO UPDATE SET document = jsonb_strip_nulls(jsonb_build_object(
+                                             'gates', project_config_documents.document->'gates',
+                                             'delivery', project_config_documents.document->'delivery'))
+                                           || EXCLUDED.document,
                                            revision = project_config_documents.revision + 1
   `);
   return document;

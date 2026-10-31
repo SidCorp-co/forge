@@ -145,7 +145,7 @@ interface MastersPorts {
   breakdownsHeldBySteward(projectId: string): Promise<string[]>;
   /** The project's gate `master_admitted_only` (REQ-76): off, a master is placed for a waiting request too. */
   masterGate(projectId: string): Promise<ResolvedGate>;
-  /** How the project's master works: `direct` under gate profile yolo with fast delivery on, else `dispatch`. */
+  /** How the project's master works: `direct` with fast delivery on outside `strict`, else `dispatch` (REQ-79 r6). */
   masterMode(projectId: string): Promise<MasterMode>;
   /**
    * The chat or direct requests waiting on a person (REQ-76 BC-9): draft issues a person filed, and

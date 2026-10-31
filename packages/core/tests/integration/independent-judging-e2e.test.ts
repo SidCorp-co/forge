@@ -33,6 +33,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 const NEW = '2222222222222222222222222222222222222222';
 const LIVE = '9999999999999999999999999999999999999999';
@@ -64,6 +65,10 @@ async function world(qa: 'self' | 'independent') {
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId, { policy: { ...DEFAULT_POLICY, qa } })).id;
+  // REQ-79 r6: builder_verdict is strict's now; this test asks for it
+  await declareControls(projectId, ownerId, {
+    gates: { overrides: { builder_verdict: 'enforce' } },
+  });
   token = await userToken(ownerId);
   box = await createTestDevice(ownerId);
 }

@@ -39,6 +39,7 @@ import {
   type Res,
   refusalCodes as refused,
 } from '../helpers/pattern-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 const tokens = { admin: '', author: '', viewer: '' };
@@ -73,8 +74,14 @@ async function gatedProject(ownerId: string, gates: ProjectDocument['gates']): P
   return id;
 }
 
+// REQ-79 r6: design_record is strict's now; this test asks for it
+async function enforceDesignRecord(project: string, ownerId: string): Promise<void> {
+  await declareControls(project, ownerId, { gates: { overrides: { design_record: 'enforce' } } });
+}
+
 async function designedProject(ownerId: string, repository: string): Promise<string> {
   const id = await projectBuiltFrom(ownerId, repository);
+  await enforceDesignRecord(id, ownerId);
   await createTestModule(id, 'issues');
   await createTestModule(id, 'db');
   await db.execute(
@@ -96,6 +103,7 @@ beforeAll(async () => {
   other = await designedProject(admin.id, 'github.com/acme/shop');
   // reads the catalog and holds a plain label, but declares no module label (ISS-609)
   bare = await projectBuiltFrom(admin.id, THIS_REPOSITORY);
+  await enforceDesignRecord(bare, admin.id);
   await db.execute(
     sql`INSERT INTO labels (project_id, name, color, kind) VALUES (${bare}, 'bug', '#888888', 'label')`,
   );
@@ -177,7 +185,7 @@ describe('the move into build without a design (criterion 1)', () => {
       expect(detailOf(res)).toContain('PUT /api/issues/:id/design');
       // named as the status move's refusal names it: the gate, the profile, the key (ISS-830 c2)
       expect(detailOf(res)).toContain(
-        "Gate design_record is enforced by this project's gate profile standard (gates.profile); gates.overrides.design_record relaxes it.",
+        "Gate design_record is enforced by this project's override gates.overrides.design_record; gates.overrides.design_record relaxes it.",
       );
     }
     expect(await stepOf(issue)).toBe('design');
@@ -448,6 +456,7 @@ describe('the module scope of a design (ISS-609)', () => {
 
   it('names the empty scope as a gap once the project declares a module label', async () => {
     const project = await projectBuiltFrom(adminId, THIS_REPOSITORY);
+    await enforceDesignRecord(project, adminId);
     await addProjectMember(project, adminId, 'admin');
     await addProjectMember(project, authorId, 'member');
     const issue = await issueAt(project, 'in_progress');

@@ -14,6 +14,7 @@ import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js
 import { readServingNow } from '../../src/release-batch/serving-reading.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, truncateAll } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import {
   AT_RELEASE,
   declareProductionDocument,
@@ -112,6 +113,8 @@ beforeEach(async () => {
   await truncateAll();
   ownerId = (await createTestUser()).id;
   projectId = (await createTestProject(ownerId)).id;
+  // REQ-79 r6: release_criteria is strict's now; this test asks for it
+  await declareControls(projectId, ownerId, { delivery: { verdictsRequired: true } });
   bindingId = await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] });
   // work lands on the branch production deploys from, so landing IS deploying production and a
   // criterion is earned at what production serves (the sidcorp-mail shape below crosses a promotion)
@@ -321,7 +324,7 @@ describe('a promotion stands between where work lands and what production deploy
       } as never,
       extra: {
         release: { approval: { required: true }, changeRequests: false },
-        ...(judgedOn ? { delivery: { judgedOn } } : {}),
+        ...(judgedOn ? { delivery: { verdictsRequired: true, judgedOn } } : {}),
       } as never,
     });
   }

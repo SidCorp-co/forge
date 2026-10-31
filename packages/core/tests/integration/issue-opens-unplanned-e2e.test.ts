@@ -28,6 +28,7 @@ import {
   seedIssueStatus,
 } from '../helpers/factories.js';
 import { refusalCodes as codes, projectBuiltFrom, type Res } from '../helpers/pattern-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 let adminId = '';
 let owner = '';
@@ -64,6 +65,10 @@ beforeAll(async () => {
     await addProjectMember(projects[key], admin.id, 'admin');
     await addProjectMember(projects[key], agent.id, 'member');
   }
+  // REQ-79 r6: design_record (and its plan) is strict's now; the standard project asks for it
+  await declareControls(projects.standard, admin.id, {
+    gates: { overrides: { design_record: 'enforce' } },
+  });
   owner = await userToken(admin.id);
   author = await userToken(agent.id);
   const read = ok(await call(owner, 'GET', `/api/projects/${projects.yolo}/gates`));
