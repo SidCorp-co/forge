@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.413] - 2026-10-31
+
+A draft's holder takes it straight to in progress
+
+### Fixed
+
+- **A draft's holder takes it straight to in_progress.** The move passes the issue-ready checklist and never stands at open, where a pool could claim it; a run that took a draft hands it back to draft when it ends.
+
 ## [0.4.0-dev.412] - 2026-10-31
 
 Drafts carrying triaged feedback reach the project master

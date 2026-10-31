@@ -1,1 +1,0 @@
-**A draft's holder takes it straight to in_progress.** The move passes the issue-ready checklist and never stands at open, where a pool could claim it; a run that took a draft hands it back to draft when it ends.
