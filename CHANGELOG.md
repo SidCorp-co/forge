@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.393] - 2026-10-31
+
+Support messages go the moment a box comes back online
+
+### Fixed
+
+- **A support group's message goes the moment its box is back.** Finding the box offline no longer holds the room's next message for 30 seconds after the box returns.
+
 ## [0.4.0-dev.392] - 2026-10-31
 
 A link no code calls any more can be retired
