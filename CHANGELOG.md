@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.415] - 2026-10-31
+
+Cleanup report results follow the debt they leave, carried at a recorded price
+
+### Fixed
+
+- **A cleanup report's result follows from the debt it leaves.** It is green exactly when every remaining debt is carried as a priced amnesty, which a project admin records once on the debt.
+
 ## [0.4.0-dev.414] - 2026-10-31
 
 Merge check rebuilds shared packages before verify
