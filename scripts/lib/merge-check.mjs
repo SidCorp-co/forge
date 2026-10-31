@@ -90,7 +90,8 @@ export function behindRefusal({ branch, tip, head, tipInHead }) {
 export function dirtyRefusal(status) {
   const lines = status.split('\n').filter(Boolean);
   if (lines.length === 0) return null;
-  const named = lines.slice(0, 5).map((l) => l.slice(3));
+  // the status code, not a column count: a caller's trim takes the first line's leading space with it
+  const named = lines.slice(0, 5).map((l) => l.replace(/^[ MTADRCU?!]{1,2} /, ''));
   const more = lines.length > 5 ? ', …' : '';
   return (
     `the checkout holds ${lines.length} change(s) HEAD does not (${named.join(', ')}${more}), so ` +

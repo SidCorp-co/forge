@@ -55,6 +55,12 @@ describe('a change is checked only as it would land', () => {
     expect(dirtyRefusal('')).toBeNull();
   });
 
+  it('names the first change whole when the status arrives trimmed, as `git()` returns it', () => {
+    expect(dirtyRefusal('M scripts/a.mjs\n M scripts/b.mjs\n?? c.md')).toContain(
+      '(scripts/a.mjs, scripts/b.mjs, c.md)',
+    );
+  });
+
   it('refuses a change that touches nothing, pointing a landing at --since', () => {
     expect(emptyRefusal({ branch: 'dev', head: HEAD, touched: [] })).toContain('--since');
     expect(

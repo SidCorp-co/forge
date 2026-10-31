@@ -26,7 +26,13 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { run, runDirectTests } from './direct-test-run.mjs';
 import { VITEST_COLLECTIONS } from './direct-tests.mjs';
-import { buildMismatch, rebuildPackages } from './package-builds.mjs';
+import {
+  buildMismatch,
+  installRefusal,
+  rebuildPackages,
+  VERIFY_LOADS_BUILT,
+  verifyBuildsOwed,
+} from './package-builds.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -295,5 +301,40 @@ describe('the collections declare every dist build their tests load (drift guard
         expect(pkg(dir).scripts?.build, name).toBeTruthy();
       }
     }
+  });
+});
+
+describe('what pnpm verify loads from dist (ISS-679)', () => {
+  it("declares every package core's own tests load from their builds", () => {
+    const core = VITEST_COLLECTIONS.find((c) => c.name === '@forge/core');
+    expect([...VERIFY_LOADS_BUILT].sort()).toEqual([...(core?.builds ?? [])].sort());
+  });
+
+  it('owes both before verify on a change that selected no test, and nothing its tests already built', () => {
+    expect(verifyBuildsOwed([])).toEqual([
+      { name: '@forge/observability', loadedBy: ['pnpm verify'] },
+      { name: '@forge/contracts', loadedBy: ['pnpm verify'] },
+    ]);
+    expect(verifyBuildsOwed([{ name: '@forge/contracts' }])).toEqual([
+      { name: '@forge/observability', loadedBy: ['pnpm verify'] },
+    ]);
+    expect(
+      verifyBuildsOwed([{ name: '@forge/contracts' }, { name: '@forge/observability' }]),
+    ).toEqual([]);
+  });
+});
+
+describe('a checkout pnpm never installed (ISS-679)', () => {
+  it('is refused NOT_INSTALLED naming the install to run, and passes once pnpm recorded one', () => {
+    const root = mkdtempSync(join(tmpdir(), 'package-builds-install-'));
+    made.push(root);
+    const refusal = installRefusal(root);
+    expect(refusal).toMatch(/^NOT_INSTALLED: /);
+    expect(refusal).toContain('node_modules/.modules.yaml is missing');
+    expect(refusal).toContain('pnpm install --frozen-lockfile');
+    mkdirSync(join(root, 'node_modules'));
+    expect(installRefusal(root)).toMatch(/^NOT_INSTALLED: /);
+    writeFileSync(join(root, 'node_modules', '.modules.yaml'), 'layoutVersion: 5\n');
+    expect(installRefusal(root)).toBeNull();
   });
 });

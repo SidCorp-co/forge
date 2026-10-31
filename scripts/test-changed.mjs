@@ -26,7 +26,7 @@ import {
   touchedBetween,
 } from './lib/direct-test-run.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
-import { describeBuilds } from './lib/package-builds.mjs';
+import { describeBuilds, installRefusal } from './lib/package-builds.mjs';
 
 const die = dieAs('test-changed');
 
@@ -45,6 +45,9 @@ const unknown = args.find(
 );
 if (unknown) die(`unknown argument ${unknown}; takes --integration, --report <path>`);
 const integration = args.includes('--integration');
+
+const notInstalled = installRefusal(ROOT);
+if (notInstalled) die(notInstalled);
 
 const target = baseRef(ROOT);
 if (target.refusal) die(`no base to measure against: ${target.refusal}`);

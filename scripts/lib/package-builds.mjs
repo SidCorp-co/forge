@@ -75,6 +75,31 @@ export function buildsOwed(collections) {
   return [...owed.values()];
 }
 
+/**
+ * The workspace packages `pnpm verify` loads from their dist builds: its checkers import core's
+ * source, which imports both through their dist exports. A change that selects no test of core rebuilt
+ * neither, and verify then failed ERR_MODULE_NOT_FOUND on a fresh checkout with nothing wrong (ISS-679).
+ */
+export const VERIFY_LOADS_BUILT = ['@forge/observability', '@forge/contracts'];
+
+/** What `pnpm verify` owes before it runs: each package it loads that `built` does not already hold. */
+export function verifyBuildsOwed(built) {
+  const done = new Set(built.map((b) => b.name));
+  return buildsOwed([
+    { name: 'pnpm verify', builds: VERIFY_LOADS_BUILT.filter((n) => !done.has(n)) },
+  ]);
+}
+
+/**
+ * A checkout pnpm never installed, refused before anything runs: every check would load its
+ * toolchain from wherever Node finds one, a parent checkout's install included, and never from this
+ * lockfile. Null where `node_modules/.modules.yaml`, pnpm's own record of the install, is there.
+ */
+export function installRefusal(root) {
+  if (existsSync(join(root, 'node_modules', '.modules.yaml'))) return null;
+  return `NOT_INSTALLED: ${root} has no install of its own (node_modules/.modules.yaml is missing), so nothing here would run against its lockfile. Run \`pnpm install --frozen-lockfile\` there, then run again.`;
+}
+
 /** The last lines a failed build printed, for the refusal to carry. */
 const tailOf = (r) =>
   `${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? `\n${r.error}` : ''}`

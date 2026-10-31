@@ -1102,8 +1102,13 @@ to source). Before any selected test runs, `lib/package-builds.mjs` rebuilds eac
 none older than its source. A build that fails or leaves its dist short is refused
 `PACKAGE_BUILD_STALE`, naming the package, its dist, the first file that does not match, the
 collections that load it and the command; no test runs, and both entrypoints exit 2 (ISS-587).
+`pnpm verify` loads the same two builds (`VERIFY_LOADS_BUILT`), so the merge check rebuilds whichever
+of them its tests did not before verify starts, refused the same way: a change selecting no core test
+otherwise sent verify to a missing dist (ISS-679). A checkout pnpm never installed — no
+`node_modules/.modules.yaml` — is refused `NOT_INSTALLED` by both entrypoints before anything runs,
+exit 2: Node would find a parent checkout's install, never this lockfile's.
 `lib/package-builds.test.mjs` drives it over a rebased fixture workspace and holds core's collections
-to every workspace dependency of core that exports only dist.
+and verify's declaration to every workspace dependency of core that exports only dist.
 
 | Command | When | What it runs | Exit |
 |---|---|---|---|

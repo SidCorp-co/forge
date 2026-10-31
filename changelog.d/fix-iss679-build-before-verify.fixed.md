@@ -1,0 +1,1 @@
+**The merge check rebuilds what verify loads before verify runs.** A change selecting no core test no longer sends verify to a missing dist, and a checkout with no install is refused NOT_INSTALLED before anything runs.

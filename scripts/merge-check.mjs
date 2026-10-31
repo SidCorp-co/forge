@@ -3,8 +3,10 @@
 // BC-15, BC-17; ISS-472). On the change as it would land — HEAD containing the latest base — it runs
 // only: the typecheck, the direct tests of the touched files in every package, the direct core
 // integration tests, the issue's kept probes run against the change (`lib/merge-probes.mjs`), and
-// `pnpm verify`. Before the tests it rebuilds the workspace packages they load from dist, and stops
-// PACKAGE_BUILD_STALE where one cannot match its source (`lib/package-builds.mjs`, ISS-587). No
+// `pnpm verify`. Before the tests it rebuilds the workspace packages they load from dist, and before
+// verify the ones verify loads that the tests did not, and stops PACKAGE_BUILD_STALE where one cannot
+// match its source (`lib/package-builds.mjs`, ISS-587, ISS-679); a checkout with no install of its own
+// is refused NOT_INSTALLED before anything runs. No
 // import-graph widening, no whole-suite fallback. It writes
 // the report the tracker records on the issue — each check with its kind and duration, recorded once
 // (ISS-474) — which the merge mark then asks for. On the fast lane (REQ-39 BC-7: a change a person
@@ -64,7 +66,12 @@ import {
   runProbes,
   standingLines,
 } from './lib/merge-probes.mjs';
-import { describeBuilds } from './lib/package-builds.mjs';
+import {
+  describeBuilds,
+  installRefusal,
+  rebuildPackages,
+  verifyBuildsOwed,
+} from './lib/package-builds.mjs';
 
 const die = dieAs('merge-check');
 
@@ -87,6 +94,8 @@ const flagValue = (flag) => {
 const since = flagValue('--since');
 const lane = flagValue('--lane') ?? 'full';
 if (!LANES.includes(lane)) die(`--lane ${lane} is not a lane; the lanes are ${LANES.join(', ')}`);
+const notInstalled = installRefusal(ROOT);
+if (notInstalled) die(notInstalled);
 
 // The kept probes, read before anything runs: a full-lane merge needs them (REQ-36 BC-9), and a run
 // that cannot say whose they are says so with `none` rather than passing them by silence.
@@ -219,7 +228,13 @@ const probeRun =
     : { checks: [], bindings: [], missing: [], red: [], standing: [] };
 checks.push(...probeRun.checks);
 
+const built = [...direct.built];
 if (lane === 'full') {
+  // verify loads the same dist builds core's tests do, and a change that selected none of those tests
+  // rebuilt nothing: it rebuilds what is left before verify starts, or stops as the tests do (ISS-679)
+  const forVerify = rebuildPackages(ROOT, verifyBuildsOwed(built), { exec: run });
+  if (forVerify.refusal) die(forVerify.refusal);
+  built.push(...forVerify.built);
   // A landed run hands verify the landing's base: the base branch's tip is HEAD there, and every
   // delta-scoped gate would otherwise measure an empty change (ISS-472 round 3).
   const landedSince = since ? baseSha : null;
@@ -262,7 +277,7 @@ const path = flagValue('--report') ?? join(tmpdir(), `forge-merge-check-${head.s
 writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
 
 console.log('\nmerge-check: what ran');
-for (const line of describeBuilds(direct.built)) console.log(line);
+for (const line of describeBuilds(built)) console.log(line);
 for (const line of describeChecks(checks)) console.log(line);
 for (const n of [...notRunOnLane(lane), ...NOT_RUN_HERE])
   console.log(`  not run here: ${n.name} — ${n.why} (${n.owner})`);
