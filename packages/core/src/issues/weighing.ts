@@ -9,8 +9,9 @@ import { runtimePathPrefix, type ServingReading } from '@forge/contracts/release
 /** What a served commit holds of a judged one. */
 export type Carriage =
   /** The served commit is the judged one or a descendant of it; `by` names the record that says so
-   *  where it was not the host (`release-batch/recorded-carriage.ts`). */
-  | { readonly kind: 'descends'; readonly by?: string }
+   *  where it was not the host (`release-batch/recorded-carriage.ts`), and `paths` every file that
+   *  changed from the judged commit to it, where they were read (ISS-845). */
+  | { readonly kind: 'descends'; readonly by?: string; readonly paths?: readonly string[] }
   /** It is not, by a record that does not name the files the two differ in. */
   | { readonly kind: 'lacks'; readonly why: string }
   /** It is not: `paths` is every file the two trees may differ in, each side's since their merge base. */
@@ -60,6 +61,18 @@ export function carriageKey(judged: string, served: string): string {
 
 export function claimedBy(paths: readonly string[], file: string): boolean {
   return paths.some((p) => file === p || file.startsWith(runtimePathPrefix(p)));
+}
+
+/**
+ * The files of `paths` that fall under a path prefix a verdict covers (ISS-845): what its criterion
+ * rests on changed there. None where it covers nothing named.
+ */
+export function coveredChanges(
+  covers: readonly string[] | null | undefined,
+  paths: readonly string[],
+): string[] {
+  if (!covers || covers.length === 0) return [];
+  return paths.filter((p) => claimedBy(covers, p));
 }
 
 export function claimedByAny(runtimes: readonly RuntimeReading[], file: string): boolean {

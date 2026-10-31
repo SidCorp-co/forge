@@ -127,10 +127,11 @@ describe("the steward's output check reads the same landed build", () => {
     const issue = await landedIssue(1, F4);
     await judgedAll(issue, LATER);
 
-    // no landing Forge recorded is at LATER, so the steward reads no host to place it after F4: it
-    // says the record at that head is what counts the pass, and that record's own door reads it
+    // no landing Forge recorded is at LATER, so the steward reads no host to place it either side of
+    // F4 (ISS-845): it says that was not read, and the record at that head, whose own door reads it,
+    // is what counts the pass
     expect(await facts(issue)).toContain(
-      `it was judged at \`${LATER.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\`: a verdict at an earlier commit judged another build, and one at a later head counts only on a record made at that head`,
+      `it was judged at \`${LATER.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\`, and whether \`${F4.slice(0, 12)}\` descends from it was not read: no merge mark records the landing ${LATER.slice(0, 12)}`,
     );
     await sendsNothingBack(issue, 'ISS-1');
     const recorded = await record([issue], LATER);

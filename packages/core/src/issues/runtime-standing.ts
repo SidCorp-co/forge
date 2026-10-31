@@ -15,9 +15,11 @@ import {
   verdictStanding,
 } from './verdict-standing.js';
 import {
+  type Carriage,
   carriageKey,
   claimedBy,
   claimedByAny,
+  coveredChanges,
   type RuntimeReading,
   type Weighing,
 } from './weighing.js';
@@ -91,11 +93,32 @@ export interface WeighedVerdict {
 
 const SHOWN_FILES = 3;
 
-function filesClause(files: readonly string[]): string {
+function filesClause(files: readonly string[], which = ' it runs'): string {
   const shown = files.slice(0, SHOWN_FILES).map((f) => `\`${f}\``);
   const more = files.length > SHOWN_FILES ? ` and ${files.length - SHOWN_FILES} more` : '';
   const n = `${files.length} file${files.length === 1 ? '' : 's'}`;
-  return `${n} it runs: ${shown.join(', ')}${more}`;
+  return `${n}${which}: ${shown.join(', ')}${more}`;
+}
+
+/**
+ * Why a served commit does not carry a verdict that covers path prefixes (ISS-845): a file between the
+ * two falls under one, or, where it descends, what changed between was not read. Null where it
+ * covers nothing named, or nothing it covers changed.
+ */
+function coversWhy(
+  what: string,
+  covers: readonly string[] | null,
+  carriage: Carriage,
+): string | null {
+  if (!covers || covers.length === 0) return null;
+  if (carriage.kind !== 'descends' && carriage.kind !== 'differs') return null;
+  const named = covers.map((c) => `\`${c}\``).join(', ');
+  if (carriage.kind === 'descends' && carriage.paths === undefined) {
+    return `${what} descends from it, and it covers ${named}: what changed between them was not read`;
+  }
+  const hit = coveredChanges(covers, carriage.paths ?? []);
+  if (hit.length === 0) return null;
+  return `${what} changes ${filesClause(hit, '')} under what it covers (${named})`;
 }
 
 function weighIn(
@@ -105,6 +128,7 @@ function weighIn(
   runs: (file: string) => boolean,
   weighing: Weighing,
   declared: boolean,
+  covers: readonly string[] | null,
 ): Pick<WeighedVerdict, 'standing' | 'carried'> & { beside: string[] } {
   const none = { carried: null };
   // A declared runtime's reading is missing NOW, which is not ISS-1286's project with no route.
@@ -123,6 +147,11 @@ function weighIn(
     const carriage = weighing.carriage.get(carriageKey(at.value, served));
     if (!carriage) {
       if (weighing.read) unread.push(`whether ${what} carries it was not read`);
+      continue;
+    }
+    const covered = coversWhy(what, covers, carriage);
+    if (covered) {
+      beside.push(covered);
       continue;
     }
     if (carriage.kind === 'descends') {
@@ -168,6 +197,8 @@ export function weighVerdict(
   owed: OwedRuntimes,
   weighing: Weighing,
   on: WeighedOn | null = null,
+  /** The path prefixes the verdict covers (ISS-845); null where it names none. */
+  covers: readonly string[] | null = null,
 ): WeighedVerdict {
   const results: WeighedVerdict[] = [];
   if (owed.deployment) {
@@ -175,7 +206,7 @@ export function weighVerdict(
     const place = at?.kind === 'runtime' && on ? on : null;
     const read = place?.serving ?? serving;
     const runs = (file: string) => !claimedByAny(weighing.runtimes, file);
-    const weighed = weighIn(at, read, identities, runs, weighing, false);
+    const weighed = weighIn(at, read, identities, runs, weighing, false, covers);
     if (place?.unknown && !EARNED_STANDINGS.has(weighed.standing))
       weighed.beside.push(place.unknown);
     results.push({
@@ -187,7 +218,7 @@ export function weighVerdict(
   }
   for (const r of owed.declared) {
     const runs = (file: string) => claimedBy(r.paths, file);
-    const weighed = weighIn(at, r.serving, identities, runs, weighing, true);
+    const weighed = weighIn(at, r.serving, identities, runs, weighing, true, covers);
     results.push({ runtime: r.name, environment: null, serving: r.serving, ...weighed });
   }
   const failing = results.find((r) => !EARNED_STANDINGS.has(r.standing));

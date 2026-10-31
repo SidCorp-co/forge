@@ -42,7 +42,7 @@ export async function liveVerdictsOfIssues(
            v.commit_sha, v.runtime_ref,
            v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
            v.contract_version, v.storefront_drafts,
-           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id,
+           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.covers, v.probe_id,
            v.author_agency, v.backfilled, v.created_at AS v_created_at,
            ${byBuilder} AS by_builder,
            (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored

@@ -113,3 +113,42 @@ export async function changedPathsOf(
   const read = await changedFilesOf(host, landing, spend);
   return read.kind === 'read' ? { kind: 'read', paths: read.paths } : read;
 }
+
+/** The files that changed from one commit to a later one, or why they were not read (ISS-845). */
+export type ChangedBetween =
+  | { readonly kind: 'read'; readonly paths: readonly string[] }
+  | { readonly kind: 'unread'; readonly why: string };
+
+const between = new Map<string, ChangedBetween>();
+
+/**
+ * Every file that changed from `from` to `to`, where `to` descends from it: one compare, kept for the
+ * process like every other content-addressed answer. Where `to` does not descend from `from`, the
+ * files are not what changed after it, and it says so rather than naming them.
+ */
+export async function changedBetweenOf(
+  host: SourceHost,
+  from: string,
+  to: string,
+): Promise<ChangedBetween> {
+  const key = `${host.fullName}\u0000${from.toLowerCase()}\u0000${to.toLowerCase()}`;
+  const kept = between.get(key);
+  if (kept) return kept;
+  try {
+    const read = await host.compareFiles(from, to);
+    if ('why' in read) return { kind: 'unread', why: read.why };
+    const answer: ChangedBetween = DESCENDS.has(read.status)
+      ? { kind: 'read', paths: [...new Set(read.files)].sort() }
+      : {
+          kind: 'unread',
+          why: `${host.fullName} answers that ${to} does not descend from ${from}`,
+        };
+    keep(between, key, answer);
+    return answer;
+  } catch (err) {
+    return {
+      kind: 'unread',
+      why: `${host.fullName} could not compare ${from} with ${to}: ${why(err)}`,
+    };
+  }
+}

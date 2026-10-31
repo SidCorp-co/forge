@@ -64,6 +64,8 @@ export interface VerdictDraft {
   readonly reason: string | null;
   readonly identity: VerdictIdentity | null;
   readonly evidence: readonly string[];
+  /** The path prefixes the criterion rests on (ISS-845); omitted, it names none. */
+  readonly covers?: readonly string[] | undefined;
   /** QA's judgement of the running build, or the review's; omitted, it is QA's. */
   readonly judge?: CriterionJudge | undefined;
   /** The probe this verdict keeps on its criterion (ISS-469); only the REST door sends one. */

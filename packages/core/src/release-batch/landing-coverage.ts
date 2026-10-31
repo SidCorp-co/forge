@@ -5,7 +5,10 @@
  * on a runtime reading, on a pass the verified rule does not count (a builder's own), or on none.
  *
  * How a verdict counts is `landed-build.ts:weighOnLanded`'s, unchanged: a criterion counted there
- * reads as standing at the commit, and only what it does not count is placed further.
+ * reads as standing at the commit, and only what it does not count is placed further. A pass at an
+ * earlier commit is carried to the recorded one as `landed-carriage.ts` carries it (ISS-845): the
+ * files changed between them are read from the source host where the project has one, and a pass
+ * covering one of them, or covering anything where they were not read, does not stand there.
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
@@ -14,8 +17,10 @@ import { landedCommitOf, verdictEarns } from '@forge/contracts/verdict-identity'
 import { type StandingCriterion, standingCriteriaOf } from '../issues/index.js';
 import { pairKey } from '../runners/index.js';
 import { ancestrySourceFor } from './ancestry-source.js';
+import { type ChangedBetween, changedBetweenOf } from './carriage.js';
 import type { JudgedBuildDeps } from './judged-build.js';
 import { holdingPair, readHolding, weighOnLanded } from './landed-build.js';
+import { carriedToLanding, filesNamed } from './landed-carriage.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 const short = (sha: string) => sha.slice(0, 12);
@@ -30,7 +35,9 @@ export interface CriterionCoverage {
   why: string | null;
 }
 
-type Placed = CriterionCoverage | { criterion: number; candidate: string; fail: boolean };
+type Placed =
+  | CriterionCoverage
+  | { criterion: number; candidate: string; fail: boolean; covers: readonly string[] | null };
 
 function place(
   commit: string,
@@ -62,7 +69,9 @@ function place(
   }
   // the one reading of the commit a verdict names on a landing (contracts `landedCommitOf`)
   const named = landedCommitOf(at.kind === 'source' ? 'commit' : at.kind, at.value, judgedOn);
-  if ('sha' in named) return { criterion: c.criterion, candidate: named.sha, fail };
+  if ('sha' in named) {
+    return { criterion: c.criterion, candidate: named.sha, fail, covers: v.covers ?? null };
+  }
   if (fail) return { criterion: c.criterion, basis: 'fail', at: at.value, why: null };
   if (at.kind === 'runtime') {
     return { criterion: c.criterion, basis: 'runtime', at: at.value, why: null };
@@ -81,6 +90,34 @@ export function criteriaList(ns: readonly number[]): string {
     i = j + 1;
   }
   return runs.join(', ');
+}
+
+/**
+ * Per earlier commit `commit` holds, the files that changed from it to `commit`, read from the
+ * project's source host (`carriage.ts:changedBetweenOf`); where it has none, why they were not read.
+ */
+async function changedSince(
+  projectId: string,
+  earlier: readonly string[],
+  commit: string,
+): Promise<Map<string, ChangedBetween>> {
+  const out = new Map<string, ChangedBetween>();
+  if (earlier.length === 0) return out;
+  let source: Awaited<ReturnType<typeof ancestrySourceFor>> | null = null;
+  try {
+    source = await ancestrySourceFor(projectId);
+  } catch {
+    source = null;
+  }
+  for (const sha of earlier) {
+    out.set(
+      sha,
+      source?.kind === 'host'
+        ? await changedBetweenOf(source.host, sha, commit)
+        : { kind: 'unread', why: 'this project has no source host to read them from' },
+    );
+  }
+  return out;
 }
 
 /** How many commits `commit` adds after `from`, where a source host can list them; null otherwise. */
@@ -118,7 +155,7 @@ function sentence(
       const at = p.at as string;
       const more = added.get(at);
       add(
-        `pass at \`${short(at)}\`, which \`${short(commit)}\` holds${more ? ` (the recorded commit adds ${more})` : ''}`,
+        `pass at \`${short(at)}\`, which \`${short(commit)}\` holds${more ? ` (the recorded commit ${more})` : ''}`,
         p.criterion,
       );
     } else if (p.basis === 'runtime') add(`pass on runtime \`${p.at}\``, p.criterion);
@@ -189,6 +226,11 @@ export async function landingCoverage(
     candidates.map((sha) => holdingPair(sha, commit)),
     deps,
   );
+  const changed = await changedSince(
+    projectId,
+    candidates.filter((sha) => held.get(pairKey(holdingPair(sha, commit))) === true),
+    commit,
+  );
   const coverage = new Map<string, CriterionCoverage[]>();
   for (const [id, placed] of placedOf) {
     coverage.set(
@@ -196,9 +238,20 @@ export async function landingCoverage(
       placed.map((p): CriterionCoverage => {
         if (!('candidate' in p)) return p;
         const answer = held.get(pairKey(holdingPair(p.candidate, commit)));
+        if (answer === true && p.fail) {
+          return { criterion: p.criterion, basis: 'fail', at: p.candidate, why: null };
+        }
         if (answer === true) {
-          const basis = p.fail ? 'fail' : 'earlier';
-          return { criterion: p.criterion, basis, at: p.candidate, why: null };
+          const read = changed.get(p.candidate);
+          const paths = read?.kind === 'read' ? { paths: read.paths } : {};
+          const carried = carriedToLanding(commit, p.candidate, p.covers, {
+            kind: 'descends',
+            ...paths,
+          });
+          if (carried?.kind === 'carried') {
+            return { criterion: p.criterion, basis: 'earlier', at: p.candidate, why: null };
+          }
+          return { criterion: p.criterion, basis: 'none', at: null, why: carried?.why ?? null };
         }
         const was = p.fail ? 'its verdict is `fail`, and ' : '';
         const why =
@@ -219,10 +272,18 @@ export async function landingCoverage(
       earlier.map(async (sha) => [sha, await commitsAdded(projectId, sha, commit)] as const),
     ),
   );
+  const said = new Map(
+    [...added].map(([sha, more]) => {
+      const read = changed.get(sha);
+      const files = read?.kind === 'read' && read.paths.length > 0 ? filesNamed(read.paths) : null;
+      const parts = [more ? `adds ${more}` : null, files ? `changes ${files}` : null];
+      return [sha, parts.filter(Boolean).join(' and ') || null];
+    }),
+  );
   const readings = issueIds.flatMap((id) => {
     const placed = coverage.get(id);
     if (!placed) return [];
-    return [sentence(shown.get(id) ?? id, commit, standing.get(id)?.owes ?? true, placed, added)];
+    return [sentence(shown.get(id) ?? id, commit, standing.get(id)?.owes ?? true, placed, said)];
   });
   return { readings, coverage };
 }

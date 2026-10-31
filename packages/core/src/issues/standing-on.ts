@@ -1,13 +1,14 @@
 // The verdict each live criterion of an issue stands on, by the verified rule (contracts
 // `verified-rule.ts:verifiedOf`), read beside the issue's move history: a reopen voids what was
-// recorded before it (`release-evidence.ts:reopenedAtOf`), as requirement coverage reads it.
+// recorded before it on a criterion that was not passing then (`release-evidence.ts:voidedUpTo`,
+// ISS-845), as requirement coverage reads it.
 
 import { verifiedOf } from '@forge/contracts/verified-rule';
 import { db } from '../db/client.js';
 import { type AuthoredVerdict, liveVerdictsOfIssues } from './criteria/live-verdicts.js';
 import { type CriterionWithVerdict, listCriteriaOf } from './criteria/store.js';
 import type { readJudge } from './ports.js';
-import { reopenedAtOf } from './release-evidence.js';
+import { reopenedAtOf, voidedUpTo } from './release-evidence.js';
 
 /** Whether a project declares a production environment, which decides what a reopen voids. */
 export function declaresProduction(
@@ -17,10 +18,11 @@ export function declaresProduction(
 }
 
 /**
- * Whether the issue's latest reopen voids this verdict, recorded at or before it: evidence about a
- * build the reopen rejected (`release-evidence.ts:reopenedAtOf`), as requirement coverage reads it
- * (`requirements/standing-facts.ts`). On a project with no production environment a commit names its
- * build exactly, so a commit verdict is kept for the commit check (`standing-coverage.ts:standsAtLanding`).
+ * Whether the issue's latest reopen voids this verdict, recorded at or before it on a criterion the
+ * reopen voids (`release-evidence.ts:voidedUpTo`): evidence about a build the reopen rejected, as
+ * requirement coverage reads it (`requirements/standing-facts.ts`). On a project with no production
+ * environment a commit names its build exactly, so a commit verdict is kept for the commit check
+ * (`standing-coverage.ts:standsAtLanding`).
  */
 function voidedByReopen(v: AuthoredVerdict, since: number, production: boolean): boolean {
   if (new Date(v.createdAt).getTime() > since) return false;
@@ -28,12 +30,12 @@ function voidedByReopen(v: AuthoredVerdict, since: number, production: boolean):
 }
 
 function reopenWhy(v: AuthoredVerdict, reopenedAt: Date): string {
-  return `it was recorded at ${new Date(v.createdAt).toISOString()}, before this issue's latest reopen at ${reopenedAt.toISOString()}, which rejected the build it judged, so a verdict recorded since is owed`;
+  return `it was recorded at ${new Date(v.createdAt).toISOString()}, before this issue's latest reopen at ${reopenedAt.toISOString()}, when this criterion was not passing, so a verdict recorded since is owed`;
 }
 
 /**
- * The verdict each live criterion stands on, by the verified rule: of its verdicts since the issue's
- * last reopen, the judge's (`judgesVerdict`), with why it does not prove the criterion where it is a
+ * The verdict each live criterion stands on, by the verified rule: of its verdicts the issue's last
+ * reopen did not void (`voidedUpTo`), the judge's (`judgesVerdict`), with why it does not prove the criterion where it is a
  * pass or short the rule does not count. A criterion whose newest verdict the reopen voided shows it,
  * unproven, saying so (`voidedByReopen`). `production`: whether the project declares production.
  */
@@ -90,12 +92,17 @@ function standingRead(
   judge: Awaited<ReturnType<typeof readJudge>>,
   production: boolean,
 ): Standing {
-  const since = reopenedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
   const unverified = new Map<number, string | null>();
   const read = criteria.map((c) => {
-    const [newest, ...earlier] = history.get(c.n) ?? [];
+    const all = history.get(c.n) ?? [];
+    const [newest, ...earlier] = all;
     if (!newest) return c;
-    if (reopenedAt && voidedByReopen(newest, since, production)) {
+    const voided = voidedUpTo(
+      all.map((v) => ({ verdict: v.verdict, at: v.createdAt })),
+      reopenedAt,
+    );
+    const since = voided?.getTime() ?? Number.NEGATIVE_INFINITY;
+    if (reopenedAt && voided && voidedByReopen(newest, since, production)) {
       unverified.set(c.n, reopenWhy(newest, reopenedAt));
       return c;
     }

@@ -169,6 +169,7 @@ issueCriteriaRoutes.post(
         reason: body.reason ?? null,
         identity: body.identity ?? null,
         evidence: body.evidence ?? [],
+        covers: body.covers,
         judge: body.judge,
         probe: body.probe,
         withoutClip: body.withoutClip ?? null,

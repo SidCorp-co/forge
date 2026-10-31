@@ -78,6 +78,21 @@ const verdictIdentitySchema = z.discriminatedUnion('kind', [
   storefrontDraftIdentitySchema,
 ]);
 
+/**
+ * One repository path prefix a verdict's criterion rests on (ISS-845): relative to the repository's
+ * root and `/`-separated, as a changed file is named. A pass carried to a later landing does not carry
+ * where a file changed between the two falls under one.
+ */
+const coversPrefixSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .refine((p) => !p.startsWith('/') && !p.includes('\\') && !p.split('/').includes('..'), {
+    message:
+      'a covers entry is a path prefix relative to the repository root, such as `packages/core/src/issues/`: no leading `/`, no `..`, no `\\`',
+  });
+
 export const verdictPostSchema = z
   .object({
     /**
@@ -99,6 +114,12 @@ export const verdictPostSchema = z
     reason: z.string().trim().max(REASON_TEXT_MAX).nullable().optional(),
     identity: verdictIdentitySchema.nullable().optional(),
     evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
+    /** The path prefixes the criterion rests on; omitted, a pass carries on descent alone (ISS-845). */
+    covers: z
+      .array(coversPrefixSchema)
+      .min(1, 'covers names at least one path prefix; omit it where the criterion rests on none')
+      .max(100)
+      .optional(),
     /** Recorded as QA's judgement of the running build (the default) or as the review's. */
     judge: z.enum(CRITERION_JUDGES).optional(),
     /** The probe this verdict keeps on its criterion: what it runs against the build and expects. */

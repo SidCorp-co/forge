@@ -419,6 +419,7 @@ export async function recordVerdict(
       reason: draft.reason?.trim() || null,
       ...identity,
       evidence: [...draft.evidence],
+      covers: draft.covers && draft.covers.length > 0 ? [...new Set(draft.covers)] : null,
       authorUserId: author.userId,
       authorDeviceId: author.deviceId,
       authorAgency: author.agency,

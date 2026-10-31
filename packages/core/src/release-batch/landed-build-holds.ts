@@ -11,6 +11,7 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { landedCommitOf } from '@forge/contracts/verdict-identity';
+import type { Carriage } from '../issues/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { pairKey } from '../runners/index.js';
 import {
@@ -144,6 +145,48 @@ export async function laterHoldersOf(
         ]),
       ),
     );
+  }
+  return out;
+}
+
+const short = (sha: string) => sha.slice(0, 12);
+
+/** A holding answer as a carriage: `by` names the record where it descends. */
+function carriageOfHolding(held: Holding | undefined, by: string): Carriage {
+  if (held === true) return { kind: 'descends', by };
+  if (held === false)
+    return { kind: 'lacks', why: 'the ancestry reader answered that it does not' };
+  return { kind: 'unread', why: held?.unread ?? 'the ancestry reader gave no answer' };
+}
+
+/**
+ * Per issue whose build is a landing, what that landing holds of each other commit its verdicts
+ * name (ISS-845): it descends from one where a landing Forge recorded at that commit, on the same
+ * branch, came no later (`recorded-holding.ts`, a fix round's own earlier landing among them), and
+ * otherwise whether it does was not read. Never from the host, so the files between are not read.
+ */
+export async function earlierCarriageOf(
+  projectId: string,
+  builds: ReadonlyMap<string, LandedBuild>,
+  judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
+  judgedOnFor: (issueId: string) => string | null,
+): Promise<Map<string, Map<string, Carriage>>> {
+  const other = laterCommitsOf(builds, judged, judgedOnFor);
+  const answers = await recordedHolding(
+    projectId,
+    [...other.values()].flatMap(({ landing, shas }) =>
+      shas.map((sha) => holdingPair(sha, landing)),
+    ),
+  );
+  const out = new Map<string, Map<string, Carriage>>();
+  for (const [issueId, { landing, shas }] of other) {
+    const carried = new Map<string, Carriage>();
+    for (const sha of shas) {
+      const held = answers.get(pairKey(holdingPair(sha, landing)));
+      const by = `Forge recorded \`${short(sha)}\` landing on its branch before \`${short(landing)}\``;
+      carried.set(sha, carriageOfHolding(held, by));
+    }
+    out.set(issueId, carried);
   }
   return out;
 }

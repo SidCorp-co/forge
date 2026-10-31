@@ -28,6 +28,7 @@ import {
   listCriteriaOf,
   reopenedAtOf,
   verdictByBuilderSql,
+  voidedUpTo,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -320,16 +321,25 @@ export async function loadReleaseFacts(
   const verdicts = await carriedVerdictsOf(
     [...criteria.values()].flatMap((list) => list.map((c) => c.id)),
   );
-  // a reopen voids what was judged before it, as `criterionView` reads the latest
-  const judged = (issueId: string) => {
-    const voidedBy = reopened.get(issueId)?.getTime() ?? Number.NEGATIVE_INFINITY;
-    return new Map(
-      (criteria.get(issueId) ?? []).map((c) => [
-        c.n,
-        verdicts.filter((v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy),
-      ]),
+  // a reopen voids what was judged before it on a criterion not passing then (`voidedUpTo`,
+  // ISS-845), as `criterionView` reads the latest
+  const voidedFor = (issueId: string, criterionId: string) =>
+    voidedUpTo(
+      verdicts
+        .filter((v) => v.criterionId === criterionId)
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
+      reopened.get(issueId),
+    ) ?? undefined;
+  const judged = (issueId: string) =>
+    new Map(
+      (criteria.get(issueId) ?? []).map((c) => {
+        const voidedBy = voidedFor(issueId, c.id)?.getTime() ?? Number.NEGATIVE_INFINITY;
+        const kept = verdicts.filter(
+          (v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy,
+        );
+        return [c.n, kept];
+      }),
     );
-  };
   const byIssue = new Map<string, IssueFact>(
     rows.map((r) => [
       r.id,
@@ -341,7 +351,7 @@ export async function loadReleaseFacts(
         updatedAt: r.updatedAt,
         releaseNotes: r.releaseNotes ?? null,
         requirementId: r.requirementId,
-        criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, reopened.get(r.id))),
+        criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, voidedFor(r.id, c.id))),
         verdicts: judged(r.id),
         reopenedAt: reopened.get(r.id) ?? null,
         closedAt: closed.get(r.id) ?? [],

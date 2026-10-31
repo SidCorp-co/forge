@@ -3606,6 +3606,13 @@
       "when": 1832112000000,
       "tag": "0569_a_cleanup_debt_carries_its_amnesty",
       "breakpoints": true
+    },
+    {
+      "idx": 570,
+      "version": "7",
+      "when": 1832198400000,
+      "tag": "0570_a_verdict_names_what_it_covers",
+      "breakpoints": true
     }
   ]
 }

@@ -9,10 +9,12 @@
 // recorded landing weighs it (`landed-build.ts:landedStandings`), or at a later build that holds the
 // landing, as a requirement's coverage counts it (`landed-build-holds.ts:laterHoldersOf`): sidcorp-mail
 // ISS-5 was held on a pass at a dev head holding its landing, which its requirement already counted.
+// A pass at an earlier commit the landing descends from is carried to it (ISS-845,
+// `landed-build-holds.ts:earlierCarriageOf`): a fix round's landing keeps the round before it's passes.
 
 import { readReleasePath } from '../project-config/index.js';
 import { landedBuildsOf, landedStandings } from './landed-build.js';
-import { laterHoldersOf } from './landed-build-holds.js';
+import { earlierCarriageOf, laterHoldersOf } from './landed-build-holds.js';
 
 export type CriteriaBasis =
   | { kind: 'serving' }
@@ -38,8 +40,9 @@ export interface LandingCriteriaReport {
   landing: string | null;
   unearned: Array<{ criterion: number; why: string }>;
   /** Every criterion that counts there, and the commit its verdict was judged at: the landing
-   *  itself, or a later build that holds it (`landed-build.ts:weighOnLanded`). */
-  counted: Array<{ criterion: number; at: string }>;
+   *  itself, a later build that holds it, or an earlier one it descends from, `carried` saying how
+   *  (`landed-weighing.ts:weighOnLanded`, ISS-845). */
+  counted: Array<{ criterion: number; at: string; carried?: string }>;
 }
 
 /** Each of `issueIds` (of `projectId`) weighed at its landing commit, in the order given. */
@@ -62,6 +65,7 @@ export async function landingCriteriaReports(
       return b?.sha ? (b.head ?? null) : null;
     },
     (judged, judgedOnFor) => laterHoldersOf(projectId, builds, judged, judgedOnFor),
+    (judged, judgedOnFor) => earlierCarriageOf(projectId, builds, judged, judgedOnFor),
   );
   const byId = new Map(standings.map((s) => [s.issueId, s]));
   return issueIds.map((issueId) => {
@@ -79,7 +83,11 @@ export async function landingCriteriaReports(
       issueId,
       landing: build.sha,
       unearned: criteria.flatMap((c) => (c.counts ? [] : [{ criterion: c.criterion, why: c.why }])),
-      counted: criteria.flatMap((c) => (c.counts ? [{ criterion: c.criterion, at: c.at }] : [])),
+      counted: criteria.flatMap((c) =>
+        c.counts
+          ? [{ criterion: c.criterion, at: c.at, ...(c.carried ? { carried: c.carried } : {}) }]
+          : [],
+      ),
     };
   });
 }

@@ -7,10 +7,13 @@
  * holds the landing here where an issue's merge mark records a landing at it, on the branch the
  * landing's own mark names, at or after it; otherwise it is unread, naming the record that is missing.
  * A mark's commit is the one Forge observed (`merged_commit_sha`), else the one the current mark
- * claimed (`markedCommitsOf`): both are a landing an agent recorded.
+ * claimed (`markedCommitsOf`): both are a landing an agent recorded. So is every stamped mark an issue
+ * carried before its current one (`mark-trail.ts`, `issue.mergeMarked`), at the time it was recorded
+ * and on the branch it named (ISS-845): a fix round re-marks its issue at the new landing, and the
+ * round before it landed where its own mark said, which no later mark moves.
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { MARK_RECORD, markedCommitsOf } from '../issues/index.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
@@ -79,12 +82,29 @@ async function landingMarks(
   `)) as unknown as Array<{ id: string; at: Date | string; target: string | null }>;
   const named = await markedCommitsOf(rows.map((r) => r.id));
   const marks = new Map<string, Mark>();
+  const keepNewest = (sha: string, mark: Mark) => {
+    const before = marks.get(sha);
+    if (!before || before.at < mark.at) marks.set(sha, mark);
+  };
   for (const r of rows) {
     const sha = named.get(r.id)?.sha;
     if (sha === undefined || !shas.includes(sha)) continue;
-    const at = new Date(r.at);
-    const before = marks.get(sha);
-    if (!before || before.at < at) marks.set(sha, { at, target: r.target });
+    keepNewest(sha, { at: new Date(r.at), target: r.target });
+  }
+  for (const t of await trailMarks(projectId, among)) {
+    keepNewest(t.sha.toLowerCase(), { at: new Date(t.at), target: t.target });
   }
   return marks;
+}
+
+/** Every stamped mark the project's issues recorded at one of `among`, current or since superseded. */
+async function trailMarks(projectId: string, among: SQL) {
+  return (await db.execute(sql`
+    SELECT lower(a.payload ->> 'commit') AS sha, a.created_at AS at, a.payload ->> 'target' AS target
+      FROM activity_log a
+      JOIN issues i ON i.id = a.issue_id
+     WHERE i.project_id = ${projectId} AND a.action = ${MARK_RECORD}
+       AND (a.payload ->> 'stamped')::boolean
+       AND lower(a.payload ->> 'commit') IN (${among})
+  `)) as unknown as Array<{ sha: string; at: Date | string; target: string | null }>;
 }

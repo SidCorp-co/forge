@@ -38,7 +38,7 @@ function canonical(value: unknown): string {
 
 /**
  * The id of `runSessionId`'s latest verdict on the criterion where this one repeats it: the same
- * verdict, identity, reason, evidence and judge, and the same probe it would rest on (the one sent,
+ * verdict, identity, reason, evidence, covers and judge, and the same probe it would rest on (the one sent,
  * else the criterion's kept one, as `probes.ts:probeOfVerdict` resolves it). Null where the run has
  * none, where its latest differs in any of them, or where no run session records it. The criterion
  * is locked for the rest of the transaction first, so a resend racing the first write waits for it
@@ -49,7 +49,7 @@ export async function repeatedVerdict(
   args: {
     criterionId: string;
     runSessionId: string | null;
-    draft: Pick<VerdictDraft, 'verdict' | 'reason' | 'evidence' | 'probe'>;
+    draft: Pick<VerdictDraft, 'verdict' | 'reason' | 'evidence' | 'probe' | 'covers'>;
     identity: VerdictColumns;
     judge: string;
   },
@@ -59,6 +59,8 @@ export async function repeatedVerdict(
     verdict: args.draft.verdict,
     reason: args.draft.reason?.trim() || null,
     evidence: args.draft.evidence,
+    covers:
+      args.draft.covers && args.draft.covers.length > 0 ? [...new Set(args.draft.covers)] : null,
     probe: args.draft.probe ?? null,
   };
   await tx.execute(
@@ -79,6 +81,7 @@ export async function repeatedVerdict(
   if (latest.verdict !== sent.verdict || (latest.reason ?? null) !== sent.reason) return null;
   if (latest.judge !== args.judge) return null;
   if (canonical(latest.evidence) !== canonical([...sent.evidence])) return null;
+  if (canonical(latest.covers) !== canonical(sent.covers)) return null;
   for (const key of IDENTITY_KEYS) {
     if ((latest[key] ?? null) !== (args.identity[key] ?? null)) return null;
   }

@@ -132,6 +132,9 @@ export const criterionVerdicts = pgTable(
     corroboration: text('corroboration', { enum: VERDICT_CORROBORATIONS }),
     corroborationNote: text('corroboration_note'),
     evidence: text('evidence').array().notNull().default(sql`'{}'::text[]`),
+    /** The repository path prefixes the criterion rests on, as the verdict declared them (ISS-845):
+     *  a pass carried to a later landing does not carry where what changed between falls under one. */
+    covers: text('covers').array(),
     authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     authorDeviceId: uuid('author_device_id'),
     authorAgency: text('author_agency', { enum: ['human', 'agent'] }).notNull(),
@@ -180,6 +183,10 @@ export const criterionVerdicts = pgTable(
       'criterion_verdicts_storefront_chk',
       sql`(${t.identityKind} = 'storefront_draft' AND forge_storefront_drafts_well_formed(${t.storefrontDrafts}) AND coalesce(${t.storefrontEnvironment}, '') ~ '^[a-z][a-z0-9-]{0,62}$' AND coalesce(${t.corroboration}, '') IN ('corroborated', 'uncorroborated') AND (${t.corroboration} = 'corroborated' OR coalesce(${t.corroborationNote}, '') ~ '[^[:space:]]'))
         OR (${t.identityKind} IS DISTINCT FROM 'storefront_draft' AND ${t.storefrontDrafts} IS NULL AND ${t.storefrontEnvironment} IS NULL AND ${t.corroboration} IS NULL AND ${t.corroborationNote} IS NULL)`,
+    ),
+    coversChk: check(
+      'criterion_verdicts_covers_chk',
+      sql`${t.covers} IS NULL OR cardinality(${t.covers}) >= 1`,
     ),
     latestIdx: index('criterion_verdicts_latest_idx').on(t.criterionId, t.createdAt),
     issueIdx: index('criterion_verdicts_issue_idx').on(t.issueId),

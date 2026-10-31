@@ -224,6 +224,7 @@ export {
   closedAtOf,
   reopenedAtOf,
   shipsWithdrawnOf,
+  voidedUpTo,
 } from './release-evidence.js';
 export { releaseHoldWords, WORDED_RELEASE_HOLDS } from './release-hold-words.js';
 export { releaseRecordGaps } from './release-record-required.js';
@@ -279,6 +280,7 @@ export {
   type Carriage,
   type ChangedPaths,
   carriageKey,
+  coveredChanges,
   type JudgedOnReading,
   type RuntimeReading,
   rotated,

@@ -333,8 +333,10 @@ describe('c3: an issue whose own criterion on the BC does not pass stays reopene
 describe('c4: an issue reopened twice goes back to where the second reopen took it from', () => {
   it('refuses closed naming awaiting release, and moves it to awaiting release', async () => {
     const { req, delivered } = await reopenedByRequirementFail('closed');
-    // landed again, as a run landing it would leave it; its pass sits before the first reopen, so the
-    // next fail at the requirement finds its own criterion not passing and sends it back from there
+    // judged failing while reopened (a fail moves nothing there), then landed again, as a run landing
+    // it would leave it: a pass stands across a reopen (ISS-845), so it is this fail that has the
+    // next fail at the requirement find its own criterion not passing and send it back from there
+    await judged(delivered, 'fail');
     await seedIssueStatus(delivered, 'awaiting_release');
     await failAtRequirement(req);
     expect(await statusOf(delivered)).toBe('reopen');
@@ -344,6 +346,7 @@ describe('c4: an issue reopened twice goes back to where the second reopen took 
     expect(refusal(wrong).detail).toContain('`awaiting_release`');
     expect(await statusOf(delivered)).toBe('reopen');
 
+    await judged(delivered, 'pass');
     const res = await move(delivered, 'awaiting_release');
     expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
     expect(await statusOf(delivered)).toBe('awaiting_release');

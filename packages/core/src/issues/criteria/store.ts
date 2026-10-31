@@ -74,6 +74,8 @@ export interface LatestVerdict {
   readonly corroboration: VerdictDraftReading | null;
   readonly corroborationNote: string | null;
   readonly evidence: readonly string[];
+  /** The path prefixes its criterion rests on, as the verdict declared them (ISS-845); null for none. */
+  readonly covers?: readonly string[] | null;
   /** The kept probe this verdict rests on (ISS-469), or null. */
   readonly probeId: string | null;
   readonly authorAgency: ActorAgency;
@@ -395,7 +397,7 @@ const LIST_SQL = (issueIds: readonly string[]) => sql`
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
          v.contract_version, v.storefront_drafts,
-         v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id, v.author_agency, v.backfilled, v.created_at AS v_created_at
+         v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.covers, v.probe_id, v.author_agency, v.backfilled, v.created_at AS v_created_at
     FROM issue_criteria c
     LEFT JOIN LATERAL (
       SELECT * FROM criterion_verdicts cv
@@ -433,6 +435,7 @@ export type ListRow = {
   corroboration: VerdictCorroboration | null;
   corroboration_note: string | null;
   evidence: string[] | null;
+  covers?: string[] | null;
   probe_id: string | null;
   author_agency: ActorAgency | null;
   backfilled: boolean | null;
@@ -458,6 +461,7 @@ export function latestOf(row: ListRow): LatestVerdict | null {
     corroboration: row.corroboration,
     corroborationNote: row.corroboration_note,
     evidence: row.evidence ?? [],
+    covers: row.covers ?? null,
     probeId: row.probe_id ?? null,
     authorAgency: row.author_agency ?? 'human',
     backfilled: row.backfilled === true,
@@ -509,8 +513,8 @@ export async function listRetiredCriteria(
            v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
            v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
            v.contract_version, v.storefront_drafts,
-           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id,
-           v.author_agency, v.backfilled, v.created_at AS v_created_at
+           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.covers,
+           v.probe_id, v.author_agency, v.backfilled, v.created_at AS v_created_at
       FROM issue_criteria c
       LEFT JOIN criterion_verdicts v ON v.criterion_id = c.id
       LEFT JOIN project_workflows w ON w.id = v.design_workflow_id

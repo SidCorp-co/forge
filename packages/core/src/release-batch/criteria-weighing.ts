@@ -35,11 +35,13 @@ async function atLanding(
     });
   }
   const landing = report.landing ?? '';
-  for (const { criterion, at } of report.counted) {
+  for (const { criterion, at, carried } of report.counted) {
     const own = at === landing.toLowerCase();
     const reason = own
       ? `judged at the landing commit \`${short(at)}\` on \`${landsOn}\`, which counts there`
-      : `judged at \`${short(at)}\`, a later build that holds the landing commit \`${short(landing)}\` on \`${landsOn}\`, which counts there`;
+      : carried
+        ? `${carried}, on \`${landsOn}\`, which counts there`
+        : `judged at \`${short(at)}\`, a later build that holds the landing commit \`${short(landing)}\` on \`${landsOn}\`, which counts there`;
     criteria.set(criterion, {
       earned: true,
       standing: own ? 'stands' : 'carried',

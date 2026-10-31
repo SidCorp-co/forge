@@ -12,13 +12,14 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { listCriteriaOf, reopenedAtOf } from '../issues/index.js';
+import { listCriteriaOf, reopenedAtOf, voidedUpTo } from '../issues/index.js';
 import { carriedVerdictsOf } from '../release-batch/index.js';
 import type { CarriedCriterion, CarriedRequirement, CarriedVerdict, IssueFile } from './claims.js';
 
 /**
  * Each live criterion of the issues the release carries, with every verdict it earned since the
- * issue's last reopen (a reopen voids what was judged before it, as the release record reads it),
+ * issue's last reopen (a reopen voids what was judged before it on a criterion not passing then,
+ * `voidedUpTo`, as the release record reads it),
  * and the requirement criterion it traces as the release record names it.
  */
 export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCriterion[]> {
@@ -31,33 +32,38 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
   // the rows the release record counts by (`release-batch/release-facts.ts:criteriaAt`)
   const verdicts = await carriedVerdictsOf(all.map((c) => c.id));
   return detail.issues.flatMap((issue) => {
-    const voidedBy = reopened.get(issue.id)?.getTime() ?? Number.NEGATIVE_INFINITY;
     const traced = detail.issueCriteria.find((i) => i.key === issue.key)?.criteria ?? [];
-    return (criteria.get(issue.id) ?? []).map((c) => ({
-      issueId: issue.id,
-      issueKey: issue.key,
-      requirementKey: issue.requirement,
-      n: c.n,
-      statement: c.statement,
-      bc: traced.find((t) => t.n === c.n)?.bc ?? null,
-      verdicts: verdicts
-        .filter((v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy)
-        .map(
-          (v): CarriedVerdict => ({
-            id: v.id,
-            verdict: v.verdict,
-            identityKind: v.identityKind,
-            commitSha: v.commitSha,
-            runtimeRef: v.runtimeRef,
-            at: v.at,
-            reason: v.reason,
-            evidence: v.evidence,
-            byBuilder: v.byBuilder,
-            authored: v.authored,
-            recordedAt: v.at,
-          }),
-        ),
-    }));
+    return (criteria.get(issue.id) ?? []).map((c) => {
+      const own = verdicts.filter((v) => v.criterionId === c.id);
+      const voidedBy =
+        voidedUpTo([...own].reverse(), reopened.get(issue.id))?.getTime() ??
+        Number.NEGATIVE_INFINITY;
+      return {
+        issueId: issue.id,
+        issueKey: issue.key,
+        requirementKey: issue.requirement,
+        n: c.n,
+        statement: c.statement,
+        bc: traced.find((t) => t.n === c.n)?.bc ?? null,
+        verdicts: own
+          .filter((v) => new Date(v.at).getTime() > voidedBy)
+          .map(
+            (v): CarriedVerdict => ({
+              id: v.id,
+              verdict: v.verdict,
+              identityKind: v.identityKind,
+              commitSha: v.commitSha,
+              runtimeRef: v.runtimeRef,
+              at: v.at,
+              reason: v.reason,
+              evidence: v.evidence,
+              byBuilder: v.byBuilder,
+              authored: v.authored,
+              recordedAt: v.at,
+            }),
+          ),
+      };
+    });
   });
 }
 

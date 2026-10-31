@@ -283,19 +283,33 @@ describe('what a hand-deployed served commit carries is kept (forge-dev ISS-780,
   });
 });
 
-describe('a reopen voids the verdicts recorded before it, as coverage reads them (ISS-780)', () => {
-  it('shows K157 unproven on a production project once a reopen rejected its build', async () => {
+describe('a reopen voids only the criterion that was not passing at it (ISS-780, ISS-845)', () => {
+  it('keeps K157 standing across a reopen on a production project, and voids the criterion that failed', async () => {
     await forgeDevProject();
     const judgedAt = new Date(Date.now() - 60 * 60_000);
-    const id = await judgedIssue([['runtime', HAND]], judgedAt);
-    expect((await criteriaRead(id)).get(1)).toMatchObject({ earned: true, standing: 'stands' });
+    const failedAt = new Date(Date.now() - 45 * 60_000);
+    const id = await judgedIssue(
+      [
+        ['runtime', HAND],
+        ['runtime', HAND],
+      ],
+      judgedAt,
+    );
+    await db.execute(sql`
+      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, reason, identity_kind,
+                                      runtime_ref, author_user_id, author_agency, judge, created_at)
+      SELECT id, ${id}, 'fail', 'The route answered 500 on dev.', 'runtime', ${HAND}, ${ownerId},
+             'agent', 'qa', ${failedAt.toISOString()}
+        FROM issue_criteria WHERE issue_id = ${id} AND n = 2 AND retired_at IS NULL
+    `);
 
     await reopenAt(id, new Date(Date.now() - 30 * 60_000));
     const read = await criteriaRead(id);
 
-    expect(read.get(1)).toMatchObject({ earned: false });
-    expect(read.get(1)?.reason).toContain(
-      `it was recorded at ${judgedAt.toISOString()}, before this issue's latest reopen`,
+    expect(read.get(1)).toMatchObject({ earned: true, standing: 'stands' });
+    expect(read.get(2)).toMatchObject({ earned: false });
+    expect(read.get(2)?.reason).toContain(
+      `it was recorded at ${failedAt.toISOString()}, before this issue's latest reopen`,
     );
   });
 

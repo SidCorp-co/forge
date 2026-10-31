@@ -1,13 +1,15 @@
-// ISS-55 — the move history a verdict is read against: a verdict at or before an issue's latest
-// reopen is not current evidence, and a release that shipped an issue it later withdrew holds nothing.
+// ISS-55 — the move history a verdict is read against: a criterion that was not passing at an
+// issue's latest reopen has no current evidence from before it (`voidedUpTo`, ISS-845), and a release
+// that shipped an issue it later withdrew holds nothing.
 
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 
 /**
  * When each issue last entered `reopen`, read from the move history (`kernel_transitions`); an
- * issue never reopened is absent. A verdict at or before that instant is not current evidence:
- * the release hold and every coverage reader read it as not judged.
+ * issue never reopened is absent. A verdict at or before that instant on a criterion it voids
+ * (`voidedUpTo`) is not current evidence: the release hold and every coverage reader read it as not
+ * judged.
  *
  * A reopen undone is none (ISS-760): one whose first arrival at `awaiting_release` or `closed` after
  * it came straight from `reopen` — the way back a requirement-level fail's reopen takes once the
@@ -47,6 +49,24 @@ export async function reopenedAtOf(
            ${returned})
      GROUP BY t.entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
   return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
+}
+
+/**
+ * The instant at or before which a reopen voids one criterion's verdicts, `newestFirst` its own, or
+ * null where it voids none of them (ISS-845, owner 2026-10-31, REQ-79 r6). A reopen rejects the
+ * build that failed, not every criterion on it: it voids the criterion whose newest verdict at the
+ * reopen was not a pass, and a pass stands across it. Where it counts after that is its build's
+ * weighing: carried to a later landing that descends from it, unless what changed between falls
+ * under what it covers (`release-batch/landed-carriage.ts`).
+ */
+export function voidedUpTo(
+  newestFirst: ReadonlyArray<{ verdict: string | null; at: Date | string | null }>,
+  reopenedAt: Date | null | undefined,
+): Date | null {
+  if (!reopenedAt) return null;
+  const until = reopenedAt.getTime();
+  const atReopen = newestFirst.find((v) => v.at !== null && new Date(v.at).getTime() <= until);
+  return atReopen?.verdict === 'pass' ? null : reopenedAt;
 }
 
 /**

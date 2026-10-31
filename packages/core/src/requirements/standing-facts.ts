@@ -11,7 +11,7 @@ import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
-import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
+import { reopenedAtOf, verdictByBuilderSql, voidedUpTo } from '../issues/index.js';
 import { waivedOf } from './acceptance-waived.js';
 import { requirementDependents } from './dependents.js';
 import { recordedLandingsOf } from './recorded-landings.js';
@@ -167,14 +167,29 @@ export async function issueCriteriaOf(
      )})
        AND c.retired_at IS NULL
      ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[];
-  // A verdict recorded at or before the issue's latest reopen is evidence about a build the
-  // reopen rejected (`issues/release-evidence.ts:reopenedAtOf`), so coverage reads it as not judged
+  // A verdict recorded at or before the issue's latest reopen, on a criterion that was not passing
+  // then, is evidence about a build the reopen rejected (`issues/release-evidence.ts:voidedUpTo`,
+  // ISS-845), so coverage reads it as not judged; a pass stands across the reopen
   const reopened = await reopenedAtOf(ex, issueIds, asReturned);
   const files = await filesOf(
     rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
   );
+  const historyOf = new Map<string, Array<{ verdict: string | null; at: Date | string | null }>>();
+  const issueOf = new Map<string, string>();
+  for (const r of rows) {
+    historyOf.set(r.criterion_id, [
+      ...(historyOf.get(r.criterion_id) ?? []),
+      { verdict: r.verdict, at: r.verdict_at },
+    ]);
+    issueOf.set(r.criterion_id, r.issue_id);
+  }
+  const voidedUntil = new Map(
+    [...historyOf].map(
+      ([id, list]) => [id, voidedUpTo(list, reopened.get(issueOf.get(id) ?? ''))] as const,
+    ),
+  );
   const voidedOf = (r: CriterionVerdictRow): boolean => {
-    const at = reopened.get(r.issue_id);
+    const at = voidedUntil.get(r.criterion_id);
     return !!at && !!r.verdict_at && new Date(r.verdict_at).getTime() <= at.getTime();
   };
   const verdictOf = (r: CriterionVerdictRow, voided = voidedOf(r)): StandingVerdict => {

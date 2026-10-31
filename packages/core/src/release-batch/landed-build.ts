@@ -10,10 +10,12 @@
  * was stamped after the landing record that closed the issue (a host merge supersedes a landing
  * recorded in an earlier era: adminhub-api ISS-15, 2026-10-26), else that record's commit; the
  * observed merge commit; the commit the current merge mark claims (`issues/mark-trail.ts`). None of
- * them is no landed build, named, never a guess. A judgement counts on it only where it was judged at
- * that very commit, or at the head of the request that merged as it where Forge read from the host,
- * at the merge, that the two trees are identical (`issues.merged_head`, `atMergedHead`). One at any
- * other earlier commit judged another build; one at a later head judged a newer build, and counts
+ * them is no landed build, named, never a guess. A judgement counts on it where it was judged at that
+ * very commit, or at the head of the request that merged as it where Forge read from the host, at the
+ * merge, that the two trees are identical (`issues.merged_head`, `atMergedHead`). A pass at an earlier
+ * commit the landing is read descending from is carried to it, unless what changed between falls
+ * under what it covers (ISS-845, `landed-carriage.ts`); one at a commit it does not descend from, or
+ * where that was not read, judged another build. One at a later head judged a newer build, and counts
  * only on a record made at that head. Before that record, the steward and coverage read such a head
  * as the build where every live criterion passes there (`aheadBuildsOf`). A requirement's coverage
  * also counts a pass at any later build that holds the landing (`landed-build-holds.ts:landedBuildHolds`, REQ-36 BC-18),
@@ -26,17 +28,12 @@
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
-import {
-  type JudgedBuild,
-  landedCommitOf,
-  landedIdentityWhy,
-  verdictEarns,
-} from '@forge/contracts/verdict-identity';
+import { type JudgedBuild, verdictEarns } from '@forge/contracts/verdict-identity';
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
-  type CriterionVerdict,
+  type Carriage,
   currentMarkClaims,
   issueDisplayIds,
   type StandingCriterion,
@@ -44,11 +41,17 @@ import {
 } from '../issues/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
-import { changeRequestBuildsOf, otherHeadWhy } from './change-request-build.js';
+import { changeRequestBuildsOf } from './change-request-build.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { ancestryOf, type JudgedBuildDeps } from './judged-build.js';
 import type { JudgedAgainst } from './landed-build-holds.js';
+import {
+  heldWhereNoneOwed,
+  judgedCommit,
+  type LandedCriterion,
+  weighOnLanded,
+} from './landed-weighing.js';
 import { recordedHolding } from './recorded-holding.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
@@ -312,142 +315,14 @@ function judgedAgainstOf(
   return out;
 }
 
-/** One live criterion weighed on a landed build: it counts, or why it does not. */
-export type LandedCriterion =
-  | { criterion: number; counts: true; at: string }
-  | { criterion: number; counts: false; why: string };
-
-/**
- * The whole commit a verdict was judged at, or why it names none, by the one reading coverage shares
- * (contracts `landedCommitOf`); on a project naming its testing environment (`judgedOn`), a runtime
- * verdict at a whole commit names it (REQ-36 BC-18).
- */
-function judgedCommit(
-  verdict: CriterionVerdict,
-  judgedOn: string | null,
-): { sha: string } | { why: string } {
-  const at = verdict.at;
-  if (!at) return { why: 'it names nothing it was judged against' };
-  const named = landedCommitOf(at.kind === 'source' ? 'commit' : at.kind, at.value, judgedOn);
-  return 'why' in named ? { why: `it was ${named.why}` } : named;
-}
-
-/** Why a verdict at `judged` does not count on `build`, naming both commits. */
-export function otherBuildWhy(judged: string, build: string): string {
-  return `it was judged at \`${short(judged)}\`, not at \`${short(build)}\`: a verdict at an earlier commit judged another build, and one at a later head counts only on a record made at that head`;
-}
-
-/**
- * A verdict judged at the head of the request that merged as `build`: it counts for `build` only
- * where Forge read from the host, at the merge, that the head's tree is `build`'s
- * (`issues.merged_head`). Null where `judged` is not that head; otherwise whether it counts, in words.
- */
-export function atMergedHead(
-  judged: string,
-  build: string,
-  head: MergedHead | null | undefined,
-): { counts: true; words: string } | { counts: false; why: string } | null {
-  if (!head || head.sha.toLowerCase() !== judged.toLowerCase()) return null;
-  if (head.treeIdentical === true) {
-    return {
-      counts: true,
-      words: `judged at \`${short(judged)}\`, tree-identical to landing \`${short(build)}\``,
-    };
-  }
-  if (head.treeIdentical === false) {
-    return {
-      counts: false,
-      why: `it was judged at \`${short(judged)}\`, the head of the request that landed as \`${short(build)}\`, and the host shows the two trees differ (the base moved under it), so it judged another build`,
-    };
-  }
-  return {
-    counts: false,
-    why: `it was judged at \`${short(judged)}\`, the head of the request that landed as \`${short(build)}\`, and whether the two trees are identical was not read: ${head.why ?? 'nothing says why'}`,
-  };
-}
-
-/**
- * One criterion's standing on `build`: a pass or short the verified rule counts, judged at `build`
- * itself. Every other answer says what it lacks, where its verdict sits and the commit it needed.
- */
-export function weighOnLanded(
-  build: string,
-  { criterion, verdict }: StandingCriterion,
-  via: string | null = null,
-  head: MergedHead | null = null,
-  judgedOn: string | null = null,
-  /** Per later commit, whether it holds `build` (`landed-build-holds.ts:laterHoldersOf`); absent, none was asked. */
-  holders?: ReadonlyMap<string, Holding>,
-): LandedCriterion {
-  const no = (why: string): LandedCriterion => ({
-    criterion,
-    counts: false,
-    why: `${why}; it needs a \`pass\` whose identity is commit \`${short(build)}\``,
-  });
-  if (!verdict) return no('no verdict was recorded for it');
-  if (verdict.unverified) return no(verdict.unverified);
-  if (!verdictEarns(verdict.verdict)) return no(`its verdict is \`${verdict.verdict}\``);
-  const judged = judgedCommit(verdict, judgedOn);
-  if ('why' in judged) return no(judged.why);
-  if (judged.sha !== build.toLowerCase()) {
-    const atHead = atMergedHead(judged.sha, build, head);
-    if (atHead?.counts) return { criterion, counts: true, at: judged.sha };
-    if (atHead) return no(atHead.why);
-    const held = via ? undefined : holders?.get(judged.sha);
-    if (held === true) return { criterion, counts: true, at: judged.sha };
-    if (held === false) {
-      return no(
-        `it was judged at \`${short(judged.sha)}\`, which does not hold the landing \`${short(build)}\`, so it judged another build`,
-      );
-    }
-    if (held !== undefined) {
-      return no(
-        `it was judged at \`${short(judged.sha)}\`, and no record of Forge's says that holds the landing \`${short(build)}\`: ${held.unread}`,
-      );
-    }
-    return no(via ? otherHeadWhy(judged.sha, build, via) : otherBuildWhy(judged.sha, build));
-  }
-  return { criterion, counts: true, at: judged.sha };
-}
-
-// Where the project's document owes no verdict, a criterion with none is not weighed, and QA may
-// judge it after the landing; a verdict that is there is kernel input all the same: one whose
-// identity names no commit is refused by name rather than closed over (`landedIdentityWhy`), and so
-// is one judged at `build` itself that does not earn, since a missing verdict passes there but a
-// recorded fail never does (ISS-630). A verdict at another commit judged another build.
-function heldWhereNoneOwed(
-  build: string,
-  criteria: readonly StandingCriterion[],
-  judgedOn: string | null,
-): LandedCriterion[] {
-  return criteria.flatMap(({ criterion, verdict }): LandedCriterion[] => {
-    if (!verdict?.at) return [];
-    const why =
-      verdict.at.kind === 'source'
-        ? null
-        : landedIdentityWhy(verdict.at.kind, verdict.at.value, judgedOn);
-    if (why) {
-      return [
-        {
-          criterion,
-          counts: false,
-          why: `it was ${why}; it needs a verdict whose identity is commit \`${short(build)}\``,
-        },
-      ];
-    }
-    const judged = judgedCommit(verdict, judgedOn);
-    if (verdictEarns(verdict.verdict) || !('sha' in judged) || judged.sha !== build.toLowerCase()) {
-      return [];
-    }
-    return [
-      {
-        criterion,
-        counts: false,
-        why: `its verdict is \`${verdict.verdict}\`, judged at \`${short(build)}\`: where no verdict is owed a missing one passes, a recorded fail never does`,
-      },
-    ];
-  });
-}
+export {
+  atMergedHead,
+  heldWhereNoneOwed,
+  judgedCommit,
+  type LandedCriterion,
+  otherBuildWhy,
+  weighOnLanded,
+} from './landed-weighing.js';
 
 /** Each issue's live criteria weighed on the build `buildOf` names for it. */
 export interface LandedStanding {
@@ -460,6 +335,12 @@ export interface LandedStanding {
   passing: number;
 }
 
+/** Per issue, an answer about each commit its verdicts name, as `laterHoldersOf` and `earlierCarriageOf` read them. */
+export type JudgedReader<A> = (
+  judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
+  judgedOnFor: (issueId: string) => string | null,
+) => Promise<ReadonlyMap<string, ReadonlyMap<string, A>>>;
+
 /** Every live criterion of `issueIds` weighed on the build `buildOf` names for its issue. */
 export async function landedStandings(
   issueIds: readonly string[],
@@ -467,22 +348,32 @@ export async function landedStandings(
   viaOf: (issueId: string) => string | null = () => null,
   headOf: (issueId: string) => MergedHead | null = () => null,
   /** Asks whether each later commit a verdict names holds its issue's landing; absent, nothing is asked. */
-  holdersOf?: (
-    judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
-    judgedOnFor: (issueId: string) => string | null,
-  ) => Promise<ReadonlyMap<string, ReadonlyMap<string, Holding>>>,
+  holdersOf?: JudgedReader<Holding>,
+  /** Asks what each issue's landing holds of every other commit a verdict names (ISS-845); absent, nothing is asked. */
+  descentOf?: JudgedReader<Carriage>,
 ): Promise<LandedStanding[]> {
   const standing = await standingCriteriaOf(issueIds);
-  const holders = holdersOf
-    ? await holdersOf(judgedAgainstOf(standing), (id) => standing.get(id)?.judgedOn ?? null)
-    : new Map<string, ReadonlyMap<string, Holding>>();
+  const judged = judgedAgainstOf(standing);
+  const judgedOnFor = (id: string) => standing.get(id)?.judgedOn ?? null;
+  const [holders, descent] = await Promise.all([
+    holdersOf ? holdersOf(judged, judgedOnFor) : new Map<string, ReadonlyMap<string, Holding>>(),
+    descentOf ? descentOf(judged, judgedOnFor) : new Map<string, ReadonlyMap<string, Carriage>>(),
+  ]);
   return issueIds.flatMap((issueId) => {
     const s = standing.get(issueId);
     if (!s) return [];
     const build = buildOf(issueId);
-    const later = holders.get(issueId.toLowerCase());
+    const key = issueId.toLowerCase();
     const weighed = s.criteria.map((c) =>
-      weighOnLanded(build, c, viaOf(issueId), headOf(issueId), s.judgedOn, later),
+      weighOnLanded(
+        build,
+        c,
+        viaOf(issueId),
+        headOf(issueId),
+        s.judgedOn,
+        holders.get(key),
+        descent.get(key),
+      ),
     );
     return [
       {

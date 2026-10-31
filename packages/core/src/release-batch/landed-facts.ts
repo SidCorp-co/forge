@@ -9,7 +9,22 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { standingCriteriaOf } from '../issues/index.js';
-import { deliveredBuildsOf, deliveryOf, landedStandings } from './landed-build.js';
+import {
+  deliveredBuildsOf,
+  deliveryOf,
+  type LandedBuild,
+  landedStandings,
+} from './landed-build.js';
+import { earlierCarriageOf } from './landed-build-holds.js';
+
+/** What the landing holds of each other commit the issue's verdicts name, from Forge's records (ISS-845). */
+const descentFor =
+  (projectId: string, issueId: string, build: LandedBuild) =>
+  (
+    judged: Parameters<typeof earlierCarriageOf>[2],
+    judgedOnFor: Parameters<typeof earlierCarriageOf>[3],
+  ) =>
+    earlierCarriageOf(projectId, new Map([[issueId.toLowerCase(), build]]), judged, judgedOnFor);
 
 const short = (sha: string) => sha.slice(0, 12);
 
@@ -54,6 +69,8 @@ export async function landedCompleteFact(issueId: string): Promise<string | null
     () => sha,
     () => build.via ?? null,
     () => build.head ?? null,
+    undefined,
+    descentFor(row.projectId, issueId, build),
   );
   if (!standing?.owes || standing.criteria.length === 0) return null;
   if (standing.criteria.some((c) => !c.counts)) return null;
@@ -65,12 +82,12 @@ export async function landedCompleteFact(issueId: string): Promise<string | null
       ? ` The design's proof plan is met the same way: each of the ${planned.length} criteria it plans to prove passes at that commit, and with no production environment no release run replays a probe.`
       : '';
   if (delivery === 'change-request' && (build.from === 'landed' || build.from === 'ahead')) {
-    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. Its work is already on the branch this project releases from, with no change request left to merge, so it is landed, and no evidence is missing.${plan} Wake the master to cut the release that carries it (POST /api/projects/${row.projectId}/release-batches).`;
+    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass that counts at that commit, judged there or carried to it. Its work is already on the branch this project releases from, with no change request left to merge, so it is landed, and no evidence is missing.${plan} Wake the master to cut the release that carries it (POST /api/projects/${row.projectId}/release-batches).`;
   }
   if (delivery === 'change-request') {
-    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project releases by merging its change requests, with no production environment: until the request merges its unchanged head is the build its verdicts are read on, and no landing record is owed (REQ-63 BC-6).${plan} No evidence is missing: wake the master to cut the release that merges it (POST /api/projects/${row.projectId}/release-batches).`;
+    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass that counts at that commit, judged there or carried to it. This project releases by merging its change requests, with no production environment: until the request merges its unchanged head is the build its verdicts are read on, and no landing record is owed (REQ-63 BC-6).${plan} No evidence is missing: wake the master to cut the release that merges it (POST /api/projects/${row.projectId}/release-batches).`;
   }
-  return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project declares no production environment, so that landing is the running build and its verdicts are read there.${plan} No evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records).`;
+  return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass that counts at that commit, judged there or carried to it. This project declares no production environment, so that landing is the running build and its verdicts are read there.${plan} No evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records).`;
 }
 
 /**
@@ -102,6 +119,8 @@ export async function landedVerdictsOwedFact(issueId: string): Promise<string | 
     () => sha,
     () => build.via ?? null,
     () => build.head ?? null,
+    undefined,
+    descentFor(row.projectId, issueId, build),
   );
   const owed = (weighed?.criteria ?? []).flatMap((c) =>
     c.counts ? [] : [`criterion ${c.criterion}: ${c.why}`],

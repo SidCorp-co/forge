@@ -46,6 +46,8 @@ export interface CriterionVerdict {
   readonly cited: readonly string[];
   /** Where it is a pass or short the verified rule does not count as proven, why; else null. */
   readonly unverified: string | null;
+  /** The path prefixes its criterion rests on (ISS-845); absent or null where it named none. */
+  readonly covers?: readonly string[] | null;
 }
 /**
  * The identity a stored verdict is weighed on. A backfilled `commit_unresolved` abbreviation is
@@ -99,6 +101,7 @@ export function latestByNumber(
       at: identityOfRow(row),
       cited: row.evidence,
       unverified: unverified.get(n) ?? null,
+      covers: row.covers ?? null,
     });
   }
   return latest;
@@ -256,7 +259,15 @@ function findingsFor(
     if (!pair) continue;
     weighed.set(
       criterion,
-      weighVerdict(pair.at, weigh.serving, identities, weigh.owed, weigh.weighing, weigh.on),
+      weighVerdict(
+        pair.at,
+        weigh.serving,
+        identities,
+        weigh.owed,
+        weigh.weighing,
+        weigh.on,
+        pair.covers ?? null,
+      ),
     );
   }
   const spoken = spokenAt(
