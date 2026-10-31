@@ -32,7 +32,7 @@ pub struct Args {
     #[arg(short = 'X', long)]
     pub method: Option<String>,
 
-    /// JSON request body. `-` reads stdin.
+    /// JSON request body. `-` reads stdin, and `@path` reads the file at path (`@-` is stdin too).
     #[arg(short = 'd', long)]
     pub data: Option<String>,
 
@@ -146,7 +146,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     };
     let cfg = Config::load()?;
 
-    let data_reads_stdin = args.data.as_deref() == Some("-");
+    let data_reads_stdin = matches!(args.data.as_deref(), Some("-" | "@-"));
     let stdin_text = if data_reads_stdin || reads_stdin(&args.fields) {
         let mut s = String::new();
         std::io::stdin().read_to_string(&mut s)?;
@@ -154,10 +154,11 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     } else {
         None
     };
-    let data = match (data_reads_stdin, args.data.as_deref()) {
-        (true, _) => stdin_text.as_deref(),
-        (false, d) => d,
+    let body = match data_body(args.data.as_deref(), stdin_text.as_deref()) {
+        Ok(b) => b,
+        Err(why) => return usage(&why),
     };
+    let data = body.as_deref();
 
     let path = match std::env::current_dir() {
         Ok(here) => match run_self::name_self(&args.path, &here, || {
@@ -384,6 +385,22 @@ pub(crate) async fn get_json(client: &CoreClient, path: &str) -> Result<Value, S
     serde_json::from_str(&text).map_err(|e| format!("GET {path} answered no JSON: {e}"))
 }
 
+/// The `--data` body as sent: `-` or `@-` is stdin, `@path` the text of that file (a JSON body never
+/// opens with `@`, so the literal is never meant), anything else the literal. ISS-828: agents sent
+/// `-d @body.json` as curl reads it and core refused the text `@body.json` as invalid JSON.
+fn data_body(data: Option<&str>, stdin: Option<&str>) -> Result<Option<String>, String> {
+    match data {
+        None => Ok(None),
+        Some("-" | "@-") => Ok(stdin.map(str::to_string)),
+        Some(d) => match d.strip_prefix('@') {
+            Some(path) => std::fs::read_to_string(path)
+                .map(Some)
+                .map_err(|e| format!("--data @{path}: cannot read that file ({e}); pass the JSON inline, `-` for stdin, or `@<readable path>`")),
+            None => Ok(Some(d.to_string())),
+        },
+    }
+}
+
 fn usage(message: &str) -> anyhow::Result<()> {
     let (outcome, line) = usage_failure(message);
     eprintln!("{line}");
@@ -396,6 +413,38 @@ mod tests {
     use runner_workspace::mcp::config::Borrowed;
 
     const MAIL: &str = "a417a126-7b96-4b8f-8d83-faa1e7ccbd56";
+
+    #[test]
+    fn data_at_a_path_sends_that_files_text_never_the_at_sign() {
+        let dir = std::env::temp_dir().join(format!("forge-api-data-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("body.json");
+        std::fs::write(&file, "{\"toStatus\":\"open\"}").unwrap();
+        let at = format!("@{}", file.display());
+        assert_eq!(
+            data_body(Some(&at), None).unwrap().as_deref(),
+            Some("{\"toStatus\":\"open\"}")
+        );
+        assert_eq!(
+            data_body(Some("{\"a\":1}"), None).unwrap().as_deref(),
+            Some("{\"a\":1}")
+        );
+        assert_eq!(
+            data_body(Some("-"), Some("in")).unwrap().as_deref(),
+            Some("in")
+        );
+        assert_eq!(
+            data_body(Some("@-"), Some("in")).unwrap().as_deref(),
+            Some("in")
+        );
+        assert_eq!(data_body(None, None).unwrap(), None);
+        let gone = data_body(Some("@/nonexistent/forge-body.json"), None).unwrap_err();
+        assert!(
+            gone.contains("--data @/nonexistent/forge-body.json: cannot read that file"),
+            "{gone}"
+        );
+        std::fs::remove_file(&file).unwrap();
+    }
 
     fn fence_body(named: &str) -> Vec<u8> {
         serde_json::json!({
