@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.412] - 2026-10-31
+
+Drafts carrying triaged feedback reach the project master
+
+### Fixed
+
+- **A master is placed for a draft that carries triaged feedback.** Such a draft is master work under every gate profile, so the item no longer sits stuck waiting on a master nothing places.
+
 ## [0.4.0-dev.411] - 2026-10-31
 
 Cleanup runs that end without a report now settle as failed
