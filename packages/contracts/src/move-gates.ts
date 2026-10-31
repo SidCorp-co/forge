@@ -7,6 +7,7 @@
 
 import { CHECKLISTS } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
+import { type GateEdges, gateTargets, gatesMove } from "./gate-edges.js";
 import { DESIGN_RECORD_INCOMPLETE, DESIGN_RECORD_MISSING } from "./issue-design.js";
 import { MACHINES, type MachineEntity } from "./machines.js";
 import { PATTERN_ENTRY_MISSING, PATTERN_RETURNED, PATTERN_REVIEW_PENDING } from "./patterns.js";
@@ -16,12 +17,7 @@ import {
 } from "./requirement-machine.js";
 import type { MachineEdge } from "./state-machine.js";
 
-/** The edges a gate is asked on: one machine, these statuses, into one status. */
-export interface GateEdges {
-	readonly machine: string;
-	readonly from: readonly string[];
-	readonly to: string;
-}
+export type { GateEdges } from "./gate-edges.js";
 
 export interface Gate {
 	readonly id: string;
@@ -41,11 +37,11 @@ export interface MoveCheck {
 	readonly codes: readonly string[];
 }
 
-function lifecycleEdge(gates: GateEdges, from: string): MachineEdge | undefined {
+function lifecycleEdge(gates: GateEdges, from: string, to: string): MachineEdge | undefined {
 	const machine = MACHINES[gates.machine as MachineEntity] as
 		| { edges: readonly MachineEdge[] }
 		| undefined;
-	return machine?.edges.find((e) => e.from === from && e.to === gates.to && e.recovery !== true);
+	return machine?.edges.find((e) => e.from === from && e.to === to && e.recovery !== true);
 }
 
 export function defineMoveChecks<const C extends readonly MoveCheck[]>(checks: C): C {
@@ -57,11 +53,13 @@ export function defineMoveChecks<const C extends readonly MoveCheck[]>(checks: C
 		seen.add(check.id);
 		if (check.codes.length === 0) throw new Error(`move check \`${check.id}\` names no refusal code`);
 		for (const from of check.gates.from) {
-			const edge = lifecycleEdge(check.gates, from);
-			const move = `${check.gates.machine} \`${from}\` → \`${check.gates.to}\``;
-			if (!edge) throw new Error(`move check \`${check.id}\`: ${move} is not an edge of its machine`);
-			if (!edge.guards.includes(check.guard)) {
-				throw new Error(`move check \`${check.id}\`: ${move} does not name guard \`${check.guard}\``);
+			for (const to of gateTargets(check.gates)) {
+				const edge = lifecycleEdge(check.gates, from, to);
+				const move = `${check.gates.machine} \`${from}\` → \`${to}\``;
+				if (!edge) throw new Error(`move check \`${check.id}\`: ${move} is not an edge of its machine`);
+				if (!edge.guards.includes(check.guard)) {
+					throw new Error(`move check \`${check.id}\`: ${move} does not name guard \`${check.guard}\``);
+				}
 			}
 		}
 	}
@@ -115,7 +113,7 @@ export const GATES: readonly Gate[] = [
 ];
 
 const asks = (gates: GateEdges, entity: string, edge: MachineEdge): boolean =>
-	gates.machine === entity && gates.from.includes(edge.from) && gates.to === edge.to;
+	gatesMove(gates, { machine: entity, from: edge.from, to: edge.to });
 
 /**
  * The gates a move along this edge is judged by: the checklist it names, and each check bound to one

@@ -5,6 +5,7 @@
 import { CHECKLISTS, isChecklistId } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
 import { fingerprint } from "./fingerprint.js";
+import { gateTargets, gatesMove } from "./gate-edges.js";
 import { PERSON_GATE_STEPS, type PersonGate } from "./person-gates.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 
@@ -93,9 +94,9 @@ function checklistFaults(machine: MachineDeclaration<string, string>): string[] 
 			continue;
 		}
 		const gates = CHECKLISTS[e.checklist].gates;
-		if (gates.machine !== machine.entity || !gates.from.includes(e.from) || gates.to !== e.to) {
+		if (!gatesMove(gates, { machine: machine.entity, from: e.from, to: e.to })) {
 			faults.push(
-				`${move} names checklist \`${e.checklist}\`, which gates ${gates.machine} ${gates.from.map((f) => `\`${f}\``).join(", ")} → \`${gates.to}\``,
+				`${move} names checklist \`${e.checklist}\`, which gates ${gates.machine} ${gates.from.map((f) => `\`${f}\``).join(", ")} → ${gateTargets(gates).map((t) => `\`${t}\``).join(" or ")}`,
 			);
 		}
 	}

@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { typeWithArticle } from "./articles.js";
 import { fingerprint } from "./fingerprint.js";
+import type { GateEdges } from "./gate-edges.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 
 /** The guard an edge names when it names a checklist. The kernel runs it itself; no caller implements it. */
@@ -63,11 +64,7 @@ export interface Checklist<Id extends string = string> {
 	readonly id: Id;
 	readonly title: string;
 	/** The moves it gates: the machine entity and the edges into `to`, as the machine declares them. */
-	readonly gates: {
-		readonly machine: string;
-		readonly from: readonly string[];
-		readonly to: string;
-	};
+	readonly gates: GateEdges;
 	/** The approved design step it is built to. */
 	readonly design: {
 		readonly flow: string;

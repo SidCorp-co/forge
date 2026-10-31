@@ -6,6 +6,7 @@
  */
 
 import type { GatedMove } from '@forge/contracts/checklist-read';
+import { gatesMove, gateTargets } from '@forge/contracts/gate-edges';
 import { MACHINES, type MachineEntity, type MachineOf } from '@forge/contracts/machines';
 import {
   birthStanding,
@@ -14,7 +15,7 @@ import {
   type GatedMoveStanding,
   passedMoveStanding,
 } from '@forge/contracts/move-gates';
-import { and, count, desc, eq, gte, lt, or, type SQL, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lt, or, type SQL, sql } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { db, type Tx } from '../db/client.js';
 import { kernelRefusedMoves, kernelTransitions } from '../db/schema.js';
@@ -32,7 +33,10 @@ function onGateEdges(gates: readonly Gate[]): SQL | undefined {
   return or(
     ...gates.flatMap((g) =>
       g.gates.from.map((from) =>
-        and(eq(kernelTransitions.fromStatus, from), eq(kernelTransitions.toStatus, g.gates.to)),
+        and(
+          eq(kernelTransitions.fromStatus, from),
+          inArray(kernelTransitions.toStatus, [...gateTargets(g.gates)]),
+        ),
       ),
     ),
   );
@@ -50,7 +54,8 @@ function standingsOf(
   },
 ): Array<{ gate: Gate; standing: GatedMoveStanding }> {
   return gates.flatMap((gate) => {
-    if (gate.gates.to !== row.to || !gate.gates.from.includes(row.from ?? '')) return [];
+    if (!gatesMove(gate.gates, { machine: gate.gates.machine, from: row.from, to: row.to }))
+      return [];
     const standing = passedMoveStanding(gate, row);
     return standing ? [{ gate, standing }] : [];
   });
@@ -248,7 +253,9 @@ export async function gatedMoveCounts(
       .groupBy(kernelRefusedMoves.gate);
     for (const row of refused) add(row.gate, 'refused', row.n);
     const initial: readonly string[] = MACHINES[entity].initial;
-    const bornGated = gates.filter((g) => initial.includes(g.gates.to));
+    // an item is born only at an initial status: a gate's other targets are reached by a move
+    const bornAt = (g: Gate) => gateTargets(g.gates).filter((t) => initial.includes(t));
+    const bornGated = gates.filter((g) => bornAt(g).length > 0);
     if (bornGated.length === 0) continue;
     const births = await exec
       .select({
@@ -268,7 +275,7 @@ export async function gatedMoveCounts(
         ),
       );
     for (const gate of bornGated) {
-      const born = births.filter((b) => (b.first ?? b.status) === gate.gates.to);
+      const born = births.filter((b) => bornAt(gate).includes(String(b.first ?? b.status)));
       if (born.length === 0) continue;
       const gateFrom = await gateSince(exec, gate);
       for (const b of born)

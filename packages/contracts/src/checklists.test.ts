@@ -326,11 +326,16 @@ describe("declarations are refused at load", () => {
 });
 
 describe("the registered issue-ready checklist", () => {
-	it("gates the issue machine's draft to open, run by the kernel", () => {
+	it("gates the issue machine's draft to open and its holder's take to in_progress, run by the kernel", () => {
 		const edge = ISSUE_MACHINE.edges.find((e) => e.from === "draft" && e.to === "open");
 		expect(edge).toMatchObject({ guards: ["admit", "checklist"], checklist: "issue_ready" });
+		const take = ISSUE_MACHINE.edges.find((e) => e.from === "draft" && e.to === "in_progress");
+		expect(take).toMatchObject({
+			guards: ["holder", "admit", "checklist"],
+			checklist: "issue_ready",
+		});
 		expect(checklistsOn(ISSUE_MACHINE)).toEqual([CHECKLISTS.issue_ready]);
-		expect(ISSUE_READY_CHECKLIST.version).toBe(4);
+		expect(ISSUE_READY_CHECKLIST.version).toBe(5);
 	});
 
 	it("asks hotfix obligations as an assumed answer, naming the open owner question", () => {

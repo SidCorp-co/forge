@@ -1,4 +1,4 @@
-// The issue machine: workflow `issue-lifecycle`, revision 24. A status answers only "who is
+// The issue machine: workflow `issue-lifecycle`, revision 26. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
 // landing moves no status: it records the merge, and the agent holding the issue moves it on. Work
 // that landed moves to `awaiting_release` without verdicts, which are judged on the release that
@@ -7,7 +7,9 @@
 // issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`). A reopen a requirement-level
 // fail made goes back to the status it came from once that fail is routed past the issue (ISS-760).
 // A draft filed for a merge its project owed a filing for closes on the release that already shipped
-// that merge, straight from `draft`: its code landed before it was filed (ISS-774).
+// that merge, straight from `draft`: its code landed before it was filed (ISS-774). The draft's own
+// holder takes it straight to `in_progress`, through the same checklist, never passing through `open`,
+// where a pool run could claim it first, and goes back to `draft` when its run ends (ISS-834).
 
 import { ISSUE_READY_CHECKLIST } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
@@ -297,8 +299,9 @@ export const ISSUE_MACHINE = defineMachine({
 		"d0460eb0",
 		"011aa9bf",
 		"16f5e49d",
+		"b65627cc",
 	],
-	design: { flow: "issue-lifecycle", revision: 24 },
+	design: { flow: "issue-lifecycle", revision: 26 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
 	terminal: ISSUE_TERMINAL_STATUSES,
@@ -310,6 +313,14 @@ export const ISSUE_MACHINE = defineMachine({
 			act: "admitted",
 			permission: ISSUE_ADMIT_PERMISSION,
 			guards: ["admit", CHECKLIST_GUARD],
+			checklist: ISSUE_READY_CHECKLIST.id,
+		},
+		{
+			from: "draft",
+			to: "in_progress",
+			act: "run.claimed",
+			permission: ISSUE_ADMIT_PERMISSION,
+			guards: ["holder", "admit", CHECKLIST_GUARD],
 			checklist: ISSUE_READY_CHECKLIST.id,
 		},
 		{
@@ -453,6 +464,8 @@ export const ISSUE_MACHINE = defineMachine({
 		},
 
 		recovery("open", []),
+		// a draft its holder took goes back to draft, never to open, where a pool run could claim it
+		recovery("draft", []),
 		recovery("approved", ["plan_checkpoint"]),
 		recovery("reopen", []),
 	],

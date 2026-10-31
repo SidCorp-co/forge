@@ -6,7 +6,7 @@ export const WHAT_IS_AN_ISSUE_GUIDE: CoreGuide = {
   title: 'What is an issue?',
   summary:
     'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
-  version: 2,
+  version: 3,
   body: `## What is an issue?
 
 An issue is a unit of **work** — not a note, not a question, not a record of something already done.
@@ -56,7 +56,7 @@ Finding a filed item that fails the gates is not someone else's job. You are the
 2. **Then move it**: \`needs_info\` when a human owes you requirements and it could become real work; \`dropped\` when it is not work at all.
 3. **Non-work leaves by \`dropped\`, never by \`closed\`.** \`closed\` means the work shipped: it is reached only from \`awaiting_release\`, by a release that claimed the issue (\`CLOSE_ONLY_BY_RELEASE\`), with its merge recorded (\`CLOSE_REQUIRES_SHIPPED\`). On a project that declares no production environment that release is its recorded landing (\`POST /api/projects/:id/release-records\`): it names the branch and commit, says nothing was deployed, and is refused only where an issue's merge is not in that commit: its verdicts never refuse it, and each criterion is reported beside the record by the pass it stands on. \`dropped\` is terminal without the claim, and it expires this issue's outgoing \`blocks\` edges so nothing is left waiting on an issue that can never land.
 
-Do not move it INTO \`draft\` — nothing may transition into \`draft\`, by design. \`dropped\` is the exit for something that turned out not to be work.
+Do not move it INTO \`draft\` — no move of yours puts an issue back there; only a run's end hands back a draft its holder took. \`dropped\` is the exit for something that turned out not to be work.
 
 ### Then read
 Statuses, the four exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
@@ -129,7 +129,7 @@ export const PIPELINE_AND_ISSUE_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Pipeline & issue lifecycle',
   summary:
     "What belongs in a description, the ten statuses an issue moves through and the guard each move carries, why a run's progress is its step and not a status, status-last discipline, why a park returns to the status it left, the three kinds of `needs_info`, and who owns which derived fields.",
-  version: 13,
+  version: 14,
   body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -138,12 +138,12 @@ export const PIPELINE_AND_ISSUE_LIFECYCLE_GUIDE: CoreGuide = {
 But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to project memory, \`POST /api/memory\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later. Red flags: \`open-as-note\` AND \`draft-as-note\`.
 
 ### Working an issue directly, outside the pipeline
-\`draft\` vs \`open\` is not the whole choice. \`draft\` has exactly **two** exits — \`open\` and \`dropped\` — and it is never entered again. What you do after admitting it is what makes a direct session cheap or expensive:
+\`draft\` vs \`open\` is not the whole choice. Its holder takes a \`draft\` straight to \`in_progress\`, through the same issue-ready checklist as \`open\`, and it never stands where a pool can claim it. What you do with it is what makes a direct session cheap or expensive:
 
 | You have | Do | Why |
 |---|---|---|
-| Finished the work entirely by hand; the pipeline has nothing left to do | claim it while \`draft\` (a lease in \`sessionContext.lease\`), then \`open\`, \`in_progress\`, mark merged, \`awaiting_release\`; a release closes it | Claimed before it opens: \`open\` wakes the project's masters (\`ws/master-wake.ts\`), and on a project whose policy dispatches on \`open\` an issue nothing holds is theirs to take and build again. An issue that ships code closes only through a release (a release batch, or a recorded release), and only with its merge recorded; a design-only one closes once its design revisions are approved |
-| Started it yourself and are building it | \`open\`, then \`in_progress\` holding a lease | \`in_progress\` is refused (\`NO_HOLDER\`) while nothing holds the issue, so a master cannot race an agent into the worktree you are in |
+| Finished the work entirely by hand; the pipeline has nothing left to do | claim it while \`draft\` (a lease in \`sessionContext.lease\`), move it straight to \`in_progress\`, mark merged, \`awaiting_release\`; a release closes it | Never through \`open\`: \`open\` wakes the project's masters (\`ws/master-wake.ts\`), and on a project whose policy dispatches on \`open\` it is theirs to take and build again. An issue that ships code closes only through a release (a release batch, or a recorded release), and only with its merge recorded; a design-only one closes once its design revisions are approved |
+| Started it yourself and are building it | \`in_progress\` holding a lease, from \`draft\` or \`open\` | \`in_progress\` is refused (\`NO_HOLDER\`) while nothing holds the issue, so a master cannot race an agent into the worktree you are in |
 | Not started it; you want the pipeline to do the whole thing | \`open\` | The driver takes it from there |
 | Decided against it; the work will not happen | \`dropped\` with a reason | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
@@ -173,7 +173,7 @@ needs_info / on_hold: entered from open, reopen, in_progress, approved, awaiting
 
 | Status | Waits on | Guard on the way in |
 |---|---|---|
-| \`draft\` | its admitter, to admit it | filed here; never re-entered (\`ILLEGAL_TRANSITION\`). Every issue is born here: one asked for at \`open\` is admitted right after, by the move below, and stays here naming each gap in the create's \`admission\` where that move is refused |
+| \`draft\` | its admitter, to admit it, or its holder, to take it | filed here; re-entered only when a run that took it from here ends (\`handed.back\`). Its holder takes it straight to \`in_progress\` through the same checklist as \`open\` (\`NOT_THE_HOLDER\`, \`NO_HOLDER\`). Every issue is born here: one asked for at \`open\` is admitted right after, by the move below, and stays here naming each gap in the create's \`admission\` where that move is refused |
 | \`open\` | a master, to take it | where the project document's \`approvals.admit\` is on, \`issues.admit\`, to file an issue here or promote a \`draft\` (\`PERMISSION_FORBIDDEN\`), which admin holds by role and a member or an agent's membership only where the project's grant names it; off (the default), \`project.write\`, and the checklist decides. A \`draft\` opens only through the issue-ready checklist: an agreed requirement at the revision its plan names, else its current one (no plan is asked: the run writes it, and the move into build asks for it, \`PLAN_REQUIRED\`), criteria each traced to a BC of it, the design it builds or none (each read from the issue), and hotfix obligations, assumed when not sent in \`answers\`; a gap is \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, and \`GET /api/issues/:id/checklist\` reads the form, the input and where it stands |
 | \`reopen\` | a master, to take it again | a reason (\`TRANSITION_REASON_REQUIRED\`); from \`awaiting_release\` or \`closed\` |
 | \`in_progress\` | the run holding it; its step is the progress | something holds it — a lease or a run (\`NO_HOLDER\`); from \`open\`, \`reopen\` or \`approved\`, no live \`blocks\` edge from an unsettled blocker (\`ISSUE_BLOCKED\`), no unapproved workflow design (\`WORKFLOW_DESIGN_NOT_APPROVED\`), no contract wait an approved version has not settled (\`CONTRACT_WAIT_UNSETTLED\`), and no new pattern awaiting its reviewer (\`PATTERN_REVIEW_PENDING\`) — the same refusals meet a lease, a run session or a pool job taken over it |

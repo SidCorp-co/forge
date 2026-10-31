@@ -4,6 +4,7 @@
 // a page draws the answers from here and never restates a question.
 
 import type { ChecklistAnswer, ChecklistEvaluation, ChecklistForm } from "./checklists.js";
+import type { GateEdges } from "./gate-edges.js";
 import type { GatedMoveStanding } from "./move-gates.js";
 import type { Refusal } from "./refusal.js";
 
@@ -31,7 +32,7 @@ export interface ChecklistMove extends GatedMove {
 export interface ChecklistRead {
 	id: string;
 	version: number;
-	gates: { machine: string; from: readonly string[]; to: string };
+	gates: GateEdges;
 	design: { flow: string; revision: number; step: string };
 	/** The form a person fills, one field per question, in the checklist's order. */
 	form: ChecklistForm;

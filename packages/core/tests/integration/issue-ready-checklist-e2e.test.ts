@@ -150,10 +150,10 @@ describe('an incomplete issue-ready checklist', () => {
         FROM kernel_refused_moves WHERE entity = 'issue' AND entity_id = ${id} ORDER BY created_at
     `);
     expect(refused).toEqual([
-      { actor_agency: 'human', gate: 'issue_ready', gate_version: 4, n: 2 },
-      { actor_agency: 'human', gate: 'issue_ready', gate_version: 4, n: 2 },
-      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 4, n: 2 },
-      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 4, n: 2 },
+      { actor_agency: 'human', gate: 'issue_ready', gate_version: 5, n: 2 },
+      { actor_agency: 'human', gate: 'issue_ready', gate_version: 5, n: 2 },
+      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 5, n: 2 },
+      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 5, n: 2 },
     ]);
   });
 
@@ -186,7 +186,7 @@ describe('a complete issue-ready checklist', () => {
     `);
     expect(move).toEqual({
       checklist: 'issue_ready',
-      checklist_version: 4,
+      checklist_version: 5,
       checklist_answers: [
         {
           question: 'requirement',
@@ -280,12 +280,12 @@ describe('a wrong answer is refused by name at every door', () => {
     expect(recorded).toEqual([
       {
         actor_type: 'user',
-        gate_version: 4,
+        gate_version: 5,
         refusals: (res.body.error as { refusals: unknown }).refusals,
       },
       {
         actor_type: 'runner',
-        gate_version: 4,
+        gate_version: 5,
         refusals: (lane.error as { refusals: unknown }).refusals,
       },
     ]);

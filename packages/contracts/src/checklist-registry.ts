@@ -12,13 +12,14 @@ import {
 	FEEDBACK_SEVERITY_LABELS,
 } from "./feedback-terms.js";
 
-/** Issue lifecycle r12, step ready-check: what an issue answers before it opens. */
+/** Issue lifecycle r26, step ready-check: what an issue answers before it opens, or before its holder
+ *  takes it from `draft` straight to `in_progress` (ISS-834). */
 export const ISSUE_READY_CHECKLIST = defineChecklist({
 	id: "issue_ready",
 	title: "Issue ready",
-	gates: { machine: "issue", from: ["draft"], to: "open" },
-	design: { flow: "issue-lifecycle", revision: 12, step: "ready-check" },
-	shapes: ["df56d5bf", "31b93801", "bff3a99f", "4be4999c"],
+	gates: { machine: "issue", from: ["draft"], to: ["open", "in_progress"] },
+	design: { flow: "issue-lifecycle", revision: 26, step: "ready-check" },
+	shapes: ["df56d5bf", "31b93801", "bff3a99f", "4be4999c", "a72f627d"],
 	questions: [
 		{
 			id: "requirement",
