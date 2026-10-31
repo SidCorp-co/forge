@@ -2,7 +2,13 @@
 // lifecycle r15 rev_check): added, reworded and retired codes read from the rows, never typed.
 
 import { describe, expect, it } from 'vitest';
-import { type CriterionRow, criteriaChangesOf } from './revision-view.js';
+import {
+  type CriterionRow,
+  criteriaChangesOf,
+  type RevisionRow,
+  revisionBase,
+  revisionView,
+} from './revision-view.js';
 
 const row = (id: string, code: string, since: number, retired: number | null = null) =>
   ({
@@ -49,5 +55,37 @@ describe('criteriaChangesOf', () => {
   it('orders codes by number, not by text', () => {
     const many = [row('x', 'BC-10', 2), row('y', 'BC-9', 2)];
     expect(criteriaChangesOf(many, 2, 1)?.added).toEqual(['BC-9', 'BC-10']);
+  });
+});
+
+const rev = (revision: number, state: string, baseRevision: number | null, goal: string) =>
+  ({
+    revision,
+    state,
+    baseRevision,
+    spec: { goal },
+    kind: null,
+    authorId: 'u',
+    createdAt: new Date(0),
+    proposedAt: null,
+    decidedAt: null,
+  }) as unknown as RevisionRow;
+
+describe('the spec a revision changed (REQ-12 BC-19)', () => {
+  const revisions = [rev(2, 'proposed', 1, 'new'), rev(1, 'current', null, 'old')];
+
+  it('reads a revision against the one it was written on, else the current one', () => {
+    expect(revisionBase(revisions, revisions[0] as RevisionRow, 1)?.revision).toBe(1);
+    const unbased = rev(3, 'draft', null, 'x');
+    expect(revisionBase([unbased, ...revisions], unbased, 1)?.revision).toBe(1);
+    expect(revisionBase([unbased], unbased, null)).toBeNull();
+  });
+
+  it('serves the field-by-field change with the revision it was read against', () => {
+    const [proposed, current] = revisions as [RevisionRow, RevisionRow];
+    const view = revisionView(proposed, rows, new Map(), [], current);
+    expect(view.specChanges.against).toBe(1);
+    expect(view.specChanges.goal).toEqual({ before: 'old', after: 'new' });
+    expect(view.specChanges.criteria.map((c) => c.code)).toEqual(['BC-2', 'BC-3', 'BC-4']);
   });
 });

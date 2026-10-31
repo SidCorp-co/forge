@@ -1,10 +1,11 @@
+import { isDispatchStalled, type QueueStats } from '@forge/contracts/agent-sessions';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { sessionQueueDepth } from './read.js';
+import { onlineRunnerCount, sessionQueueDepth, sessionsWaiting } from './read.js';
 
 /** Operator reads and triggers over a project's sessions; mounted under `agentSessionRoutes`, which authenticates. */
 export const agentSessionOpsRoutes = new Hono<{ Variables: AuthVars }>();
@@ -25,7 +26,11 @@ agentSessionOpsRoutes.get('/queue-stats', zValidator('query', queueStatsQuerySch
 
   // Group counts by deviceId × status. Devices without any active session
   // simply don't appear; the UI lists those via the standard devices API.
-  const rows = await sessionQueueDepth(projectId);
+  const [rows, waiting, onlineRunners] = await Promise.all([
+    sessionQueueDepth(projectId),
+    sessionsWaiting(projectId),
+    onlineRunnerCount(projectId),
+  ]);
 
   type Bucket = { deviceId: string | null; queued: number; running: number };
   const buckets = new Map<string, Bucket>();
@@ -36,7 +41,13 @@ agentSessionOpsRoutes.get('/queue-stats', zValidator('query', queueStatsQuerySch
     if (r.status === 'running') b.running = Number(r.count);
     buckets.set(key, b);
   }
-  return c.json({ devices: Array.from(buckets.values()) });
+  const stats: QueueStats = {
+    devices: Array.from(buckets.values()),
+    waiting,
+    onlineRunners,
+    dispatchStalled: isDispatchStalled(waiting, onlineRunners),
+  };
+  return c.json(stats);
 });
 
 // Manual sweep trigger — flush zombies without waiting for the cron tick.

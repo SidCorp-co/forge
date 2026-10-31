@@ -1,60 +1,32 @@
-
 import { useQuery } from "@tanstack/react-query";
-import { useDevices } from "@/features/runners";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useActiveOrg } from "@/features/orgs";
 import { attentionApi } from "./api";
-import type { AttentionItem, AttentionView } from "./types";
 
 /**
- * Cross-project attention/inbox view: the `/me/attention` buckets merged with
- * offline runners derived client-side from `/me/devices`. `total` includes the
- * offline-runner count so the rail badge and the screen agree, and each project's
- * Needs you part counts its whole `total`.
+ * Cross-project attention/inbox view: `/me/attention` as core's one attention read model serves it,
+ * scoped to the active org, with the offline runners, each bucket's count and the total. The screen
+ * renders those; it counts, merges and filters nothing. Keyed under `["attention"]` so the WS
+ * invalidations refetch it.
  */
 export function useAttention() {
+  const { activeOrgId } = useActiveOrg();
   const attentionQ = useQuery({
-    queryKey: ["attention"],
-    queryFn: () => attentionApi.list(),
+    queryKey: ["attention", activeOrgId],
+    queryFn: () => attentionApi.list(activeOrgId),
   });
-  // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
-  // and reconnect — reusing the runners hook keeps the offline bucket live.
-  const devicesQ = useDevices();
-  const t = useCopy();
-
-  const offlineRunners: AttentionItem[] = (devicesQ.data ?? [])
-    .filter((d) => d.status === "offline")
-    .map((d) => ({ kind: "runner_offline" as const, title: t("attention.runnerOffline", { name: d.name }), link: "/runners", since: d.lastSeenAt ?? d.createdAt, status: "offline" }));
-  const base = attentionQ.data;
-  const buckets = {
-    needsYou: base?.needsYou ?? [],
-    mentions: base?.mentions ?? [],
-    failedJobs: base?.failedJobs ?? [],
-    channelGates: base?.channelGates ?? [],
-    statusReports: base?.statusReports ?? [],
-    offlineRunners,
-  };
-  // a project's Needs you part counts its whole `total`, the number its Approvals page and menu badge read
-  // (REQ-48 BC-11); every other bucket counts its rows
-  const { needsYou, ...rest } = buckets;
-  const total = needsYou.reduce((n, p) => n + p.total, 0) + Object.values(rest).reduce((n, b) => n + b.length, 0);
-  const waitingOnYou = base?.waitingOnYou ?? 0;
-  const view: AttentionView = { ...buckets, waitingOnYou, total };
-
+  const view = attentionQ.data;
   return {
     view,
-    total: view.total,
-    /** Core's decisions-across-projects figure: what the Attention tab and the Overview badge carry (REQ-48 r3 BC-17). */
-    waitingOnYou,
+    total: view?.total ?? 0,
+    /** Core's decisions-across-projects figure, in every project whatever the active org: what the Attention tab and the Overview badge carry (REQ-48 r3 BC-17). */
+    waitingOnYou: view?.waitingOnYou ?? 0,
     /** Whether core has answered, so a badge never reads 0 for "not read yet". */
-    known: base !== undefined,
-    // The badge/screen can render from the attention list alone; devices hydrate
-    // the offline bucket a beat later.
+    known: view !== undefined,
     isLoading: attentionQ.isLoading,
     isError: attentionQ.isError,
     error: attentionQ.error,
     refetch: () => {
       void attentionQ.refetch();
-      void devicesQ.refetch();
     },
   };
 }

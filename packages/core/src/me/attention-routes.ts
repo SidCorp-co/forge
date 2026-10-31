@@ -1,20 +1,24 @@
 import type { NeedsYouProjectDecisions } from '@forge/contracts/needs-you-decisions';
+import { inActiveOrg } from '@forge/contracts/org-scope';
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { readNeedsYouAcross } from '../development/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { noQuery } from '../middleware/zod-validator.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import { listVisibleProjectsWithRole } from '../projects/index.js';
 import {
   type AttentionFailedJobRow,
   type AttentionMentionRow,
   type AttentionStatusReportRow,
   selectFailedJobs,
   selectMentions,
+  selectOfflineDevices,
   selectStatusReports,
 } from './attention-buckets.js';
 import { type AttentionGateRow, selectChannelGates } from './attention-gates.js';
 
-type AttentionKind = 'mention' | 'failed_job' | 'channel_gate' | 'status_report';
+type AttentionKind = 'mention' | 'failed_job' | 'channel_gate' | 'status_report' | 'runner_offline';
 
 interface AttentionItem {
   kind: AttentionKind;
@@ -29,6 +33,8 @@ interface AttentionItem {
   /** Channel-gate only: the number of the document waiting at the approve gate. */
   documentNumber?: string;
   documentType?: string | null;
+  /** Offline-runner only: the device's name. */
+  deviceName?: string;
 }
 
 interface AttentionResponse {
@@ -41,6 +47,16 @@ interface AttentionResponse {
   channelGates: AttentionItem[];
   /** Status reports sent to this person that they have not opened. */
   statusReports: AttentionItem[];
+  /** The caller's devices that are offline, never narrowed by an org: a device-level alert must not vanish. */
+  offlineRunners: AttentionItem[];
+  /** The rows each bucket holds, as core counts them, so a screen shows no count of its own. */
+  counts: {
+    mentions: number;
+    failedJobs: number;
+    channelGates: number;
+    statusReports: number;
+    offlineRunners: number;
+  };
   /**
    * The decisions waiting on you across your projects: the sum of each project's Needs you `total`,
    * the number its Approvals page heads and its menu badge carries, so the phone's Attention tab and
@@ -106,26 +122,53 @@ function statusReportItem(r: AttentionStatusReportRow): AttentionItem {
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
-meAttentionRoutes.get('/attention', noQuery, async (c) => {
+const attentionQuery = zValidator('query', z.object({ orgId: z.uuid().optional() }).strict());
+
+meAttentionRoutes.get('/attention', attentionQuery, async (c) => {
+  const { orgId } = c.req.valid('query');
   const userId = c.get('userId');
   const agency = c.get('agency');
   if (!agency) throw new Error('me/attention: a request reached its handler without an auth gate');
 
-  const [needsYou, mentionRows, failedJobRows, channelGateRows, statusReportRows] =
-    await Promise.all([
-      readNeedsYouAcross(userId, agency),
-      selectMentions(userId),
-      selectFailedJobs(userId),
-      selectChannelGates(userId),
-      selectStatusReports(userId),
-    ]);
+  const [
+    allNeedsYou,
+    mentionRows,
+    failedJobRows,
+    channelGateRows,
+    statusReportRows,
+    offlineDevices,
+    visible,
+  ] = await Promise.all([
+    readNeedsYouAcross(userId, agency),
+    selectMentions(userId),
+    selectFailedJobs(userId),
+    selectChannelGates(userId),
+    selectStatusReports(userId),
+    selectOfflineDevices(userId),
+    listVisibleProjectsWithRole(userId),
+  ]);
 
-  const mentions = mentionRows.map(mentionItem);
-  const failedJobs = failedJobRows.map(failedJobItem);
-  const channelGates = channelGateRows.map(gateItem);
-  const statusReports = statusReportRows.map(statusReportItem);
+  // the active org's projects; a row with no project (a device alert) is always kept
+  const inScope = new Set(visible.filter((p) => inActiveOrg(p, orgId ?? null)).map((p) => p.slug));
+  const keep = (it: AttentionItem) => !it.projectSlug || inScope.has(it.projectSlug);
+  const needsYou = allNeedsYou.filter((n) => inScope.has(n.projectSlug));
+  const mentions = mentionRows.map(mentionItem).filter(keep);
+  const failedJobs = failedJobRows.map(failedJobItem).filter(keep);
+  const channelGates = channelGateRows.map(gateItem).filter(keep);
+  const statusReports = statusReportRows.map(statusReportItem).filter(keep);
+  const offlineRunners = offlineDevices.map(
+    (d): AttentionItem => ({
+      kind: 'runner_offline',
+      title: d.name,
+      deviceName: d.name,
+      link: '/runners',
+      since: (d.lastSeenAt ?? d.createdAt).toISOString(),
+      status: 'offline',
+    }),
+  );
 
-  const waitingOnYou = needsYou.reduce((n, p) => n + p.total, 0);
+  // every project the caller sees, whatever the active org: the Attention tab and the rail badge read it
+  const waitingOnYou = allNeedsYou.reduce((n, p) => n + p.total, 0);
   const response: AttentionResponse = {
     needsYou,
     waitingOnYou,
@@ -133,12 +176,21 @@ meAttentionRoutes.get('/attention', noQuery, async (c) => {
     failedJobs,
     channelGates,
     statusReports,
+    offlineRunners,
+    counts: {
+      mentions: mentions.length,
+      failedJobs: failedJobs.length,
+      channelGates: channelGates.length,
+      statusReports: statusReports.length,
+      offlineRunners: offlineRunners.length,
+    },
     total:
-      waitingOnYou +
+      needsYou.reduce((n, p) => n + p.total, 0) +
       mentions.length +
       failedJobs.length +
       channelGates.length +
-      statusReports.length,
+      statusReports.length +
+      offlineRunners.length,
   };
 
   return c.json(response);

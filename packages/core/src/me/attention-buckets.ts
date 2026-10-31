@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import {
   commentMentions,
   comments,
+  devices,
   issues,
   jobs,
   notificationDeliveries,
@@ -161,4 +162,19 @@ export function selectStatusReports(userId: string): Promise<AttentionStatusRepo
     )
     .orderBy(desc(notificationDeliveries.createdAt))
     .limit(PER_BUCKET);
+}
+
+export interface AttentionOfflineDeviceRow {
+  name: string;
+  lastSeenAt: Date | null;
+  createdAt: Date;
+}
+
+/** The user's own devices that are offline, newest pairing first. */
+export function selectOfflineDevices(userId: string): Promise<AttentionOfflineDeviceRow[]> {
+  return db
+    .select({ name: devices.name, lastSeenAt: devices.lastSeenAt, createdAt: devices.createdAt })
+    .from(devices)
+    .where(and(eq(devices.ownerId, userId), eq(devices.status, 'offline')))
+    .orderBy(desc(devices.pairedAt));
 }

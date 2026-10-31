@@ -33,7 +33,8 @@ function core() {
     if (path.startsWith("/conversations?")) return { body: { items: [], total: 0 } };
     if (path === "/me/attention") {
       const part = { projectSlug: "hop", projectName: "Hop", total: READ.total, decisions: READ.decisions.slice(0, NEEDS_YOU_PERSON_CAP) };
-      return { body: { needsYou: [part], mentions: [], failedJobs: [], channelGates: [], statusReports: [] } };
+      const none = { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 };
+      return { body: { needsYou: [part], mentions: [], failedJobs: [], channelGates: [], statusReports: [], offlineRunners: [], counts: none, waitingOnYou: READ.total, total: READ.total } };
     }
     return undefined;
   });

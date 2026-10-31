@@ -1,7 +1,11 @@
 // A requirement revision and its live criteria as the read model answers them (`read.ts`).
 
 import type { RequirementKind } from '@forge/contracts/requirement-pictures';
-import type { RequirementCriteriaChanges, RequirementSpec } from '@forge/contracts/requirements';
+import {
+  type RequirementCriteriaChanges,
+  type RequirementSpec,
+  specChangesOf,
+} from '@forge/contracts/requirements';
 import type {
   CriterionForm,
   RevisionState,
@@ -65,9 +69,17 @@ export function revisionView(
   criteria: readonly CriterionRow[],
   people: ReadonlyMap<string, Person>,
   pictures: readonly PictureRow[],
+  base: RevisionRow | null = null,
 ) {
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
   const live = liveAt(criteria, r.revision);
+  const kindOf = (x: RevisionRow) => (x.kind as RequirementKind | null) ?? null;
+  const side = (x: RevisionRow) => ({
+    revision: x.revision,
+    spec: x.spec as RequirementSpec,
+    kind: kindOf(x),
+    criteria: liveAt(criteria, x.revision),
+  });
   return {
     revision: r.revision,
     state: r.state as RevisionState,
@@ -95,5 +107,24 @@ export function revisionView(
     picture: pictureOf(r.pictureId, pictures, people),
     criteria: live.map(criterionView),
     criteriaChanges: criteriaChangesOf(criteria, r.revision, r.baseRevision),
+    specChanges: specChangesOf(base ? side(base) : null, side(r)),
   };
+}
+
+/**
+ * The revision `r` is read against: the one it was written on, else the requirement's current one
+ * (a draft written on none still shows what it changes in the agreed text), else the revision
+ * marked current. Null when there is none.
+ */
+export function revisionBase(
+  revisions: readonly RevisionRow[],
+  r: RevisionRow,
+  currentRevision: number | null,
+): RevisionRow | null {
+  const wanted = r.baseRevision ?? currentRevision;
+  return (
+    revisions.find((x) => x.revision === wanted) ??
+    revisions.find((x) => x.state === 'current') ??
+    null
+  );
 }

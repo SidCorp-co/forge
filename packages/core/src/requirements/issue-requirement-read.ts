@@ -23,7 +23,7 @@ import { peopleOf } from '../lib/people.js';
 import { pictureRowsOf } from './picture-read.js';
 import { changedTracedOf } from './plan-drift.js';
 import { baselinePinRowsOf, baselineViews } from './read.js';
-import { revisionView } from './revision-view.js';
+import { revisionBase, revisionView } from './revision-view.js';
 
 /** The requirement `issueId` delivers, whichever project of its organization holds it; the caller has authorised the issue. */
 export async function issueRequirementOf(issueId: string): Promise<IssueRequirementRead> {
@@ -105,7 +105,9 @@ export async function issueRequirementOf(issueId: string): Promise<IssueRequirem
       title: row.title,
       status: row.status as RequirementStatus,
       currentRevision: current,
-      revision: head ? revisionView(head, criteria, people, pictures) : null,
+      revision: head
+        ? revisionView(head, criteria, people, pictures, revisionBase(revisions, head, current))
+        : null,
       agreed: baselineViews(baselines, pins, name)[0] ?? null,
       plannedRevision: issue.plannedRevision,
       changedSincePlan: changedSincePlan({

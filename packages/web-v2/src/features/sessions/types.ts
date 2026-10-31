@@ -107,9 +107,7 @@ export interface SessionRow {
 }
 
 /** `GET /api/agent-sessions/queue-stats` response (per-device counters). */
-export interface QueueStats {
-  devices: { deviceId: string | null; queued: number; running: number }[];
-}
+export type { QueueStats } from "@forge/contracts/agent-sessions";
 
 export interface SessionCost {
   sessionId: string;

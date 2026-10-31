@@ -3,7 +3,8 @@
 // revisions and the diff a proposal carries, and the history by source.
 
 import { Written } from "@/lib/i18n/written";
-import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, type RequirementCriteriaChanges, type RequirementHistoryEntry } from "@forge/contracts/requirements";
+import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, type RequirementCriteriaChanges, type RequirementCriterionChange, type RequirementHistoryEntry, type RequirementListChange, type RequirementSpecChanges } from "@forge/contracts/requirements";
+import type { RequirementKind } from "@forge/contracts/requirement-pictures";
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useState } from "react";
 import { ActorChip, FilterChip, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils/cn";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
+import type { RequirementDetail } from "../types";
 import { linkedIssueHref } from "@/lib/routes/issues";
 import { OwnVerdictRows } from "./requirement-own-verdicts";
 import { agreedTitle, diffColours, VERDICT_WORD, VerdictDot } from "./standing-bits";
@@ -27,24 +28,21 @@ const Del = ({ children }: { children: ReactNode }) => (
   </del>
 );
 
-function listDiff(label: string, before: string[] = [], after: string[] = []) {
-  const kept = after.filter((x) => before.includes(x));
-  const added = after.filter((x) => !before.includes(x));
-  const removed = before.filter((x) => !after.includes(x));
-  if (added.length === 0 && removed.length === 0) return null;
+function ListChange({ label, change }: { label: string; change: RequirementListChange | null }) {
+  if (!change) return null;
   return (
-    <div key={label}>
+    <div>
       <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{label}</h4>
       <ul className="grid list-disc gap-0.5 pl-4.5 text-14">
-        {kept.map((x) => (
+        {change.kept.map((x) => (
           <li key={`k-${x}`}>{x}</li>
         ))}
-        {added.map((x) => (
+        {change.added.map((x) => (
           <li key={`a-${x}`}>
             <Ins>{x}</Ins>
           </li>
         ))}
-        {removed.map((x) => (
+        {change.removed.map((x) => (
           <li key={`r-${x}`}>
             <Del>{x}</Del>
           </li>
@@ -54,65 +52,58 @@ function listDiff(label: string, before: string[] = [], after: string[] = []) {
   );
 }
 
-function criteriaDiff(label: string, before: RequirementCriterion[], after: RequirementCriterion[]) {
-  const rows: ReactNode[] = [];
-  const codes = [...new Set([...before.map((c) => c.code), ...after.map((c) => c.code)])].sort(
-    (a, b) => Number(a.slice(3)) - Number(b.slice(3)),
-  );
-  for (const code of codes) {
-    const was = before.find((c) => c.code === code);
-    const now = after.find((c) => c.code === code);
-    if (was && now && was.body === now.body) continue;
-    rows.push(
-      <div key={code} className="flex gap-2.5 border-b border-line-subtle py-2 text-14 last:border-0">
-        <span className="w-12 flex-none font-mono text-12 font-semibold text-muted">{code}</span>
-        <span className="grid min-w-0 flex-1 gap-1">
-          {was ? <Del>{was.body}</Del> : null}
-          {now ? <Ins>{now.body}</Ins> : null}
-        </span>
-      </div>,
-    );
-  }
+function CriteriaChange({ label, rows }: { label: string; rows: RequirementCriterionChange[] }) {
   if (rows.length === 0) return null;
   return (
-    <div key="criteria">
+    <div>
       <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{label}</h4>
-      {rows}
+      {rows.map(({ code, was, now }) => (
+        <div key={code} className="flex gap-2.5 border-b border-line-subtle py-2 text-14 last:border-0">
+          <span className="w-12 flex-none font-mono text-12 font-semibold text-muted">{code}</span>
+          <span className="grid min-w-0 flex-1 gap-1">
+            {was !== null ? <Del>{was}</Del> : null}
+            {now !== null ? <Ins>{now}</Ins> : null}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
 
-/** What the open revision changes against the one it was written on: added green, removed struck. */
-export function RevisionDiff({ base, next }: { base: RequirementRevision | undefined; next: RequirementRevision }) {
+/** What the open revision changes against the one it was written on, as core computed it: added green, removed struck. */
+export function RevisionDiff({ changes }: { changes: RequirementSpecChanges }) {
   const t = useCopy();
-  const a = base?.spec ?? {};
-  const b = next.spec;
-  const parts = [
-    a.goal !== b.goal ? (
-      <div key="goal">
-        <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.diff.goal")}</h4>
-        <p className="grid gap-1 text-14">
-          {a.goal ? <Del>{a.goal}</Del> : null}
-          {b.goal ? <Ins>{b.goal}</Ins> : null}
-        </p>
-      </div>
-    ) : null,
-    base?.kind !== next.kind ? (
-      <div key="kind" data-testid="revision-diff-kind">
-        <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.picture.edit.kind")}</h4>
-        <p className="flex flex-wrap gap-2 text-14">
-          <Del>{base?.kind ? t(`requirements.picture.kind.${base.kind}`) : t("requirements.picture.edit.kindNone")}</Del>
-          <Ins>{next.kind ? t(`requirements.picture.kind.${next.kind}`) : t("requirements.picture.edit.kindNone")}</Ins>
-        </p>
-      </div>
-    ) : null,
-    listDiff(t("requirements.overview.persona"), a.personas, b.personas),
-    listDiff(t("requirements.overview.inScope"), a.scopeIn, b.scopeIn),
-    listDiff(t("requirements.overview.outOfScope"), a.scopeOut, b.scopeOut),
-    criteriaDiff(t("requirements.criteria.heading"), base?.criteria ?? [], next.criteria),
-  ].filter(Boolean);
-  if (parts.length === 0) return <p className="text-13 text-subtle">{t("requirements.diff.unchanged")}</p>;
-  return <div data-testid="revision-diff">{parts}</div>;
+  const kindWord = (k: RequirementKind | null) => (k ? t(`requirements.picture.kind.${k}`) : t("requirements.picture.edit.kindNone"));
+  const { goal, kind, personas, scopeIn, scopeOut, criteria } = changes;
+  if (!goal && !kind && !personas && !scopeIn && !scopeOut && criteria.length === 0) {
+    return <p className="text-13 text-subtle">{t("requirements.diff.unchanged")}</p>;
+  }
+  return (
+    <div data-testid="revision-diff">
+      {goal ? (
+        <div>
+          <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.diff.goal")}</h4>
+          <p className="grid gap-1 text-14">
+            {goal.before ? <Del>{goal.before}</Del> : null}
+            {goal.after ? <Ins>{goal.after}</Ins> : null}
+          </p>
+        </div>
+      ) : null}
+      {kind ? (
+        <div data-testid="revision-diff-kind">
+          <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.picture.edit.kind")}</h4>
+          <p className="flex flex-wrap gap-2 text-14">
+            <Del>{kindWord(kind.before)}</Del>
+            <Ins>{kindWord(kind.after)}</Ins>
+          </p>
+        </div>
+      ) : null}
+      <ListChange label={t("requirements.overview.persona")} change={personas} />
+      <ListChange label={t("requirements.overview.inScope")} change={scopeIn} />
+      <ListChange label={t("requirements.overview.outOfScope")} change={scopeOut} />
+      <CriteriaChange label={t("requirements.criteria.heading")} rows={criteria} />
+    </div>
+  );
 }
 
 /** What a revision did to the criteria of the one it was written against, as core computed it (BC-7). */

@@ -731,6 +731,7 @@
         "channelDocuments",
         "commentMentions",
         "comments",
+        "devices",
         "issues",
         "jobs",
         "notificationDeliveries",

@@ -109,3 +109,22 @@ export function readReviewRun(metadata: unknown): ReviewRunDeclaration | null {
 	}
 	return { declaredBy: r.declaredBy, profile: r.profile, expiresAt: r.expiresAt };
 }
+
+/**
+ * A project's runner queue as core's one queue read model serves it (REQ-12 BC-19): the per-device
+ * depth, every session waiting, the runners online, and whether dispatch is stalled.
+ */
+export interface QueueStats {
+	devices: { deviceId: string | null; queued: number; running: number }[];
+	/** Sessions of the project waiting on a runner: `idle` or `queued` (WAITING_SESSION_STATUSES). */
+	waiting: number;
+	/** Claude-code runners of the project whose device is online. */
+	onlineRunners: number;
+	/** Work waits and no runner is online: the silent no_worker_online mode, never mere all-busy backpressure. */
+	dispatchStalled: boolean;
+}
+
+/** Dispatch is stalled when work waits and no runner is online; the one rule core serves and any gate calls. */
+export function isDispatchStalled(waiting: number, onlineRunners: number): boolean {
+	return waiting > 0 && onlineRunners === 0;
+}

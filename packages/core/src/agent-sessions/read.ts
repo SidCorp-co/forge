@@ -1,3 +1,4 @@
+import { WAITING_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -5,8 +6,10 @@ import {
   type AgentSessionStatus,
   agentSessions,
   agentSessionTurns,
+  devices,
   issues,
   projects,
+  runners,
   usageRecords,
 } from '../db/schema.js';
 import { sessionWorksIssue } from '../lib/issue-run-group.js';
@@ -210,6 +213,36 @@ export async function sessionQueueDepth(projectId: string) {
       ),
     )
     .groupBy(agentSessions.deviceId, agentSessions.status);
+}
+
+/** Sessions of a project waiting on a runner (WAITING_SESSION_STATUSES). */
+export async function sessionsWaiting(projectId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.projectId, projectId),
+        inArray(agentSessions.status, [...WAITING_SESSION_STATUSES]),
+      ),
+    );
+  return Number(row?.n ?? 0);
+}
+
+/** Claude-code runners of a project whose device is online. */
+export async function onlineRunnerCount(projectId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(runners)
+    .innerJoin(devices, eq(devices.id, runners.deviceId))
+    .where(
+      and(
+        eq(runners.projectId, projectId),
+        eq(runners.type, 'claude-code'),
+        eq(devices.status, 'online'),
+      ),
+    );
+  return Number(row?.n ?? 0);
 }
 
 export type AgentSessionListFilter = {

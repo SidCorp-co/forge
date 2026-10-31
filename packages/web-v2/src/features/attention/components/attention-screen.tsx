@@ -77,6 +77,7 @@ function KindTag({ kind }: { kind: AttentionKind }) {
 
 function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   const t = useCopy();
+  const title = item.kind === "runner_offline" ? t("attention.runnerOffline", { name: item.deviceName ?? item.title }) : item.title;
   return (
     <button
       type="button"
@@ -89,7 +90,7 @@ function AttentionItemLine({ item, onOpen }: { item: AttentionItem; onOpen: (lin
       ) : (
         item.questionId && <MonoTag hue="flame">{t("attention.decision")}</MonoTag>
       )}
-      <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{item.title}</span>
+      <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{title}</span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (
         <span className="fg-caption hidden truncate text-muted sm:inline">{item.projectName}</span>
@@ -118,18 +119,18 @@ function Group({
   title,
   items,
   onOpen,
-  total,
+  count,
   collapsible: mayCollapse = false,
 }: {
   title: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
-  /** Unclipped match count when the API capped `items`. Defaults to items.length. */
-  total?: number;
+  /** The bucket's row count, as core's attention read model serves it. */
+  count: number;
   collapsible?: boolean;
 }) {
   const t = useCopy();
-  const matched = total ?? items.length;
+  const matched = count;
   const collapsible = mayCollapse && items.length > COLLAPSE_ABOVE;
   const [toggled, setToggled] = useState<boolean | null>(null);
   if (items.length === 0) return null;
@@ -188,31 +189,8 @@ export function AttentionScreen() {
 function Inbox({ view }: { view: AttentionView }) {
   const t = useCopy();
   const router = useRouter();
-  // ISS-477 — scope the inbox to the active org's projects. Items carrying a
-  // `projectSlug` outside the active org are dropped; items without one (e.g.
-  // offline runners) are kept so device-level alerts never silently vanish.
-  const { projects, projectSlugs } = useOrgScopedProjects();
-  const keep = (it: AttentionItem) => !it.projectSlug || projectSlugs.has(it.projectSlug);
-  const scoped = {
-    mentions: view.mentions.filter(keep),
-    failedJobs: view.failedJobs.filter(keep),
-    channelGates: view.channelGates.filter(keep),
-    statusReports: view.statusReports.filter(keep),
-    offlineRunners: view.offlineRunners.filter(keep),
-  };
-  const needsYou = view.needsYou.filter((n) => projectSlugs.has(n.projectSlug));
-  const needsYouProjects = projects.flatMap((p) => {
-    const part = needsYou.find((n) => n.projectSlug === p.slug);
-    return part ? [{ p, part }] : [];
-  });
-  // a project's part counts its whole total, the number its Approvals page and its menu badge read
-  const total =
-    needsYou.reduce((n, part) => n + part.total, 0) +
-    scoped.mentions.length +
-    scoped.failedJobs.length +
-    scoped.channelGates.length +
-    scoped.statusReports.length +
-    scoped.offlineRunners.length;
+  // Core scopes the view to the active org (ISS-477), counts it and sums its total (REQ-12 BC-19).
+  const { projects } = useOrgScopedProjects();
 
   return (
     <PageContainer className="flex min-h-dvh flex-col">
@@ -222,23 +200,23 @@ function Inbox({ view }: { view: AttentionView }) {
 
       <PageTitle>{t("attention.title")}</PageTitle>
 
-      {total === 0 ? (
+      {view.total === 0 ? (
         <div className="grid min-h-72 place-items-center">
           <EmptyState message={t("attention.empty")} />
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {needsYouProjects.map(({ p, part }) => (
-            <section key={p.id} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: p.name })} data-testid="attention-needs-you" data-total={part.total}>
-              <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: p.name })}</SectionTitle>
-              <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: [] }} slug={p.slug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(p.slug)} />
+          {view.needsYou.map((part) => (
+            <section key={part.projectSlug} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: part.projectName })} data-testid="attention-needs-you" data-total={part.total}>
+              <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: part.projectName })}</SectionTitle>
+              <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: [] }} slug={part.projectSlug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(part.projectSlug)} />
             </section>
           ))}
-          <Group title={t("attention.group.channelGates")} items={scoped.channelGates} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.mentions")} items={scoped.mentions} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.failedJobs")} items={scoped.failedJobs} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.statusReports")} items={scoped.statusReports} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.offlineRunners")} items={scoped.offlineRunners} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.channelGates")} items={view.channelGates} count={view.counts.channelGates} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.mentions")} items={view.mentions} count={view.counts.mentions} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.failedJobs")} items={view.failedJobs} count={view.counts.failedJobs} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.statusReports")} items={view.statusReports} count={view.counts.statusReports} onOpen={(href) => router.push(href)} />
+          <Group title={t("attention.group.offlineRunners")} items={view.offlineRunners} count={view.counts.offlineRunners} onOpen={(href) => router.push(href)} />
         </div>
       )}
     </PageContainer>

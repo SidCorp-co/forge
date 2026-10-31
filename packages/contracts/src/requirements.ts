@@ -1071,6 +1071,81 @@ export interface RequirementRevision {
 	criteria: RequirementCriterion[];
 	/** What it did to the criteria of the revision it was written against, computed, never typed; null where it has no base. */
 	criteriaChanges: RequirementCriteriaChanges | null;
+	/** What it changed against the revision it was written on, spec field by field; computed by core, never by a screen. */
+	specChanges: RequirementSpecChanges;
+}
+
+/** A list field against its base: kept in both, added by the revision, removed by it. */
+export interface RequirementListChange {
+	kept: string[];
+	added: string[];
+	removed: string[];
+}
+
+/** One criterion code whose wording differs between a revision and its base; a null side is absent there. */
+export interface RequirementCriterionChange {
+	code: string;
+	was: string | null;
+	now: string | null;
+}
+
+/**
+ * A revision's spec against its base (REQ-12 BC-19): each field is null where it did not change.
+ * Without a base the base is an empty spec.
+ */
+export interface RequirementSpecChanges {
+	/** The revision compared against; null where there is none. */
+	against: number | null;
+	goal: { before: string | null; after: string | null } | null;
+	kind: { before: RequirementKind | null; after: RequirementKind | null } | null;
+	personas: RequirementListChange | null;
+	scopeIn: RequirementListChange | null;
+	scopeOut: RequirementListChange | null;
+	criteria: RequirementCriterionChange[];
+}
+
+/** One side of a spec comparison: a revision's spec fields, its kind and its live criteria. */
+export interface RequirementSpecSide {
+	revision: number;
+	spec: RequirementSpec;
+	kind: RequirementKind | null;
+	criteria: readonly { code: string; body: string }[];
+}
+
+function listChangeOf(before: string[] = [], after: string[] = []): RequirementListChange | null {
+	const added = after.filter((x) => !before.includes(x));
+	const removed = before.filter((x) => !after.includes(x));
+	if (added.length === 0 && removed.length === 0) return null;
+	return { kept: after.filter((x) => before.includes(x)), added, removed };
+}
+
+/** The one rule for what a revision changed against its base; a missing base reads as an empty spec. */
+export function specChangesOf(
+	base: RequirementSpecSide | null,
+	next: RequirementSpecSide,
+): RequirementSpecChanges {
+	const a = base?.spec ?? {};
+	const b = next.spec;
+	const beforeCriteria = base?.criteria ?? [];
+	const codes = [...new Set([...beforeCriteria.map((c) => c.code), ...next.criteria.map((c) => c.code)])].sort(
+		(x, y) => Number(x.slice(3)) - Number(y.slice(3)),
+	);
+	const criteria: RequirementCriterionChange[] = [];
+	for (const code of codes) {
+		const was = beforeCriteria.find((c) => c.code === code)?.body ?? null;
+		const now = next.criteria.find((c) => c.code === code)?.body ?? null;
+		if (was !== null && now !== null && was === now) continue;
+		criteria.push({ code, was, now });
+	}
+	return {
+		against: base?.revision ?? null,
+		goal: a.goal !== b.goal ? { before: a.goal ?? null, after: b.goal ?? null } : null,
+		kind: (base?.kind ?? null) !== next.kind ? { before: base?.kind ?? null, after: next.kind } : null,
+		personas: listChangeOf(a.personas, b.personas),
+		scopeIn: listChangeOf(a.scopeIn, b.scopeIn),
+		scopeOut: listChangeOf(a.scopeOut, b.scopeOut),
+		criteria,
+	};
 }
 
 /**

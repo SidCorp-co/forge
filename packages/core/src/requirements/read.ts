@@ -45,7 +45,7 @@ import { pictureRowsOf } from './picture-read.js';
 import { areasOf } from './placement.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
-import { criterionView, revisionView } from './revision-view.js';
+import { criterionView, revisionBase, revisionView } from './revision-view.js';
 import { type LinkedDesign, liveAt, signoffRefusal } from './rules.js';
 import { type Delivered, deliveredOf, releasesOf } from './shipped-read.js';
 import { documentGatesIn, standingsOf } from './standing-read.js';
@@ -398,7 +398,9 @@ export async function detailOf(
       standing.delivery,
       new Map((await areasOf(row.projectId)).map((a) => [a.id, a.name])),
     ),
-    revisions: revisions.map((r) => revisionView(r, criteria, people, pictures)),
+    revisions: revisions.map((r) =>
+      revisionView(r, criteria, people, pictures, revisionBase(revisions, r, row.currentRevision)),
+    ),
     criteria:
       row.currentRevision === null ? [] : liveAt(criteria, row.currentRevision).map(criterionView),
     workflows: designs.map((d) => ({ ...d, title: d.title ?? d.flow })),

@@ -33,6 +33,9 @@ export const CANCELLED_AGENT_SESSION_STATUSES: readonly AgentSessionStatus[] = [
 	"cancelled_stale",
 ];
 
+/** The sessions that wait on a runner: `idle` awaiting its next turn, or `queued` for one. */
+export const WAITING_SESSION_STATUSES: readonly AgentSessionStatus[] = ["idle", "queued"];
+
 const ENDED: readonly AgentSessionStatus[] = TERMINAL_AGENT_SESSION_STATUSES;
 const move = (act: string) => ({ act, permission: null, guards: [] as const });
 
@@ -46,7 +49,7 @@ export const SESSION_MACHINE = defineMachine({
 	reasonRequired: [],
 	edges: [
 		...fromEach<AgentSessionStatus>(["idle", "running"], "queued", move("turn.queued")),
-		...fromEach<AgentSessionStatus>(["idle", "queued"], "running", move("turn.started")),
+		...fromEach<AgentSessionStatus>(WAITING_SESSION_STATUSES, "running", move("turn.started")),
 		...fromEach<AgentSessionStatus>(["queued", "running"], "idle", move("turn.ended")),
 		...ENDED.flatMap((to) => fromEach(LIVE_SESSION_STATUSES, to, move(`session.${to}`))),
 		// A chat session takes another turn after it ended, and a worker revives a session a sweep

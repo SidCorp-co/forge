@@ -77,8 +77,7 @@ function Criteria({ d, projectId, slug, developer }: { d: RequirementDetail; pro
 function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId: string; open: RequirementRevision }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const base = d.revisions.find((r) => r.revision === (open.baseRevision ?? d.currentRevision ?? -1)) ?? d.revisions.find((r) => r.state === "current");
-  const proposed = open.state === "proposed";
+    const proposed = open.state === "proposed";
   // a proposal this reader decides (the Accept and Reject below are theirs) opens on its diff, so
   // nobody accepts a change they have not seen; every other revision stays folded (REQ-35 BC-7)
   const awaitsReader = proposed && d.canSignOff;
@@ -104,8 +103,8 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
         <CriteriaChanges changes={open.criteriaChanges} />
       </div>
       <div className="mt-3" data-testid="open-revision-diff">
-        <Disclosure key={open.revision} defaultOpen={awaitsReader} title={t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}>
-          <RevisionDiff base={base} next={open} />
+        <Disclosure key={open.revision} defaultOpen={awaitsReader} title={t("requirements.revision.changesAgainst", { r: open.specChanges.against ?? "—" })}>
+          <RevisionDiff changes={open.specChanges} />
         </Disclosure>
       </div>
       {proposed ? (

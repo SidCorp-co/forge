@@ -1,3 +1,4 @@
+import { inActiveOrg } from '@forge/contracts/org-scope';
 import type { HealthKey } from '@/design';
 import type {
   ProjectConsoleItem,
@@ -100,17 +101,6 @@ export function sortProjects(
   });
 }
 
-/**
- * Whether a project shows under the active org. One whose org the caller is not a member of,
- * reached through a project invite alone, shows under every org, since no switch reaches it.
- */
-export function inActiveOrg(
-  p: Pick<ProjectListItem, 'orgId' | 'orgRole'>,
-  activeOrgId: string | null,
-): boolean {
-  return !activeOrgId || p.orgId === activeOrgId || p.orgRole === null;
-}
-
 /** Free-text (name/org) + needs-attention filter. */
 export function filterProjects(
   items: ProjectConsoleItem[],
@@ -151,3 +141,5 @@ export function formatRelativeTime(iso: string | null, now: number): string {
   if (day < 7) return `${day}d`;
   return `${Math.floor(day / 7)}w`;
 }
+
+export { inActiveOrg };

@@ -69,10 +69,9 @@ export function FleetStrip({ projectId, rows, displays, now, stuck }: FleetStrip
     return m;
   })();
 
-  const onlineRunners = devicePool.filter((d) => d.status === "online").length;
-  const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
-  // Zero online runners is read only off a loaded pool: a pending or failed read is not an empty fleet.
-  const dispatchStalled = projectQ.isSuccess && queuedCount > 0 && onlineRunners === 0;
+  // Both facts are core's queue read model's, served in one shape; a pending or failed read states neither.
+  const queuedCount = queueQ.data?.waiting ?? 0;
+  const dispatchStalled = queueQ.data?.dispatchStalled ?? false;
 
   return (
     <div className="flex flex-col gap-3">

@@ -1,3 +1,4 @@
+import { type RequirementSpecSide, specChangesOf } from "@forge/contracts/requirements";
 import type { Said } from "@forge/contracts/said";
 import { RULE, say, sentence, verbatim, waitingOn } from "./said";
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
@@ -69,7 +70,7 @@ const standing = {
 
 const criterion = (code: string, body: string, since: number) => ({ id: code, code, body, form: "statement" as const, sinceRevision: since, retiredRevision: null });
 
-const revision = (n: number, state: string, over: Record<string, unknown> = {}) => ({
+const revisionBody = (n: number, state: string) => ({
   revision: n,
   state,
   baseRevision: n > 1 ? n - 1 : null,
@@ -91,8 +92,15 @@ const revision = (n: number, state: string, over: Record<string, unknown> = {}) 
   kind: null,
   picture: null,
   criteria: [criterion("BC-1", "Tieu chi mot", 1), criterion("BC-2", n === 2 ? "Tieu chi hai moi" : "Tieu chi hai", n), criterion("BC-3", "Tieu chi ba", 1)],
-  ...over,
 });
+
+const sideOf = (r: ReturnType<typeof revisionBody>): RequirementSpecSide => ({ revision: r.revision, spec: r.spec, kind: null, criteria: r.criteria });
+
+/** A revision as core serves it: `specChanges` is what core computes against the one before, never typed by a screen. */
+const revision = (n: number, state: string, over: Record<string, unknown> = {}) => {
+  const r = revisionBody(n, state);
+  return { ...r, specChanges: specChangesOf(n > 1 ? sideOf(revisionBody(n - 1, "current")) : null, sideOf(r)), ...over };
+};
 
 const reqSummary = (key: string, over: Partial<RequirementSummary> = {}): RequirementSummary =>
   ({ id: `id-${key}`, key, title: `Muc ${key}`, status: "agreed", currentRevision: 1, latestRevision: { revision: 2, state: "proposed" }, delivery: standing.delivery, createdAt: at, updatedAt: at, standing, ...over }) as RequirementSummary;
