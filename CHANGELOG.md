@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.416] - 2026-10-31
+
+Master passes name the served dispatch guide; local gates read the declared base
+
+### Fixed
+
+- **Local gates measure from the base `.forge/landing.json` declares (`dev`)**, never `origin/HEAD`, which names `main`; a missing or malformed declaration is refused by name.
+- **A dispatch master's pass names the served dispatch guide** (`forge-runner api guides/dispatch.md`), not "the dispatch skill", which a pane with forge-plugin resolved to the plugin's forge:dispatch and its verbs.
+
 ## [0.4.0-dev.415] - 2026-10-31
 
 Cleanup report results follow the debt they leave, carried at a recorded price

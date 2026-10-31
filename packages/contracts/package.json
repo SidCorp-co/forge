@@ -1,6 +1,6 @@
 {
   "name": "@forge/contracts",
-  "version": "0.4.0-dev.415",
+  "version": "0.4.0-dev.416",
   "private": true,
   "license": "Apache-2.0",
   "description": "Shared types and runtime tables for core and web-v2: row and request types read from @forge/core's source as types only (tsconfig paths, never a declared dependency, so the build graph runs contracts before core), and the vocabularies both read at runtime (permissions, outbox consumers, pipeline registry). Each module is its own subpath, @forge/contracts/<module>.",
