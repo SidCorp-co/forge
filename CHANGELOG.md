@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.392] - 2026-10-31
+
+A link no code calls any more can be retired
+
+### Fixed
+
+- **A link whose consumer deleted every call site can now be retired.** DELETE /api/projects/:id/links/:link removes it once it holds no call sites, and the empty-callSites refusal names that act.
+
 ## [0.4.0-dev.391] - 2026-10-31
 
 Fleet, requirement changes and Attention counts read from one core source
