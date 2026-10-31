@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { wholeShaSchema } from "./check-runs.js";
+import { ISSUE_CRITERIA_MAX } from "./issue-design.js";
 import { PATTERN_SLUG_PATTERN } from "./patterns.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 
@@ -22,7 +23,7 @@ export type ReviewCriterionResult = (typeof REVIEW_CRITERION_RESULTS)[number];
 export const REVIEW_LIMITS = {
 	note: 400,
 	lines: 200,
-	criteria: 50,
+	criteria: ISSUE_CRITERIA_MAX,
 	evidence: 10,
 	citation: 400,
 } as const;

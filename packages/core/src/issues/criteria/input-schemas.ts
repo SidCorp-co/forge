@@ -4,7 +4,7 @@
 
 import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
-import { CRITERION_JUDGES } from '@forge/contracts/issue-design';
+import { CRITERION_JUDGES, ISSUE_CRITERIA_MAX } from '@forge/contracts/issue-design';
 import { storefrontDraftIdentitySchema } from '@forge/contracts/verdict-identity';
 import { z } from 'zod';
 import { criterionLeadingNumber } from '../../messaging/criterion-named.js';
@@ -29,7 +29,7 @@ function numberCriteria(items: ReadonlyArray<z.infer<typeof criterionItem>>): Cr
 }
 
 export const criteriaPutSchema = z
-  .object({ criteria: z.array(criterionItem).max(200) })
+  .object({ criteria: z.array(criterionItem).max(ISSUE_CRITERIA_MAX) })
   .strict()
   .transform(({ criteria }) => ({ criteria: numberCriteria(criteria) }));
 

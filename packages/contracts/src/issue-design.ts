@@ -27,11 +27,18 @@ export const JUDGE_OF_CLASS: Record<CriterionClass, CriterionJudge> = {
   code_property: 'review',
 };
 
+/**
+ * The most acceptance criteria an issue holds (`PUT /api/issues/:id/criteria`). A design and a
+ * review name one line per criterion, so both read their cap from here: a cap of their own below
+ * it left an issue with more criteria no design it could pass (ISS-837, adminhub-api ISS-78).
+ */
+export const ISSUE_CRITERIA_MAX = 200;
+
 export const DESIGN_LIMITS = {
   proof: 2000,
   modules: 50,
   contracts: 50,
-  criteria: 50,
+  criteria: ISSUE_CRITERIA_MAX,
 } as const;
 
 /** No design is recorded on the issue. */
