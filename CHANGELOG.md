@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.406] - 2026-10-31
+
+Declaring a judge or reviewer run no longer moves an issue's step
+
+### Fixed
+
+- **A judge or reviewer run no longer moves the step.** Declaring a qa or reviewer run on an issue at `in_progress:test` leaves the step at test. A verdict waiting behind another run's hold names that builder run to close first.
+
 ## [0.4.0-dev.405] - 2026-10-31
 
 Design check skipped where the design-record gate is off
