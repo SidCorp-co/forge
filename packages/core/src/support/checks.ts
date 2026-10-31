@@ -29,7 +29,7 @@ function checkNote(check: SupportCheck, thread: string): string {
   return [
     `Scheduled check \`${check.name}\` for channel ${check.rid}:`,
     check.ask,
-    `Answer it with support.check_result { check: "${thread}", finding }: the one finding to post in the channel when something is wrong, or finding null when nothing is, and nothing is posted. Post nothing else for this check.`,
+    `Answer it with support.check_result { check: "${thread}", finding }: the one finding to post in the channel when something is wrong, or finding null when nothing is, and nothing is posted. Write the finding as the persona speaks, its language and its length. Read the tracker with support.issues, support.releases and support.requirements. Post nothing else for this check.`,
   ].join('\n\n');
 }
 

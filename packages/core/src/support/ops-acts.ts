@@ -2,10 +2,14 @@
 // (the caller is the room's own session, `access.ts`). Each is gated twice before anything runs: by
 // the role's grant (`ops-role.ts`), and by the room's scope (`ops-scope.ts`). A read runs as the
 // room (`ops-reads.ts`); a write runs as the thread's asker under their own permissions
-// (`ops-writes.ts`).
+// (`ops-writes.ts`). A channel agent's room has the reads alone, over its own project (ISS-844): its
+// writes go through the support doors (record, route, ask_owner), never an operations write.
 
-import type { OperationsAction } from '@forge/contracts/support-operations';
-import { issuesRead, projectsRead, releasesRead } from './ops-reads.js';
+import {
+  OPERATIONS_ACTION_GRANT,
+  type OperationsAction,
+} from '@forge/contracts/support-operations';
+import { issuesRead, projectsRead, releasesRead, requirementsRead } from './ops-reads.js';
 import { readPublicPage } from './ops-research.js';
 import { grantRefusal, roleOfRoom } from './ops-role.js';
 import type { OperationsActInput, OpsOutcome } from './ops-types.js';
@@ -20,11 +24,18 @@ export async function operationsAct(
   room: RoomRow,
   input: OperationsActInput,
 ): Promise<OpsOutcome<unknown>> {
+  // a channel agent reads its own project as an operations room scoped to it does (FB-448): its
+  // morning check and every status question are answered from the tracker, not from a refusal
+  if (room.kind === 'agent' && OPERATIONS_ACTION_GRANT[input.action] === 'read') {
+    return act(room, input);
+  }
   if (room.kind !== 'operations') {
     return no(
       'OPS_NOT_AN_OPERATIONS_ROOM',
       '/action',
-      `${input.action} is an operations room's act, and this room is a support group`,
+      room.kind === 'agent'
+        ? `${input.action} is an operations room's write; a channel agent writes through support.record, support.route and support.ask_owner, and reads projects, issues, releases and requirements`
+        : `${input.action} is an operations room's act, and this room is a support group`,
     );
   }
   const role = await roleOfRoom(room);
@@ -43,6 +54,8 @@ async function act(room: RoomRow, input: OperationsActInput): Promise<OpsOutcome
       return issuesRead(room, input);
     case 'releases':
       return releasesRead(room, input.project);
+    case 'requirements':
+      return requirementsRead(room, input.project);
     case 'move':
       return move(room, input);
     case 'draft_requirement':

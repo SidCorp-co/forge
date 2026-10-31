@@ -23,7 +23,7 @@ export async function projectsInScope(room: RoomRow): Promise<ScopedProject[]> {
 }
 
 const scopeLine = (room: RoomRow, reach: readonly ScopedProject[]) =>
-  `this room's scope is ${room.scope} (${reach.map((p) => p.slug).join(', ')})`;
+  `this room's scope is ${room.scope ?? 'its own project'} (${reach.map((p) => p.slug).join(', ')})`;
 
 /** The project `slug` names, when the room reaches it. */
 export async function projectInScope(

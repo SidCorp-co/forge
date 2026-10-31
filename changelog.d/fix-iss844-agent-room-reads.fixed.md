@@ -1,0 +1,1 @@
+**A channel agent reads its own project's issues, releases and requirements**, so its scheduled check and status questions are answered instead of refused `OPS_NOT_AN_OPERATIONS_ROOM`; its writes stay the support doors.

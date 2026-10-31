@@ -27,7 +27,7 @@ export { linkRefusalOn, plannedRevisionFor, requirementOfIssue } from './issue-l
 export { issueNamingOf, namedIssue } from './issue-projects.js';
 export { issueRequirementOf } from './issue-requirement-read.js';
 export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-preview.js';
-export { requirementStandingsOf } from './list-rows.js';
+export { listRowsOf, requirementStandingsOf } from './list-rows.js';
 export type { ProposeDuplicate } from './near-duplicate.js';
 export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';

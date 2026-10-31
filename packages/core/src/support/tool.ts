@@ -38,6 +38,7 @@ import {
   operationsMoveRequestSchema,
   operationsProjectsRequestSchema,
   operationsReleasesRequestSchema,
+  operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
 import { z } from 'zod';
@@ -64,6 +65,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
   'projects',
   'issues',
   'releases',
+  'requirements',
   'channel',
   'deployment',
   'project',
@@ -89,6 +91,7 @@ const REQUESTS = {
   projects: operationsProjectsRequestSchema,
   issues: operationsIssuesRequestSchema,
   releases: operationsReleasesRequestSchema,
+  requirements: operationsRequirementsRequestSchema,
   move: operationsMoveRequestSchema,
   draft_requirement: operationsDraftRequirementRequestSchema,
   draft_feedback: operationsDraftFeedbackRequestSchema,
@@ -150,6 +153,7 @@ const SHAPE = [
   'projects {}',
   'issues { project, status?, key? }',
   'releases { project }',
+  'requirements { project }',
   'move { thread, issue, to, reason?, project? }',
   'draft_requirement { thread, project, title, summary }',
   `draft_feedback { thread, project, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, one of requirement | issue | screen }`,

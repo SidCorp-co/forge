@@ -79,6 +79,7 @@ export const OPERATIONS_ACTIONS = [
 	"projects",
 	"issues",
 	"releases",
+	"requirements",
 	"move",
 	"draft_requirement",
 	"draft_feedback",
@@ -94,6 +95,7 @@ export const OPERATIONS_ACTION_GRANT: Record<
 	projects: "read",
 	issues: "read",
 	releases: "read",
+	requirements: "read",
 	move: "deliver",
 	draft_requirement: "draft",
 	draft_feedback: "draft",
@@ -127,6 +129,9 @@ export const operationsIssuesRequestSchema = z.strictObject({
 	key: issueKey.optional(),
 });
 export const operationsReleasesRequestSchema = z.strictObject({
+	project: projectRef,
+});
+export const operationsRequirementsRequestSchema = z.strictObject({
 	project: projectRef,
 });
 export const operationsMoveRequestSchema = z.strictObject({

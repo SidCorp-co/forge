@@ -27,6 +27,7 @@ import {
   operationsIssuesRequestSchema,
   operationsMoveRequestSchema,
   operationsReleasesRequestSchema,
+  operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
 import { type Context, Hono } from 'hono';
@@ -94,6 +95,7 @@ const SHAPES = {
   record: '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }',
   issues: '{ project, status?, key? }',
   releases: '{ project }',
+  requirements: '{ project }',
   move: '{ thread, issue, to, reason?, project? }',
   requirementDraft: '{ thread, project, title, summary }',
   feedbackDraft:
@@ -194,7 +196,8 @@ supportRoutes.post(
   (c) => act(c, c.req.valid('param').id, { action: 'command', ...c.req.valid('json') }),
 );
 
-// an operations room's acts (REQ-75 BC-20..BC-24): read the scope, move delivery, draft direction, research
+// an operations room's acts (REQ-75 BC-20..BC-24): read the scope, move delivery, draft direction, research;
+// a channel agent reads its own project through the same reads (ISS-844)
 // the project document, read by a channel agent (ISS-775)
 supportRoutes.get('/:id/support/session/project', projectParam, ridQuery, (c) =>
   act(c, c.req.valid('param').id, { action: 'project' }, c.req.valid('query').rid),
@@ -213,6 +216,12 @@ supportRoutes.post(
   projectParam,
   strictBody(operationsReleasesRequestSchema, SHAPES.releases),
   (c) => act(c, c.req.valid('param').id, { action: 'releases', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/requirements',
+  projectParam,
+  strictBody(operationsRequirementsRequestSchema, SHAPES.requirements),
+  (c) => act(c, c.req.valid('param').id, { action: 'requirements', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/moves',

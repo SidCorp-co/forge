@@ -16,6 +16,7 @@ export type OperationsActInput =
       key?: string | undefined;
     }
   | { action: 'releases'; project: string }
+  | { action: 'requirements'; project: string }
   | {
       action: 'move';
       thread: string;
