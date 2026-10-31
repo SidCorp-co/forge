@@ -232,7 +232,7 @@ const built = [...direct.built];
 if (lane === 'full') {
   // verify loads the same dist builds core's tests do, and a change that selected none of those tests
   // rebuilt nothing: it rebuilds what is left before verify starts, or stops as the tests do (ISS-679)
-  const forVerify = rebuildPackages(ROOT, verifyBuildsOwed(built), { exec: run });
+  const forVerify = rebuildPackages(ROOT, verifyBuildsOwed(built), { exec: run, stops: 'verify' });
   if (forVerify.refusal) die(forVerify.refusal);
   built.push(...forVerify.built);
   // A landed run hands verify the landing's base: the base branch's tip is HEAD there, and every

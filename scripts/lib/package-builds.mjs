@@ -113,18 +113,24 @@ const tailOf = (r) =>
  * Rebuild each owed package with its own build script (`pnpm --filter <name> run build`), then hold
  * its dist to its source. Answers the builds made, or the refusal naming the first package that could
  * not be brought to its source: its dist, what does not match, the collections that load it, the
- * command and how it ended. `exec` runs one command as `direct-test-run.mjs:run` does.
+ * command and how it ended. `exec` runs one command as `direct-test-run.mjs:run` does. `stops` names
+ * what the refusal holds back: the selected tests, or `verify` once they have run (ISS-679).
  */
-export function rebuildPackages(root, owed, { exec }) {
+export function rebuildPackages(root, owed, { exec, stops = 'tests' }) {
   const dirs = packageDirs(root);
   const built = [];
   for (const { name, loadedBy } of owed) {
-    const loaders = loadedBy.join(', ');
+    const loaders =
+      stops === 'verify' ? 'pnpm verify loads' : `the tests of ${loadedBy.join(', ')} load`;
+    const held =
+      stops === 'verify'
+        ? 'Verify did not run: it would have run against a build that is not this source.'
+        : 'No test ran: they would have run against a build that is not this source.';
     const dir = dirs.get(name);
     if (!dir) {
       return {
         built,
-        refusal: `PACKAGE_BUILD_STALE: the tests of ${loaders} load ${name} from its build, and no package under packages/ is named ${name}; a collection's \`builds\` in scripts/lib/direct-tests.mjs names a package the checkout does not hold`,
+        refusal: `PACKAGE_BUILD_STALE: ${loaders} ${name} from its build, and no package under packages/ is named ${name}; a collection's \`builds\` in scripts/lib/direct-tests.mjs names a package the checkout does not hold`,
       };
     }
     const before = buildMismatch(root, dir);
@@ -141,8 +147,8 @@ export function rebuildPackages(root, owed, { exec }) {
       return {
         built,
         refusal:
-          `PACKAGE_BUILD_STALE: the tests of ${loaders} load ${name} from ${dir}/dist; ${why}. ` +
-          `No test ran: they would have run against a build that is not this source. Run \`${command}\` to see why it fails, fix it, and run again.` +
+          `PACKAGE_BUILD_STALE: ${loaders} ${name} from ${dir}/dist; ${why}. ` +
+          `${held} Run \`${command}\` to see why it fails, fix it, and run again.` +
           (r.ok ? '' : `\n  what the build printed last:\n${tailOf(r)}`),
       };
     }

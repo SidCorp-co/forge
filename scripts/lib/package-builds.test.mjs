@@ -235,6 +235,18 @@ describe('a package build that cannot match its source stops the run before any 
     expect(out.refusal).toContain('PACKAGE_BUILD_STALE');
     expect(out.refusal).toContain('no package under packages/ is named @forge/observability');
   });
+
+  it('names verify as what it held back when the build verify loads cannot be made (ISS-679)', () => {
+    const root = rebasedWorkspace();
+    const failed = () => ({ ok: false, status: 2, stdout: '', stderr: 'boom', durationMs: 1 });
+    const out = rebuildPackages(root, verifyBuildsOwed([]).slice(1), {
+      exec: failed,
+      stops: 'verify',
+    });
+    expect(out.refusal).toMatch(/^PACKAGE_BUILD_STALE: pnpm verify loads @forge\/contracts from /);
+    expect(out.refusal).toContain('Verify did not run');
+    expect(out.refusal).not.toContain('No test ran');
+  });
 });
 
 describe('a dist matches its source when every source module is emitted and none is newer', () => {
