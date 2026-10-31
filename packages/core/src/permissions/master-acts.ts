@@ -1,7 +1,9 @@
 /**
  * What a project's master holds beyond its role outside `strict` (REQ-79 r6 BC-11, BC-17; owner ruling
  * 2026-10-31): agents decide and implement by default, so the acts a project's control asked of an
- * admin or an approver are its master's too, unless the project asked for control. The master is an
+ * admin or an approver are its master's too, unless the project asked for control. The approvals it
+ * holds are a grant on its facts (`MASTER_GRANTS`), read wherever the facts are; the release cut and
+ * record, which ask project.admin, it holds by that one act (`requireMasterAct`), never project.admin. The master is an
  * agent's credential that writes the project: an agent account's own token, or a paired box's, whose
  * checkout acts as the project's own agent (`devices/workspace-credential.ts:workspaceHolderFor`). It is
  * read off the credential, never a user id; a person's token holds only what its role and grant hold.
@@ -18,7 +20,20 @@ import type {
 } from '@forge/contracts/permissions';
 import { RefusalError } from '../lib/refusal.js';
 import { forbidden } from '../middleware/route-errors.js';
-import { holds, type PermissionFacts, permissionRefusal } from './can.js';
+import { holds, type PermissionFacts, permissionFactsOf, permissionRefusal } from './can.js';
+import { permissionsPort } from './ports.js';
+
+/**
+ * The approvals the master holds outside strict: triaging its project's feedback, agreeing and
+ * signing off its requirements, approving its workflow designs and its own contracts (REQ-79 r6 BC-11).
+ * A token still narrows them as it narrows any approval (`TOKEN_EXPLICIT_PERMISSIONS`).
+ */
+export const MASTER_GRANTS: readonly ProjectPermission[] = [
+  'feedback.approve',
+  'requirements.approve',
+  'workflow-designs.approve',
+  'contracts.approve',
+];
 
 /** Who is asking, and on a project of what profile (`project-config:readGateProfile`). */
 export interface MasterAsk {
@@ -65,4 +80,22 @@ export function requireMasterAct(
   }
   const refusal = masterActRefusal(facts, permission, ask, act);
   if (refusal) throw new RefusalError([refusal], refusal.code);
+}
+
+/** The facts with the master's grant added where the caller acts as the project's master. */
+export function masterFacts(facts: PermissionFacts, ask: MasterAsk): PermissionFacts {
+  if (!actsAsMaster(facts, ask)) return facts;
+  return { ...facts, grants: [...new Set([...facts.grants, ...MASTER_GRANTS])] };
+}
+
+/** `permissionFactsOf` for an actor of this agency, the master's grant read in. */
+export async function masterFactsOf(
+  userId: string | null | undefined,
+  projectId: string,
+  agency: ActorAgency,
+): Promise<PermissionFacts> {
+  const facts = await permissionFactsOf(userId, projectId);
+  if (agency !== 'agent' || facts.role === null) return facts;
+  const profile = await permissionsPort('gateProfileOf')(projectId);
+  return masterFacts(facts, { agency, profile });
 }

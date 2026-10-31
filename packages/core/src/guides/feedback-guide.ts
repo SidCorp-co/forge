@@ -122,7 +122,8 @@ reporter's confirm in the fix's preview does as theirs (below).
   moves the item to \`declined\`. 180 days after the
   decline the nightly retention pass removes its attachments and embedding; the row stays.
 - **Triage is an approval.** Triage takes \`feedback.approve\` on the project
-  (project admin, or an org owner or admin), person or agent alike; without it the call is refused
+  (project admin, or an org owner or admin), person or agent alike, and outside a strict gate profile the
+  project's master holds it too: an agent's token, or a paired box's, that writes the project; without it the call is refused
   \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`POST /api/projects/:id/suggestions\`
   \`{ kind: 'feedback_triage', feedback, payload }\`, the payload a triage with its \`answers\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
   item (\`dedup\`, or why dedup did not run); a holder accepts it (\`POST /api/projects/:id/suggestions/:sid/accept\`), and the

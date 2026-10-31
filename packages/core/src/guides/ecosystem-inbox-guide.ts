@@ -213,8 +213,9 @@ publishes and the versions of its contracts, and a person is not handed that wor
    A recorded version is proposed; it is current only once approved:
    \`POST /api/projects/:id/contracts/:contract/versions/:version/decision { decision: approve | return, reason? }\`. Whoever holds
    \`contracts.approve\` on the provider project (project admin, or an org owner or admin) decides any
-   version, breaking included, person or agent alike; without it the call is refused
-   \`PERMISSION_FORBIDDEN\`. A contract published in no ecosystem is
+   version, breaking included, person or agent alike, and outside strict the provider project's master
+   decides its own (an agent's token, or a paired box's, that writes the project); without it the call
+   is refused \`PERMISSION_FORBIDDEN\`. A contract published in no ecosystem is
    in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
    ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
    An issue that needs a contract version waits on the version, never on the provider's issue:

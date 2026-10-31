@@ -32,6 +32,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 import { pairTestBox } from '../helpers/paired-box.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { resetScript, type ScriptStep, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -167,13 +168,16 @@ beforeAll(async () => {
   masterId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, masterId, 'member');
   ({ deviceId } = await pairTestBox(projectId, { pairedBy: masterId, actsAs: masterId }));
+  // REQ-79 r6 BC-11: outside strict the master holds the triage whatever its role; the holders are
+  // asked only on a strict project, which is what this file is about until its last case
+  await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
 }, 120_000);
 
 afterAll(async () => {
   await closeWorld();
 });
 
-describe('a triage the master may not take is asked of the feedback.approve holders (c3)', () => {
+describe('on a strict project, a triage the master may not take is asked of the feedback.approve holders (c3)', () => {
   let fb: Item;
 
   it('a diagnosis that wrote only the note still asks the holders by name, never the master', async () => {
@@ -313,6 +317,18 @@ describe('where nobody holds feedback.approve, nobody is asked and the item says
     expect(await toldOf(fb.key)).toEqual([]);
     const again = await sweepAndRun(noteOnly(fb));
     expect(again.stuck).toBe(0);
+    standings = [];
+  });
+});
+
+describe('outside strict the master takes the triage itself (REQ-79 r6 BC-11)', () => {
+  it('wakes the master, a member holding no feedback.approve, and tells no holder', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'standard' } });
+    const fb = await feedbackItem();
+    standings = [triageAgain(fb, 'standard-master')];
+    await sweepAndRun(noteOnly(fb));
+    expect((await actsOn(fb.id)).map((a) => a.door).at(-1)).toBe('WAKE master.wake steward');
+    expect(await toldOf(fb.key)).toEqual([]);
     standings = [];
   });
 });

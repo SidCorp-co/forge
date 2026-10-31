@@ -1,0 +1,1 @@
+**Outside strict the project's master triages, agrees and approves:** an agent's token or a paired box's holds feedback triage, requirement sign-off and workflow design approval on its own project; under strict they stay the approvers' (ISS-845).

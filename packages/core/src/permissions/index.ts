@@ -29,8 +29,11 @@ export {
 export { holderNames, type NamedHolder, namedHolders } from './holders-named.js';
 export {
   actsAsMaster,
+  MASTER_GRANTS,
   type MasterAsk,
   masterActRefusal,
+  masterFacts,
+  masterFactsOf,
   requireMasterAct,
 } from './master-acts.js';
 export {

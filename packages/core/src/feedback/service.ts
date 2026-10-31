@@ -27,7 +27,7 @@ import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { writtenLangFor } from '../lib/written-lang.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, masterFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { phaseOfRow } from './list-read.js';
@@ -84,8 +84,9 @@ export async function answer(
   return { ok: true, feedback: await detailAs(viewer, projectId, id), ...extra };
 }
 
+/** The actor's facts, with what the project's master holds outside strict (REQ-79 r6 BC-11). */
 export const roleFacts = (actor: FeedbackActor, projectId: string) =>
-  permissionFactsOf(actor.userId, projectId);
+  masterFactsOf(actor.userId, projectId, actor.agency);
 
 export async function decide(
   tx: Tx,

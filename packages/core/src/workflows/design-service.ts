@@ -7,7 +7,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, masterFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { personGateOf } from '../project-config/index.js';
 import {
   type DesignDecision,
@@ -73,7 +73,7 @@ export async function approverRefusalFor(
   projectId: string,
 ): Promise<DesignRefusal | null> {
   return designApproverRefusal(
-    await permissionFactsOf(actor.userId, projectId),
+    await masterFactsOf(actor.userId, projectId, actor.agency),
     await personGateOf(projectId, 'designs'),
   );
 }

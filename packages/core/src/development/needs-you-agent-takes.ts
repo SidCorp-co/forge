@@ -16,7 +16,7 @@ import {
 } from '@forge/contracts/needs-you-decisions';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { type PersonGate, personGatePermission } from '@forge/contracts/person-gates';
-import { actorFor, can, projectResource } from '../permissions/index.js';
+import { actorFor, can, MASTER_GRANTS, projectResource } from '../permissions/index.js';
 import { readApprovals, readGateProfile } from '../project-config/index.js';
 import { masterAccountsOf } from './ports.js';
 
@@ -49,9 +49,9 @@ const NEED: Readonly<Record<DecisionAct, Need>> = {
 };
 
 /**
- * The acts the master takes outside strict whatever its role holds, as their doors read it
- * (`permissions/master-acts.ts`, REQ-79 r6 BC-11, BC-17): its accounts write the project, and the
- * project did not ask for control.
+ * What the master takes outside strict whatever its role holds, as the doors read it
+ * (`permissions/master-acts.ts`, REQ-79 r6 BC-11, BC-17): an act asking one of `MASTER_GRANTS`, and
+ * these, where its accounts write the project and the project did not ask for control.
  */
 const MASTER_ACTS: ReadonlySet<DecisionAct> = new Set<DecisionAct>(['release.cut']);
 
@@ -117,6 +117,7 @@ export async function masterTakesOf(
   return (act, topic) => {
     if (master && MASTER_ACTS.has(act)) return true;
     const p = permissionOf(act, topic);
+    if (p !== null && master && MASTER_GRANTS.includes(p)) return true;
     return p !== null && held.get(p) === true;
   };
 }

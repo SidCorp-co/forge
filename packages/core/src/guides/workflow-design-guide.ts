@@ -230,7 +230,7 @@ as conditions, tests or failure edges (asked only of a flow, never of a structur
 context), and its change from the last approved revision, computed. A gap is refused
 \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it, and the revision stays proposed. Where the project document's \`approvals.designs\` is on, approving takes
 \`workflow-designs.approve\` (project admin, or an org owner or admin), person or agent alike, a design
-onboarding drafted included; off (the default), \`workflow-designs.write\` suffices and the complete
+onboarding drafted included, and outside strict the project's master (an agent's token, or a paired box's, that writes the project); off (the default), \`workflow-designs.write\` suffices and the complete
 checklist decides. Without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Unlinking an issue lifts its gate, so it takes the
 same permission. The project document's old \`workflows.designApprover\` is retired, and a write naming
 it is refused \`APPROVER_POLICY_RETIRED\`.`,

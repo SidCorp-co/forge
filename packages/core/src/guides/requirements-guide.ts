@@ -245,7 +245,7 @@ re-pinning (both held by \`approvals.revisions\`), or moving or accepting the de
 \`requirements.approve\`. Promote takes what the admit gate asks instead. Under a gate profile
 (\`GET /api/projects/:id/gates\`, REQ-76) each of these switches is the gate \`approval_<step>\`: strict
 asks the approve permission always, standard as the switch says, yolo never. Each is held on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
-included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
+included, and outside strict by the project's master too (an agent's token, or a paired box's, that writes the project); without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),
 and accepting one writes a new revision **proposed** by the accepting holder, never a current one: the

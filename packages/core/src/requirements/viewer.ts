@@ -1,6 +1,6 @@
 // What the viewer of a requirement may do, read once per read and handed to its standing and its acts.
 
-import { permissionFactsOf, permissionRefusal } from '../permissions/index.js';
+import { masterFactsOf, permissionRefusal } from '../permissions/index.js';
 import { personGateOf } from '../project-config/index.js';
 import type { RequirementActor } from './read.js';
 import { signoffRefusal } from './rules.js';
@@ -14,7 +14,7 @@ import { signoffRefusal } from './rules.js';
 export async function standingViewer(viewer: RequirementActor | null, projectId: string) {
   if (!viewer) return null;
   const [facts, accept, admit] = await Promise.all([
-    permissionFactsOf(viewer.userId, projectId),
+    masterFactsOf(viewer.userId, projectId, viewer.agency),
     personGateOf(projectId, 'accept'),
     personGateOf(projectId, 'admit'),
   ]);

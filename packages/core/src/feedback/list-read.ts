@@ -10,6 +10,7 @@ import {
   feedbackKey,
 } from '@forge/contracts/feedback';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { eq, inArray } from 'drizzle-orm';
@@ -20,10 +21,9 @@ import { requirementRevisions, requirements } from '../db/schema-requirements.js
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix } from '../issues/index.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
-import { holds } from '../permissions/index.js';
+import { holds, masterFactsOf } from '../permissions/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
@@ -105,9 +105,12 @@ export function viewerCanOf(facts: PermissionFacts): ViewerCan {
   };
 }
 
-export async function viewerCanIn(userId: string, projectId: string): Promise<ViewerCan> {
-  const access = await effectiveProjectRole(userId, projectId);
-  return viewerCanOf({ projectId, role: access?.role ?? null, grants: access?.grants ?? [] });
+/** The viewer's acts, with what the project's master holds outside strict (REQ-79 r6 BC-11). */
+export async function viewerCanIn(
+  viewer: { userId: string; agency: ActorAgency },
+  projectId: string,
+): Promise<ViewerCan> {
+  return viewerCanOf(await masterFactsOf(viewer.userId, projectId, viewer.agency));
 }
 
 const AT_RELEASE_GATE = 'awaiting_release';

@@ -25,7 +25,7 @@ export async function summariesAs(
   const [level, linked, can] = await Promise.all([
     dataPolicyOf(projectId),
     linkedOf(projectId, mine),
-    viewerCanIn(viewer.userId, projectId),
+    viewerCanIn(viewer, projectId),
   ]);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   return shown(

@@ -137,7 +137,7 @@ async function summariesOf(
     .limit(named ? Math.max(named.length, 1) : LIST_WINDOW);
   const [linked, can] = await Promise.all([
     linkedOf(projectId, rows),
-    viewerCanIn(viewer.userId, projectId),
+    viewerCanIn(viewer, projectId),
   ]);
   return {
     all: shown(

@@ -206,12 +206,14 @@ describe('a feedback item waiting on the master: the master records why it waits
     expect(text).not.toContain('issues/<id>/events');
   });
 
-  it('the master may not triage it, and the issue door does not serve it', async () => {
+  // REQ-79 r6 BC-11 (owner ruling 2026-10-31): outside strict the master triages its project's
+  // feedback itself; it still records why an item waits on the item, never through the issue door
+  it('the master may triage it outside strict, and the issue door does not serve it', async () => {
     const read = ok(
       await say('master', 'GET', `/api/projects/${projectId}/feedback/${fb.key}`),
       200,
     );
-    expect((read as { feedback: { can: { triage: boolean } } }).feedback.can.triage).toBe(false);
+    expect((read as { feedback: { can: { triage: boolean } } }).feedback.can.triage).toBe(true);
     const issueDoor = await say('master', 'POST', `/api/issues/${fb.id}/events`, {
       kind: 'decision',
       contract: 1,

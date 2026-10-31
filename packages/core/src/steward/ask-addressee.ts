@@ -17,13 +17,7 @@ import type { WaitingKind } from '@forge/contracts/standing';
 import type { ItemStanding } from '@forge/contracts/steward';
 import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
 import { innerActKey } from '../lib/standing-act-class.js';
-import {
-  actorFor,
-  can,
-  type NamedHolder,
-  namedHolders,
-  projectResource,
-} from '../permissions/index.js';
+import { holds, masterFactsOf, type NamedHolder, namedHolders } from '../permissions/index.js';
 import { heldStewardOf } from './account.js';
 import { stewardPorts } from './ports.js';
 
@@ -121,7 +115,8 @@ async function masterStanding(
 ): Promise<{ holds: boolean; unread: string[] }> {
   const { accounts, unread } = await stewardPorts().masterAccounts(projectId);
   for (const id of accounts) {
-    if (await can(actorFor(id), permission, projectResource(projectId))) {
+    // its pane writes as an agent, so outside strict it holds the master's grant (REQ-79 r6 BC-11)
+    if (holds(await masterFactsOf(id, projectId, 'agent'), permission)) {
       return { holds: true, unread };
     }
   }

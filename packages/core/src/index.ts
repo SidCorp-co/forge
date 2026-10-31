@@ -19,7 +19,7 @@ import {
   registerRoomChat,
   registerWebConversationAdapter,
 } from './assistant/index.js';
-import { agentAccountsAmong, demoMemberId } from './auth/index.js';
+import { demoMemberId } from './auth/index.js';
 import { runOnceBackfills, startDeferredBackfills } from './boot-backfills.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
@@ -110,7 +110,8 @@ import {
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
-import { providePermissionsPorts, readsTechnical } from './permissions/index.js';
+import { providePermissionPorts } from './permission-ports.js';
+import { readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
 import { providePreferencesPorts } from './preferences/index.js';
 import {
@@ -131,14 +132,12 @@ import { readProjectStatus, statusViewerOf } from './project-status/index.js';
 import {
   findProjectIdBySlug,
   findProjectOrgId,
-  findProjectOrgIds,
   findProjectSlugs,
   findVisibleProjectIds,
   listProjectHeads,
   orgSiblingProjects,
   projectDocumentNames,
   projectHead,
-  projectOrgIdSql,
   provideProjectsPorts,
 } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
@@ -205,11 +204,7 @@ provideEphemeralPublisher(publishEphemeralFrame);
 provideCredentialsPorts({
   tokenChanged: (change) => emitEvent(db, 'credential.tokenChanged', change),
 });
-providePermissionsPorts({
-  projectOrgIdSql,
-  projectOrgIds: findProjectOrgIds,
-  agentAccountsAmong,
-});
+providePermissionPorts();
 provideWorkPorts();
 provideExecutionPorts();
 // the fast lane reads an issue's approved preview from the previews module (REQ-39 BC-7)

@@ -30,7 +30,13 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import {
+  actorFor,
+  masterFactsOf,
+  permissionFactsOf,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { questionViewsOf } from './clarity.js';
@@ -96,7 +102,8 @@ export async function signerRefusal(
   /** What the act asks; a step a person gate holds names it from `project-config:personGateOf`. */
   permission: ProjectPermission = 'requirements.approve',
 ) {
-  const refusal = signoffRefusal(await permissionFactsOf(actor.userId, projectId), act, permission);
+  const facts = await masterFactsOf(actor.userId, projectId, actor.agency);
+  const refusal = signoffRefusal(facts, act, permission);
   if (!refusal || !row?.requestedByProjectId) return refusal;
   const requestedBy = await requestedByOf(row);
   return requestSignoffRefusal({

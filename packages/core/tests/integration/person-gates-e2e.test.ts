@@ -10,11 +10,13 @@ import { db } from '../../src/db/client.js';
 import { api, patToken, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
+  createTestFeedback,
   createTestProject,
   createTestUser,
   makeAgreeReady,
   truncateAll,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 type Res = { status: number; body: Record<string, unknown> };
@@ -131,7 +133,8 @@ describe('agreeing a requirement (ready_check)', () => {
   it('setting on: the member is refused naming the permission, and an approver agrees it', async () => {
     await setApprovals({ agree: true });
     const key = await currentRequirement(true);
-    const refused = await on(agent, 'POST', `/requirements/${key}/agree`, {
+    // a person's token holds only its role; the project's agent is its master (REQ-79 r6 BC-11)
+    const refused = await on(member, 'POST', `/requirements/${key}/agree`, {
       revision: 1,
       reason: 'Agreed with the owner for this test.',
     });
@@ -142,6 +145,57 @@ describe('agreeing a requirement (ready_check)', () => {
       reason: 'Agreed with the owner for this test.',
     });
     expect(agreed.status, JSON.stringify(agreed.body)).toBe(200);
+  });
+
+  // REQ-79 r6 BC-11 (owner ruling 2026-10-31): outside strict the project's master agrees it
+  it('setting on, outside strict: the project agent, its master, agrees it', async () => {
+    await setApprovals({ agree: true });
+    const key = await currentRequirement(true);
+    const agreed = await on(agent, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed by the master: the criteria trace the problem.',
+    });
+    expect(agreed.status, JSON.stringify(agreed.body)).toBe(200);
+  });
+
+  it('under strict the same agent is refused, naming the permission and the profile', async () => {
+    const key = await currentRequirement(true);
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    const refused = await on(agent, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed by the master: the criteria trace the problem.',
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('requirements.approve');
+  });
+});
+
+describe('triaging feedback (REQ-79 r6 BC-11)', () => {
+  const decline = (token: string, seq: number) =>
+    on(token, 'POST', `/feedback/FB-${seq}/triage`, { route: 'decline', note: 'Not planned.' });
+  const canTriage = async (token: string, seq: number) => {
+    const read = await on(token, 'GET', `/feedback/FB-${seq}`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const view = (read.body.feedback ?? read.body) as { can?: { triage?: boolean } };
+    return view.can?.triage;
+  };
+
+  it("outside strict the project's agent triages; a person member does not", async () => {
+    await createTestFeedback(projectId, ownerId, 801);
+    expect(await canTriage(agent, 801)).toBe(true);
+    expect(await canTriage(member, 801)).toBe(false);
+    expect((await decline(member, 801)).status).toBe(403);
+    const declined = await decline(agent, 801);
+    expect(declined.status, JSON.stringify(declined.body)).toBe(200);
+  });
+
+  it('under strict the agent is refused, as a member without feedback.approve', async () => {
+    await createTestFeedback(projectId, ownerId, 802);
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    expect(await canTriage(agent, 802)).toBe(false);
+    const refused = await decline(agent, 802);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('feedback.approve');
   });
 });
 
@@ -241,6 +295,21 @@ describe('approving a workflow design (design_check)', () => {
     expect(JSON.stringify(refused.body)).toContain('workflow-designs.approve');
     const approved = await approve(owner, id);
     expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+  });
+  it("setting on: outside strict the project's agent approves; under strict it is refused", async () => {
+    await setApprovals({ designs: true });
+    const first = fixture();
+    first.flow = 'post-discharge-agent';
+    const approved = await approve(agent, await proposed(first));
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+
+    const second = fixture();
+    second.flow = 'post-discharge-strict';
+    const id = await proposed(second);
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    const refused = await approve(agent, id);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('workflow-designs.approve');
   });
 });
 

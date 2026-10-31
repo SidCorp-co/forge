@@ -20,11 +20,16 @@ import {
 } from '../db/schema-feedback.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { findIssueById, isUuid } from '../issues/index.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
+import {
+  actorFor,
+  holds,
+  masterFactsOf,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
@@ -233,7 +238,7 @@ export async function detailAs(
   const row = await rowIn(db, projectId, ref);
   const [
     level,
-    access,
+    facts,
     linked,
     decisions,
     attachments,
@@ -246,7 +251,8 @@ export async function detailAs(
     occurrences,
   ] = await Promise.all([
     dataPolicyOf(projectId),
-    effectiveProjectRole(viewer.userId, projectId),
+    // the master's grant read in, so `can` says what its doors take (REQ-79 r6 BC-11)
+    masterFactsOf(viewer.userId, projectId, viewer.agency),
     linkedOf(projectId, [row]),
     db
       .select()
@@ -280,7 +286,6 @@ export async function detailAs(
     occurrencesOf(row),
   ]);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
-  const facts = { projectId, role: access?.role ?? null, grants: access?.grants ?? [] };
   const summary = summaryOf(row, linked, viewer, withhold, viewerCanOf(facts));
   const phase = summary.phase;
   const approver = holds(facts, 'feedback.approve');
