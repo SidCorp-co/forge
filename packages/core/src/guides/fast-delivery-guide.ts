@@ -63,7 +63,7 @@ is refused \`RELEASE_CLEANUP_PENDING\` until a green report \`covers\` it.
 The project's cleanup window is its \`cleanup\` schedule, saved at end of day (\`0 18 * * *\` UTC) the
 first time there is something to clean; a person re-times it like any schedule. Its fire starts one
 run on a slot of its own, never a delivery run's: a fire while the last cleanup run is live starts
-nothing (\`CLEANUP_RUN_LIVE\`), and a window with nothing open but carried debt, and no change waiting, starts nothing. The run is briefed with
+nothing (\`CLEANUP_RUN_LIVE\`), and a window with nothing open but carried debt starts nothing, unless a change waits or the base owes a report before the next change rated high lands. The run is briefed with
 the open debt and the changes waiting on it, and:
 1. reads the ledger, \`GET /api/projects/:id/debts\` (open and cleared debt, the changes rated high
    waiting, the window);

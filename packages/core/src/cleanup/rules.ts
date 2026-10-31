@@ -279,6 +279,20 @@ export interface LandingRefusal {
  * rating, an unrated change, a project that promotes and one that turned fast delivery off land as
  * they did.
  */
+/**
+ * What the base owes before a change rated high may land (BC-5): `red` where its last cleanup report
+ * is red, `stale` where no report follows the last change rated high that landed, else null. The
+ * landing door refuses on it and the cleanup window starts a run on it, so the two never disagree.
+ */
+export function reportOwed(
+  last: LastReport | null,
+  lastHighLandedAt: Date | null,
+): 'red' | 'stale' | null {
+  if (last && last.result !== 'green') return 'red';
+  if (lastHighLandedAt && (!last || last.reportedAt <= lastHighLandedAt)) return 'stale';
+  return null;
+}
+
 export function landingRefusal(args: {
   fast: boolean;
   onLand: boolean;
@@ -304,11 +318,12 @@ export function landingRefusal(args: {
   if (args.ownHigh > 0) {
     why.push(`this report would leave ${args.ownHigh} new cleanup debt rated high (\`debts\`)`);
   }
-  if (last && last.result !== 'green') {
+  const owed = reportOwed(last, lastHighLandedAt);
+  if (owed === 'red' && last) {
     why.push(
       `the last cleanup report ${last.id} is red at ${last.sha.slice(0, 12)} on ${last.branch}`,
     );
-  } else if (lastHighLandedAt && (!last || last.reportedAt <= lastHighLandedAt)) {
+  } else if (owed === 'stale' && lastHighLandedAt) {
     why.push(
       `no cleanup report on this base since the last change rated high landed (${lastHighLandedAt.toISOString()})`,
     );

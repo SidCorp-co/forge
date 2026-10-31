@@ -13,8 +13,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { cleanupFirePlan } from '../../src/cleanup/index.js';
+import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -23,7 +25,7 @@ import {
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
-import { releaseWorld } from '../helpers/release-world.js';
+import { releaseWorld, seedProductionDeployTrigger } from '../helpers/release-world.js';
 
 let projectId: string;
 let ownerId: string;
@@ -197,5 +199,25 @@ describe('a debt no change can clear, carried as a priced amnesty (BC-10, ISS-84
       `CARRIED, a priced amnesty: trades ${PRICE.trades}; costs ${PRICE.costs}; ends when ${PRICE.endsWhen}`,
     );
     expect(plan.prompt).toContain('The result is not yours to judge (REQ-79 BC-10)');
+  });
+  // dev, 2026-10-31: fire c7fad5c4 over only carried 3d01ab3d skipped, while ISS-834 (high) had landed
+  // with no report since, so the next change rated high could never land
+  it('starts a run while a change rated high landed with no report since on its base, and none once a green one follows there', async () => {
+    await fx.declareProduction({ baseUrl: 'http://coolify.invalid', targets: [] });
+    await seedProductionDeployTrigger(projectId, ownerId, 'on-land');
+    const debt = await deployDebt();
+    await carry(debt);
+    const high = await fx.insertIssue('awaiting_release');
+    await rate(high, 'high');
+    await db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${high}`);
+    const plan = () => cleanupFirePlan({ projectId, fireId: randomUUID() });
+    expect((await plan()).kind).toBe('run');
+    const remains = [{ debt, why: 'a person must set the token' }];
+    // a green report on another branch is no report on the base the change landed on
+    expect((await reportCleanup({ remains, covers: [high] })).status).toBe(201);
+    expect((await plan()).kind).toBe('run');
+    const green = await reportCleanup({ base: { branch: 'main', sha: 'c'.repeat(40) }, remains });
+    expect([green.status, codes(green)]).toEqual([201, []]);
+    expect((await plan()).kind).toBe('nothing');
   });
 });

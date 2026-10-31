@@ -5,7 +5,7 @@
 import { readFastDelivery } from '../project-config/index.js';
 import type { CleanupFirePlan } from '../schedules/index.js';
 import { cleanupBrief, FAST_DELIVERY_OFF_DETAIL } from './rules.js';
-import { waitingIssues } from './service.js';
+import { cleanupReportOwed, waitingIssues } from './service.js';
 import { readDebts } from './store.js';
 
 export async function cleanupFirePlan(args: {
@@ -14,12 +14,17 @@ export async function cleanupFirePlan(args: {
 }): Promise<CleanupFirePlan> {
   const { projectId, fireId } = args;
   if (!(await readFastDelivery(projectId))) return { kind: 'off', why: FAST_DELIVERY_OFF_DETAIL };
-  const [debts, waiting] = await Promise.all([readDebts(projectId), waitingIssues(projectId)]);
-  // a carried debt is no work for a run (BC-10): it remains on every report until it is cleared
-  if (debts.open.every((d) => d.carried) && waiting.length === 0) {
+  const [debts, waiting, owed] = await Promise.all([
+    readDebts(projectId),
+    waitingIssues(projectId),
+    cleanupReportOwed(projectId),
+  ]);
+  // a carried debt is no work for a run (BC-10), but a base owing a report before the next change
+  // rated high lands is, whatever its debt: the window goes, and its report is green over carried debt
+  if (debts.open.every((d) => d.carried) && waiting.length === 0 && !owed) {
     return {
       kind: 'nothing',
-      why: `no cleanup debt is open but ${debts.open.length ? 'debt carried under a priced amnesty' : 'none'}, and no change rated high waits on a cleanup, so this window starts no run`,
+      why: `no cleanup debt is open but ${debts.open.length ? 'debt carried under a priced amnesty' : 'none'}, no change rated high waits on a cleanup, and the base owes no report, so this window starts no run`,
     };
   }
   return {

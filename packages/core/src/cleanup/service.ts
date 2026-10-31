@@ -20,7 +20,11 @@ import { type Actor, issueDisplayIds, resolveIssueRouteRef } from '../issues/ind
 import { loadProjectAccess } from '../lib/authz.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { requireHeld } from '../permissions/index.js';
-import { readDeliveryShape, readFastDelivery } from '../project-config/index.js';
+import {
+  readDeliveryShape,
+  readFastDelivery,
+  readLandingBranches,
+} from '../project-config/index.js';
 import {
   type CleanupWindow,
   ensureCleanupWindow,
@@ -34,6 +38,7 @@ import {
   FAST_DELIVERY_OFF_DETAIL,
   type LandingRefusal,
   landingRefusal,
+  reportOwed,
   reportRefusals,
   waitingOnCleanup,
 } from './rules.js';
@@ -369,5 +374,26 @@ export async function cleanupOwesLandingCheck(args: {
   if (!shape.fast || !shape.onLand) return false;
   return (await landingRating(args.issueId, undefined))?.rating === HOLDING_RATING;
 }
+
+/**
+ * Whether the base owes a cleanup report before the next change rated high lands (BC-5, the landing
+ * door's own `reportOwed`): a cleanup window starts a run on it even with no debt to clear but carried
+ * debt, or a carried debt would hold every high landing with nothing ever reporting (ISS-842). True
+ * where the project names no branch its work lands on: then no report can be matched, so the run goes.
+ */
+export async function cleanupReportOwed(projectId: string): Promise<boolean> {
+  const shape = await readDeliveryShape(projectId);
+  if (!shape.fast || !shape.onLand) return false;
+  const { defaultBranch } = await readLandingBranches(projectId);
+  if (!defaultBranch) return true;
+  const [last, highAt] = await Promise.all([
+    lastReport(db, projectId, defaultBranch),
+    lastHighLanding(projectId, NO_ISSUE),
+  ]);
+  return reportOwed(last, highAt) !== null;
+}
+
+/** An issue id no row holds: `lastHighLanding` then excepts none. */
+const NO_ISSUE = '00000000-0000-0000-0000-000000000000';
 
 export { waitingIssues };
