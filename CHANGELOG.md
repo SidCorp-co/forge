@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.404] - 2026-10-31
+
+A reviewer or judge run holding an issue is no longer read as its builder
+
+### Fixed
+
+- **A reviewer run its box declared can now record its review.** Holding the issue no longer makes it the building run, so its review is kept and its verdicts count.
+
 ## [0.4.0-dev.401] - 2026-10-31
 
 Issues with more than 50 criteria can now record a design
