@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/questions/unanswerable-ask.ts
 /**
  * A person's own token answers a question that person owes (owner, 2026-10-16), over REST and over
  * `/mcp` alike: a personal access token they minted, or the access token an MCP client holds on

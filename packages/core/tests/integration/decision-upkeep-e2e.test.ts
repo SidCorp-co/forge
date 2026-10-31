@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/questions/unanswerable-ask.ts
 // REQ-68 BC-7 and BC-8, through the real doors and the real sweep.
 //
 // BC-7: a steward decision whose item moved leaves Needs you at once.

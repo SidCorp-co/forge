@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/questions/unanswerable-ask.ts
 // A question a run asked that no issue, requirement or feedback holds can be answered only on the
 // Agents screen, which nothing pointed to. It is a Questions row of Needs you for whoever may answer
 // it, through the real read (needs-you-list.ts readNeedsYou over readDetachedOpenQuestions), and on no one else's.

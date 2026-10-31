@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/questions/unanswerable-ask.ts
 // REQ-41 BC-1, BC-2 (probe of 2026-10-09: 28 requirements were marked as the owner's, about 6 needed
 // them). The needs-me read answers "what waits on me" with only the decisions a person must make,
 // each with its question, a recommended answer and buttons that post to the record's own route, and
