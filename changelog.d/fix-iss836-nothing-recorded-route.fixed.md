@@ -1,1 +1,0 @@
-**A release deploy refused for recording nothing names the call it wants whole.** RELEASE_NOTHING_RECORDED gives the method route with this run's ids, and its body with `skill` and `loaded`, never `POST .../method`.

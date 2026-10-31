@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.400] - 2026-10-31
+
+A refused release deploy names the method call it wants
+
+### Fixed
+
+- **A release deploy refused for recording nothing names the call it wants whole.** RELEASE_NOTHING_RECORDED gives the method route with this run's ids, and its body with `skill` and `loaded`, never `POST .../method`.
+
 ## [0.4.0-dev.399] - 2026-10-31
 
 A bad release-note section is refused where it is written
