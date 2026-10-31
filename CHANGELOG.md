@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.390] - 2026-10-31
+
+Dispatch guide says where standing rules go beside a plugin-gated brief
+
+### Fixed
+
+- **The dispatch guide says where standing rules go when the plugin's brief gate runs.** One comment on each issue, named in the lease's next line, never below the brief.
+
 ## [0.4.0-dev.389] - 2026-10-31
 
 Fleet, requirement changes and Attention counts read from one core source
