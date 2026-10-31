@@ -8,6 +8,7 @@
  * `criteria/verdict-record.ts`.
  */
 
+import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import {
   type CriterionClass,
   type CriterionJudge,
@@ -25,6 +26,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueDesignCriteria, issueDesigns } from '../db/schema-issue-designs.js';
 import { labels } from '../db/schema-labels.js';
+import { gateRefusal } from '../lib/gated.js';
 import { RefusalError } from '../lib/refusal.js';
 import { liveRows } from './criteria/store.js';
 import {
@@ -96,16 +98,22 @@ export async function designCheckOf(
   return designCheck(await readDesignFacts(executor, issue, catalog));
 }
 
-/** Refuses a move of the work step into build, test or release while the design does not pass. */
+/**
+ * Refuses a move of the work step into build, test or release while the design does not pass,
+ * where the project's `design_record` gate is enforced; off, nothing is asked (ISS-830). A refusal
+ * names the gate, as the status move's design guard does (`transition-guards.ts:designGuard`).
+ */
 export async function assertDesignPasses(
   executor: Reader,
   issue: { id: string; projectId: string },
+  gate: ResolvedGate,
   catalog?: CatalogReading,
 ): Promise<void> {
+  if (gate.mode !== 'enforce') return;
   const check = await designCheckOf(executor, issue, catalog);
   if (check.passed) return;
   throw new RefusalError(
-    [{ code: check.code, path: '/workState/step', detail: check.detail }],
+    [gateRefusal(gate, { code: check.code, path: '/workState/step', detail: check.detail })],
     check.code,
   );
 }

@@ -145,15 +145,21 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     }
     let planCheckpointAsked = false;
     if (workState) {
-      // a new pattern awaiting its reviewer, a return the issue has not answered, or a design that
-      // is missing or incomplete holds the work at design (Issue lifecycle r15 design-check)
+      // a new pattern awaiting its reviewer, a return the issue has not answered, or, where the
+      // design_record gate is enforced, a design that is missing or incomplete holds the work at
+      // design (Issue lifecycle r15 design-check)
       if (scope && workState.step && BUILD_STEPS.includes(workState.step)) {
         await assertPatternReviewsSettledForIssue(scope.projectId, issueId, tx);
         await assertNoUnansweredReturn(issueId, tx);
         // a write naming the step the work is already at moves nothing, so it asks no design check
         // (a run at build recording its head is not a move into build)
-        if ((await readWorkState(tx, issueId))?.step !== workState.step) {
-          await assertDesignPasses(tx, { id: issueId, projectId: scope.projectId }, catalog);
+        if (designGate && (await readWorkState(tx, issueId))?.step !== workState.step) {
+          await assertDesignPasses(
+            tx,
+            { id: issueId, projectId: scope.projectId },
+            designGate,
+            catalog,
+          );
           planCheckpointAsked = true;
           // the design it now passes may meet a scope another run is building (REQ-36 BC-5)
           await refuseScopeHeldForBuild(tx, { id: issueId, projectId: scope.projectId });

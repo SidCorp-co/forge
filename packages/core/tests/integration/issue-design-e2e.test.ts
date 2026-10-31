@@ -20,12 +20,14 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { THIS_REPOSITORY } from '../../src/lib/this-repository.js';
+import type { ProjectDocument } from '../../src/project-config/schema.js';
 import { userToken } from '../helpers/api.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
   createTestIssue,
   createTestModule,
+  createTestProject,
   createTestUser,
   rows,
   seedIssueStatus,
@@ -37,6 +39,7 @@ import {
   type Res,
   refusalCodes as refused,
 } from '../helpers/pattern-world.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 
 const tokens = { admin: '', author: '', viewer: '' };
 const call = callerFor(tokens);
@@ -45,9 +48,31 @@ let authorId = '';
 let forge = '';
 let other = '';
 let bare = '';
+/** design_record off by override (ISS-830, FB-409's yolo project): the work step asks no design. */
+let loose = '';
+/** design_record off, plan_approval enforced: the plan checkpoint still holds the step at build. */
+let loosePlanned = '';
 let seq = 0;
 
 /** A project built from `repository`, holding the modules and the label a design names. */
+/** A project built from `repository` whose gates are `gates`, its modules declared. */
+async function gatedProject(ownerId: string, gates: ProjectDocument['gates']): Promise<string> {
+  const { id } = await createTestProject(ownerId);
+  await seedProjectDocument(id, ownerId, {
+    environments: {
+      dev: { tier: 'production', deploysFrom: 'main', deployment: { mode: 'external' } },
+    },
+    source: {
+      type: 'git',
+      git: { repository: THIS_REPOSITORY, defaultBranch: 'main', branches: ['main'] },
+    },
+    extra: { gates },
+  });
+  await createTestModule(id, 'issues');
+  await createTestModule(id, 'db');
+  return id;
+}
+
 async function designedProject(ownerId: string, repository: string): Promise<string> {
   const id = await projectBuiltFrom(ownerId, repository);
   await createTestModule(id, 'issues');
@@ -74,7 +99,15 @@ beforeAll(async () => {
   await db.execute(
     sql`INSERT INTO labels (project_id, name, color, kind) VALUES (${bare}, 'bug', '#888888', 'label')`,
   );
-  for (const p of [forge, other, bare]) {
+  loose = await gatedProject(admin.id, {
+    profile: 'standard',
+    overrides: { design_record: 'off' },
+  });
+  loosePlanned = await gatedProject(admin.id, {
+    profile: 'standard',
+    overrides: { design_record: 'off', plan_approval: 'enforce' },
+  });
+  for (const p of [forge, other, bare, loose, loosePlanned]) {
     await addProjectMember(p, admin.id, 'admin');
     await addProjectMember(p, author.id, 'member');
     await addProjectMember(p, viewer.id, 'viewer');
@@ -142,7 +175,30 @@ describe('the move into build without a design (criterion 1)', () => {
       const res = await step(issue, to);
       expect([res.status, refused(res)]).toEqual([422, ['DESIGN_RECORD_MISSING']]);
       expect(detailOf(res)).toContain('PUT /api/issues/:id/design');
+      // named as the status move's refusal names it: the gate, the profile, the key (ISS-830 c2)
+      expect(detailOf(res)).toContain(
+        "Gate design_record is enforced by this project's gate profile standard (gates.profile); gates.overrides.design_record relaxes it.",
+      );
     }
+    expect(await stepOf(issue)).toBe('design');
+  });
+
+  it('moves the work step into build, test and release with no design where design_record is off (ISS-830)', async () => {
+    const issue = await issueAt(loose, 'in_progress');
+    ok(await step(issue, 'design'));
+    for (const to of ['build', 'test', 'release']) {
+      ok(await step(issue, to));
+      expect(await stepOf(issue)).toBe(to);
+    }
+    const read = ok(await call('viewer', 'GET', design(issue)));
+    expect(read.check).toMatchObject({ passed: false, code: 'DESIGN_RECORD_MISSING' });
+  });
+
+  it('still asks the plan checkpoint where design_record is off and plan_approval is enforced (ISS-830)', async () => {
+    const issue = await issueAt(loosePlanned, 'in_progress');
+    ok(await step(issue, 'design'));
+    const res = await step(issue, 'build');
+    expect([res.status, refused(res)]).toEqual([422, ['PLAN_APPROVAL_PENDING']]);
     expect(await stepOf(issue)).toBe('design');
   });
 
