@@ -577,7 +577,7 @@ into `packages/core/node_modules/.cache/oasdiff` the first time the API contract
 branches that each move the contract both take the next number, and whichever lands second is red
 here until it regenerates on top of the first: that conflict is the version doing its job.
 
-Run locally where `origin/HEAD` is not the branch the work lands on, name it:
+Run locally where the work lands on another branch than `.forge/landing.json` declares, name it:
 `GITHUB_BASE_REF=dev pnpm --filter @forge/core contracts:generate`.
 
 ### Adding a check
@@ -720,53 +720,40 @@ Every delta-scoped gate here needs a base revision, and until ISS-1304 each of t
 **silently**: a budget measured against the wrong merge-base reports a pass, and
 `check-migration-order` hands back a `when` another branch has already spent.
 
-`mergeTarget(root, env)` derives it, reading no configuration anywhere — the per-project config a
-plugin keeps is one machine's file and GitHub Actions never sees it, so a gate sourcing its baseline
-there would be right on a laptop and silently wrong in CI. Four sources, each **establishing** the
-target rather than inferring it, and each named in the refusal:
+`mergeTarget(root, env)` derives it from four sources, each **establishing** the target rather than
+inferring it, and each named in the refusal. The first three are CI's own statement of the run; the
+fourth is a file checked into this tree, so it reads the same on a laptop and on a GitHub runner —
+unlike the per-project config a plugin keeps on one machine, which GitHub Actions never sees:
 
 | | source | when it answers |
 |---|---|---|
 | 1 | `$GITHUB_BASE_REF` | a `pull_request` run: the base of the pull request being built |
 | 2 | `$GITHUB_REF` naming a branch on a `push` or `schedule` event | a push: the branch that took the commit; a schedule: the branch whose head it checked out |
 | 3 | `inputs.base` in the `$GITHUB_EVENT_PATH` payload | a `workflow_dispatch` run: the branch its dispatcher said the work lands on |
-| 4 | `refs/remotes/origin/HEAD`, confirmed by `git ls-remote --symref origin HEAD` | everywhere else: the remote's recorded default, held to what the remote names now |
+| 4 | `base` in `.forge/landing.json` | everywhere else: the branch this repository declares that work lands on (`dev` here) |
 
 Row 3 exists because `$GITHUB_REF` on a dispatch is the branch being run, not where it lands, and
 `actions/checkout` records no `origin/HEAD`: run 36764719955 dispatched a branch and
 `check-migration-order` exited 2 there, and the nightly `schedule` run would have too without row 2.
-A dispatch naming no `base` is refused by name and reads no row after it — `origin/HEAD` is the
-default branch, which is not where every dispatched branch lands.
+A dispatch naming no `base` is refused by name and reads no row after it — the declaration names
+where work lands by default, which is not where every dispatched branch lands.
 
 The ref and not `$GITHUB_REF_NAME` in row 2, because a tag push is a push event and carries a ref
 name too — `runner-release.yml` fires on one.
 <!-- doc-citation: unchecked `refs/heads/` — a git ref namespace, not a path in this tree. -->
 What says a branch took the commit is the `refs/heads/` prefix, and row 2 requires it.
 
-**There is no rung reading the sole remote-tracking branch.** A plain `git clone --depth 1`
-records `origin/HEAD`, so such a rung would only ever have answered for `--depth 1 --branch <b>` —
-the one shape where the branch fetched need not be the branch the work lands on. It could not tell
-"the only branch here is the target" from "the only branch here is the one somebody asked for", and
-a wrong floor from it is the silently skipped migration. That checkout is refused, naming
-`GITHUB_BASE_REF=<branch>` for the branch the work lands on, and `git remote set-head origin -a`
-where that is the remote's default.
+**Nothing reads `origin/HEAD`.** It names the remote's default branch — `main` for SidCorp-co/forge,
+the gated production branch — and work lands on `dev`. A row reading it measured every local gate
+against `main` the moment `git remote set-head origin -a` refreshed the record to match the remote
+(forge-dev, 2026-10-31; `lib/base-branch.test.mjs` plants exactly that). A missing declaration is
+refused naming `GITHUB_BASE_REF=<branch>` and the file; a declaration present but malformed —
+not `{ "base": "<branch>" }` — is refused naming the file and what it holds, never read past.
 
 **Nothing falls back to `main`.** `baseRef(root)` then resolves the branch to `origin/<b>`,
 `refs/remotes/origin/<b>` or `<b>`, and refuses naming all three rather than measuring against a
-branch this change does not derive from.
-
-Row 4 is checked against the remote because the record does not move when the remote's default
-does: a clone taken before the default moved would measure the old base with nothing said. Where the
-remote names another branch, row 4 refuses, naming both: `GITHUB_BASE_REF=<the recorded branch>` for
-work that lands where the record says, and `git remote set-head origin -a` only for work that lands
-on the remote's new default — on this repository's dev work, that advice alone would measure against
-`main` (`lib/base-branch.test.mjs`). Where
-the remote cannot be asked — unreachable, or silent past 10 s, which stderr says in those words —
-the record stands and stderr says it went unconfirmed and which command confirms it.
-
-Row 4 is the repository's own statement of what a pull request from this checkout targets, which is
-the merge target for any change taking the default base. For a local run aimed at some other base,
-`GITHUB_BASE_REF=<branch>` in front of the command scopes it; CI needs nothing, having row 1.
+branch this change does not derive from. For a local run aimed at another base than the declared
+one, `GITHUB_BASE_REF=<branch>` in front of the command scopes it; CI needs nothing, having row 1.
 
 **A landing already on its base** is the one case where the target's tip cannot be the scope: on a
 push to `dev` that tip IS the landing, so its merge-base with `HEAD` is `HEAD` and every delta-scoped

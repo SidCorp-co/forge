@@ -1,12 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * Which branch a change in this checkout will land on, and which ref names it here (ISS-1304).
  *
- * Derived from the run, never read from configuration, so one answer is right on a GitHub runner
- * and on a laptop. The sources, the refusals, why there is no fourth source and how to scope a
- * local run to a non-default base: `scripts/README.md`.
+ * Read from the run where CI says it, and otherwise from the base this repository declares in its
+ * own tree, so one answer is right on a GitHub runner and on a laptop. Never from `origin/HEAD`,
+ * which names the remote's default branch, not where work lands. The sources and the refusals:
+ * `scripts/README.md`.
  */
 
 const REMOTE = 'origin';
@@ -24,16 +26,15 @@ function shortBranch(value) {
   return name.startsWith('refs/heads/') ? name.slice('refs/heads/'.length) : name;
 }
 
-function withoutRemote(ref) {
-  return ref.startsWith(`${REMOTE}/`) ? ref.slice(REMOTE.length + 1) : ref;
-}
-
 const SOURCES = [
   '$GITHUB_BASE_REF, the base of the pull request being built',
   '$GITHUB_REF on a push or schedule event, where it names a branch',
   'inputs.base in the $GITHUB_EVENT_PATH payload of a workflow_dispatch event',
-  `refs/remotes/${REMOTE}/HEAD, git's record of the remote's default branch`,
+  'base in .forge/landing.json, the branch this repository declares that work lands on',
 ];
+
+/** The checked-in declaration of the branch work lands on, the same on every machine and in CI. */
+export const LANDING_FILE = '.forge/landing.json';
 
 const NO_TARGET_SUMMARY =
   'no merge target could be derived, so there is no branch to measure this change against';
@@ -41,9 +42,10 @@ const NO_TARGET_SUMMARY =
 const NO_TARGET =
   `${NO_TARGET_SUMMARY}.\n` +
   `Four sources were read, in this order:\n${SOURCES.map((s) => `  - ${s}`).join('\n')}\n` +
-  'Name the branch this work lands on in front of the command — `GITHUB_BASE_REF=<branch>` — or,\n' +
-  `where it lands on the remote's default, record that with \`git remote set-head ${REMOTE} -a\`.\n` +
-  'Nothing falls back to `main`: measuring a delta against a branch the work does not\n' +
+  'Name the branch this work lands on in front of the command — `GITHUB_BASE_REF=<branch>` — or\n' +
+  `declare it in ${LANDING_FILE} as \`{ "base": "<branch>" }\`. Nothing reads \`${REMOTE}/HEAD\`,\n` +
+  "which names the remote's default branch, and nothing falls back to `main`: measuring a delta\n" +
+  'against a branch the work does not\n' +
   'derive from reports a pass it has not earned, which is the failure this refusal exists to stop.';
 
 /**
@@ -59,8 +61,8 @@ function dispatchedBase(env) {
       refusal:
         `${summary}.\n` +
         'Dispatch it as `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`. No\n' +
-        `other source is read for a dispatched run: ${REMOTE}/HEAD names the default branch, which\n` +
-        'is not where every dispatched branch lands, and a delta measured against the wrong base\n' +
+        `other source is read for a dispatched run: ${LANDING_FILE} names where work lands by\n` +
+        'default, not where every dispatched branch lands, and a delta measured against the wrong base\n' +
         'reports a pass it has not earned.',
     };
   };
@@ -76,71 +78,36 @@ function dispatchedBase(env) {
   return { branch: base, source: 'inputs.base' };
 }
 
-/** How long the remote is given to name its default before the record is used unconfirmed. */
-const REMOTE_HEAD_TIMEOUT_MS = 10_000;
-
 /**
- * Why an `ls-remote` run gave no answer, or null where it exited 0. A wait that ran out is said in
- * seconds: Node's own `spawnSync git ETIMEDOUT` reads as a crash, not as a remote that never replied.
- *
- * @param {import('node:child_process').SpawnSyncReturns<string>} r
+ * The base this repository declares, or a refusal naming the file and the shape it must have. A
+ * missing file is no declaration; a file present and malformed is refused, never read past.
  */
-export function unansweredBecause(r) {
-  if (r.error?.code === 'ETIMEDOUT') {
-    return `no answer within ${REMOTE_HEAD_TIMEOUT_MS / 1000} s`;
+function declaredBase(root) {
+  const top = git(['rev-parse', '--show-toplevel'], root);
+  const path = join(top ?? root, LANDING_FILE);
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return null;
   }
-  if (r.error) return r.error.message;
-  if (r.status !== 0) return (r.stderr || `exit ${r.status}`).trim().split('\n')[0];
-  return null;
-}
-
-/**
- * The remote's own default branch, asked of it, or why it could not answer. A recorded
- * `origin/HEAD` is what the remote said at clone time; it does not move when the remote's default
- * does, and a checkout reading it measures the old base with nothing said.
- */
-function remoteDefault(root) {
-  const r = spawnSync('git', ['ls-remote', '--symref', REMOTE, 'HEAD'], {
-    cwd: root,
-    encoding: 'utf8',
-    timeout: REMOTE_HEAD_TIMEOUT_MS,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-  });
-  const unanswered = unansweredBecause(r);
-  if (unanswered) return { unanswered };
-  const m = /^ref:\s*refs\/heads\/(\S+)\s+HEAD$/m.exec(r.stdout);
-  return m ? { branch: m[1] } : { unanswered: 'the remote named no default branch' };
-}
-
-/**
- * The recorded default, held to what the remote says now. A disagreement is refused: the record is
- * a measurement against a branch this work no longer lands on. A remote that cannot be asked leaves
- * the record standing, said on stderr, since a checkout offline still knows where it was cut from.
- */
-function confirmedDefault(root, recorded) {
-  const now = remoteDefault(root);
-  if (now.branch && now.branch !== recorded) {
-    const summary =
-      `refs/remotes/${REMOTE}/HEAD records \`${recorded}\` as the remote's default, and the remote ` +
-      `now names \`${now.branch}\``;
-    return {
-      summary,
-      refusal:
-        `${summary}.\n` +
-        'Neither says which branch this work lands on, so nothing was measured. Name it:\n' +
-        `  GITHUB_BASE_REF=${recorded} <command>   where it lands on \`${recorded}\`, the branch the record holds\n` +
-        `  git remote set-head ${REMOTE} -a   where it lands on \`${now.branch}\`, the remote's default now;\n` +
-        '  that rewrites the record for every later run in this checkout.',
-    };
+  let base;
+  try {
+    base = JSON.parse(text)?.base;
+  } catch (e) {
+    base = { unreadable: e.message };
   }
-  if (now.unanswered) {
-    process.stderr.write(
-      `base-branch: the merge target \`${recorded}\` is ${REMOTE}/HEAD as recorded, unconfirmed: the ` +
-        `remote could not be asked (${now.unanswered}). \`git remote set-head ${REMOTE} -a\` ` +
-        'confirms it.\n',
-    );
+  if (typeof base === 'string' && /^[A-Za-z0-9._/-]+$/.test(base) && !base.startsWith('-')) {
+    return { branch: shortBranch(base), source: LANDING_FILE };
   }
-  return { branch: recorded, source: `${REMOTE}/HEAD` };
+  const summary = `${LANDING_FILE} declares no branch work lands on`;
+  return {
+    summary,
+    refusal:
+      `${summary}: it must read \`{ "base": "<branch>" }\`, and \`base\` here is ` +
+      `${JSON.stringify(base) ?? 'missing'}.\nFix the file, or name the branch in front of the ` +
+      'command: `GITHUB_BASE_REF=<branch>`.',
+  };
 }
 
 /**
@@ -166,10 +133,7 @@ export function mergeTarget(root, env = process.env) {
 
   if (event === 'workflow_dispatch') return dispatchedBase(env);
 
-  const head = git(['symbolic-ref', '--short', `refs/remotes/${REMOTE}/HEAD`], root);
-  if (head) return confirmedDefault(root, withoutRemote(head));
-
-  return { refusal: NO_TARGET, summary: NO_TARGET_SUMMARY };
+  return declaredBase(root) ?? { refusal: NO_TARGET, summary: NO_TARGET_SUMMARY };
 }
 
 /** The refs, in preference order, that could name `branch` in this checkout. */
