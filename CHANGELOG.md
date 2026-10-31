@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.410] - 2026-10-31
+
+A green GitHub Actions gate now lets releases through without commit-status access
+
+### Fixed
+
+- **A green GitHub Actions gate no longer refuses every release.** The declared gate check is read from its check run alone, so a repository credential without commit-status access no longer turns a passing gate into a refusal.
+
 ## [0.4.0-dev.409] - 2026-10-31
 
 A decided duplicate suggestion no longer holds the next requirement revision
