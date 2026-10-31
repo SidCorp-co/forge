@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.397] - 2026-10-31
+
+Stale feedback triage proposals are retired once an item is triaged
+
+### Fixed
+
+- **A triaged feedback item no longer takes a second triage from a stale proposal.** A triage or decline retires the item's pending triage proposals, and accepting one made before the triage is refused.
+
 ## [0.4.0-dev.396] - 2026-10-31
 
 Agent-token unknown routes name their nearest routes
