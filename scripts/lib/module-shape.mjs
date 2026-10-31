@@ -5,7 +5,7 @@
 
 export const KINDS = ['kernel', 'domain', 'read-model', 'adapter', 'door', 'platform'];
 
-export const RULES = ['kind', 'table-writer', 'route-query', 'refusal', 'global-fetch'];
+export const RULES = ['kind', 'face', 'table-writer', 'route-query', 'refusal', 'global-fetch'];
 
 export const ROOT_MODULE = '(root)';
 const SRC = 'packages/core/src/';
@@ -143,6 +143,25 @@ export function kindFindings(dirs, modules) {
       module: d,
       file: `${SRC}${d}`,
       detail: `${d} declares no kind in modules.json`,
+    }));
+}
+
+/** The kinds whose module is imported only through its index.ts; a platform module is a leaf. */
+export const FACE_KINDS = KINDS.filter((k) => k !== 'platform');
+
+/**
+ * Every declared directory module of a face kind with no index.ts. `hasIndex(path)` says whether
+ * `packages/core/src/<path>/index.ts` exists; the `(root)` entry is no directory and is skipped.
+ */
+export function faceFindings(modules, hasIndex) {
+  return Object.entries(modules)
+    .filter(([path, spec]) => path !== ROOT_MODULE && FACE_KINDS.includes(spec?.kind))
+    .filter(([path]) => !hasIndex(path))
+    .map(([path, spec]) => ({
+      rule: 'face',
+      module: path,
+      file: `${SRC}${path}`,
+      detail: `${path} is a ${spec.kind} module with no index.ts; every ${FACE_KINDS.join(', ')} module exposes exactly one ${SRC}${path}/index.ts, its only face (only a platform module is a leaf without one)`,
     }));
 }
 
