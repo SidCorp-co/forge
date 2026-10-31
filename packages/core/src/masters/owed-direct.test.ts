@@ -23,6 +23,7 @@ const none = {
   filings: [],
   recordings: [],
   requests: [],
+  carriers: [],
   contentLanguage: 'en',
 };
 

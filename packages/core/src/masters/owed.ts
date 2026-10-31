@@ -73,6 +73,8 @@ interface Owed {
    * chat — owed to the master only where the project's gate `master_admitted_only` is off (REQ-76 BC-9).
    */
   requests: WaitingRequest[];
+  /** Drafts a feedback triage routed an item to, whoever filed them: master work under any profile (ISS-840). */
+  carriers: { key: string }[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -234,6 +236,13 @@ function wedgeLandedLine(landed: Owed['landedWork']): string {
   return ` ${landed.length} issue${plural(landed.length, ' sits', 's sit')} at \`in_progress\` with ${plural(landed.length, 'its', 'their')} work landed and nothing holding ${plural(landed.length, 'it', 'them')} (${keys.join('; ')}): the reconciler left each there rather than hand it back. Check that the mark is this work, then move it on (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; a mark that is not this work is cleared (\`forge-runner api issues/<id>/merge -X DELETE\`), and the next reconciler pass hands the issue back.`;
 }
 
+/** The drafts a feedback triage routed an item to (ISS-840): the master takes each on, or drops it. */
+function carriersLine(carriers: { key: string }[]): string {
+  if (carriers.length === 0) return '';
+  const keys = carriers.map((c) => c.key);
+  return ` ${keys.length} draft issue${plural(keys.length, '', 's')} ${plural(keys.length, 'carries', 'carry')} triaged feedback and ${plural(keys.length, 'waits', 'wait')} to be taken on (${keys.join(', ')}): nothing takes a draft on by itself, so admit each to open (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"open","reason":"<why>"}'\`) and work it, or drop it saying why; ${method('issue-flow')} (Take it) is how.`;
+}
+
 /**
  * The requests a profile with `master_admitted_only` off hands the master (REQ-76 BC-9): it takes
  * each on itself, the person's word being the agreement such a profile asks for.
@@ -262,7 +271,8 @@ export function owedLine(owed: Owed): string {
     mergesLine(owed.marks, owed.filings) +
     recordingsLine(owed.recordings) +
     confirmsLine(owed.confirms) +
-    requestsLine(owed.requests);
+    requestsLine(owed.requests) +
+    carriersLine(owed.carriers);
   const {
     breakdowns,
     triages,
@@ -359,6 +369,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.filings.map((f) => `filing:${f.commit}`),
     ...owed.recordings.map((r) => `filing-record:${r.issueId}|${r.release ?? ''}`),
     ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
+    ...owed.carriers.map((c) => `carrier:${c.key}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -452,10 +463,13 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.mergesOwed(projectId),
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
-  const requests =
+  const carriers = await ports.draftCarriersWaiting(projectId);
+  const carried = new Set(carriers.map((c) => c.key));
+  const requests = (
     (await ports.masterGate(projectId)).mode === 'enforce'
       ? []
-      : await ports.requestsWaiting(projectId);
+      : await ports.requestsWaiting(projectId)
+  ).filter((r) => r.kind !== 'issue' || !carried.has(r.key));
   const breakdownsDue = breakdowns.filter((b) => !held.has(b.key));
   const warnedNotes = await ports.releaseNotesWarned(projectId, contentLanguage);
   const lastPass = await lastFinishedPassStart(projectId);
@@ -484,6 +498,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       filings: merges.filings,
       recordings: merges.recordings,
       requests,
+      carriers,
       contentLanguage,
     },
     mode,

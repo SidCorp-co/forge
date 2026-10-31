@@ -46,6 +46,7 @@ const none = {
   filings: [] as FilingOwed[],
   recordings: [] as FilingRecordOwed[],
   requests: [] as WaitingRequest[],
+  carriers: [] as { key: string }[],
   contentLanguage: 'en',
 };
 

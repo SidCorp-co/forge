@@ -18,7 +18,13 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestRequirement,
+  createTestUser,
+  rows,
+} from '../helpers/factories.js';
 
 let projectId: string;
 let stagedId: string;
@@ -181,9 +187,16 @@ describe('an answer that says the issue still waits (ISS-257)', () => {
     expect(edges).toEqual([]);
 
     const { askQuestion } = await import('../../src/questions/index.js');
+    // a question on a requirement: it names a subject (ISS-812), and no issue its answer could hold
+    const { id: requirementId } = await createTestRequirement(
+      projectId,
+      1,
+      'Reminders reach the nurse',
+    );
     const loose = await askQuestion({
       id: randomUUID(),
       projectId,
+      requirementId,
       prompt: 'a decision that stops no issue',
       blockerKind: 'human',
       answer: { shape: 'free_text', needed: 'a word' },

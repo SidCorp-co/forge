@@ -40,6 +40,7 @@ import {
   readPullRequestsForIssues,
 } from './integrations/source-host/index.js';
 import {
+  draftFeedbackCarriers,
   draftIssuesPeopleFiled,
   filingsMarked,
   owedFilings,
@@ -325,6 +326,7 @@ export function provideExecutionPorts(): void {
     }),
     masterGate: (projectId) => gateOf(projectId, 'master_admitted_only'),
     masterMode: readMasterMode,
+    draftCarriersWaiting: draftFeedbackCarriers,
     requestsWaiting: async (projectId) => [
       ...(await draftIssuesPeopleFiled(projectId)).map((r) => ({
         kind: 'issue' as const,

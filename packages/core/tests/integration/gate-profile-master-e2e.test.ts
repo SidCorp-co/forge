@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/masters/owed.ts
  * @direct-test-of packages/core/src/project-config/master-mode.ts
  * @direct-test-of packages/core/src/issues/requests-waiting.ts
+ * @direct-test-of packages/core/src/masters/owed.ts
  * @direct-test-of packages/core/src/requirements/requests-waiting.ts
  * @direct-test-of packages/core/src/issues/create-service.ts
  */
@@ -34,6 +35,7 @@ import {
   createTestUser,
 } from '../helpers/factories.js';
 import { projectBuiltFrom } from '../helpers/pattern-world.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'box' | 'chat';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -243,5 +245,55 @@ describe('REQ-76 BC-9: a chat files the issue itself under yolo', () => {
     await profile(chatProjectId, 'yolo');
     const r = await say('chat', 'POST', `/api/projects/${chatProjectId}/issues`, wish);
     expect(r.status, JSON.stringify(r.json)).toBe(201);
+  });
+});
+
+// ISS-840 (FB-434, epod 2026-10-31): FB-6 was triaged to the draft ISS-26, and its standing named the
+// master as the one to take it on. The master's owed read counted a draft only as a person's request,
+// and asked for none under master_admitted_only, so no master was placed for 13 h. A draft a triage
+// routed an item to is master work under every profile (REQ-68 BC-6: no page asks a person to act).
+describe('a draft a feedback triage routed an item to', () => {
+  let carrierKey = '';
+
+  beforeAll(async () => {
+    // the fixtures above wrote ISS-1 and ISS-2 by number, past the counter a filed issue takes its from
+    await db.execute(sql`
+      INSERT INTO project_iss_counters (project_id, next_seq) VALUES (${projectId}, 100)
+      ON CONFLICT (project_id) DO UPDATE SET next_seq = 100`);
+    const at = (path: string) => `/api/projects/${projectId}${path}`;
+    const fb = ok(
+      await say('owner', 'POST', at('/feedback'), {
+        kind: 'bug',
+        title: 'The reminder never reaches the nurse',
+        screen: '/reminders',
+      }),
+      201,
+    ).feedback.key as string;
+    ok(
+      await say('owner', 'POST', at(`/feedback/${fb}/triage`), {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        createIssue: { complexity: 's' },
+      }),
+    );
+    const read = ok(await say('owner', 'GET', at(`/feedback/${fb}`))).feedback;
+    carrierKey = String(read.route.carriers[0].key);
+  });
+
+  it('places a master under standard, its nudge naming the draft, though the gate holds requests', async () => {
+    await profile(projectId, 'standard');
+    const answer = await verdict();
+    expect(answer.verdict, JSON.stringify(answer.verdict)).toMatchObject({ act: 'place' });
+    expect(answer.work.owed).toBe(1);
+    expect(String(answer.work.nudge)).toContain(
+      `1 draft issue carries triaged feedback and waits to be taken on (${carrierKey})`,
+    );
+  });
+
+  it("is named once under yolo, as the carrier it is and not again as a person's request", async () => {
+    await profile(projectId, 'yolo');
+    const nudge = String((await verdict()).work.nudge);
+    expect(nudge).toContain(`waits to be taken on (${carrierKey})`);
+    expect(nudge.split(carrierKey)).toHaveLength(2);
   });
 });

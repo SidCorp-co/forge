@@ -152,6 +152,11 @@ interface MastersPorts {
    * draft requirements whose revision is proposed. Asked only where `masterGate` is off.
    */
   requestsWaiting(projectId: string): Promise<WaitingRequest[]>;
+  /**
+   * The drafts a feedback triage routed an item to, whoever filed them (ISS-840): master work under
+   * every profile, since the item names the master as the one to take each on (REQ-68 BC-6).
+   */
+  draftCarriersWaiting(projectId: string): Promise<{ key: string }[]>;
 }
 
 const slot = portSlot<MastersPorts>('masters', 'provideMastersPorts');
