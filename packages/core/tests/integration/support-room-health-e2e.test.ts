@@ -21,6 +21,18 @@ let roomId = '';
 let liveTarget = '';
 const sessionDoes = (...a: Parameters<GrantedRoom['sessionDoes']>) => g.sessionDoes(...a);
 
+/** The room's one box goes offline or comes back, as its heartbeat stopping or resuming reads. */
+async function boxIs(status: 'online' | 'offline'): Promise<void> {
+  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+  const seen = status === 'online' ? sql`now()` : sql`now() - interval '1 hour'`;
+  await withKernelMarker(db, async (tx) => {
+    await tx.execute(sql`UPDATE devices SET status = ${status} WHERE id = ${w.box.deviceId}`);
+    await tx.execute(
+      sql`UPDATE runners SET status = ${status}, last_seen_at = ${seen} WHERE device_id = ${w.box.deviceId}`,
+    );
+  });
+}
+
 beforeAll(async () => {
   await g.start();
   ({ roomId, liveTarget } = g);
@@ -88,24 +100,34 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
   });
 
   it('names a project with no box online to run the session', async () => {
-    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
-    await withKernelMarker(db, async (tx) => {
-      await tx.execute(sql`UPDATE devices SET status = 'offline' WHERE id = ${w.box.deviceId}`);
-      await tx.execute(
-        sql`UPDATE runners SET status = 'offline', last_seen_at = now() - interval '1 hour' WHERE device_id = ${w.box.deviceId}`,
-      );
-    });
+    await boxIs('offline');
     const [room] = await w.rooms();
     expect(room?.health).toMatchObject({
       healthy: false,
       causes: expect.arrayContaining([expect.objectContaining({ code: 'NO_BOX' })]),
     });
-    await withKernelMarker(db, async (tx) => {
-      await tx.execute(sql`UPDATE devices SET status = 'online' WHERE id = ${w.box.deviceId}`);
-      await tx.execute(
-        sql`UPDATE runners SET status = 'online', last_seen_at = now() WHERE device_id = ${w.box.deviceId}`,
-      );
-    });
+    await boxIs('online');
+  });
+
+  it('hands a message that waited out an offline box to the session the moment a box is back', async () => {
+    await w.settleWarm();
+    const seen: string[] = [];
+    w.box.model = async (turn) => {
+      for (const m of turn.messages) if (m.from !== 'forge') seen.push(m.text);
+    };
+    await boxIs('offline');
+    await w.chat.say(w.chat.bob, 'is the export stuck?');
+    await w.untilLines((ls) =>
+      ls.some((l) => l.text.startsWith('The support assistant is offline')),
+    );
+    expect(seen).toEqual([]);
+    await boxIs('online');
+    // what the box coming online runs (`support/index.ts:registerSupportConsumers`)
+    const { warmRoomsOfDevice } = await import('../../src/support/warm.js');
+    await warmRoomsOfDevice(w.box.deviceId);
+    // well inside the 30 s a failed dispatch waits: finding no box is not a failed dispatch
+    await expect.poll(() => seen, { timeout: 5_000 }).toContain('is the export stuck?');
+    await w.settleWarm();
   });
 
   it('names a binding switched off', async () => {
