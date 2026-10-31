@@ -184,7 +184,9 @@ pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll>
             if names_pairing_code(&text) {
                 Ok(LoginPoll::Gone(text))
             } else {
-                Err(Error::Other(format!("login poll failed ({status}): {text}")))
+                Err(Error::Other(format!(
+                    "login poll failed ({status}): {text}"
+                )))
             }
         }
         PollClass::Retry => {

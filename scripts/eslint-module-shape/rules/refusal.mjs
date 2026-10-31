@@ -88,11 +88,7 @@ export default {
     const services = context.sourceCode.parserServices;
     const checker = services.program.getTypeChecker();
     const ruleStatus = (s) =>
-      s !== null &&
-      s >= 400 &&
-      s < 500 &&
-      !TRANSPORT_STATUSES.has(s) &&
-      !(s === 403 && platform);
+      s !== null && s >= 400 && s < 500 && !TRANSPORT_STATUSES.has(s) && !(s === 403 && platform);
     const typeOf = (node) => services.getTypeAtLocation(node);
 
     function errorClass(node) {
