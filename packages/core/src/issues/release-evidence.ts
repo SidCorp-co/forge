@@ -57,7 +57,7 @@ export async function reopenedAtOf(
  * build that failed, not every criterion on it: it voids the criterion whose newest verdict at the
  * reopen was not a pass, and a pass stands across it. Where it counts after that is its build's
  * weighing: carried to a later landing that descends from it, unless what changed between falls
- * under what it covers (`release-batch/landed-carriage.ts`).
+ * under what it covers (`landed-carriage.ts`).
  */
 export function voidedUpTo(
   newestFirst: ReadonlyArray<{ verdict: string | null; at: Date | string | null }>,

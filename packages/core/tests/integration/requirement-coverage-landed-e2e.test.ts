@@ -125,7 +125,8 @@ describe('a requirement whose issues all closed by landing records', () => {
   });
 
   // adminhub-api ISS-15, 2026-10-26: closed by a landing record, then delivered again through a
-  // request the host merged; coverage kept reading the record's commit as its landing
+  // request the host merged; coverage kept reading the record's commit as its landing. The pass at
+  // the record's commit is carried to the new landing, which Forge recorded after it (ISS-845).
   it('reads a host merge observed after the landing record as the landing, superseding it', async () => {
     const req = await agreedRequirement(BCS.slice(0, 1));
     const issue = await landedIssue(6, F4);
@@ -138,9 +139,9 @@ describe('a requirement whose issues all closed by landing records', () => {
       UPDATE issues SET merged_commit_sha = ${LATER}, merged_at = now() + interval '1 minute'
        WHERE id = ${issue}`);
     const moved = await bcOf(req);
-    expect(moved.verdict).toBe('not_judged');
-    expect(moved.issues[0]?.notCounted).toContain(
-      `judged at commit ${F4.slice(0, 12)}, not at its issue's landing ${LATER.slice(0, 12)}`,
+    expect(moved.verdict).toBe('passing');
+    expect(moved.issues[0]?.identity).toContain(
+      `judged at commit ${F4.slice(0, 12)}, carried from \`${F4.slice(0, 12)}\` to \`${LATER.slice(0, 12)}\`, which descends from it`,
     );
 
     await passedAll(issue, LATER);

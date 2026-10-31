@@ -5,7 +5,7 @@
  * judged at round 10's landing. Pure: what the landing holds of each judged commit is handed in, as
  * `landed-build-holds.ts:earlierCarriageOf` and the record door read it.
  *
- * @direct-test-of packages/core/src/release-batch/landed-carriage.ts
+ * @direct-test-of packages/core/src/issues/landed-carriage.ts
  */
 
 import { describe, expect, it } from 'vitest';

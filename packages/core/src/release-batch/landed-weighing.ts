@@ -2,20 +2,24 @@
  * How one live criterion's verdict stands on an issue's landed build (`landed-build.ts`): judged at
  * the build itself, at the head of the request that merged as it where the trees are identical, at a
  * later commit holding it (REQ-36 BC-18), or at an earlier one the build descends from, carried there
- * (ISS-845, `landed-carriage.ts`). Every other answer says what it lacks.
+ * (ISS-845, `issues/landed-carriage.ts`). Every other answer says what it lacks.
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { landedCommitOf, landedIdentityWhy, verdictEarns } from '@forge/contracts/verdict-identity';
-import type { Carriage, CriterionVerdict, StandingCriterion } from '../issues/index.js';
+import {
+  type Carriage,
+  type CriterionVerdict,
+  carriedToLanding,
+  type StandingCriterion,
+} from '../issues/index.js';
 import { otherHeadWhy } from './change-request-build.js';
 import type { Holding } from './landed-build.js';
-import { carriedToLanding } from './landed-carriage.js';
 
 const short = (sha: string) => sha.slice(0, 12);
 
 /** One live criterion weighed on a landed build: it counts, or why it does not. `carried` says how
- *  a pass at an earlier commit counts on it (`landed-carriage.ts`); absent, it counts where judged. */
+ *  a pass at an earlier commit counts on it (`issues/landed-carriage.ts`); absent, it counts where judged. */
 export type LandedCriterion =
   | { criterion: number; counts: true; at: string; carried?: string }
   | { criterion: number; counts: false; why: string };
@@ -72,7 +76,7 @@ export function atMergedHead(
 /**
  * One criterion's standing on `build`: a pass or short the verified rule counts, judged at `build`
  * itself, at a later commit holding it, or at an earlier one `build` descends from, carried there
- * unless what changed between falls under what it covers (ISS-845, `landed-carriage.ts`). Every
+ * unless what changed between falls under what it covers (ISS-845, `issues/landed-carriage.ts`). Every
  * other answer says what it lacks, where its verdict sits and the commit it needed.
  */
 export function weighOnLanded(

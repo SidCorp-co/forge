@@ -1,10 +1,11 @@
 /**
  * A pass on a later build that holds an issue's landing is a pass on the delivered work (REQ-36
  * BC-18): the testing environment serves such a build, and `judged-build.ts` sends the judge to it.
- * `laterHoldersOf` is the one reading of that hold, answered from the landings Forge recorded
+ * `laterHoldersOf` is the one reading of that hold, and `earlierCarriageOf` of a landing's descent
+ * from an earlier pass (ISS-845), both answered from the landings Forge recorded
  * (`recorded-holding.ts:recordedHolding`) and never from the host, and both a requirement's coverage
  * (`landedBuildHolds`, `requirements/standing-coverage.ts`) and the automatic release's landing
- * basis (`criteria-basis.ts:landingCriteriaReports`) read it. A release record keeps its own rule:
+ * basis (`criteria-basis.ts:landingCriteriaReports`) read them. A release record keeps its own rule:
  * the recorded commit must hold the verdict's (`landing-coverage.ts`).
  */
 
@@ -32,6 +33,8 @@ export interface LandedHolds {
   head?: MergedHead | null;
   /** Per later commit a verdict on the issue names, whether it holds the build, or why not read. */
   holders?: Map<string, Holding>;
+  /** Per other commit a verdict on the issue names, what the build holds of it (`earlierCarriageOf`). */
+  descent?: Map<string, Carriage>;
 }
 
 /** What a verdict was judged against, as coverage hands it over: its identity's kind and value. */
@@ -45,8 +48,10 @@ export interface JudgedAgainst {
  * (`requirements/standing-coverage.ts`): each issue's landed build (on a change-request project,
  * its request's unchanged head or host merge commit), rather than a production probe that cannot
  * exist, and, per issue in `judged`, whether each later commit its verdicts name holds that build
- * (REQ-36 BC-18): the same commit reading (contracts `landedCommitOf`) the record door uses, answered
- * from the landings Forge recorded (`recorded-holding.ts`) and never from the host. An open request's
+ * (REQ-36 BC-18), and what that build holds of each such commit, so a pass at an earlier landing it
+ * descends from is carried to it as the release hold carries it (ISS-845, `earlierCarriageOf`): the
+ * same commit reading (contracts `landedCommitOf`) the record door uses, answered from the landings
+ * Forge recorded (`recorded-holding.ts`) and never from the host. An open request's
  * head is not a landing, so nothing is read for it. Null on a project with production, whose coverage reads the live build
  * (`judged-build.ts:liveBuildHolds`).
  */
@@ -70,15 +75,20 @@ export async function landedBuildHolds(
     readProjectDocument(projectId),
   ]);
   const judgedOn = judgedOnOf(held?.document.delivery);
-  const holders = await laterHoldersOf(projectId, builds, judged, () => judgedOn);
+  const [holders, carriage] = await Promise.all([
+    laterHoldersOf(projectId, builds, judged, () => judgedOn),
+    earlierCarriageOf(projectId, builds, judged, () => judgedOn),
+  ]);
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
     const asked = holders.get(issueId);
+    const descent = carriage.get(issueId);
     landed.set(issueId, {
       sha: build.sha,
       why: build.sha === null ? build.why : null,
       ...(build.sha !== null && build.head ? { head: build.head } : {}),
       ...(asked ? { holders: asked } : {}),
+      ...(descent ? { descent } : {}),
     });
   }
   return {

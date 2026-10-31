@@ -48,6 +48,8 @@ export interface StandingVerdict {
   authored: boolean;
   /** When it was recorded, as the verified rule reads it; null where there is none. */
   recordedAt: Date | null;
+  /** The path prefixes the verdict covers (ISS-845); absent or null where it names none. */
+  covers?: readonly string[] | null;
 }
 
 /** An issue criterion tracing a business criterion, read at its latest verdict. */
@@ -139,7 +141,8 @@ export function coverageOf(
         input.judge,
       );
       const judged = verdictExercised(ic.verdict);
-      const r = ic.verdict === null ? null : resolve(ic.identity, build, traced.issueId);
+      const r =
+        ic.verdict === null ? null : resolve(ic.identity, build, traced.issueId, ic.covers ?? null);
       return [
         {
           issueId: issue.id,
@@ -300,6 +303,7 @@ function pickVerdict(v: StandingVerdict): StandingVerdict {
     byBuilder: v.byBuilder,
     authored: v.authored,
     recordedAt: v.recordedAt,
+    covers: v.covers ?? null,
   };
 }
 

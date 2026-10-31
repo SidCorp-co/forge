@@ -39,6 +39,7 @@ type CriterionVerdictRow = {
   contract_pinned: string | null;
   storefront_drafts: StorefrontDraftPart[] | null;
   storefront_environment: string | null;
+  covers: string[] | null;
   by_builder: boolean | null;
   authored: boolean | null;
 };
@@ -121,7 +122,7 @@ export async function issueCriteriaOf(
            v.commit_sha, v.runtime_ref, w.flow AS design_flow, v.design_workflow_id,
            v.design_revision, dp.design_revision AS design_pinned, v.contract_ref,
            v.contract_version, cp.contract_version AS contract_pinned, v.storefront_drafts,
-           v.storefront_environment,
+           v.storefront_environment, v.covers,
            (${verdictByBuilderSql({
              issueId: sql`c.issue_id`,
              authorUser: sql`v.author_user_id`,
@@ -137,7 +138,7 @@ export async function issueCriteriaOf(
                cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
                cv.contract_version, cv.storefront_drafts,
-               cv.storefront_environment, cv.author_user_id, cv.author_device_id, cv.run_session_id
+               cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id, cv.run_session_id
           FROM criterion_verdicts cv
          WHERE cv.criterion_id = c.id
       ) v ON true
@@ -204,6 +205,7 @@ export async function issueCriteriaOf(
       byBuilder: !voided && r.verdict !== null && r.by_builder === true,
       authored: !voided && r.verdict !== null && r.authored === true,
       recordedAt: voided || !r.verdict_at ? null : new Date(r.verdict_at),
+      covers: voided ? null : r.covers,
     };
   };
   const byCriterion = new Map<string, CriterionVerdictRow[]>();

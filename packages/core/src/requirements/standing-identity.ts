@@ -11,6 +11,7 @@ import {
   type StorefrontDraftPart,
   storefrontDraftsPhrase,
 } from '@forge/contracts/verdict-identity';
+import { type Carriage, carriedToLanding } from '../issues/index.js';
 
 /**
  * What a verdict names as the thing it was judged against, with what coverage checks it by: a design
@@ -95,6 +96,12 @@ export interface LandedHolds {
    * A commit absent was not asked, and is read as another build.
    */
   holders?: ReadonlyMap<string, boolean | { unread: string }>;
+  /**
+   * Per other commit a verdict on the issue names (lower case), what the landing holds of it, from
+   * the landings Forge recorded (`release-batch/landed-build-holds.ts:earlierCarriageOf`): a pass at
+   * one it descends from is carried to it (ISS-845). A commit absent was not asked.
+   */
+  descent?: ReadonlyMap<string, Carriage>;
 }
 
 export const short = (sha: string) => sha.slice(0, 12);
@@ -183,6 +190,8 @@ export function resolve(
   identity: CoverageIdentity | null,
   live: LiveBuildHolds | null,
   issueId: string,
+  /** The path prefixes the verdict covers, which a carriage to a later landing is held to (ISS-845). */
+  covers: readonly string[] | null = null,
 ): Resolved {
   const atCommit = (commit: string, judged: string) => atLiveCommit(commit, judged, live);
   const none = (why: string): Resolved => ({ commit: null, inLiveBuild: null, notCounted: why });
@@ -192,7 +201,7 @@ export function resolve(
     // the record door's reading of the commit a verdict names (contracts `landedCommitOf`)
     const named = landedCommitOf(identity.kind, identityValue(identity), live?.judgedOn ?? null);
     if ('why' in named) return none(named.why);
-    return atLanding(named.sha, landed.get(issueId.toLowerCase()) ?? null);
+    return atLanding(named.sha, landed.get(issueId.toLowerCase()) ?? null, covers);
   }
   switch (identity.kind) {
     case 'commit':
@@ -238,13 +247,20 @@ export function resolve(
 // With no production environment the build a verdict counts on is its issue's landing
 // (`release-batch/landed-build.ts`): a verdict counts at that very commit, at the head of the request
 // that merged as it where Forge read from the host, at the merge, that the two trees are identical
-// (`issues.merged_head`), or at a later build that holds the landing (`LandedHolds.holders`, REQ-36
+// (`issues.merged_head`), at a later build that holds the landing (`LandedHolds.holders`, REQ-36
 // BC-18): the testing environment serves such a build, and `judged-build.ts` sends the judge to it
-// (adminhub-fe ISS-4). A head whose tree differs or was not read, and a commit that does not hold
+// (adminhub-fe ISS-4), or at an earlier one the landing descends from, carried to it unless what it
+// covers changed (`LandedHolds.descent`, ISS-845): the one rule the release hold weighs an issue's
+// landing by (`issues/landed-carriage.ts:carriedToLanding`, read in the same order as
+// `release-batch/landed-weighing.ts:weighOnLanded`). A head whose tree differs or was not read, and a commit that does not hold
 // the landing, judged another build as far as anyone can say; one whose hold was not read is
 // unchecked, never passing (`VISION: state-never-lies`). A release record keeps its own rule: the
 // recorded commit must hold the verdict's (`release-batch/landing-coverage.ts`).
-function atLanding(commit: string, landed: LandedHolds | null): Resolved {
+function atLanding(
+  commit: string,
+  landed: LandedHolds | null,
+  covers: readonly string[] | null,
+): Resolved {
   const judged = `judged at commit ${short(commit)}`;
   if (!landed) {
     return {
@@ -278,6 +294,16 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
     };
   }
   const away = `${judged}, not at its issue's landing ${short(landed.sha)}`;
+  const descends = landed.descent?.get(commit.toLowerCase());
+  const carried = carriedToLanding(landed.sha, commit.toLowerCase(), covers, descends);
+  if (carried?.kind === 'carried') {
+    return {
+      commit,
+      inLiveBuild: true,
+      notCounted: null,
+      countedAs: `${judged}, ${carried.words}`,
+    };
+  }
   const held = landed.holders?.get(commit.toLowerCase());
   if (held === true) {
     return {
@@ -286,6 +312,12 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
       notCounted: null,
       countedAs: `${judged}, which holds landing ${short(landed.sha)}`,
     };
+  }
+  if (carried && (carried.kind === 'refused' || held === undefined || held === false)) {
+    // another build where the landing does not descend from it; where it does, what it covers
+    // changed or went unread, and nothing says the criterion holds there
+    const another = carried.kind === 'refused' && descends?.kind !== 'descends';
+    return { commit, inLiveBuild: another ? false : null, notCounted: carried.why };
   }
   if (held === false) {
     return {
@@ -298,7 +330,11 @@ function atLanding(commit: string, landed: LandedHolds | null): Resolved {
     return {
       commit,
       inLiveBuild: null,
-      notCounted: `${away}, and no record of Forge's says it holds that landing: ${held.unread}`,
+      notCounted: `${away}, and no record of Forge's says it holds that landing: ${held.unread}${
+        descends?.kind === 'unread'
+          ? `; nor was it read that \`${short(landed.sha)}\` descends from it: ${descends.why}`
+          : ''
+      }`,
     };
   }
   return {

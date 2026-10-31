@@ -9,11 +9,13 @@
  *
  * What the landing holds of the judged commit is a `Carriage` (`issues/weighing.ts`), as the runtime
  * weighing carries a pass to a served commit that descends from it (`issues/runtime-standing.ts`):
- * read from the landings Forge recorded on a read path (`landed-build-holds.ts:earlierCarriageOf`),
- * and from the source host by the record door (`landing-coverage.ts`).
+ * read from the landings Forge recorded on a read path (`release-batch/landed-build-holds.ts:earlierCarriageOf`),
+ * and from the source host by the record door (`release-batch/landing-coverage.ts`). The release
+ * hold (`release-batch/landed-weighing.ts`), the record door and a requirement's coverage
+ * (`requirements/standing-identity.ts:atLanding`) all read a pass's carriage here.
  */
 
-import { type Carriage, coveredChanges } from '../issues/index.js';
+import { type Carriage, coveredChanges } from './weighing.js';
 
 const short = (sha: string) => sha.slice(0, 12);
 

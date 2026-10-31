@@ -14,7 +14,7 @@
  * very commit, or at the head of the request that merged as it where Forge read from the host, at the
  * merge, that the two trees are identical (`issues.merged_head`, `atMergedHead`). A pass at an earlier
  * commit the landing is read descending from is carried to it, unless what changed between falls
- * under what it covers (ISS-845, `landed-carriage.ts`); one at a commit it does not descend from, or
+ * under what it covers (ISS-845, `issues/landed-carriage.ts`); one at a commit it does not descend from, or
  * where that was not read, judged another build. One at a later head judged a newer build, and counts
  * only on a record made at that head. Before that record, the steward and coverage read such a head
  * as the build where every live criterion passes there (`aheadBuildsOf`). A requirement's coverage

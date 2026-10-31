@@ -1,0 +1,1 @@
+**A requirement counts a carried pass as its issue's release does**: a pass at an earlier landing counts at a later landing that descends from it on the requirement's coverage too, unless a file it covers changed (ISS-845).

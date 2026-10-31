@@ -6,7 +6,7 @@
  *
  * How a verdict counts is `landed-build.ts:weighOnLanded`'s, unchanged: a criterion counted there
  * reads as standing at the commit, and only what it does not count is placed further. A pass at an
- * earlier commit is carried to the recorded one as `landed-carriage.ts` carries it (ISS-845): the
+ * earlier commit is carried to the recorded one as `issues/landed-carriage.ts` carries it (ISS-845): the
  * files changed between them are read from the source host where the project has one, and a pass
  * covering one of them, or covering anything where they were not read, does not stand there.
  */
@@ -14,13 +14,17 @@
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import type { ReleaseShippedFailing } from '@forge/contracts/releases';
 import { landedCommitOf, verdictEarns } from '@forge/contracts/verdict-identity';
-import { type StandingCriterion, standingCriteriaOf } from '../issues/index.js';
+import {
+  carriedToLanding,
+  filesNamed,
+  type StandingCriterion,
+  standingCriteriaOf,
+} from '../issues/index.js';
 import { pairKey } from '../runners/index.js';
 import { ancestrySourceFor } from './ancestry-source.js';
 import { type ChangedBetween, changedBetweenOf } from './carriage.js';
 import type { JudgedBuildDeps } from './judged-build.js';
 import { holdingPair, readHolding, weighOnLanded } from './landed-build.js';
-import { carriedToLanding, filesNamed } from './landed-carriage.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 const short = (sha: string) => sha.slice(0, 12);

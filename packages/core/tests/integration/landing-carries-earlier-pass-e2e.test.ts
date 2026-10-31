@@ -10,8 +10,9 @@
  * host and refuses a pass covering one of them. Against real Postgres.
  *
  * @direct-test-of packages/core/src/release-batch/landed-build-holds.ts
- * @direct-test-of packages/core/src/release-batch/landed-carriage.ts
+ * @direct-test-of packages/core/src/issues/landed-carriage.ts
  * @direct-test-of packages/core/src/issues/standing-on.ts
+ * @direct-test-of packages/core/src/requirements/standing-identity.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -22,6 +23,7 @@ import { landingCriteriaReports } from '../../src/release-batch/criteria-basis.j
 import { stewardReleaseFacts } from '../../src/release-batch/index.js';
 import { api } from '../helpers/api.js';
 import { seedIssueStatus } from '../helpers/factories.js';
+import { agreedRequirement, bcOf, traced } from '../helpers/landed-requirement.js';
 import {
   BRANCH,
   landedIssue,
@@ -244,5 +246,58 @@ describe('a reopen voids only the criterion that was not passing', () => {
       [2, 'pass', null],
       [3, 'fail', expect.stringContaining('when this criterion was not passing')],
     ]);
+  });
+});
+
+describe('a requirement reads the carriage its issue’s release reads', () => {
+  it('counts a pass at round 10’s landing at round 11’s, as the release does, naming the carriage', async () => {
+    const req = await agreedRequirement(['Invoices total their lines', 'Tax is added once']);
+    const issue = await landedIssue(78, L1, statements(2));
+    await traced(req, issue, 78, { 1: 'BC-1', 2: 'BC-2' });
+    await judge(issue, 1, 'pass', L1);
+    await fixRound(issue, 2);
+
+    const [report] = await landingCriteriaReports(world.projectId, [issue]);
+    expect(report?.counted.map((c) => c.criterion)).toEqual([1, 2]);
+
+    const carried = await bcOf(req, 'BC-1');
+    expect(carried.verdict).toBe('passing');
+    expect(carried.issues[0]?.notCounted).toBeNull();
+    expect(carried.issues[0]?.identity).toBe(
+      `judged at commit ${short(L1)}, carried from \`${short(L1)}\` to \`${short(L2)}\`, which descends from it (Forge recorded \`${short(L1)}\` landing on its branch before \`${short(L2)}\`); what changed between them was not read`,
+    );
+    expect(await bcOf(req, 'BC-2')).toMatchObject({ verdict: 'passing' });
+  });
+
+  it('does not carry a covering pass where what changed was not read, as the release does not', async () => {
+    const req = await agreedRequirement(['Invoices total their lines', 'Tax is added once']);
+    const issue = await landedIssue(78, L1, statements(2));
+    await traced(req, issue, 78, { 1: 'BC-1', 2: 'BC-2' });
+    await judge(issue, 1, 'pass', L1, { covers: ['src/billing/'] });
+    await fixRound(issue, 2);
+
+    const [report] = await landingCriteriaReports(world.projectId, [issue]);
+    const bc = await bcOf(req, 'BC-1');
+
+    expect(bc.verdict).toBe('not_judged');
+    expect(bc.issues[0]?.notCounted).toBe(report?.unearned[0]?.why.split('; it needs')[0]);
+    expect(bc.issues[0]?.notCounted).toContain(
+      'and it covers `src/billing/`: what changed between them was not read',
+    );
+  });
+
+  it('does not carry a pass at a commit no landing was recorded at, saying descent was not read', async () => {
+    const req = await agreedRequirement(['Invoices total their lines', 'Tax is added once']);
+    const issue = await landedIssue(78, L1, statements(2));
+    await traced(req, issue, 78, { 1: 'BC-1', 2: 'BC-2' });
+    await judge(issue, 1, 'pass', UNMARKED);
+    await fixRound(issue, 2);
+
+    const bc = await bcOf(req, 'BC-1');
+
+    expect(bc.verdict).toBe('not_judged');
+    expect(bc.issues[0]?.notCounted).toContain(
+      `nor was it read that \`${short(L2)}\` descends from it: no merge mark records the landing ${short(UNMARKED)}`,
+    );
   });
 });
