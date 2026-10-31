@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { expect } from 'vitest';
+import { expect, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { declareQueue } from '../../src/queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../../src/queue/names.js';
@@ -49,8 +49,28 @@ export class SupportWorld {
   rcConnectionId = '';
   bindingId = '';
   apiConnectionId = '';
+  /**
+   * Each turn core could not hand to the box (`support/dispatch.ts:deliverWaiting`), with why. Such a
+   * failure arms the room's 30 s back-off, which this world never waits out: a later message then
+   * reads as a delivery timeout. `stop` throws them, so the run names what failed.
+   */
+  readonly undelivered: { at: string; roomId: unknown; why: string }[] = [];
 
   async start(): Promise<void> {
+    const { logger } = await import('../../src/lib/logger.js');
+    const logError = logger.error.bind(logger);
+    vi.spyOn(logger, 'error').mockImplementation(((
+      obj: unknown,
+      msg?: unknown,
+      ...rest: unknown[]
+    ) => {
+      if (msg === 'support: the turn did not reach its box') {
+        const { err, roomId } = (obj ?? {}) as { err?: unknown; roomId?: unknown };
+        const why = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        this.undelivered.push({ at: new Date().toISOString(), roomId, why });
+      }
+      return (logError as (...a: unknown[]) => void)(obj, msg, ...rest);
+    }) as typeof logger.error);
     await startQueue();
     // a confirmed deploy queues its Coolify dispatch here; with no worker it waits to be read
     await declareQueue(INTEGRATIONS_QUEUE_NAME);
@@ -303,9 +323,18 @@ export class SupportWorld {
     await this.product?.close();
     if (this.core) await stopCore(this.core);
     await closeWorld();
-    const failed = this.box?.errors ?? [];
+    const failed: unknown[] = [
+      ...(this.box?.errors ?? []),
+      ...this.undelivered.map(
+        (u) =>
+          new Error(`a turn did not reach the box at ${u.at} (room ${String(u.roomId)}): ${u.why}`),
+      ),
+    ];
     if (failed.length) {
-      throw new AggregateError(failed, `the session box failed ${failed.length} turn(s)`);
+      throw new AggregateError(
+        failed,
+        `the session box failed, or was never handed, ${failed.length} turn(s)`,
+      );
     }
   }
 }
