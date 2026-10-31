@@ -177,7 +177,7 @@ function pushText(into: BodyNode[], value: string, raw = false): void {
   else into.push(raw ? { type: 'text', value, raw: true } : { type: 'text', value: decoded });
 }
 
-/** Source → AST. Throws `BodyInvalidError` on anything it cannot read. */
+/** Source → AST. Throws the `BODY_INVALID` refusal (`bodyInvalid`) on anything it cannot read. */
 export function parseBody(src: string): BodyNode[] {
   const s = new Scanner(src);
   const root: BodyNode[] = [];
