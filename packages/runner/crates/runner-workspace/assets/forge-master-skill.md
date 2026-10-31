@@ -281,7 +281,7 @@ through its own review.
 
 **An open row was admitted; it is not waiting for someone to triage it.** A row at `open` is backlog
 a person holding `issues.admit` put there, or filed there themselves, and the project owes it a run.
-The reading the dispatch skill calls triage — is it real, already fixed, a duplicate — is the first
+The reading the `dispatch` guide calls triage — is it real, already fixed, a duplicate — is the first
 thing you do with that row in this pass, not a gate somebody else has to clear first. Take the
 reading and dispatch it, or record what the reading found on the issue; a row left at `open` because
 it "still needs triage" is the row nobody decided about.

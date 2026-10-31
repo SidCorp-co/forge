@@ -377,7 +377,9 @@ describe('masterWork: what the box types and opens a pass on', () => {
       builderRuns: [{ id: 'b1', ecosystem: 'e' }],
     });
     expect(work).toMatchObject({ admissible: 0, owed: 2 });
-    expect(work.nudge.startsWith('Pass. Hand it to the dispatch skill')).toBe(true);
+    expect(
+      work.nudge.startsWith('Pass. Run the wave by `forge-runner api guides/dispatch.md`'),
+    ).toBe(true);
     expect(work.nudge).toContain(work.owedLine);
     expect(work.owedLine).toContain('1 ecosystem builder run is open (b1)');
   });

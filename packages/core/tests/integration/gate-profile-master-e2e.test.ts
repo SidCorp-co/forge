@@ -204,21 +204,23 @@ describe('the pass prompt under direct mode (gate profile yolo, fast delivery on
     await profile(projectId, 'yolo');
     const said = await nudge();
     expect(said).toContain("This project's master works direct");
-    expect(said).toContain('Dispatch no forge:runner');
-    expect(said).not.toContain('Hand it to the dispatch skill');
+    expect(said).toContain('Dispatch no runner role');
+    expect(said).not.toContain('Run the wave by');
   });
 
   it('dispatches as before once fast delivery is off, and under standard', async () => {
     await profile(projectId, 'yolo');
     await fast(false);
     try {
-      expect(await nudge()).toMatch(/^Pass\. Hand it to the dispatch skill/);
+      expect(await nudge()).toMatch(
+        /^Pass\. Run the wave by `forge-runner api guides\/dispatch\.md`/,
+      );
     } finally {
       await fast(true);
     }
     await profile(projectId, 'standard');
     const said = await nudge();
-    expect(said).toMatch(/^Pass\. Hand it to the dispatch skill/);
+    expect(said).toMatch(/^Pass\. Run the wave by `forge-runner api guides\/dispatch\.md`/);
     expect(said).not.toContain('works direct');
   });
 });

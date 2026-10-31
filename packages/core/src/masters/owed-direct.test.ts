@@ -54,7 +54,7 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     expect(direct.nudge.startsWith('Pass.')).toBe(true);
     expect(direct.nudge).not.toContain('dispatch skill');
     for (const said of [
-      'Dispatch no forge:runner',
+      'Dispatch no runner role',
       'general-purpose subagent',
       'land it on the base branch once it builds and its own tests pass',
       'mark it merged at the landing sha',
@@ -74,10 +74,33 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
   it('briefs a new pane the same, and leaves every other project as it was', () => {
     expect(masterWork([issue('a')], none, 'direct').owedLine).toContain('works direct');
     expect(masterWork([issue('a')], none, 'dispatch').owedLine).toBe('');
-    expect(dispatch.nudge.startsWith('Pass. Hand it to the dispatch skill')).toBe(true);
+    expect(
+      dispatch.nudge.startsWith('Pass. Run the wave by `forge-runner api guides/dispatch.md`'),
+    ).toBe(true);
     expect(dispatch.nudge).not.toContain('works direct');
     const { nudge: _d, owedLine: _dl, ...rest } = direct;
     const { nudge: _n, owedLine: _nl, ...was } = dispatch;
     expect(rest).toEqual(was);
   });
+});
+
+// ISS-304 (FB-89's reopen, 2026-10-07): "Hand it to the dispatch skill" resolved to the plugin's
+// forge:dispatch on a pane with forge-plugin installed, so dev masters ran plugin verbs for hours.
+describe('masterWork names no plugin skill and no plugin verb, in either mode', () => {
+  const owed = {
+    ...none,
+    triages: [{ key: 'FB-1' }],
+    designs: [{ workflowId: 'w', flow: 'f', revision: 2 }],
+    revisions: [{ key: 'REQ-1', revision: 2 }],
+    builderRuns: [{ id: 'b1', ecosystem: 'e' }],
+  };
+  const plugin = /dispatch skill|issue-flow skill|\bforge:[a-z]|`forge (?!-)[a-z]/;
+
+  for (const mode of ['dispatch', 'direct'] as const) {
+    it(`over every owed kind, ${mode}`, () => {
+      const { nudge } = masterWork([issue('a')], owed, mode);
+      expect(nudge).not.toMatch(plugin);
+      expect(nudge).toContain('`forge-runner api guides/dispatch.md`');
+    });
+  }
 });

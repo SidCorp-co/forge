@@ -1,0 +1,1 @@
+**A dispatch master's pass names the served dispatch guide** (`forge-runner api guides/dispatch.md`), not "the dispatch skill", which a pane with forge-plugin resolved to the plugin's forge:dispatch and its verbs.

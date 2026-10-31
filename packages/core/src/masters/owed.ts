@@ -25,9 +25,6 @@ import {
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
 const GATING_KIND = 'blocks';
 
-const NUDGE =
-  'Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.';
-
 type Admissible = Awaited<ReturnType<typeof readAdmissibleIssues>>['items'][number];
 
 /** Everything a project's master is owed besides its admissible issues, as one read. */
@@ -84,12 +81,15 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 /** A line names the guide that holds its method by slug, never restates it (REQ-23 BC-2). */
 const method = (slug: GuideSlug) => `\`${guideCall(slug)}\``;
 
+/** The dispatch pass names the served guide, never a skill a plugin on the pane could answer to (ISS-304). */
+const NUDGE = `Pass. Run the wave by ${method('dispatch')}, and say what you dispatched and why you did not dispatch the rest.`;
+
 /**
  * How a master on a project that runs fast works (`@forge/contracts/master-mode`): it builds and
  * records afterwards, so its pass names no dispatch. The kernel rules are said with it, since they
  * are what still refuses it.
  */
-const DIRECT_ORDER = ` This project's master works direct (gate profile yolo, fast delivery on): build each issue you take yourself, in this session or through a general-purpose subagent given a short prompt. Dispatch no forge:runner, print no brief, and wait on no plan approval, design record or judge before landing. Claim the issue first (its lease, as the issue-flow guide's Take it says), land it on the base branch once it builds and its own tests pass, with its key in the commit subject, then record in one go: mark it merged at the landing sha (\`forge-runner api issues/<id>/merge -X POST\`), move it to \`awaiting_release\` with that sha as the reason, and comment what shipped; hand the lease back last. Record a criterion's verdict only once you have checked it live, after landing. The kernel still refuses: a move off a legal edge or without its reason, \`awaiting_release\` without a recorded merge, a move by anyone but the issue's holder, and a close by anything but a release. The forge-master skill's direct-mode section is the role, and ${method('dispatch')} (Direct mode) the method.`;
+const DIRECT_ORDER = ` This project's master works direct (gate profile yolo, fast delivery on): build each issue you take yourself, in this session or through a general-purpose subagent given a short prompt. Dispatch no runner role, print no brief, and wait on no plan approval, design record or judge before landing. Claim the issue first (its lease, as the issue-flow guide's Take it says), land it on the base branch once it builds and its own tests pass, with its key in the commit subject, then record in one go: mark it merged at the landing sha (\`forge-runner api issues/<id>/merge -X POST\`), move it to \`awaiting_release\` with that sha as the reason, and comment what shipped; hand the lease back last. Record a criterion's verdict only once you have checked it live, after landing. The kernel still refuses: a move off a legal edge or without its reason, \`awaiting_release\` without a recorded merge, a move by anyone but the issue's holder, and a close by anything but a release. The forge-master skill's direct-mode section is the role, and ${method('dispatch')} (Direct mode) the method.`;
 
 const DIRECT_NUDGE = `Pass.${DIRECT_ORDER} Say what you built and landed, and why you did not take the rest.`;
 
