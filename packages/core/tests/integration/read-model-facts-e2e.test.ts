@@ -17,7 +17,7 @@ import {
 // @direct-test-of packages/core/src/agent-sessions/ops-routes.ts
 // @direct-test-of packages/core/src/agent-sessions/read.ts
 // @direct-test-of packages/core/src/me/attention-routes.ts
-// @direct-test-of packages/core/src/devices/read.ts
+// @direct-test-of packages/core/src/me/attention-buckets.ts
 
 async function session(projectId: string, status: string, deviceId: string | null = null) {
   const runId = randomUUID();
