@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.398] - 2026-10-31
+
+An unchanged feedback re-triage is refused by name and writes nothing
+
+### Fixed
+
+- **A feedback re-triage naming the route and carriers an item already stands on is refused `FEEDBACK_TRIAGE_UNCHANGED` and writes nothing.** The standing `since` no longer moves, so the steward stops re-asking the master (ISS-833).
+
 ## [0.4.0-dev.397] - 2026-10-31
 
 Stale feedback triage proposals are retired once an item is triaged
