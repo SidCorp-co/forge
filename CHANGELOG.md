@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.391] - 2026-10-31
+
+Fleet, requirement changes and Attention counts read from one core source
+
+### Fixed
+
+- **A requirement's first revision reads as wholly new.** Its changes are no longer shown against the current revision.
+
 ## [0.4.0-dev.390] - 2026-10-31
 
 Dispatch guide says where standing rules go beside a plugin-gated brief
