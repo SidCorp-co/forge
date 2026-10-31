@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.388] - 2026-10-31
+
+Every core module has one public entry point, enforced by the build
+
+### Fixed
+
+- **Every non-platform core module has one public face.** `health`, `me` and `integration-door` gain an index file, and the module-shape gate refuses a kernel, domain, read-model, adapter or door module without one. A breaking-adopt refusal no longer says "once" twice.
+
 ## [0.4.0-dev.387] - 2026-10-31
 
 A design links the requirement that already covers it before drafting one
