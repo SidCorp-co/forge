@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.414] - 2026-10-31
+
+Merge check rebuilds shared packages before verify
+
+### Fixed
+
+- **The merge check rebuilds what verify loads before verify runs.** A change selecting no core test no longer sends verify to a missing dist, and a checkout with no install is refused NOT_INSTALLED before anything runs.
+
 ## [0.4.0-dev.413] - 2026-10-31
 
 A draft's holder takes it straight to in progress
