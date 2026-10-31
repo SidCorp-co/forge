@@ -1,1 +1,0 @@
-**Every rule refusal now answers the one refusal envelope with a status from `REFUSAL_STATUSES`, never a 410.** Merge, source-host, Sentry, message, egress and body refusals lost their error classes; a lint refuses new ones.

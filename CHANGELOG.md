@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.394] - 2026-10-31
+
+Every refused request answers one envelope with a status that says what to do
+
+### Fixed
+
+- **Every rule refusal now answers the one refusal envelope with a status from `REFUSAL_STATUSES`, never a 410.** Merge, source-host, Sentry, message, egress and body refusals lost their error classes; a lint refuses new ones.
+
 ## [0.4.0-dev.393] - 2026-10-31
 
 Support messages go the moment a box comes back online
