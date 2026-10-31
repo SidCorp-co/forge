@@ -323,7 +323,7 @@ describe('a question the assistant cannot draft an answer for (REQ-41 BC-2)', ()
     mode = 'answer';
     const calls = seen.length;
     const id = randomUUID();
-    await bare(id);
+    await bare(id, { askedBy: ownerId }); // ISS-812: a question on no record names its asker
     await settleOutbox();
     expect(seen.length).toBe(calls);
     expect(await suggestionOf(id)).toMatchObject({

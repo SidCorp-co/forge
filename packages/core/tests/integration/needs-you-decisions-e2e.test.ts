@@ -30,6 +30,7 @@ import {
 let projectId: string;
 let ownerId: string;
 let authorId: string;
+let askerId: string;
 let token: string;
 let ask: typeof import('../../src/questions/index.js').askQuestion;
 
@@ -114,6 +115,7 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   authorId = (await createTestUser({ verified: true })).id;
+  askerId = (await createTestUser({ verified: true })).id;
   await addProjectMember(projectId, authorId, 'member');
   token = await userToken(ownerId);
   const now = new Date();
@@ -165,6 +167,8 @@ beforeAll(async () => {
   await ask({
     id: ids.detached,
     projectId,
+    // on no item, so it names its asker: ISS-812 refuses a question naming nothing
+    askedBy: askerId,
     prompt: 'Rotate the webhook secret now or at the next release?',
     blockerKind: 'human',
     answer: {
@@ -309,7 +313,12 @@ describe('each decision shows its question, a recommended answer and a button (R
 
 describe('a run asking a person a free-text question owes a recommended answer (REQ-41 BC-2)', () => {
   let boxToken: string;
+  let runIssueId: string;
   beforeAll(async () => {
+    // the run asks on the issue it works: ISS-812 refuses a question standing on nothing
+    runIssueId = (
+      await createTestIssue(projectId, ownerId, 5, { status: 'open', createdAt: new Date() })
+    ).id;
     const deviceId = await createTestDevice(ownerId);
     await bindTestRunner(projectId, deviceId);
     const { mintPat } = await import('../../src/credentials/pat.js');
@@ -327,6 +336,7 @@ describe('a run asking a person a free-text question owes a recommended answer (
   const body = (over: Record<string, unknown>) => ({
     id: randomUUID(),
     projectId,
+    issueId: runIssueId,
     prompt: 'Which region does the backup go to?',
     answerShape: 'free_text',
     needed: 'a region name',

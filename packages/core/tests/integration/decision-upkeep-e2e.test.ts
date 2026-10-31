@@ -38,6 +38,8 @@ import {
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
 let ownerId = '';
+/** Who asks the questions standing on no item (ISS-812 refuses one naming nothing). */
+let askerId = '';
 let ask: typeof import('../../src/questions/index.js').askQuestion;
 let readOpen: typeof import('../../src/questions/index.js').readOpenPersonQuestions;
 let sweepMoved: typeof import('../../src/questions/index.js').sweepMovedDecisions;
@@ -146,6 +148,7 @@ beforeAll(async () => {
   ));
   ({ loadProjectAccess: accessOf } = await import('../../src/lib/authz.js'));
   ownerId = (await createTestUser({ verified: true })).id;
+  askerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   say = requester(app, { owner: await signUserToken(ownerId) });
 }, 120_000);
@@ -190,7 +193,7 @@ describe('a decision whose item moved leaves at once (REQ-68 BC-7)', () => {
   it('a feedback move hides its steward decision at once, and the sweep voids it', async () => {
     const fbId = await feedbackIdOf(await createTestFeedback(projectId, ownerId, 703));
     const decision = await stewardDecision({ about: { kind: 'feedback', feedbackId: fbId } });
-    const person = await personQuestion({}, 'Which export?');
+    const person = await personQuestion({ askedBy: askerId }, 'Which export?');
     expect((await readOpen(projectId)).map((q) => q.id)).toContain(decision);
     ok(
       await say('owner', 'POST', at('/feedback/FB-703/triage'), {
@@ -247,7 +250,7 @@ describe('an unanswered decision is reminded, then escalated (REQ-68 BC-8)', () 
       createdAt: new Date(),
     });
     const old = await personQuestion({ issueId: issue.id }, 'Which roles may export?');
-    const young = await personQuestion({}, 'Which timezone?');
+    const young = await personQuestion({ askedBy: askerId }, 'Which timezone?');
     await agedBy(old, 4);
     await agedBy(young, 2);
     await upkeep();

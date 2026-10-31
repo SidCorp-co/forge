@@ -37,6 +37,8 @@ let projectId = '';
 let ownerId = '';
 let memberId = '';
 let agentId = '';
+/** Who asks the questions standing on no record (ISS-812 refuses one naming nothing). */
+let askerId = '';
 const tok = { owner: '', member: '', agent: '', memberSession: '' };
 const tokenIds = { owner: '', member: '' };
 
@@ -62,6 +64,7 @@ beforeEach(async () => {
   await addProjectMember(projectId, memberId, 'member');
   agentId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agentId, 'admin');
+  askerId = (await createTestUser({ verified: true })).id;
   const owner = await minted(ownerId, 'owner-cli');
   const member = await minted(memberId, 'member-cli');
   tok.owner = owner.token;
@@ -86,6 +89,7 @@ async function asked(
   await askQuestion({
     id,
     projectId: opts.project ?? projectId,
+    askedBy: askerId,
     ...(opts.requirementId ? { requirementId: opts.requirementId } : {}),
     prompt: 'Which flag guards the tour?',
     blockerKind: blocker,

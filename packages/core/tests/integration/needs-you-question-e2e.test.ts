@@ -15,6 +15,8 @@ import {
 let projectId: string;
 let ownerId: string;
 let readerId: string;
+/** Who asks the questions standing on no record (ISS-812 refuses one naming nothing). */
+let askerId: string;
 let issueId: string;
 let ask: typeof import('../../src/questions/index.js').askQuestion;
 let readList: typeof import('../../src/development/needs-you-list.js').readNeedsYou;
@@ -35,6 +37,7 @@ const free = (id: string, over: Record<string, unknown> = {}) =>
   ask({
     id,
     projectId,
+    askedBy: askerId,
     prompt: `the role catalogue ${id.slice(0, 4)}`,
     blockerKind: 'human',
     answer: { shape: 'free_text', needed: 'the roles' },
@@ -51,6 +54,7 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   readerId = (await createTestUser({ verified: true })).id;
+  askerId = (await createTestUser({ verified: true })).id;
   await addProjectMember(projectId, readerId, 'viewer');
   issueId = (
     await createTestIssue(projectId, ownerId, 1, { status: 'open', createdAt: new Date() })
