@@ -1,1 +1,0 @@
-**A release note's section is refused by name at every door.** Creating an issue with an unknown section is refused, listing the accepted ones, and a stored bad section blocks the release naming its issue.

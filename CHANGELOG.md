@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.399] - 2026-10-31
+
+A bad release-note section is refused where it is written
+
+### Fixed
+
+- **A release note's section is refused by name at every door.** Creating an issue with an unknown section is refused, listing the accepted ones, and a stored bad section blocks the release naming its issue.
+
 ## [0.4.0-dev.398] - 2026-10-31
 
 An unchanged feedback re-triage is refused by name and writes nothing
