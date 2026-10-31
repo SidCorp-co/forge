@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.395] - 2026-10-31
+
+Refused bodies show the accepted shape; unknown routes name their nearest routes
+
+### Fixed
+
+- **A cleanup run no longer stops to wait for CI.** Its brief says it is headless: it waits on a reused CI run inside its turn and always posts its report.
+- **A refused body now shows the body its route accepts.** An unknown `/api` route names its nearest routes, and a key a read serves but a write refuses is named server-owned. `forge-runner api -d @path` sends that file's text, as curl does, instead of the literal `@path`.
+
 ## [0.4.0-dev.394] - 2026-10-31
 
 Every refused request answers one envelope with a status that says what to do
