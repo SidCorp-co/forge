@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.386] - 2026-10-31
+
+Viewers see only the workflow design acts their role can take
+
+### Fixed
+
+- **A viewer is no longer offered workflow acts it cannot take.** Edit, New design and Draft a requirement show only to a role holding the permission core checks for each; the design and list reads now carry it.
+
 ## [0.4.0-dev.385] - 2026-10-30
 
 Brief a run on a new repo whose remote has no base branch
