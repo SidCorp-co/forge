@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.401] - 2026-10-31
+
+Issues with more than 50 criteria can now record a design
+
+### Fixed
+
+- **An issue with more than 50 criteria can record its design and its review.** Both read their criteria cap from the issue's own limit of 200, so gate design_record can pass for a larger issue.
+
 ## [0.4.0-dev.400] - 2026-10-31
 
 A refused release deploy names the method call it wants
