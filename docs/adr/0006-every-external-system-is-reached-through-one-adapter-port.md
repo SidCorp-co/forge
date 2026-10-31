@@ -40,7 +40,10 @@ The dev and prod compose files name the same set from the deployment side: `SMTP
 `packages/core/src/integrations/<port>/`.** A domain depends on the port's typed functions, never on
 a vendor SDK, a `fetch` to a vendor host, or a vendor's types.
 
-**Ports are named by role, not by vendor**, and a port may hold several vendors:
+**A port serves a role, not a vendor**, and a port may hold several vendors. The role is declared
+in the adapter's integration declaration (`packages/core/src/integrations/types.ts:declareIntegration`),
+never read from its directory name (REQ-12 BC-22, revision 5); until the declaration carries it, this
+table and the integrations README hold it:
 
 | Port | Directory under `integrations` | Vendors | Bound to |
 |---|---|---|---|
@@ -112,8 +115,7 @@ sentence that justifies it, and an exception with no reason is refused.
     the `published-releases` port. Every domain file reaches a port through its **index.ts**.
 - The existing vendor directories keep their names. Renaming them under role directories would
   touch the registry's provider keys, every provider-literal allowance and several hundred imports,
-  for no behaviour; the role each serves is declared in the integrations README, and a new vendor
-  goes under its role.
+  for no behaviour, and the role is the declaration's to say, not the directory's.
 - The chat transcript's egress stays where it is: `packages/core/src/assistant/external-chat.ts:runExternalChatTurn`
   and the BA tools gate the spoken messages and each tool result before calling the LLM port's
   `stream`. The port takes them already gated because the guard has to tell the system prompt from
