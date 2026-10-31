@@ -1,4 +1,5 @@
 // @direct-test-of .githooks/pre-push
+// @direct-test-of scripts/lib/base-branch.mjs
 // @gate-input whole-tree — it runs .githooks/pre-push under bash, which the guard cannot see
 //
 // What the pre-push hook says (ISS-472 round 2), run as git would run it in a fixture repository:
@@ -38,8 +39,11 @@ const git = (cwd, ...args) => {
   return r.stdout.trim();
 };
 
-/** A repository holding the hook, the resolver it calls, and a `test:changed` exiting $FX_EXIT. */
-function seedRepo(path, branch) {
+/**
+ * A repository holding the hook, the resolver it calls, and a `test:changed` exiting $FX_EXIT;
+ * `landsOn` declares the branch its work lands on in `.forge/landing.json`, the resolver's own row.
+ */
+function seedRepo(path, branch, landsOn) {
   git(dir, 'init', '-q', '-b', branch, path);
   const files = {
     'package.json': JSON.stringify({
@@ -63,6 +67,7 @@ function seedRepo(path, branch) {
       },
     }),
   };
+  if (landsOn) files['.forge/landing.json'] = JSON.stringify({ base: landsOn });
   for (const [p, text] of Object.entries(files)) {
     mkdirSync(dirname(join(path, p)), { recursive: true });
     writeFileSync(join(path, p), text);
@@ -95,7 +100,7 @@ beforeAll(() => {
   lone = join(dir, 'lone');
   seedRepo(lone, 'main');
   const seed = join(dir, 'seed');
-  seedRepo(seed, 'dev');
+  seedRepo(seed, 'dev', 'dev');
   const remote = join(dir, 'remote.git');
   git(dir, 'init', '-q', '--bare', '-b', 'dev', remote);
   git(seed, 'push', '-q', remote, 'dev');
