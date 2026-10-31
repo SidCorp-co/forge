@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.387] - 2026-10-31
+
+A design links the requirement that already covers it before drafting one
+
+### Fixed
+
+- **A design links the requirement that covers it.** The design page offers Link REQ-n before Draft, keeps the flow slug in the Developer view, and says a draft's approval once. List rows label markers "To settle", not "Needs you".
+
 ## [0.4.0-dev.386] - 2026-10-31
 
 Viewers see only the workflow design acts their role can take

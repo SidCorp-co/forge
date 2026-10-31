@@ -1,1 +1,0 @@
-**A design links the requirement that covers it.** The design page offers Link REQ-n before Draft, keeps the flow slug in the Developer view, and says a draft's approval once. List rows label markers "To settle", not "Needs you".
