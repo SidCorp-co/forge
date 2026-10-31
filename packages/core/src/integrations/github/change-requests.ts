@@ -145,23 +145,35 @@ export function githubChangeRequestVerbs(
     );
   };
 
-  const readChecks = async (sha: string): Promise<HostCheck[]> => {
-    const [runs, combined] = await Promise.all([
-      checkRunsOf(client, sha),
-      client.get<CombinedStatus>(
-        `/repos/${client.fullName}/commits/${encodeURIComponent(sha)}/status?per_page=100`,
-      ),
-    ]);
-    const statuses = (combined.statuses ?? []).flatMap((s) =>
+  const statusesOf = async (sha: string): Promise<HostCheck[]> => {
+    const combined = await client.get<CombinedStatus>(
+      `/repos/${client.fullName}/commits/${encodeURIComponent(sha)}/status?per_page=100`,
+    );
+    return (combined.statuses ?? []).flatMap((s) =>
       typeof s.id === 'number' ? [checkOfStatus(sha, { ...s, id: s.id })] : [],
     );
-    return [...runs, ...statuses];
+  };
+
+  // A check named by the caller that GitHub holds as a check run (every GitHub Actions job) is
+  // answered by the check runs alone. Commit statuses need `statuses: read`, which a repository
+  // credential may lack, and they never carry an Actions job: asking them anyway turned a green
+  // Actions gate into a refusal on agenfold (ISS-841, FB-437). A name no check run carries is still
+  // looked for among the statuses, and a status read that fails then fails the whole read.
+  const readChecks = async (sha: string, opts: { named?: string } = {}): Promise<HostCheck[]> => {
+    if (opts.named === undefined) {
+      const [runs, statuses] = await Promise.all([checkRunsOf(client, sha), statusesOf(sha)]);
+      return [...runs, ...statuses];
+    }
+    const runs = await checkRunsOf(client, sha);
+    if (runs.some((r) => r.name === opts.named)) return runs;
+    return [...runs, ...(await statusesOf(sha))];
   };
 
   return {
     readChecks,
     // GitHub runs a pull request's checks on its head commit itself, so the head's checks are all of them
-    readChangeRequestChecks: ({ headSha }) => readChecks(headSha),
+    readChangeRequestChecks: ({ headSha, named }) =>
+      readChecks(headSha, named === undefined ? {} : { named }),
 
     readChangeRequest: read,
 

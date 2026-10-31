@@ -33,6 +33,11 @@ const gateHost = vi.hoisted(() => ({
   committedAt: null as string | null,
   checks: [] as Array<Record<string, unknown>>,
   failWith: null as string | null,
+  /**
+   * GitHub's own answer, read through the real GitHub verbs (ISS-841): its check runs, and whether
+   * its commit statuses answer 403 to the repository credential.
+   */
+  github: null as { checkRuns: Array<Record<string, unknown>>; statusForbidden: boolean } | null,
 }));
 
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => {
@@ -49,7 +54,27 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
     branchHead: () => read(() => gateHost.head),
     readCommit: (ref: string) =>
       read(() => ({ sha: ref, message: 'a commit', committedAt: gateHost.committedAt })),
-    readChecks: (sha: string) => read(() => gateHost.checks.map((c) => ({ ...c, headSha: sha }))),
+    readChecks: async (sha: string, opts?: { named?: string }) => {
+      const github = gateHost.github;
+      if (!github) return read(() => gateHost.checks.map((c) => ({ ...c, headSha: sha })));
+      gateHost.reads += 1;
+      const { githubChangeRequestVerbs } = await import(
+        '../../src/integrations/github/change-requests.js'
+      );
+      const client = {
+        fullName: 'acme/test-project',
+        get: async (path: string) => {
+          if (path.includes('/check-runs')) {
+            return { total_count: github.checkRuns.length, check_runs: github.checkRuns };
+          }
+          if (github.statusForbidden) {
+            throw new Error(`GET ${path} on acme/test-project returned HTTP 403`);
+          }
+          return { statuses: [] };
+        },
+      };
+      return githubChangeRequestVerbs(client as never, () => ({}) as never).readChecks(sha, opts);
+    },
     readChangeRequestChecks: ({ headSha }: { headSha: string }) =>
       read(() => gateHost.checks.map((c) => ({ ...c, headSha }))),
   };
@@ -127,6 +152,23 @@ async function heldRow(verdict = 'skipped'): Promise<string> {
 
 const sweep = () => sweepAutomaticReleases();
 
+/** The refusal a cut is answered with: its code, its words and whether it was read as a blocker. */
+async function refusedCut(id: string): Promise<RefusalError> {
+  const err = await createReleaseBatch({ projectId, issueIds: [id], userId: ownerId }).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  if (!(err instanceof RefusalError)) throw new Error('the cut was not refused');
+  return err;
+}
+
+const releaseRuns = async () =>
+  (
+    await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${projectId}`,
+    )
+  )[0]?.n;
+
 /**
  * ISS-809 — `validation.gate` names the check a project's changes must pass, and the step that puts a
  * commit on production reads it at that commit: a red one is refused by name, a pending one is held, a
@@ -156,6 +198,7 @@ describe('a project’s declared validation gate is read where a commit reaches 
     gateHost.reads = 0;
     gateHost.checks = [];
     gateHost.failWith = null;
+    gateHost.github = null;
     gateHost.committedAt = minutesAgo(5);
     await declareGate(projectId, GATE);
   });
@@ -163,23 +206,6 @@ describe('a project’s declared validation gate is read where a commit reaches 
   afterAll(() => {
     gateHost.on = false;
   });
-
-  /** The refusal a cut is answered with: its code, its words and whether it was read as a blocker. */
-  async function refusedCut(id: string): Promise<RefusalError> {
-    const err = await createReleaseBatch({ projectId, issueIds: [id], userId: ownerId }).then(
-      () => null,
-      (e: unknown) => e,
-    );
-    if (!(err instanceof RefusalError)) throw new Error('the cut was not refused');
-    return err;
-  }
-
-  const releaseRuns = async () =>
-    (
-      await rows<{ n: number }>(
-        sql`SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${projectId}`,
-      )
-    )[0]?.n;
 
   it('refuses a cut at a head where the check is red, naming the check, the commit and the conclusion', async () => {
     const id = await heldRow('pass');
@@ -322,5 +348,54 @@ describe('a project’s declared validation gate is read where a commit reaches 
     const err = await refusedCut(id);
 
     expect(err.refusals[0]?.code).toBe('RELEASE_GATE_CHECK_RED');
+  });
+});
+
+// ISS-841 (FB-437, agenfold 2026-10-31): the gate is a GitHub Actions job, green as a check run,
+// and the repository credential gets 403 on commit statuses. Read through the real GitHub verbs.
+describe('an Actions gate read through GitHub, where commit statuses answer 403', () => {
+  beforeEach(async () => {
+    gateHost.on = true;
+    gateHost.failWith = null;
+    gateHost.committedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    await declareGate(projectId, { type: 'github-check', name: 'gate' });
+  });
+
+  afterAll(() => {
+    gateHost.on = false;
+    gateHost.github = null;
+  });
+
+  const actionsRun = (conclusion: string) => ({
+    id: 9001,
+    name: 'gate',
+    head_sha: gateHost.head,
+    status: 'completed',
+    conclusion,
+    app: { slug: 'github-actions' },
+  });
+
+  it('cuts on a green gate check run, never reading the forbidden statuses', async () => {
+    const id = await heldRow('pass');
+    gateHost.github = { checkRuns: [actionsRun('success')], statusForbidden: true };
+    const result = await createReleaseBatch({ projectId, issueIds: [id], userId: ownerId });
+    expect(result.issueIds).toEqual([id]);
+  });
+
+  it('still refuses a red gate check run by name', async () => {
+    const id = await heldRow('pass');
+    gateHost.github = { checkRuns: [actionsRun('failure')], statusForbidden: true };
+    const err = await refusedCut(id);
+    expect(err.refusals[0]?.code).toBe('RELEASE_GATE_CHECK_RED');
+    expect(err.refusals[0]?.detail).toContain('failure');
+    expect(await releaseRuns()).toBe(0);
+  });
+
+  it('still refuses as unread where no check run carries the gate and statuses are forbidden', async () => {
+    const id = await heldRow('pass');
+    gateHost.github = { checkRuns: [], statusForbidden: true };
+    const err = await refusedCut(id);
+    expect(err.refusals[0]?.code).toBe('RELEASE_GATE_CHECK_UNREAD');
+    expect(err.refusals[0]?.detail).toContain('HTTP 403');
   });
 });

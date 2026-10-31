@@ -160,6 +160,68 @@ describe('github readChecks: check runs and commit statuses in the projection’
   });
 });
 
+// ISS-841 (FB-437, agenfold 2026-10-31): the gate `gate` is a GitHub Actions job, green as a check
+// run, and the repository credential gets 403 on commit statuses. Reading both at once refused every
+// release RELEASE_GATE_CHECK_UNREAD. A check asked by name that a check run carries is answered by
+// the check runs alone; anything else still asks the statuses, and their 403 still fails the read.
+describe('github readChecks for one check by name', () => {
+  const forbidden = () => {
+    throw new Error(`GET /repos/acme/shop/commits/${HEAD}/status on acme/shop returned HTTP 403`);
+  };
+  const gateRun = (conclusion: string) => ({
+    total_count: 1,
+    check_runs: [
+      {
+        id: 41,
+        name: 'gate',
+        head_sha: HEAD,
+        status: 'completed',
+        conclusion,
+        app: { slug: 'github-actions' },
+      },
+    ],
+  });
+
+  it('answers a green Actions gate from its check run, never asking the forbidden statuses', async () => {
+    const { verbs, got } = doubles({ [RUNS]: gateRun('success'), [STATUS]: forbidden });
+    const checks = await verbs.readChecks(HEAD, { named: 'gate' });
+    expect(checks.map((c) => [c.name, c.conclusion])).toEqual([['gate', 'success']]);
+    expect(got.some((p) => p.startsWith(STATUS))).toBe(false);
+  });
+
+  it('answers a red Actions gate as red, so the gate still refuses it', async () => {
+    const { verbs } = doubles({ [RUNS]: gateRun('failure'), [STATUS]: forbidden });
+    const checks = await verbs.readChecks(HEAD, { named: 'gate' });
+    expect(checks.map((c) => [c.name, c.conclusion])).toEqual([['gate', 'failure']]);
+  });
+
+  it('asks a pull request head the same way', async () => {
+    const { verbs, got } = doubles({ [RUNS]: gateRun('success'), [STATUS]: forbidden });
+    const checks = await verbs.readChangeRequestChecks({ number: 7, headSha: HEAD, named: 'gate' });
+    expect(checks).toHaveLength(1);
+    expect(got.some((p) => p.startsWith(STATUS))).toBe(false);
+  });
+
+  it('still reads the statuses for a name no check run carries, and fails where they are forbidden', async () => {
+    const { verbs } = doubles({ [RUNS]: gateRun('success'), [STATUS]: forbidden });
+    await expect(verbs.readChecks(HEAD, { named: 'jenkins/build' })).rejects.toThrow('HTTP 403');
+  });
+
+  it('finds a gate GitHub holds as a commit status context', async () => {
+    const { verbs } = doubles({
+      [RUNS]: { total_count: 0, check_runs: [] },
+      [STATUS]: { statuses: [{ id: 5, context: 'gate', state: 'success' }] },
+    });
+    const checks = await verbs.readChecks(HEAD, { named: 'gate' });
+    expect(checks.map((c) => [c.name, c.conclusion])).toEqual([['gate', 'success']]);
+  });
+
+  it('reads both, as before, where no check is named', async () => {
+    const { verbs } = doubles({ [RUNS]: gateRun('success'), [STATUS]: forbidden });
+    await expect(verbs.readChecks(HEAD)).rejects.toThrow('HTTP 403');
+  });
+});
+
 describe('github readChangeRequest', () => {
   it('reads an open pull request and keeps its test merge commit out of the landing', async () => {
     const { verbs } = doubles({ '/repos/acme/shop/pulls/7': pull() });

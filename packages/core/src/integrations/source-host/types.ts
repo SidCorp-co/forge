@@ -222,15 +222,23 @@ export interface SourceHost {
    */
   tagCommit(args: { name: string; sha: string }): Promise<HostTagResult>;
 
-  /** Every check the host holds on one commit, each re-run its own entry; empty where none ran. */
-  readChecks(sha: string): Promise<HostCheck[]>;
+  /**
+   * Every check the host holds on one commit, each re-run its own entry; empty where none ran.
+   * `named` asks for one check by name: a host may answer it from the kind of check that carries the
+   * name alone, so a read the named check does not need cannot refuse it (ISS-841).
+   */
+  readChecks(sha: string, opts?: { named?: string }): Promise<HostCheck[]>;
   /**
    * Every check the host holds for a change request at its head: the head commit's own, and on a
    * host that runs a pipeline for the request itself (a GitLab merge request pipeline, whose commit
    * is a merge ref rather than the head) that pipeline too, recorded at the head it ran for
    * (REQ-63 BC-7).
    */
-  readChangeRequestChecks(args: { number: number; headSha: string }): Promise<HostCheck[]>;
+  readChangeRequestChecks(args: {
+    number: number;
+    headSha: string;
+    named?: string;
+  }): Promise<HostCheck[]>;
   /** One change request by the number the host shows, whoever opened it. */
   readChangeRequest(number: number): Promise<ReadChangeRequest>;
   /** A new title, description or both, and the request as the host answers after the write. */

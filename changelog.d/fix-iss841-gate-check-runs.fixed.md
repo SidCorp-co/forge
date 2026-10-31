@@ -1,0 +1,1 @@
+**A green GitHub Actions gate no longer refuses every release.** The declared gate check is read from its check run alone, so a repository credential without commit-status access no longer turns a passing gate into a refusal.

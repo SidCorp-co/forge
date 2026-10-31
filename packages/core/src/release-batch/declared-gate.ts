@@ -163,10 +163,11 @@ export async function readDeclaredGate(
     ).toLowerCase();
     const checks =
       'branch' in at
-        ? await host.readChecks(commit)
+        ? await host.readChecks(commit, { named: check })
         : await host.readChangeRequestChecks({
             number: at.request.number,
             headSha: at.request.headSha,
+            named: check,
           });
     // the commit's time is asked only where no run of the check exists to count a wait from
     const committedAt =
