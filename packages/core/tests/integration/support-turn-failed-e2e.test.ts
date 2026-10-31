@@ -66,10 +66,12 @@ describe('REQ-75: a turn that fails', () => {
     expect(lines.filter((l) => l.tmid === hold && failedLine(l))).toHaveLength(1);
     expect(lines.filter((l) => l.tmid === refund && failedLine(l))).toHaveLength(1);
     expect(lines.some((l) => l.tmid === parcel && failedLine(l))).toBe(false);
-    const told = (await w.actions(roomId)).filter(
-      (a) => a.kind === 'refused' && (a as { tool?: string }).tool === 'turn_failed',
-    );
-    expect(told).toHaveLength(2);
+    // each thread's record is written after its line is posted, so a line can be read before it
+    const told = async () =>
+      (await w.actions(roomId)).filter(
+        (a) => a.kind === 'refused' && (a as { tool?: string }).tool === 'turn_failed',
+      ).length;
+    await expect.poll(told, { timeout: 15_000 }).toBe(2);
     // nothing failed is handed to a turn again: the next message goes alone
     w.box.turnEnd = 'completed';
     const before = seen.length;
