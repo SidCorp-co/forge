@@ -1,5 +1,6 @@
 // @direct-test-of packages/core/src/lib/body-shape.ts
 // @direct-test-of packages/core/src/middleware/nearest-routes.ts
+// @direct-test-of packages/core/src/project-config/documents.ts
 // ISS-828: a refused body is answered with the body the route accepts, read off its own schema; an
 // unknown route names the routes nearest it; a key a read serves and the write refuses says so.
 import { type Context, Hono } from 'hono';
@@ -9,6 +10,7 @@ import { issueMergeRoutes } from '../issues/merge-routes.js';
 import { issueRoutes } from '../issues/routes.js';
 import { requirementVerdictRoutes } from '../requirements/verdict-routes.js';
 import { errorHandler, notFoundHandler } from './error.js';
+import type { RequestIdVars } from './request-id.js';
 import { declaredInputs } from './zod-validator.js';
 
 type Mounted = { method: string; path: string; handler: unknown };
@@ -20,13 +22,13 @@ function bodyOf(routes: Hono<never>, method: string, path: string) {
     .map((r) => r.handler as object);
   const validator = handlers.find((h) => declaredInputs.get(h)?.target === 'json');
   if (!validator) throw new Error(`${method} ${path} declares no json body`);
-  const app = new Hono();
+  const app = new Hono<{ Variables: RequestIdVars }>();
   app.post('/', validator as never, (c: Context) => c.json({ ok: true }));
   app.onError(errorHandler);
   return app;
 }
 
-async function refusal(app: Hono, body: unknown) {
+async function refusal(app: Hono<{ Variables: RequestIdVars }>, body: unknown) {
   const res = await app.request('/', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -64,7 +66,7 @@ describe('a strict body refusal carries the accepted shape', () => {
   }
 
   it('shows a length limit read off the schema', async () => {
-    const { body } = await refusal(ROUTES[0]?.app() as Hono, { bogus: 1 });
+    const { body } = await refusal(ROUTES[0]?.app() as ReturnType<typeof bodyOf>, { bogus: 1 });
     expect(body.detail).toMatch(/note\?: string\(1\.\.\d+ chars\)/);
   });
 });
@@ -94,7 +96,7 @@ describe('a link PUT of a document the read served', () => {
 });
 
 describe('an unknown route under /api', () => {
-  const app = new Hono();
+  const app = new Hono<{ Variables: RequestIdVars }>();
   app.notFound(notFoundHandler);
 
   it('names the nearest served routes for the resource', async () => {
