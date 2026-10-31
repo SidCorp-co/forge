@@ -1,9 +1,9 @@
 export {
   deviceGitCredentialRoutes,
-  gitRelayRoutes,
   githubAppRoutes,
   githubCallbackRoutes,
   githubConnectRoutes,
+  gitRelayRoutes,
   integrationConnectionsRoutes,
   integrationsRoutes,
   issueMergePullRequestRoutes,

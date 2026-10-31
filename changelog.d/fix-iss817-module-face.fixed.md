@@ -1,1 +1,1 @@
-**Every non-platform core module has one public face.** `health`, `me` and `integration-door` gain an `index.ts`, and the module-shape gate refuses a kernel, domain, read-model, adapter or door module without one. A breaking-adopt refusal no longer says "once" twice.
+**Every non-platform core module has one public face.** `health`, `me` and `integration-door` gain an index file, and the module-shape gate refuses a kernel, domain, read-model, adapter or door module without one. A breaking-adopt refusal no longer says "once" twice.
