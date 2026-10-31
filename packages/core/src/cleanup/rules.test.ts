@@ -144,6 +144,17 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
     expect(brief).toContain('/api/projects/p1/cleanup-reports');
     expect(brief).toContain("never take a delivery run's");
   });
+
+  // ISS-814: fire b4557dc7 ended its turn "I'll be notified when it finishes" and never reported
+  it('forbids ending the turn to wait on CI, and blocks on a reused run inside it', () => {
+    const brief = cleanupBrief({ projectId: 'p1', fireId: 'f1', debts: [], waiting: [] });
+    expect(brief).toContain('This run is headless');
+    expect(brief).toContain('never end your turn waiting on anything');
+    expect(brief).toContain('your turn ends only after the report is posted');
+    expect(brief).toContain('gh run list --branch <branch> --commit <sha>');
+    expect(brief).toContain('gh run watch <run id> --exit-status');
+    expect(brief).toContain('red with that run named in remains, never nothing');
+  });
 });
 
 describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {

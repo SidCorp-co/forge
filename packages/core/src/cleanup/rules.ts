@@ -191,6 +191,10 @@ export function cleanupBrief(args: {
       `${projectId}/debts { items: [{ kind, check?, where, detail, impact: { type, rating, reason } }] }.`,
     `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the head you leave> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }], covers: [<each waiting key above whose merge the green head carries, checked with git merge-base --is-ancestor>] }.`,
     'Every open debt is named once, cleared with how or remaining with why; only a green report covers anything.',
+    '',
+    'This run is headless: once your turn ends nothing wakes it, and no notification of a CI run, a background task or a message ever reaches it. So never end your turn waiting on anything; your turn ends only after the report is posted.',
+    '- A CI run on the head you leave: reuse one already started or finished there (gh run list --branch <branch> --commit <sha>) before starting another, and wait for it inside this turn: gh run watch <run id> --exit-status.',
+    '- A run that cannot finish in this turn: report what the head shows now, red with that run named in remains, never nothing.',
   ].join('\n');
 }
 
