@@ -2,6 +2,7 @@ import { zValidator as honoZodValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { acceptedBodySentence } from '../lib/body-shape.js';
 import { jsonPointer, type Refusal, RefusalError } from '../lib/refusal.js';
 
 type Args = Parameters<typeof honoZodValidator>;
@@ -85,11 +86,26 @@ function strictQuery<S>(schema: S): S {
     : schema;
 }
 
-function inputRefusal(error: unknown, { hint, code }: Shape): HTTPException {
-  return new HTTPException(400, {
-    message: hint ?? 'Invalid input',
-    cause: { code, details: error },
-  });
+/**
+ * A body the schema refuses is answered with the body it accepts, read off that schema
+ * (`lib/body-shape.ts`), beside a route's own `hint`: the hint keeps the rules a schema cannot say
+ * in a type (a word limit, a pairing), the generated shape is what the schema itself holds, so it
+ * is never the stale half. Without a hint the sentence leads with each fault at its path.
+ */
+function inputRefusal(error: unknown, { hint, code }: Shape, bodySchema?: unknown): HTTPException {
+  const accepted = bodySchema === undefined ? null : acceptedBodySentence(bodySchema);
+  const issues = (error as Partial<z.core.$ZodError> | undefined)?.issues;
+  let message = hint ?? 'Invalid input';
+  if (accepted !== null) {
+    const lead =
+      hint === undefined && issues && issues.length > 0
+        ? `The body has ${issues.length === 1 ? 'one fault' : `${issues.length} faults`}: ${issues
+            .map((i) => `at ${jsonPointer(i.path) || '/'}, ${i.message}`)
+            .join('; ')}`
+        : (hint ?? 'Invalid body');
+    message = `${lead}${lead.endsWith('.') ? '' : '.'} ${accepted}`;
+  }
+  return new HTTPException(400, { message, cause: { code, details: error } });
 }
 
 /**
@@ -194,7 +210,14 @@ export const zValidator = ((...args: Args) => {
       target === 'query' && r.error
         ? unknownQueryKeys(schema, r.error, hook ? elsewhere.get(hook) : undefined)
         : null;
-    throw unknown ?? inputRefusal(r.error, shape ?? { code: 'BAD_REQUEST' });
+    throw (
+      unknown ??
+      inputRefusal(
+        r.error,
+        shape ?? { code: 'BAD_REQUEST' },
+        target === 'json' ? schema : undefined,
+      )
+    );
   }) as Hook;
   const middleware = honoZodValidator(target, schema, answer, ...rest);
   const guarded = args[0] === 'json' ? refuseUndeclaredBodyType(middleware) : middleware;

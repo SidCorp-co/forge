@@ -9,6 +9,7 @@ import { ISSUE_MACHINE, type IssueTransitionRefusalCode } from '@forge/contracts
 import { questionAboutRequestSchema } from '@forge/contracts/questions';
 import { z } from 'zod';
 import { issueStatuses, waitingKinds } from '../db/schema.js';
+import { acceptedBodySentence } from '../lib/body-shape.js';
 import { jsonPointer, type Refusal, RefusalError } from '../lib/refusal.js';
 import { awaitsDesignSchema } from './awaits-design-input.js';
 
@@ -54,7 +55,8 @@ export function refuseUnknownTransitionKeys(issues: readonly z.core.$ZodIssue[])
     ...unknown.map((key) => ({
       code: 'TRANSITION_FIELD_UNKNOWN' satisfies IssueTransitionRefusalCode,
       path: jsonPointer([key]),
-      detail: `\`${key}\` is not a field of the transition body, which takes ${takes}; a move's reason goes in \`reason\`.`,
+      detail:
+        `\`${key}\` is not a field of the transition body, which takes ${takes}; a move's reason goes in \`reason\`. ${acceptedBodySentence(transitionBodySchema) ?? ''}`.trim(),
     })),
     ...issues
       .filter((i) => i.code !== 'unrecognized_keys')

@@ -18,7 +18,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 7,
+  version: 8,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -395,6 +395,19 @@ merge. Verdicts are owed before the merge, never after it: the record reports ea
 pass it stands on, and never refuses a landing that happened. An issue whose only
 deliverable is a design closes once its design revisions are approved (\`DESIGN_NOT_DELIVERED\`
 until then).
+
+**The smallest body each of these writes takes** (JSON inline; a refused body answers with the
+body its route accepts, so a guess costs one read of the refusal, not one call per key):
+- merge: \`POST /api/issues/:id/merge\` \`{ "commit": "<40 hex>", "target": "dev", "note": "landed" }\`
+- transition: \`POST /api/issues/:id/transition\` \`{ "toStatus": "awaiting_release" }\`, a move that
+  asks why adding \`"reason": "<why>"\`
+- verdict: \`POST /api/issues/:id/verdicts\`
+  \`{ "criterion": 1, "verdict": "pass", "reason": "<what you ran, what you saw>", "identity": { "kind": "commit", "sha": "<40 hex>" }, "evidence": ["<attachment name, URL or repo path>"] }\`;
+  \`identity\` is an object, never the sha as a string
+- release notes: \`PATCH /api/issues/:id\`
+  \`{ "releaseNotes": { "section": "Fixed", "title": "<at most 10 words>", "userFacing": "<one full sentence>" } }\`;
+  \`adminSteps\` is an array of strings and \`technical\` is at most 500 characters
+- impact: \`POST /api/issues/:id/impact\` \`{ "type": "api", "rating": "medium", "reason": "<why this rating>" }\`
 
 ### 7. What you found beside the work
 - A defect in reach and inside this issue's ownership line: fix it here and declare it in the
