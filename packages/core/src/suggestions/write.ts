@@ -3,11 +3,15 @@
  * target, the decision record on an issue, and the answer read back after the commit.
  */
 
-import type { SuggestionResponse, SuggestionView } from '@forge/contracts/suggestions';
+import {
+  SUGGESTION_PAYLOADS,
+  type SuggestionResponse,
+  type SuggestionView,
+} from '@forge/contracts/suggestions';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { lockFeedback, triagedSince } from '../feedback/index.js';
+import { lockFeedback, rowIn, triagedSince, unchangedTriageRefusal } from '../feedback/index.js';
 import { writeCoreRecord } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
@@ -88,7 +92,7 @@ export async function recordDecision(
 /** A suggestion's base names a revision the target has moved past: the refusal names both. */
 export async function movedBaseIn(tx: Tx, row: Row, target: SuggestionTarget, head: number | null) {
   if (target.type === 'feedback' && row.kind === 'feedback_triage') {
-    return triagedAfter(tx, row, target.id);
+    return (await triagedAfter(tx, row, target.id)) ?? (await unchangedFor(tx, row, target.id));
   }
   if (target.type !== 'requirement' && target.type !== 'workflow') return null;
   return baseStaleRefusal(row.baseRevision, head, await openBaseOf(tx, row.kind, target));
@@ -107,5 +111,21 @@ async function triagedAfter(tx: Tx, row: Row, feedbackId: string) {
     code: 'SUGGESTION_BASE_STALE',
     path: '/target',
     detail: `${since.key} was ${how} at ${since.at.toISOString()}, after this suggestion was made; it is stale. Read the item and propose again only if a different route is wanted.`,
+  };
+}
+
+/**
+ * A triage proposal naming the route and carriers its item already stands on is stale (ISS-833):
+ * its accept would write a third identical decision and move the item's standing `since`.
+ */
+async function unchangedFor(tx: Tx, row: Row, feedbackId: string) {
+  const item = await rowIn(tx, row.projectId, feedbackId);
+  const triage = SUGGESTION_PAYLOADS.feedback_triage.schema.parse(row.payload);
+  const unchanged = await unchangedTriageRefusal(tx, item, triage);
+  if (!unchanged) return null;
+  return {
+    code: 'SUGGESTION_BASE_STALE',
+    path: '/target',
+    detail: `${unchanged.detail} The suggestion is stale.`,
   };
 }

@@ -12,7 +12,11 @@ import {
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { nearestFeedbackOf } from '../feedback/index.js';
+import {
+  rowIn as feedbackRowIn,
+  nearestFeedbackOf,
+  unchangedTriageRefusal,
+} from '../feedback/index.js';
 import type { Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import {
@@ -122,6 +126,14 @@ async function proposeIn(
       ...(await draftPictureRefusalsIn(tx, { ...p, kind: p.kind }, head)),
     ];
     if (wrong.length) return { refusals: wrong };
+  }
+  if (p.kind === 'feedback_triage' && p.target.type === 'feedback') {
+    const unchanged = await unchangedTriageRefusal(
+      tx,
+      await feedbackRowIn(tx, p.projectId, p.target.id),
+      SUGGESTION_PAYLOADS.feedback_triage.schema.parse(p.payload),
+    );
+    if (unchanged) return { refusals: [unchanged] };
   }
   const open = await tx
     .select({ id: suggestions.id, kind: suggestions.kind, fingerprint: suggestions.fingerprint })

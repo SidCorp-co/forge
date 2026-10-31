@@ -56,4 +56,5 @@ export {
 } from './steward-settle.js';
 export { toldOf } from './told.js';
 export { triageIn } from './triage.js';
+export { unchangedTriageRefusal } from './triage-unchanged.js';
 export { type TriagedSince, triagedSince } from './triaged-since.js';

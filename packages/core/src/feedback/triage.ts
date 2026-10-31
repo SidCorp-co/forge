@@ -79,6 +79,7 @@ import {
   reproductionRefusal,
   shortFormRouteRefusal,
 } from './triage-checklist.js';
+import { unchangedTriageRefusal } from './triage-unchanged.js';
 
 /** What a triage or a route write did, which its caller announces once the transaction committed. */
 interface TriageWritten {
@@ -333,6 +334,9 @@ export async function triageIn(
   const phase = await phaseOfRow(projectId, input.row);
   const early = await earlyRefusal(t, route, { ...input.row, kind }, actor, phase);
   if (early) return { refusals: [early] };
+  // the route and carriers the item already stands on move nothing and would move its `since` (ISS-833)
+  const unchanged = await unchangedTriageRefusal(tx, input.row, { ...t, kind });
+  if (unchanged) return { refusals: [unchanged] };
   // an answer to a reopened item names the reopen or reply it answers, read under this lock (REQ-47 BC-13)
   const standing = await standingReplyOf(tx, input.row);
   const unaddressed = answerAddressRefusal(
