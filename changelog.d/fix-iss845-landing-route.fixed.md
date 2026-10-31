@@ -1,0 +1,1 @@
+**A master in direct mode lands the way its project lands**: by merge request where the project lands by change request, by push only where it pushes. Direct mode covers every fast project outside strict (ISS-845, FB-453).

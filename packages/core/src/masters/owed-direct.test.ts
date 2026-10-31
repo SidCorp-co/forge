@@ -43,7 +43,7 @@ const issue = (issueId: string) => ({
   pullRequests: [],
 });
 
-// owner, 2026-10-30: a project that runs fast (gate profile yolo, fast delivery on) has its master
+// owner, 2026-10-30: a project that runs fast (fast delivery on, not strict) has its master
 // build and record afterwards, so the pass prompt the box types names no dispatch and no brief.
 describe('masterWork under direct mode: the pass is told to build, not to dispatch', () => {
   const owed = { ...none, triages: [{ key: 'FB-1' }] };
@@ -53,10 +53,14 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
   it('names no dispatch, lands, then records in one go under the kernel, and still carries what is owed', () => {
     expect(direct.nudge.startsWith('Pass.')).toBe(true);
     expect(direct.nudge).not.toContain('dispatch skill');
+    // ISS-845 (FB-453): a bare push to the base branch overrides a project that lands only by MR
+    expect(direct.nudge).not.toContain('land it on the base branch');
     for (const said of [
       'Dispatch no runner role',
       'general-purpose subagent',
-      'land it on the base branch once it builds and its own tests pass',
+      "land it through the project's own landing route once it builds and its own tests pass",
+      'an MR where the project lands by change request',
+      'a push to the base branch only where it lands by push',
       'mark it merged at the landing sha',
       'move it to `awaiting_release`',
       'comment what shipped',

@@ -469,11 +469,13 @@ mod tests {
         let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
         for word in [
             "## Direct mode: a project that runs fast",
-            "gate profile is `yolo` and that delivers fast",
+            "gate profile is not `strict` and that delivers fast",
             "general-purpose subagent",
             "No shipped role is dispatched",
             "No plan approval, no design record, no review and no judge",
-            "**Land on the base branch** once it builds and its own tests pass",
+            "**Land through the project's own landing route** once it builds and its own tests pass",
+            "Where the project lands by change request",
+            "Push to the base branch only where the project lands by push",
             "mark it merged at the landing sha",
             "move it to `awaiting_release`",
             "comment what shipped",
@@ -487,6 +489,14 @@ mod tests {
             assert!(
                 prose.contains(word),
                 "forge-master-skill.md no longer says {word:?}, so a master on a project that runs fast dispatches and waits as every other project does, or builds there without the kernel"
+            );
+        }
+        // ISS-845 (FB-453): yolo alone no longer selects it, and a bare push to the base branch
+        // would override a project whose branches change only by merged MR
+        for gone in ["gate profile is `yolo`", "**Land on the base branch**"] {
+            assert!(
+                !prose.contains(gone),
+                "forge-master-skill.md still says {gone:?}, so a master outside yolo keeps dispatching, or pushes past a project that lands by MR"
             );
         }
     }

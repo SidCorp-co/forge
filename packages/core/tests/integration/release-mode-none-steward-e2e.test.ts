@@ -7,6 +7,12 @@
  * gate, its facts naming what is owed. Planted from adminhub-api ISS-5 and ISS-1 (reopened on
  * 2026-10-22 with passes at their landed heads) and catalog-fe ISS-11 and ISS-14..19 (reopened on
  * 2026-10-26 over verdicts owed at the landing, and bounced back to `reopen` when moved to the gate).
+ *
+ * ISS-845 turned the default delivery policy's verdicts off and left this red, unselected: a change to
+ * what a project asks by default selects it now.
+ *
+ * @direct-test-of packages/contracts/src/delivery-policy.ts
+ * @direct-test-of packages/contracts/src/gate-profiles.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -41,7 +47,9 @@ let ownerId: string;
 let token: string;
 
 beforeEach(async () => {
-  await seedLandedWorld();
+  // REQ-79 r6 (ISS-845): release_criteria is strict's now, so the steward's verdict facts are owed
+  // only where the project asks verdicts
+  await seedLandedWorld({ verdictsRequired: true });
   ({ projectId, ownerId, token } = world);
 });
 

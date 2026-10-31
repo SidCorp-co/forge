@@ -88,12 +88,12 @@ the index below rather than worked out in the pane.
 
 ## Direct mode: a project that runs fast
 
-A project whose gate profile is `yolo` and that delivers fast (its `delivery.fast` is not `false`)
-runs **direct**: its master builds and records afterwards. Nothing else selects it, and there is no
-switch of its own: the profile already turns off every policy gate that asks a plan, a design, a
-review or a judge before a merge, and fast delivery already lands a change on its build and its own
-tests. A profile Forge raised after an incident is no longer `yolo`, so the raise ends direct mode
-with it. Every nudge on such a project says so; on a pass with no nudge in front of it, read
+A project whose gate profile is not `strict` and that delivers fast (its `delivery.fast` is not
+`false`) runs **direct**: its master builds and records afterwards. Nothing else selects it, and
+there is no switch of its own: outside `strict` the profile turns off every policy gate that asks a
+plan, a design, a review or a judge before a merge, and fast delivery already lands a change on its
+build and its own tests. A project that sets `strict` asks for human control, and that ends direct
+mode. Every nudge on such a project says so; on a pass with no nudge in front of it, read
 `forge-runner api projects/<projectId>/gates` (its `profile`) and
 `forge-runner api projects/<projectId>/config` (its `document.delivery`).
 
@@ -106,9 +106,12 @@ On a project that runs direct:
 - **Ask nothing before landing.** No plan approval, no design record, no review and no judge stand
   between the build and the base branch. A project override that enforces one of those gates again
   still refuses by name, and that refusal is followed, not routed around.
-- **Land on the base branch** once it builds and its own tests pass, with the issue's key in the
-  commit subject. Here pushing to the base branch is the landing this mode exists for, and it is
-  yours to take; a force-push still is not.
+- **Land through the project's own landing route** once it builds and its own tests pass, with the
+  issue's key in the commit subject. Where the project lands by change request (its document's
+  `release.changeRequests`, or a project rule that its branches change only through merged MRs),
+  open one through core (`forge-runner api projects/<projectId>/integrations/source/change-requests`,
+  POST): its merge is the landing, and the mark waits for it. Push to the base branch only where the
+  project lands by push; that push is yours to take, and a force-push still is not.
 - **Then record, in one go:** mark it merged at the landing sha (`forge-runner api issues/<id>/merge`,
   POST, naming the `commit` and its `target`), move it to `awaiting_release` with that sha as the
   reason, and comment what shipped. Rate the change's impact before the mark, as fast delivery asks,

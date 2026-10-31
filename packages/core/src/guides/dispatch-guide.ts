@@ -141,17 +141,21 @@ records — before acting on it.
   is written the wave is open, whatever its members' statuses say.
 
 ### Direct mode: a project that runs fast
-A project whose gate profile is \`yolo\` (\`GET /api/projects/:id/gates\`) and whose project document
-leaves \`delivery.fast\` on runs direct, and its nudge says so. Its master builds instead of
+A project whose gate profile is not \`strict\` (\`GET /api/projects/:id/gates\`) and whose project
+document leaves \`delivery.fast\` on runs direct, and its nudge says so. Its master builds instead of
 dispatching, so §5 and §6 do not apply: no shipped role, no declaration, no printed brief, no plan
 approval, design record, review or judge before the landing. For each issue it takes:
 1. Claim it with a lease, as ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`.
 2. Build it in this session, or give a general-purpose subagent a short prompt: the issue, its tree,
    the base branch and the standing rules.
-3. Push it to the base branch when its build and its own tests are green, the issue's key in the
-   commit subject so the mark can read the commit as this issue's.
+3. Land it by the route its project lands by when its build and its own tests are green, the
+   issue's key in the commit subject so the mark can read the commit as this issue's. Where the
+   project lands by change request (\`release.changeRequests\` on its document, or a project rule that
+   its branches change only through merged MRs), open one through core
+   (\`POST /api/projects/:id/integrations/source/change-requests\`): its merge is the landing, and the
+   mark waits for it. Push to the base branch only where the project lands by push; never force-push.
 4. Record in one go. Rate its impact (${guideRef('fast-delivery')}) and mark it,
-   \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <base branch> }\`. Move it,
+   \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <the branch it landed on> }\`. Move it,
    \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`.
    Comment what shipped, then hand the lease back.
 5. Record a criterion's or a requirement BC's verdict only once it was checked live, after landing.
