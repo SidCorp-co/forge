@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.408] - 2026-10-31
+
+A declared validation gate now holds back commits whose check failed
+
+### Fixed
+
+- **A release or landing now reads the project's declared gate check.** A cut, a release deploy and an on-land deploy are refused while it is red or unreadable, and held while it is pending.
+
 ## [0.4.0-dev.407] - 2026-10-31
 
 A question nobody can answer is refused instead of holding its issue open
