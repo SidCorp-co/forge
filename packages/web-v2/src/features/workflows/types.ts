@@ -150,6 +150,8 @@ export interface WorkflowRecord {
 export interface WorkflowList {
   workflows: WorkflowRecord[];
   returned: number;
+  /** Holds `workflow-designs.write`, the permission a new design takes. */
+  canWrite: boolean;
 }
 
 export interface DesignRevision {
@@ -182,6 +184,10 @@ export interface WorkflowDesign {
   /** The permission that decides this design (`workflow-designs.approve`, ADR 0007). */
   approver: ApprovalPermission;
   canDecide: boolean;
+  /** Holds `workflow-designs.write`, the permission editing a design takes. */
+  canWrite: boolean;
+  /** Holds `project.write`, the permission drafting a requirement takes. */
+  canDraftRequirement: boolean;
   waitingOn: WaitingOn<DesignWaitingKind>;
   revisions: DesignRevision[];
   builds: DesignBuild[];

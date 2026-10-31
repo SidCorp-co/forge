@@ -1,0 +1,1 @@
+**A viewer is no longer offered workflow acts it cannot take.** Edit, New design and Draft a requirement show only to a role holding the permission core checks for each; the design and list reads now carry it.

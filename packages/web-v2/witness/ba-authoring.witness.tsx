@@ -105,7 +105,7 @@ function show(screen: Screen) {
       <WorkflowDesignPage projectId={PROJECT} slug="hop" d={design} record={record} template={STATES} tab="edit" onTab={() => {}} />
     ) : (
       <div className="p-6">
-        <NewDesign projectId={PROJECT} slug="hop" templates={[STATES, FLOWS]} />
+        <NewDesign projectId={PROJECT} slug="hop" templates={[STATES, FLOWS]} canWrite />
       </div>
     );
   root.render(

@@ -46,7 +46,7 @@ function open(reply: (c: Call) => { status?: number; body: unknown }) {
     if (c.path === "/projects/p-1/workflow-templates/clinic-states/1") return { body: { origin: "project", template: OWN, example: null } };
     return HANG;
   });
-  renderWithQuery(<NewDesign projectId="p-1" slug="hop" templates={[STATES, OWN]} />);
+  renderWithQuery(<NewDesign projectId="p-1" slug="hop" templates={[STATES, OWN]} canWrite />);
   fireEvent.click(screen.getByTestId("new-design"));
   return { calls, form: screen.getByTestId("new-design-form") };
 }

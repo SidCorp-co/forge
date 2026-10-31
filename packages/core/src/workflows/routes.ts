@@ -43,6 +43,7 @@ import {
 } from './service.js';
 import { readSystemGraphAs } from './system-graph-read.js';
 import { listProjectTemplatesAs, readProjectTemplateAs } from './template-service.js';
+import { viewerActs } from './viewer-acts.js';
 
 export const workflowRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -142,7 +143,11 @@ workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
   );
   const workflows =
     c.req.valid('query').view === 'summary' ? listed.map(workflowSummaryOf) : listed;
-  return c.json({ workflows, returned: workflows.length });
+  return c.json({
+    workflows,
+    returned: workflows.length,
+    canWrite: (await viewerActs(viewer, id)).canWrite,
+  });
 });
 
 workflowRoutes.get('/:id/workflows/:workflow', workflowParam, headQuery, async (c) => {

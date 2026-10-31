@@ -212,14 +212,16 @@ function designTabs(t: Copy, shown: WorkflowBody, d: WorkflowDesign, decisionCou
   return [
     { value: "design" as const, label: t("workflows.tab.design") },
     { value: "steps" as const, label: shown.kind === "state" ? t("workflows.tab.states") : t("workflows.tab.steps"), count: shown.steps.length },
-    { value: "edit" as const, label: t("workflows.tab.edit") },
+    ...(d.canWrite ? [{ value: "edit" as const, label: t("workflows.tab.edit") }] : []),
     { value: "revisions" as const, label: t("workflows.tab.revisions"), count: d.revisions.length },
     { value: "decisions" as const, label: t("workflows.tab.decisions"), ...(decisionCount === undefined ? {} : { count: decisionCount }) },
     { value: "memory" as const, label: t("memory.title"), count: memories },
   ];
 }
 
-export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, decision, walkDecision, repins }: DesignPageProps) {
+export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab: tabAsked, onTab, decision, walkDecision, repins }: DesignPageProps) {
+  // a link to the Edit tab opens the design to a reader who cannot edit it
+  const tab = tabAsked === "edit" && !d.canWrite ? "design" : tabAsked;
   const t = useCopy();
   const [view] = useRecordView();
   // a proposal this reader decides opens on its changes against the approved revision, so nobody

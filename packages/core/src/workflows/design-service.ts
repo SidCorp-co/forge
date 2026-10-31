@@ -58,6 +58,7 @@ import {
   setBuildSteps,
   workflowsOf,
 } from './store.js';
+import { viewerActs } from './viewer-acts.js';
 
 export type DesignView = Awaited<ReturnType<typeof designView>> & {
   designIssue?: DesignIssueOutcome;
@@ -123,6 +124,7 @@ export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | n
     approvedRevision: row.approvedRevision,
   };
   const canDecide = viewer ? (await approverRefusalFor(viewer, row.projectId)) === null : false;
+  const acts = await viewerActs(viewer, row.projectId);
   // the writer a draft waits on is the working document's, as the list names it
   // (`service.ts:listedView`), so one actor carries one name on the list and the page
   const latest = {
@@ -146,6 +148,7 @@ export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | n
     },
     approver,
     canDecide,
+    ...acts,
     waitingOn: designWaitingOn({
       ...head,
       latest,

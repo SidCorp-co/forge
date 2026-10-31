@@ -62,9 +62,9 @@ const AGENFOLD = [
   design("workspace-onboarding", "Workspace onboarding and resource grants", { requirements: ["REQ-2", "REQ-3"] }),
 ];
 
-function screenWith(records: WorkflowRecord[]) {
+function screenWith(records: WorkflowRecord[], canWrite = true) {
   fakeCore((call) => {
-    if (call.path === "/projects/p-1/workflows") return { body: { workflows: records, returned: records.length } };
+    if (call.path === "/projects/p-1/workflows") return { body: { workflows: records, returned: records.length, canWrite } };
     if (call.path === "/projects/p-1/workflow-templates") return { body: { templates: [], returned: 0 } };
     if (call.path.startsWith("/projects/p-1/config")) return { body: { declared: false } };
     return undefined;
@@ -161,5 +161,25 @@ describe("a state every design shares, said once (C4)", () => {
     const filter = screen.getByTestId("waiting-filter");
     expect(within(filter).getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
     expect(within(filter).queryByRole("button", { name: "Anyone" })).toBeNull();
+  });
+});
+
+describe("an act the viewer cannot take is not shown (ISS-807)", () => {
+  it("shows New design to a holder of the write permission and not to a viewer", async () => {
+    screenWith(AGENFOLD, true);
+    await screen.findAllByTestId("workflow-row");
+    expect(screen.getByTestId("new-design")).toBeInTheDocument();
+  });
+
+  it("hides New design from a viewer, on a list and on an empty project", async () => {
+    screenWith(AGENFOLD, false);
+    await screen.findAllByTestId("workflow-row");
+    expect(screen.queryByTestId("new-design")).toBeNull();
+  });
+
+  it("hides New design from a viewer where no design exists yet", async () => {
+    screenWith([], false);
+    await screen.findByTestId("no-workflows");
+    expect(screen.queryByTestId("new-design")).toBeNull();
   });
 });

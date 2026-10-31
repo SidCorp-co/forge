@@ -140,10 +140,11 @@ function NewDesignForm({ projectId, slug, templates, onDone }: { projectId: stri
   );
 }
 
-/** "New design": the button and the dialog it opens. */
-export function NewDesign({ projectId, slug, templates }: { projectId: string; slug: string; templates: readonly WorkflowTemplate[] }) {
+/** "New design": the button and the dialog it opens, for a viewer who holds `workflow-designs.write`. */
+export function NewDesign({ projectId, slug, templates, canWrite }: { projectId: string; slug: string; templates: readonly WorkflowTemplate[]; canWrite: boolean }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
+  if (!canWrite) return null;
   return (
     <>
       <Button type="button" size="sm" icon="plus" onClick={() => setOpen(true)} data-testid="new-design">

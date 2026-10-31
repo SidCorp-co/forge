@@ -61,6 +61,8 @@ const proposed = (): WorkflowDesign =>
     approvedRevision: 1,
     approver: "workflow-designs.approve",
     canDecide: true,
+    canWrite: true,
+    canDraftRequirement: true,
     waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveDesign", { what: "Record flow" }), rule: RULE }),
     revisions: [rev({}), rev({ revision: 1, decision: "approve", decidedBy: "u-2", decidedByName: "Bo", decidedAt: AT, reason: NOTE, state: "current" })],
     builds: [],
@@ -73,8 +75,8 @@ const record = { workflowId: "w-1", writerName: "Ana", document: { ...body, id: 
 const atView = (view: "person" | "developer") => window.history.replaceState(null, "", view === "developer" ? "/?view=developer" : "/");
 const withQueries = (node: React.ReactNode) =>
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>);
-const facts = () =>
-  withQueries(<WorkflowDesignProperties d={proposed()} record={record} shown={body as never} shownRevision={2} template={null} slug="acme" health={undefined} />);
+const facts = (d: WorkflowDesign = proposed()) =>
+  withQueries(<WorkflowDesignProperties d={d} record={record} shown={body as never} shownRevision={2} template={null} slug="acme" health={undefined} projectId="p-1" />);
 
 afterEach(() => atView("person"));
 
@@ -148,5 +150,38 @@ describe("each fact once on the workflow design page (BC-5)", () => {
     withQueries(<WorkflowDesignPage projectId="p-1" slug="acme" d={proposed()} record={record} template={null} tab="design" onTab={() => {}} />);
     expect(screen.getByTestId("design-banner-line")).not.toHaveTextContent("Ana");
     expect(screen.getByTestId("design-facts")).toHaveTextContent("Ana");
+  });
+});
+
+describe("an act the viewer cannot take is not shown (ISS-807)", () => {
+  const viewer = (): WorkflowDesign => ({ ...proposed(), canWrite: false, canDraftRequirement: false, requirements: [] });
+  const member = (): WorkflowDesign => ({ ...proposed(), canWrite: true, canDraftRequirement: true, requirements: [] });
+  const page = (d: WorkflowDesign) =>
+    withQueries(<WorkflowDesignPage projectId="p-1" slug="acme" d={d} record={record} template={null} tab="design" onTab={() => {}} />);
+
+  it("gives a viewer no Edit tab, and a member with the grant the tab", () => {
+    page(viewer());
+    expect(within(screen.getByTestId("design-tabs")).queryByRole("tab", { name: /^Edit/ })).toBeNull();
+    expect(within(screen.getByTestId("design-tabs")).getByRole("tab", { name: /^Revisions/ })).toBeInTheDocument();
+  });
+
+  it("shows a member the Edit tab", () => {
+    page(member());
+    expect(within(screen.getByTestId("design-tabs")).getByRole("tab", { name: /^Edit/ })).toBeInTheDocument();
+  });
+
+  it("gives a viewer no Draft a requirement, and a member the button", () => {
+    facts(viewer());
+    expect(screen.queryByTestId("draft-from-design")).toBeNull();
+  });
+
+  it("shows a member Draft a requirement on a design no requirement roots", () => {
+    facts(member());
+    expect(screen.getByTestId("draft-from-design")).toHaveTextContent("Draft a requirement");
+  });
+
+  it("opens a viewer who follows an Edit link on the design, not the editor", () => {
+    withQueries(<WorkflowDesignPage projectId="p-1" slug="acme" d={viewer()} record={record} template={null} tab="edit" onTab={() => {}} />);
+    expect(screen.getByTestId("view-design")).toBeInTheDocument();
   });
 });

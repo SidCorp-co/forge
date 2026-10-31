@@ -104,6 +104,7 @@ function Designs({
   slug,
   templates,
   narrow,
+  canWrite,
 }: {
   all: readonly WorkflowRecord[];
   projectId: string;
@@ -111,6 +112,7 @@ function Designs({
   templates: readonly WorkflowTemplate[];
   /** Beside the overview: two-line rows, no column header. */
   narrow: boolean;
+  canWrite: boolean;
 }) {
   const t = useCopy();
   const label = useLabel();
@@ -162,7 +164,7 @@ function Designs({
           <ListFilterBar list="workflows" />
         </span>
         <span className="ml-auto">
-          <NewDesign projectId={projectId} slug={slug} templates={templates} />
+          <NewDesign projectId={projectId} slug={slug} templates={templates} canWrite={canWrite} />
         </span>
       </header>
       {first && (shared.status || shared.waits) ? (
@@ -182,7 +184,7 @@ function Designs({
 }
 
 /** No design yet: the owner asks for the first ones here, confirmed before the job that draws them runs. */
-function NoWorkflows({ projectId, slug, templates }: { projectId: string; slug: string; templates: readonly WorkflowTemplate[] }) {
+function NoWorkflows({ projectId, slug, templates, canWrite }: { projectId: string; slug: string; templates: readonly WorkflowTemplate[]; canWrite: boolean }) {
   const t = useCopy();
   const state = useOnboardingState(projectId);
   const hint = state.data?.hint;
@@ -202,7 +204,7 @@ function NoWorkflows({ projectId, slug, templates }: { projectId: string; slug: 
         </p>
       ) : null}
       <div className="mt-3 flex justify-center">
-        <NewDesign projectId={projectId} slug={slug} templates={templates} />
+        <NewDesign projectId={projectId} slug={slug} templates={templates} canWrite={canWrite} />
       </div>
       {dialog}
     </div>
@@ -259,7 +261,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
               <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
                 {overview}
                 <aside className={cn("w-100 flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t", view === "map" && "max-lg:hidden")} data-testid="workflows-list-pane">
-                  <Designs all={all} projectId={projectId} slug={slug} templates={templates} narrow />
+                  <Designs all={all} projectId={projectId} slug={slug} templates={templates} narrow canWrite={data.canWrite} />
                 </aside>
               </div>
             </div>
@@ -270,9 +272,9 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
             <PageTitle>{t("workflows.title")}</PageTitle>
             {overview}
             {all.length === 0 ? (
-              <NoWorkflows projectId={projectId} slug={slug} templates={templates} />
+              <NoWorkflows projectId={projectId} slug={slug} templates={templates} canWrite={data.canWrite} />
             ) : (
-              <Designs all={all} projectId={projectId} slug={slug} templates={templates} narrow={false} />
+              <Designs all={all} projectId={projectId} slug={slug} templates={templates} narrow={false} canWrite={data.canWrite} />
             )}
           </div>
         );

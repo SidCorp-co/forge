@@ -1,6 +1,7 @@
 /**
  * @direct-test-of packages/core/src/workflows/design-requirements.ts
  * @direct-test-of packages/core/src/workflows/design-service.ts
+ * @direct-test-of packages/core/src/workflows/viewer-acts.ts
  *
  * What a first-time reader of a project's workflows reads (ISS-781): each listed design names the
  * requirements linked to it, and a draft waits on one actor under one name, the same on the list
@@ -21,7 +22,12 @@ import {
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 
 let projectId: string;
-let say: (who: 'owner' | 'master', method: string, path: string, body?: Doc) => Promise<Reply>;
+let say: (
+  who: 'owner' | 'master' | 'viewer',
+  method: string,
+  path: string,
+  body?: Doc,
+) => Promise<Reply>;
 
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 
@@ -47,8 +53,11 @@ beforeAll(async () => {
   projectId = (await createTestProject(ownerId)).id;
   const agent = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agent, 'member');
+  const viewerId = (await createTestUser({ verified: true })).id;
+  await addProjectMember(projectId, viewerId, 'viewer');
   say = requester(app, {
     owner: await signUserToken(ownerId),
+    viewer: await signUserToken(viewerId),
     master: (
       await mintPat({ permissions: ['*'], userId: agent, name: 'master', projectIds: [projectId] })
     ).plaintext,
@@ -105,5 +114,17 @@ describe('the workflows list a first-time reader opens', () => {
     expect(page.waitingOn.who).not.toBe('Master');
     expect(page.waitingOn.who).toBe(row.design.waitingOn.who);
     expect(page.waitingOn.says.who).toEqual(row.design.waitingOn.says.who);
+  });
+
+  it('tells a viewer it cannot write a design or draft a requirement, and a holder that it can', async () => {
+    const row = (await listed()).get('alone') as Doc;
+    const page = (who: 'owner' | 'viewer') =>
+      say(who, 'GET', at(`/workflows/${row.workflowId}/design`));
+    const owner = ok(await page('owner'));
+    expect([owner.canWrite, owner.canDraftRequirement]).toEqual([true, true]);
+    const viewer = ok(await page('viewer'));
+    expect([viewer.canWrite, viewer.canDraftRequirement]).toEqual([false, false]);
+    expect(ok(await say('owner', 'GET', at('/workflows'))).canWrite).toBe(true);
+    expect(ok(await say('viewer', 'GET', at('/workflows'))).canWrite).toBe(false);
   });
 });

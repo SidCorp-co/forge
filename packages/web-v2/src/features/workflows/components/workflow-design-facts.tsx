@@ -320,7 +320,7 @@ function WhereItStands({ d, health, slug, projectId, title }: { d: WorkflowDesig
             <span className="text-muted">{t("workflows.facts.none")}</span>
           )}
         </StandingMark>
-        {d.requirements.length === 0 && projectId ? <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} /> : null}
+        {d.requirements.length === 0 && d.canDraftRequirement && projectId ? <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} /> : null}
         <StandingMark label={t("workflows.stands.code")} stand={code.stand} testId="stands-code">
           {t(code.key)}
         </StandingMark>
