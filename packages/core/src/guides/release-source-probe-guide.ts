@@ -14,7 +14,7 @@ export const RELEASE_SOURCE_PROBE_GUIDE: CoreGuide = {
   title: 'Release source probe: how an environment says which commit it serves',
   summary:
     'The runtime probe an environment declares in the project document, bound or deployed outside Forge, what the URL it names must answer, and what requirement coverage and a release do with the commit it reads. Where none is declared, coverage says production "declares no source probe".',
-  version: 1,
+  version: 2,
   body: `## Release source probe: how an environment says which commit it serves
 
 A requirement's coverage asks which commit the live build is, and a release is proved against the
@@ -79,7 +79,8 @@ way:
 - \`POST /api/projects/:projectId/release-batches/:runId/finish\` with \`commit\` (the whole sha
   pushed) reads the probes every 5 seconds. It passes once two readings in a row answer that
   commit. A finish naming no commit passes once production serves a commit other than the one kept
-  at the open, and is refused where the open read none.
+  at the open, and is refused where the open read none. The smallest body is
+  \`{ "commit": "<40 hex>" }\`.
 - Nothing closes until it passes. A probe not answering, a fleet that disagrees, a body with no
   commit, or another commit is refused \`RELEASE_NOT_VERIFIED\`, with the reading.
 - Only \`artifact\` probes on production is refused \`RELEASE_PROBES_UNREADABLE\`: a declaration to

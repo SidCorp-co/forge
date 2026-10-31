@@ -18,7 +18,21 @@ export { pointer };
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-function issueRefusals(issue: z.core.$ZodIssue, version: unknown): ApiRefusal[] {
+/** The keys a read serves and the write refuses: in the read's shape, not in the write's. */
+function serverOwnedKeys(write: unknown, read: unknown): ReadonlySet<string> {
+  const keysOf = (schema: unknown): string[] => {
+    const shape = (schema as { shape?: Record<string, unknown> } | undefined)?.shape;
+    return shape ? Object.keys(shape) : [];
+  };
+  const written = new Set(keysOf(write));
+  return new Set(keysOf(read).filter((k) => !written.has(k)));
+}
+
+function issueRefusals(
+  issue: z.core.$ZodIssue,
+  version: unknown,
+  owned: ReadonlySet<string>,
+): ApiRefusal[] {
   if (issue.code === 'unrecognized_keys') {
     return issue.keys.map((key): ApiRefusal => {
       if (key === 'rollback' && issue.path[0] === 'target') {
@@ -26,6 +40,13 @@ function issueRefusals(issue: z.core.$ZodIssue, version: unknown): ApiRefusal[] 
           code: 'BINDING_ROLLBACK_MOVED',
           path: pointer([...issue.path, key]),
           detail: BINDING_ROLLBACK_MOVED,
+        };
+      }
+      if (issue.path.length === 0 && owned.has(key)) {
+        return {
+          code: 'UNKNOWN_KEY',
+          path: pointer([key]),
+          detail: `"${key}" is server-owned: the read serves it and the write never takes it. Drop it and send the rest back.`,
         };
       }
       return {
@@ -55,6 +76,7 @@ export function parseVersionedDocument<T>(
   raw: unknown,
   what: string,
   versions: readonly number[] = [1],
+  served?: z.ZodType,
 ): Parsed<T> {
   if (!isRecord(raw)) {
     return {
@@ -82,7 +104,11 @@ export function parseVersionedDocument<T>(
   }
   const result = schema.safeParse(raw);
   if (result.success) return { ok: true, value: result.data };
-  return { ok: false, refusals: result.error.issues.flatMap((i) => issueRefusals(i, raw.version)) };
+  const owned = serverOwnedKeys(schema, served);
+  return {
+    ok: false,
+    refusals: result.error.issues.flatMap((i) => issueRefusals(i, raw.version, owned)),
+  };
 }
 
 export function staleBase(baseRevision: number | null, storedRevision: number | null): ApiRefusal {

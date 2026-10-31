@@ -11,11 +11,13 @@ import {
   ARTEFACT_KINDS,
   BUILDER_TRIGGERS,
   type BuilderRunWrite,
+  builderRunDocumentSchema,
   builderRunWriteSchema,
   type CallSite,
   FINDING_CLASSIFICATIONS,
   LINK_STATES,
   type LinkWrite,
+  linkDocumentSchema,
   linkWriteSchema,
   STEP_STATUSES,
 } from './link-schema.js';
@@ -72,8 +74,9 @@ function parseOwned<T>(
   raw: unknown,
   what: string,
   owner: EcosystemRefusal[],
+  served: z.ZodType,
 ): Checked<T> {
-  const parsed = parseVersionedDocument(schema, raw, what);
+  const parsed = parseVersionedDocument(schema, raw, what, [1], served);
   if (!parsed.ok) {
     return { ok: false, refusals: [...owner, ...renameLinkParseRefusals(parsed.refusals)] };
   }
@@ -83,7 +86,7 @@ function parseOwned<T>(
 export function parseLink(raw: unknown, consumerId: string): Checked<LinkWrite> {
   const claimed = isRecord(raw) && isRecord(raw.consumer) ? raw.consumer.project : undefined;
   const owner = ownedBy(claimed, consumerId, '/consumer/project', 'a link');
-  return parseOwned(linkWriteSchema, raw, 'link', owner);
+  return parseOwned(linkWriteSchema, raw, 'link', owner, linkDocumentSchema);
 }
 
 export function parseBuilderRun(raw: unknown, projectId: string): Checked<BuilderRunWrite> {
@@ -93,7 +96,7 @@ export function parseBuilderRun(raw: unknown, projectId: string): Checked<Builde
     '/project',
     'a builder run',
   );
-  return parseOwned(builderRunWriteSchema, raw, 'builder-run', owner);
+  return parseOwned(builderRunWriteSchema, raw, 'builder-run', owner, builderRunDocumentSchema);
 }
 
 /** A link and a builder run are the consuming project's finding in its own code: ecosystem-links.write there. */
