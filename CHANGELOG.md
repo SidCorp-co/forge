@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.417] - 2026-10-31
+
+Release and custom jobs go only to boxes whose credential reaches the project
+
+### Fixed
+
+- **A release or custom job is offered only to a box whose credential reaches its project**, as onboarding already was; a steward job, which carries its own token, is unaffected.
+
 ## [0.4.0-dev.416] - 2026-10-31
 
 Master passes name the served dispatch guide; local gates read the declared base
