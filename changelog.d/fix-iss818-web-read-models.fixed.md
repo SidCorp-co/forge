@@ -1,1 +1,0 @@
-**Fleet strip, requirement diff and attention inbox now render what core computes.** Online runners, queue count, stall banner, revision diff, org scope and offline runners are core read models; a check refuses web deriving them.

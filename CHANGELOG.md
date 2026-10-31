@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.389] - 2026-10-31
+
+Fleet, requirement changes and Attention counts read from one core source
+
+### Fixed
+
+- **Fleet strip, requirement diff and attention inbox now render what core computes.** Online runners, queue count, stall banner, revision diff, org scope and offline runners are core read models; a check refuses web deriving them.
+
 ## [0.4.0-dev.388] - 2026-10-31
 
 Every core module has one public entry point, enforced by the build
