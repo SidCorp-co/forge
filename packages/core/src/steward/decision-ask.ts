@@ -51,6 +51,8 @@ export interface DecisionAsk {
   why: string;
   /** The basis of the standing the run read. */
   basis: string;
+  /** The steward judged it serious (REQ-79 BC-13): a person's only on a strict project. */
+  serious?: boolean | undefined;
 }
 
 /** An item's title by its kind and id; a feedback item is never merged, so it reads empty. */
@@ -135,7 +137,10 @@ export async function askStewardDecision(input: DecisionAsk) {
     ...anchor,
     askedBy: input.userId,
     prompt: input.prompt,
+    // owed by whoever decides it on this project: the master unless strict and serious (REQ-79 BC-13)
     blockerKind: 'human',
+    decides: true,
+    ...(input.serious ? { serious: true } : {}),
     answer: {
       shape: 'choice',
       options: input.options.map((o) => ({

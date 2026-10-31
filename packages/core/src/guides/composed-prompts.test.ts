@@ -74,6 +74,7 @@ const none = {
   releaseApprovals: [] as Parameters<typeof owedLine>[0]['releaseApprovals'],
   answers: [],
   stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
+  questions: [],
   landedWork: [] as Parameters<typeof owedLine>[0]['landedWork'],
   marks: [] as Parameters<typeof owedLine>[0]['marks'],
   filings: [] as Parameters<typeof owedLine>[0]['filings'],
@@ -128,6 +129,7 @@ const OWED_KINDS = {
   },
   requests: { item: { kind: 'requirement', key: 'REQ-9' }, guide: 'requirement-lifecycle' },
   carriers: { item: { key: 'ISS-26' }, guide: 'issue-flow' },
+  questions: { item: { id: 'q7', on: 'ISS-7' }, guide: 'pipeline-and-issue-lifecycle' },
 } as const satisfies Record<string, { item: object; guide: GuideSlug }>;
 
 const everyOwed = {

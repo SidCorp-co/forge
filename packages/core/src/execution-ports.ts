@@ -89,6 +89,7 @@ import {
   answeredOnIssuesSince,
   answerOf,
   askQuestion,
+  questionsOwedToAgents,
   registerWaiter,
   voidCancelledRunQuestions,
   waiterFor,
@@ -307,6 +308,7 @@ export function provideExecutionPorts(): void {
       })),
     contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
     stewardAsks: openStewardAsks,
+    questionsOwed: questionsOwedToAgents,
     breakdownsHeldBySteward,
     landedWorkOwed,
     mergesOwed: async (projectId) => ({

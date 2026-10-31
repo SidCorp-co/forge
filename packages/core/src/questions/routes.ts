@@ -74,6 +74,12 @@ const askSchema = z
       .max(10),
     recommendedOptionId: z.string().trim().min(1).max(100),
     blockerKind: z.enum(questionBlockerKinds).optional(),
+    serious: z
+      .boolean()
+      .optional()
+      .describe(
+        'the asker judged it serious: irreversible, real money, credentials or product direction (REQ-79 BC-13); an agent asks a person only for such a decision, on a strict project',
+      ),
     assumed: z.record(z.string(), z.unknown()).optional(),
     maxRounds: z.number().int().min(1).max(10).optional(),
     parkDeadlineAt: z.iso.datetime().optional(),
@@ -182,6 +188,7 @@ questionRoutes.post(
       blockerKind: blockerKind ?? 'human',
       parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
       userId: c.get('userId'),
+      agency: restActor(c).agency,
     });
     if (!asked) throw notFound(rest.issueId ? 'issue' : 'project');
     return c.json(asked, 201);
@@ -194,35 +201,30 @@ questionRoutes.get('/:id', noQuery, async (c) => {
   return c.json(await shown(readerOf(c.get('agency')), seen));
 });
 
-questionRoutes.post(
-  '/:id/answer',
-  async (c, next) => {
-    if (c.get('principal') === 'pat') {
-      const tokenId = c.get('patTokenId');
-      if (!tokenId)
-        throw new Error('questions: a token request reached the answer without its token id');
-      await assertTokenMayAnswer({
-        questionId: questionId(c),
-        userId: c.get('userId'),
-        agentUserId: c.get('agentUserId') ?? null,
-        tokenId,
-      });
-    }
-    await next();
-  },
-  strictBody(answerBody, ANSWER_SHAPE),
-  async (c) => {
-    return c.json(
-      await answerAs({
-        questionId: questionId(c),
-        ...givenAnswerOf(c.req.valid('json')),
-        userId: c.get('userId'),
-        agency: restActor(c).agency,
-        via: await doorOfRequest(c),
-      }),
-    );
-  },
-);
+questionRoutes.post('/:id/answer', strictBody(answerBody, ANSWER_SHAPE), async (c) => {
+  if (c.get('principal') === 'pat') {
+    const tokenId = c.get('patTokenId');
+    if (!tokenId)
+      throw new Error('questions: a token request reached the answer without its token id');
+    await assertTokenMayAnswer({
+      questionId: questionId(c),
+      userId: c.get('userId'),
+      agentUserId: c.get('agentUserId') ?? null,
+      tokenId,
+      agency: restActor(c).agency,
+      note: c.req.valid('json').note,
+    });
+  }
+  return c.json(
+    await answerAs({
+      questionId: questionId(c),
+      ...givenAnswerOf(c.req.valid('json')),
+      userId: c.get('userId'),
+      agency: restActor(c).agency,
+      via: await doorOfRequest(c),
+    }),
+  );
+});
 
 questionRoutes.post(
   '/:id/void',

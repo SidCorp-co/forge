@@ -4,16 +4,18 @@
 //
 // A person's own token answers a question a person owes, within what its holder could answer signed
 // in (owner, 2026-10-16, on the ground of ADR 0007: whoever holds the permission acts). A question
-// blocked on an agent or a peer keeps the agent-token rule (ISS-1003): only an agent's own token
-// answers it. This door says whose word the token carries and whether that word is the one the
-// question waits on; whether that person may answer it is `answerAs`'s, the check a session's answer
-// meets — the project role and the chosen option's authority — never a second copy of it here.
+// blocked on an agent or a peer keeps the agent-token rule (ISS-1003): only an agent's token answers
+// it, its own or the box's it runs on. An agent's token answers any question, recording why, except
+// one that is a person's: serious, on a strict project (REQ-79 BC-14, `owed.ts`). This door says
+// whose word the token carries and whether that word is one the question takes; whether its holder
+// may answer it is `answerAs`'s, the check a session's answer meets — the project role and the
+// chosen option's authority — never a second copy of it here.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { tokenIdentityOf } from '../credentials/token-identity.js';
-import type { QuestionBlockerKind } from '../db/schema-questions.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type AnswerBody, givenAnswerOf } from './answer-input.js';
+import { agentDecidesWhy, SERIOUS } from './owed.js';
 import { doorOfToken } from './ports.js';
 import { answerAs, readQuestionFor } from './read.js';
 import { refuseQuestion } from './write.js';
@@ -22,14 +24,23 @@ const OWN_TOKEN =
   'their own personal access token, or the MCP client they signed in to Forge with (Claude Code ' +
   'and the like)';
 
-/** An agent's token on a question an agent does not owe (ISS-1003: an agent answers another agent). */
-const owedByPerson = (kind: QuestionBlockerKind) =>
+/** An agent's token on a question that is a person's: serious, on a strict project (REQ-79 BC-13). */
+const owedByPerson = () =>
   refuseQuestion(
     'QUESTION_OWED_BY_PERSON',
-    `this question is blocked on ${kind === 'human' ? 'a person' : 'a machine fact'}, and this ` +
-      'request carries an agent’s token: an agent’s token answers only a question blocked on ' +
-      `another agent (blockerKind master_or_peer). The person who owes it answers it — with ${OWN_TOKEN}, ` +
-      'signed in, or in the room it was delivered to.',
+    `this question is marked serious (${SERIOUS}) on a strict project, so it is a person’s, and ` +
+      'this request carries an agent’s token. The person who owes it answers it — with ' +
+      `${OWN_TOKEN}, signed in, or in the room it was delivered to.`,
+  );
+
+/** An agent's answer to a question a person was asked, with no reason: its decision is recorded with why. */
+const reasonRequired = (why: string) =>
+  refuseQuestion(
+    'QUESTION_AGENT_REASON_REQUIRED',
+    `this question was asked of a person, and an agent’s token answers it here because ${why}; ` +
+      'the answer is the agent’s decision, recorded with its reason: send `note` saying why ' +
+      '(REST `POST /api/questions/:id/answer` and `forge_questions answer` take it).',
+    '/note',
   );
 
 /** A token that names no agent, on a question an agent owes (ISS-1003: an agent answers another agent). */
@@ -37,12 +48,12 @@ const blockedOnAgent = () =>
   refuseQuestion(
     'QUESTION_BLOCKED_ON_AGENT',
     'this question is blocked on another agent (blockerKind master_or_peer), and this request ' +
-      'carries a token that names no agent. An agent-blocked question is answered by the agent’s ' +
-      'OWN Agent Access Token, which an org admin mints at ' +
-      'POST /api/orgs/:orgId/agents/:agentUserId/tokens.',
+      'carries a token that names no agent. An agent-blocked question is answered by an agent’s ' +
+      'token: its OWN Agent Access Token, which an org admin mints at ' +
+      'POST /api/orgs/:orgId/agents/:agentUserId/tokens, or the token of the box it runs on.',
   );
 
-/** A token handed to act for someone, or a box's: the word it carries is nobody's own. */
+/** A token handed to act for someone, or a checkout's: the word it carries is nobody's own. */
 const notOwn = () =>
   refuseQuestion(
     'QUESTION_TOKEN_NOT_OWN',
@@ -53,29 +64,36 @@ const notOwn = () =>
   );
 
 /**
- * Refuses a token's answer that is not the word the question waits on: an agent's token on a
- * question a person owes, any other token on a question an agent owes, or a token its holder did not
- * mint for themselves. A person's own token on a person's question goes on to the session's check in
- * `answerAs`.
+ * Refuses a token's answer that is not a word the question takes: an agent's token on a question
+ * that is a person's, or on one a person was asked without its reason; any other token on a question
+ * an agent owes; or a token its holder did not mint for themselves. A person's own token on a
+ * person's question, and an agent's answer the question takes, go on to the session's check in
+ * `answerAs`. An agent's token is an agent account's own or a paired box's (agency `agent`).
  */
 export async function assertTokenMayAnswer(token: {
   questionId: string;
   userId: string;
   agentUserId: string | null;
   tokenId: string;
+  agency: ActorAgency;
+  /** The answer's note, which an agent's answer to a person's question owes as its reason. */
+  note?: string | undefined;
 }): Promise<void> {
   const seen = await readQuestionFor(token.questionId, token.agentUserId ?? token.userId);
   if (!seen) throw notFound('question not found');
-  if (token.agentUserId) {
+  if (token.agentUserId || token.agency === 'agent') {
     if (seen.blockerKind === 'master_or_peer') return;
-    throw owedByPerson(seen.blockerKind);
+    const why = await agentDecidesWhy(seen.projectId as string, seen.serious);
+    if (why === null) throw owedByPerson();
+    if (!token.note?.trim()) throw reasonRequired(why);
+    return;
   }
   if (seen.blockerKind === 'master_or_peer') throw blockedOnAgent();
   const { holdersOwn } = await tokenIdentityOf(token.tokenId);
   if (!holdersOwn) throw notOwn();
 }
 
-type AnsweringToken = Parameters<typeof assertTokenMayAnswer>[0];
+type AnsweringToken = Omit<Parameters<typeof assertTokenMayAnswer>[0], 'agency' | 'note'>;
 
 /** An answer a tool door takes on a token: refused here as REST's route refuses it, then `answerAs`. */
 export async function answerWithToken(args: {
@@ -84,7 +102,7 @@ export async function answerWithToken(args: {
   agency: ActorAgency;
 }) {
   const { token } = args;
-  await assertTokenMayAnswer(token);
+  await assertTokenMayAnswer({ ...token, agency: args.agency, note: args.body.note });
   return answerAs({
     questionId: token.questionId,
     ...givenAnswerOf(args.body),

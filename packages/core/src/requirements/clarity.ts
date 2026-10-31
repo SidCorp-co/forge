@@ -53,7 +53,11 @@ export async function withAskedQuestions(
       projectId: input.projectId,
       requirementId: input.requirementId,
       prompt: entry.question,
+      // a business question the revision must settle is product direction: a person's on a strict
+      // project, the master's on any other (REQ-79 BC-13, `questions/owed.ts`)
       blockerKind: 'human',
+      decides: true,
+      serious: true,
       answer: { shape: 'free_text', needed: `The answer, from ${entry.whoAnswers}` },
     });
     asked.push({ ...entry, questionId: q.id });

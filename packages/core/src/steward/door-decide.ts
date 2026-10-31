@@ -150,6 +150,12 @@ const decideParams = z.strictObject({
     .min(10)
     .max(300)
     .describe('one line: why you recommend it, from the records you read'),
+  serious: z
+    .boolean()
+    .optional()
+    .describe(
+      'true only where the decision is irreversible, real money, credentials or product direction: on a strict project it is then asked of a person; every other decision is the master’s',
+    ),
 });
 type DecideArgs = z.infer<typeof decideParams>;
 
@@ -478,6 +484,7 @@ export const DECIDE: DoorSpec<DecideArgs> = {
           recommendedOptionId: recommended.id,
           why: args.why,
           basis,
+          ...(args.serious ? { serious: true } : {}),
         },
       },
       ctx,

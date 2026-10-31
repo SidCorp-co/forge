@@ -18,6 +18,7 @@ import {
   createTestUser,
   rows,
 } from './factories.js';
+import { underStrict } from './project-controls.js';
 
 const HOUR = 3_600_000;
 
@@ -210,26 +211,30 @@ async function seedStewardMerges(
       recommendedOptionId: merge ? `steward.merge:${merge.into}` : 'steward.keep',
       why,
       basis: `demo seed: ${draft.key}`,
+      serious: true,
     });
-  await ask(
-    repeats,
-    { into: into(STEWARD_DRAFTS.repeats.into), shares: STEWARD_DRAFTS.repeats.shares },
-    `${repeats.key} asks for what ${into(STEWARD_DRAFTS.repeats.into)} already delivers.`,
-  );
-  const refused = await ask(
-    beside,
-    { into: into(STEWARD_DRAFTS.beside.into), shares: 'the demo project.' },
-    'It sits beside an issue about something else.',
-  ).then(
-    () => null,
-    (err: unknown) => String((err as { message?: string }).message ?? err),
-  );
-  if (!refused?.includes('STEWARD_MERGE_NOT_SAME_SUBJECT')) {
-    throw new Error(
-      `the demo seed's merge of ${beside.key} into ${into(STEWARD_DRAFTS.beside.into)}, two items about different things, was not refused as STEWARD_MERGE_NOT_SAME_SUBJECT: ${refused ?? 'it was asked'}`,
+  // the steward's decisions reach a person on Needs you: serious, asked on a strict project (REQ-79 BC-13)
+  await underStrict(projectId, ownerId, async () => {
+    await ask(
+      repeats,
+      { into: into(STEWARD_DRAFTS.repeats.into), shares: STEWARD_DRAFTS.repeats.shares },
+      `${repeats.key} asks for what ${into(STEWARD_DRAFTS.repeats.into)} already delivers.`,
     );
-  }
-  await ask(beside, null, 'Nobody has said whether the call list export is wanted yet.');
+    const refused = await ask(
+      beside,
+      { into: into(STEWARD_DRAFTS.beside.into), shares: 'the demo project.' },
+      'It sits beside an issue about something else.',
+    ).then(
+      () => null,
+      (err: unknown) => String((err as { message?: string }).message ?? err),
+    );
+    if (!refused?.includes('STEWARD_MERGE_NOT_SAME_SUBJECT')) {
+      throw new Error(
+        `the demo seed's merge of ${beside.key} into ${into(STEWARD_DRAFTS.beside.into)}, two items about different things, was not refused as STEWARD_MERGE_NOT_SAME_SUBJECT: ${refused ?? 'it was asked'}`,
+      );
+    }
+    await ask(beside, null, 'Nobody has said whether the call list export is wanted yet.');
+  });
 }
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;

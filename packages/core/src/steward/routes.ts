@@ -75,9 +75,10 @@ const decisionBody = zValidator(
     recommendedOptionId: z.string().trim().min(1).max(100),
     why: z.string().trim().min(1).max(REASON_SENTENCE_MAX),
     basis: z.string().trim().min(1).max(400),
+    serious: z.boolean().optional(),
   }),
   invalid(
-    'invalid body: { about: "ISS-n" | "REQ-n" | "FB-n", prompt, options: [{ id, label, shares? }, ...], recommendedOptionId, why, basis }',
+    'invalid body: { about: "ISS-n" | "REQ-n" | "FB-n", prompt, options: [{ id, label, shares? }, ...], recommendedOptionId, why, basis, serious? }',
   ),
 );
 

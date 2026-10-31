@@ -38,6 +38,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -100,6 +101,7 @@ const decide = (
     recommended,
     ...(candidates ? { candidates } : {}),
     why: 'the carried feedback asks for exactly this',
+    serious: true,
   },
 });
 
@@ -290,13 +292,16 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
   it('asks link, requirement or drop; a link answer links it, and the run it starts prepares it and asks open', async () => {
     const req = await agreedRequirement(905);
     const issue = await draftIssue(104);
-    const results = await diagnose(issue, [
-      decide(issue.key, 'link', [
-        { requirement: req, bc: 'BC-1' },
-        { requirement: 'REQ-904', bc: 'BC-1' },
+    // a person owes it on Needs you: serious, on a strict project (REQ-79 BC-13)
+    const results = await underStrict(projectId, ownerId, () =>
+      diagnose(issue, [
+        decide(issue.key, 'link', [
+          { requirement: req, bc: 'BC-1' },
+          { requirement: 'REQ-904', bc: 'BC-1' },
+        ]),
+        decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }]),
       ]),
-      decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }]),
-    ]);
+    );
     expect(results[0]).toContain('candidate REQ-904 BC-1: REQ-904 is draft');
     const { id, step } = await openQuestion(issue.id);
     const link = stewardLinkOptionId(req, 'BC-1');

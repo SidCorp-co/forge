@@ -41,6 +41,8 @@ const askBodySchema = z.object({
   runId: z.string().optional(),
   prompt: askRequired,
   blockerKind: z.enum(questionBlockerKinds).optional(),
+  /** The run judged it serious (REQ-79 BC-13): a run asks a person only for such a decision, on a strict project. */
+  serious: z.boolean().optional(),
   answerShape: z.enum(answerShapes).optional(),
   options: z
     .array(

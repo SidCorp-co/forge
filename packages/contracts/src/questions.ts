@@ -45,6 +45,10 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_TOKEN_NOT_OWN",
 	"QUESTION_OWED_BY_PERSON",
 	"QUESTION_BLOCKED_ON_AGENT",
+	/** An agent asking a person what it may decide itself (REQ-79 BC-14): outside strict, or not serious. */
+	"QUESTION_AGENT_DECIDES",
+	/** An agent answering a question a person was asked records why (REQ-79 BC-11, BC-14). */
+	"QUESTION_AGENT_REASON_REQUIRED",
 	"QUESTION_OPTIONS_STEWARDS",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];

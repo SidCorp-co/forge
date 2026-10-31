@@ -17,6 +17,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { closeWorld, type Doc, settleOutbox } from '../helpers/ecosystem-world.js';
 import { createTestFeedback, rows } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 import {
   answer,
   decisionOf,
@@ -49,10 +50,14 @@ describe('a stuck feedback item gets its question (REQ-48 BC-5, the BC-5 judge o
     const key = await createTestFeedback(world.projectId, world.reporterId, 41);
     const fb: Subject = { kind: 'feedback', id: await fbId(key), key };
     world.standings = [stuck(fb, 'standing.act.triageIt')];
-    const said = await diagnose(fb, {
-      recommended: 'drop',
-      why: 'it repeats FB-12, which was declined',
-    });
+    // a person owes it on Needs you: serious, on a strict project (REQ-79 BC-13)
+    const said = await underStrict(world.projectId, world.ownerId, () =>
+      diagnose(fb, {
+        recommended: 'drop',
+        why: 'it repeats FB-12, which was declined',
+        serious: true,
+      }),
+    );
     expect(said).not.toContain('Ask nothing');
     const q = await questionOn(fb);
     expect(q?.status).toBe('open');

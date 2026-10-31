@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { closeWorld, type Doc, ok } from '../helpers/ecosystem-world.js';
 import { createTestFeedback, rows } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 import {
   agreedRequirement,
   answer,
@@ -62,12 +63,16 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
   it('asks merge, drop or keep, and the requirement waits on a signer answering it', async () => {
     const req = await draftRequirement('Fax the call list');
     world.standings = [stuck(req, 'standing.act.proposeR')];
-    await diagnose(req, {
-      recommended: 'drop',
-      into: target.key,
-      shares: 'exporting the call list.',
-      why: 'nothing asks for a fax',
-    });
+    // a signer owes it: serious, asked on a strict project (REQ-79 BC-13)
+    await underStrict(world.projectId, world.ownerId, () =>
+      diagnose(req, {
+        recommended: 'drop',
+        into: target.key,
+        shares: 'exporting the call list.',
+        why: 'nothing asks for a fax',
+        serious: true,
+      }),
+    );
     const q = await questionOn(req);
     expect(optionIds(q)).toEqual([stewardMergeOptionId(target.key), IDS.drop, IDS.keep]);
     expect(((q?.last.options as Doc[]) ?? [])[0]?.label).toBe(

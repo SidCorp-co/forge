@@ -1,10 +1,12 @@
-// What the project's steward may accept (REQ-48 r2 decision 2, amended 2026-10-21): it holds
-// `suggestions.approve` to reject a breakdown and to route its own triage, so its accept is held to
-// the one suggestion that is its own to route, a `feedback_triage` it proposed. A breakdown, anyone
-// else's draft or any other kind is a person's or the master's to accept, and the door refuses the
-// steward by name whatever its token names.
+// What the project's steward may accept on a strict project (REQ-48 r2 decision 2, amended
+// 2026-10-21): it holds `suggestions.approve` to reject a breakdown and to route its own triage, so
+// its accept is held to the one suggestion that is its own to route, a `feedback_triage` it
+// proposed. A breakdown, anyone else's draft or any other kind is a person's or the master's to
+// accept there, and the door refuses the steward by name whatever its token names. On every other
+// project an agent holding the permission decides (REQ-79 BC-11, BC-12): the fence stands nowhere.
 
 import type { ActorAgency, PermissionRefusal } from '@forge/contracts/permissions';
+import { readGateProfile } from '../project-config/index.js';
 import { suggestionsPorts } from './ports.js';
 
 export interface AcceptAsked {
@@ -34,11 +36,15 @@ export function stewardAcceptRefusal(
   };
 }
 
-/** The accept door's steward fence: only an agent can be the steward, so a person's accept reads nothing. */
+/**
+ * The accept door's steward fence, on a strict project only: only an agent can be the steward, so a
+ * person's accept reads nothing.
+ */
 export async function acceptFenceRefusal(
   agency: ActorAgency,
   asked: AcceptAsked,
 ): Promise<PermissionRefusal | null> {
   if (agency !== 'agent') return null;
+  if ((await readGateProfile(asked.projectId)) !== 'strict') return null;
   return stewardAcceptRefusal(await suggestionsPorts().stewardOf(asked.projectId), asked);
 }

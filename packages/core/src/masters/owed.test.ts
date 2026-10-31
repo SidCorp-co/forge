@@ -35,6 +35,7 @@ const none = {
   releaseApprovals: [] as { runId: string; version: string | null }[],
   answers: [],
   stewardAsks: [] as StewardAsk[],
+  questions: [],
   landedWork: [] as {
     issueId: string;
     key: string;
@@ -411,34 +412,6 @@ describe('an accepted merge-request release is owed to the master that merges it
     const line = owedLine({ ...none, releaseApprovals: [{ runId: 'r2', version: '0.2.0' }] });
     expect(line).toContain('0.2.0 (run r2)');
     expect(line).toContain('release-batches/<runId>/approvals -X POST');
-  });
-});
-
-// REQ-66 BC-8: an agent reporter has no bell, so the master of the project it reported from confirms for it
-describe('an agent reporter’s confirm on the owed line', () => {
-  it('names an agent reporter’s owed confirm by its key and reporter, at the door of the project the item sits in', () => {
-    const forge: AgentConfirmOwed = {
-      key: 'FB-230',
-      feedbackId: 'f230',
-      reporter: 'catalog-fe',
-      itemProjectId: 'home',
-      home: true,
-    };
-    const own: AgentConfirmOwed = {
-      ...forge,
-      key: 'FB-4',
-      feedbackId: 'f4',
-      itemProjectId: 'p',
-      home: false,
-    };
-    const one = owedLine({ ...none, confirms: [forge] });
-    expect(one).toContain(
-      '1 shipped feedback item an agent of this project reported owes its confirm (FB-230 from catalog-fe, `forge-runner api forge/feedback/FB-230/verify -X POST`)',
-    );
-    expect(one).toContain('evidence');
-    expect(owedLine({ ...none, confirms: [forge, own] })).toContain(
-      'owe their confirm (FB-230 from catalog-fe, `forge-runner api forge/feedback/FB-230/verify -X POST`; FB-4 from catalog-fe, `forge-runner api projects/p/feedback/FB-4/verify -X POST`)',
-    );
   });
 });
 

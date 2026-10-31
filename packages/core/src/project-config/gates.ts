@@ -61,6 +61,11 @@ export async function readProjectGates(projectId: string): Promise<ProjectGatesV
   };
 }
 
+/** The project's gate profile (REQ-76): `standard` where it declares none. */
+export async function readGateProfile(projectId: string): Promise<GateProfile> {
+  return gateProfileOf((await readProjectConfig(projectId))?.document.gates);
+}
+
 /** Who the project's criteria are judged by under its gate profile (`@forge/contracts/verified-rule:verifiedJudgeOf`). */
 export async function readVerifiedJudge(projectId: string): Promise<VerifiedJudge> {
   const { held, policy } = await sources(projectId);

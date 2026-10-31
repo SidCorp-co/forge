@@ -6,6 +6,8 @@
  * answer lands on the requirement as a decision. An ask on no issue that names no project or nothing
  * it is about is refused by name, as are `{ requirement: null }` with no issue to resolve it against
  * and a requirement the project does not hold, writing nothing; an ask on an issue is unchanged.
+ * The project is strict and each business question serious, so the master and the box may ask a
+ * person it (REQ-79 BC-14).
  */
 
 // @direct-test-of packages/core/src/questions/routes.ts
@@ -37,6 +39,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 let w: EcosystemWorld;
 let projectId: string;
@@ -60,6 +63,7 @@ beforeAll(async () => {
   await addProjectMember(projectId, agent, 'member');
   const deviceId = await createTestDevice(ownerId);
   await bindTestRunner(projectId, deviceId);
+  await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
   say = requester(w.app, {
     owner: w.token.platform,
     master: (
@@ -124,6 +128,7 @@ const choice = {
 const askRest = (body: Doc) =>
   say('master', 'POST', '/api/questions', {
     prompt: 'May a referral manager download the aggregate report?',
+    serious: true,
     ...choice,
     ...body,
   });
@@ -136,6 +141,7 @@ const askBox = (body: Doc) =>
     runId: randomUUID(),
     prompt: 'May a referral manager download the aggregate report?',
     blockerKind: 'human',
+    serious: true,
     ...choice,
     ...body,
   });

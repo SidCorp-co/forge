@@ -43,3 +43,24 @@ export async function declareControls(
      WHERE project_id = ${projectId}
   `);
 }
+
+/**
+ * Runs `body` with the project strict (REQ-79 BC-12), where a decision its asker marks serious is a
+ * person's (BC-13), and gives the project back the gates it held before.
+ */
+export async function underStrict<T>(
+  projectId: string,
+  updatedBy: string,
+  body: () => Promise<T>,
+): Promise<T> {
+  const [held] = await rows<{ document: ProjectDocument }>(
+    sql`SELECT document FROM project_config_documents WHERE project_id = ${projectId}`,
+  );
+  const before = held?.document.gates;
+  await declareControls(projectId, updatedBy, { gates: { profile: 'strict' } });
+  try {
+    return await body();
+  } finally {
+    await declareControls(projectId, updatedBy, { gates: before ?? { profile: 'standard' } });
+  }
+}

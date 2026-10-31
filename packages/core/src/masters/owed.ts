@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
+import { confirmsLine } from './owed-confirms.js';
 import {
   type AgentConfirmOwed,
   type FilingOwed,
@@ -51,6 +52,8 @@ interface Owed {
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
   /** What the steward asked the master to act on, each standing until its item's standing moves. */
   stewardAsks: StewardAsk[];
+  /** Open questions owed to the master or a peer agent, oldest first (REQ-79 BC-14). */
+  questions: { id: string; on: string | null }[];
   /** `in_progress` issues the wedge pass left because their work landed, owed their move to `awaiting_release` (ISS-564). */
   landedWork: {
     issueId: string;
@@ -159,17 +162,11 @@ function stewardAsksLine(asks: Owed['stewardAsks']): string {
   return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map(askWithItems).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on an item that answers it, at its own door: ${kinds.join('; ')} (other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it, one with a date until that date.`;
 }
 
-/** The door an item's reporter confirms it through: the Forge door for an item about Forge, else its own project's. */
-const confirmDoor = (c: AgentConfirmOwed) =>
-  c.home
-    ? `forge-runner api forge/feedback/${c.key}/verify -X POST`
-    : `forge-runner api projects/${c.itemProjectId}/feedback/${c.key}/verify -X POST`;
-
-/** REQ-66 BC-8: an agent reporter has no bell, so the master that acts for it is asked to confirm. */
-function confirmsLine(confirms: Owed['confirms']): string {
-  if (confirms.length === 0) return '';
-  const items = confirms.map((c) => `${c.key} from ${c.reporter}, \`${confirmDoor(c)}\``);
-  return ` ${confirms.length} shipped feedback item${plural(confirms.length, ' an agent of this project reported owes its', 's agents of this project reported owe their')} confirm (${items.join('; ')}): each one's fix shipped and the item waits on the agent that reported it. Check on the running build what each reported, then confirm it as that account with what you ran and saw (\`-d '{"evidence":"<what you ran and saw>"}'\` on the Forge door, \`{"note":…}\` on a project's), or reopen it the same way with \`/reopen\` (\`reason\` on a project's door) where it is not fixed; ${method('feedback-triage')} (verify and reopen) is how.`;
+/** REQ-79 BC-14: a decision outside strict is the master's, and no person's Needs you lists it. */
+function questionsLine(questions: Owed['questions']): string {
+  if (questions.length === 0) return '';
+  const named = questions.map((q) => (q.on ? `${q.id} on ${q.on}` : q.id));
+  return ` ${questions.length} question${plural(questions.length, ' is', 's are')} owed by you or a peer agent, not a person (${named.join('; ')}): read each (\`forge-runner api questions/<id>\`), then decide it and answer with your reason in \`note\` (\`forge-runner api questions/<id>/answer -X POST\`), or void it with its \`reason\` (\`forge-runner api questions/<id>/void -X POST\`); ${method('pipeline-and-issue-lifecycle')} (Who answers) is how.`;
 }
 
 function answersLine(answers: Owed['answers']): string {
@@ -267,6 +264,7 @@ export function owedLine(owed: Owed): string {
     returnedLine(owed) +
     answersLine(owed.answers) +
     stewardAsksLine(owed.stewardAsks) +
+    questionsLine(owed.questions) +
     landedWorkLine(owed.landedWork) +
     mergesLine(owed.marks, owed.filings) +
     recordingsLine(owed.recordings) +
@@ -364,6 +362,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.comments.map((c) => `comment:${c.commentId}`),
     ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
     ...owed.stewardAsks.map((a) => `steward-ask:${a.actId}`),
+    ...owed.questions.map((q) => `question:${q.id}`),
     ...owed.landedWork.map((l) => `landed-work:${l.issueId}|${l.mergedAt}`),
     ...owed.marks.map((m) => `mark:${m.issueId}|${m.commit}`),
     ...owed.filings.map((f) => `filing:${f.commit}`),
@@ -440,6 +439,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     unnamedReleases,
     contentLanguage,
     stewardAsks,
+    questions,
     releaseMerges,
     releaseApprovals,
     landedWork,
@@ -457,6 +457,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     releasesTheMasterNames(projectId),
     ports.contentLanguageOf(projectId),
     ports.stewardAsks(projectId),
+    ports.questionsOwed(projectId),
     ports.releaseMergesOwed(projectId),
     ports.releaseApprovalsOwed(projectId),
     ports.landedWorkOwed(projectId),
@@ -493,6 +494,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       releaseApprovals,
       answers,
       stewardAsks,
+      questions,
       landedWork,
       marks: merges.marks,
       filings: merges.filings,

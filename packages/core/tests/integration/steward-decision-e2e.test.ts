@@ -34,6 +34,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -70,9 +71,14 @@ async function readyDraft(seq: number) {
   return issue;
 }
 
-const decide = (key: string, recommended: string) => ({
+const decide = (key: string, recommended: string, serious = false) => ({
   name: 'steward_decide',
-  args: { about: key, recommended, why: 'it carries open feedback and nothing else covers it' },
+  args: {
+    about: key,
+    recommended,
+    why: 'it carries open feedback and nothing else covers it',
+    ...(serious ? { serious: true } : {}),
+  },
 });
 
 const questionsOn = (issueId: string) =>
@@ -90,8 +96,8 @@ const answer = (questionId: string, body: Record<string, unknown>) =>
   say('owner', 'POST', `/api/questions/${questionId}/answer`, { round: 1, ...body });
 
 /** Ask the draft's decision, and return the one open question it wrote. */
-async function asked(issue: { id: string; key: string }, recommended = 'open') {
-  await diagnose(issue, [decide(issue.key, recommended)]);
+async function asked(issue: { id: string; key: string }, recommended = 'open', serious = false) {
+  await diagnose(issue, [decide(issue.key, recommended, serious)]);
   const open = (await questionsOn(issue.id)).filter((q) => q.status === 'open');
   expect(open).toHaveLength(1);
   return open[0] as { id: string; status: string; steps: Doc[] };
@@ -323,9 +329,10 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     expect(JSON.stringify(undo.json)).toContain('a keep moved nothing');
   });
 
+  // a person owes it: the steward judged it serious on a strict project (REQ-79 BC-13)
   it("shows in Needs you as the steward's, each button saying what it does, keep and drop asking why", async () => {
     const issue = await readyDraft(88);
-    const q = await asked(issue);
+    const q = await underStrict(projectId, ownerId, () => asked(issue, 'open', true));
     const read = ok(await say('owner', 'GET', at('/needs-you/decisions')));
     const decision = (read.decisions as Doc[]).find((d) => d.key === issue.key);
     if (!decision) throw new Error(`${issue.key} is not in Needs you`);
@@ -362,20 +369,23 @@ describe('the one-off voids the questions the steward spelled, and diagnoses the
     await diagnose(issue, []);
     const runId = lastRunId;
     const made = ok(
-      await say('steward', 'POST', '/api/questions', {
-        issueId: issue.id,
-        prompt: 'ISS-89 has been a draft for 16 days. Should we complete it and admit it?',
-        options: ['complete_admit', 'keep_draft'].map((id) => ({
-          id,
-          label: id,
-          authority: 'writer',
-          bindsTo: 'this_call',
-          executedBy: 'human',
-          fingerprint: `steward:${runId}:${id}`,
-        })),
-        recommendedOptionId: 'complete_admit',
-        blockerKind: 'human',
-      }),
+      await underStrict(projectId, ownerId, () =>
+        say('steward', 'POST', '/api/questions', {
+          serious: true,
+          issueId: issue.id,
+          prompt: 'ISS-89 has been a draft for 16 days. Should we complete it and admit it?',
+          options: ['complete_admit', 'keep_draft'].map((id) => ({
+            id,
+            label: id,
+            authority: 'writer',
+            bindsTo: 'this_call',
+            executedBy: 'human',
+            fingerprint: `steward:${runId}:${id}`,
+          })),
+          recommendedOptionId: 'complete_admit',
+          blockerKind: 'human',
+        }),
+      ),
       201,
     );
     const { runStewardReaskOnce } = await import('../../src/steward/reask-once.js');
@@ -415,7 +425,7 @@ describe('a draft that leaves draft by another route takes its steward decision 
 
   it('voids the open decision when the draft is opened by the transition route, and Needs you drops it', async () => {
     const issue = await readyDraft(190);
-    const q = await asked(issue);
+    const q = await underStrict(projectId, ownerId, () => asked(issue, 'open', true));
     expect(
       await decisionOn(issue.key),
       'the decision is listed while the issue is a draft',

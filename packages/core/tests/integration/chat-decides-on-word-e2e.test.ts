@@ -27,6 +27,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -103,12 +104,16 @@ beforeAll(async () => {
             about: issue.key,
             recommended: 'open',
             why: 'it has a requirement, a plan and criteria',
+            serious: true,
           },
         },
       },
       { text: 'Asked.' },
     ];
-    await runGatewayAct({ run, act: 'stuck_diagnosis', standing: null, stewardId });
+    // the person's Needs you holds it: serious, asked on a strict project (REQ-79 BC-13)
+    await underStrict(projectId, ownerId, () =>
+      runGatewayAct({ run, act: 'stuck_diagnosis', standing: null, stewardId }),
+    );
   };
 }, 120_000);
 

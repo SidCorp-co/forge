@@ -25,6 +25,7 @@ export {
   gateOf,
   raiseAfterIncident,
   readGateModes,
+  readGateProfile,
   readProjectGates,
   readVerifiedJudge,
 } from './gates.js';

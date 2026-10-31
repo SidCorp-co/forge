@@ -20,6 +20,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 
 let projectId: string;
 let ownerId: string;
@@ -31,6 +32,12 @@ const design = (): Doc =>
       new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
       'utf8',
     ),
+  );
+
+/** The master asks a person a serious decision on a strict project, which a person owes (REQ-79 BC-14). */
+const askedOfPerson = (body: Record<string, unknown>) =>
+  underStrict(projectId, ownerId, () =>
+    say('master', 'POST', '/api/questions', { serious: true, ...body }),
   );
 
 beforeAll(async () => {
@@ -246,7 +253,7 @@ describe('a decision park naming no revision waits on the one proposed under its
     const issue = await plantIssue('open');
     const workflowId = await proposedDesign('drawn-here-owed-flow', `ISS-${seq}`);
     ok(
-      await say('master', 'POST', '/api/questions', {
+      await askedOfPerson({
         issueId: issue,
         prompt: 'which tenant is this for?',
         options: [
@@ -360,7 +367,7 @@ describe('what else a design write or decision does to a waiting park', () => {
     const holding = await plantIssue('open');
     ok(await park(holding, { awaitsDesign: { workflowId, revision: 1 } }));
     ok(
-      await say('master', 'POST', '/api/questions', {
+      await askedOfPerson({
         issueId: holding,
         prompt: 'which tenant is this for?',
         options: [

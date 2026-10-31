@@ -2,6 +2,7 @@
 // is asked in and what it is about (FB-149).
 
 import { randomUUID } from 'node:crypto';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { QuestionAboutRequest, QuestionRefusalCode } from '@forge/contracts/questions';
 import type { Refusal } from '@forge/contracts/refusal';
 import { eq } from 'drizzle-orm';
@@ -23,6 +24,9 @@ import { type AskAnswer, type AskInput, askQuestion } from './write.js';
  */
 type AskAsInput = {
   userId: string;
+  /** Who asks: an agent asking a person what it may decide itself is refused by name (REQ-79 BC-14). */
+  agency: ActorAgency;
+  serious?: boolean | undefined;
   issueId?: string | undefined;
   projectId?: string | undefined;
   prompt: string;
@@ -85,6 +89,8 @@ export async function askAs(args: AskAsInput) {
     askedBy: args.userId,
     prompt: args.prompt,
     blockerKind: args.blockerKind,
+    ...(args.serious ? { serious: true } : {}),
+    ...(args.agency === 'agent' ? { askedByAgent: true as const } : {}),
     answer: args.answer,
     ...(args.assumed ? { assumed: args.assumed } : {}),
     ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),

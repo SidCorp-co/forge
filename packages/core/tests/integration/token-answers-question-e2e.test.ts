@@ -4,8 +4,9 @@
  * `/mcp` alike: a personal access token they minted, or the access token an MCP client holds on
  * their consent. It answers exactly what they could answer signed in — the session's own check —
  * and the answered round records the token and, for OAuth, the client (REQ-27 BC-2). A question
- * blocked on an agent or a peer keeps the agent-token rule, an agent's token answers nothing else,
- * a token handed to act for someone answers nothing, the token's grant still applies, and a second
+ * blocked on an agent or a peer keeps the agent-token rule, an agent's token is refused one that is a
+ * person's (serious, on a strict project: REQ-79 BC-14; the rest of that rule is
+ * question-door-agent-decides-e2e's), a token handed to act for someone answers nothing, the token's grant still applies, and a second
  * answer meets the not-open refusal.
  */
 
@@ -27,6 +28,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 type Json = Record<string, unknown>;
 type McpAnswer = { isError: boolean; text: string; json: Json };
@@ -84,7 +86,7 @@ const OPTIONS: QuestionOption[] = [
 /** An open question in `project`, blocked on `blocker`; free text unless `choice`. */
 async function asked(
   blocker: 'human' | 'master_or_peer',
-  opts: { choice?: boolean; project?: string; requirementId?: string } = {},
+  opts: { choice?: boolean; project?: string; requirementId?: string; serious?: boolean } = {},
 ): Promise<string> {
   const id = randomUUID();
   await askQuestion({
@@ -94,6 +96,7 @@ async function asked(
     ...(opts.requirementId ? { requirementId: opts.requirementId } : {}),
     prompt: 'Which flag guards the tour?',
     blockerKind: blocker,
+    ...(opts.serious ? { serious: true } : {}),
     answer: opts.choice
       ? { shape: 'choice', options: OPTIONS, recommendedOptionId: 'ship' }
       : { shape: 'free_text', needed: 'the flag', recommended: 'tours.v2' },
@@ -265,14 +268,15 @@ describe('a question blocked on an agent or a peer', () => {
     expect(byAgent.status, JSON.stringify(byAgent.body)).toBe(200);
   });
 
-  it('refuses an agent’s token a question a person owes, by name', async () => {
-    const questionId = await asked('human');
-    const res = await answerRest(tok.agent, questionId, { text: 'tours.v2' });
+  it('refuses an agent’s token a question a person owes, serious on a strict project, by name', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    const questionId = await asked('human', { serious: true });
+    const res = await answerRest(tok.agent, questionId, { text: 'tours.v2', note: 'my call' });
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('QUESTION_OWED_BY_PERSON');
-    expect(mcpCode(await answerMcp(tok.agent, questionId, { text: 'tours.v2' }))).toBe(
-      'QUESTION_OWED_BY_PERSON',
-    );
+    expect(
+      mcpCode(await answerMcp(tok.agent, questionId, { text: 'tours.v2', note: 'my call' })),
+    ).toBe('QUESTION_OWED_BY_PERSON');
     expect((await stored(questionId)).status).toBe('open');
   });
 });

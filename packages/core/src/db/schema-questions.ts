@@ -24,6 +24,7 @@ import type {
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  boolean,
   check,
   foreignKey,
   index,
@@ -173,6 +174,12 @@ export const agentQuestions = pgTable(
     landedIn: jsonb('landed_in').$type<QuestionnaireLanding[]>(),
     status: text('status', { enum: questionStatuses }).notNull().default('open'),
     blockerKind: text('blocker_kind', { enum: questionBlockerKinds }).notNull(),
+    /**
+     * Whether its asker judged it serious: irreversible, real money, credentials or product direction
+     * (REQ-79 BC-13, migration 0571). A decision is owed to a person only on a strict project and
+     * only where it is serious (`questions/owed.ts`).
+     */
+    serious: boolean('serious').notNull().default(false),
     steps: jsonb('steps').$type<QuestionStep[]>().notNull(),
     maxRounds: integer('max_rounds').notNull().default(3),
     assumed: jsonb('assumed').$type<Record<string, unknown>>(),

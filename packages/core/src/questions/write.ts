@@ -30,7 +30,7 @@ import { refuser } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { emitEvent, emitEvents } from '../outbox/index.js';
 import { holds, type PermissionFacts } from '../permissions/index.js';
-import { feedbackAbout } from './about-feedback.js';
+import { refuseAboutOnWait, resolveAbout } from './ask-about.js';
 import {
   type AwaitedDesign,
   awaitedDesignFault,
@@ -42,7 +42,7 @@ import {
 } from './design-wait.js';
 import { type AwaitedMerge, awaitedMergeFault, neededForMerge } from './merge-wait.js';
 import { resolveAskOrigin } from './origin.js';
-import { contractAboutRefusal, requirementIdIn } from './ports.js';
+import { owedBlockerOf } from './owed.js';
 import { screenRound } from './screen.js';
 import { refuseUnanswerableAsk } from './unanswerable-ask.js';
 
@@ -69,6 +69,10 @@ export type AskInput = {
   agentSessionId?: string;
   prompt: string;
   blockerKind: QuestionBlockerKind;
+  /** Who owes it (REQ-79 BC-13, `owed.ts:owedBlockerOf`): serious, a decision core asks, an agent's ask. */
+  serious?: boolean;
+  decides?: true;
+  askedByAgent?: true;
   answer: AskAnswer;
   assumed?: Record<string, unknown>;
   cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
@@ -231,80 +235,9 @@ export async function insertAskedQuestion(executor: QuestionExecutor, input: Ask
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
   await refuseFinishedWork(executor, input.issueId);
   refuseAboutOnWait(input);
+  const blockerKind = await owedBlockerOf(input);
   const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
-  return insertQuestion(executor, input, about);
-}
-
-/**
- * A question that waits on a fact is answered by that fact, never by a person's business answer, so
- * it is about nothing: refused by name on both doors that write one, the ask and the park.
- */
-function refuseAboutOnWait(input: {
-  about?: unknown;
-  awaitsMerge?: AwaitedMerge | undefined;
-  awaitsDesign?: AwaitedDesign | undefined;
-}): void {
-  if (!input.about) return;
-  if (input.awaitsMerge) {
-    throw refuseQuestion(
-      'QUESTION_ABOUT_ON_MERGE_WAIT',
-      `this question waits on issue ${input.awaitsMerge.issueId}'s merge mark, which answers it with the mark itself; a business question \`about\` a requirement or a contract is answered by a person, and its answer becomes a decision there. Ask the business question on its own, and park on the mark without \`about\``,
-      '/about',
-    );
-  }
-  if (input.awaitsDesign) {
-    throw refuseQuestion(
-      'QUESTION_ABOUT_ON_DESIGN_WAIT',
-      `this question waits on the decision on design revision ${input.awaitsDesign.revision} of workflow ${input.awaitsDesign.workflowId}, which answers it with the decision itself; a business question \`about\` a requirement or a contract is answered by a person, and its answer becomes a decision there. Ask the business question on its own, and park on the design without \`about\``,
-      '/about',
-    );
-  }
-}
-
-/**
- * The stored `about` an ask names, or a refusal naming what it could not resolve: a requirement of
- * another project or none, `requirement: null` on a question no delivering issue carries, or a
- * contract the project neither publishes nor consumes, or a feedback item that is not this project's.
- */
-export async function resolveAbout(
-  executor: QuestionExecutor,
-  input: { projectId: string; issueId?: string | undefined },
-  about: QuestionAboutRequest | { feedbackId: string },
-): Promise<QuestionAbout> {
-  if ('feedbackId' in about) return feedbackAbout(executor, input.projectId, about.feedbackId);
-  if ('contract' in about) {
-    const refusal = await contractAboutRefusal(input.projectId, about.contract);
-    if (refusal) throw refuseQuestion('QUESTION_ABOUT_UNKNOWN', refusal, '/about/contract');
-    return { kind: 'contract', contract: about.contract };
-  }
-  if (about.requirement !== null) {
-    const requirementId = await requirementIdIn(executor as Tx, input.projectId, about.requirement);
-    if (!requirementId) {
-      throw refuseQuestion(
-        'QUESTION_ABOUT_UNKNOWN',
-        `\`about.requirement\` is \`${about.requirement}\`, which names no requirement of this project — name one by its key (REQ-n) or id`,
-        '/about/requirement',
-      );
-    }
-    return { kind: 'requirement', requirementId };
-  }
-  const [issue] = input.issueId
-    ? await executor
-        .select({ requirementId: issues.requirementId })
-        .from(issues)
-        .where(eq(issues.id, input.issueId))
-        .limit(1)
-    : [];
-  if (!issue?.requirementId) {
-    throw refuseQuestion(
-      'QUESTION_ABOUT_NO_REQUIREMENT',
-      input.issueId
-        ? `\`about.requirement\` is null, which names the requirement issue ${input.issueId} delivers, and it delivers none — name the requirement by its key (REQ-n), or link the issue to it first`
-        : '`about.requirement` is null, which names the requirement of the issue asked on, and this question is asked on no issue — name the requirement by its key (REQ-n)',
-      '/about/requirement',
-    );
-  }
-  return { kind: 'requirement', requirementId: issue.requirementId };
+  return insertQuestion(executor, { ...input, blockerKind }, about);
 }
 
 export async function askQuestion(input: AskInput) {
@@ -441,6 +374,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
       agentSessionId: input.agentSessionId,
       askedBy: input.askedBy,
       blockerKind: input.blockerKind,
+      serious: input.serious === true,
       steps: [step(1, input.prompt, input.answer, input.sensitive)],
       assumed: scrubSecretsDeep(input.assumed),
       origin,

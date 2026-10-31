@@ -31,6 +31,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -152,10 +153,13 @@ afterAll(async () => {
 });
 
 describe('the steward rejects a breakdown and never accepts one (decision 2, amended)', () => {
-  it('refuses the steward accepting a breakdown by name, and takes its rejection', async () => {
+  // the fence stands on a strict project only (REQ-79 BC-14, `suggestions/accept-fence.test.ts`)
+  it('refuses the steward accepting a breakdown by name on a strict project, and takes its rejection', async () => {
     const req = await agreedRequirement('owner', 'The board keeps its cards');
     const first = await breakdownOf(req.key);
-    const accepted = await say('steward', 'POST', at(`/suggestions/${first}/accept`), {});
+    const accepted = await underStrict(projectId, ownerId, () =>
+      say('steward', 'POST', at(`/suggestions/${first}/accept`), {}),
+    );
     expect(accepted.status, JSON.stringify(accepted.json)).toBe(403);
     expect(JSON.stringify(accepted.json)).toContain(
       "The project's steward accepts only the feedback triage it proposed itself",

@@ -2,7 +2,9 @@
 // question machine's `open → void`, made by a holder of `project.write` with the reason the asker of
 // the question reads. The steward's undo of its own question goes through here (REQ-48 BC-12). A
 // question its issue's park asked is refused: it ends when the issue leaves the park, so voiding it
-// alone would leave the issue parked on nothing.
+// alone would leave the issue parked on nothing. An agent voids any question, recorded as an
+// agent's, except one that is a person's, serious on a strict project, and that it did not ask
+// itself (REQ-79 BC-14, `owed.ts`).
 
 import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
@@ -13,6 +15,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { permissionFactsOf, requireHeld } from '../permissions/index.js';
+import { agentDecidesWhy, SERIOUS } from './owed.js';
 import { refuseQuestion } from './write.js';
 
 /** What a voided question's `ended_reason` says: a person or an agent withdrew it at this door. */
@@ -54,6 +57,16 @@ export async function voidQuestionAs(args: {
       throw refuseQuestion(
         'QUESTION_NOT_OPEN',
         `this question is ${row.status} — only an open question is voided`,
+      );
+    }
+    if (
+      args.agency === 'agent' &&
+      row.askedBy !== args.userId &&
+      (await agentDecidesWhy(row.projectId, row.serious)) === null
+    ) {
+      throw refuseQuestion(
+        'QUESTION_OWED_BY_PERSON',
+        `this question is marked serious (${SERIOUS}) on a strict project, so it is a person’s to answer or withdraw, and this request is an agent’s`,
       );
     }
     if (await isParkQuestion(tx, row.id)) {

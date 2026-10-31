@@ -27,6 +27,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 
 let projectId: string;
 let ownerId: string;
@@ -356,9 +357,12 @@ describe('a run asking a person a free-text question owes a recommended answer (
     );
   });
 
+  // a run asks a person only a serious decision on a strict project (REQ-79 BC-14)
   it('is asked with one, and the recommended answer is stored on its round', async () => {
-    const sent = body({ recommended: 'eu-west-1' });
-    const res = await api(boxToken, 'POST', '/api/devices/me/questions', sent);
+    const sent = body({ recommended: 'eu-west-1', serious: true });
+    const res = await underStrict(projectId, ownerId, () =>
+      api(boxToken, 'POST', '/api/devices/me/questions', sent),
+    );
     expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
     const [row] = await rows<{ steps: { recommended?: string }[] }>(
       sql`SELECT steps FROM agent_questions WHERE id = ${sent.id as string}`,

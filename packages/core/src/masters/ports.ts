@@ -120,6 +120,8 @@ interface MastersPorts {
    * (REQ-48 BC-5), each with the item whose decision answers it (ISS-654).
    */
   stewardAsks(projectId: string): Promise<StewardAsk[]>;
+  /** Open questions the project's master or a peer agent owes, which no person's Needs you lists (REQ-79 BC-14). */
+  questionsOwed(projectId: string): Promise<{ id: string; on: string | null }[]>;
   /**
    * `in_progress` issues the wedge pass left because their work landed and nothing has taken up
    * since, each owed its move to `awaiting_release` (ISS-564).

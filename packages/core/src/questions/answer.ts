@@ -72,10 +72,17 @@ function refuseAnswerTo(row: QuestionRow, args: AnswerInput, now: Date): Questio
   const current = row.steps[row.steps.length - 1];
   if (!current) throw new Error(`question ${row.id} has no round to answer`);
   const decision = isChoiceStep(current) && isStewardDecisionQuestion(current.options);
-  if (args.note !== undefined && row.origin?.kind !== 'channel_gate' && !decision) {
+  // an agent deciding a question a person was asked records why on the round (REQ-79 BC-14)
+  const agentsReason = args.agency === 'agent' && row.blockerKind !== 'master_or_peer';
+  if (
+    args.note !== undefined &&
+    row.origin?.kind !== 'channel_gate' &&
+    !decision &&
+    !agentsReason
+  ) {
     throw refuseQuestion(
       'QUESTION_NOTE_NOT_TAKEN',
-      'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate and a steward decision take one; here, answer with the option alone',
+      'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate, a steward decision and an agent deciding what a person was asked take one; here, answer with the option alone',
     );
   }
   if (current.round !== args.round) {
@@ -198,6 +205,7 @@ async function answerRound(
       answerText: text,
       answeredBy: args.by,
       ...(args.answeredWith ? { answeredWith: args.answeredWith } : {}),
+      ...(note ? { note } : {}),
     };
   }
   throw refuseQuestion(
