@@ -151,6 +151,11 @@ describe('adopt: a consumer moves to an additive version in one act', () => {
     expect(out.refusals[0]?.detail).toContain(
       '`PUT /api/projects/:id/links/<link>` setting `pinnedVersion: "3.1.1"`',
     );
+    // the sentence states its condition once
+    expect(out.refusals[0]?.detail.match(/once/gi)).toHaveLength(1);
+    expect(out.refusals[0]?.detail).toContain(
+      "Once that issue has checked this consumer's code against it, move this consumer by hand: `PUT",
+    );
   });
 
   it('refuses a step no differ measured as additive: unknown, a declared semantic change, or no line back to the pin', () => {
