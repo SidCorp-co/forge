@@ -20,6 +20,7 @@
  * @direct-test-of packages/core/src/db/schema-issue-designs.ts
  * @direct-test-of packages/core/src/db/schema-issue-leases.ts
  * @direct-test-of packages/core/src/issues/issue-lease-read.ts
+ * @direct-test-of packages/core/src/issues/criteria/recording-session.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -500,6 +501,10 @@ describe('a verdict from a run core has not admitted', () => {
     expect(details(res)).toContain('it waits behind ISSUE_SCOPE_HELD:');
     expect(details(res)).toContain(`held by live run ${holder.runId}`);
     expect(details(res)).toContain('Nothing was written.');
+    expect(details(res), 'a scope wait names no builder run to close').not.toContain(
+      'Close the builder run',
+    );
+    expect(details(res)).toContain('Record the verdict once the run is admitted.');
     expect(await verdictRows(w(22).id)).toBe(0);
     await close(holder.sessionId);
   });
@@ -520,6 +525,11 @@ describe('a verdict from a run core has not admitted', () => {
 
     expect([res.status, codes(res)]).toEqual([422, ['VERDICT_SESSION_NOT_ADMITTED']]);
     expect(details(res)).toContain('it waits behind ISSUE_LEASE_HELD:');
+    // forge-core-61, 2026-10-31 (ISS-838): a reviewer judges finished work, so the refusal names the
+    // builder run to close, not only its session.
+    expect(details(res)).toContain(
+      `Close the builder run ${holder.runId} first, then record the verdict once run ${queued.runId} is admitted.`,
+    );
     expect(await verdictRows(w(23).id)).toBe(0);
     await close(holder.sessionId);
   });

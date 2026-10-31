@@ -61,7 +61,7 @@ import {
   queueableRefusal,
   recordRefusedDeclaration,
 } from './run-session-queued.js';
-import { takenBy } from './run-take.js';
+import { restartsSteps, takenBy } from './run-take.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
@@ -278,7 +278,7 @@ export async function openRunSession(args: {
             runId: queued.runId,
             issueKeys: taken.keys,
           });
-          await restartStepsForNewRun(tx, args.projectId, taken.seqs);
+          if (restartsSteps(args.role)) await restartStepsForNewRun(tx, args.projectId, taken.seqs);
         }
         return { opened: { sessionId: queued.sessionId, runId: queued.runId } };
       }
@@ -306,7 +306,7 @@ export async function openRunSession(args: {
           runId: run.id,
           issueKeys: taken.keys,
         });
-        await restartStepsForNewRun(tx, args.projectId, taken.seqs);
+        if (restartsSteps(args.role)) await restartStepsForNewRun(tx, args.projectId, taken.seqs);
       }
       return { opened: { sessionId: row.id, runId: run.id } };
     })

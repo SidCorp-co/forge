@@ -1,0 +1,1 @@
+**A judge or reviewer run no longer moves the step.** Declaring a qa or reviewer run on an issue at `in_progress:test` leaves the step at test. A verdict waiting behind another run's hold names that builder run to close first.

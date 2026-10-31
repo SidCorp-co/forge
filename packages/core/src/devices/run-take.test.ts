@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { takenBy } from './run-take.js';
+import { restartsSteps, takenBy } from './run-take.js';
 
 const group = { keys: ['ISS-1', 'ISS-2', 'ISS-3'], seqs: [1, 2, 3] };
 const statuses = { 'ISS-1': 'closed', 'ISS-2': 'awaiting_release', 'ISS-3': 'dropped' };
@@ -28,5 +28,22 @@ describe('the issues a declared run takes', () => {
   it('a run naming no role over issues all over takes nothing (ISS-576)', () => {
     const over = { keys: ['ISS-1', 'ISS-3'], seqs: [1, 3] };
     expect(takenBy(over, statuses, undefined)).toEqual({ keys: [], seqs: [] });
+  });
+});
+
+describe('whether a declared run starts the step of what it takes over (ISS-838)', () => {
+  it.each(['qa', 'reviewer', 'forge:qa', 'forge:reviewer'])(
+    'a %s run judges, and leaves the step',
+    (role) => {
+      expect(restartsSteps(role)).toBe(false);
+    },
+  );
+
+  it.each(['runner', 'forge:runner', 'triage'])('a %s run builds, and starts it over', (role) => {
+    expect(restartsSteps(role)).toBe(true);
+  });
+
+  it('a run that names no role is read as building, the declaration before roles', () => {
+    expect(restartsSteps(undefined)).toBe(true);
   });
 });

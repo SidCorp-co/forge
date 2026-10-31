@@ -6,10 +6,12 @@
 
 import {
   RUN_DECLARATION_REFUSAL_METADATA_KEY,
+  RUN_GROUP_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
+import { liveIssueLeasesSql } from '../../db/schema-issue-leases.js';
 import { runOfCall } from '../pattern-runs.js';
 import type { VerdictRefusal } from './verdict-input.js';
 import type { VerdictAuthor } from './verdict-record.js';
@@ -17,7 +19,30 @@ import type { VerdictAuthor } from './verdict-record.js';
 interface QueuedRow {
   box_run_id: string | null;
   run_id: string;
+  project_id: string;
   refusal: { code?: string; detail?: string } | null;
+}
+
+/**
+ * The live runs holding a lease on the queued run's issues, each named as its box knows it. A judge
+ * queued behind ISSUE_LEASE_HELD waits for the builder to finish (forge-core-61, 2026-10-31: a
+ * reviewer judges finished work), so the refusal names the run to close, not only its session.
+ */
+async function leaseHolderRuns(
+  tx: Pick<Tx, 'execute'>,
+  projectId: string,
+  queuedRunId: string,
+): Promise<string[]> {
+  const rows = (await tx.execute(sql`
+    SELECT DISTINCT coalesce(hr.metadata ->> 'boxRunId', hr.id::text) AS run
+      FROM pipeline_runs q
+      CROSS JOIN LATERAL jsonb_array_elements_text(coalesce(q.metadata -> ${RUN_GROUP_METADATA_KEY}, '[]'::jsonb)) AS k(key)
+      JOIN ${liveIssueLeasesSql()} l ON l.project_id = ${projectId} AND l.issue_key = k.key
+      JOIN pipeline_runs hr ON hr.id = l.run_id
+     WHERE q.id = ${queuedRunId} AND l.run_id <> q.id
+     ORDER BY run
+  `)) as unknown as Array<{ run: string }>;
+  return rows.map((r) => r.run);
 }
 
 /**
@@ -30,7 +55,7 @@ async function unadmittedDetail(
   judged: string,
 ): Promise<string | null> {
   const [row] = (await tx.execute(sql`
-    SELECT r.metadata ->> 'boxRunId' AS box_run_id, r.id AS run_id,
+    SELECT r.metadata ->> 'boxRunId' AS box_run_id, r.id AS run_id, r.project_id,
            r.metadata -> ${RUN_DECLARATION_REFUSAL_METADATA_KEY} AS refusal
       FROM agent_sessions s JOIN pipeline_runs r ON r.id = s.pipeline_run_id
      WHERE s.id = ${session} AND s.kind = ${RUN_SESSION_KIND} AND s.status = 'queued'
@@ -41,7 +66,15 @@ async function unadmittedDetail(
     ? `it waits behind ${row.refusal.code}: ${row.refusal.detail ?? 'no detail recorded'}`
     : 'it waits behind a refusal its declaration did not record';
   const said = behind.trim().endsWith('.') ? behind.trim() : `${behind.trim()}.`;
-  return `${judged} is recorded by run ${run}, which core has not admitted: its declaration is queued, and ${said} Nothing was written. Record the verdict once the run is admitted.`;
+  const holders =
+    row.refusal?.code === 'ISSUE_LEASE_HELD'
+      ? await leaseHolderRuns(tx, row.project_id, row.run_id)
+      : [];
+  const next =
+    holders.length > 0
+      ? `Close the builder run ${holders.join(', ')} first, then record the verdict once run ${run} is admitted.`
+      : 'Record the verdict once the run is admitted.';
+  return `${judged} is recorded by run ${run}, which core has not admitted: its declaration is queued, and ${said} Nothing was written. ${next}`;
 }
 
 async function unadmittedFault(

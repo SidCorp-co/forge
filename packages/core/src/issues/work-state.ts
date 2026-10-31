@@ -74,7 +74,8 @@ export async function setWorkStep(
 }
 
 /**
- * A new run over issues already in progress starts their step over at triage: the step an earlier
+ * A new building run over issues already in progress starts their step over at triage (a judging
+ * run leaves it, `devices/run-take.ts:restartsSteps`): the step an earlier
  * run reached, or a park kept, is not where this run is (HOP run 2026-10-05: ISS-1 re-dispatched to
  * write a design revision read `test` from the day before). The run's own step writes move it on.
  */
