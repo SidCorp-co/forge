@@ -347,3 +347,57 @@ describe('the joining project records its builder run', () => {
     ).toEqual(['BUILDER_RUN_IMMUTABLE /trigger']);
   });
 });
+
+describe('the consumer retires a link it no longer calls', () => {
+  const second = () => linkDoc((d) => (d.consumer.module = 'cli/retired'));
+  const del = (id: string, who: Parameters<typeof say>[0] = 'masterPlugin') =>
+    say(who, 'DELETE', `${links()}/${id}`);
+  let id = '';
+  let before = 0;
+
+  it('refuses the empty call-site list on a current link, naming the act', async () => {
+    before = ok(await say('plugin', 'GET', links())).returned;
+    const made = ok(await create(second()));
+    id = made.document.id;
+    const empty = await say('masterPlugin', 'PUT', `${links()}/${id}`, {
+      baseRevision: 1,
+      document: { ...second(), callSites: [] },
+    });
+    expect(refusal(empty)).toEqual(['LINK_GUIDE_WITHOUT_CALL_SITE /callSites']);
+    expect(empty.json.error.refusals[0].detail).toMatch(
+      new RegExp(`DELETE /api/projects/${w.project.plugin}/links/<link>`),
+    );
+  });
+
+  it('refuses the delete while a call site stands, and keeps the link', async () => {
+    const r = await del(id);
+    expect(refusal(r)).toEqual(['LINK_RETIRE_WITH_CALL_SITES /callSites']);
+    expect(ok(await say('plugin', 'GET', links())).returned).toBe(before + 1);
+  });
+
+  it('refuses a writer without the permission and a link of another project', async () => {
+    expect(deniedAs(await del(id, 'viewer'))).toBe('PERMISSION_FORBIDDEN');
+    const stranger = await say(
+      'masterForge',
+      'DELETE',
+      `/api/projects/${w.project.forge}/links/${id}`,
+    );
+    expect(stranger.status).toBe(404);
+  });
+
+  it('deletes the link once it carries no call site, and it is gone from every read', async () => {
+    const emptied = ok(
+      await say('masterPlugin', 'PUT', `${links()}/${id}`, {
+        baseRevision: 1,
+        document: { ...second(), state: 'building', callSites: [] },
+      }),
+    );
+    expect(emptied.revision).toBe(2);
+    const gone = await del(id);
+    expect(gone.status, JSON.stringify(gone.json)).toBe(200);
+    expect(gone.json.retired).toMatchObject({ revision: 2, document: { id } });
+    expect(ok(await say('plugin', 'GET', links())).returned).toBe(before);
+    expect((await say('plugin', 'GET', `${links()}/${id}`)).status).toBe(404);
+    expect((await del(id)).status).toBe(404);
+  });
+});

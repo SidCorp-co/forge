@@ -29,6 +29,7 @@ import {
   linkIdentityRefusals,
   parseBuilderRun,
   parseLink,
+  retireRefusals,
   writerRefusal,
 } from './link-rules.js';
 import {
@@ -39,6 +40,7 @@ import {
 } from './link-schema.js';
 import {
   builderRunsOf,
+  deleteLink,
   insertBuilderRun,
   insertLink,
   linkHolding,
@@ -253,6 +255,29 @@ const BUILDER_RUN: RecordKind<BuilderRunWrite> = {
 
 export const createLink = (input: WriteInput) => createRecord(LINK, input);
 export const updateLink = (input: WriteInput & { id: string }) => updateRecord(LINK, input);
+/** Retire a link whose consumer calls nothing of its contract any more: the row goes, and the answer is the record it held. */
+export async function retireLink(input: {
+  projectId: string;
+  id: string;
+  writer: RecordWriter;
+}): Promise<RecordOutcome<LinkWrite>> {
+  const { projectId, id, writer } = input;
+  const denied = await writerMiss(LINK as RecordKind<unknown>, writer, projectId);
+  if (denied) return denied;
+  return db.transaction(async (tx) => {
+    await lockKeys(tx, [`${LINK.what}:${projectId}`]);
+    const row = await readLink(tx, id);
+    if (!row || row.projectId !== projectId) {
+      throw notFound(`project ${projectId} holds no ${LINK.what} ${id}`);
+    }
+    const stored = LINK.stored(row);
+    const refusals = retireRefusals(stored, id);
+    if (refusals.length > 0) return { ok: false, refusals };
+    await deleteLink(tx, { id, revision: row.revision });
+    return { ok: true, held: { row, document: stored }, created: false, previous: stored };
+  });
+}
+
 export type RunReport = Awaited<ReturnType<typeof finishedRunReport>> & {
   /** Where this write finished the run: the run opened at the head that moved past it, or why none did. */
   next?: NextRun;

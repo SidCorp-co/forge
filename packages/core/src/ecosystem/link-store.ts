@@ -120,6 +120,14 @@ export async function replaceLink(
   return row;
 }
 
+export async function deleteLink(tx: Tx, input: { id: string; revision: number }): Promise<void> {
+  const gone = await tx
+    .delete(ecosystemLinks)
+    .where(and(eq(ecosystemLinks.id, input.id), eq(ecosystemLinks.revision, input.revision)))
+    .returning({ id: ecosystemLinks.id });
+  if (gone.length !== 1) throw new Error(`ecosystem: link ${input.id} moved under its own lock`);
+}
+
 const runColumns = {
   id: ecosystemBuilderRuns.id,
   ecosystemId: ecosystemBuilderRuns.ecosystemId,

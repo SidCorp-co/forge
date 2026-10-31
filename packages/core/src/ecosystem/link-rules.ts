@@ -177,7 +177,19 @@ function guideRefusals(doc: LinkWrite): EcosystemRefusal[] {
     {
       code: 'LINK_GUIDE_WITHOUT_CALL_SITE',
       path: '/callSites',
-      detail: `a link in state ${doc.state} names at least one call site; only a link still being built may carry none.`,
+      detail: `a link in state ${doc.state} names at least one call site; only a link still being built may carry none. A consumer that no longer calls the contract retires the link instead: PUT it once with state building and callSites [], then DELETE /api/projects/${doc.consumer.project}/links/<link>.`,
+    },
+  ];
+}
+
+/** A link is retired only once the consumer's code calls nothing of it: one that still names a call site is refreshed, never deleted. */
+export function retireRefusals(stored: LinkWrite, linkId: string): EcosystemRefusal[] {
+  if (stored.callSites.length === 0) return [];
+  return [
+    {
+      code: 'LINK_RETIRE_WITH_CALL_SITES',
+      path: '/callSites',
+      detail: `link ${linkId} still names ${stored.callSites.length} call site${stored.callSites.length === 1 ? '' : 's'}; a link is retired only when its consumer has none left. PUT the link with callSites [] and state building once the code calls nothing of the contract, then DELETE it.`,
     },
   ];
 }

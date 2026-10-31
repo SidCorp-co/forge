@@ -12,7 +12,7 @@ export const ECOSYSTEM_INBOX_GUIDE: CoreGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — over REST, with the author taken from the token.',
-  version: 9,
+  version: 10,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -60,7 +60,13 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
    \`GET /api/projects/:id/links\`, then \`PUT /api/projects/:id/links/<link> { baseRevision, document }\`
    with the \`baseRevision\` you read. A link takes
    \`ecosystem-links.write\` on the consuming project (member or above); without it the write is
-   \`PERMISSION_FORBIDDEN\`.
+   \`PERMISSION_FORBIDDEN\`. A consumer that deleted every call site of a contract no longer has a
+   link to it: \`PUT\` with \`callSites: []\` on a non-\`building\` link is refused
+   \`LINK_GUIDE_WITHOUT_CALL_SITE\`, and the act is two writes: \`PUT\` the link once with \`state: "building"\` and \`callSites: []\`
+   (the one state that may carry none), then \`DELETE /api/projects/:id/links/<link>\`, which
+   removes it and answers the record it held as \`retired\`. A link that still names a call
+   site is refused \`LINK_RETIRE_WITH_CALL_SITES\`, so the empty write comes first.
+   Take the id out of an open run's \`links\` too, or the run's next write is \`BUILDER_RUN_LINK_UNKNOWN\`.
 5. When a provider approves a version that is not breaking, the bell names the one act that adopts it:
    \`POST /api/projects/:id/interface/adopt { contract: "<provider>/<contract>", version }\`. In one
    transaction it writes the interface revision that names the version as \`builtAgainst\` and moves

@@ -19,6 +19,7 @@ import {
   createLink,
   type RecordOutcome,
   type RecordWriter,
+  retireLink,
   updateBuilderRun,
   updateLink,
 } from './link-service.js';
@@ -89,6 +90,13 @@ linkProjectRoutes.put('/:id/links/:link', linkParam, envelope, async (c) => {
     c,
     await updateLink({ projectId: id, id: link, writer: writerOf(c), baseRevision, raw: document }),
   );
+});
+
+linkProjectRoutes.delete('/:id/links/:link', linkParam, noQuery, async (c) => {
+  const { id, link } = c.req.valid('param');
+  const outcome = await retireLink({ projectId: id, id: link, writer: writerOf(c) });
+  if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
+  return c.json({ retired: recordView(outcome.held) });
 });
 
 linkProjectRoutes.post('/:id/builder-runs', idParam, envelope, async (c) => {
