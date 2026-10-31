@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.396] - 2026-10-31
+
+Agent-token unknown routes name their nearest routes
+
+### Fixed
+
+- **An agent token on an unknown `/api` route now gets its nearest routes.** The token surface answered that 404 itself, without the nearest-routes list every other caller saw.
+
 ## [0.4.0-dev.395] - 2026-10-31
 
 Refused bodies show the accepted shape; unknown routes name their nearest routes
