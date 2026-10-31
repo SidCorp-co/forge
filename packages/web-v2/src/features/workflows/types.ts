@@ -193,6 +193,8 @@ export interface WorkflowDesign {
   builds: DesignBuild[];
   gate: DesignBuildGate;
   requirements: DesignRequirementLink[];
+  /** An unlinked requirement named after this design, which the page links before it offers a new one; null when none. */
+  matchingRequirement: { key: string; title: string } | null;
   /** The refusal approving the proposed revision would meet on its bases now, with its facts; null when none. */
   approvalBlocked: DesignApprovalBlock | null;
   /** The designs approving the proposed revision leaves on a stale base. */

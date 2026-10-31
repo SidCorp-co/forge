@@ -80,8 +80,8 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
     <div className="min-h-full bg-app" data-testid="workflow-design-screen">
       <DetailHeader
         back={{ href: back, label: t("workflows.title") }}
-        itemKey={record?.document.flow ?? flow}
-        keyTitle={record?.document.id}
+        itemKey={view === "developer" ? (record?.document.flow ?? flow) : undefined}
+        keyTitle={view === "developer" ? record?.document.id : undefined}
         title={shown?.title ?? flow}
         badge={d?.status ? <DesignPill status={d.status} reason={d.status === "returned" ? d.revisions[0]?.reason : null} /> : null}
         views={record ? <RecordViewSwitch view={view} onView={setView} /> : null}

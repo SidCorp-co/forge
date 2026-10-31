@@ -1,0 +1,1 @@
+**A design links the requirement that already covers it.** Where Forge holds an unlinked requirement named after a design, the design page offers Link REQ-n before Draft a requirement. The flow slug shows in the Developer view only.

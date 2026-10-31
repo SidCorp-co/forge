@@ -13,7 +13,7 @@ import { said } from "@/lib/i18n/said";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { ReactNode } from "react";
 import { revisionReason } from "../decision-words";
-import { useDraftRequirementFromDesign } from "../hooks";
+import { useDraftRequirementFromDesign, useLinkRequirementToDesign } from "../hooks";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
 import { HealthMark } from "./health-parts";
@@ -159,6 +159,25 @@ function DraftFromDesign({ projectId, slug, workflowId, flow, title }: { project
     <div className="mt-2 grid gap-1">
       <Button size="sm" variant="secondary" loading={create.isPending} onClick={() => create.mutate({ title, designs: [flow] }, { onSuccess: (r) => router.push(requirementHref(slug, r.key)) })} data-testid="draft-from-design">
         {t("workflows.facts.draftRequirement")}
+      </Button>
+      {refused ? (
+        <p role="alert" className="text-13 text-danger-11">
+          {refused}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** ISS-805: the project's requirement named after this design is linked to it, rather than a second one drafted. */
+function LinkRequirement({ projectId, workflowId, match }: { projectId: string; workflowId: string; match: { key: string; title: string } }) {
+  const t = useCopy();
+  const link = useLinkRequirementToDesign(projectId, workflowId);
+  const refused = link.error ? (refusalsOf(link.error)[0]?.detail ?? formatApiError(link.error)) : null;
+  return (
+    <div className="mt-2 grid gap-1">
+      <Button size="sm" variant="secondary" loading={link.isPending} onClick={() => link.mutate(match.key)} title={match.title} data-testid="link-requirement">
+        {t("workflows.facts.linkRequirement", { key: match.key })}
       </Button>
       {refused ? (
         <p role="alert" className="text-13 text-danger-11">
@@ -320,7 +339,6 @@ function WhereItStands({ d, health, slug, projectId, title }: { d: WorkflowDesig
             <span className="text-muted">{t("workflows.facts.none")}</span>
           )}
         </StandingMark>
-        {d.requirements.length === 0 && d.canDraftRequirement && projectId ? <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} /> : null}
         <StandingMark label={t("workflows.stands.code")} stand={code.stand} testId="stands-code">
           {t(code.key)}
         </StandingMark>
@@ -328,6 +346,14 @@ function WhereItStands({ d, health, slug, projectId, title }: { d: WorkflowDesig
           <StandingMark label={t("workflows.needsYou")} stand="differs" testId="stands-needs-you">
             {String(health.needsYou)}
           </StandingMark>
+        ) : null}
+        {/* the act follows the marks, never sits between them; a match is linked before a new one is offered (ISS-805) */}
+        {d.requirements.length === 0 && d.canDraftRequirement && projectId ? (
+          d.matchingRequirement ? (
+            <LinkRequirement projectId={projectId} workflowId={d.workflowId} match={d.matchingRequirement} />
+          ) : (
+            <DraftFromDesign projectId={projectId} slug={slug} workflowId={d.workflowId} flow={d.flow} title={title} />
+          )
         ) : null}
       </div>
     </FactsGroup>
@@ -424,7 +450,7 @@ export function WorkflowDesignProperties({ d, record, shown, shownRevision, temp
           </Fact>
         ) : null}
         <Fact label={t("workflows.facts.template")}>
-          <span title={template ? `${template.id}@${template.version}` : undefined}>{template?.title ?? t("workflows.facts.none")}</span>
+          <span title={developer && template ? `${template.id}@${template.version}` : undefined}>{template?.title ?? t("workflows.facts.none")}</span>
         </Fact>
         {/* the Steps tab counts them; the rail says only how many have an owner and a deadline (REQ-43 BC-5) */}
         <Fact label={unit === "states" ? t("workflows.tab.states") : t("workflows.tab.steps")} testId="fact-steps">

@@ -3,6 +3,7 @@ import type { DesignRequirementLink } from '@forge/contracts/workflows';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementStatesOf } from './ports.js';
+import { readStoredWorkflow } from './schema.js';
 
 type LinkRow = {
   id: string;
@@ -68,4 +69,39 @@ export async function requirementKeysOf(
      ORDER BY r.req_seq`)) as unknown as { workflow_id: string; req_seq: number }[];
   for (const r of rows) keys.get(r.workflow_id)?.push(requirementKey(Number(r.req_seq)));
   return keys;
+}
+
+/** A title as the match reads it: case, punctuation and spacing do not tell two names apart. */
+const plainName = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
+/**
+ * The requirement a design with none linked could link instead of drafting a new one (ISS-805): one
+ * of the project's live requirements, linked to no design, whose title is the design's own title
+ * or its flow name, as the draft-from-design act titles the requirement it makes (REQ-34 BC-10).
+ * A requirement that lists the design is already linked, so it is read from `requirements`, and a
+ * design with one has no match to offer. The oldest such requirement wins, so the answer does not
+ * move while it stands.
+ */
+export async function matchingRequirementOf(
+  design: { projectId: string; flow: string; designStatus: string | null; document: unknown },
+  linked: number,
+): Promise<{ key: string; title: string } | null> {
+  // a withdrawn design takes no link (`requirements/issue-links.ts:linkWorkflow`)
+  if (linked > 0 || design.designStatus === 'withdrawn') return null;
+  const title = readStoredWorkflow(design.document)?.title ?? '';
+  const names = new Set([plainName(title), plainName(design.flow)].filter((n) => n !== ''));
+  if (names.size === 0) return null;
+  const rows = (await db.execute(sql`
+    SELECT r.req_seq, r.title
+      FROM requirements r
+     WHERE r.project_id = ${design.projectId}
+       AND r.status NOT IN ('dropped', 'refused')
+       AND NOT EXISTS (SELECT 1 FROM requirement_workflows rw WHERE rw.requirement_id = r.id)
+     ORDER BY r.req_seq`)) as unknown as { req_seq: number; title: string }[];
+  const hit = rows.find((r) => names.has(plainName(r.title)));
+  return hit ? { key: requirementKey(Number(hit.req_seq)), title: hit.title } : null;
 }

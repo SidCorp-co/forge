@@ -31,7 +31,7 @@ let say: (
 
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 
-const design = (flow: string): Doc => {
+const design = (flow: string, title?: string): Doc => {
   const d = JSON.parse(
     readFileSync(
       new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
@@ -40,6 +40,7 @@ const design = (flow: string): Doc => {
   );
   d.project = projectId;
   d.flow = flow;
+  if (title) d.title = title;
   return d;
 };
 
@@ -126,5 +127,34 @@ describe('the workflows list a first-time reader opens', () => {
     expect([viewer.canWrite, viewer.canDraftRequirement]).toEqual([false, false]);
     expect(ok(await say('owner', 'GET', at('/workflows'))).canWrite).toBe(true);
     expect(ok(await say('viewer', 'GET', at('/workflows'))).canWrite).toBe(false);
+  });
+
+  it('offers the unlinked requirement named after a design, until one links it or none matches (ISS-805)', async () => {
+    const created = ok(
+      await say('master', 'POST', at('/workflows'), {
+        baseRevision: null,
+        document: design('orphan-flow', 'Orphan flow design'),
+      }),
+      201,
+    );
+    const id = (created.document?.id ?? created.workflowId) as string;
+    const page = async () => ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
+    expect((await page()).matchingRequirement).toBeNull();
+    const made = ok(
+      await say('owner', 'POST', at('/requirements'), {
+        title: 'orphan  FLOW design!',
+        reason: 'a requirement drafted for the design, never linked',
+        criteria: [{ body: 'A patient is discharged with a follow-up booked.' }],
+      }),
+      201,
+    );
+    expect((await page()).matchingRequirement).toEqual({
+      key: made.key,
+      title: 'orphan  FLOW design!',
+    });
+    ok(await say('owner', 'POST', at(`/requirements/${made.key}/workflows`), { workflowId: id }));
+    const linked = await page();
+    expect(linked.matchingRequirement).toBeNull();
+    expect((linked.requirements as Doc[]).map((r) => r.key)).toEqual([made.key]);
   });
 });

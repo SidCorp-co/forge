@@ -28,7 +28,7 @@ import { revisionChangesOf } from './design-changes.js';
 import { type DesignIssueOutcome, handBack, redrawWaitingDesign } from './design-issue.js';
 import { recordDecision, recordWithdrawal } from './design-record.js';
 import { pinOnlyChange } from './design-repin.js';
-import { designRequirementsOf } from './design-requirements.js';
+import { designRequirementsOf, matchingRequirementOf } from './design-requirements.js';
 import {
   buildGateOf,
   builtAgainstOf,
@@ -196,6 +196,7 @@ export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | n
     })),
     gate: buildGateOf(head),
     requirements,
+    matchingRequirement: await matchingRequirementOf(row, requirements.length),
   };
 }
 

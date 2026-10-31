@@ -297,6 +297,7 @@
     "workflows.whoOwnsWhat": "Who owns what",
     "workflows.wireframeOf": "Wireframe of {title}",
     "workflows.facts.draftRequirement": "Draft a requirement from this design",
+    "workflows.facts.linkRequirement": "Link {key}",
     "workflows.tab.edit": "Edit",
     "workflows.edit.newDesign": "New design",
     "workflows.edit.create": "Create draft",

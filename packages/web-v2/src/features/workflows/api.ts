@@ -24,6 +24,12 @@ export const workflowsApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Links an existing requirement to this design: the requirement's own link route. */
+  linkRequirement: (projectId: string, req: string, workflowId: string) =>
+    apiClient<unknown>(`/projects/${projectId}/requirements/${encodeURIComponent(req)}/workflows`, {
+      method: "POST",
+      body: JSON.stringify({ workflowId }),
+    }),
   repins: (projectId: string, workflowId: string) => apiClient<RepinPlan>(`/projects/${projectId}/workflows/${workflowId}/design/repins`),
   repin: (projectId: string, workflowId: string, body: RepinActBody) =>
     apiClient<RepinActResult>(`/projects/${projectId}/workflows/${workflowId}/design/repins`, {

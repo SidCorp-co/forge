@@ -219,6 +219,9 @@ function designTabs(t: Copy, shown: WorkflowBody, d: WorkflowDesign, decisionCou
   ];
 }
 
+/** The flow slug is the Developer view's: the Person view names a design by its title (ISS-805). */
+const developerOnly = (view: string, slug: string) => (view === "developer" ? slug : undefined);
+
 export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab: tabAsked, onTab, decision, walkDecision, repins }: DesignPageProps) {
   // a link to the Edit tab opens the design to a reader who cannot edit it
   const tab = tabAsked === "edit" && !d.canWrite ? "design" : tabAsked;
@@ -247,7 +250,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
   // Squeezed, a remembered open detail stays folded (the canvas keeps its share) and one opened now floats over the canvas
   const head = (
     <div ref={headRef}>
-      <DetailMobileTitle itemKey={record.document.flow} title={shown.title} badge={badge} />
+      <DetailMobileTitle itemKey={developerOnly(view, record.document.flow)} title={shown.title} badge={badge} />
       <DesignBanner
         d={d}
         acts={decision?.acts}

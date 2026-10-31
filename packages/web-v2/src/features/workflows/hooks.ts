@@ -82,6 +82,12 @@ export const useDraftRequirementFromDesign = (projectId: string, workflowId: str
     touches: [workflowKeys.design(projectId, workflowId), workflowKeys.health(projectId, workflowId), ["requirements", projectId]],
   });
 
+/** Links the design's matching requirement to it; the design, its health and the requirements read again. */
+export const useLinkRequirementToDesign = (projectId: string, workflowId: string) =>
+  useWrite((req: string) => workflowsApi.linkRequirement(projectId, req, workflowId), {
+    touches: [workflowKeys.list(projectId), workflowKeys.design(projectId, workflowId), workflowKeys.health(projectId, workflowId), ["requirements", projectId]],
+  });
+
 /** Approving a base, or one of its dependents, also changes what the re-pin act would take. */
 export const useDesignDecision = (projectId: string, workflowId: string) =>
   useWrite((body: DesignDecisionBody) => workflowsApi.decide(projectId, workflowId, body), {
