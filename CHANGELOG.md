@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.405] - 2026-10-31
+
+Design check skipped where the design-record gate is off
+
+### Fixed
+
+- **The build step follows the design_record gate.** Where it is off, moving work into build, test or release needs no design record; where it is enforced, the refusal names the gate and how to relax it.
+
 ## [0.4.0-dev.404] - 2026-10-31
 
 A reviewer or judge run holding an issue is no longer read as its builder

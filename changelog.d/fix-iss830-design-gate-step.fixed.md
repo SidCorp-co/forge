@@ -1,1 +1,0 @@
-**The build step follows the design_record gate.** Where it is off, moving work into build, test or release needs no design record; where it is enforced, the refusal names the gate and how to relax it.
