@@ -116,6 +116,26 @@ describe('the design-write shape the workflow-design guide gives (ISS-579)', () 
   });
 });
 
+describe('where a dispatcher puts the standing rules (ISS-816)', () => {
+  it('sends them beside a plugin-gated brief, never below a prompt sent unchanged', async () => {
+    const step = between(
+      await served('dispatch'),
+      '2. `forge-runner run brief <run id>`',
+      '3. A `wave`',
+    );
+    expect(step).toContain(
+      "With no other brief gate in the pane, the project's standing rules are added below it.",
+    );
+    expect(step).toContain('never go in or below that prompt');
+    expect(step).toContain(
+      'one comment on each issue the run takes (`POST /api/issues/:id/comments`)',
+    );
+    expect(step).toContain('the one-line `next` of the lease you hand over');
+    const brief = between(await served('dispatch'), '- **The brief**', '### 6.');
+    expect(brief).not.toContain("and the project's standing rules a run cannot read");
+  });
+});
+
 describe('the index an agent reads first (llms.txt)', () => {
   it('links the API contract and the MCP tool list at /api, from either mount', async () => {
     const atApi = new Hono().route('/api', guideRoutes);

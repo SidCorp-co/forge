@@ -84,9 +84,9 @@ run, declared over work that has landed, writes no code: it neither holds a scop
   tree holds waits for that tree to land. The files are the brief's information; the design
   record's modules and contracts are what core refuses an overlap on.
 - **The brief** names the issue's key and uuid, the project, the tree, its branch and head, the base
-  branch, what the other trees hold, the method to read (${guideRef('issue-flow')}), and the
-  project's standing rules a run cannot read on its own. Nothing else goes in it. The box prints
-  every fact but the standing rules (§6), so none of them is typed by hand.
+  branch, what the other trees hold and the method to read (${guideRef('issue-flow')}). Nothing
+  else goes in it, and the box prints every fact, so none is typed by hand. The project's standing
+  rules a run cannot read on its own are the one thing the dispatcher adds, where §6 step 2 says.
 
 ### 6. Declare, record, dispatch
 1. \`forge-runner run declare --project <slug> --issue <key> --worktree <tree> --role <role>\` writes
@@ -112,10 +112,15 @@ run, declared over work that has landed, writes no code: it neither holds a scop
    already ended, a base the remote has but the checkout never fetched, and a remote the box cannot
    read are refused by name. A remote that holds no base branch yet (a new repo's first run) is
    briefed: the brief says the run's landing creates the branch, and reads every other tree
-   without a base, committed meaning every file in that tree's HEAD commits. The project's standing rules are added below it. Where the forge plugin's brief gate also runs in
-   the pane, it refuses any prompt its own brief verb did not print, so the prompt is that verb's
-   output for the same issues and tree, whole and unchanged: the run is bound by the declaration
-   and the tool call, never by the prompt's words.
+   without a base, committed meaning every file in that tree's HEAD commits. With no other brief
+   gate in the pane, the project's standing rules are added below it. Where the forge
+   plugin's brief gate also runs in the pane, it refuses any prompt its own brief verb did not
+   print, so the prompt is that verb's output for the same issues and tree, whole and unchanged:
+   the run is bound by the declaration and the tool call, never by the prompt's words. The
+   project's standing rules never go in or below that prompt: post them as one comment on each
+   issue the run takes (\`POST /api/issues/:id/comments\`), which the run reads with the issue, and
+   name that comment in the one-line \`next\` of the lease you hand over, which the run's own claim
+   prints back.
 3. A \`wave\` record on the headline: \`POST /api/issues/:id/events\` naming the members, the role and
    the tree. **Written once.** Where the call's answer is unclear (\`forge-runner api\` exit 10,
    \`DELIVERY_UNKNOWN\`), read \`?kind=wave\` back before writing again — a resend is a second
