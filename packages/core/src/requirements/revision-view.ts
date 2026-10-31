@@ -112,19 +112,21 @@ export function revisionView(
 }
 
 /**
- * The revision `r` is read against: the one it was written on, else the requirement's current one
- * (a draft written on none still shows what it changes in the agreed text), else the revision
- * marked current. Null when there is none.
+ * The revision `r` is read against: the one it was written on. An open draft or proposal written on
+ * none is read against the requirement's current one, so it still shows what it changes in the
+ * agreed text. Any other revision with no base (a first revision, current or superseded) is read
+ * against nothing: null, an empty spec (REQ-12 BC-19).
  */
 export function revisionBase(
   revisions: readonly RevisionRow[],
   r: RevisionRow,
   currentRevision: number | null,
 ): RevisionRow | null {
-  const wanted = r.baseRevision ?? currentRevision;
+  if (r.baseRevision !== null) return revisions.find((x) => x.revision === r.baseRevision) ?? null;
+  if (r.state !== 'draft' && r.state !== 'proposed') return null;
   return (
-    revisions.find((x) => x.revision === wanted) ??
-    revisions.find((x) => x.state === 'current') ??
+    revisions.find((x) => x.revision === currentRevision && x !== r) ??
+    revisions.find((x) => x.state === 'current' && x !== r) ??
     null
   );
 }

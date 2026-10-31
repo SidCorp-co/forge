@@ -81,6 +81,17 @@ describe('the spec a revision changed (REQ-12 BC-19)', () => {
     expect(revisionBase([unbased], unbased, null)).toBeNull();
   });
 
+  it('reads a first revision, current or superseded, against nothing, never the current one', () => {
+    const first = rev(1, 'superseded', null, 'old');
+    const later = [rev(3, 'current', 2, 'now'), rev(2, 'superseded', 1, 'mid'), first];
+    expect(revisionBase(later, first, 3)).toBeNull();
+    const sole = rev(1, 'current', null, 'only');
+    expect(revisionBase([sole], sole, 1)).toBeNull();
+    const view = revisionView(first, rows, new Map(), [], revisionBase(later, first, 3));
+    expect(view.specChanges.against).toBeNull();
+    expect(view.specChanges.goal).toEqual({ before: null, after: 'old' });
+  });
+
   it('serves the field-by-field change with the revision it was read against', () => {
     const [proposed, current] = revisions as [RevisionRow, RevisionRow];
     const view = revisionView(proposed, rows, new Map(), [], current);
