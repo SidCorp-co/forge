@@ -119,9 +119,11 @@ async function triagedAfter(tx: Tx, row: Row, feedbackId: string) {
  * its accept would write a third identical decision and move the item's standing `since`.
  */
 async function unchangedFor(tx: Tx, row: Row, feedbackId: string) {
+  // a payload that no longer parses is the effect's to refuse by name (SUGGESTION_PAYLOAD_INVALID)
+  const triage = SUGGESTION_PAYLOADS.feedback_triage.schema.safeParse(row.payload);
+  if (!triage.success) return null;
   const item = await rowIn(tx, row.projectId, feedbackId);
-  const triage = SUGGESTION_PAYLOADS.feedback_triage.schema.parse(row.payload);
-  const unchanged = await unchangedTriageRefusal(tx, item, triage);
+  const unchanged = await unchangedTriageRefusal(tx, item, triage.data);
   if (!unchanged) return null;
   return {
     code: 'SUGGESTION_BASE_STALE',
