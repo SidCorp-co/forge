@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.411] - 2026-10-31
+
+Cleanup runs that end without a report now settle as failed
+
+### Fixed
+
+- **A cleanup run that ends without its report now fails.** A cleanup fire whose session completes without posting a cleanup report naming the fire settles failed, saying it ended without a report, instead of reading success.
+
 ## [0.4.0-dev.410] - 2026-10-31
 
 A green GitHub Actions gate now lets releases through without commit-status access
