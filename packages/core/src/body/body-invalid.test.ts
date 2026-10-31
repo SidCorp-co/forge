@@ -1,3 +1,7 @@
+/**
+ * @direct-test-of packages/core/src/body/errors.ts
+ * @direct-test-of packages/core/src/body/validate.ts
+ */
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../middleware/error.js';

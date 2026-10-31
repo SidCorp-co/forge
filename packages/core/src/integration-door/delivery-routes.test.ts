@@ -1,3 +1,9 @@
+/**
+ * @direct-test-of packages/core/src/integrations/sentry/refusals.ts
+ * @direct-test-of packages/core/src/integrations/sentry/targets.ts
+ * @direct-test-of packages/core/src/integrations/sentry/listing.ts
+ * @direct-test-of packages/core/src/integrations/sentry/agent-read.ts
+ */
 // The delivery doors that left the MCP server, over REST: each keeps the authorization, the bounds
 // and the refusals the tool had, and nothing on the source door merges.
 import { Hono } from 'hono';
