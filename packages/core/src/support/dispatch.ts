@@ -283,7 +283,8 @@ export type DeliverOutcome =
 /**
  * Hand every message waiting in a room to its session at once: written into the running turn when
  * one runs, else as a turn of its own. A turn that could not be handed to a box gives its messages
- * back.
+ * back. Finding no box online is not a failed dispatch and arms no back-off: the room is told once
+ * in a while (`tellOffline`), and the messages go the moment a box can take them.
  */
 export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   const room = await roomWithSession(roomId);
@@ -297,7 +298,6 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   const client = await turnCredentialChatDevice(session);
   if (!client.deviceId) {
     await tellOffline(room);
-    lastFailure.set(room.id, Date.now());
     return 'no-box';
   }
 
