@@ -89,3 +89,21 @@ export function nearestRoutes(path: string): string[] | null {
     .slice(0, NEAREST_MAX);
   return ranked.length === 0 ? null : ranked.map((r) => `${r.route.method} ${r.route.path}`);
 }
+
+/**
+ * The 404 for a method and path nothing serves: the message, with the nearest served routes named
+ * and listed in `details` where there are any. Every caller is answered this way, token or session.
+ */
+export function unservedRefusal(
+  method: string,
+  path: string,
+  said = `Not Found: ${method} ${path}`,
+): { message: string; details?: { nearest: string[] } } {
+  const near = nearestRoutes(path);
+  return near
+    ? {
+        message: `${said}. No route serves it. Nearest served: ${near.join(', ')}`,
+        details: { nearest: near },
+      }
+    : { message: said };
+}

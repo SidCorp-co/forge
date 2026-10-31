@@ -13,7 +13,7 @@ import {
   requestRefusals,
   thrownEnvelope,
 } from '../lib/refusal.js';
-import { nearestRoutes } from './nearest-routes.js';
+import { unservedRefusal } from './nearest-routes.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
@@ -157,11 +157,5 @@ function reportRequestFailure(
 }
 
 export const notFoundHandler: NotFoundHandler<{ Variables: RequestIdVars }> = (c: Context) => {
-  const near = nearestRoutes(c.req.path);
-  const message = `Not Found: ${c.req.method} ${c.req.path}`;
-  return httpProblem(c, 404, {
-    code: 'NOT_FOUND',
-    message: near ? `${message}. No route serves it. Nearest served: ${near.join(', ')}` : message,
-    ...(near ? { details: { nearest: near } } : {}),
-  });
+  return httpProblem(c, 404, { code: 'NOT_FOUND', ...unservedRefusal(c.req.method, c.req.path) });
 };

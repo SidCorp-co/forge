@@ -18,6 +18,7 @@ import {
 } from '../credentials/pat-permissions.js';
 import type { PatScope } from '../credentials/pat-scope.js';
 import { patEffectiveProjectIds } from '../lib/tool.js';
+import { unservedRefusal } from './nearest-routes.js';
 import { projectNamedBy, refuseOutsideFence } from './pat-fence.js';
 import { authenticatePat, type PatPrincipal } from './require-pat.js';
 
@@ -81,10 +82,12 @@ export async function beginPatRequest(
     });
   }
   if (!routeIsServed(c)) {
-    throw new HTTPException(404, {
-      message: `Not Found: ${c.req.method} ${c.req.path} — no route serves it, whatever the token holds`,
-      cause: { code: 'NOT_FOUND' },
-    });
+    const { message, details } = unservedRefusal(
+      c.req.method,
+      c.req.path,
+      `Not Found: ${c.req.method} ${c.req.path} — whatever the token holds`,
+    );
+    throw new HTTPException(404, { message, cause: { code: 'NOT_FOUND', details } });
   }
   if (excluded) {
     throw new HTTPException(403, {
