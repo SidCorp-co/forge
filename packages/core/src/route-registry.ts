@@ -65,7 +65,7 @@ import {
   forgeFeedbackRoutes,
 } from './forge-door/index.js';
 import { guideRoutes } from './guides/routes.js';
-import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
+import { projectHealthRoutes, publicHealthRoutes } from './health/index.js';
 import { instanceSettingsRoutes } from './instance-settings/index.js';
 import { intakeRoutes } from './intake/routes.js';
 import {
@@ -79,7 +79,7 @@ import {
   issueMergePullRequestRoutes,
   mcpRelayRoutes,
   webhookInboundRoutes,
-} from './integration-door/routes.js';
+} from './integration-door/index.js';
 import {
   attachmentRoutes,
   bodyRoutes,
@@ -113,7 +113,7 @@ import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { lessonRoutes } from './lessons/index.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpMethodNotAllowed, mcpRequestClass } from './mcp/index.js';
-import { meAttentionRoutes, mePulseRoutes } from './me/routes.js';
+import { meAttentionRoutes, mePulseRoutes } from './me/index.js';
 import { memoryListRoutes, memorySearchRoutes, memoryWriteRoutes } from './memory/routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';

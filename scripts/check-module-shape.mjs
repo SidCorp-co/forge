@@ -2,7 +2,8 @@
 // Pattern v2's module declaration and semantic rules (docs/patterns/core-module.md, ADR 0008)
 // over packages/core/src. It refuses a declaration that contradicts itself
 // (packages/core/src/modules.json: a table owned twice, `owns` on a kind that owns nothing, a module
-// with no known context, a directory with no declared kind), then runs the type-aware ESLint rules
+// with no known context, a directory with no declared kind, a kernel, domain, read-model, adapter
+// or door module with no index.ts: its one public face, REQ-12 BC-13), then runs the type-aware ESLint rules
 // in scripts/eslint-module-shape: a write to a table outside its owner module, a database call in a
 // route file, a refusal built outside packages/core/src/lib/refusal.ts and the global fetch outside
 // an adapter. A status written outside the kernel transition is refused by the database
@@ -29,6 +30,7 @@ import { join, relative, sep } from 'node:path';
 import { baseRevision } from './lib/baseline-ratchet.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import {
+  faceFindings,
   kindFindings,
   markers,
   moduleOf,
@@ -47,7 +49,7 @@ const SUPPRESSIONS = '.forge/module-shape-suppressions.json';
 const CONFIG = 'scripts/eslint-module-shape/eslint.config.mjs';
 const ESLINT = join(ROOT, 'node_modules/eslint/bin/eslint.js');
 const PREFIX = 'module-shape/';
-const LINT_RULES = RULES.filter((r) => r !== 'kind');
+const LINT_RULES = RULES.filter((r) => r !== 'kind' && r !== 'face');
 const DESIGN_INDEX = '.forge/design-index.json';
 
 const args = process.argv.slice(2);
@@ -73,6 +75,8 @@ const { faults, modules } = parseDeclaration(declaration);
 const dirs = readdirSync(SRC).filter((d) => statSync(join(SRC, d)).isDirectory());
 const kinds = kindFindings(dirs, modules);
 faults.push(...kinds.map((f) => `modules.json: ${f.detail}`));
+const faces = faceFindings(modules, (path) => existsSync(join(SRC, path, 'index.ts')));
+faults.push(...faces.map((f) => `face: ${f.detail}`));
 for (const path of Object.keys(modules)) {
   if (path !== '(root)' && !existsSync(join(SRC, path)))
     faults.push(`modules.json: declares ${path}, which has no directory under packages/core/src`);
@@ -205,6 +209,7 @@ const grown = wasFrozen
 
 const findings = [
   ...kinds,
+  ...faces,
   ...found.map((f) => ({
     rule: f.ruleId.slice(PREFIX.length),
     module: moduleOf(f.file, modules),

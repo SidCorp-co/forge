@@ -246,7 +246,9 @@ exit `2` when it cannot run.
 
 Pattern v2's declaration and semantic rules (ISS-196, ADR 0008). It first refuses a
 `packages/core/src/modules.json` that contradicts itself (`lib/module-shape.mjs:parseDeclaration`)
-or leaves a directory under `packages/core/src` with no kind, and a `global-fetch` allow entry or
+or leaves a directory under `packages/core/src` with no kind, and a kernel, domain, read-model,
+adapter or door module with no `index.ts` (`face`, REQ-12 BC-13, `lib/module-shape.mjs:faceFindings`:
+the refusal names the module and its kind; a platform module is a leaf and needs none), and a `global-fetch` allow entry or
 a `table-writer` generic entry naming a file that no longer exists. Then it runs ESLint with
 `eslint-module-shape/eslint.config.mjs` over `packages/core/src`, tests excluded, with type
 information from `packages/core/tsconfig.json`:
