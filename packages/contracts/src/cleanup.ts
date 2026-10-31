@@ -90,6 +90,17 @@ export const recordDebtsRequestSchema = z.strictObject({
 });
 export type RecordDebtsRequest = z.infer<typeof recordDebtsRequestSchema>;
 
+/**
+ * `POST /api/projects/:id/debts/:debt/carry` (BC-10): a debt no change can clear, carried as a priced
+ * amnesty. A carried debt still remains on every report until it is cleared, and never turns one red.
+ */
+export const carryDebtRequestSchema = z.strictObject({
+	trades: text("trades", LIMITS.reason),
+	costs: text("costs", LIMITS.reason),
+	endsWhen: text("endsWhen", LIMITS.reason),
+});
+export type CarryDebtRequest = z.infer<typeof carryDebtRequestSchema>;
+
 export const CLEANUP_RESULTS = ["green", "red"] as const;
 export type CleanupResult = (typeof CLEANUP_RESULTS)[number];
 
@@ -126,6 +137,7 @@ export const CLEANUP_REFUSAL_CODES = [
 	"CLEANUP_DEBT_NAMED_TWICE",
 	"CLEANUP_COVERS_RED",
 	"CLEANUP_COVERS_NOT_HIGH",
+	"CLEANUP_RESULT_DISAGREES",
 ] as const;
 export type CleanupRefusalCode = (typeof CLEANUP_REFUSAL_CODES)[number];
 
@@ -158,6 +170,8 @@ export interface DebtView {
 	recordedBy: string | null;
 	recordedAt: string;
 	cleared: { reportId: string; how: string; at: string } | null;
+	/** The priced amnesty it is carried under (BC-10), or null. */
+	carried: (CarryDebtRequest & { by: string | null; at: string }) | null;
 }
 
 export interface CleanupReportView {

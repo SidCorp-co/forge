@@ -15,10 +15,11 @@ export async function cleanupFirePlan(args: {
   const { projectId, fireId } = args;
   if (!(await readFastDelivery(projectId))) return { kind: 'off', why: FAST_DELIVERY_OFF_DETAIL };
   const [debts, waiting] = await Promise.all([readDebts(projectId), waitingIssues(projectId)]);
-  if (debts.open.length === 0 && waiting.length === 0) {
+  // a carried debt is no work for a run (BC-10): it remains on every report until it is cleared
+  if (debts.open.every((d) => d.carried) && waiting.length === 0) {
     return {
       kind: 'nothing',
-      why: 'no cleanup debt is open and no change rated high waits on a cleanup, so this window starts no run',
+      why: `no cleanup debt is open but ${debts.open.length ? 'debt carried under a priced amnesty' : 'none'}, and no change rated high waits on a cleanup, so this window starts no run`,
     };
   }
   return {
@@ -33,6 +34,9 @@ export async function cleanupFirePlan(args: {
         where: d.where,
         rating: d.impact.rating,
         issueKey: d.issueKey,
+        carried: d.carried
+          ? { trades: d.carried.trades, costs: d.carried.costs, endsWhen: d.carried.endsWhen }
+          : null,
       })),
       waiting: waiting.map((w) => ({ key: w.issueKey, reason: w.impact.reason })),
     }),

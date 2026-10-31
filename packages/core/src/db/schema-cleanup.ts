@@ -110,6 +110,12 @@ export const deliveryDebts = pgTable(
     }),
     clearedHow: text('cleared_how'),
     clearedAt: timestamp('cleared_at', { withTimezone: true }),
+    /** The priced amnesty it is carried under (REQ-79 BC-10): all four set, or none. */
+    carriedTrades: text('carried_trades'),
+    carriedCosts: text('carried_costs'),
+    carriedEndsWhen: text('carried_ends_when'),
+    carriedBy: uuid('carried_by').references(() => users.id, { onDelete: 'set null' }),
+    carriedAt: timestamp('carried_at', { withTimezone: true }),
   },
   (t) => ({
     openIdx: index('delivery_debts_open_idx')
@@ -127,6 +133,10 @@ export const deliveryDebts = pgTable(
     redNamesCheckChk: check(
       'delivery_debts_red_check_chk',
       sql`${t.kind} <> 'red' OR ${t.checkName} IS NOT NULL`,
+    ),
+    carriedWholeChk: check(
+      'delivery_debts_carried_whole_chk',
+      sql`(${t.carriedAt} IS NULL AND ${t.carriedTrades} IS NULL AND ${t.carriedCosts} IS NULL AND ${t.carriedEndsWhen} IS NULL) OR (${t.carriedAt} IS NOT NULL AND ${t.carriedTrades} IS NOT NULL AND ${t.carriedCosts} IS NOT NULL AND ${t.carriedEndsWhen} IS NOT NULL)`,
     ),
     redNotHighChk: check(
       'delivery_debts_red_not_high_chk',

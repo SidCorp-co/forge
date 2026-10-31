@@ -43,6 +43,8 @@ export interface OpenDebt {
   id: string;
   where: string;
   rating: Impact['rating'];
+  /** Carried under a priced amnesty (BC-10): it remains, and never turns a report red. */
+  carried: boolean;
 }
 
 /** One issue a report names as covered, as read now: its key and its current rating, if any. */
@@ -96,6 +98,8 @@ export function reportRefusals(
       detail: `a cleanup report says what it cleared and what remains, and why, for every debt open on the project (REQ-79 BC-9); it names none of ${unnamed.map((d) => `${d.id} (${d.where})`).join(', ')}. Name each in \`cleared\` with how, or in \`remains\` with why. Nothing was recorded`,
     });
   }
+  const resultFault = resultDisagreement(report, open);
+  if (resultFault) out.push(resultFault);
   if (report.result !== 'green' && covers.length > 0) {
     out.push({
       code: 'CLEANUP_COVERS_RED',
@@ -120,6 +124,34 @@ export function reportRefusals(
     }
   }
   return out;
+}
+
+/**
+ * A report is green exactly when every debt it leaves is carried (BC-10), so its result is read from
+ * the ledger and never from the run's own judgement: a green leaving debt nobody carries, or a red
+ * leaving only carried debt, is refused, naming which.
+ */
+function resultDisagreement(
+  report: CleanupReportRequest,
+  open: readonly OpenDebt[],
+): CleanupRefusal | null {
+  const carried = new Set(open.filter((d) => d.carried).map((d) => d.id.toLowerCase()));
+  const uncarried = report.remains.filter((r) => !carried.has(r.debt.toLowerCase()));
+  if (report.result === 'green' && uncarried.length > 0) {
+    return {
+      code: 'CLEANUP_RESULT_DISAGREES',
+      path: '/result',
+      detail: `a cleanup report is green exactly when every debt it leaves is carried (REQ-79 BC-10), and this one leaves ${uncarried.map((r) => r.debt).join(', ')}, which nobody carries. Clear it, report red, or have its amnesty priced (POST /api/projects/:id/debts/:debt/carry { trades, costs, endsWhen }) first. Nothing was recorded`,
+    };
+  }
+  if (report.result === 'red' && uncarried.length === 0) {
+    return {
+      code: 'CLEANUP_RESULT_DISAGREES',
+      path: '/result',
+      detail: `a cleanup report is red only for a debt it leaves that nobody carries (REQ-79 BC-10), and this one leaves ${report.remains.length ? 'only carried debt' : 'no debt'}. Record what is red as debt (POST /api/projects/:id/debts) and leave it in \`remains\`, or report green. Nothing was recorded`,
+    };
+  }
+  return null;
 }
 
 /** An issue whose current rating is high, as the hold reads it. */
@@ -152,6 +184,7 @@ export interface BriefDebt {
   where: string;
   rating: string;
   issueKey: string | null;
+  carried: { trades: string; costs: string; endsWhen: string } | null;
 }
 
 /**
@@ -169,7 +202,7 @@ export function cleanupBrief(args: {
     ? args.debts
         .map(
           (d) =>
-            `- ${d.id} [${d.kind}${d.check ? ` ${d.check}` : ''}, ${d.rating}] ${d.where}${d.issueKey ? ` (seen on ${d.issueKey})` : ''}`,
+            `- ${d.id} [${d.kind}${d.check ? ` ${d.check}` : ''}, ${d.rating}] ${d.where}${d.issueKey ? ` (seen on ${d.issueKey})` : ''}${d.carried ? `\n  CARRIED, a priced amnesty: trades ${d.carried.trades}; costs ${d.carried.costs}; ends when ${d.carried.endsWhen}` : ''}`,
         )
         .join('\n')
     : '- none recorded';
@@ -191,10 +224,11 @@ export function cleanupBrief(args: {
       `${projectId}/debts { items: [{ kind, check?, where, detail, impact: { type, rating, reason } }] }.`,
     `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the head you leave> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }], covers: [<each waiting key above whose merge the green head carries, checked with git merge-base --is-ancestor>] }.`,
     'Every open debt is named once, cleared with how or remaining with why; only a green report covers anything.',
+    'The result is not yours to judge (REQ-79 BC-10): it is green exactly when every debt you leave in remains is CARRIED above, and red when you leave one that is not. Core refuses any other result (CLEANUP_RESULT_DISAGREES). A carried debt still remains until it is cleared, and never makes a report red; carrying a debt is not yours either.',
     '',
     'This run is headless: once your turn ends nothing wakes it, and no notification of a CI run, a background task or a message ever reaches it. So never end your turn waiting on anything; your turn ends only after the report is posted.',
     '- A CI run on the head you leave: reuse one already started or finished there (gh run list --branch <branch> --commit <sha>) before starting another, and wait for it inside this turn: gh run watch <run id> --exit-status.',
-    '- A run that cannot finish in this turn: report what the head shows now, red with that run named in remains, never nothing.',
+    '- A run that cannot finish in this turn: report what the head shows now, red, with that run recorded as debt and left in remains, never nothing.',
   ].join('\n');
 }
 

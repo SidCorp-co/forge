@@ -2,6 +2,7 @@
 // debt (BC-3, BC-7) and its cleanup reports (BC-9). Writes need project write; reads, project read.
 
 import {
+  carryDebtRequestSchema,
   cleanupReportRequestSchema,
   recordDebtsRequestSchema,
   recordImpactRequestSchema,
@@ -11,6 +12,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import {
+  carryDebt,
   listCleanupReports,
   readImpacts,
   readLedger,
@@ -76,6 +78,34 @@ cleanupProjectRoutes.post(
       201,
     ),
 );
+
+const debtParam = zValidator('param', z.object({ projectId: z.uuid(), debt: z.uuid() }));
+cleanupProjectRoutes.use('/:projectId/debts/:debt/carry', requireAuth(), assertEmailVerified());
+
+cleanupProjectRoutes.post(
+  '/:projectId/debts/:debt/carry',
+  debtParam,
+  strictBody(
+    carryDebtRequestSchema,
+    '{ trades, costs, endsWhen } carries an open debt as a priced amnesty, which a cleanup report leaves without turning red (REQ-79 BC-10)',
+  ),
+  async (c) => {
+    const { projectId, debt } = c.req.valid('param');
+    return c.json(
+      await carryDebt({
+        projectId,
+        debtId: debt,
+        carry: c.req.valid('json'),
+        userId: c.get('userId'),
+      }),
+    );
+  },
+);
+
+cleanupProjectRoutes.delete('/:projectId/debts/:debt/carry', debtParam, noQuery, async (c) => {
+  const { projectId, debt } = c.req.valid('param');
+  return c.json(await carryDebt({ projectId, debtId: debt, carry: null, userId: c.get('userId') }));
+});
 
 cleanupProjectRoutes.get('/:projectId/debts', projectParam, noQuery, async (c) =>
   c.json(await readLedger(c.req.valid('param').projectId, c.get('userId'))),

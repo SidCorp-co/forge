@@ -23,8 +23,8 @@ const report = (over: Partial<CleanupReportRequest> = {}): CleanupReportRequest 
   ...over,
 });
 const open = [
-  { id: D1, where: 'packages/core/src/a.ts', rating: 'high' as const },
-  { id: D2, where: 'scripts/gate.mjs', rating: 'medium' as const },
+  { id: D1, where: 'packages/core/src/a.ts', rating: 'high' as const, carried: false },
+  { id: D2, where: 'scripts/gate.mjs', rating: 'medium' as const, carried: true },
 ];
 
 describe('debt an agent records (REQ-79 BC-3)', () => {
@@ -65,6 +65,7 @@ describe('what a cleanup report owes (REQ-79 BC-9)', () => {
 
   it('refuses a debt that is not open, and one named twice', () => {
     const twice = report({
+      result: 'red',
       cleared: [{ debt: D1, how: 'fixed' }],
       remains: [
         { debt: D1, why: 'not fixed' },
@@ -75,6 +76,7 @@ describe('what a cleanup report owes (REQ-79 BC-9)', () => {
       'CLEANUP_DEBT_NAMED_TWICE',
     ]);
     const stranger = report({
+      result: 'red',
       cleared: [{ debt: '33333333-3333-4333-8333-333333333333', how: 'x' }],
       remains: [
         { debt: D1, why: 'a' },
@@ -85,21 +87,23 @@ describe('what a cleanup report owes (REQ-79 BC-9)', () => {
   });
 
   it('covers only on green, and only a change rated high now', () => {
-    const remains = [
-      { debt: D1, why: 'a' },
-      { debt: D2, why: 'b' },
-    ];
+    const cleared = [{ debt: D1, how: 'fixed' }];
+    const remains = [{ debt: D2, why: 'b' }];
     const high = { ref: 'ISS-1', issueId: 'i1', key: 'ISS-1', rating: 'high' as const };
     const medium = { ref: 'ISS-2', issueId: 'i2', key: 'ISS-2', rating: 'medium' as const };
     const none = { ref: 'ISS-9', issueId: null, key: null, rating: null };
-    expect(reportRefusals(report({ remains }), open, [high])).toEqual([]);
+    expect(reportRefusals(report({ cleared, remains }), open, [high])).toEqual([]);
+    const red = report({
+      result: 'red',
+      remains: [
+        { debt: D1, why: 'a' },
+        { debt: D2, why: 'b' },
+      ],
+    });
+    expect(reportRefusals(red, open, [high]).map((r) => r.code)).toEqual(['CLEANUP_COVERS_RED']);
     expect(
-      reportRefusals(report({ remains, result: 'red' }), open, [high]).map((r) => r.code),
-    ).toEqual(['CLEANUP_COVERS_RED']);
-    expect(reportRefusals(report({ remains }), open, [medium, none]).map((r) => r.path)).toEqual([
-      '/covers/0',
-      '/covers/1',
-    ]);
+      reportRefusals(report({ cleared, remains }), open, [medium, none]).map((r) => r.path),
+    ).toEqual(['/covers/0', '/covers/1']);
   });
 });
 
@@ -134,6 +138,7 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
           where: 'scripts',
           rating: 'medium',
           issueKey: 'ISS-4',
+          carried: null,
         },
       ],
       waiting: [{ key: 'ISS-7', reason: 'a migration' }],
@@ -153,7 +158,79 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
     expect(brief).toContain('your turn ends only after the report is posted');
     expect(brief).toContain('gh run list --branch <branch> --commit <sha>');
     expect(brief).toContain('gh run watch <run id> --exit-status');
-    expect(brief).toContain('red with that run named in remains, never nothing');
+    expect(brief).toContain(
+      'red, with that run recorded as debt and left in remains, never nothing',
+    );
+  });
+});
+
+// ISS-842: debt 3d01ab3d, which no diff can clear, read green on four fires and red on cb6546d2
+describe('a report green exactly when every debt it leaves is carried (REQ-79 BC-10)', () => {
+  const codes = (r: ReturnType<typeof report>) => reportRefusals(r, open, []).map((x) => x.code);
+  const both = [
+    { debt: D1, why: 'a' },
+    { debt: D2, why: 'b' },
+  ];
+
+  it('takes green over only carried debt, and red over a debt nobody carries', () => {
+    expect(
+      codes(report({ cleared: [{ debt: D1, how: 'x' }], remains: [{ debt: D2, why: 'b' }] })),
+    ).toEqual([]);
+    expect(codes(report({ result: 'red', remains: both }))).toEqual([]);
+  });
+
+  it('refuses green leaving a debt nobody carries, naming it', () => {
+    const refused = reportRefusals(report({ remains: both }), open, []);
+    expect(refused.map((r) => [r.code, r.path])).toEqual([['CLEANUP_RESULT_DISAGREES', '/result']]);
+    expect(refused[0]?.detail).toContain(D1);
+    expect(refused[0]?.detail).not.toContain(D2);
+    expect(refused[0]?.detail).toContain('/debts/:debt/carry');
+  });
+
+  it('refuses red leaving only carried debt, or none', () => {
+    const carriedOnly = report({
+      result: 'red',
+      cleared: [{ debt: D1, how: 'x' }],
+      remains: [{ debt: D2, why: 'b' }],
+    });
+    expect(codes(carriedOnly)).toEqual(['CLEANUP_RESULT_DISAGREES']);
+    const none = report({
+      result: 'red',
+      cleared: [
+        { debt: D1, how: 'x' },
+        { debt: D2, how: 'y' },
+      ],
+    });
+    expect(codes(none)).toEqual(['CLEANUP_RESULT_DISAGREES']);
+    expect(reportRefusals(none, open, [])[0]?.detail).toContain('leaves no debt');
+  });
+
+  it('prints each carried debt with its price, and says the result is not the run’s call', () => {
+    const brief = cleanupBrief({
+      projectId: 'p1',
+      fireId: 'f1',
+      debts: [
+        {
+          id: D2,
+          kind: 'red',
+          check: 'Deploy dev',
+          where: '.github/workflows',
+          rating: 'medium',
+          issueKey: null,
+          carried: {
+            trades: 'Deploy dev stays red',
+            costs: 'hand deploys',
+            endsWhen: 'the token is set',
+          },
+        },
+      ],
+      waiting: [],
+    });
+    expect(brief).toContain(
+      'CARRIED, a priced amnesty: trades Deploy dev stays red; costs hand deploys; ends when the token is set',
+    );
+    expect(brief).toContain('The result is not yours to judge (REQ-79 BC-10)');
+    expect(brief).toContain('CLEANUP_RESULT_DISAGREES');
   });
 });
 
@@ -230,6 +307,7 @@ describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
       id: `d${i}`,
       where: 'x',
       rating: 'high' as const,
+      carried: false,
     }));
     expect(landingRefusal({ ...base, open: many })?.detail).toContain('and 3 more');
   });

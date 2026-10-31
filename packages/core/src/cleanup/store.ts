@@ -2,6 +2,7 @@
 // `delivery_debts` and `cleanup_reports`. Pure decisions are `rules.ts`'.
 
 import type {
+  CarryDebtRequest,
   CleanupReportRequest,
   CleanupReportView,
   DebtItem,
@@ -106,11 +107,43 @@ export async function openDebts(
       id: deliveryDebts.id,
       where: deliveryDebts.location,
       rating: deliveryDebts.impactRating,
+      carriedAt: deliveryDebts.carriedAt,
     })
     .from(deliveryDebts)
     .where(and(eq(deliveryDebts.projectId, projectId), isNull(deliveryDebts.clearedAt)))
     .orderBy(asc(deliveryDebts.createdAt));
-  return rows;
+  return rows.map(({ carriedAt, ...r }) => ({ ...r, carried: carriedAt !== null }));
+}
+
+/**
+ * Carry an open debt under its priced amnesty, or with `carry` null stop carrying it (REQ-79 BC-10).
+ * Answers whether an open debt of the project was written; a cleared or unknown one is not.
+ */
+export async function setCarried(args: {
+  projectId: string;
+  debtId: string;
+  carry: CarryDebtRequest | null;
+  by: string;
+}): Promise<boolean> {
+  const { carry } = args;
+  const written = await db
+    .update(deliveryDebts)
+    .set({
+      carriedTrades: carry?.trades ?? null,
+      carriedCosts: carry?.costs ?? null,
+      carriedEndsWhen: carry?.endsWhen ?? null,
+      carriedBy: carry ? args.by : null,
+      carriedAt: carry ? sql`now()` : null,
+    })
+    .where(
+      and(
+        eq(deliveryDebts.id, args.debtId),
+        eq(deliveryDebts.projectId, args.projectId),
+        isNull(deliveryDebts.clearedAt),
+      ),
+    )
+    .returning({ id: deliveryDebts.id });
+  return written.length > 0;
 }
 
 /** The project's debts, open or cleared, newest first, at most `limit` of each. */
@@ -147,6 +180,16 @@ export async function readDebts(
     cleared:
       r.clearedAt && r.clearedHow
         ? { reportId: r.clearedReportId ?? '', how: r.clearedHow, at: r.clearedAt.toISOString() }
+        : null,
+    carried:
+      r.carriedAt && r.carriedTrades && r.carriedCosts && r.carriedEndsWhen
+        ? {
+            trades: r.carriedTrades,
+            costs: r.carriedCosts,
+            endsWhen: r.carriedEndsWhen,
+            by: r.carriedBy,
+            at: r.carriedAt.toISOString(),
+          }
         : null,
   });
   return { open: open.map(view), cleared: cleared.map(view) };

@@ -1,8 +1,8 @@
 /**
  * Fast delivery (REQ-79) against real Postgres over HTTP: the default and its off switch (BC-1), the
  * merge check on build and scoped tests with red as debt (BC-2, BC-3), impact ratings (BC-4), a change
- * rated high held from landing or from promotion (BC-5, BC-6), the cleanup window on a slot of its
- * own (BC-7, BC-8) and its report (BC-9).
+ * rated high held from landing or from promotion (BC-5, BC-6) and the cleanup window on a slot of its
+ * own (BC-7, BC-8). Its report (BC-9, BC-10) is `cleanup-report-e2e.test.ts`'s.
  *
  * @direct-test-of packages/core/src/cleanup/service.ts
  * @direct-test-of packages/core/src/cleanup/store.ts
@@ -248,6 +248,13 @@ const verifications = async (issue: string) =>
 const highDebt = { ...red('high'), kind: 'debt', check: undefined };
 const remaining = async () =>
   ((await ledger()).body.open as Doc[]).map((d) => ({ debt: d.id, why: 'a person owes it' }));
+/** A debt carried as a priced amnesty, which a green report may leave (BC-10). */
+const carry = (debt: string) =>
+  call('POST', `/api/projects/${projectId}/debts/${debt}/carry`, {
+    trades: 'Deploy dev stays red',
+    costs: 'hand deploys',
+    endsWhen: 'a person sets the token',
+  });
 
 describe('a change rated high lands only on a green base where production deploys on land (BC-5 r4)', () => {
   it('is refused on an open debt rated high, naming it and the cleanup, while a low or medium one lands', async () => {
@@ -279,8 +286,8 @@ describe('a change rated high lands only on a green base where production deploy
     }
   });
 
-  it('lands on a green report with a medium debt open, which only a person can clear', async () => {
-    await debts({ items: [red('medium')] });
+  it('lands on a green report leaving a medium debt only a person can clear, once it is carried', async () => {
+    expect((await carry((await debts({ items: [red('medium')] })).body.debts[0])).status).toBe(200);
     const high = await fx.insertIssue('in_progress');
     await rate(high, 'high');
     const green = await reportCleanup({ remains: await remaining() });
@@ -294,11 +301,12 @@ describe('a change rated high lands only on a green base where production deploy
     const high = await fx.insertIssue('in_progress');
     await rate(high, 'high');
     expect((await checkLanding(high)).status).toBe(201);
-    const red1 = await reportCleanup({ result: 'red' });
+    const debt = (await debts({ items: [red('low')] })).body.debts[0] as string;
+    const red1 = await reportCleanup({ result: 'red', remains: [{ debt, why: 'still red' }] });
     const refused = await checkLanding(high);
     expect(codes(refused)).toEqual(['MERGE_CLEANUP_PENDING']);
     expect(JSON.stringify(refused.body)).toContain(red1.body.report.id);
-    expect((await reportCleanup({})).status).toBe(201);
+    expect((await reportCleanup({ cleared: [{ debt, how: 'fixed' }] })).status).toBe(201);
     expect((await checkLanding(high)).status).toBe(201);
   });
 
@@ -402,9 +410,14 @@ describe('a change rated high waits for a green cleanup before promotion (BC-5, 
     await seedProductionDeployTrigger(projectId, ownerId, 'on-request');
     const high = await fx.insertIssue('awaiting_release');
     await rate(high, 'high');
-    const onRed = await reportCleanup({ result: 'red', covers: [high] });
+    const debt = (await debts({ items: [red('low')] })).body.debts[0] as string;
+    const onRed = await reportCleanup({
+      result: 'red',
+      remains: [{ debt, why: 'x' }],
+      covers: [high],
+    });
     expect(codes(onRed)).toEqual(['CLEANUP_COVERS_RED']);
-    const green = await reportCleanup({ covers: [high] });
+    const green = await reportCleanup({ cleared: [{ debt, how: 'fixed' }], covers: [high] });
     expect(green.status, JSON.stringify(green.body)).toBe(201);
     expect(green.body.waiting).toEqual([]);
     const cut = await call('POST', `/api/projects/${projectId}/release-batches`, {
@@ -422,40 +435,6 @@ describe('a change rated high waits for a green cleanup before promotion (BC-5, 
       issueIds: [high],
     });
     expect(JSON.stringify(cut.body)).not.toContain('RELEASE_CLEANUP_PENDING');
-  });
-});
-
-describe('a cleanup report (BC-9)', () => {
-  it('names every open debt, cleared with how or remaining with why, and clears those it cleared', async () => {
-    const first = (await debts({ items: [red('low')] })).body.debts[0] as string;
-    const second = (await debts({ items: [{ ...red('medium'), kind: 'simplify' }] })).body
-      .debts[0] as string;
-
-    const short = await reportCleanup({ cleared: [{ debt: first, how: 'trimmed the copy' }] });
-    expect(codes(short)).toEqual(['CLEANUP_REPORT_INCOMPLETE']);
-    expect(JSON.stringify(short.body)).toContain(second);
-
-    const whole = await reportCleanup({
-      cleared: [{ debt: first, how: 'trimmed the copy' }],
-      remains: [{ debt: second, why: 'the module is mid-rewrite under ISS-9' }],
-    });
-    expect(whole.status, JSON.stringify(whole.body)).toBe(201);
-    expect(whole.body.open).toBe(1);
-    const read = await ledger();
-    expect(read.body.open.map((d: Doc) => d.id)).toEqual([second]);
-    expect(read.body.cleared[0]).toMatchObject({ id: first, cleared: { how: 'trimmed the copy' } });
-    const listed = await call('GET', `/api/projects/${projectId}/cleanup-reports`);
-    expect(listed.body.reports[0]).toMatchObject({
-      result: 'green',
-      remains: [{ debt: second, why: 'the module is mid-rewrite under ISS-9' }],
-    });
-  });
-
-  it('covers only a change rated high, naming the one that is not', async () => {
-    const medium = await fx.insertIssue('awaiting_release');
-    await rate(medium, 'medium');
-    const res = await reportCleanup({ covers: [medium] });
-    expect(codes(res)).toEqual(['CLEANUP_COVERS_NOT_HIGH']);
   });
 });
 

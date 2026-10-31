@@ -166,7 +166,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:param:actId field:query:subject field:json:owner field:json:mockup field:json:revises
     field:json:supersedes field:param:rid field:param:ruleId field:param:username
     field:json:member field:json:threads field:json:after field:json:check
-    field:json:fire field:json:covers field:json:profile
+    field:json:fire field:json:covers field:json:profile field:param:debt
     field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
@@ -181,7 +181,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:suggestion field:json:evidence field:json:emoji field:json:name field:json:role
     field:json:displayName field:json:shortName field:json:request field:json:account
     field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said
-    field:json:statement field:json:askFor field:json:question field:json:words field:json:finding`,
+    field:json:statement field:json:askFor field:json:question field:json:words field:json:finding
+    field:json:trades field:json:costs field:json:endsWhen`,
   'a command a support room runs on a host its grant names, and what the box answers it ran; core checks the grant before the box is asked, and the output is scrubbed before anyone reads it': words`
     field:json:command field:json:stdout field:json:stderr`,
   'a structured part of a record core validates and stores; it admits nobody': words`

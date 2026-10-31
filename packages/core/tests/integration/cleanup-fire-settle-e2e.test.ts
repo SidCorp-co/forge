@@ -89,10 +89,24 @@ describe('a cleanup fire whose session completes (BC-9, ISS-814)', () => {
       actor: { type: 'system' },
       source: 'fast-delivery-e2e',
     });
-  /** A report naming every open debt as remaining, which is the whole shape a report owes. */
+  /**
+   * A report naming every open debt as remaining, which is the whole shape a report owes: red, or
+   * green once each of them is carried, as a report's result follows from what it leaves (BC-10).
+   */
   const reportFor = async (body: Doc) => {
     const open = (await ledger()).body.open as Doc[];
+    if (body.result === 'green') {
+      for (const d of open) {
+        const carried = await call('POST', `/api/projects/${projectId}/debts/${d.id}/carry`, {
+          trades: 'the check stays red',
+          costs: 'nothing in this test',
+          endsWhen: 'the test ends',
+        });
+        expect(carried.status, JSON.stringify(carried.body)).toBe(200);
+      }
+    }
     return reportCleanup({
+      result: 'red',
       remains: open.map((d) => ({ debt: d.id, why: 'left for later' })),
       ...body,
     });

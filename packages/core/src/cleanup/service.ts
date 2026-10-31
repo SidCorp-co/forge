@@ -4,6 +4,7 @@
 // they recorded, refuses what its own rows contradict, and infers nothing.
 
 import type {
+  CarryDebtRequest,
   CleanupReportRequest,
   CleanupReportView,
   DebtLedgerView,
@@ -50,6 +51,7 @@ import {
   readDebts,
   readReports,
   reportView,
+  setCarried,
 } from './store.js';
 
 const refuse = refuser<CleanupRefusal['code']>('CLEANUP_REFUSED');
@@ -146,6 +148,29 @@ export async function recordDebts(args: {
     recordedBy: userId,
   });
   return { debts, window: await ensureCleanupWindow(projectId) };
+}
+
+/**
+ * Carry an open debt under a priced amnesty, or stop carrying it (REQ-79 BC-10): what it trades, what
+ * it costs and what ends it, recorded once on the debt, which every later report and brief reads. A
+ * project admin's act: an amnesty is the project's price, not a run's convenience.
+ */
+export async function carryDebt(args: {
+  projectId: string;
+  debtId: string;
+  carry: CarryDebtRequest | null;
+  userId: string;
+}): Promise<{ debt: string; carried: boolean }> {
+  const { projectId, debtId, carry, userId } = args;
+  requireHeld(await loadProjectAccess(projectId, userId), 'project.admin');
+  if (!(await setCarried({ projectId, debtId, carry, by: userId }))) {
+    throw refuse(
+      'CLEANUP_DEBT_UNKNOWN',
+      `debt ${debtId} is not open on this project: it was never recorded here, or a cleanup report already cleared it, and only open debt is carried. Read the ledger (GET /api/projects/${projectId}/debts). Nothing was recorded`,
+      '/debt',
+    );
+  }
+  return { debt: debtId, carried: carry !== null };
 }
 
 /**
