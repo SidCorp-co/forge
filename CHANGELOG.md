@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.409] - 2026-10-31
+
+A decided duplicate suggestion no longer holds the next requirement revision
+
+### Fixed
+
+- **Accepting a requirement revision no longer deadlocks on its duplicate check.** A duplicate suggestion decided at the head revision now counts when accepting the next one, and the refusal names the revision it reads.
+
 ## [0.4.0-dev.408] - 2026-10-31
 
 A declared validation gate now holds back commits whose check failed
