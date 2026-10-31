@@ -122,10 +122,13 @@ const shape = (outcome: DispatchOutcome) => ({
  * announcement, `loaded: false` included. ISS-1276 removed the method gate at `finish` and renamed
  * this to say what it checks — a run announcing that its method would not load still deploys.
  */
-const RELEASE_DEPLOY_BEFORE_RECORDING =
+// the call it asks for is named whole, with this run's ids and its body, never an elided route (ISS-836)
+export const releaseDeployBeforeRecording = (projectId: string, runId: string): string =>
   'this release run has recorded nothing on its release batch, so nothing ' +
-  'shows the credential it runs on can record what this deploy would do. Make one call first — POST .../method ' +
-  'says what you are working from, and `loaded: false` with a detail is a valid answer — then deploy. ' +
+  'shows the credential it runs on can record what this deploy would do. Make one call first: ' +
+  `POST /api/projects/${projectId}/release-batches/${runId}/method ` +
+  '{ "skill": "<the skill you work from>", "loaded": true } says what you are working from, and ' +
+  '`"loaded": false` with a `"detail"` saying why is a valid answer; then deploy. ' +
   'A release deploy is refused before production changes, never after.';
 
 export async function runCoolifyDeploy(input: {
@@ -152,7 +155,10 @@ export async function runCoolifyDeploy(input: {
       );
     }
     if ((await readRunMethod(input.pipelineRunId)) === null) {
-      throw refuseRelease('RELEASE_NOTHING_RECORDED', RELEASE_DEPLOY_BEFORE_RECORDING);
+      throw refuseRelease(
+        'RELEASE_NOTHING_RECORDED',
+        releaseDeployBeforeRecording(projectId, input.pipelineRunId),
+      );
     }
     // A release run's deploy is one of its production acts, held to the same approval its attempts are.
     await assertApprovalAllowsAttempt(input.pipelineRunId, projectId);
