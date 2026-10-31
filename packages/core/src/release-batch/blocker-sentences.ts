@@ -296,6 +296,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_ROSTER_EMPTY' && typeof details?.nearGate === 'number') {
     return nearGateSentence(details.nearGate);
   }
+  if (code === 'RELEASE_RECORD_MISSING' && Array.isArray(details?.unreadable)) {
+    return unreadableNotesSentence(details, fillNamed(REMEDY[code], missingOnly(details)));
+  }
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
     return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
@@ -343,6 +346,41 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+interface UnreadableNote {
+  issueId: string;
+  displayId: string;
+  section: string | null;
+}
+
+/** The details as they stand for the issues with no note at all, which `REMEDY` speaks of. */
+function missingOnly(details: Record<string, unknown>): Record<string, unknown> {
+  const held = new Set((details.unreadable as UnreadableNote[]).map((u) => u.issueId));
+  const ids = (details.issueIds as string[]).filter((id) => !held.has(id));
+  const shown = Array.isArray(details.displayIds) ? (details.displayIds as string[]) : [];
+  return {
+    issueIds: ids,
+    displayIds: shown.filter((_, i) => !held.has((details.issueIds as string[])[i] ?? '')),
+  };
+}
+
+/**
+ * Each stored note whose section is no accepted one, with the section it holds and the ones a note
+ * may hold (ISS-835); ahead of it, what the issues with no note at all are owed, where there are some.
+ */
+function unreadableNotesSentence(details: Record<string, unknown>, missing: string): string {
+  const notes = details.unreadable as UnreadableNote[];
+  const accepted = Array.isArray(details.accepted) ? (details.accepted as string[]) : [];
+  const each = notes
+    .map(
+      (n) =>
+        `\`${n.displayId}\` holds ${n.section === null ? 'no section' : `section ${JSON.stringify(n.section)}`}`,
+    )
+    .join('; ');
+  const lead = `${each}: ${agrees(notes.length, 'its', 'their')} release ${agrees(notes.length, 'note', 'notes')} cannot be placed in a release, so the release does not carry ${agrees(notes.length, 'it', 'them')}; the accepted sections are ${accepted.join(', ')}. Rewrite ${agrees(notes.length, 'it', 'each')} with \`PATCH /api/issues/:id\` \`{"releaseNotes":{"section":"<one of them>","title":"<at most 10 words>","userFacing":"<one full sentence>"}}\`.`;
+  const owed = (details.issueIds as string[]).length > notes.length;
+  return owed ? `${missing} ${lead}` : lead;
 }
 
 /** Each change request that carries an issue outside the release, and what clears it (REQ-63). */

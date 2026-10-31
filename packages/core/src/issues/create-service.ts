@@ -49,6 +49,7 @@ import {
   type PendingIssueRelation,
   writeIssueRelations,
 } from './relations-service.js';
+import { refuseBadReleaseNote } from './release-note-door.js';
 import { leaseWriteTakes } from './session-claim.js';
 import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
 
@@ -364,6 +365,7 @@ export async function createIssue(
 ): Promise<CreateIssueResult> {
   await refuseChatDoorFiling(input.projectId);
   refuseBirthStatus(input.status);
+  refuseBadReleaseNote(input.releaseNotes);
   const admit = await asksAdmission(
     input.projectId,
     writer.createdById,

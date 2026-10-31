@@ -13,9 +13,9 @@ import { issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
 import {
   issueDisplayIds,
-  issuesMissingReleaseRecord,
   landingShapeOf,
   landingShortfall,
+  releaseRecordGaps,
   requireLandingShape,
 } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
@@ -44,6 +44,7 @@ import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import { promotionBlockers } from './promotion-standing.js';
 import { getActiveReleaseBatch } from './queries.js';
+import { releaseRecordBlocker } from './record-blocker.js';
 import { blockerRefusal, releaseBlockedRefusal } from './refuse.js';
 import { shippedInBlocker } from './shipped-in.js';
 import { decideVersion, lineageOf } from './version-rule.js';
@@ -171,15 +172,9 @@ async function rosterBlockers(
     const cleanup = await evaluate('cleanup', () => cleanupBlocker(projectId, issueIds), out);
     if (cleanup) out.push(cleanup);
   }
-  const unrecorded = await evaluate(
-    'release-record',
-    async () => await issuesMissingReleaseRecord(issueIds),
-    out,
-  );
-  if (unrecorded && unrecorded.length > 0) {
-    const displayIds = await namedAs(unrecorded);
-    out.push(blocker('RELEASE_RECORD_MISSING', { issueIds: unrecorded, displayIds }));
-  }
+  const gaps = await evaluate('release-record', async () => await releaseRecordGaps(issueIds), out);
+  const owed = gaps && (await releaseRecordBlocker(gaps, namedAs));
+  if (owed) out.push(owed);
   if (door !== 'record') return;
   // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.
   // Judged inside the read, so a source the reader cannot place is this check unevaluated, by name.

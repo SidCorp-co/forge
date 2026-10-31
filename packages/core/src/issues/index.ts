@@ -226,7 +226,7 @@ export {
   shipsWithdrawnOf,
 } from './release-evidence.js';
 export { releaseHoldWords, WORDED_RELEASE_HOLDS } from './release-hold-words.js';
-export { issuesMissingReleaseRecord } from './release-record-required.js';
+export { releaseRecordGaps } from './release-record-required.js';
 export {
   type IssueCreateInput,
   type IssueFilters,

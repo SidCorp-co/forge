@@ -9,7 +9,13 @@ export const releaseNotesSections = [
   'Skip',
 ] as const;
 
-export const ReleaseNotesSectionSchema = z.enum(releaseNotesSections);
+/** An unknown section is refused naming what was sent and every section a note may hold (ISS-835). */
+export const releaseNotesSectionSaid = (sent: unknown): string =>
+  `section ${typeof sent === 'string' ? JSON.stringify(sent) : 'is missing or not text'} is not a release note section; the accepted sections are ${releaseNotesSections.join(', ')}`;
+
+export const ReleaseNotesSectionSchema = z.enum(releaseNotesSections, {
+  error: (issue) => releaseNotesSectionSaid(issue.input),
+});
 export type ReleaseNotesSection = z.infer<typeof ReleaseNotesSectionSchema>;
 
 /** The most words a change's short title says (REQ-40 BC-6): a reader scans it whole, never cut. */

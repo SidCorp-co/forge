@@ -177,6 +177,7 @@ export const ISSUE_CREATE_REFUSAL_CODES = [
 	"ISSUE_CREATE_REFUSED",
 	"INVALID_STATUS",
 	"INVALID_DETECTOR_KEY",
+	"RELEASE_NOTE_REFUSED",
 	"CHAT_FILES_FEEDBACK_NOT_ISSUES",
 	"MCP_FILES_FEEDBACK_NOT_ISSUES",
 ] as const;
@@ -188,6 +189,7 @@ export type IssueCreateRefusalCode =
  * files Feedback or a Requirement, and issues are born from those.
  */
 export const ISSUE_CREATE_REFUSAL_STATUSES = {
+	RELEASE_NOTE_REFUSED: 400,
 	CHAT_FILES_FEEDBACK_NOT_ISSUES: 403,
 	MCP_FILES_FEEDBACK_NOT_ISSUES: 403,
 } as const satisfies RefusalStatuses<IssueCreateRefusalCode>;
