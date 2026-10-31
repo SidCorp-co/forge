@@ -123,7 +123,9 @@ describe('zValidator json, a request with no body', () => {
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { message: string };
-    expect(body.message).toBe('send { "baseRevision": <n> }');
+    expect(body.message).toBe(
+      'send { "baseRevision": <n> }. Accepted body (? marks an optional field): { baseRevision: number }',
+    );
     expect(body.message).not.toContain('Malformed');
   });
 
