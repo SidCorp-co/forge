@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.407] - 2026-10-31
+
+A question nobody can answer is refused instead of holding its issue open
+
+### Fixed
+
+- **A question naming choices it does not carry is refused:** "these readings" with no options, or no issue, requirement or asker, is refused by name; an empty record question is no longer minted with an invented prompt. (ISS-812)
+
 ## [0.4.0-dev.406] - 2026-10-31
 
 Declaring a judge or reviewer run no longer moves an issue's step
