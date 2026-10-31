@@ -1,1 +1,1 @@
-**A design links the requirement that already covers it.** The design page offers Link REQ-n before Draft a requirement, shows the flow slug in the Developer view only, and says a draft's approval once. List rows label markers "To settle", apart from "Needs you".
+**A design links the requirement that covers it.** The design page offers Link REQ-n before Draft, keeps the flow slug in the Developer view, and says a draft's approval once. List rows label markers "To settle", not "Needs you".
