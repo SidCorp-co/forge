@@ -325,9 +325,12 @@ function WhereItStands({ d, health, slug, projectId, title }: { d: WorkflowDesig
   return (
     <FactsGroup title={t("workflows.facts.whereItStands")} testId="facts-plain-status">
       <div data-testid="plain-status">
-        <StandingMark label={t("workflows.facts.approved")} stand={d.approvedRevision !== null ? "yes" : "no"} testId="stands-approved" title={by || undefined}>
-          {d.approvedRevision !== null ? t("workflows.stands.yes") : t("workflows.stands.no")}
-        </StandingMark>
+        {/* the header pill says the design's state, so a draft's "not approved" is not said again; the row stays where an earlier revision is approved and the pill says something else (ISS-805) */}
+        {d.approvedRevision !== null && d.status !== "approved" ? (
+          <StandingMark label={t("workflows.facts.approved")} stand="yes" testId="stands-approved" title={by || undefined}>
+            {t("workflows.stands.yes")}
+          </StandingMark>
+        ) : null}
         <StandingMark label={t("workflows.facts.requirement")} stand={d.requirements.length ? "yes" : "no"} testId="stands-requirement">
           {d.requirements.length ? (
             d.requirements.map((r) => (

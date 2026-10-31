@@ -243,3 +243,19 @@ describe("a design links the requirement that covers it before it drafts one (IS
     expect(screen.getByTestId("fact-revision")).toHaveTextContent("r2");
   });
 });
+
+describe("a draft's approval is said once (ISS-805)", () => {
+  const draft = (): WorkflowDesign => ({ ...proposed(), status: "draft", approvedRevision: null, proposedRevision: null, revisions: [], requirements: [] });
+
+  it("draws no Approved row where no revision was approved: the header pill says the state", () => {
+    facts(draft());
+    expect(screen.queryByTestId("stands-approved")).toBeNull();
+    expect(screen.getByTestId("plain-status").textContent).not.toMatch(/Approved/);
+  });
+
+  it("keeps the row where an earlier revision is approved and a newer one waits", () => {
+    facts();
+    expect(screen.getByTestId("stands-approved")).toHaveTextContent("ApprovedYes");
+  });
+});
+

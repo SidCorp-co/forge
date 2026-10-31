@@ -135,6 +135,19 @@ describe("what the viewer owes, said once (C3)", () => {
   });
 });
 
+describe("two counts, two labels (ISS-805)", () => {
+  it("labels a row's markers to settle apart from the designs that wait on the viewer", async () => {
+    const waiting = design("a", "Alpha", { status: "proposed", wait: youWait });
+    const base = design("b", "Bravo");
+    const marked = { ...base, health: { counts: { outdated: 0, needs_update: 0, has_problem: 0, remove_proposed: 0, upcoming: 0, not_in_design: 0, wrong: 1 }, needsYou: 6, workflowLevelOnly: false } } as unknown as WorkflowRecord;
+    screenWith([waiting, marked]);
+    await screen.findAllByTestId("workflow-row");
+    expect(screen.getByTestId("workflows-needs-you")).toHaveTextContent("Needs you1");
+    expect(screen.getByTestId("health-needs-you")).toHaveTextContent("To settle 6");
+    expect(screen.getByTestId("health-needs-you").textContent).not.toMatch(/Needs you/);
+  });
+});
+
 describe("a state every design shares, said once (C4)", () => {
   it("draws the shared status and waiting-on once above the list and on no row", async () => {
     screenWith(AGENFOLD);

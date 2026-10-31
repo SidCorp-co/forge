@@ -68,12 +68,13 @@ describe("the rail keeps kernel terms behind the Developer view", () => {
     expect(screen.queryByTestId("facts-health")).toBeNull();
   });
 
-  // ISS-781 C7: Where it stands is three marked rows, each at most three words, and no sentence
-  it("says where the design stands as three marks of at most three words, no sentence", () => {
+  // ISS-781 C7: Where it stands is marked rows, each at most three words, and no sentence; a design never approved leaves approval to the header pill (ISS-805)
+  it("says where the design stands as marks of at most three words, no sentence", () => {
     rail();
-    const rows = ["stands-approved", "stands-requirement", "stands-code"].map((id) => screen.getByTestId(id));
-    expect(rows.map((r) => r.querySelector("[data-stand]")?.getAttribute("data-stand"))).toEqual(["no", "no", "no"]);
-    expect(rows.map((r) => r.textContent)).toEqual(["ApprovedNo", "RequirementNone", "Code matchNot compared"]);
+    const rows = ["stands-requirement", "stands-code"].map((id) => screen.getByTestId(id));
+    expect(screen.queryByTestId("stands-approved")).toBeNull();
+    expect(rows.map((r) => r.querySelector("[data-stand]")?.getAttribute("data-stand"))).toEqual(["no", "no"]);
+    expect(rows.map((r) => r.textContent)).toEqual(["RequirementNone", "Code matchNot compared"]);
     for (const r of rows) {
       const value = r.querySelector("[data-stand]")?.textContent ?? "";
       expect(value.trim().split(/\s+/).length, `"${value}" is more than three words`).toBeLessThanOrEqual(3);

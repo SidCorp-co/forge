@@ -1,1 +1,1 @@
-**A design links the requirement that already covers it.** Where Forge holds an unlinked requirement named after a design, the design page offers Link REQ-n before Draft a requirement. The flow slug shows in the Developer view only.
+**A design links the requirement that already covers it.** The design page offers Link REQ-n before Draft a requirement, shows the flow slug in the Developer view only, and says a draft's approval once. List rows label markers "To settle", apart from "Needs you".
