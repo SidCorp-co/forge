@@ -465,11 +465,13 @@ mod tests {
     /// not relax.
     #[test]
     fn the_skill_teaches_direct_mode_and_the_kernel_it_keeps() {
+        // read as prose, wherever a line wraps and whichever line ending the checkout carries
+        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
         for word in [
             "## Direct mode: a project that runs fast",
             "gate profile is `yolo` and that delivers fast",
             "general-purpose subagent",
-            "No shipped\n  role is dispatched",
+            "No shipped role is dispatched",
             "No plan approval, no design record, no review and no judge",
             "**Land on the base branch** once it builds and its own tests pass",
             "mark it merged at the landing sha",
@@ -483,7 +485,7 @@ mod tests {
             "Outside direct mode, every issue goes out this way.",
         ] {
             assert!(
-                ASSET.contains(word),
+                prose.contains(word),
                 "forge-master-skill.md no longer says {word:?}, so a master on a project that runs fast dispatches and waits as every other project does, or builds there without the kernel"
             );
         }
