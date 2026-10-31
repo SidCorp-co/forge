@@ -198,7 +198,7 @@ ${
   ctx?.stage === 'drive'
     ? 'In this mode nothing dispatches after you, so **no later stage appends it** — if this project keeps a changelog, that line is yours, in the commit that carries the change.'
     : 'forge-release appends this to the changelog at close.'
-} An issue that ships code closes only through a release, and **a release batch refuses to claim an issue while this field is null** (\`RELEASE_RECORD_MISSING\`), so write the line before you move the issue to \`awaiting_release\`, or \`{ section: 'Skip', userFacing: '-' }\` when the change has no user-facing half. Use \`dropped\` for work that turned out not to be work.`,
+} An issue that ships code closes only through a release, and **on a strict project a release batch refuses to claim an issue while this field is null** (\`RELEASE_RECORD_MISSING\`); on any other it drafts one from the title, which is no note a user should read. So write the line before you move the issue to \`awaiting_release\`, or \`{ section: 'Skip', userFacing: '-' }\` when the change has no user-facing half. Use \`dropped\` for work that turned out not to be work.`,
   },
   {
     id: 'handoff',

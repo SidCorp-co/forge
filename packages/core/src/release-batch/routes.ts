@@ -5,13 +5,15 @@ import {
   ReleaseRangeReportSchema,
 } from '@forge/contracts/release-page';
 import { RELEASE_HOLD_OWERS, RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireHeld, requireMasterAct } from '../permissions/index.js';
+import { readGateProfile } from '../project-config/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
 import { abortReleaseBatch } from './finish.js';
@@ -79,6 +81,20 @@ const createBodySchema = z
       ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message });
   });
 
+/**
+ * The cut and the record take project.admin, and outside strict the project's master holds them too
+ * (REQ-79 r6 BC-17), so an agent alone takes a landed issue through the release that closes it.
+ */
+async function requireReleaseAct(
+  c: Context<{ Variables: AuthVars }>,
+  projectId: string,
+  act: string,
+): Promise<void> {
+  const access = await loadProjectAccess(projectId, c.get('userId'));
+  const ask = { agency: restActor(c).agency, profile: await readGateProfile(projectId) };
+  requireMasterAct(access, 'project.admin', ask, act);
+}
+
 export const releaseBatchRoutes = new Hono<{ Variables: AuthVars }>();
 releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -91,8 +107,7 @@ releaseBatchRoutes.post(
     const { issueIds, name, summary, changeRequests, promotion } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.admin');
+    await requireReleaseAct(c, projectId, 'cutting a release');
 
     const naming = name !== undefined && summary !== undefined ? { name, summary } : null;
     const result = await createReleaseBatch({
@@ -371,8 +386,7 @@ releaseBatchRoutes.post(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.admin');
+    await requireReleaseAct(c, projectId, 'recording a release');
 
     // With no production environment the landing is the delivery, and the record says so.
     const declared = await resolveReleaseDeclaration(projectId);

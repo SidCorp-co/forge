@@ -355,6 +355,7 @@ async function refuseIncompleteApproval(
 
 // an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them
 // on a project whose document sets `release.approval.required`, a run with no approval is refused too, so the rule holds whether or not the master asked; who approved was gated by releases.approve when it was decided
+// where the gate is not enforced, a pending request holds nothing; a returned one is a person's no and still holds
 export async function assertApprovalAllowsAttempt(runId: string, projectId: string): Promise<void> {
   const [latest] = await db
     .select({
@@ -374,6 +375,9 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
     );
   }
   if (latest.decision === 'approved') return;
+  // where gate release_approval is not enforced nobody's approval is owed, so a request the master
+  // asked anyway does not hold the act while it waits (REQ-79 r6); a returned one still does
+  if (latest.decision === null && gate.mode !== 'enforce') return;
   if (latest.decision === null) {
     throw refuseRelease(
       'RELEASE_AWAITING_APPROVAL',

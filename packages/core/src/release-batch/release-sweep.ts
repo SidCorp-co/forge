@@ -9,13 +9,14 @@
 // (`release-batch/hold.ts`), never on the log alone — a row owing its agent a shipped-in record
 // (`shipped-in.ts`) included.
 
+import type { ReleaseHoldOwer } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
-import { gateOf } from '../project-config/index.js';
+import { gateOf, readGateProfile } from '../project-config/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
 import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { resolveReleaseGate } from './gate.js';
@@ -30,7 +31,7 @@ import {
   heldFromUnattendedCut,
   landingCriteriaHold,
   NO_ACTOR_HOLD,
-  NO_RELEASE_GATE_HOLD,
+  noReleaseGateHold,
   queuedBehindHold,
   type ReleaseHold,
   refusalHold,
@@ -141,13 +142,22 @@ async function holdOnCriteria(
 ): Promise<void> {
   const serving = heldById.values().next().value?.serving;
   if (serving?.kind !== 'undeclared') {
+    const owes = await holdOwer(write.projectId);
     await hold({
       ...write,
-      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport),
+      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport, owes),
     });
     return;
   }
   await holdAlike(write, runtimeUnroutedHold(serving.missing, serving.route));
+}
+
+/**
+ * Who clears what a waiting row is held for (REQ-79 r6 BC-17): a person on a strict project, the
+ * project's master on every other, as `questions/owed.ts:decisionOwedBy` reads the same profile.
+ */
+async function holdOwer(projectId: string): Promise<ReleaseHoldOwer> {
+  return (await readGateProfile(projectId)) === 'strict' ? 'human' : 'agent';
 }
 
 /** The gate, or the hold every waiting row gets because there is none to read. */
@@ -156,7 +166,8 @@ async function readGate(
 ): Promise<{ ok: true } | { ok: false; hold: ReleaseHold }> {
   try {
     const gate = await resolveReleaseGate(projectId);
-    return gate ? { ok: true } : { ok: false, hold: NO_RELEASE_GATE_HOLD };
+    if (gate) return { ok: true };
+    return { ok: false, hold: noReleaseGateHold(await holdOwer(projectId)) };
   } catch (err) {
     if (isRefusal(err, 'RELEASE_TARGET_UNDECLARED')) {
       return { ok: false, hold: targetUndeclaredHold(err.refusals[0]?.detail ?? '') };
@@ -236,10 +247,12 @@ async function weighWaiting(
     const held = new Map(reports.filter((r) => r.unearned.length > 0).map((r) => [r.issueId, r]));
     excluded = [...held.keys()];
     if (excluded.length > 0) {
+      const owes = await holdOwer(projectId);
       await hold({
         ...base,
         issueIds: excluded,
-        holdFor: (id) => landingCriteriaHold(held.get(id) as (typeof reports)[number], landing),
+        holdFor: (id) =>
+          landingCriteriaHold(held.get(id) as (typeof reports)[number], landing, owes),
       });
     }
   } else {

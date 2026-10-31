@@ -136,22 +136,34 @@ function deploymentClause(
 }
 
 /**
- * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
- * would is the one holding it, so every act that moves the row from here is somebody's by hand.
+ * Who clears a criteria hold (REQ-79 r6 BC-17): the project's master outside strict, which records the
+ * verdicts or moves the issue on; a person on a strict project, where nothing dispatched claims a row
+ * at `awaiting_release` and every act that moves it from here is somebody's by hand.
  */
-export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
+export type CriteriaHoldOwer = ReleaseHoldOwer;
+
+const clearer = (owes: CriteriaHoldOwer) =>
+  owes === 'human' ? 'A person clears this' : "The project's master clears this";
+
+export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer): ReleaseHold {
   const reasons = reasonsByWhy(report);
   const judge = judgeClause(report.serving, report.runtimes, report.weighedOn);
+  // only a person closes by hand; the master clears it by the verdicts or by moving the issue on
+  const byHand =
+    owes === 'human'
+      ? 'or, having seen the change running in production, close the issue by hand; '
+      : '';
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${reasons}. A person clears this: ${judge}; or, having seen ` +
-      'the change running in production, close the issue by hand; or move it out of ' +
+      `this one is not — ${reasons}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
       '`awaiting_release` if it is not to ship.',
-    owes: 'human',
+    owes,
     waitingFor:
-      'a verdict on each criterion named at the running deployment, or the issue closed by hand',
+      owes === 'human'
+        ? 'a verdict on each criterion named at the running deployment, or the issue closed by hand'
+        : 'a verdict on each criterion named at the running deployment',
     criteria: report.unearned.map((c) => c.criterion),
   };
 }
@@ -165,6 +177,7 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
 export function landingCriteriaHold(
   report: LandingCriteriaReport,
   basis: Extract<CriteriaBasis, { kind: 'landing' }>,
+  owes: CriteriaHoldOwer,
 ): ReleaseHold {
   const at = report.landing
     ? `judged at its landing commit \`${report.landing.slice(0, 12)}\` on \`${basis.landsOn}\``
@@ -175,11 +188,11 @@ export function landingCriteriaHold(
       'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
       `this one is not — ${reasonsByWhy(report)}. This project's work lands on \`${basis.landsOn}\` ` +
       `and production deploys \`${basis.deploysFrom}\` through a promotion, so a criterion is earned ` +
-      `where the change has landed, not where production is. A person clears this: record a verdict ` +
+      `where the change has landed, not where production is. ${clearer(owes)}: record a verdict ` +
       `on each criterion named, ${at} (or, where \`delivery.judgedOn\` names a testing environment, ` +
       'one judged there at that commit); or move the issue out of `awaiting_release` if it is not ' +
       'to ship.',
-    owes: 'human',
+    owes,
     waitingFor: 'a verdict on each criterion named at its landing commit',
     criteria: report.unearned.map((c) => c.criterion),
   };
@@ -249,16 +262,26 @@ export function queuedBehindHold(carried: number): ReleaseHold {
   };
 }
 
-export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
-  code: 'NO_RELEASE_GATE',
-  reason:
-    'This project declares no production environment, so no automatic release carries this issue: ' +
-    'its landing on the working branch is its delivery, and it closes when a person records that ' +
-    'landing (`POST /api/projects/:id/release-records`) at a commit holding its merge; the record ' +
-    'reports each criterion by the pass it stands on.',
-  owes: 'human',
-  waitingFor: 'a person to record the landing',
-};
+/**
+ * A project with no production environment: its landing is its delivery, recorded through the record
+ * door, which the project's master holds outside strict and a project admin under it (REQ-79 r6 BC-17).
+ */
+export function noReleaseGateHold(owes: ReleaseHoldOwer): ReleaseHold {
+  const who = owes === 'human' ? 'a person' : "the project's master";
+  return {
+    code: 'NO_RELEASE_GATE',
+    reason:
+      'This project declares no production environment, so no automatic release carries this issue: ' +
+      `its landing on the working branch is its delivery, and it closes when ${who} records that ` +
+      'landing (`POST /api/projects/:id/release-records`) at a commit holding its merge; the record ' +
+      'reports each criterion by the pass it stands on.',
+    owes,
+    waitingFor: `${who} to record the landing`,
+  };
+}
+
+/** The strict project's: a person records the landing. */
+export const NO_RELEASE_GATE_HOLD: ReleaseHold = noReleaseGateHold('human');
 
 export const NO_ACTOR_HOLD: ReleaseHold = {
   code: 'RELEASE_NO_ACTOR',

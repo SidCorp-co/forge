@@ -16,6 +16,7 @@ import {
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
 import { ROLE_WHO } from '../helpers/role-who.js';
 
@@ -123,6 +124,8 @@ const nameDraft = () =>
 
 describe('a draft release held by a missing release note', () => {
   it('waits on the master by name, with the act and the issue, not on the release gate', async () => {
+    // REQ-79 r6 BC-16: a missing note holds a strict project's release; outside it the cut drafts it
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     const key = await keyOf(await fx.insertIssue('awaiting_release', null));
     const release = await draft();
     expect(release).toMatchObject({

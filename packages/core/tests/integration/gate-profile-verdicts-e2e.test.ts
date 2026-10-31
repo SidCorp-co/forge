@@ -255,4 +255,36 @@ describe('REQ-76 BC-7: a release needs no person approval under yolo', () => {
     await profile('yolo');
     expect(await attempt()).toBeNull();
   });
+
+  /** A release run whose one approval request still waits on a decision. */
+  async function pendingRequest(): Promise<string> {
+    const [run] = await rows<{ id: string }>(sql`
+      INSERT INTO pipeline_runs (project_id, kind, status, metadata)
+      VALUES (${projectId}, 'system', 'running', ${JSON.stringify({ source: 'release-batch' })}::jsonb)
+      RETURNING id`);
+    if (!run) throw new Error('no run');
+    await db.execute(sql`
+      INSERT INTO release_approvals (project_id, run_id, requested_by_user, evidence_commit, evidence_reading)
+      VALUES (${projectId}, ${run.id}, ${ownerId}, ${NEW}, 'GET /api/health 200')`);
+    return run.id;
+  }
+
+  const attemptOn = async (runId: string): Promise<{ refusals?: { code: string }[] } | null> => {
+    const { assertApprovalAllowsAttempt } = await import('../../src/release-batch/approvals.js');
+    return assertApprovalAllowsAttempt(runId, projectId).then(
+      () => null,
+      (err: unknown) => err as { refusals?: { code: string }[] },
+    );
+  };
+
+  it('where the approval gate is off, a request still pending does not hold the production act (REQ-79 r6)', async () => {
+    await profile('yolo');
+    expect(await attemptOn(await pendingRequest())).toBeNull();
+  });
+
+  it('where the approval gate is enforced, a pending request still holds it', async () => {
+    await profile('standard');
+    const err = await attemptOn(await pendingRequest());
+    expect(err?.refusals?.map((r) => r.code)).toEqual(['RELEASE_AWAITING_APPROVAL']);
+  });
 });

@@ -17,7 +17,7 @@ import {
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { type PersonGate, personGatePermission } from '@forge/contracts/person-gates';
 import { actorFor, can, projectResource } from '../permissions/index.js';
-import { readApprovals } from '../project-config/index.js';
+import { readApprovals, readGateProfile } from '../project-config/index.js';
 import { masterAccountsOf } from './ports.js';
 
 /** What an act's route asks of its mover: a fixed permission, a person gate, or a person alone. */
@@ -47,6 +47,13 @@ const NEED: Readonly<Record<DecisionAct, Need>> = {
   'mockup.accept': { permission: 'mockups.approve' },
   'mockup.return': { permission: 'mockups.approve' },
 };
+
+/**
+ * The acts the master takes outside strict whatever its role holds, as their doors read it
+ * (`permissions/master-acts.ts`, REQ-79 r6 BC-11, BC-17): its accounts write the project, and the
+ * project did not ask for control.
+ */
+const MASTER_ACTS: ReadonlySet<DecisionAct> = new Set<DecisionAct>(['release.cut']);
 
 /** A decision the agent takes, left out of a person's list by that reason and opened on its item. */
 export const agentTakesItem = (d: NeedsYouDecision): NotDecisionItem => ({
@@ -106,7 +113,9 @@ export async function masterTakesOf(
     }
   }
   for (const p of permissions) await holds(p);
+  const master = (await readGateProfile(projectId)) !== 'strict' && (await holds('project.write'));
   return (act, topic) => {
+    if (master && MASTER_ACTS.has(act)) return true;
     const p = permissionOf(act, topic);
     return p !== null && held.get(p) === true;
   };

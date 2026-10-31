@@ -223,6 +223,8 @@ describe('release-readiness and the create door answer the same question', () =>
 
   it('names the roster reason and the fleet reason together, not one per attempt', async () => {
     const w = await seed();
+    // REQ-79 r6 BC-16: a missing note is a strict project's roster reason; outside it the door drafts it
+    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
     await seedIssue(w, null);
 
     const codes = (await readiness(w)).body.blockers.map((b) => b.code);
@@ -233,6 +235,8 @@ describe('release-readiness and the create door answer the same question', () =>
 
   it('refuses the create by the code readiness printed, and carries the rest with it', async () => {
     const w = await seed();
+    // REQ-79 r6 BC-16: a missing note is a strict project's roster reason; outside it the door drafts it
+    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
     const issue = await seedIssue(w, null);
 
     const answer = await readiness(w);

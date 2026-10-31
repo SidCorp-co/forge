@@ -253,7 +253,8 @@ describe('a promotion release is cut only where the declared gate check passes a
   });
 
   beforeEach(async () => {
-    await declareGate(world.projectId, { type: 'gitlab-pipeline', name: 'pipeline' });
+    // REQ-79 r6: the declared gate holds a release only where the project asks for control
+    await declareGate(world.projectId, { type: 'gitlab-pipeline', name: 'pipeline' }, 'strict');
   });
 
   it('refuses the cut by name while the pipeline at the request head is red, and opens no run', async () => {

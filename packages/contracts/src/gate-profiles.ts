@@ -9,7 +9,8 @@
 //    switch (`approvals.admit`, `plan.approval.required`, `validation.mergeCheck`, `policy.qa`, ...),
 //    so a project with no `gates` keeps every switch it set (BC-2). `standard` otherwise acts first
 //    (REQ-79 r6, owner ruling 2026-10-31): a builder verdict, a design record, a pattern review and a
-//    scope hold are `strict`'s, the human control a project asks for, and never hold an agent by default.
+//    scope hold are `strict`'s, the human control a project asks for, and never hold an agent by default;
+//    a declared gate check that is not a pass is cleanup debt outside strict, never a hold.
 // A profile Forge raised after an incident (BC-13) is an ordinary profile with `raised` beside it;
 // only a person lowers it again.
 //
@@ -334,6 +335,18 @@ export const GATE_CATALOG = defineGates([
 		relaxed: "off: a release ships with nobody approving",
 	},
 	{
+		// REQ-79 r6 BC-12, BC-16 (owner ruling 2026-10-31): outside strict only the build and a healthy
+		// deploy hold a release, so a declared check that is not a pass is cleanup debt there, not a hold
+		id: "declared_gate",
+		title: "Declared gate check passes",
+		refuses: "a release putting a commit on production while the project's declared validation gate check is red, pending, silent or unread there",
+		codes: ["RELEASE_GATE_CHECK_RED", "RELEASE_GATE_CHECK_PENDING", "RELEASE_GATE_CHECK_SILENT", "RELEASE_GATE_CHECK_UNREAD"],
+		at: "release cut, release deploy, on-land deploy",
+		modes: CHECKLIST_MODES,
+		defaults: { strict: "enforce", standard: "advise", yolo: "advise" },
+		relaxed: "advise ships it, each reading that is not a pass recorded once as cleanup debt",
+	},
+	{
 		id: "release_criteria",
 		title: "Criteria proven before release",
 		refuses: "a release carrying an issue whose criteria have no counted pass",
@@ -395,7 +408,6 @@ export const KERNEL_RULES = [
 	{ id: "review_by_builder", holds: "a recorded review is never the builder's own", codes: ["REVIEW_BY_BUILDER"] },
 	{ id: "verdict_shape", holds: "a verdict names a known criterion and carries no secret", codes: ["VERDICT_CRITERION_UNKNOWN", "VERDICT_SECRET"] },
 	{ id: "requirement_proven", holds: "a requirement reads delivered only where every BC is proven", codes: ["REQUIREMENT_CRITERIA_UNPROVEN", "REQUIREMENT_NO_LIVE_ISSUE"] },
-	{ id: "declared_gate", holds: "no release puts a commit on production while the project's declared validation gate check is red, pending, silent or unread there", codes: ["RELEASE_GATE_CHECK_RED", "RELEASE_GATE_CHECK_PENDING", "RELEASE_GATE_CHECK_SILENT", "RELEASE_GATE_CHECK_UNREAD"] },
 	{ id: "pat_fence", holds: "a fenced token reaches only its own project", codes: ["PAT_PROJECT_OUTSIDE_FENCE", "PAT_ACCOUNT_ROUTE"] },
 ] as const;
 

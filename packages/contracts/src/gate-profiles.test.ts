@@ -130,28 +130,29 @@ describe("REQ-76 BC-3: one gate is overridden on its own", () => {
 	});
 });
 
-describe("ISS-809: the project's declared validation gate is a kernel rule, relaxed by no profile", () => {
-	it("is listed with the codes it refuses by, and is no policy gate with a mode", () => {
-		const rule = KERNEL_RULES.find((k) => k.id === "declared_gate");
-		expect(rule?.codes).toEqual([
+describe("ISS-809, REQ-79 r6: the project's declared validation gate holds under strict, and advises outside it", () => {
+	it("is a policy gate with the codes it refuses by, enforced by strict and advising under standard and yolo", () => {
+		expect(KERNEL_RULES.map((k) => k.id) as readonly string[]).not.toContain("declared_gate");
+		const entry = GATE_CATALOG.find((g) => g.id === "declared_gate");
+		expect(entry?.codes).toEqual([
 			"RELEASE_GATE_CHECK_RED",
 			"RELEASE_GATE_CHECK_PENDING",
 			"RELEASE_GATE_CHECK_SILENT",
 			"RELEASE_GATE_CHECK_UNREAD",
 		]);
-		expect(GATE_IDS as readonly string[]).not.toContain("declared_gate");
-		for (const profile of ["strict", "standard", "yolo"] as const) {
-			expect(projectGates({ gates: { profile } }, null).map((g) => g.id)).not.toContain("declared_gate");
-		}
+		expect(modeOf({ gates: { profile: "strict" } }, "declared_gate")).toBe("enforce");
+		expect(modeOf(null, "declared_gate")).toBe("advise");
+		expect(modeOf({ gates: { profile: "yolo" } }, "declared_gate")).toBe("advise");
 	});
 
-	it("refuses an override naming it, in every mode", () => {
-		for (const mode of ["enforce", "advise", "off"]) {
-			const parsed = gatesConfigSchema.safeParse({ profile: "yolo", overrides: { declared_gate: mode } });
-			expect(parsed.success, mode).toBe(false);
-		}
+	it("takes an override to enforce on a standard project, and never off", () => {
+		const enforced = { gates: { profile: "standard" as const, overrides: { declared_gate: "enforce" as const } } };
+		expect(modeOf(enforced, "declared_gate")).toBe("enforce");
+		expect(entryModes("declared_gate")).not.toContain("off");
 	});
 });
+
+const entryModes = (id: GateId) => GATE_CATALOG.find((g) => g.id === id)?.modes ?? [];
 
 describe("REQ-76 BC-11: a refusal names the gate, the profile and the key", () => {
 	it("says which gate, by what, and the override that relaxes it", () => {

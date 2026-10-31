@@ -6,9 +6,10 @@
  * host reports onto that branch is the landing, whichever door merged it, so the push deploys it.
  *
  * The declared validation gate (`validation.gate`, REQ-71 BC-9, ISS-809) is read at the landed commit
- * before any environment deploys it, and no profile relaxes it. A check still running is held: the
- * delivery fails by name and the outbox retries it, so a landing is never skipped for a check that has
- * not finished. A red, silent or unreadable check is refused by name, and the next landing reads it again.
+ * before any environment deploys it. Where gate `declared_gate` is enforced (`strict`), a check still
+ * running is held: the delivery fails by name and the outbox retries it, so a landing is never skipped
+ * for a check that has not finished; a red, silent or unreadable check is refused by name, and the next
+ * landing reads it again. Outside strict the landing deploys, and the reading is cleanup debt (REQ-79 r6).
  *
  * Production is the release's: its `on-land` is the release sweep's cut (`release-sweep.ts`), and a
  * binding reaching production's box parks for a person (`dispatchCoolifyDeployDirect`).
@@ -17,7 +18,7 @@
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { environmentsOf, readProjectDocument } from '../project-config/index.js';
-import { declaredGateBlocker, readDeclaredGate } from './declared-gate.js';
+import { declaredGateHold, readDeclaredGate } from './declared-gate.js';
 import { dispatchCoolifyDeployDirect } from './release-coolify.js';
 
 /** Where a landing on `branch` at `commit` deploys: each binding dispatched, or why one was not. */
@@ -53,7 +54,7 @@ export async function deployLanding(p: {
   if (due.length === 0) return out;
   // read once, at the landed commit: the gate is the project's, the same for every environment
   const reading = await readDeclaredGate(p.projectId, { branch: p.branch, commit: p.commit });
-  const gate = declaredGateBlocker(reading);
+  const gate = await declaredGateHold(p.projectId, reading);
   if (gate) {
     const why = `${gate.code}: ${gate.message}`;
     // thrown, so the outbox delivers the landing again: a pending check is held, never skipped

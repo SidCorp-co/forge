@@ -1,10 +1,12 @@
 /**
  * The approval gate on a contract version: recorded as proposed, current only once approved, by
  * whoever holds contracts.approve on the provider project (ADR 0007), a breaking version included.
+ * Outside strict the provider project's master holds it for its own project's contracts (REQ-79 r6
+ * BC-11, `permissions/master-acts.ts`), and its decision is recorded as an agent's.
  */
 
 import type { ContractApprovalRefusalCode } from '@forge/contracts/ecosystem';
-import { type PermissionFacts, permissionRefusal } from '../../permissions/index.js';
+import { type MasterAsk, masterActRefusal, type PermissionFacts } from '../../permissions/index.js';
 
 const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
 export type ContractApproval = (typeof CONTRACT_APPROVALS)[number];
@@ -26,8 +28,9 @@ interface ApprovalRefusal {
 export function approverRefusal(
   facts: PermissionFacts,
   version: { ref: string },
+  ask: MasterAsk,
 ): ApprovalRefusal | null {
-  return permissionRefusal(facts, 'contracts.approve', `deciding ${version.ref}`);
+  return masterActRefusal(facts, 'contracts.approve', ask, `deciding ${version.ref}`);
 }
 
 export function decisionRefusals(input: {

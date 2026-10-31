@@ -169,7 +169,7 @@ describe('a landing deploys the environment declaring on-land (REQ-71 BC-8)', ()
  * non-production environment too: pending is held and named (the delivery fails and is retried, never
  * skipped), red and unreadable are refused by name, and no gate profile relaxes it.
  */
-describe('a landing reads the declared validation gate before it deploys (REQ-71 BC-9)', () => {
+describe('under strict, a landing reads the declared validation gate before it deploys (REQ-71 BC-9)', () => {
   const gate = { type: 'github-check', name: 'gate' } as const;
   const check = (conclusion: string | null, status = 'completed') => ({
     id: '9001',
@@ -189,7 +189,8 @@ describe('a landing reads the declared validation gate before it deploys (REQ-71
     gateHost.failWith = null;
     gateHost.readAt = [];
     gateHost.committedAt = new Date(Date.now() - 5 * 60_000).toISOString();
-    await declareGate(w.projectId, gate);
+    // REQ-79 r6: the declared gate holds a landing only where the project asks for control
+    await declareGate(w.projectId, gate, 'strict');
   });
 
   afterAll(() => {
@@ -255,12 +256,24 @@ describe('a landing reads the declared validation gate before it deploys (REQ-71
     expect(await deploysQueued()).toEqual([]);
   });
 
-  it('is not relaxed by the yolo profile', async () => {
+  it('deploys a red landing outside strict, the red recorded once as cleanup debt (REQ-79 r6)', async () => {
     await declareGate(w.projectId, gate, 'yolo');
     gateHost.checks = [check('failure')];
 
-    expect((await landing())[0]?.why).toContain('RELEASE_GATE_CHECK_RED');
-    expect(await deploysQueued()).toEqual([]);
+    expect((await landing())[0]?.dispatched).toBe(true);
+    expect(await deploysQueued()).toEqual([`on-land:${w.bindingId}:${MERGED}`]);
+    await landing();
+    const debts = await db.execute(sql`
+      SELECT kind, check_name FROM delivery_debts
+       WHERE project_id = ${w.projectId} AND cleared_at IS NULL`);
+    expect([...debts]).toEqual([{ kind: 'red', check_name: check('failure').name }]);
+  });
+
+  it('deploys a running check outside strict instead of holding the landing', async () => {
+    await declareGate(w.projectId, gate, 'standard');
+    gateHost.checks = [check(null, 'in_progress')];
+
+    expect((await landing())[0]?.dispatched).toBe(true);
   });
 
   it('reads no host where the project declares no gate', async () => {

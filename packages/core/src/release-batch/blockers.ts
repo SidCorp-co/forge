@@ -19,6 +19,7 @@ import {
   requireLandingShape,
 } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { readGateProfile } from '../project-config/index.js';
 import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
@@ -42,13 +43,13 @@ import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { cleanupBlocker } from './cleanup-hold.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
+import { draftMissingReleaseNotes } from './note-draft.js';
 import { promotionBlockers } from './promotion-standing.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { releaseRecordBlocker } from './record-blocker.js';
 import { blockerRefusal, releaseBlockedRefusal } from './refuse.js';
 import { shippedInBlocker } from './shipped-in.js';
-import { decideVersion, lineageOf } from './version-rule.js';
-import { readLineageRuns, releaseLineOf, undecidedDetails } from './version-store.js';
+import { versionBlocker } from './version-blocker.js';
 
 export * from './blocker-sentences.js';
 
@@ -172,8 +173,15 @@ async function rosterBlockers(
     const cleanup = await evaluate('cleanup', () => cleanupBlocker(projectId, issueIds), out);
     if (cleanup) out.push(cleanup);
   }
-  const gaps = await evaluate('release-record', async () => await releaseRecordGaps(issueIds), out);
-  const owed = gaps && (await releaseRecordBlocker(gaps, namedAs));
+  const gaps = await evaluate(
+    'release-record',
+    async () => ({
+      gaps: await releaseRecordGaps(issueIds),
+      profile: await readGateProfile(projectId),
+    }),
+    out,
+  );
+  const owed = gaps && (await releaseRecordBlocker(gaps.gaps, namedAs, gaps.profile));
   if (owed) out.push(owed);
   if (door !== 'record') return;
   // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.
@@ -477,32 +485,6 @@ async function changeRequestReleaseBlockers(
   }
 }
 
-/**
- * A re-cut whose version the rule cannot decide (ADR 0011): an earlier attempt on this same roster
- * ended without saying what outside Forge carries its version.
- */
-async function versionBlocker(
-  projectId: string,
-  roster: string[] | undefined,
-  out: ReleaseBlocker[],
-): Promise<void> {
-  if (!roster || roster.length === 0) return;
-  const ids = roster.map((id) => id.toLowerCase());
-  const read = await evaluate(
-    'version',
-    async () => {
-      const runs = await readLineageRuns(db, projectId);
-      return { runs, decision: decideVersion(runs, ids, await releaseLineOf(projectId)) };
-    },
-    out,
-  );
-  if (read?.decision.kind !== 'undecided') return;
-  const d = read.decision;
-  const { headOf, attemptsOf } = lineageOf(read.runs);
-  const chain = attemptsOf.get(headOf.get(d.recutOf.id)?.id ?? d.recutOf.id) ?? [d.recutOf];
-  out.push(blocker('RELEASE_VERSION_UNDECIDED', undecidedDetails(projectId, d, chain)));
-}
-
 export * from './blocker-kit.js';
 
 /**
@@ -510,6 +492,9 @@ export * from './blocker-kit.js';
  * id is then an issue at this project's gate, so its lower-case spelling is the row's own.
  */
 export async function admitRoster(projectId: string, named: string[], door: ReleaseDoor) {
+  // outside strict a missing note is drafted here, at the act, never refused (REQ-79 r6 BC-16)
+  if ((await readGateProfile(projectId)) !== 'strict')
+    await draftMissingReleaseNotes(projectId, named);
   const report = await collectReleaseBlockers(projectId, { issueIds: named, door });
   if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
   const refusal = releaseBlockedRefusal(report);

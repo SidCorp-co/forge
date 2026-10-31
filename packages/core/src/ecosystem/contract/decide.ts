@@ -4,6 +4,7 @@ import { embedFeedbackLater } from '../../feedback/index.js';
 import { settleContractWaitsIn } from '../../issues/index.js';
 import { contractLockKey } from '../../lib/contract-versions.js';
 import { permissionFactsOf } from '../../permissions/index.js';
+import { readGateProfile } from '../../project-config/index.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
@@ -35,11 +36,12 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
   const ref = `${project.slug}/${contract}@${version}`;
   const target = (await versionsOf(db, [projectId], contract)).find((v) => v.version === version);
   if (!target) throw notFound(`${project.slug}/${contract} has no recorded version "${version}"`);
-  const [facts, iface] = await Promise.all([
+  const [facts, iface, profile] = await Promise.all([
     permissionFactsOf(actor.userId, projectId),
     loadInterface(projectId),
+    readGateProfile(projectId),
   ]);
-  const denied = approverRefusal(facts, { ref });
+  const denied = approverRefusal(facts, { ref }, { agency: actor.agency, profile });
   if (denied) return { ok: false, refusals: [denied] };
   const outcome = await db.transaction(async (tx): Promise<DecideOutcome> => {
     await lockKeys(tx, [contractLockKey(projectId, contract)]);

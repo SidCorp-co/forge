@@ -1,7 +1,11 @@
 /**
  * ISS-809 / REQ-71 BC-9 — a project's declared validation gate is read where a release puts a commit
  * on production, against real Postgres with the source host planted. Split from `release-hold-e2e`,
- * whose setup it shares.
+ * whose setup it shares. Under `strict` a reading that is not a pass holds the release; outside it
+ * the release goes and the reading is recorded as cleanup debt (REQ-79 r6 BC-12, BC-16; ISS-845).
+ *
+ * @direct-test-of packages/core/src/release-batch/declared-gate.ts
+ * @direct-test-of packages/core/src/cleanup/gate-debt.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -13,6 +17,7 @@ import { createReleaseBatch } from '../../src/release-batch/create.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import {
   declareGate,
   fakeCoolify,
@@ -175,7 +180,7 @@ const releaseRuns = async () =>
  * silent one is held saying how long it waited, an unreadable one is refused (REQ-71 BC-9). The host is
  * planted; what is asserted is what the cut, the sweep's hold and the deploy do with its answer.
  */
-describe('a project’s declared validation gate is read where a commit reaches production', () => {
+describe('under strict, a project’s declared validation gate holds where a commit reaches production', () => {
   const GATE = { type: 'github-check', name: 'gate' } as const;
   const run = (
     conclusion: string | null,
@@ -200,7 +205,8 @@ describe('a project’s declared validation gate is read where a commit reaches 
     gateHost.failWith = null;
     gateHost.github = null;
     gateHost.committedAt = minutesAgo(5);
-    await declareGate(projectId, GATE);
+    // REQ-79 r6: the declared gate holds a release only where the project asks for control
+    await declareGate(projectId, GATE, 'strict');
   });
 
   afterAll(() => {
@@ -325,6 +331,10 @@ describe('a project’s declared validation gate is read where a commit reaches 
   });
 
   it('refuses a release run’s deploy while the head its branch deploys is not a pass', async () => {
+    // strict asks a person's approval before the deploy too; this case is about the gate alone
+    await declareControls(projectId, ownerId, {
+      gates: { profile: 'strict', overrides: { release_approval: 'off' } },
+    });
     const id = await heldRow('pass');
     gateHost.checks = [run('success')];
     const cut = await fx.claim([id]);
@@ -340,14 +350,104 @@ describe('a project’s declared validation gate is read where a commit reaches 
     expect((err as RefusalError).refusals[0]?.detail).toContain('`gate`');
   });
 
-  it('is not relaxed by the yolo profile', async () => {
-    await declareGate(projectId, GATE, 'yolo');
+  it('is held by an override on a standard project, as under strict', async () => {
+    await declareControls(projectId, ownerId, {
+      gates: { profile: 'standard', overrides: { declared_gate: 'enforce' } },
+    });
     const id = await heldRow('pass');
     gateHost.checks = [run('failure')];
 
     const err = await refusedCut(id);
 
     expect(err.refusals[0]?.code).toBe('RELEASE_GATE_CHECK_RED');
+    expect(await openDebts()).toEqual([]);
+  });
+});
+
+/** The project's open cleanup debt, oldest first. */
+const openDebts = () =>
+  rows<{ kind: string; check_name: string | null; location: string; detail: string }>(sql`
+    SELECT kind, check_name, location, detail FROM delivery_debts
+     WHERE project_id = ${projectId} AND cleared_at IS NULL ORDER BY created_at`);
+
+/**
+ * REQ-79 r6 BC-12, BC-16 (owner ruling 2026-10-31): outside strict only the build and a healthy deploy
+ * hold a release. A declared check that is not a pass where the release puts its commit is recorded as
+ * cleanup debt, once per check and commit, and the release goes.
+ */
+describe('outside strict, a declared gate that is not a pass is cleanup debt, never a hold', () => {
+  const GATE = { type: 'github-check', name: 'gate' } as const;
+  const failed = {
+    id: '9001',
+    name: 'gate',
+    app: 'github-actions',
+    status: 'completed',
+    conclusion: 'failure',
+    detailsUrl: 'https://github.example/acme/test-project/actions/runs/9001',
+    startedAt: '2026-10-30T10:21:05Z',
+    completedAt: '2026-10-30T10:25:00Z',
+  };
+
+  beforeEach(async () => {
+    gateHost.on = true;
+    gateHost.reads = 0;
+    gateHost.checks = [];
+    gateHost.failWith = null;
+    gateHost.github = null;
+    gateHost.committedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    await declareGate(projectId, GATE);
+  });
+
+  afterAll(() => {
+    gateHost.on = false;
+  });
+
+  it('cuts at a red head on a project that sets no gates, and records the red once as debt', async () => {
+    const id = await heldRow('pass');
+    gateHost.checks = [failed];
+
+    const cut = await createReleaseBatch({ projectId, issueIds: [id], userId: ownerId });
+
+    expect(cut.issueIds).toEqual([id]);
+    const debts = await openDebts();
+    expect(debts).toHaveLength(1);
+    expect(debts[0]).toMatchObject({ kind: 'red', check_name: 'gate' });
+    expect(debts[0]?.location).toContain(gateHost.head);
+    expect(debts[0]?.detail).toContain('failure');
+
+    // the release run's deploy reads the same head again: the same red is not a second debt
+    const deploy = await runCoolifyDeploy({ projectId, pipelineRunId: cut.runId }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(deploy instanceof RefusalError ? deploy.refusals.map((r) => r.code) : []).not.toContain(
+      'RELEASE_GATE_CHECK_RED',
+    );
+    expect(await openDebts()).toHaveLength(1);
+  });
+
+  it('cuts under yolo while the check still runs or never reports, each recorded as debt', async () => {
+    await declareGate(projectId, GATE, 'yolo');
+    const id = await heldRow('pass');
+    gateHost.checks = [{ ...failed, status: 'in_progress', conclusion: null, completedAt: null }];
+
+    const cut = await createReleaseBatch({ projectId, issueIds: [id], userId: ownerId });
+
+    expect(cut.issueIds).toEqual([id]);
+    const debts = await openDebts();
+    expect(debts.map((d) => d.kind)).toEqual(['debt']);
+    expect(debts[0]?.detail).toContain('still running');
+  });
+
+  it('the sweep cuts a waiting row at a red head instead of holding it', async () => {
+    const id = await heldRow('pass');
+    gateHost.checks = [failed];
+
+    const result = await sweep();
+
+    expect(result.issuesCut).toBe(1);
+    expect(await holdOf(id)).toBeNull();
+    expect((await openDebts()).map((d) => d.kind)).toEqual(['red']);
   });
 });
 
@@ -358,7 +458,7 @@ describe('an Actions gate read through GitHub, where commit statuses answer 403'
     gateHost.on = true;
     gateHost.failWith = null;
     gateHost.committedAt = new Date(Date.now() - 5 * 60_000).toISOString();
-    await declareGate(projectId, { type: 'github-check', name: 'gate' });
+    await declareGate(projectId, { type: 'github-check', name: 'gate' }, 'strict');
   });
 
   afterAll(() => {

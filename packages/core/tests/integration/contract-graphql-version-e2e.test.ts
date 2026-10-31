@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mintPat } from '../../src/credentials/pat.js';
+import { api } from '../helpers/api.js';
 import {
   closeWorld,
   type Doc,
@@ -9,7 +11,8 @@ import {
   refusal,
   sender,
 } from '../helpers/ecosystem-world.js';
-import { addProjectMember } from '../helpers/factories.js';
+import { addProjectMember, createTestUser } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 // @direct-test-of packages/core/vitest.integration.config.ts
 // FB-283's change rebuilt: autoflow's shop-mcp-graphql 1.1.0 added a mutation, an optional
@@ -157,9 +160,50 @@ describe('a recorded GraphQL version is decided by a holder of contracts.approve
     }
   });
 
-  it('the org owner approves each, and the unknown one becomes current', async () => {
-    ok(await decide('platform', '1.1.0'));
-    expect(ok(await say('platform', 'GET', versions())).current).toBe('1.1.0');
+  // REQ-79 r6 BC-11 (owner ruling 2026-10-31): outside strict the provider's master decides its own
+  // contracts; under strict contracts.approve stays its role's and grant's
+  describe("the provider project's master, an agent member holding no contracts.approve", () => {
+    let agentToken = '';
+    const decideAsAgent = (version: string) =>
+      api(
+        agentToken,
+        'POST',
+        `/api/projects/${w.project.internal}/contracts/workflows/versions/${version}/decision`,
+        { decision: 'approve' },
+      );
+
+    beforeAll(async () => {
+      const agentId = (await createTestUser({ kind: 'agent' })).id;
+      await addProjectMember(w.project.internal, agentId, 'member');
+      const minted = await mintPat({
+        userId: agentId,
+        name: 'master',
+        projectIds: [w.project.internal],
+        permissions: ['*'],
+      });
+      agentToken = minted.plaintext;
+    });
+
+    it('is refused under strict, naming the profile', async () => {
+      await declareControls(w.project.internal, w.user.platform, { gates: { profile: 'strict' } });
+      const r = await decideAsAgent('1.1.0');
+      await declareControls(w.project.internal, w.user.platform, {
+        gates: { profile: 'standard' },
+      });
+      expect(r.status, JSON.stringify(r.body)).toBe(403);
+      expect(JSON.stringify(r.body)).toContain('PERMISSION_FORBIDDEN');
+      expect(JSON.stringify(r.body)).toContain('strict');
+    });
+
+    it('approves its own contract outside strict, recorded as an agent', async () => {
+      const r = await decideAsAgent('1.1.0');
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      expect((r.body.approval as Doc).decidedAs).toBe('agent');
+      expect(ok(await say('platform', 'GET', versions())).current).toBe('1.1.0');
+    });
+  });
+
+  it('the org owner approves the unknown one, and it becomes current', async () => {
     ok(await decide('platform', '1.2.0'));
     expect(ok(await say('platform', 'GET', versions())).current).toBe('1.2.0');
   });

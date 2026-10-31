@@ -28,6 +28,12 @@ export {
 } from './can.js';
 export { holderNames, type NamedHolder, namedHolders } from './holders-named.js';
 export {
+  actsAsMaster,
+  type MasterAsk,
+  masterActRefusal,
+  requireMasterAct,
+} from './master-acts.js';
+export {
   addOrgMember,
   addProjectMembers,
   removeOrgMember,

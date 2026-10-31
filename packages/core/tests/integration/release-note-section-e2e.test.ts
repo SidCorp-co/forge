@@ -27,6 +27,7 @@ import {
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 const ACCEPTED = releaseNotesSections.join(', ');
@@ -148,9 +149,21 @@ describe('the cut', () => {
     (await collectReleaseBlockers(w.projectId, { issueIds: ids, door: 'record' })).blockers.filter(
       (b) => b.code === 'RELEASE_RECORD_MISSING',
     );
+  // REQ-79 r6 BC-16: a missing or unplaceable note blocks only a strict project's release
+  const seedStrict = async () => {
+    const w = await seed();
+    await declareControls(w.projectId, w.user.id, { gates: { profile: 'strict' } });
+    return w;
+  };
+
+  it('outside strict names neither: the door that cuts or records drafts them', async () => {
+    const w = await seed();
+    const ids = [await plantIssue(w, BAD), await plantIssue(w, null)];
+    expect(await recordBlockers(w, ids)).toEqual([]);
+  });
 
   it('names the issue, the section it holds and the accepted ones for a stored bad section', async () => {
-    const w = await seed();
+    const w = await seedStrict();
     const bad = await plantIssue(w, BAD);
     const found = await recordBlockers(w, [bad]);
     expect(found).toHaveLength(1);
@@ -164,7 +177,7 @@ describe('the cut', () => {
   });
 
   it('keeps a missing note missing, and a known section passes', async () => {
-    const w = await seed();
+    const w = await seedStrict();
     const none = await plantIssue(w, null);
     const good = await plantIssue(w, GOOD);
     const found = await recordBlockers(w, [none, good]);

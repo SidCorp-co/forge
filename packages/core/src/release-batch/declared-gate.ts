@@ -2,16 +2,18 @@
 // changes must pass, read at the commit a release puts on production. Settings showed it as the
 // delivery gate and nothing read it, so an on-land release deployed a commit whatever its gate check
 // said (Agenfold, 2026-10-30: main at f1bb20e). It is read through the project's source host, never a
-// token of ours, and it is no policy gate: `declared_gate` is a kernel rule (`KERNEL_RULES`), so no
-// gate profile relaxes it.
+// token of ours. Whether a reading that is not a pass holds is the policy gate `declared_gate`'s
+// (REQ-79 r6 BC-12, BC-16): `strict` enforces it; outside strict it advises, and the release goes with
+// the reading recorded as cleanup debt (`cleanup/gate-debt.ts`), once per check and commit.
 //
 // One function answers everywhere a commit reaches production: the cut (`create.ts`, and a promotion's
 // at its request's head, `promotion-release.ts`) and the release run's deploy (`coolify-commands.ts`),
-// which asks again because the head moves between a cut and the agent's deploy. A reading that is not
-// a pass is a release blocker of its own code: red is refused, pending waits, a check that never reports
-// holds with the wait it has had, a host that will not answer refuses. Nothing here reads a missing
-// check as a pass, or a host that did not answer as one.
+// which asks again because the head moves between a cut and the agent's deploy. Where it is enforced, a
+// reading that is not a pass is a release blocker of its own code: red is refused, pending waits, a
+// check that never reports holds with the wait it has had, a host that will not answer refuses. Nothing
+// here reads a missing check as a pass, or a host that did not answer as one: advised, each is debt.
 
+import { type GateDebt, recordGateDebt } from '../cleanup/index.js';
 import type { ProjectedCheckRun } from '../db/schema-repo-projection.js';
 import {
   currentHeadRuns,
@@ -20,7 +22,7 @@ import {
   runPassed,
   type SourceHost,
 } from '../integrations/source-host/index.js';
-import { readProjectDocument } from '../project-config/index.js';
+import { gateOf, readProjectDocument } from '../project-config/index.js';
 import { blocker } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
 import type { ReleaseDeclaration } from './gate.js';
@@ -228,13 +230,40 @@ export function declaredGateBlocker(reading: GateReading): ReleaseBlocker | null
   }
 }
 
-/** Refuses by name where the declared gate is not a pass at `at`; returns where it is, or none is declared. */
+/** The cleanup debt a reading that is not a pass leaves where the gate advises. */
+function gateDebtOf(
+  projectId: string,
+  reading: Exclude<GateReading, { state: 'none' } | { state: 'pass' }>,
+  said: string,
+): GateDebt {
+  const where = reading.state === 'unread' ? reading.where : `commit ${reading.commit}`;
+  const kind = reading.state === 'red' ? 'red' : 'debt';
+  return { projectId, kind, check: reading.check, where, detail: said };
+}
+
+/**
+ * What gate `declared_gate` makes of `reading` on the project: the blocker where it is enforced, and
+ * null where the reading is a pass, nothing is declared, or the gate advises, which records the
+ * reading as cleanup debt first (REQ-79 r6 BC-16).
+ */
+export async function declaredGateHold(
+  projectId: string,
+  reading: GateReading,
+): Promise<ReleaseBlocker | null> {
+  const blocked = declaredGateBlocker(reading);
+  if (!blocked || reading.state === 'none' || reading.state === 'pass') return null;
+  if ((await gateOf(projectId, 'declared_gate')).mode === 'enforce') return blocked;
+  await recordGateDebt(gateDebtOf(projectId, reading, `${blocked.code}: ${blocked.message}`));
+  return null;
+}
+
+/** Refuses by name where the declared gate holds at `at`; returns where it is a pass, advised, or none is declared. */
 export async function assertDeclaredGate(
   projectId: string,
   at: GateAt | null,
   deps: GateDeps = {},
 ): Promise<void> {
-  const blocked = declaredGateBlocker(await readDeclaredGate(projectId, at, deps));
+  const blocked = await declaredGateHold(projectId, await readDeclaredGate(projectId, at, deps));
   if (blocked) throw blockerRefusal(blocked.code, blocked.details);
 }
 

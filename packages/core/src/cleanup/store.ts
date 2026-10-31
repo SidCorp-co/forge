@@ -97,6 +97,27 @@ export async function insertDebts(
   return written.map((w) => w.id);
 }
 
+/** Whether the project already holds an open debt of this kind for this check at this place. */
+export async function openDebtStands(
+  tx: Tx,
+  key: { projectId: string; kind: DebtItem['kind']; check: string; where: string },
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: deliveryDebts.id })
+    .from(deliveryDebts)
+    .where(
+      and(
+        eq(deliveryDebts.projectId, key.projectId),
+        eq(deliveryDebts.kind, key.kind),
+        eq(deliveryDebts.checkName, key.check),
+        eq(deliveryDebts.location, key.where),
+        isNull(deliveryDebts.clearedAt),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 /** The project's open debt, oldest first, for a report to be checked against. */
 export async function openDebts(
   executor: Pick<Tx, 'select'>,

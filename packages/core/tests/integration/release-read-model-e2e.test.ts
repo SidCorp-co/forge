@@ -26,6 +26,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
 import { ROLE_WHO } from '../helpers/role-who.js';
 
@@ -174,6 +175,8 @@ async function traceIssue(
 
 describe('a draft release reads its gate as words', () => {
   it('waits on the master for a missing release note, with the sentence on the face and the code behind it', async () => {
+    // REQ-79 r6 BC-16: a missing note holds a strict project's release; outside it the cut drafts it
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     await fx.insertIssue('awaiting_release', null);
     const list = await call('owner', 'GET', '/releases');
     expect(list.body).toMatchObject({

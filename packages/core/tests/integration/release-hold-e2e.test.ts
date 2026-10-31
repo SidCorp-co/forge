@@ -105,6 +105,19 @@ async function heldRow(verdict = 'skipped'): Promise<string> {
 const sweep = () => sweepAutomaticReleases();
 
 describe('a held row says why, and keeps one record per reason', () => {
+  it('under strict, says a person clears it, as before REQ-79 r6', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    const id = await heldRow();
+
+    await sweep();
+
+    const held = await holdOf(id);
+    expect(held?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(held?.owes).toBe('human');
+    expect(held?.reason).toContain('A person clears this');
+    expect(held?.reason).toContain('close the issue by hand');
+  });
+
   it('writes the hold once, and a second tick with the same reason writes nothing', async () => {
     const id = await heldRow();
 
@@ -112,7 +125,10 @@ describe('a held row says why, and keeps one record per reason', () => {
     const written = await holdOf(id);
     expect(first.holdsWritten).toBe(1);
     expect(written?.code).toBe('RELEASE_CRITERIA_UNEARNED');
-    expect(written?.owes).toBe('human');
+    // REQ-79 r6 BC-17: outside strict the master clears it, and nothing tells it to close by hand
+    expect(written?.owes).toBe('agent');
+    expect(written?.reason).toContain("The project's master clears this");
+    expect(written?.reason).not.toContain('by hand');
     expect(written?.reason).toContain('criterion 1');
     expect(written?.reason).not.toContain('criterion 2');
     expect(written?.reason).toContain('this project is serving');
