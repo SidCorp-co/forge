@@ -1,0 +1,1 @@
+**A cleanup run that ends without its report now fails.** A cleanup fire whose session completes without posting a cleanup report naming the fire settles failed, saying it ended without a report, instead of reading success.

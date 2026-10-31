@@ -182,8 +182,24 @@ export async function lastFires(
   return new Map(rows.map(({ scheduleId, ...f }) => [scheduleId, f]));
 }
 
+/**
+ * The fires whose schedule kind owes a record, matched where that record is missing (ISS-814): a
+ * `cleanup` fire's session owes a cleanup report naming the fire (REQ-79 BC-9). A session that ends
+ * its turn without posting it — waiting on a notification nothing delivers — completes, and the fire
+ * would read `success` with no report behind it (`VISION: state-never-lies`). Every other kind owes
+ * nothing a completed session has to leave.
+ */
+const RECORD_MISSING = sql`EXISTS (
+  SELECT 1 FROM schedules s
+   WHERE s.id = ${scheduleRuns.scheduleId}
+     AND s.kind = 'cleanup'
+     AND NOT EXISTS (SELECT 1 FROM cleanup_reports c WHERE c.schedule_run_id = ${scheduleRuns.id}))`;
+
+const ENDED_WITHOUT_REPORT = sql`'ended without a report: the cleanup session completed, and no cleanup report names fire ' || ${scheduleRuns.id}::text || '. The run posts one, red or green, with ' || chr(96) || 'fire' || chr(96) || ' set (POST /api/projects/:id/cleanup-reports) before its turn ends'`;
+
 /** The fires these sessions started, settled as their sessions ended: `success` for a completion,
- *  `failed` with the session's failure for anything else. */
+ *  `failed` with the session's failure for anything else. A completion that leaves the record its
+ *  fire's kind owes is `failed` too, naming the missing record (`RECORD_MISSING`). */
 export async function settleSessionFires(
   exec: KernelExecutor,
   args: {
@@ -194,12 +210,25 @@ export async function settleSessionFires(
   },
 ): Promise<void> {
   if (args.sessionIds.length === 0) return;
+  const ofSessions = inArray(scheduleRuns.sessionId, [...args.sessionIds]);
   const succeeded =
     args.sessionStatus === 'completed' || args.sessionStatus === 'completed_via_recovery';
+  if (succeeded) {
+    await transition(exec, SCHEDULE_RUN_MACHINE, {
+      to: 'failed',
+      from: 'running',
+      where: and(ofSessions, RECORD_MISSING),
+      set: { finishedAt: new Date(), error: ENDED_WITHOUT_REPORT, refusal: null } as never,
+      returning: ['id'],
+      reason: `its session ended ${args.sessionStatus} without the report its fire owes`,
+      actor: args.actor,
+      source: args.source,
+    });
+  }
   await transition(exec, SCHEDULE_RUN_MACHINE, {
     to: succeeded ? 'success' : 'failed',
     from: 'running',
-    where: inArray(scheduleRuns.sessionId, [...args.sessionIds]),
+    where: ofSessions,
     set: {
       finishedAt: new Date(),
       error: succeeded
