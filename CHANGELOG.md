@@ -24,7 +24,7 @@ Refused bodies show the accepted shape; unknown routes name their nearest routes
 ### Fixed
 
 - **A cleanup run no longer stops to wait for CI.** Its brief says it is headless: it waits on a reused CI run inside its turn and always posts its report.
-- **A refused body now shows the body its route accepts.** An unknown `/api` route names its nearest routes, and a key a read serves but a write refuses is named server-owned. `forge-runner api -d @path` sends that file's text, as curl does, instead of the literal `@path`.
+- **A refused body now shows the body its route accepts.** An unknown `/api` route names its nearest routes, and a key a read serves but a write refuses is named server-owned. `forge-runner api -d @path` sends that file's text.
 
 ## [0.4.0-dev.394] - 2026-10-31
 
