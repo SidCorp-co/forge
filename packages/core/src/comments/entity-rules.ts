@@ -6,7 +6,7 @@ import {
   type DecisionFields,
 } from '@forge/contracts/comments';
 import type { CommentIntent } from '@forge/contracts/record-events';
-import { BodyInvalidError } from '../body/errors.js';
+import { isBodyInvalid } from '../body/errors.js';
 import { prepareBody } from '../body/prepare.js';
 import { holds, type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
@@ -220,11 +220,11 @@ export function preparedBody(raw: string, format: 'markdown' | 'html' | undefine
   try {
     return { ok: true as const, prepared: prepareBody({ raw, format }) };
   } catch (err) {
-    if (!(err instanceof BodyInvalidError)) throw err;
+    if (!isBodyInvalid(err)) throw err;
     const refusal: CommentRefusal = {
       code: 'COMMENT_BODY_INVALID',
       path: '/body',
-      detail: err.message,
+      detail: err.refusals[0]?.detail ?? err.message,
     };
     return { ok: false as const, refusal };
   }

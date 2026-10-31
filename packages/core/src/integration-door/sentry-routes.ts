@@ -10,12 +10,12 @@
  * The credential is the Sentry connection Forge holds: nothing here accepts a Sentry host,
  * organization or token.
  *
- * Reaching Sentry is answered as a value: `{ ok: false, refusal: { reason, message, bindingId,
- * httpStatus } }` with NO `issues` key, so an empty `issues` only ever means Sentry returned none,
- * and a caller switches on `reason` (no_binding, not_granted, credential_rejected, target_ambiguous,
- * confined_out, …) because each sends whoever met it somewhere different. Everything before that —
- * a malformed query, a caller holding no role — is the ordinary refusal envelope, so an
- * authorization refusal is never read as a Sentry condition.
+ * A Sentry that cannot be read is the refusal envelope (`SENTRY_REFUSAL_CODES`, REQ-12 BC-16) with NO
+ * `issues` key, so an empty `issues` only ever means Sentry returned none, and a caller switches on
+ * `error.code` (SENTRY_NO_BINDING, SENTRY_NOT_GRANTED, SENTRY_CREDENTIAL_REJECTED,
+ * SENTRY_TARGET_AMBIGUOUS, SENTRY_CONFINED_OUT, …) because each sends whoever met it somewhere
+ * different; its status says what to do next. A malformed query or a caller holding no role is the
+ * same envelope, so an authorization refusal is never read as a Sentry condition.
  *
  * Registered ONTO `integrationsRoutes` for the reason coolify-routes.ts gives.
  */
@@ -24,7 +24,6 @@ import { SENTRY_AGENT_STATUSES } from '@forge/contracts/integrations';
 import type { Hono, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import {
-  isSentryRefusal,
   readProjectSentryIssue,
   readProjectSentryIssues,
   SENTRY_LIST_MAX_LIMIT,
@@ -70,22 +69,9 @@ const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next
   await next();
 };
 
-/** A Sentry read, or the refusal that says why Sentry could not be read for this project. */
+/** A Sentry read; a refusal says why Sentry could not be read for this project, in the envelope. */
 async function sentryAnswer(read: () => Promise<Record<string, unknown>>) {
-  try {
-    return { ok: true, ...(await read()) };
-  } catch (err) {
-    if (!isSentryRefusal(err)) throw err;
-    return {
-      ok: false,
-      refusal: {
-        reason: err.reason,
-        message: err.message,
-        bindingId: err.bindingId,
-        httpStatus: err.httpStatus,
-      },
-    };
-  }
+  return { ok: true, ...(await read()) };
 }
 
 type Routes = Hono<{ Variables: AuthVars }>;

@@ -1,3 +1,4 @@
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -23,7 +24,7 @@ import {
 } from '../integrations/index.js';
 import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
 import { logger } from '../lib/logger.js';
-import { isRefusal } from '../lib/refusal.js';
+import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
 import { emitEvents } from '../outbox/index.js';
@@ -68,13 +69,15 @@ async function noteTurnedAway(
     logger.warn({ err, ...context }, 'integration inbound: recording the turn-away failed');
   }
 }
+const refuseInbound = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
+
 /** A delivery naming no provider: the generic door verified it and then did nothing, so it is gone. */
-function routeRemoved(): HTTPException {
+function routeRemoved(): RefusalError {
   const headers = providerHeaderMap().map((m) => `${m.header} (${m.provider})`);
-  return new HTTPException(410, {
-    message: `POST /api/webhooks/in/:slug takes only a provider's webhook, and this request carries none of its headers: ${headers.join(', ')}. The generic delivery is removed — it was verified and then consumed by nothing. Bind the provider's integration to the project and point its webhook here.`,
-    cause: { code: 'WEBHOOK_ROUTE_REMOVED', details: { providerHeaders: headers } },
-  });
+  return refuseInbound(
+    'WEBHOOK_ROUTE_REMOVED',
+    `POST /api/webhooks/in/:slug takes only a provider's webhook, and this request carries none of its headers: ${headers.join(', ')}. The generic delivery is removed — it was verified and then consumed by nothing. Bind the provider's integration to the project and point its webhook here.`,
+  );
 }
 
 interface ProviderRoute {

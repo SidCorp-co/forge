@@ -13,7 +13,6 @@ import {
   requestRefusals,
   thrownEnvelope,
 } from '../lib/refusal.js';
-import { MessageRefusedError } from '../messaging/contract.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
@@ -80,9 +79,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
           [{ code: 'ACTIVE_CHILD_UNDER_TERMINAL_RUN', path: '', detail: orphan }],
           'ACTIVE_CHILD_UNDER_TERMINAL_RUN',
         )
-      : err instanceof MessageRefusedError
-        ? err.toRefusal()
-        : err;
+      : err;
   if (refusal instanceof RefusalError) {
     const envelope = thrownEnvelope(refusal);
     log.warn(

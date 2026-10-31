@@ -1,5 +1,6 @@
+import type { RefusalError } from '../../lib/refusal.js';
 import type { OutboundDispatchResult } from '../index.js';
-import { SentryRefusal } from './refusals.js';
+import { refuseSentry } from './refusals.js';
 import type { ResolvedSentryTarget } from './targets.js';
 import type { SentryIssueDetail } from './types.js';
 
@@ -56,14 +57,14 @@ export function nextSentryCursor(link: string | null): string | null {
 export function assertListLimit(limit: unknown): number {
   if (limit === undefined) return SENTRY_LIST_DEFAULT_LIMIT;
   if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1) {
-    throw new SentryRefusal(
-      'bad_argument',
+    throw refuseSentry(
+      'SENTRY_BAD_ARGUMENT',
       `sentry: ${JSON.stringify(limit)} is not a listing limit — it has to be a whole number of at least 1`,
     );
   }
   if (limit > SENTRY_LIST_MAX_LIMIT) {
-    throw new SentryRefusal(
-      'bad_argument',
+    throw refuseSentry(
+      'SENTRY_BAD_ARGUMENT',
       `sentry: a listing limit of ${limit} is above the ${SENTRY_LIST_MAX_LIMIT} this adapter will ask for in one call`,
     );
   }
@@ -78,8 +79,8 @@ const STATS_PERIOD_MINUTES: Record<string, number> = { m: 1, h: 60, d: 1440, w: 
 export function assertStatsPeriod(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   const bad = (why: string) =>
-    new SentryRefusal(
-      'bad_argument',
+    refuseSentry(
+      'SENTRY_BAD_ARGUMENT',
       `sentry: ${JSON.stringify(value)} is not a window — ${why}. Sentry takes a whole number and one of m, h, d or w, up to 90d: \`1h\`, \`24h\`, \`7d\`.`,
     );
   if (typeof value !== 'string') throw bad('a window is written as text');
@@ -121,7 +122,7 @@ export class SentryListingFailed extends Error {
     message: string,
     readonly partial: { pages: number; refused: SentryListRefusal[] },
     /** The refusal that stopped the walk, where one classified it. */
-    readonly refusal: SentryRefusal | null = null,
+    readonly refusal: RefusalError | null = null,
   ) {
     super(message);
     this.name = 'SentryListingFailed';

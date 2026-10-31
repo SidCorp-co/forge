@@ -1,5 +1,5 @@
 import type { HostCheck, ReadChangeRequest, SourceHost } from '../source-host/index.js';
-import { SourceHostInputRefusal } from '../source-host/index.js';
+import { refuseSourceHostInput } from '../source-host/index.js';
 import type { GitHubAgentClient } from './agent-client.js';
 import type { GitHubRepoClient } from './client.js';
 
@@ -174,7 +174,7 @@ export function githubChangeRequestVerbs(
     async closeChangeRequest({ number }) {
       const now = await read(number);
       if (now.state === 'merged') {
-        throw new SourceHostInputRefusal(
+        throw refuseSourceHostInput(
           `pull request #${number} on ${client.fullName} is merged, and closing cannot take a landing back — it is left as it is`,
         );
       }

@@ -1,7 +1,7 @@
 import type { Tx } from '../db/client.js';
 import { namedCriteriaOf } from '../issues/index.js';
 import { ROLE_HOLDER } from '../messaging/audiences.js';
-import { type MessageRefusal, MessageRefusedError } from '../messaging/contract.js';
+import { type MessageRefusal, messageRefused } from '../messaging/contract.js';
 import { type ForgeRecord, readForgeRecords } from '../messaging/forge-record.js';
 import { gatherFacts } from '../messaging/gather.js';
 import {
@@ -28,13 +28,13 @@ export function screenRecordFence(body: string, declaresRecordRoute: boolean): s
     const refusal = recordFenceRefusal(fault, fenceNamed(index, of));
     return refusal ? [refusal] : [];
   });
-  if (shapes.length > 0) throw new MessageRefusedError('comment-write', shapes);
+  if (shapes.length > 0) throw messageRefused('comment-write', shapes);
   const records = reads.flatMap(({ index, record }) => (record ? [{ index, record }] : []));
   const [first] = records;
   if (!first) return [];
   if (declaresRecordRoute) {
     const refusal = recordInCommentRefusal(first.record);
-    throw new MessageRefusedError('comment-write', refusal ? [refusal] : []);
+    throw messageRefused('comment-write', refusal ? [refusal] : []);
   }
   const unread = [
     ...records.flatMap(({ index, record }) => {
@@ -43,7 +43,7 @@ export function screenRecordFence(body: string, declaresRecordRoute: boolean): s
     }),
     ...severalRecordsRefusals(records, of),
   ];
-  if (unread.length > 0) throw new MessageRefusedError('comment-write', unread);
+  if (unread.length > 0) throw messageRefused('comment-write', unread);
   const warning = recordInCommentWarning(first.record);
   return warning ? [warning] : [];
 }
@@ -81,5 +81,5 @@ export async function screenAgentComment(
     onRecords.push(...(await recordRefusals(projectId, record, criteria, tx)));
   }
   const refusals = [...onBody, ...onRecords];
-  if (refusals.length > 0) throw new MessageRefusedError('comment-write', refusals, at);
+  if (refusals.length > 0) throw messageRefused('comment-write', refusals, at);
 }

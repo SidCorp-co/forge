@@ -158,7 +158,7 @@ told what became of each one:
 
 - \`held\` — the tracker holds an attachment under that name, on the issue or on one of its
   comments. It says the tracker HOLDS the file, not that the object store still has its bytes; a
-  reader who follows it and finds otherwise is answered \`410 ATTACHMENT_FILE_MISSING\` rather than
+  reader who follows it and finds otherwise is answered \`404 ATTACHMENT_FILE_MISSING\` rather than
   a blank.
 - \`dangling\` — it is written as a file name and the tracker holds nothing under it. The verdict
   cites something nobody can open, so the criterion stops reading as earned and says which citation

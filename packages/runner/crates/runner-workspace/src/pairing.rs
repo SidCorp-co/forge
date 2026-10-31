@@ -87,7 +87,7 @@ pub enum LoginPoll {
     Pending,
     /// 200 — approved + consumed (single-use).
     Approved(Box<LoginApproved>),
-    /// 410 — expired / already consumed / unknown.
+    /// 404 / 409 / 422 naming a `PAIRING_CODE_*` — unknown / already consumed / expired.
     Gone(String),
     /// 5xx / 429 / transport error — transient; caller should back off and keep polling.
     Retry(String),
@@ -99,22 +99,39 @@ pub enum LoginPoll {
 enum PollClass {
     Pending,
     Approved,
-    Gone,
+    /// A refusal status (404, 409, 422): `Gone` where its body names a `PAIRING_CODE_*`, else fatal.
+    Refused,
     Retry,
     Fatal,
 }
 
-/// Pure classifier: 5xx/429 are transient (retry), 410 is a graceful stop,
-/// 204 is "not yet", 2xx is success, everything else (4xx) is fatal.
+/// Pure classifier: 5xx/429 are transient (retry), 404/409/422 are refusals whose
+/// body says whether the pairing code is the cause (a graceful stop), 204 is "not
+/// yet", 2xx is success, everything else (4xx) is fatal.
 fn classify_poll_status(code: u16) -> PollClass {
     match code {
         204 => PollClass::Pending,
-        410 => PollClass::Gone,
+        404 | 409 | 422 => PollClass::Refused,
         429 => PollClass::Retry,
         500..=599 => PollClass::Retry,
         200..=299 => PollClass::Approved,
         _ => PollClass::Fatal,
     }
+}
+
+/// The refusal code of a core error body (`error.code`, or the top-level `code`).
+fn refusal_code(body: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    v["error"]["code"]
+        .as_str()
+        .or_else(|| v["code"].as_str())
+        .map(str::to_owned)
+}
+
+/// True where a poll refusal names the pairing code itself: `PAIRING_CODE_GONE` (404),
+/// `PAIRING_CODE_CONSUMED` (409) or `PAIRING_CODE_EXPIRED` (422).
+fn names_pairing_code(body: &str) -> bool {
+    refusal_code(body).is_some_and(|c| c.starts_with("PAIRING_CODE_"))
 }
 
 /// Start a browser-approve device login. Returns the code + verify URL.
@@ -146,7 +163,7 @@ pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse>
         .map_err(|e| Error::Other(format!("login init decode: {e}")))
 }
 
-/// Poll once for approval. Maps HTTP 204/200/410 to [`LoginPoll`]; 5xx/429/
+/// Poll once for approval. Maps HTTP 204/200 and a `PAIRING_CODE_*` refusal to [`LoginPoll`]; 5xx/429/
 /// transport errors classify as [`LoginPoll::Retry`] instead of a fatal `Err`
 /// so a transient edge blip doesn't kill the whole pairing session.
 pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll> {
@@ -162,9 +179,13 @@ pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll>
     let status = resp.status();
     match classify_poll_status(status.as_u16()) {
         PollClass::Pending => Ok(LoginPoll::Pending),
-        PollClass::Gone => {
+        PollClass::Refused => {
             let text = resp.text().await.unwrap_or_default();
-            Ok(LoginPoll::Gone(text))
+            if names_pairing_code(&text) {
+                Ok(LoginPoll::Gone(text))
+            } else {
+                Err(Error::Other(format!("login poll failed ({status}): {text}")))
+            }
         }
         PollClass::Retry => {
             let text = resp.text().await.unwrap_or_default();
@@ -197,4 +218,32 @@ fn urlencoding(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod poll_tests {
+    use super::*;
+
+    #[test]
+    fn a_pairing_refusal_status_is_refused_not_gone() {
+        for code in [404u16, 409, 422] {
+            assert_eq!(classify_poll_status(code), PollClass::Refused, "{code}");
+        }
+        assert_eq!(classify_poll_status(410), PollClass::Fatal);
+        assert_eq!(classify_poll_status(204), PollClass::Pending);
+        assert_eq!(classify_poll_status(503), PollClass::Retry);
+    }
+
+    #[test]
+    fn only_a_body_naming_the_pairing_code_stops_gracefully() {
+        let gone = r#"{"code":"PAIRING_CODE_GONE","error":{"code":"PAIRING_CODE_GONE","message":"m","refusals":[]}}"#;
+        let consumed = r#"{"error":{"code":"PAIRING_CODE_CONSUMED"}}"#;
+        let expired = r#"{"code":"PAIRING_CODE_EXPIRED"}"#;
+        assert!(names_pairing_code(gone));
+        assert!(names_pairing_code(consumed));
+        assert!(names_pairing_code(expired));
+        assert!(!names_pairing_code(r#"{"error":{"code":"NOT_FOUND"}}"#));
+        assert!(!names_pairing_code("<html>404</html>"));
+        assert!(!names_pairing_code(""));
+    }
 }

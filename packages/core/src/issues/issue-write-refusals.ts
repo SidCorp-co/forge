@@ -2,8 +2,6 @@
 
 import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import type { z } from 'zod';
-import { BodyInvalidError } from '../body/errors.js';
-import { bodyInvalidHttp } from '../body/http-error.js';
 import { jsonPointer, type Refusal, RefusalError, refuser } from '../lib/refusal.js';
 import { heldTakeRefusal } from './blocked-by.js';
 import { isProjectMember } from './read-service.js';
@@ -20,9 +18,8 @@ export async function assertAssigneeIsMember(projectId: string, assigneeId: stri
   }
 }
 
-/** A create or patch failure as the HTTP answer: a body refusal, a held take, or itself. */
+/** A create or patch failure as the HTTP answer: a held take, or itself (a body refusal is answered by the shared error handler). */
 export function toHttpCreateError(err: unknown): unknown {
-  if (err instanceof BodyInvalidError) return bodyInvalidHttp(err);
   return heldTakeRefusal(err) ?? err;
 }
 

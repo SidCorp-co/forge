@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { isRefusal, type RefusalError } from '../../lib/refusal.js';
-import { type MessageRefusal, MessageRefusedError } from '../../messaging/contract.js';
+import { type MessageRefusal, messageRefused } from '../../messaging/contract.js';
 import {
   criterionNamed,
   isCriterionNumber,
@@ -142,7 +142,7 @@ export async function recordEventVerdicts(
   const unparsed = records.flatMap(({ record, fence }) =>
     named(unparsedBlocks(record, criteria), fence),
   );
-  if (unparsed.length > 0) throw new MessageRefusedError(door, unparsed);
+  if (unparsed.length > 0) throw messageRefused(door, unparsed);
   if (records.every(({ record }) => criterionBlocksIn(record).length === 0)) {
     return records.map(() => 0);
   }
@@ -173,6 +173,6 @@ export async function recordEventVerdicts(
     }
     written.push(count);
   }
-  if (refusals.length > 0) throw new MessageRefusedError(door, refusals);
+  if (refusals.length > 0) throw messageRefused(door, refusals);
   return written;
 }

@@ -12,6 +12,6 @@ export {
   SentryListingFailed,
 } from './listing.js';
 export { installSentryErrorTracking } from './own-errors.js';
-export { isSentryRefusal, SentryRefusal } from './refusals.js';
+export { isSentryRefusal, refuseSentry, sentryRefusalCode } from './refusals.js';
 export { resolveSentryTargets } from './targets.js';
 export type { SentryTarget } from './types.js';

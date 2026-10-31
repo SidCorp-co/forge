@@ -51,6 +51,12 @@ export const DEVICE_REFUSAL_CODES = [
 	"REVIEW_RUN_BOX_AMBIGUOUS",
 	/** A review run named an issue that is none of its project's: absent, another project's, or no issue reference. */
 	"REVIEW_RUN_ISSUE_NOT_IN_PROJECT",
+	/** A login poll named a pairing code this instance holds no row for. */
+	"PAIRING_CODE_GONE",
+	/** A login poll named a pairing code whose device token was already handed out. */
+	"PAIRING_CODE_CONSUMED",
+	/** A login poll named a pairing code past its expiry. */
+	"PAIRING_CODE_EXPIRED",
 	...POOL_CLAIM_REFUSAL_CODES,
 ] as const;
 
@@ -62,6 +68,8 @@ export const DEVICE_REFUSAL_STATUSES = {
 	CHECKOUT_ANCESTRY_NOT_ASKED: 404,
 	BOX_ANSWER_NOT_ASKED: 404,
 	TURN_CREDENTIAL_NOT_A_BOX: 403,
+	PAIRING_CODE_GONE: 404,
+	PAIRING_CODE_CONSUMED: 409,
 	ISSUE_LEASE_RUN_UNNAMED: 409,
 	POOL_NOT_FOUND: 404,
 	POOL_ALREADY_HELD: 409,

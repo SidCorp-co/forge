@@ -14,7 +14,7 @@
 import type { ReplyLanguage, ScreenedMessage } from '../conversations/index.js';
 import { CORRECTIVE_PREFIX } from '../conversations/index.js';
 import { type ChatMessage, type ChatStreamEvent, openChat } from '../integrations/llm/index.js';
-import { dataPolicyOf, EgressRefused, egressAt } from '../lib/data-egress.js';
+import { dataPolicyOf, egressAt, egressRefused } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { widgetDoorPersona } from './door-persona.js';
@@ -101,7 +101,7 @@ export async function runWidgetTurn(args: WidgetTurnArgs): Promise<WidgetTurnRes
   const what = `widget conversation ${args.conversationId}`;
   const level = await dataPolicyOf(args.projectId);
   const egressed = egressAt(level, 'conversation', widgetTurnMessages(args), what);
-  if (!egressed.ok) throw new EgressRefused(egressed.refusal);
+  if (!egressed.ok) throw egressRefused(egressed.refusal);
   const messages = egressed.value;
   const tools = buildWidgetDraftToolset(args.propose);
   const offered = tools.tools.map((t) => t.function.name);

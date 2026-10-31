@@ -19,7 +19,7 @@ import {
   type ProjectProgress,
 } from '../issues/index.js';
 import { type LessonAudience, lessonsBlockFor } from '../lessons/index.js';
-import { dataPolicyOf, EgressRefused, egressAt, egressText } from '../lib/data-egress.js';
+import { dataPolicyOf, egressAt, egressRefused, egressText } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import { gateOf, readContentLanguage } from '../project-config/index.js';
@@ -136,7 +136,7 @@ function egressedTools(level: SensitiveDataLevel, tools: ChatToolset, what: stri
         content: result.content.map((block) => {
           if (block.type !== 'text') return block;
           const out = egressText(level, 'conversation', block.text, `${what}, tool ${name}`);
-          if (!out.ok) throw new EgressRefused(out.refusal);
+          if (!out.ok) throw egressRefused(out.refusal);
           return { ...block, text: out.text };
         }),
       };
@@ -232,7 +232,7 @@ async function setUpTurn(
   );
   const what = `conversation ${turn?.conversationId ?? 'turn'}`;
   const sent = egressAt(level, 'conversation', spoken, what);
-  if (!sent.ok) throw new EgressRefused(sent.refusal);
+  if (!sent.ok) throw egressRefused(sent.refusal);
   return { turn, messages: system ? [system, ...sent.value] : sent.value, progress, what, level };
 }
 

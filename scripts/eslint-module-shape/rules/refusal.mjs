@@ -1,6 +1,15 @@
 import { placeOf } from '../declaration.mjs';
 
-const RULE_STATUSES = new Set([409, 412, 422, 423, 428]);
+/**
+ * Statuses that are transport, never a rule: the shape of the request (400), who is asking (401),
+ * a row that is not there (404), a verb the route lacks (405), a body too large (413), a media type
+ * the door does not read (415) and a rate (429). Every other 4xx a route
+ * throws or answers says what a rule decided, and a rule refusal is the envelope whose status comes
+ * from `contracts/src/refusal.ts:REFUSAL_STATUSES` (a 410 or a 402 is in none of them).
+ */
+const TRANSPORT_STATUSES = new Set([400, 401, 404, 405, 413, 415, 429]);
+/** A class named for what it refuses is a refusal class, in a platform or adapter module as anywhere. */
+const REFUSAL_CLASS_NAME = /Refus(al|ed)|InputError|InvalidError/;
 /** Codes the MCP door throws for what REST answers 400, 401, 404, 413, 500 or 503: transport, not rules. */
 const TRANSPORT_CODES = new Set([
   'BAD_REQUEST',
@@ -32,6 +41,15 @@ function extendsError(type, checker, seen = new Set()) {
   const target = type.target ?? type;
   if (!target.isClassOrInterface?.()) return false;
   return (checker.getBaseTypes(target) ?? []).some((b) => extendsError(b, checker, seen));
+}
+
+function extendsRefusalError(type, checker, seen = new Set()) {
+  if (!type || seen.has(type)) return false;
+  seen.add(type);
+  if (isNamed(type, 'RefusalError', '/lib/refusal')) return true;
+  const target = type.target ?? type;
+  if (!target.isClassOrInterface?.()) return false;
+  return (checker.getBaseTypes(target) ?? []).some((b) => extendsRefusalError(b, checker, seen));
 }
 
 function statusOf(node) {
@@ -69,12 +87,20 @@ export default {
     const platform = kind === 'platform';
     const services = context.sourceCode.parserServices;
     const checker = services.program.getTypeChecker();
-    const ruleStatus = (s) => RULE_STATUSES.has(s) || (s === 403 && !platform);
+    const ruleStatus = (s) =>
+      s !== null &&
+      s >= 400 &&
+      s < 500 &&
+      !TRANSPORT_STATUSES.has(s) &&
+      !(s === 403 && platform);
     const typeOf = (node) => services.getTypeAtLocation(node);
 
     function errorClass(node) {
-      if (!node.superClass || platform || kind === 'adapter') return;
+      if (!node.superClass) return;
+      const own = REFUSAL_CLASS_NAME.test(node.id?.name ?? '');
+      if ((platform || kind === 'adapter') && !own) return;
       if (!extendsError(typeOf(node), checker)) return;
+      if (extendsRefusalError(typeOf(node), checker) && (platform || kind === 'adapter')) return;
       context.report({
         node: node.id ?? node,
         messageId: 'errorClass',

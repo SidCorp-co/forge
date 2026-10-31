@@ -7,10 +7,10 @@ import {
   type IntegrationAdapterMethods,
   updateConnection,
 } from '../index.js';
-import { callSentry, sentryRefusalHealth } from './call.js';
+import { callSentryOutcome, sentryRefusalHealth } from './call.js';
 import { sentryRestBase } from './endpoints.js';
 import { dispatchSentryOutbound } from './issues.js';
-import { SentryRefusal } from './refusals.js';
+import { sentryRefusalCode } from './refusals.js';
 import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
 import { readTargets, renderSentryTargetsLine } from './targets.js';
@@ -36,38 +36,37 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
         say(authToken ? 'integrations.health.sentry.noHost' : 'integrations.health.sentry.noToken'),
       );
     }
-    // `callSentry` makes the previous-token retry and writes the connection's health either way.
-    try {
-      const body = await callSentry(
-        ctx,
-        `${sentryRestBase(ctx.config.host)}/api/0/organizations/`,
-        'GET',
-      );
-      const orgs = Array.isArray(body) ? (body as SentryOrg[]) : [];
-      return healthOf(
-        'ok',
-        orgs.length
-          ? say('integrations.health.sentry.authenticated', { n: orgs.length })
-          : say('integrations.health.sentry.valid'),
-        // Only non-secret identity fields — never the token.
-        {
-          organizations: orgs
-            .slice(0, 10)
-            .map((o) => ({ id: o.id ?? null, slug: o.slug ?? null, name: o.name ?? null })),
-        },
-      );
-    } catch (err) {
-      if (!(err instanceof SentryRefusal)) throw err;
+    // `callSentryOutcome` makes the previous-token retry and writes the connection's health either way.
+    const outcome = await callSentryOutcome(
+      ctx,
+      `${sentryRestBase(ctx.config.host)}/api/0/organizations/`,
+      'GET',
+    );
+    if (!outcome.ok) {
+      const refused = outcome.refusal;
       logger.warn(
-        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: err.message },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: refused.message },
         'sentry: healthcheck failed',
       );
       return healthOf(
-        sentryRefusalHealth(err.reason),
-        verbatim(err.message),
-        err.httpStatus !== null ? { httpStatus: err.httpStatus } : undefined,
+        sentryRefusalHealth(sentryRefusalCode(refused) ?? 'SENTRY_HTTP_ERROR'),
+        verbatim(refused.refusals[0]?.detail ?? refused.message),
+        outcome.httpStatus !== null ? { httpStatus: outcome.httpStatus } : undefined,
       );
     }
+    const orgs = Array.isArray(outcome.body) ? (outcome.body as SentryOrg[]) : [];
+    return healthOf(
+      'ok',
+      orgs.length
+        ? say('integrations.health.sentry.authenticated', { n: orgs.length })
+        : say('integrations.health.sentry.valid'),
+      // Only non-secret identity fields — never the token.
+      {
+        organizations: orgs
+          .slice(0, 10)
+          .map((o) => ({ id: o.id ?? null, slug: o.slug ?? null, name: o.name ?? null })),
+      },
+    );
   },
 
   // The generic door (`registry.ts:dispatchThrough`) lands here; the work is in `issues.ts` so this
@@ -127,7 +126,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     hint: '`GET /api/projects/:id/integrations/sentry/issues` reads this error stream on demand, narrowed by release, window, path or request id; `/issues/:issueId` reads one. It changes nothing in Sentry and files nothing; the scheduled pull is what files.',
     renderExtra: (config) => {
       const read = readTargets(config as SentryConfig);
-      if ('refusal' in read) return `  - refused (${read.refusal.reason}): ${read.refusal.message}`;
+      if ('refusal' in read) return `  - refused (${read.refusal.code}): ${read.refusal.message}`;
       return read.targets.length > 0 ? renderSentryTargetsLine(read.targets) : null;
     },
   },

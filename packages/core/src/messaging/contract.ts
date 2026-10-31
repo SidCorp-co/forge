@@ -1,4 +1,4 @@
-import type { DoorId } from '@forge/contracts/messaging';
+import type { DoorId, MessageRefusalCode } from '@forge/contracts/messaging';
 import { RefusalError } from '../lib/refusal.js';
 import type { MessageFacts } from './facts.js';
 
@@ -85,35 +85,25 @@ export type DoorPolicy =
 export type { DoorId };
 
 /**
- * The refusal a caller gets when it reaches a write door with a message that cannot pass. The
- * shared error handler answers it (`middleware/error.ts`), so every route refuses it by name.
+ * The refusal a caller gets when it reaches a write door with a message that cannot pass: one row per
+ * broken rule at `at`, the JSON pointer of the screened text in the caller's request. Both doors
+ * answer it in the envelope (`MESSAGE_REFUSED`, 422), so every route refuses it by name.
  */
-export class MessageRefusedError extends Error {
-  readonly code = 'MESSAGE_REFUSED' as const;
-  constructor(
-    readonly door: DoorId,
-    readonly refusals: readonly MessageRefusal[],
-    /** Where the screened text sits in the caller's request, as a JSON pointer. */
-    readonly at = '/body',
-  ) {
-    super(renderRefusals(refusals));
-    this.name = 'MessageRefusedError';
-  }
-
-  /** The refusal it answers with, one row per broken rule. */
-  toRefusal(): RefusalError {
-    const rows = this.refusals.map((r) => ({
-      code: this.code,
-      path: this.at,
-      detail: `${r.why} (rule ${r.rule}; shape: ${r.shape}; for example: ${r.example}; door ${this.door})`,
-    }));
-    return new RefusalError(
-      rows.length > 0
-        ? rows
-        : [{ code: this.code, path: this.at, detail: `refused at door ${this.door}` }],
-      this.code,
-    );
-  }
+export function messageRefused(
+  door: DoorId,
+  refusals: readonly MessageRefusal[],
+  at = '/body',
+): RefusalError {
+  const code: MessageRefusalCode = 'MESSAGE_REFUSED';
+  const rows = refusals.map((r) => ({
+    code,
+    path: at,
+    detail: `${r.why} (rule ${r.rule}; shape: ${r.shape}; for example: ${r.example}; door ${door})`,
+  }));
+  return new RefusalError(
+    rows.length > 0 ? rows : [{ code, path: at, detail: `refused at door ${door}` }],
+    code,
+  );
 }
 
 /** The one way a refusal becomes prose, so every door says it the same way. */

@@ -19,7 +19,7 @@ import {
 } from '../index.js';
 import { listSentryIssues, readSentryIssue, type SentryAdapterContext } from './issues.js';
 import { type SentryIssueListing, SentryListingFailed, type SentryListRefusal } from './listing.js';
-import { SentryRefusal } from './refusals.js';
+import { refuseSentry, sentryDetailOf, sentryRefusalCode } from './refusals.js';
 import { resolveSentryTargets } from './targets.js';
 import type { SentryConfig, SentryIssueDetail, SentrySecrets } from './types.js';
 
@@ -105,8 +105,8 @@ async function resolveGrantedSentryBinding(projectId: string): Promise<BindingWi
 
   const first = pairs[0];
   if (!first) {
-    throw new SentryRefusal(
-      'no_binding',
+    throw refuseSentry(
+      'SENTRY_NO_BINDING',
       'no Sentry binding on this project — connect Sentry and bind it under Settings → Integrations. Nothing was asked of Sentry.',
     );
   }
@@ -114,22 +114,18 @@ async function resolveGrantedSentryBinding(projectId: string): Promise<BindingWi
   if (!usable) {
     const dead = pairs.find((r) => !r.binding.active) ?? first;
     if (!dead.binding.active) {
-      throw new SentryRefusal(
-        'binding_disabled',
+      throw refuseSentry(
+        'SENTRY_BINDING_DISABLED',
         `this project's Sentry binding exists and is switched off for this project — re-enable it under Settings → Integrations. Nothing was asked of Sentry.`,
-        { bindingId: dead.binding.id },
       );
     }
-    throw new SentryRefusal(
-      'connection_disabled',
+    throw refuseSentry(
+      'SENTRY_CONNECTION_DISABLED',
       `this project's Sentry binding exists and its Sentry credential is switched off for every project sharing it — re-enable the connection under Settings → Integrations. Nothing was asked of Sentry.`,
-      { bindingId: dead.binding.id },
     );
   }
   if (!grantHolds(getIntegration('sentry'), usable.binding)) {
-    throw new SentryRefusal('not_granted', notGrantedMessage('sentry', usable.binding.id), {
-      bindingId: usable.binding.id,
-    });
+    throw refuseSentry('SENTRY_NOT_GRANTED', notGrantedMessage('sentry', usable.binding.id));
   }
   return usable;
 }
@@ -164,35 +160,25 @@ function scrubbed<T>(value: T, clean: (text: string) => string): T {
   return value;
 }
 
-function rethrowScrubbed(err: unknown, ctx: SentryAdapterContext, bindingId: string): never {
+function rethrowScrubbed(err: unknown, ctx: SentryAdapterContext): never {
   const clean = scrubberFor(ctx);
   if (err instanceof SentryListingFailed) {
-    const inner = err.refusal;
-    throw new SentryRefusal(inner?.reason ?? 'sentry_unreachable', clean(err.message), {
-      httpStatus: inner?.httpStatus ?? null,
-      bindingId,
-    });
+    throw refuseSentry(sentryRefusalCode(err.refusal) ?? 'SENTRY_UNREACHABLE', clean(err.message));
   }
-  if (err instanceof SentryRefusal) {
-    throw new SentryRefusal(err.reason, clean(err.message), {
-      httpStatus: err.httpStatus,
-      bindingId,
-    });
-  }
-  throw new SentryRefusal(
-    'sentry_unreachable',
+  const code = sentryRefusalCode(err);
+  if (code !== null) throw refuseSentry(code, clean(sentryDetailOf(err)));
+  throw refuseSentry(
+    'SENTRY_UNREACHABLE',
     clean(err instanceof Error ? err.message : 'unknown error'),
-    { bindingId },
   );
 }
 
 /** Refuse before the call where the binding declares nothing to address. */
 function assertHasTargets(ctx: SentryAdapterContext, bindingId: string): void {
   if (resolveSentryTargets(ctx.config).length === 0) {
-    throw new SentryRefusal(
-      'no_targets',
+    throw refuseSentry(
+      'SENTRY_NO_TARGETS',
       `binding ${bindingId} declares no Sentry targets, so no Sentry project can be named — give it an organization and project under Settings → Integrations.`,
-      { bindingId },
     );
   }
 }
@@ -205,17 +191,16 @@ function assertHasTargets(ctx: SentryAdapterContext, bindingId: string): void {
  * `project:` term the query carries did not bind, which is worth saying rather than reading as a
  * quiet night.
  */
-function assertNotAllConfinedOut(listing: SentryIssueListing, bindingId: string): void {
+function assertNotAllConfinedOut(listing: SentryIssueListing): void {
   if (listing.issues.length > 0 || listing.refused.length === 0) return;
   const named = listing.refused
     .slice(0, 10)
     .map((one) => one.shortId ?? one.issueId)
     .join(', ');
   const more = listing.refused.length > 10 ? `, and ${listing.refused.length - 10} more` : '';
-  throw new SentryRefusal(
-    'confined_out',
+  throw refuseSentry(
+    'SENTRY_CONFINED_OUT',
     `sentry: Sentry answered with ${listing.refused.length} issue(s) and target "${listing.target.label}" is scoped to none of them — ${named}${more}. This target is confined to project ${listing.target.projectSlug}, so this is not an empty error stream.`,
-    { bindingId },
   );
 }
 
@@ -232,7 +217,7 @@ export async function readProjectSentryIssues(
       ...(input.window ? { statsPeriod: input.window } : {}),
       ...(input.limit === undefined ? {} : { limit: input.limit }),
     });
-    assertNotAllConfinedOut(listing, pair.binding.id);
+    assertNotAllConfinedOut(listing);
     const clean = scrubberFor(ctx);
     return {
       target: listing.target.label,
@@ -246,7 +231,7 @@ export async function readProjectSentryIssues(
       truncated: listing.truncated,
     };
   } catch (err) {
-    rethrowScrubbed(err, ctx, pair.binding.id);
+    rethrowScrubbed(err, ctx);
   }
 }
 
@@ -263,6 +248,6 @@ export async function readProjectSentryIssue(
     });
     return scrubbed(call.issue, scrubberFor(ctx));
   } catch (err) {
-    rethrowScrubbed(err, ctx, pair.binding.id);
+    rethrowScrubbed(err, ctx);
   }
 }

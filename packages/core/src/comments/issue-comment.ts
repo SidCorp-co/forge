@@ -9,7 +9,6 @@ import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
-import { bodyRefusalHttp } from './body-input.js';
 import { issueProjectOf, parentCommentOf } from './read.js';
 import { decisionBody, insertComment, type NewComment } from './service.js';
 
@@ -32,11 +31,9 @@ async function assertParentOnIssue(parentId: string, issueId: string): Promise<v
   }
 }
 
-/** A failed comment insert as the answer it owes: a body refusal, a reply nested too deep, a parent
- *  gone under it, or the error itself (a message refusal is answered by the shared error handler). */
+/** A failed comment insert as the answer it owes: a reply nested too deep, a parent gone under it,
+ *  or the error itself (a body or message refusal is answered by the shared error handler). */
 function commentWriteRefusal(err: unknown, parentId: string | undefined): unknown {
-  const refusal = bodyRefusalHttp(err);
-  if (refusal) return refusal;
   const pgCode = pgErrorCode(err);
   if (pgCode === '23514') {
     return refuse(

@@ -267,6 +267,7 @@ describe('the source door with no webhook: checks, edit, close and refresh', () 
 
   it('refuses a sha that names no commit, and one that is no sha, before reading checks', async () => {
     const unknown = await app().request(`${base}/commits/${'f'.repeat(40)}/checks`);
+    expect(unknown.status).toBe(422);
     expect(await codeOf(unknown)).toBe('SOURCE_HOST_INPUT_REFUSED');
     const branch = await app().request(`${base}/commits/release-stg/checks`);
     expect(branch.status).toBe(400);
@@ -339,19 +340,30 @@ describe('the sentry door', () => {
     });
   });
 
-  it('answers a Sentry it cannot read as ok:false with a reason, and no issues key', async () => {
-    const { SentryRefusal } = await import('../integrations/sentry/index.js');
-    state.sentry = async () => {
-      throw new SentryRefusal('not_granted', 'agent access is none');
-    };
-    const body = (await (await app().request(`/${P}/integrations/sentry/issues`)).json()) as Record<
-      string,
-      unknown
-    >;
-    expect(body.ok).toBe(false);
-    expect(body).not.toHaveProperty('issues');
-    expect(body.refusal).toMatchObject({ reason: 'not_granted' });
-  });
+  it.each([
+    ['SENTRY_NOT_GRANTED', 403],
+    ['SENTRY_CREDENTIAL_REJECTED', 503],
+    ['SENTRY_TARGET_UNKNOWN', 400],
+    ['SENTRY_CONFINED_OUT', 404],
+    ['SENTRY_NO_BINDING', 422],
+  ] as const)(
+    'refuses a Sentry it cannot read in the envelope: %s answers %i',
+    async (code, status) => {
+      const { refuseSentry } = await import('../integrations/sentry/index.js');
+      state.sentry = async () => {
+        throw refuseSentry(code, 'agent access is none');
+      };
+      const res = await app().request(`/${P}/integrations/sentry/issues`);
+      expect(res.status).toBe(status);
+      const body = (await res.json()) as {
+        error: { code: string; message: string; refusals: { code: string }[] };
+        issues?: unknown;
+      };
+      expect(body.error.code).toBe(code);
+      expect(body.error.refusals[0]?.code).toBe(code);
+      expect(body).not.toHaveProperty('issues');
+    },
+  );
 
   it('refuses a stranger before it reads anything', async () => {
     state.held = new Set();

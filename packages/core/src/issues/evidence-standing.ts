@@ -1,6 +1,6 @@
 /**
  * Whether the tracker still holds what a verdict cites. Whether the object store still has that
- * attachment's BYTES is a different question, answered by the download route's 410
+ * attachment's BYTES is a different question, answered by the download route's 404
  * `ATTACHMENT_FILE_MISSING`; a citation pointing outside the tracker is reported as not followed.
  */
 

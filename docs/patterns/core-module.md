@@ -365,7 +365,8 @@ written:
   session, no membership, a fenced token) and 404 (a row the caller cannot see, named by its ref)
   are transport and come from middleware and `rowIn`; a 400 from a validator is answered in the
   envelope. Release blockers, criteria, verdicts, record events, questions and permission
-  refusals are the envelope.
+  refusals are the envelope. A status outside `REFUSAL_STATUSES` is none of these: a gone pairing
+  code is 404, a spent one 409, and no rule answers 410.
 - **Codes.** `<MODULE>_<WHAT>`, upper snake case, declared as an `as const` array in contracts and
   never in core, with a `<MODULE>_REFUSAL_STATUSES` map beside it when any code answers other than
   422. A permission refusal ends `_FORBIDDEN`.

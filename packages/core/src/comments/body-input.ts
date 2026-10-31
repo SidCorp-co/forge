@@ -2,7 +2,6 @@ import { decisionFieldsSchema } from '@forge/contracts/comments';
 import { writtenLangSchema } from '@forge/contracts/written-lang';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
-import { bodyRefusalHttp, rethrowBodyInvalid } from '../body/http-error.js';
 
 export const COMMENT_BODY_MAX_CHARS = 64_000;
 
@@ -50,5 +49,3 @@ export const commentEditSchema = z
   .refine((edit) => edit.body !== undefined || edit.intent !== undefined, {
     message: 'an edit names a new body, a new intent, or both',
   });
-
-export { bodyRefusalHttp, rethrowBodyInvalid };

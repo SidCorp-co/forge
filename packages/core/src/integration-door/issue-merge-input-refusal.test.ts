@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { refuser } from '../lib/refusal.js';
 import { errorHandler } from '../middleware/error.js';
 
 vi.mock('../integrations/source-host/index.js', async (importOriginal) => {
@@ -9,9 +10,10 @@ vi.mock('../integrations/source-host/index.js', async (importOriginal) => {
     ...real,
     openPullRequestsForIssue: async () => ['pr-1'],
     mergeStoredChangeRequest: async () => {
-      throw new real.MergeInputError(
+      throw refuser<'MERGE_RUN_NOT_FOUND'>('MERGE_RUN_NOT_FOUND')(
         'MERGE_RUN_NOT_FOUND',
         'merge: `runId` r1 names no pipeline run',
+        '/runId',
       );
     },
   };

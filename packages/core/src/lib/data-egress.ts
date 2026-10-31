@@ -1,5 +1,6 @@
 import { withArticle } from '@forge/contracts/articles';
 import {
+  DATA_EGRESS_REFUSAL_CODES,
   type DataEgressRefusalCode,
   type EgressClass,
   SENSITIVE_DATA_DEFAULT,
@@ -245,7 +246,7 @@ export function egressReading(
   const shown = <T>(view: T, what: string): T => {
     if (!bound || withhold) return view;
     const out = egressAt(level, surface, view, what);
-    if (!out.ok) throw new EgressRefused(out.refusal);
+    if (!out.ok) throw egressRefused(out.refusal);
     return out.value;
   };
   return { withhold, shown };
@@ -307,11 +308,17 @@ export function egressOr<T, M extends object>(
   return out.ok ? out.value : { ...metadata, withheld: out.refusal };
 }
 
-export class EgressRefused extends Error {
-  constructor(readonly refusal: EgressRefusal) {
-    super(`${refusal.code}: ${refusal.detail}`);
-    this.name = 'EgressRefused';
-  }
+/** A withheld surface as the refusal both doors answer in the envelope, under the refusal's own code. */
+export function egressRefused(refusal: EgressRefusal): RefusalError {
+  return new RefusalError([refusal], refusal.code);
+}
+
+/** A thrown refusal that is the data policy withholding a surface, not another module's rule. */
+export function isEgressRefusal(err: unknown): err is RefusalError {
+  return (
+    err instanceof RefusalError &&
+    err.refusals.some((r) => (DATA_EGRESS_REFUSAL_CODES as readonly string[]).includes(r.code))
+  );
 }
 
 export async function egressShown<T>(
@@ -321,7 +328,7 @@ export async function egressShown<T>(
   what?: string,
 ): Promise<T> {
   const out = await egressDeep(projectId, surface, value, what);
-  if (!out.ok) throw new EgressRefused(out.refusal);
+  if (!out.ok) throw egressRefused(out.refusal);
   return out.value;
 }
 

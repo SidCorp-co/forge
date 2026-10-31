@@ -36,8 +36,6 @@ interface V10Queue extends Record<string, unknown> {
   dead_letter: string | null;
 }
 
-class CarryOverRefused extends Error {}
-
 function toInsert(job: V10Job, now: number): JobInsert {
   const startAfter = at(job.start_after);
   const keepUntil = at(job.keep_until).getTime();
@@ -95,7 +93,7 @@ export async function carryOverV10Jobs(boss: PgBoss): Promise<void> {
 
   const [version] = await db.execute<{ version: number }>(sql`SELECT version FROM pgboss.version`);
   if (version?.version !== V10_SCHEMA_VERSION) {
-    throw new CarryOverRefused(
+    throw new Error(
       `boss: \`${V10_SCHEMA}\` is at schema version ${version?.version ?? 'none'}; the carry-over reads the version ${V10_SCHEMA_VERSION} layout pg-boss 10.4.2 wrote`,
     );
   }
@@ -123,12 +121,12 @@ export async function carryOverV10Jobs(boss: PgBoss): Promise<void> {
       if (wanted.has(name)) return;
       const q = queues.get(name);
       if (!q) {
-        throw new CarryOverRefused(
+        throw new Error(
           `boss: a v10 job names queue \`${name}\`, which \`${V10_SCHEMA}.queue\` does not hold`,
         );
       }
       if (!V10_POLICIES.has(q.policy ?? 'standard')) {
-        throw new CarryOverRefused(
+        throw new Error(
           `boss: v10 queue \`${name}\` has policy \`${q.policy}\`, which pg-boss 12 does not read the same way`,
         );
       }
@@ -167,7 +165,7 @@ export async function carryOverV10Jobs(boss: PgBoss): Promise<void> {
       );
       const refused = group.filter((j) => !inserted.has(j.id));
       if (refused.length > 0) {
-        throw new CarryOverRefused(
+        throw new Error(
           `boss: ${refused.length} v10 job(s) on \`${name}\` could not be copied, a job of the same id or singleton key already holds the place in \`pgboss_v12\`: ${refused
             .slice(0, 5)
             .map((j) => `${j.id}${j.singleton_key ? ` (key ${j.singleton_key})` : ''}`)

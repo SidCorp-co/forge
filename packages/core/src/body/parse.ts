@@ -14,7 +14,7 @@
  * tags at all is valid input (Decision 3) and never reaches the tag branch.
  */
 
-import { BodyInvalidError } from './errors.js';
+import { bodyInvalid } from './errors.js';
 import { VOID_TAGS } from './plain-tags.js';
 
 type BodyAttrs = Record<string, string>;
@@ -112,10 +112,7 @@ class Scanner {
       }
     }
     if (at === -1) {
-      throw new BodyInvalidError(
-        `unterminated ${what} — no \`${tokens[0]}\` before the end of the body`,
-        { expected: tokens[0] },
-      );
+      throw bodyInvalid(`unterminated ${what} — no \`${tokens[0]}\` before the end of the body`);
     }
     const out = this.src.slice(this.i, at);
     this.i = at + hit.length;
@@ -135,10 +132,7 @@ function readAttrs(s: Scanner, tag: string): { attrs: BodyAttrs; selfClosing: bo
   for (;;) {
     s.skipWhile(WS);
     if (s.done)
-      throw new BodyInvalidError(
-        `unterminated tag \`<${tag}>\` — no \`>\` before the end of the body`,
-        { element: tag },
-      );
+      throw bodyInvalid(`unterminated tag \`<${tag}>\` — no \`>\` before the end of the body`);
     if (s.startsWith('/>')) {
       s.take(2);
       return { attrs, selfClosing: true };
@@ -148,9 +142,8 @@ function readAttrs(s: Scanner, tag: string): { attrs: BodyAttrs; selfClosing: bo
       return { attrs, selfClosing: false };
     }
     if (!NAME_START.test(s.peek())) {
-      throw new BodyInvalidError(
+      throw bodyInvalid(
         `\`<${tag}>\` on line ${s.line}: \`${s.peek()}\` is not a legal attribute name`,
-        { element: tag },
       );
     }
     const name = s.readWhile(NAME_CHAR).toLowerCase();
@@ -163,10 +156,7 @@ function readAttrs(s: Scanner, tag: string): { attrs: BodyAttrs; selfClosing: bo
     s.skipWhile(WS);
     const quote = s.peek();
     if (quote !== '"' && quote !== "'") {
-      throw new BodyInvalidError(
-        `\`<${tag} ${name}>\` on line ${s.line}: attribute values must be quoted`,
-        { element: tag, attribute: name },
-      );
+      throw bodyInvalid(`\`<${tag} ${name}>\` on line ${s.line}: attribute values must be quoted`);
     }
     s.take();
     attrs[name] = decodeEntities(s.readUntil(quote, `attribute \`${name}\` on \`<${tag}>\``));
@@ -206,28 +196,19 @@ export function parseBody(src: string): BodyNode[] {
       continue;
     }
     if (s.startsWith('<!')) {
-      throw new BodyInvalidError(
-        `line ${s.line}: \`<!\` markup (doctype, CDATA) is not allowed in a body`,
-      );
+      throw bodyInvalid(`line ${s.line}: \`<!\` markup (doctype, CDATA) is not allowed in a body`);
     }
     if (s.startsWith('</')) {
       s.take(2);
       const name = s.readWhile(NAME_CHAR).toLowerCase();
       s.skipWhile(WS);
-      if (s.peek() !== '>')
-        throw new BodyInvalidError(`\`</${name}>\` on line ${s.line} is not terminated`, {
-          element: name,
-        });
+      if (s.peek() !== '>') throw bodyInvalid(`\`</${name}>\` on line ${s.line} is not terminated`);
       s.take();
       const frame = stack.pop();
-      if (!frame)
-        throw new BodyInvalidError(`\`</${name}>\` on line ${s.line} closes nothing`, {
-          element: name,
-        });
+      if (!frame) throw bodyInvalid(`\`</${name}>\` on line ${s.line} closes nothing`);
       if (frame.name !== name) {
-        throw new BodyInvalidError(
+        throw bodyInvalid(
           `\`</${name}>\` on line ${s.line} closes \`<${frame.name}>\` — tags must nest`,
-          { element: name, expected: frame.name },
         );
       }
       top().push({
@@ -263,10 +244,7 @@ export function parseBody(src: string): BodyNode[] {
   }
 
   const unclosed = stack.pop();
-  if (unclosed)
-    throw new BodyInvalidError(`\`<${unclosed.name}>\` is never closed`, {
-      element: unclosed.name,
-    });
+  if (unclosed) throw bodyInvalid(`\`<${unclosed.name}>\` is never closed`);
   return root;
 }
 

@@ -5,7 +5,7 @@ export {
   relinkChangeRequestIssue,
   unlinkChangeRequestIssue,
 } from './change-request-links.js';
-export { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
+export { refuseSourceHostInput, SourceHostCallError, SourceHostUnavailable } from './errors.js';
 export {
   GIT_RELAY_PREFIX,
   gitRelayRequestOf,
@@ -22,7 +22,6 @@ export {
 export {
   CHANGE_REQUEST_MERGE_METHODS,
   type IssueMergeStamp,
-  MergeInputError,
   mergeStoredChangeRequest,
 } from './merge.js';
 export { readMergedHead } from './merged-head.js';

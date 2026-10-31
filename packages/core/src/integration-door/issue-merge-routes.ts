@@ -10,7 +10,6 @@ import {
   CHANGE_REQUEST_MERGE_METHODS,
   describeEmptyProjection,
   type IssueMergeStamp,
-  MergeInputError,
   mergeStoredChangeRequest,
   openPullRequestsForIssue,
   projectionPipeReport,
@@ -225,9 +224,6 @@ issueMergePullRequestRoutes.post(
         deliveryId: outcome.deliveryId,
       });
     } catch (err) {
-      if (err instanceof MergeInputError) {
-        throw refuse(err.code, err.message, err.code === 'MERGE_REQUESTER_MISSING' ? '' : '/runId');
-      }
       if (err instanceof SourceHostUnavailable) {
         throw refuse('NO_BINDING', err.message);
       }

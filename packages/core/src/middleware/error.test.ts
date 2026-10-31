@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { refused, refuser } from '../lib/refusal.js';
-import { MessageRefusedError } from '../messaging/contract.js';
+import { messageRefused } from '../messaging/contract.js';
 import { requireAuth } from './auth.js';
 import { errorHandler } from './error.js';
 import type { RequestIdVars } from './request-id.js';
@@ -30,7 +30,7 @@ function app() {
   a.get('/auth', requireAuth(), (c) => c.json({}));
   // a route that maps nothing itself: the transition reason answered 500 this way (J7, ISS-439)
   a.post('/message', () => {
-    throw new MessageRefusedError(
+    throw messageRefused(
       'comment-write',
       [
         {

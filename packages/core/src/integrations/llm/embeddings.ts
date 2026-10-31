@@ -1,4 +1,4 @@
-import { EgressRefused, type EgressScope, egressScoped } from '../../lib/data-egress.js';
+import { type EgressScope, egressRefused, egressScoped } from '../../lib/data-egress.js';
 import { env } from '../../lib/env.js';
 import {
   type EmbedDetailed,
@@ -40,7 +40,7 @@ const queryCache = new Map<string, { vec: number[]; at: number }>();
 
 async function sent(scope: EgressScope, text: string): Promise<string> {
   const out = await egressScoped(scope, text);
-  if (!out.ok) throw new EgressRefused(out.refusal);
+  if (!out.ok) throw egressRefused(out.refusal);
   return out.text;
 }
 

@@ -1,7 +1,11 @@
-import type { ConnectionDirectoryStatus } from '@forge/contracts/integrations';
+import type {
+  ConnectionDirectoryStatus,
+  IntegrationRefusalCode,
+} from '@forge/contracts/integrations';
 import { type Said, sayEn } from '@forge/contracts/said';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
+import { type RefusalError, refuser } from '../lib/refusal.js';
 import type { AgentAccess } from './agent-access.js';
 import { bindingNames } from './binding-name.js';
 import { raceWithTimeout } from './probe.js';
@@ -32,11 +36,13 @@ export const notFound = (entity = 'integration') =>
 const BINDING_DOOR =
   'PUT /api/projects/:projectId/bindings/:bindingId { baseRevision, document } (a binding-v1 document), and switched off only through DELETE /api/projects/:projectId/bindings/:bindingId { baseRevision }';
 
-export function bindingWriteMoved(what: string): HTTPException {
-  return new HTTPException(410, {
-    message: `${what} no longer writes a binding: a binding is written only through ${BINDING_DOOR}. A connection is created with POST /api/integration-connections and named in the document's \`connection\`.`,
-    cause: { code: 'BINDING_WRITE_MOVED' },
-  });
+const refuseBindingWrite = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
+
+export function bindingWriteMoved(what: string): RefusalError {
+  return refuseBindingWrite(
+    'BINDING_WRITE_MOVED',
+    `${what} no longer writes a binding: a binding is written only through ${BINDING_DOOR}. A connection is created with POST /api/integration-connections and named in the document's \`connection\`.`,
+  );
 }
 
 export function adapterOrRefuse(provider: string): IntegrationAdapterMethods {

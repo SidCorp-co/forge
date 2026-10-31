@@ -388,6 +388,50 @@ export interface McpPreviewResponse {
 	servers: McpServerPreviewEntry[];
 }
 
+/**
+ * Why a Sentry read is refused, as a code rather than a sentence: a caller telling "no binding" from
+ * "the credential was rejected" by matching text would reclassify both the day one is reworded.
+ */
+export const SENTRY_REFUSAL_CODES = [
+	"SENTRY_NO_BINDING",
+	"SENTRY_BINDING_DISABLED",
+	"SENTRY_CONNECTION_DISABLED",
+	"SENTRY_NOT_GRANTED",
+	"SENTRY_NO_CREDENTIAL",
+	"SENTRY_CREDENTIAL_REJECTED",
+	"SENTRY_SCOPE_MISSING",
+	"SENTRY_HTTP_ERROR",
+	"SENTRY_UNREACHABLE",
+	"SENTRY_NO_TARGETS",
+	"SENTRY_TARGET_AMBIGUOUS",
+	"SENTRY_TARGET_UNKNOWN",
+	"SENTRY_TARGET_NO_ORG",
+	"SENTRY_TARGET_OLD_SHAPE",
+	"SENTRY_CONFINED_OUT",
+	"SENTRY_BAD_ARGUMENT",
+] as const;
+
+export type SentryRefusalCode = (typeof SENTRY_REFUSAL_CODES)[number];
+
+/**
+ * What the caller does next: wait for an operator where the instance's credential or the host is the
+ * fault (503), stop asking where the agent holds no grant (403), name another target or argument
+ * (400), and nothing is shown of an issue another project holds (404). The rest change a binding,
+ * which is the rule's own 422.
+ */
+export const SENTRY_REFUSAL_STATUSES = {
+	SENTRY_NOT_GRANTED: 403,
+	SENTRY_NO_CREDENTIAL: 503,
+	SENTRY_CREDENTIAL_REJECTED: 503,
+	SENTRY_SCOPE_MISSING: 503,
+	SENTRY_HTTP_ERROR: 503,
+	SENTRY_UNREACHABLE: 503,
+	SENTRY_TARGET_AMBIGUOUS: 400,
+	SENTRY_TARGET_UNKNOWN: 400,
+	SENTRY_BAD_ARGUMENT: 400,
+	SENTRY_CONFINED_OUT: 404,
+} as const satisfies RefusalStatuses<SentryRefusalCode>;
+
 /** The codes an integration route refuses under. */
 export const INTEGRATION_REFUSAL_CODES = [
 	"INTEGRATION_REFUSED",
@@ -411,6 +455,10 @@ export const INTEGRATION_REFUSAL_CODES = [
 	"CHANGE_REQUEST_ISSUE_NOT_LINKED",
 	"CHANGE_REQUEST_ISSUE_NOT_UNLINKED",
 	"CHANGE_REQUEST_ISSUE_OF_ANOTHER_PROJECT",
+	/** A delivery to `POST /api/webhooks/in/:slug` carried no provider's header: the generic delivery is removed. */
+	"WEBHOOK_ROUTE_REMOVED",
+	/** A binding write sent to a route that no longer writes one; the binding door does. */
+	"BINDING_WRITE_MOVED",
 ] as const;
 
 export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
@@ -433,7 +481,10 @@ export const INTEGRATION_REFUSAL_STATUSES = {
 	CHANGE_REQUEST_MERGED: 409,
 	CHANGE_REQUEST_ISSUE_NOT_LINKED: 409,
 	CHANGE_REQUEST_ISSUE_NOT_UNLINKED: 409,
-} as const satisfies RefusalStatuses<IntegrationRefusalCode>;
+	WEBHOOK_ROUTE_REMOVED: 404,
+	BINDING_WRITE_MOVED: 400,
+	...SENTRY_REFUSAL_STATUSES,
+} as const satisfies RefusalStatuses<IntegrationRefusalCode | SentryRefusalCode>;
 
 /**
  * Why a browser GitHub sent back could not finish connecting, carried to the web Integrations page

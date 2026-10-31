@@ -1,4 +1,4 @@
-import { BodyInvalidError } from './errors.js';
+import { bodyInvalid } from './errors.js';
 import type { BodyFormat } from './formats.js';
 import { serializeBody } from './normalize.js';
 import { type BodyNode, parseBody } from './parse.js';
@@ -37,9 +37,7 @@ export function prepareBody(input: PrepareInput): PreparedBody {
   const validated = validateBody(parseBody(input.raw));
   const body = serializeBody(validated.nodes);
   if (body.trim().length === 0) {
-    throw new BodyInvalidError('the body is empty once markup outside the allowlist is removed', {
-      warnings: validated.warnings,
-    });
+    throw bodyInvalid('the body is empty once markup outside the allowlist is removed');
   }
   return {
     body,

@@ -6,8 +6,8 @@
  * caller said the target was.
  */
 
+import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import {
   agentSessions,
@@ -18,7 +18,10 @@ import {
   sessionAttachments,
 } from '../db/schema.js';
 import { getStorage, isEnoent } from '../integrations/index.js';
+import { refuser } from '../lib/refusal.js';
 import type { DownloadTargetType } from './download-ticket-service.js';
+
+const refuseAttachment = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
 interface AttachmentRow {
   name: string;
@@ -88,15 +91,15 @@ export async function loadAttachment(
   return { ...row, url: `/api/comments/attachments/${attachmentId}` };
 }
 
-/** The stored bytes of an attachment row; a file gone from storage answers 410, naming no path. */
+/** The stored bytes of an attachment row; a file gone from storage answers 404 ATTACHMENT_FILE_MISSING, naming no path. */
 export async function readAttachmentBytes(att: AttachmentRow): Promise<Buffer> {
   try {
     return await getStorage().get(att.path);
   } catch (err) {
     if (!isEnoent(err)) throw err;
-    throw new HTTPException(410, {
-      message: `the file of attachment "${att.name}" is missing from storage`,
-      cause: { code: 'ATTACHMENT_FILE_MISSING' },
-    });
+    throw refuseAttachment(
+      'ATTACHMENT_FILE_MISSING',
+      `the file of attachment "${att.name}" is missing from storage`,
+    );
   }
 }

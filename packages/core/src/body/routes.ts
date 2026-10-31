@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { BODY_FORMATS } from './formats.js';
-import { prepareBodyOrThrow } from './http-error.js';
 import { parseBody } from './parse.js';
+import { prepareBody } from './prepare.js';
 
 export const bodyRoutes = new Hono<{ Variables: AuthVars }>();
 bodyRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -18,7 +18,7 @@ const previewSchema = z
 
 bodyRoutes.post('/preview', zValidator('json', previewSchema), (c) => {
   const { raw, format } = c.req.valid('json');
-  const prepared = prepareBodyOrThrow({ raw, format });
+  const prepared = prepareBody({ raw, format });
   return c.json({
     body: prepared.body,
     format: prepared.format,

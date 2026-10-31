@@ -2,6 +2,7 @@
 import { AGENT_SESSION_REFUSAL_STATUSES } from "./agent-sessions.js";
 import { ATTACHMENT_REFUSAL_STATUSES } from "./attachments.js";
 import { AUTH_REFUSAL_STATUSES } from "./auth.js";
+import { BODY_REFUSAL_STATUSES } from "./body.js";
 import { CHAT_PROPOSAL_REFUSAL_STATUSES } from "./chat-proposals.js";
 import { CHECK_RUN_REFUSAL_STATUSES } from "./check-runs.js";
 import { CHECKLIST_REFUSAL_STATUSES } from "./checklists.js";
@@ -14,6 +15,7 @@ import { GIT_REFUSAL_STATUSES } from "./git.js";
 import { INSTANCE_SETTINGS_REFUSAL_STATUSES } from "./instance-settings.js";
 import { INTAKE_REFUSAL_STATUSES } from "./intake-drafts.js";
 import { INTEGRATION_REFUSAL_STATUSES } from "./integrations.js";
+import { INVITATION_REFUSAL_STATUSES } from "./invitations.js";
 import { ISSUE_DESIGN_REFUSAL_STATUSES } from "./issue-design.js";
 import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
 import {
@@ -63,6 +65,7 @@ const DECLARED: ReadonlyArray<
 	AGENT_SESSION_REFUSAL_STATUSES,
 	ATTACHMENT_REFUSAL_STATUSES,
 	AUTH_REFUSAL_STATUSES,
+	BODY_REFUSAL_STATUSES,
 	CHAT_PROPOSAL_REFUSAL_STATUSES,
 	CHECK_RUN_REFUSAL_STATUSES,
 	CHECKLIST_REFUSAL_STATUSES,
@@ -74,6 +77,7 @@ const DECLARED: ReadonlyArray<
 	INSTANCE_SETTINGS_REFUSAL_STATUSES,
 	INTAKE_REFUSAL_STATUSES,
 	INTEGRATION_REFUSAL_STATUSES,
+	INVITATION_REFUSAL_STATUSES,
 	GIT_REFUSAL_STATUSES,
 	ISSUE_TRANSITION_REFUSAL_STATUSES,
 	ISSUE_CREATE_REFUSAL_STATUSES,

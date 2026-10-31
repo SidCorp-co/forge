@@ -1,3 +1,4 @@
+import type { RefusalError } from '../../lib/refusal.js';
 import { sanitizeUntrusted } from '../../lib/untrusted-text.js';
 import type { OutboundDispatchInput, OutboundDispatchResult } from '../index.js';
 import { recordDelivery, updateDelivery } from '../index.js';
@@ -15,7 +16,7 @@ import {
   type SentryListRefusal,
   type SentryListRequest,
 } from './listing.js';
-import { SentryRefusal } from './refusals.js';
+import { refuseSentry, sentryDetailOf, sentryRefusalCode } from './refusals.js';
 import { type ResolvedSentryTarget, resolveSentryTarget } from './targets.js';
 import { SENTRY_ISSUE_STATUSES, type SentryIssueDetail, type SentryIssueStatus } from './types.js';
 
@@ -81,7 +82,7 @@ async function withDelivery<T>(
   } catch (err) {
     await updateDelivery(deliveryId, {
       status: 'failed',
-      errorMessage: err instanceof Error ? err.message : 'unknown error',
+      errorMessage: sentryDetailOf(err),
       durationMs: Date.now() - started,
       completedAt: new Date(),
     });
@@ -126,8 +127,8 @@ export function projectIssue(body: unknown, fallbackId: string): SentryIssueDeta
 
 function assertIssueId(issueId: unknown): string {
   if (typeof issueId === 'string' && issueId.trim() !== '') return issueId;
-  throw new SentryRefusal(
-    'bad_argument',
+  throw refuseSentry(
+    'SENTRY_BAD_ARGUMENT',
     'sentry: this dispatch names no `issueId`, and an issue cannot be addressed without one',
   );
 }
@@ -151,14 +152,14 @@ function assertTargetHoldsIssue(
 ): void {
   if (!target.projectSlug) return;
   if (issue.projectSlug === null) {
-    throw new SentryRefusal(
-      'confined_out',
+    throw refuseSentry(
+      'SENTRY_CONFINED_OUT',
       `sentry: target "${target.label}" is scoped to project ${target.projectSlug}, and Sentry's answer for issue ${issueId} names no project — this call cannot be confined to that target`,
     );
   }
   if (issue.projectSlug !== target.projectSlug) {
-    throw new SentryRefusal(
-      'confined_out',
+    throw refuseSentry(
+      'SENTRY_CONFINED_OUT',
       `sentry: issue ${issueId} belongs to project ${issue.projectSlug}, and target "${target.label}" is scoped to ${target.projectSlug}`,
     );
   }
@@ -168,8 +169,8 @@ function assertStatus(status: unknown): SentryIssueStatus {
   if (typeof status === 'string' && (SENTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
     return status as SentryIssueStatus;
   }
-  throw new SentryRefusal(
-    'bad_argument',
+  throw refuseSentry(
+    'SENTRY_BAD_ARGUMENT',
     `sentry: ${JSON.stringify(status)} is not a Sentry issue status — Sentry accepts ${SENTRY_ISSUE_STATUSES.join(', ')}`,
   );
 }
@@ -254,9 +255,9 @@ async function readListPage(
     body = await callSentry(ctx, url, 'GET', undefined, out);
   } catch (err) {
     throw new SentryListingFailed(
-      err instanceof Error ? err.message : 'unknown error',
+      sentryDetailOf(err),
       sofar,
-      err instanceof SentryRefusal ? err : null,
+      sentryRefusalCode(err) !== null ? (err as RefusalError) : null,
     );
   }
   if (!Array.isArray(body)) {
@@ -264,7 +265,7 @@ async function readListPage(
     throw new SentryListingFailed(
       unreadable,
       sofar,
-      new SentryRefusal('sentry_unreachable', unreadable),
+      refuseSentry('SENTRY_UNREACHABLE', unreadable),
     );
   }
   return { body, link: out.link };

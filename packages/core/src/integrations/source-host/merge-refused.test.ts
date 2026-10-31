@@ -31,7 +31,8 @@ vi.mock('./resolve.js', () => ({
 }));
 vi.mock('./projection.js', () => ({ markPullRequestMerged: async () => {} }));
 
-const { MergeInputError, mergeStoredChangeRequest } = await import('./merge.js');
+const { RefusalError } = await import('../../lib/refusal.js');
+const { mergeStoredChangeRequest } = await import('./merge.js');
 const stamp = async () => ({ wrote: true });
 
 describe('mergeStoredChangeRequest: a refused merge', () => {
@@ -67,7 +68,7 @@ describe('mergeStoredChangeRequest: a refused merge', () => {
       () => null,
       (e: unknown) => e,
     );
-    expect(err).toBeInstanceOf(MergeInputError);
-    expect((err as { code?: string }).code).toBe(code);
+    expect(err).toBeInstanceOf(RefusalError);
+    expect((err as InstanceType<typeof RefusalError>).refusals[0]?.code).toBe(code);
   });
 });

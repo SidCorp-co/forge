@@ -9,7 +9,6 @@ import {
   resolveSourceHost,
   type SourceHost,
   SourceHostCallError,
-  SourceHostInputRefusal,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
 import { refuser } from '../lib/refusal.js';
@@ -46,8 +45,6 @@ export async function onHost<T>(
     if (err instanceof SourceHostUnavailable) {
       throw refuse('SOURCE_HOST_UNAVAILABLE', `${err.message} (${err.reason})`);
     }
-    if (err instanceof SourceHostInputRefusal)
-      throw refuse('SOURCE_HOST_INPUT_REFUSED', err.message);
     if (err instanceof SourceHostCallError) {
       const said = err.detail ? ` The host said: ${err.detail}` : '';
       throw refuse('HOST_UNAVAILABLE', `${err.message}.${said}`);

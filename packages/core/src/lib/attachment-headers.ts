@@ -1,5 +1,8 @@
+import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import type { Context } from 'hono';
-import { HTTPException } from 'hono/http-exception';
+import { refuser } from './refusal.js';
+
+const refuseAttachment = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
 const INERT_MIMES = new Set(['image/svg+xml', 'text/html']);
 
@@ -29,7 +32,7 @@ export function setInertAttachmentHeaders(
 }
 
 /**
- * A stored file as an inert download, or 410 when its bytes are gone from storage. `download`
+ * A stored file as an inert download, or 404 ATTACHMENT_FILE_MISSING when its bytes are gone from storage. `download`
  * forces the attachment disposition and forbids caching, for a self-authenticating ticket URL.
  */
 export async function sendStoredAttachment(
@@ -43,10 +46,7 @@ export async function sendStoredAttachment(
     buffer = await read(file.path);
   } catch (err) {
     if ((err as { code?: string } | null)?.code !== 'ENOENT') throw err;
-    throw new HTTPException(410, {
-      message: 'attachment file missing on disk',
-      cause: { code: 'ATTACHMENT_FILE_MISSING' },
-    });
+    throw refuseAttachment('ATTACHMENT_FILE_MISSING', 'attachment file missing on disk');
   }
   setInertAttachmentHeaders(c, file.mime, file.name, opts.download);
   if (opts.download) c.header('Cache-Control', 'private, no-store');

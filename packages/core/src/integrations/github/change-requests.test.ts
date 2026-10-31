@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SourceHostInputRefusal } from '../source-host/index.js';
+import { isRefusal } from '../../lib/refusal.js';
 import type { GitHubAgentClient } from './agent-client.js';
 import { githubChangeRequestVerbs } from './change-requests.js';
 import type { GitHubRepoClient } from './client.js';
@@ -221,7 +221,7 @@ describe('github updateChangeRequest and closeChangeRequest', () => {
       '/repos/acme/shop/pulls/7': pull({ state: 'closed', merged: true, merged_at: 'x' }),
     });
     const err = await merged.verbs.closeChangeRequest({ number: 7 }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(SourceHostInputRefusal);
+    expect(isRefusal(err, 'SOURCE_HOST_INPUT_REFUSED')).toBe(true);
     expect(merged.writes).toEqual([]);
   });
 });

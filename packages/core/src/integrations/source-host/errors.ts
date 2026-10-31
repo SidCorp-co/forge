@@ -3,6 +3,9 @@
  * reader branches on the reason rather than on which host raised it.
  */
 
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
+import { type RefusalError, refuser } from '../../lib/refusal.js';
+
 type SourceHostRefusalReason =
   | 'no_binding'
   | 'binding_disabled'
@@ -46,10 +49,9 @@ export class SourceHostCallError extends Error {
   }
 }
 
+const refuseHostInput = refuser<IntegrationRefusalCode>('SOURCE_HOST_INPUT_REFUSED');
+
 /** The caller asked the host for something it does not have — a verb or a shape. Refused by name. */
-export class SourceHostInputRefusal extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'SourceHostInputRefusal';
-  }
+export function refuseSourceHostInput(detail: string): RefusalError {
+  return refuseHostInput('SOURCE_HOST_INPUT_REFUSED', detail);
 }

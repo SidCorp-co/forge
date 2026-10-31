@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import type { InvitationRefusalCode } from '@forge/contracts/invitations';
 import { HTTPException } from 'hono/http-exception';
 import { env } from './env.js';
+import { refuser } from './refusal.js';
 import { digestToken } from './token-digest.js';
 
 /**
@@ -15,8 +17,11 @@ const INVITATION_REF = /^[0-9a-f]{64}$/;
 export const badRequest = (code: string, message: string) =>
   new HTTPException(400, { message, cause: { code } });
 
-export const gone = (code: string, message: string) =>
-  new HTTPException(410, { message, cause: { code } });
+const refuseInvitation = refuser<InvitationRefusalCode>('ALREADY_ACCEPTED');
+
+/** An invitation that can no longer be taken, refused under its own code (REQ-12 BC-16). */
+export const gone = (code: InvitationRefusalCode, message: string) =>
+  refuseInvitation(code, message);
 
 export const notFound = (code: string, message: string) =>
   new HTTPException(404, { message, cause: { code } });

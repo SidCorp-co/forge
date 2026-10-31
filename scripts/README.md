@@ -266,8 +266,10 @@ information from `packages/core/tsconfig.json`:
   write to a concrete table there is still judged.
 - `route-query`: a database call on a value of either type in a route file
   (`lib/module-shape.mjs:isRouteFile`).
-- `refusal`: an `HTTPException` with a rule status, an `Error` subclass outside platform and
-  adapter modules, a thrown `"<CODE>: …"`, a refusal-code list declared in core, and a
+- `refusal`: an `HTTPException` with any 4xx but the transport ones (400, 401, 404, 405, 413, 415,
+  429; a 410 is none of them), an `Error` subclass outside platform and adapter modules and, in
+  those, one named `*Refus(al|ed)`, `*InputError` or `*InvalidError` (a subclass of `RefusalError`
+  is the shared path), a thrown `"<CODE>: …"`, a refusal-code list declared in core, and a
   `c.json(…, <rule status>)` body built by hand.
 - `global-fetch`: a reference to the global `fetch` (scope analysis, so a local binding is not
   it) or `globalThis.fetch` outside an adapter module, beyond the config's `allow` entries, each of

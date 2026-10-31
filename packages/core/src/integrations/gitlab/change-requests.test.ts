@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SourceHostInputRefusal } from '../source-host/index.js';
+import { isRefusal } from '../../lib/refusal.js';
 import { gitlabChangeRequestVerbs } from './change-requests.js';
 import type { GitLabClient } from './client.js';
 
@@ -175,7 +175,7 @@ describe('gitlab closeChangeRequest', () => {
       mr({ state: 'merged', merge_commit_sha: MERGE, merged_at: '2026-10-26T09:00:00Z' }),
     );
     const err = await verbs.closeChangeRequest({ number: 12 }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(SourceHostInputRefusal);
+    expect(isRefusal(err, 'SOURCE_HOST_INPUT_REFUSED')).toBe(true);
     expect(String(err)).toContain('!12');
     expect(calls.filter((c) => c.method === 'PUT')).toEqual([]);
   });

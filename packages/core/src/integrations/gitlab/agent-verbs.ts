@@ -1,5 +1,5 @@
 import type { CheckLog, SourceHost } from '../source-host/index.js';
-import { SourceHostCallError, SourceHostInputRefusal } from '../source-host/index.js';
+import { refuseSourceHostInput, SourceHostCallError } from '../source-host/index.js';
 import type { GitLabClient } from './client.js';
 import type { MergeRequestBody } from './merge.js';
 import { checkStatusOf, conclusionOf } from './status.js';
@@ -159,7 +159,7 @@ export function gitlabAgentVerbs(
 
     async requestReview({ number, reviewers, teamReviewers }) {
       if (teamReviewers?.length) {
-        throw new SourceHostInputRefusal(
+        throw refuseSourceHostInput(
           `GitLab has no team reviewers, so \`teamReviewers\` (${teamReviewers.join(', ')}) cannot be requested on !${number} — name GitLab usernames in \`reviewers\``,
         );
       }
@@ -168,7 +168,7 @@ export function gitlabAgentVerbs(
         const found = await client.json<UserBody[]>('GET', `/users?username=${enc(username)}`);
         const id = found[0]?.id;
         if (!id) {
-          throw new SourceHostInputRefusal(
+          throw refuseSourceHostInput(
             `GitLab knows no user \`${username}\`, so nobody was asked to review !${number}`,
           );
         }
@@ -190,7 +190,7 @@ export function gitlabAgentVerbs(
 
     async submitReview({ number, event, body }) {
       if (event === 'REQUEST_CHANGES') {
-        throw new SourceHostInputRefusal(
+        throw refuseSourceHostInput(
           `GitLab's REST API has no request-changes verdict, so it is refused rather than written as something near it — leave !${number} unapproved and say what has to change with \`comment\``,
         );
       }

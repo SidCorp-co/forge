@@ -9,7 +9,7 @@
  *   2. POST /api/devices/login/approve — the browser (cookie-auth) approves a
  *      typed/linked code, binding it to the signed-in user.
  *   3. GET  /api/devices/login/poll    — the CLI polls every 2 s; 204 while
- *      pending, 200 + {device_token, …} when approved (single-use), 410 when
+ *      pending, 200 + {device_token, …} when approved (single-use), 404 PAIRING_CODE_GONE, 409 PAIRING_CODE_CONSUMED or 422 PAIRING_CODE_EXPIRED when
  *      expired or already consumed. The `device_token` field name is the wire
  *      contract three `forge-runner` versions read; only its species changed.
  *
@@ -19,11 +19,13 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import type { DeviceRefusalCode } from '@forge/contracts/devices';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { RULES } from '../lib/rate-limits.js';
+import { refuser } from '../lib/refusal.js';
 import { digestToken } from '../lib/token-digest.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
@@ -35,6 +37,8 @@ import { pushDevice } from './push.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
 import { approveLoginCode, consumeLoginCode, insertLoginCode } from './service.js';
+
+const refusePairing = refuser<DeviceRefusalCode>('DEVICE_REFUSED');
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
 
@@ -354,24 +358,15 @@ deviceLoginRoutes.get(
     const existing = await loginCodeState(codeHash);
 
     if (!existing) {
-      throw new HTTPException(410, {
-        message: 'pairing code not found',
-        cause: { code: 'PAIRING_CODE_GONE' },
-      });
+      throw refusePairing('PAIRING_CODE_GONE', 'pairing code not found');
     }
     const expiresAt =
       existing.expiresAt instanceof Date ? existing.expiresAt : new Date(existing.expiresAt);
     if (existing.consumedAt) {
-      throw new HTTPException(410, {
-        message: 'pairing code already consumed',
-        cause: { code: 'PAIRING_CODE_CONSUMED' },
-      });
+      throw refusePairing('PAIRING_CODE_CONSUMED', 'pairing code already consumed');
     }
     if (expiresAt.getTime() <= Date.now()) {
-      throw new HTTPException(410, {
-        message: 'pairing code expired',
-        cause: { code: 'PAIRING_CODE_EXPIRED' },
-      });
+      throw refusePairing('PAIRING_CODE_EXPIRED', 'pairing code expired');
     }
     // Pending — the CLI keeps polling.
     return c.body(null, 204);

@@ -183,15 +183,18 @@ export const ATTACHMENT_REFUSAL_CODES = [
 	"UPLOAD_OPERATION_REUSED",
 	"UPLOAD_IN_PROGRESS",
 	"UPLOAD_OUTCOME_UNKNOWN",
+	/** The row is there and the bytes it names are gone from storage. */
+	"ATTACHMENT_FILE_MISSING",
 ] as const;
 
 export type AttachmentRefusalCode = (typeof ATTACHMENT_REFUSAL_CODES)[number];
 
-/** A ticket minted twice under one operation id for different files, and a replay whose first PUT has not finished or never recorded its answer. */
+/** A ticket minted twice under one operation id for different files, and a replay whose first PUT has not finished or never recorded its answer; and a file the row names that storage no longer holds, which is not found. */
 export const ATTACHMENT_REFUSAL_STATUSES = {
 	UPLOAD_OPERATION_REUSED: 409,
 	UPLOAD_IN_PROGRESS: 409,
 	UPLOAD_OUTCOME_UNKNOWN: 409,
+	ATTACHMENT_FILE_MISSING: 404,
 } as const;
 
 /** The files an issue's create carries inline; a comment takes any number, one upload each. */

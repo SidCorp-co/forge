@@ -1,7 +1,9 @@
+import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
+import { refuser } from '../../lib/refusal.js';
 import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
 import { outcomeUnconfirmed, readBackMerge } from './merge-unknown.js';
@@ -97,21 +99,8 @@ type MergeOutcome =
     }
   | { kind: 'refused'; deliveryId: string; reason: string; detail: string };
 
-/** The caller-input faults a merge refuses before anything is read; the route answers each by name. */
-export type MergeInputCode =
-  | 'MERGE_REQUESTER_MISSING'
-  | 'MERGE_RUN_NOT_FOUND'
-  | 'MERGE_RUN_OF_ANOTHER_PROJECT';
-
-export class MergeInputError extends Error {
-  constructor(
-    readonly code: MergeInputCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'MergeInputError';
-  }
-}
+/** The caller-input faults a merge refuses before anything is read, answered by name at both doors. */
+const refuseMerge = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
 interface StoredRow {
   id: string;
@@ -148,7 +137,7 @@ async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
  */
 async function assertCaller(req: MergeRequest, projectId: string): Promise<void> {
   if (!req.requestedBy.trim()) {
-    throw new MergeInputError(
+    throw refuseMerge(
       'MERGE_REQUESTER_MISSING',
       'merge: a merge needs `requestedBy` — the identity this merge is made for. Forge merges as ' +
         'its own credential and records who asked; a merge with nobody on it is refused rather ' +
@@ -158,15 +147,17 @@ async function assertCaller(req: MergeRequest, projectId: string): Promise<void>
   if (!req.runId) return;
   const runProjectId = await forgeReads().runProjectOf(req.runId);
   if (runProjectId === null) {
-    throw new MergeInputError(
+    throw refuseMerge(
       'MERGE_RUN_NOT_FOUND',
       `merge: \`runId\` ${req.runId} names no pipeline run, so there is no run this merge is made for`,
+      '/runId',
     );
   }
   if (runProjectId !== projectId) {
-    throw new MergeInputError(
+    throw refuseMerge(
       'MERGE_RUN_OF_ANOTHER_PROJECT',
       `merge: \`runId\` ${req.runId} belongs to another project than the change request it was sent with — a merge is authorised by a run on its own project, and Forge will not record one project's run as the authority for another's merge`,
+      '/runId',
     );
   }
 }

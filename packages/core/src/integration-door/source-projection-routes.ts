@@ -9,7 +9,7 @@
  * answer rather than thrown: the change stands on the host by then, and an error would say it did not.
  */
 
-import { SourceHostInputRefusal } from '../integrations/source-host/index.js';
+import { refuseSourceHostInput } from '../integrations/source-host/index.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { can, onHost, type Routes } from './source-door.js';
 import { checksAt, project, projectAfterWrite } from './source-projection.js';
@@ -34,7 +34,7 @@ export function registerSourceProjectionRoutes(routes: Routes): void {
           // resolved first; one naming no commit is refused rather than answered `none`
           const commit = await host.readCommit(sha);
           if (!commit) {
-            throw new SourceHostInputRefusal(
+            throw refuseSourceHostInput(
               `\`${sha}\` names no commit on ${host.fullName}, so there are no checks to read`,
             );
           }

@@ -31,7 +31,7 @@ import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/ro
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
-import { commentCreateSchema, commentEditSchema, rethrowBodyInvalid } from './body-input.js';
+import { commentCreateSchema, commentEditSchema } from './body-input.js';
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
 import { checkedIntent, correctCommentIntent, unchangedIntentRefusal } from './intent-edit.js';
 import { postIssueComment } from './issue-comment.js';
@@ -207,22 +207,17 @@ commentRoutes.patch(
     let updated: CommentThreadRow | null = null;
     let warnings: string[] = [];
     if (body !== undefined) {
-      let written: Awaited<ReturnType<typeof updateCommentBody>>;
-      try {
-        written = await updateCommentBody(id, {
-          body,
-          format,
-          writtenLang,
-          declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
-          announce: {
-            actor: restActor(c),
-            projectId: comment.projectId,
-            before: comment.body ?? '',
-          },
-        });
-      } catch (err) {
-        rethrowBodyInvalid(err);
-      }
+      const written = await updateCommentBody(id, {
+        body,
+        format,
+        writtenLang,
+        declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
+        announce: {
+          actor: restActor(c),
+          projectId: comment.projectId,
+          before: comment.body ?? '',
+        },
+      });
       if (!written) throw notFound('comment not found');
       updated = written.row;
       warnings = written.warnings;

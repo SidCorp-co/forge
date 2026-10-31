@@ -1,8 +1,10 @@
 /** One call to Sentry: the ISS-405 previous-token retry, and the refusal or health verdict it earns. */
 
+import type { SentryRefusalCode } from '@forge/contracts/integrations';
+import type { RefusalError } from '../../lib/refusal.js';
 import type { AdapterContext, HealthStatus } from '../index.js';
 import { isPreviousCredentialValid, updateConnection } from '../index.js';
-import { SentryRefusal, type SentryRefusalReason } from './refusals.js';
+import { refuseSentry } from './refusals.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 
 const CALL_TIMEOUT_MS = 15_000;
@@ -16,7 +18,7 @@ type Attempt =
       status: number;
       health: HealthStatus;
       reason: string;
-      refusal: SentryRefusalReason;
+      refusal: SentryRefusalCode;
     };
 
 /**
@@ -26,13 +28,13 @@ type Attempt =
 function classifySentryStatus(status: number): {
   health: HealthStatus;
   reason: string;
-  refusal: SentryRefusalReason;
+  refusal: SentryRefusalCode;
 } {
   if (status === 401) {
     return {
       health: 'needs_reauth',
       reason: 'the Sentry auth token was rejected',
-      refusal: 'credential_rejected',
+      refusal: 'SENTRY_CREDENTIAL_REJECTED',
     };
   }
   if (status === 403) {
@@ -40,21 +42,21 @@ function classifySentryStatus(status: number): {
       health: 'needs_scope',
       reason:
         'the Sentry auth token lacks the scope this call needs (issue:read / issue:write, org:read for the healthcheck)',
-      refusal: 'scope_missing',
+      refusal: 'SENTRY_SCOPE_MISSING',
     };
   }
   return {
     health: 'error',
     reason: `Sentry answered HTTP ${status}`,
-    refusal: 'sentry_http_error',
+    refusal: 'SENTRY_HTTP_ERROR',
   };
 }
 
 /** The connection health a refusal recorded; anything not about the token is an `error`. */
-export function sentryRefusalHealth(reason: SentryRefusalReason): HealthStatus {
-  return reason === 'credential_rejected'
+export function sentryRefusalHealth(reason: SentryRefusalCode): HealthStatus {
+  return reason === 'SENTRY_CREDENTIAL_REJECTED'
     ? 'needs_reauth'
-    : reason === 'scope_missing'
+    : reason === 'SENTRY_SCOPE_MISSING'
       ? 'needs_scope'
       : 'error';
 }
@@ -90,14 +92,22 @@ async function attempt(
  * card stays green is a state that lies about itself, and the healthcheck only runs on its own
  * schedule.
  */
-export async function callSentry(
+export type SentryOutcome =
+  | { ok: true; body: unknown; link: string | null }
+  | {
+      ok: false;
+      refusal: RefusalError;
+      /** Sentry's own status where the call got that far; null where it never did. */
+      httpStatus: number | null;
+    };
+
+/** The call and the health write it earns, its refusal returned rather than thrown. */
+export async function callSentryOutcome(
   ctx: SentryAdapterContext,
   url: string,
   method: 'GET' | 'PUT',
   body?: Record<string, unknown>,
-  /** Filled with the response's `Link` header where the caller cares; the other two do not. */
-  out?: { link: string | null },
-): Promise<unknown> {
+): Promise<SentryOutcome> {
   const authToken = ctx.secrets?.authToken;
   if (!authToken) {
     // The same rule the catch below states, at the one refusal that precedes it: a connection left
@@ -108,10 +118,14 @@ export async function callSentry(
       lastHealthStatus: 'error',
       lastHealthAt: new Date(),
     });
-    throw new SentryRefusal(
-      'no_credential',
-      'sentry: this connection holds no auth token, so no call can be made',
-    );
+    return {
+      ok: false,
+      refusal: refuseSentry(
+        'SENTRY_NO_CREDENTIAL',
+        'sentry: this connection holds no auth token, so no call can be made',
+      ),
+      httpStatus: null,
+    };
   }
   let res: Attempt;
   try {
@@ -133,20 +147,39 @@ export async function callSentry(
       lastHealthAt: new Date(),
     });
     const reason = err instanceof Error ? err.message : 'unknown error';
-    throw new SentryRefusal(
-      'sentry_unreachable',
-      `sentry: could not reach Sentry — ${method} ${url} — ${reason}`,
-    );
+    return {
+      ok: false,
+      refusal: refuseSentry(
+        'SENTRY_UNREACHABLE',
+        `sentry: could not reach Sentry — ${method} ${url} — ${reason}`,
+      ),
+      httpStatus: null,
+    };
   }
   await updateConnection(ctx.connectionId, {
     lastHealthStatus: res.kind === 'ok' ? 'ok' : res.health,
     lastHealthAt: new Date(),
   });
   if (res.kind !== 'ok') {
-    throw new SentryRefusal(res.refusal, `sentry: ${method} ${url} — ${res.reason}`, {
+    return {
+      ok: false,
+      refusal: refuseSentry(res.refusal, `sentry: ${method} ${url} — ${res.reason}`),
       httpStatus: res.status,
-    });
+    };
   }
-  if (out) out.link = res.link;
-  return res.body;
+  return { ok: true, body: res.body, link: res.link };
+}
+
+export async function callSentry(
+  ctx: SentryAdapterContext,
+  url: string,
+  method: 'GET' | 'PUT',
+  body?: Record<string, unknown>,
+  /** Filled with the response's `Link` header where the caller cares; the other two do not. */
+  out?: { link: string | null },
+): Promise<unknown> {
+  const outcome = await callSentryOutcome(ctx, url, method, body);
+  if (!outcome.ok) throw outcome.refusal;
+  if (out) out.link = outcome.link;
+  return outcome.body;
 }

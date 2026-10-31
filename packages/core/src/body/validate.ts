@@ -13,7 +13,7 @@
  * structure its author meant is the substitution this repo refuses everywhere.
  */
 
-import { BodyInvalidError } from './errors.js';
+import { bodyInvalid } from './errors.js';
 import type { BodyNode } from './parse.js';
 import { DROPPED_ELEMENTS, PLAIN_TAGS, plainAttrAllowed, urlAllowed } from './plain-tags.js';
 
@@ -36,9 +36,8 @@ class Sink {
 }
 
 function refuseComponent(name: string): never {
-  throw new BodyInvalidError(
+  throw bodyInvalid(
     `\`<${name}>\` is not markup this server accepts — the forge-* component set was removed on 2026-09-14. Send markdown, or plain HTML from the allowlist.`,
-    { element: name },
   );
 }
 

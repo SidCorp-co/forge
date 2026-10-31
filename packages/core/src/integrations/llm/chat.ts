@@ -4,10 +4,11 @@
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import {
   dataPolicyOf,
-  EgressRefused,
   type EgressScope,
   type EgressSurface,
   egressAt,
+  egressRefused,
+  isEgressRefusal,
 } from '../../lib/data-egress.js';
 import { isRefusal } from '../../lib/refusal.js';
 import { defaultChatProviderId, missingGatewaySettings } from './bootstrap.js';
@@ -21,7 +22,7 @@ export function chatModelName(): string {
 
 /**
  * The deployment's chat provider, gated by `scope`'s egress policy. A surface the level withholds is
- * refused here (`EgressRefused`) before the provider is resolved; otherwise every request's messages
+ * refused here (`egressRefused`) before the provider is resolved; otherwise every request's messages
  * are scrubbed at that level as they leave. The system prompt is Forge's own text and an assistant
  * message that carries tool calls is the model's own output of this turn, so both leave as written.
  */
@@ -31,7 +32,7 @@ export async function openChat(
   const what = scope.what ?? scope.surface;
   const level = await levelOf(scope, what);
   const gate = egressAt(level, scope.surface, null, what);
-  if (!gate.ok) throw new EgressRefused(gate.refusal);
+  if (!gate.ok) throw egressRefused(gate.refusal);
   const resolved = resolveChatProvider(
     defaultChatProviderId(),
     undefined,
@@ -59,7 +60,7 @@ function gated(
   const outbound = (m: ChatMessage): ChatMessage => {
     if (m.role === 'system' || m.tool_calls) return m;
     const out = egressAt(level, surface, m.content, what);
-    if (!out.ok) throw new EgressRefused(out.refusal);
+    if (!out.ok) throw egressRefused(out.refusal);
     return { ...m, content: out.value };
   };
   return {
@@ -93,7 +94,7 @@ export async function completeOnce(
   try {
     opened = await openChat(scope);
   } catch (err) {
-    if (err instanceof EgressRefused) {
+    if (isEgressRefusal(err)) {
       return { ok: false, miss: 'withheld', detail: err.message, model: null };
     }
     if (isRefusal(err, 'ASSISTANT_MODEL_NOT_CONFIGURED')) {
@@ -127,8 +128,7 @@ export async function completeOnce(
       }
     }
   } catch (err) {
-    if (err instanceof EgressRefused)
-      return { ok: false, miss: 'withheld', detail: err.message, model };
+    if (isEgressRefusal(err)) return { ok: false, miss: 'withheld', detail: err.message, model };
     return {
       ok: false,
       miss: 'failed',

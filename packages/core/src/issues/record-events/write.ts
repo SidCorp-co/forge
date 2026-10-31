@@ -3,7 +3,7 @@
 
 import { scrubSecretsDeep } from '@forge/observability';
 import { db, type Tx } from '../../db/client.js';
-import { MessageRefusedError } from '../../messaging/contract.js';
+import { messageRefused } from '../../messaging/contract.js';
 import { recordRefusals } from '../../messaging/record-screen.js';
 import {
   assertRecordEventDraft,
@@ -26,7 +26,7 @@ export async function writeScreenedRecordEvent(
   const record = recordOfFields(input.kind, input.contract, input.fields);
   // a verdict is kernel-only here (`assertRecordEventDraft`), so no record names a criterion
   const refusals = await recordRefusals(input.projectId, record, [], executor);
-  if (refusals.length > 0) throw new MessageRefusedError('record-event-write', refusals, '/fields');
+  if (refusals.length > 0) throw messageRefused('record-event-write', refusals, '/fields');
   const { projectId: _project, ...write } = input;
   return writeRecordEvent({ ...write, fields: scrubSecretsDeep(write.fields) }, executor);
 }

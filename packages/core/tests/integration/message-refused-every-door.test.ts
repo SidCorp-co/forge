@@ -1,6 +1,6 @@
 /**
  * A message the screen refuses is refused by name at every door that takes one, never a bare 500.
- * The shared error handler maps `MessageRefusedError` (`middleware/error.ts`), so a route that
+ * The shared error handler answers the `RefusalError` `messageRefused` throws (`middleware/error.ts`), so a route that
  * forgets to is still a named 422: found by the release judge J7 on ISS-439, where
  * `POST /api/issues/:id/transition` answered INTERNAL_ERROR to a reason the comment route refused
  * as MESSAGE_REFUSED.

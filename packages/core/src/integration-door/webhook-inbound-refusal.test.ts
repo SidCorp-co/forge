@@ -68,4 +68,23 @@ describe('webhook door: an adapter refusal', () => {
     expect(res.status).toBe(422);
     expect(body.error?.code).toBe('WEBHOOK_FOREIGN_REPOSITORY');
   });
+
+  it('a delivery carrying no provider header is WEBHOOK_ROUTE_REMOVED, 404, in the envelope', async () => {
+    const app = new Hono().route('/', webhookInboundRoutes);
+    app.onError(errorHandler as never);
+    const res = await app.request('/in/shop', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const body = (await res.json()) as {
+      code?: string;
+      error?: { code?: string; message?: string; refusals?: { code: string }[] };
+    };
+    expect(res.status).toBe(404);
+    expect(body.code).toBe('WEBHOOK_ROUTE_REMOVED');
+    expect(body.error?.code).toBe('WEBHOOK_ROUTE_REMOVED');
+    expect(body.error?.refusals?.[0]?.code).toBe('WEBHOOK_ROUTE_REMOVED');
+    expect(body.error?.message).toContain('x-github-event (github)');
+  });
 });

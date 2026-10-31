@@ -1,49 +1,31 @@
+import { SENTRY_REFUSAL_CODES, type SentryRefusalCode } from '@forge/contracts/integrations';
+import { RefusalError } from '../../lib/refusal.js';
+
 /**
- * Every way a Sentry read can be refused, as a value rather than a sentence: a caller telling
- * "no binding" from "the credential was rejected" by matching error text would reclassify both the
- * day one is reworded. The wording stays in `message`, the decision is made on `reason`.
+ * A Sentry read refused under one of `SENTRY_REFUSAL_CODES`, as a value both doors answer in the
+ * envelope: a caller telling "no binding" from "the credential was rejected" by matching error text
+ * would reclassify both the day one is reworded. The wording stays in `message`, the decision is
+ * made on the code.
  */
-const SENTRY_REFUSAL_REASONS = [
-  'no_binding',
-  'binding_disabled',
-  'connection_disabled',
-  'not_granted',
-  'no_credential',
-  'credential_rejected',
-  'scope_missing',
-  'sentry_http_error',
-  'sentry_unreachable',
-  'no_targets',
-  'target_ambiguous',
-  'target_unknown',
-  'target_no_org',
-  'target_old_shape',
-  'confined_out',
-  'bad_argument',
-] as const;
-
-export type SentryRefusalReason = (typeof SENTRY_REFUSAL_REASONS)[number];
-
-export class SentryRefusal extends Error {
-  readonly reason: SentryRefusalReason;
-  /** Sentry's own status where one was reached; null where the call never got that far. */
-  readonly httpStatus: number | null;
-  /** The binding the refusal is about, where the refusal knows one. */
-  readonly bindingId: string | null;
-
-  constructor(
-    reason: SentryRefusalReason,
-    message: string,
-    extra: { httpStatus?: number | null; bindingId?: string | null } = {},
-  ) {
-    super(message);
-    this.name = 'SentryRefusal';
-    this.reason = reason;
-    this.httpStatus = extra.httpStatus ?? null;
-    this.bindingId = extra.bindingId ?? null;
-  }
+export function refuseSentry(code: SentryRefusalCode, message: string): RefusalError {
+  return new RefusalError([{ code, path: '', detail: message }], code);
 }
 
-export function isSentryRefusal(err: unknown): err is SentryRefusal {
-  return err instanceof SentryRefusal;
+const SENTRY_CODES: readonly string[] = SENTRY_REFUSAL_CODES;
+
+/** The Sentry code a thrown refusal answers under, or null for anything that is not one. */
+export function sentryRefusalCode(err: unknown): SentryRefusalCode | null {
+  if (!(err instanceof RefusalError)) return null;
+  const code = err.refusals[0]?.code;
+  return code !== undefined && SENTRY_CODES.includes(code) ? (code as SentryRefusalCode) : null;
+}
+
+/** The sentence a thrown error carries: a refusal's own detail, never its `CODE: detail` rendering. */
+export function sentryDetailOf(err: unknown): string {
+  if (err instanceof RefusalError) return err.refusals[0]?.detail ?? err.message;
+  return err instanceof Error ? err.message : 'unknown error';
+}
+
+export function isSentryRefusal(err: unknown): err is RefusalError {
+  return sentryRefusalCode(err) !== null;
 }
