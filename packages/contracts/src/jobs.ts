@@ -49,6 +49,21 @@ export const POOL_UNRETRIED_JOB_TYPES = {
 	steward: "its steward run ends failed with it, and the item's standing queues the next run",
 } as const;
 
+/**
+ * Job types that do not act as the box that claims them: core hands each a token of its own at
+ * claim, so the box's credential reach does not decide whether it can work. Every other type runs
+ * on the box's credential, and the pool offers it only to a box whose credential reaches the job's
+ * project (FB-78, ISS-267).
+ */
+export const OWN_CREDENTIAL_JOB_TYPES = {
+	steward: "the steward account's token, minted for the job (steward/job.ts:stewardJobCredential)",
+} as const;
+
+/** Whether a job of this type runs on the claiming box's own credential. */
+export function actsAsTheBox(type: string): boolean {
+	return !Object.hasOwn(OWN_CREDENTIAL_JOB_TYPES, type);
+}
+
 /** Payload key carrying the hold bookkeeping on the successor row. */
 export const HOLD_PAYLOAD_KEY = "__hold";
 

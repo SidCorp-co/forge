@@ -1,3 +1,4 @@
+import { actsAsTheBox } from '@forge/contracts/jobs';
 import { type SQL, sql } from 'drizzle-orm';
 import {
   deviceReach,
@@ -6,6 +7,7 @@ import {
   type TokenFence,
 } from '../credentials/token-fence.js';
 import { db } from '../db/client.js';
+import { actsAsTheBoxSql } from '../db/job-credential-sql.js';
 import type { RefusalError } from '../lib/refusal.js';
 import { refuseDevice } from './refusals.js';
 
@@ -18,18 +20,18 @@ export const ADMITTED_RUNNER = sql`
 
 /**
  * What this box's live credentials reach, read as the REST door reads a token (`credentials:tokenFence`):
- * an empty list reaches nothing, no list reaches everything (FB-78). An onboarding job drawn on a box
- * whose token answers 404 for its project fails every write and is retried as "reported nothing",
- * so only a box that reaches the project is offered one.
+ * an empty list reaches nothing, no list reaches everything (FB-78). A job acting as the box on a
+ * project its token answers 404 for fails every read and write and is retried as "reported nothing",
+ * so only a box that reaches the project is offered one (ISS-267: release_batch and custom too).
  */
 async function boxReach(deviceId: string): Promise<TokenFence> {
   return (await deviceReach([deviceId]))(deviceId);
 }
 
-/** The pool's condition that an onboarding job `j` is on a project this box's credentials reach. */
-export async function onboardingReachSql(deviceId: string): Promise<SQL> {
+/** The pool's condition that a job `j` acting as the box is on a project this box's credentials reach. */
+export async function boxReachSql(deviceId: string): Promise<SQL> {
   const reached = fenceWhere(sql`j.project_id`, await boxReach(deviceId));
-  return sql`(j.type <> 'onboarding' OR ${reached ?? sql`true`})`;
+  return sql`(NOT ${actsAsTheBoxSql(sql`j`)} OR ${reached ?? sql`true`})`;
 }
 
 type RunnerAdmissionReason =
@@ -49,7 +51,7 @@ const WHAT_WAS_WRONG: Record<RunnerAdmissionReason, string> = {
   device_disabled: 'this device is disabled',
   runner_withdrawn: "this device's runner on the project is disabled or draining",
   token_cannot_reach:
-    "this device's credential does not reach the project, so an onboarding job there could not write a design",
+    "this device's credential does not reach the project, so a job there acting as this box could read and write nothing",
 };
 
 /** Refused before anything is written, so the box is told why rather than shown fewer rows. */
@@ -109,7 +111,7 @@ export async function runnerAdmission(args: {
   const admission = await projectAdmission({ projectId: job.project_id, deviceId: args.deviceId });
   if (
     admission.admitted &&
-    job.type === 'onboarding' &&
+    actsAsTheBox(job.type) &&
     !fenceReaches(await boxReach(args.deviceId), job.project_id)
   ) {
     return { admitted: false, reason: 'token_cannot_reach' };

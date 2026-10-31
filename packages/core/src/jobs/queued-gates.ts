@@ -2,6 +2,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { deviceReach, fenceReaches } from '../credentials/token-fence.js';
 import { db } from '../db/client.js';
 import { gateEnforcedSql } from '../db/gate-sql.js';
+import { actsAsTheBoxSql } from '../db/job-credential-sql.js';
 import { contractWaitUnsettledSql } from '../db/schema-contract-waits.js';
 import { patternReviewPendingSql } from '../db/schema-issue-patterns.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
@@ -134,9 +135,9 @@ function buildGateReasonCase(
           SELECT 1 FROM fresh_capable_runners
           WHERE project_id = j.project_id AND claim_capable AND has_checkout
         ) THEN 'checkout_unbound'
-        -- the pool offers an onboarding job only to a box whose credentials reach its project (FB-78),
-        -- so where none does it stays queued until a person fences a box's credential to it.
-        WHEN j.type = 'onboarding'
+        -- the pool offers a job acting as the box only to a box whose credentials reach its project
+        -- (FB-78, ISS-267), so where none does it stays queued until a person fences a box's credential to it.
+        WHEN ${actsAsTheBoxSql(sql`j`)}
           AND NOT EXISTS (
             SELECT 1 FROM fresh_capable_runners
             WHERE project_id = j.project_id AND claim_capable AND has_checkout AND ${reaches}

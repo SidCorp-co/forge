@@ -1,5 +1,7 @@
 /**
- * Which box an onboarding job is offered to, read as the REST door reads a box's token (FB-78).
+ * Which box a job is offered to, read as the REST door reads a box's token (FB-78, ISS-267). Every job
+ * acting as the box is gated so; a steward job carries a token of its own (`steward/job.ts`), so the
+ * box's reach does not decide it.
  *
  * - A box whose credential is fenced to no project (`project_ids = []`, the fence a person-held box
  *   is minted with) reaches nothing at the REST door, so the pool does not offer it the job and the
@@ -10,6 +12,8 @@
  *   rather than none.
  *
  * @direct-test-of packages/core/src/devices/pool.ts
+ * @direct-test-of packages/core/src/devices/pool-admission.ts
+ * @direct-test-of packages/core/src/jobs/queued-gates.ts
  * @direct-test-of packages/core/src/credentials/device-credential.ts
  */
 
@@ -78,16 +82,21 @@ const asBox = async (fence: Fence, method: 'GET' | 'POST', path: string, body?: 
   return { status: res.status, body: res.body as Doc };
 };
 
-async function queueOnboardingJob(): Promise<string> {
+/** The job types a box runs with its own credential (ISS-267: release_batch and custom 404'd too). */
+const AS_THE_BOX = ['onboarding', 'release_batch', 'custom'] as const;
+
+async function queueJob(type: string): Promise<string> {
   const runId = randomUUID();
   const jobId = randomUUID();
+  // a project holds one release_batch job at a time; each case reads only the job it queued
+  await db.execute(sql`DELETE FROM jobs WHERE project_id = ${projectId}`);
   await db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status)
     VALUES (${runId}, ${projectId}, 'interactive', 'running')
   `);
   await db.execute(sql`
     INSERT INTO jobs (id, project_id, pipeline_run_id, created_by, type, status, payload)
-    VALUES (${jobId}, ${projectId}, ${runId}, ${adminId}, 'onboarding', 'queued',
+    VALUES (${jobId}, ${projectId}, ${runId}, ${adminId}, ${type}, 'queued',
             ${JSON.stringify({ promptString: 'analyse the project' })}::jsonb)
   `);
   return jobId;
@@ -109,7 +118,7 @@ async function serving(...fences: Fence[]): Promise<void> {
   }
 }
 
-describe('an onboarding job, offered by what the box credential reaches', () => {
+describe.each(AS_THE_BOX)('a %s job, offered by what the box credential reaches', (type) => {
   it('reads an empty fence as reaching nothing, as the REST door does', async () => {
     // the REST door refuses a fence that does not reach the project by name, existing or not
     const project = await asBox('none', 'GET', `/api/projects/${projectId}`);
@@ -118,14 +127,14 @@ describe('an onboarding job, offered by what the box credential reaches', () => 
       'PAT_PROJECT_OUTSIDE_FENCE',
     ]);
     expect(JSON.stringify(project.body)).toContain('which reaches no project at all');
-    const jobId = await queueOnboardingJob();
+    const jobId = await queueJob(type);
     expect(await offered('none', jobId)).toBe(false);
     expect(await offered('project', jobId)).toBe(true);
     expect(await offered('unfenced', jobId)).toBe(true);
   });
 
   it('refuses the claim POOL_TOKEN_CANNOT_REACH on a box fenced to no project', async () => {
-    const jobId = await queueOnboardingJob();
+    const jobId = await queueJob(type);
     const { runnerAdmission } = await import('../../src/devices/pool-admission.js');
     expect(await runnerAdmission({ jobId, deviceId: boxes.none.device })).toEqual({
       admitted: false,
@@ -145,7 +154,7 @@ describe('an onboarding job, offered by what the box credential reaches', () => 
   });
 
   it('names token_cannot_reach as the gate while no serving box reaches the project', async () => {
-    const jobId = await queueOnboardingJob();
+    const jobId = await queueJob(type);
     const { gateReasonsForQueuedJobsIn } = await import('../../src/jobs/queued-gates.js');
     await serving('none');
     expect((await gateReasonsForQueuedJobsIn([projectId])).get(jobId)).toBe('token_cannot_reach');
@@ -156,12 +165,34 @@ describe('an onboarding job, offered by what the box credential reaches', () => 
   });
 
   it('leaves the gate to a box whose only credential was revoked', async () => {
-    const jobId = await queueOnboardingJob();
+    const jobId = await queueJob(type);
     const { gateReasonsForQueuedJobsIn } = await import('../../src/jobs/queued-gates.js');
     await serving('project');
     await db.execute(sql`
       UPDATE personal_access_tokens SET revoked_at = now() WHERE device_id = ${boxes.project.device}
     `);
-    expect((await gateReasonsForQueuedJobsIn([projectId])).get(jobId)).toBe('token_cannot_reach');
+    try {
+      expect((await gateReasonsForQueuedJobsIn([projectId])).get(jobId)).toBe('token_cannot_reach');
+    } finally {
+      await db.execute(sql`
+        UPDATE personal_access_tokens SET revoked_at = NULL WHERE device_id = ${boxes.project.device}
+      `);
+    }
+  });
+});
+
+describe('a steward job, which carries its own token', () => {
+  it('is offered and admitted whatever the box credential reaches', async () => {
+    const jobId = await queueJob('steward');
+    const { runnerAdmission } = await import('../../src/devices/pool-admission.js');
+    const { gateReasonsForQueuedJobsIn } = await import('../../src/jobs/queued-gates.js');
+    expect(await offered('none', jobId)).toBe(true);
+    expect(await runnerAdmission({ jobId, deviceId: boxes.none.device })).toEqual({
+      admitted: true,
+    });
+    await serving('none');
+    expect((await gateReasonsForQueuedJobsIn([projectId])).get(jobId)).not.toBe(
+      'token_cannot_reach',
+    );
   });
 });
