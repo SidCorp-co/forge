@@ -1,0 +1,1 @@
+**A triaged feedback item no longer takes a second triage from a stale proposal.** A triage or decline retires the item's pending triage proposals, and accepting one made before the triage is refused.

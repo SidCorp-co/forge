@@ -7,7 +7,7 @@ import type { SuggestionResponse, SuggestionView } from '@forge/contracts/sugges
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { lockFeedback } from '../feedback/index.js';
+import { lockFeedback, triagedSince } from '../feedback/index.js';
 import { writeCoreRecord } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
@@ -87,6 +87,25 @@ export async function recordDecision(
 
 /** A suggestion's base names a revision the target has moved past: the refusal names both. */
 export async function movedBaseIn(tx: Tx, row: Row, target: SuggestionTarget, head: number | null) {
+  if (target.type === 'feedback' && row.kind === 'feedback_triage') {
+    return triagedAfter(tx, row, target.id);
+  }
   if (target.type !== 'requirement' && target.type !== 'workflow') return null;
   return baseStaleRefusal(row.baseRevision, head, await openBaseOf(tx, row.kind, target));
+}
+
+/**
+ * A triage proposal made before another act triaged or declined the item is stale (ISS-832): the
+ * accept would route the item a second time. The write retires such proposals as it happens; this
+ * catches the ones already standing.
+ */
+async function triagedAfter(tx: Tx, row: Row, feedbackId: string) {
+  const since = await triagedSince(tx, feedbackId, row.createdAt);
+  if (!since) return null;
+  const how = since.decision === 'declined' ? 'declined' : `triaged as ${since.route}`;
+  return {
+    code: 'SUGGESTION_BASE_STALE',
+    path: '/target',
+    detail: `${since.key} was ${how} at ${since.at.toISOString()}, after this suggestion was made; it is stale. Read the item and propose again only if a different route is wanted.`,
+  };
 }

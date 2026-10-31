@@ -24,9 +24,11 @@ import {
   triageRouteOf,
 } from '@forge/contracts/feedback-triage';
 import { requirementKey } from '@forge/contracts/requirements';
-import { eq, sql } from 'drizzle-orm';
+import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
+import { suggestions } from '../db/schema-suggestions.js';
 import { isRefusal, type Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -82,6 +84,35 @@ import {
 interface TriageWritten {
   refusals: Refusal[] | null;
   effect?: FeedbackTriageEffect;
+}
+
+/**
+ * A triage or a decline of `row` retires every other `feedback_triage` proposal still waiting on
+ * it (ISS-832): the item was moved by another act, so a proposal made while it was new would triage
+ * it a second time and write a second decision. The proposal being accepted is the act itself. The
+ * suggestions module imports feedback, so the move is written through the kernel, not its helpers.
+ */
+async function retireOtherTriageProposals(
+  tx: Tx,
+  row: Row,
+  actor: FeedbackActor,
+  exceptId: string | null,
+): Promise<void> {
+  const why = `${feedbackKey(row.fbSeq)} was triaged by another act`;
+  await transition(tx, SUGGESTION_MACHINE, {
+    to: 'stale',
+    from: 'proposed',
+    set: { decidedAt: new Date(), reason: why },
+    where: and(
+      eq(suggestions.kind, 'feedback_triage'),
+      eq(suggestions.feedbackId, row.id),
+      exceptId ? ne(suggestions.id, exceptId) : undefined,
+    ),
+    reason: why,
+    actor: feedbackKernelActor(actor),
+    source: 'feedback-triage',
+    returning: ['id'],
+  });
 }
 
 async function declineTriageIn(
@@ -311,7 +342,12 @@ export async function triageIn(
     standing,
   );
   if (unaddressed) return { refusals: [unaddressed] };
-  if (route === 'decline') return declineTriageIn(tx, { ...input.row, kind }, actor, t.note);
+  if (route === 'decline') {
+    const declined = await declineTriageIn(tx, { ...input.row, kind }, actor, t.note);
+    if (!declined.refusals)
+      await retireOtherTriageProposals(tx, input.row, actor, fromSuggestionId);
+    return declined;
+  }
   const read = await criterionAndTarget(tx, { ...input.row, kind }, t.answers);
   if ('refusal' in read) return { refusals: [read.refusal] };
   const { criterion, target } = read;
@@ -402,6 +438,7 @@ export async function triageIn(
     inReplyTo: route === 'answer' ? (standing?.id ?? null) : null,
   });
   await closeClarification(tx, row.id, `routed as ${route}`);
+  await retireOtherTriageProposals(tx, row, actor, fromSuggestionId);
   return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route, carriers } };
 }
 
