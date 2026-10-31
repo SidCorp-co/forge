@@ -16,206 +16,38 @@
  * @direct-test-of packages/core/src/issues/record-events/store.ts
  */
 
-import { PATTERN_CATALOG } from '@forge/contracts/pattern-catalog';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mintPat } from '../../src/credentials/pat.js';
-import { THIS_REPOSITORY } from '../../src/lib/this-repository.js';
-import { api, userToken } from '../helpers/api.js';
-import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import { closeWorld, type Doc } from '../helpers/ecosystem-world.js';
+import { createTestIssue, rows } from '../helpers/factories.js';
 import {
-  addProjectMember,
-  createTestDevice,
-  createTestIssue,
-  createTestModule,
-  createTestProject,
-  createTestRunSession,
-  createTestUser,
-  rows,
-} from '../helpers/factories.js';
-import { passingChecksRunning, passingReport } from '../helpers/merge-check-report.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+  API_ROUTE,
+  BASE,
+  boxToken,
+  builtIssue,
+  call,
+  checklist,
+  codes,
+  detail,
+  fieldsOf,
+  HEAD,
+  mark,
+  nextSeq,
+  personToken,
+  post,
+  projects,
+  review,
+  reviewRecords,
+  runOnBox,
+  startReviewWorld,
+  userId,
+} from '../helpers/review-world.js';
 
-const HEAD = 'a'.repeat(40);
-const BASE = 'b'.repeat(40);
-const API_ROUTE = PATTERN_CATALOG.find((e) => e.slug === 'api-route');
-
-let personToken = '';
-let boxToken = '';
-let userId = '';
-let deviceId = '';
-const projects = { catalog: '', noCatalog: '', undeclared: '' };
-let seq = 0;
-
-async function project(repository: string, required: boolean): Promise<string> {
-  const { id } = await createTestProject(userId);
-  await seedProjectDocument(id, userId, {
-    environments: {
-      dev: { tier: 'production', deploysFrom: 'main', deployment: { mode: 'external' } },
-    },
-    source: { type: 'git', git: { repository, defaultBranch: 'main', branches: ['main'] } },
-    ...(required
-      ? {
-          extra: {
-            validation: {
-              gate: { type: 'github-check', name: 'ci-passed' },
-              mergeCheck: 'required',
-            },
-          },
-        }
-      : {}),
-  });
-  await addProjectMember(id, userId, 'admin');
-  await createTestModule(id, 'issues');
-  return id;
-}
-
-beforeAll(async () => {
-  testEnv();
-  await import('../../src/index.js');
-  await startQueue();
-  const user = await createTestUser({ verified: true });
-  userId = user.id;
-  personToken = await userToken(user.id);
-  deviceId = await createTestDevice(user.id);
-  boxToken = (await mintPat({ permissions: ['*'], userId, name: 'box', deviceId })).plaintext;
-  projects.catalog = await project(THIS_REPOSITORY, true);
-  projects.noCatalog = await project('github.com/acme/shop', true);
-  projects.undeclared = await project(THIS_REPOSITORY, false);
-}, 120_000);
+beforeAll(startReviewWorld, 120_000);
 
 afterAll(async () => {
   await closeWorld();
 });
-
-const call = async (
-  token: string,
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
-  path: string,
-  body?: unknown,
-) => {
-  const res = await api(token, method, path, body);
-  return { status: res.status, body: res.body as Doc };
-};
-
-const codes = (res: { body: Doc }): string[] =>
-  (res.body.error?.refusals ?? []).map((r: Doc) => r.code);
-const detail = (res: { body: Doc }): string =>
-  (res.body.error?.refusals ?? []).map((r: Doc) => r.detail).join(' | ');
-
-/** A run session on the box; `hold` gives it the issue's lease, as a building run holds it. */
-async function runOnBox(projectId: string, hold?: string): Promise<string> {
-  const runId = await createTestRunSession(projectId, deviceId, new Date(), null);
-  const [session] = await rows<{ id: string }>(
-    sql`SELECT id FROM agent_sessions WHERE pipeline_run_id = ${runId}`,
-  );
-  if (!session) throw new Error('no run session seeded');
-  if (hold) {
-    await rows(sql`
-      INSERT INTO issue_leases (project_id, issue_key, device_id, session_id, run_id)
-      VALUES (${projectId}, ${hold}, ${deviceId}, ${session.id}, ${runId})
-      RETURNING session_id
-    `);
-  }
-  return session.id;
-}
-
-/**
- * An issue at in_progress with two criteria and its design recorded: criterion 1 observable,
- * criterion 2 a code property, both to `api-route` where the project reads the catalog. Criterion 1
- * keeps a probe, which the passing merge check its building run records at HEAD ran.
- */
-async function builtIssue(projectId: string): Promise<{ id: string; builder: string }> {
-  seq += 1;
-  const issue = await createTestIssue(projectId, userId, seq, {
-    status: 'in_progress',
-    createdAt: new Date(),
-  });
-  const patched = await call(personToken, 'PATCH', `/api/issues/${issue.id}`, {
-    plan: 'Build the route.',
-    acceptanceCriteria: '1. The route answers.\n2. The route holds no rule.',
-  });
-  expect(patched.status).toBe(200);
-  const pattern = projectId === projects.noCatalog ? null : 'api-route';
-  const design = await call(personToken, 'PUT', `/api/issues/${issue.id}/design`, {
-    criteria: [
-      { criterion: 1, class: 'observable', pattern, proof: 'call it' },
-      { criterion: 2, class: 'code_property', pattern, proof: 'review: one service call' },
-    ],
-    modules: ['issues'],
-    contracts: [],
-  });
-  expect(design.status).toBe(200);
-  const proved = await call(personToken, 'POST', `/api/issues/${issue.id}/verdicts`, {
-    criterion: 1,
-    verdict: 'pass',
-    reason: 'ran it',
-    identity: { kind: 'commit', sha: HEAD },
-    withoutClip: 'judged by its probe: nothing on screen to record',
-    probe: { kind: 'command', command: { argv: ['node', 'probe.mjs'] }, expect: { exitCode: 0 } },
-  });
-  expect(proved.status).toBe(201);
-  const builder = await runOnBox(projectId, issue.key);
-  const check = await call(
-    boxToken,
-    'POST',
-    `/api/issues/${issue.id}/merge-check`,
-    passingReport({
-      base: { branch: 'dev', sha: BASE },
-      head: HEAD,
-      touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
-      ...passingChecksRunning([{ criterion: 1, probe: proved.body.criterion.probe.id }]),
-    }),
-  );
-  expect(check.status).toBe(201);
-  return { id: issue.id, builder };
-}
-
-const checklist = (result = 'pass') =>
-  (API_ROUTE?.checklist ?? []).map((_, at) => ({
-    pattern: 'api-route',
-    line: at + 1,
-    result,
-    note: `checked in packages/core/src/issues/x.ts (line ${at + 1})`,
-  }));
-
-const review = (over: Doc = {}) => ({
-  base: BASE,
-  head: HEAD,
-  startedAt: new Date(Date.now() - 120_000).toISOString(),
-  checklist: checklist(),
-  criteria: [
-    {
-      criterion: 2,
-      result: 'pass',
-      reason: 'the route calls one service',
-      evidence: ['packages/core/src/issues/x.ts'],
-    },
-  ],
-  ...over,
-});
-
-const post = (token: string, issue: string, body: unknown) =>
-  call(token, 'POST', `/api/issues/${issue}/review`, body);
-
-const mark = (issue: string) =>
-  call(personToken, 'POST', `/api/issues/${issue}/merge`, {
-    target: 'dev',
-    commit: HEAD,
-    note: 'landed',
-    changedPaths: {
-      commit: HEAD,
-      changes: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
-    },
-  });
-
-const reviewRecords = async (issue: string) =>
-  ((await call(personToken, 'GET', `/api/issues/${issue}/events`)).body.items as Doc[]).filter(
-    (e) => e.kind === 'review',
-  );
-
-const fieldsOf = (record: Doc, key: string): string[] =>
-  (record.fields as Doc[]).filter((f) => f.key === key).map((f) => f.value);
 
 describe('what a review owes (criterion 1)', () => {
   it('owes each line of the chosen pattern and each code-property criterion, and says the mark asks it', async () => {
@@ -431,8 +263,7 @@ describe('the merge mark asks for the review (criterion 2)', () => {
   });
 
   it('asks no review on a project that declares no merge check', async () => {
-    seq += 1;
-    const issue = await createTestIssue(projects.undeclared, userId, seq, {
+    const issue = await createTestIssue(projects.undeclared, userId, nextSeq(), {
       status: 'in_progress',
       createdAt: new Date(),
     });

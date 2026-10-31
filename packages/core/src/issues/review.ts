@@ -6,8 +6,8 @@
  * by core as a `review` record, with each code-property criterion's result written as the review's
  * verdict on it at `head`, in one transaction. The rules are `review-rules.ts`.
  *
- * A reviewer is never the building run: the run sessions that hold the issue or recorded its checks,
- * and an account that recorded a check with no session. The mark of an issue whose project declares
+ * A reviewer is never the building run: the run sessions that hold the issue, other than a run
+ * declared to review, or recorded its checks, and an account that recorded a check with no session. The mark of an issue whose project declares
  * the merge check (`validation.mergeCheck: required`) is refused MERGE_REVIEW_MISSING until a
  * passing review by another stands at the commit it marks; a merge the source host's webhook
  * records is not asked, as the merge check is not.
@@ -35,6 +35,7 @@ import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { Actor } from './activity.js';
+import { reviewRunSql } from './built-by.js';
 import { writeCheckRuns } from './check-runs.js';
 import { recordVerdict } from './criteria/verdict-record.js';
 import { issueDesignOf } from './design-record.js';
@@ -71,7 +72,8 @@ async function issueRefOf(issueId: string): Promise<string> {
 /**
  * Who built the issue's change: the sessions holding its lease now and those that recorded a check on
  * it, the accounts that recorded one with no session, and whether one of those sessions is live on
- * `box`.
+ * `box`. A run declared to review holds the lease of the issue it reviews (`devices/run-take.ts`),
+ * and holding it does not make it the builder (ISS-831, as `built-by.ts` reads a verdict's run).
  */
 async function buildersOf(issueId: string, box: string | null): Promise<Builders> {
   const [issue] = await db
@@ -82,8 +84,11 @@ async function buildersOf(issueId: string, box: string | null): Promise<Builders
     ? rowsOf<{ session_id: string }>(
         await db.execute(sql`
           SELECT l.session_id FROM ${liveIssueLeasesSql()} l
+            JOIN agent_sessions ls ON ls.id = l.session_id
+            LEFT JOIN pipeline_runs lr ON lr.id = ls.pipeline_run_id
            WHERE l.project_id = ${issue.projectId}
              AND l.issue_key = ${canonicalIssueKey(Number(issue.seq))}
+             AND NOT ${reviewRunSql(sql`lr.metadata`)}
         `),
       )
     : [];
@@ -226,7 +231,11 @@ export async function recordReview(args: {
   if (!run.ok) {
     throw refused(run.refusals.map((r) => ({ ...r, code: 'REVIEW_RUN_UNKNOWN' as const })));
   }
-  const reviewer: Reviewer = { ...run.value, actor: args.actor.id };
+  const reviewer: Reviewer = {
+    ...run.value,
+    actor: args.actor.id,
+    runNamed: body.run !== undefined,
+  };
   const builders = await buildersOf(issue.id, args.box);
   const who = reviewerRefusal(ref, reviewer, builders);
   if (who) throw refused([who]);

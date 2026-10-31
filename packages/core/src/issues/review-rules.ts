@@ -180,12 +180,19 @@ export interface Reviewer {
   session: string | null;
   box: string | null;
   actor: string;
+  /**
+   * False where a box call named no `run`, so its session is only the run holding the issue on that
+   * box (`pattern-runs.ts:runOfCall`), which says nothing of which run made the call. Absent on a
+   * review read back from its record, which was taken when it was recorded.
+   */
+  runNamed?: boolean;
 }
 
 /**
- * Who built the change, as core recorded it: the run sessions that hold the issue's lease or
- * recorded a check on it, and the accounts that recorded a check with no session. `liveOnBox` is
- * whether one of those sessions is still live on the reviewer's box.
+ * Who built the change, as core recorded it: the run sessions that hold the issue's lease, other than
+ * a run declared to review (`issue-resting.ts:JUDGING_RUN_ROLES`), or recorded a check on it, and the
+ * accounts that recorded a check with no session. `liveOnBox` is whether one of those sessions is
+ * still live on the reviewer's box.
  */
 export interface Builders {
   sessions: ReadonlySet<string>;
@@ -196,7 +203,8 @@ export interface Builders {
 /**
  * Why this reviewer may not review the change, or null. The review is never the building run's (Issue
  * to release r20 `rule-merge`). A box's runs share one credential, so a box call that names no run
- * while a building run is live there could be that run, and is refused rather than guessed.
+ * while a building run is live there could be that run, and is refused rather than guessed, whichever
+ * run holds the issue on that box (a reviewer run holds it too, ISS-831).
  */
 export function reviewerRefusal(
   issueRef: string,
@@ -218,7 +226,7 @@ export function reviewerRefusal(
     );
   }
   if (
-    reviewer.session === null &&
+    (reviewer.session === null || reviewer.runNamed === false) &&
     reviewer.box !== null &&
     (builders.liveOnBox || builders.actors.has(reviewer.actor))
   ) {

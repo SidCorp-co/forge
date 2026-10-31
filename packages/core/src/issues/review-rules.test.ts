@@ -182,6 +182,36 @@ describe('a review is never the building run', () => {
     expect(r?.path).toBe('/run');
   });
 
+  it('refuses a box call naming no run while the building run is live there, though a reviewer holds the issue (ISS-831)', () => {
+    const r = reviewerRefusal(
+      'ISS-9',
+      { session: 's-review', box: 'box', actor: 'u', runNamed: false },
+      builders,
+    );
+    expect(r?.code).toBe('REVIEW_RUN_UNNAMED');
+  });
+
+  it('takes the run holding the issue on a box call naming none once no building run is live there', () => {
+    const ended: Builders = { ...builders, liveOnBox: false };
+    expect(
+      reviewerRefusal(
+        'ISS-9',
+        { session: 's-review', box: 'box', actor: 'u', runNamed: false },
+        ended,
+      ),
+    ).toBeNull();
+  });
+
+  it('takes a reviewer run that named itself while the building run is live there', () => {
+    expect(
+      reviewerRefusal(
+        'ISS-9',
+        { session: 's-review', box: 'box', actor: 'u', runNamed: true },
+        builders,
+      ),
+    ).toBeNull();
+  });
+
   it('refuses a person who recorded the checks, and takes another person', () => {
     const byHand: Builders = { sessions: new Set(), actors: new Set(['me']), liveOnBox: false };
     expect(reviewerRefusal('ISS-9', { session: null, box: null, actor: 'me' }, byHand)?.code).toBe(

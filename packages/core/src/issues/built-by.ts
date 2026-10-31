@@ -7,21 +7,21 @@
 // status word because the word is only a proxy for the landing: adminhub-api's judge run bc3a1c72
 // was declared over ISS-23/24 at `in_progress` 14 minutes after both merged, since `developed`
 // is refused ISSUE_STATUS_LEGACY, and its 13 passes read as the builder's. A run declared with role
-// qa is never the builder for that reason, not for its role: core is told no role at declaration
-// (the box learns it only when the subagent binds), so the rule reads what that role asserts, that
-// the work had landed. What it costs: a builder re-declared over its own merged work, recording no
-// check, reads as a judge, as one re-declared at awaiting_release always has. A
-// judge run declared over an awaiting_release issue holds its lease too, on the same box, and is
-// not the builder: its declaration says the work had landed. So is one declared over a reopen the
-// steward made of landed work that only owed verdicts, before that reopen was refused
-// (`owedVerdictsReopenSql`, a priced amnesty).
+// qa is not the builder for that reason, not for its role: the rule reads what that role asserts,
+// that the work had landed. What it costs: a builder re-declared over its own merged work, recording no check, reads as a
+// judge, as one re-declared at awaiting_release always has. A judge run declared over an
+// awaiting_release issue holds its lease too, on the same box, and is not the builder: its
+// declaration says the work had landed. So is one declared over a reopen the steward made of landed
+// work that only owed verdicts, before that reopen was refused (`owedVerdictsReopenSql`, a priced
+// amnesty).
 //
-// A verdict naming the session that recorded it (`criterion_verdicts.run_session_id`, 0528) is read
-// by that session alone. One naming none, as every row before 0528, is read off its box: the
-// builder's where a building session was live on the box it came from when it was recorded, or,
-// with no box, where its account recorded a check with no session. A session keeps no end time, so
-// its last update stands for one: a later touch reads it live for longer, which errs toward not
-// counting.
+// A run declared to review (`--role reviewer`, read off its run, `issue-resting.ts:JUDGING_RUN_ROLES`)
+// builds nothing by its declaration or its lease: a review gates the merge, so it is always declared
+// before the landing, and it takes the lease of an issue still in work (`devices/run-take.ts:takenBy`).
+// Read as the builder, its own review was refused REVIEW_BY_BUILDER naming its own session and its
+// verdicts never counted (ISS-831: adminhub-fe ISS-109's reviewer session 962cd6c0). Only a check it
+// recorded makes it a builder. A `qa` run is read by when it was declared, as above: it judges the
+// running build, which carries the work only once it has landed.
 
 import { RUN_ISSUE_STATUSES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { ISSUE_DISPATCH_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
@@ -29,6 +29,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
 import { designOnlyMarkSql } from './design-delivery.js';
+import { JUDGING_RUN_ROLES } from './issue-resting.js';
 
 const TERMINAL = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
@@ -89,6 +90,33 @@ function owedVerdictsReopenSql(issueId: SQL): SQL<boolean> {
   )`;
 }
 
+/** The roles, bare of a plugin's prefix, whose run judges a code property against the diff. */
+const REVIEW_ROLE_LIST = sql.join(
+  Object.entries(JUDGING_RUN_ROLES)
+    .filter(([, judge]) => judge === 'review')
+    .map(([role]) => sql`${role}`),
+  sql`, `,
+);
+
+/**
+ * True where a run's `metadata` says it was declared to review: its role, bare of a plugin's prefix
+ * (`forge:reviewer`), judges as the review (`issue-resting.ts:judgeOfRole`). A run naming no role is
+ * no reviewer here.
+ */
+export function reviewRunSql(metadata: SQL): SQL<boolean> {
+  return sql<boolean>`COALESCE(
+    regexp_replace(${metadata} ->> 'role', '^.*:', '') IN (${REVIEW_ROLE_LIST}), false)`;
+}
+
+/** True where session `session` is a run session whose run was declared to review. */
+function declaredToReviewSql(session: SQL): SQL<boolean> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM agent_sessions js JOIN pipeline_runs jr ON jr.id = js.pipeline_run_id
+     WHERE js.id = ${session} AND js.kind = ${RUN_SESSION_KIND}
+       AND ${reviewRunSql(sql`jr.metadata`)}
+  )`;
+}
+
 /** The canonical key of `issueId`, which a run's group and a lease name it by. */
 const keyOf = (issueId: SQL) =>
   sql`(SELECT ${canonicalIssueKeySql(sql`bi.iss_seq`)} FROM issues bi WHERE bi.id = ${issueId})`;
@@ -135,7 +163,10 @@ const mergedBeforeDeclared = (issueId: SQL) =>
             AND rt.created_at > mi.merged_at AND rt.created_at <= r.created_at)
       FROM issues mi WHERE mi.id = ${issueId}), false)`;
 
-/** True where session `session` built issue `issueId`. */
+/**
+ * True where session `session` built issue `issueId`: it recorded a check on it, or, unless its run
+ * was declared to review, its run was declared over it before the landing or it holds its lease.
+ */
 function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
   const key = keyOf(issueId);
   const opened = sql`(r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY} ->> ${key})`;
@@ -152,19 +183,21 @@ function builtBySessionSql(issueId: SQL, session: SQL): SQL<boolean> {
       SELECT 1 FROM issue_check_runs k
        WHERE k.issue_id = ${issueId} AND k.kind <> 'review' AND k.run_session_id = ${session}
     )
-    OR EXISTS (
-      SELECT 1 FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
-       WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
-         AND ${runHoldsIssue(issueId)}
-         AND COALESCE(${opened}, '') NOT IN (${LANDED_LIST})
-         AND NOT (COALESCE(${opened}, '') <> 'reopen' AND ${mergedBeforeDeclared(issueId)})
-         AND NOT (COALESCE(${opened}, '') = 'reopen' AND ${owedVerdictsReopenSql(issueId)})
-    )
-    OR (EXISTS (
-      SELECT 1 FROM issue_leases l JOIN issues bi ON bi.id = ${issueId}
-       WHERE l.session_id = ${session} AND l.project_id = bi.project_id
-         AND l.issue_key = ${canonicalIssueKeySql(sql`bi.iss_seq`)}
-    ) AND NOT ${declaredAfterLanding})
+    OR (NOT ${declaredToReviewSql(session)} AND (
+      EXISTS (
+        SELECT 1 FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
+         WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
+           AND ${runHoldsIssue(issueId)}
+           AND COALESCE(${opened}, '') NOT IN (${LANDED_LIST})
+           AND NOT (COALESCE(${opened}, '') <> 'reopen' AND ${mergedBeforeDeclared(issueId)})
+           AND NOT (COALESCE(${opened}, '') = 'reopen' AND ${owedVerdictsReopenSql(issueId)})
+      )
+      OR (EXISTS (
+        SELECT 1 FROM issue_leases l JOIN issues bi ON bi.id = ${issueId}
+         WHERE l.session_id = ${session} AND l.project_id = bi.project_id
+           AND l.issue_key = ${canonicalIssueKeySql(sql`bi.iss_seq`)}
+      ) AND NOT ${declaredAfterLanding})
+    ))
   )`;
 }
 
@@ -181,6 +214,7 @@ export function declaredBeforeLandingSql(issueId: SQL, session: SQL): SQL<string
     SELECT ${opened} FROM agent_sessions ds JOIN pipeline_runs r ON r.id = ds.pipeline_run_id
      WHERE ds.id = ${session} AND ds.kind = ${RUN_SESSION_KIND}
        AND ${runHoldsIssue(issueId)}
+       AND NOT ${reviewRunSql(sql`r.metadata`)}
        AND ${opened} IS NOT NULL
        AND ${opened} NOT IN (${LANDED_LIST})
        AND NOT (${opened} <> 'reopen' AND ${mergedBeforeDeclared(issueId)})
