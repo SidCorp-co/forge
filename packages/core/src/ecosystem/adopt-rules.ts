@@ -84,8 +84,10 @@ function chainFrom(w: AdoptWorld): string[] {
 const handPin = (
   w: AdoptWorld,
   lead = 'Adopt cannot take it, and no door re-measures it, so move',
+  // a lead that opens on its own `Once …` condition leaves the sentence one
+  condition = ` once its code is checked against ${w.version}`,
 ): string =>
-  ` ${lead} this consumer by hand once its code is checked against ${w.version}: \`PUT /api/projects/:id/links/<link>\` setting \`pinnedVersion: "${w.version}"\` on each link to ${w.contract}, and \`PUT /api/projects/:id/interface\` setting that consumption's \`builtAgainst: "${w.version}"\`; a hand pin takes only the version approved, and on the interface the elements it names held in that version.`;
+  ` ${lead} this consumer by hand${condition}: \`PUT /api/projects/:id/links/<link>\` setting \`pinnedVersion: "${w.version}"\` on each link to ${w.contract}, and \`PUT /api/projects/:id/interface\` setting that consumption's \`builtAgainst: "${w.version}"\`; a hand pin takes only the version approved, and on the interface the elements it names held in that version.`;
 
 const withReason = (w: AdoptWorld): string =>
   ` Or adopt across it in one act once this consumer's code is checked against ${w.version}: send \`acceptUnmeasured: { reason }\` with the adopt, saying why what the differ could not measure does not reach this consumer; the reason is kept on the interface revision the adopt writes (REQ-5 BC-15).${handPin(w, 'Or, with no reason to state, move')}`;
@@ -110,7 +112,7 @@ function stepRefusal(w: AdoptWorld, step: string): EcosystemRefusal | null {
     return {
       code: 'ADOPT_VERSION_BREAKING',
       path: '/version',
-      detail: `${w.contract} ${step} is measured breaking against ${from}; adopt moves a consumer only across additive versions, never on a reason, so a breaking one is worked through its change notice and the consumer's own issue (REQ-5 BC-16).${handPin(w, "Once that issue has checked this consumer's code against it, move")}`,
+      detail: `${w.contract} ${step} is measured breaking against ${from}; adopt moves a consumer only across additive versions, never on a reason, so a breaking one is worked through its change notice and the consumer's own issue (REQ-5 BC-16).${handPin(w, "Once that issue has checked this consumer's code against it, move", '')}`,
     };
   }
   if (unmeasuredOf(v) === null || w.acceptUnmeasured !== null) return null;
