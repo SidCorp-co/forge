@@ -10,6 +10,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { users } from './schema-auth.js';
+import { organizations } from './schema-orgs.js';
 import { projects } from './schema-projects.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -95,3 +97,37 @@ export const knowledgeEntries = pgTable(
 export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) => ({
   project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
 }));
+
+/**
+ * An organisation's own knowledge (ISS-861): one entry per slug, carried into every project of the
+ * org ahead of the project's own always-on entries, a project entry under the same slug taking its
+ * place. A sibling of `knowledge_entries` rather than a nullable `project_id` there: every read of
+ * the project store filters by project, and an org row kept out of all of them by a null is a leak
+ * waiting for the one query that forgets it.
+ */
+export const orgKnowledgeEntries = pgTable(
+  'org_knowledge_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    injection: text('injection', { enum: ['always', 'on_demand'] })
+      .notNull()
+      .default('always'),
+    orderIndex: integer('order_index').notNull().default(0),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgSlugUq: uniqueIndex('org_knowledge_entries_org_slug_uq').on(t.orgId, t.slug),
+    injectionChk: check(
+      'org_knowledge_entries_injection_chk',
+      sql`${t.injection} IN ('always', 'on_demand')`,
+    ),
+  }),
+);

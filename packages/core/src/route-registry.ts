@@ -108,6 +108,7 @@ import {
   jobProjectRoutes,
   jobRoutes,
 } from './jobs/routes.js';
+import { orgKnowledgeRoutes } from './knowledge/org-knowledge-routes.js';
 import { knowledgeRoutes } from './knowledge/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { lessonRoutes } from './lessons/index.js';
@@ -305,6 +306,7 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/projects', projectRunnerRoutes);
   app.route('/api/orgs', orgRoutes);
   app.route('/api/orgs', deviceOrgRoutes);
+  app.route('/api/orgs', orgKnowledgeRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/projects', githubConnectRoutes);

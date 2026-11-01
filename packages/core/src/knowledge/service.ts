@@ -4,6 +4,7 @@ import { type IssueStatus, knowledgeEntries } from '../db/schema.js';
 import type { MasterVerb } from '../db/schema-master-charter.js';
 import type { knowledgeInjectionEnum, knowledgeKindEnum } from './entry-input.js';
 import { lessonOwnedRefusal } from './lesson-entries.js';
+import { orgAlwaysInjectOf } from './org-knowledge.js';
 import type { ReadWhenCondition } from './read-when.js';
 
 const MAX_RESPONSE_CHARS = 38_000;
@@ -180,9 +181,30 @@ export interface AlwaysInjectFact {
   text: string;
 }
 
+/**
+ * The always-on facts of a project's prompt: its org's entries first, then its own (ISS-861). A
+ * project entry under an org entry's slug, archived or not carried, takes that entry's place, so a
+ * project can narrow or withdraw a ruling of its org by writing its own.
+ */
 export async function selectAlwaysInjectFromKnowledge(
   projectId: string,
 ): Promise<AlwaysInjectFact[]> {
+  const [org, own, held] = await Promise.all([
+    orgAlwaysInjectOf(projectId),
+    projectAlwaysInject(projectId),
+    db
+      .select({ slug: knowledgeEntries.slug })
+      .from(knowledgeEntries)
+      .where(eq(knowledgeEntries.projectId, projectId)),
+  ]);
+  const overridden = new Set(held.map((r) => r.slug));
+  return [
+    ...org.filter((r) => !overridden.has(r.slug)).map((r) => ({ key: r.slug, text: r.body })),
+    ...own,
+  ];
+}
+
+async function projectAlwaysInject(projectId: string): Promise<AlwaysInjectFact[]> {
   const rows = await db
     .select({
       slug: knowledgeEntries.slug,

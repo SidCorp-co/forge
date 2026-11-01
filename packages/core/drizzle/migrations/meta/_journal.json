@@ -3634,6 +3634,13 @@
       "when": 1832457600000,
       "tag": "0573_a_debt_keeps_the_evidence_given_on_it",
       "breakpoints": true
+    },
+    {
+      "idx": 574,
+      "version": "7",
+      "when": 1832544000000,
+      "tag": "0574_an_org_carries_knowledge_to_its_projects",
+      "breakpoints": true
     }
   ]
 }

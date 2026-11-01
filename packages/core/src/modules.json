@@ -617,7 +617,7 @@
     "knowledge": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["itemEmbeddings", "knowledgeEntries"],
+      "owns": ["itemEmbeddings", "knowledgeEntries", "orgKnowledgeEntries"],
       "serves": [
         "REQ-13",
         "project-onboarding#mapped",
