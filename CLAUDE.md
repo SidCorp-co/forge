@@ -17,25 +17,20 @@ number.
 
 ## Commands
 
-**A run tests its own scope, not the project** (`REQ-36`; owner, 2026-10-09: no sledgehammer for a
-nut). Before coding, name the pattern each criterion reuses (`file:symbol`) or the new one you
-propose, the modules and contracts you touch, and how you will prove each criterion. Prove it by
-running it — start the service (core on a throwaway Postgres through the integration harness, or the
-web dev server) and exercise the criterion's happy, negative and boundary cases — and keep the probe.
-Then run `pnpm test:changed`: `pnpm tc:changed`'s typecheck and only the DIRECT tests of what you
-touched, in every package — a test you touched, a test importing a file you touched, and a test
-declaring `@direct-test-of <path>` over it, a directory declaration narrowed here by the test's
-`@direct-test-when` lines; `--integration` adds the core integration tests chosen
-the same way. It never follows the import graph further and never falls back to a whole suite. Not
-the whole suites. Before you land on `dev`, `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>`
-runs the same on the change rebased onto the latest `dev`, with those integration tests, the kept
-probes of the criteria the change claims (`<file>` holds `GET /api/issues/:id/criteria`; a criterion
-whose latest pass, short or fail sits on a commit the base already contains stands and owes none — a
-fail standing so is named a standing fail and stays a fail — as does a skipped one) and `pnpm verify` — the conformance entrypoint — and refuses a branch behind its base
-(`MERGE_BEHIND_BASE`) and a claimed criterion's probe missing or red (`MERGE_PROBE_MISSING`,
-`MERGE_PROBE_RED`); record the
-report it writes with `POST /api/issues/:id/merge-check`. The whole suite runs on `dev` once a day
-and on each `main` release cut's commit. A red there that the merge check missed widens the selection — a
+**Work lands in batches, and a batch is gated once** (`batch-delivery`; owner, 2026-11-01). A
+batch spans whatever issues are open, across requirements; new work is folded in as it arrives, and
+the batch splits into parallel builders on disjoint files. Each builder proves what it built by
+running it and runs `pnpm test:changed` over its own tree: `pnpm tc:changed`'s typecheck and only
+the DIRECT tests of what it touched (a test touched, a test importing a touched file, a test
+declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
+the same way), never a whole suite. The batch then runs ONE gate: `pnpm verify` — the conformance
+entrypoint — and `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` over the batch rebased onto
+the latest `dev`, which refuses a branch behind its base (`MERGE_BEHIND_BASE`) and a claimed
+criterion's probe missing or red (`MERGE_PROBE_MISSING`, `MERGE_PROBE_RED`). Its report is recorded
+with `POST /api/issues/:id/merge-check` on each issue the batch lands, a high-impact mark is refused
+without it (`MERGE_CHECK_MISSING`), and then comes one landing, one release and one live judge pass.
+A red inside the batch is fixed inside the batch. The whole suite runs on `dev` once a day and on
+each `main` release cut's commit; a red there that the batch gate missed widens the selection — a
 `@direct-test-of` line on the test that caught it — never the suite.
 
 **A push to `dev` deploys forge-dev** (owner, 2026-10-29): `.github/workflows/deploy-dev.yml` asks
@@ -200,11 +195,6 @@ code disagrees with the code, the code is right**; fix the doc in the same chang
 requirements and workflow designs are the other way round: they are the root, and code that
 disagrees with them is drift** — marked and reconciled to the design, never used to rewrite it
 (`docs/proposals/design-is-the-root-and-code-is-reconciled-to-it.md`).
-
-**The files you read are your doc-review worklist.** Every `.md` you opened while working comes
-back marked *still true* / *edited* / *deleted*; "did not touch" is not one of the three. The
-run that read it decides which, and `check-doc-citations` decides whether it was entitled to say
-*still true*.
 
 **A proposal is deleted by the change that implements it.** Every `docs/proposals/*.md` opens with
 a `**Removed when:**` line naming the issue whose landing deletes it; `check-honest-costs` refuses
