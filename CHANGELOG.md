@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.419] - 2026-11-01
+
+Support answers arrive alone; agents act first and passes carry forward
+
+### Changed
+
+- **A pass survives a later landing**: a verdict judged at an earlier commit counts at a landing that descends from it, unless a file it covers changed. A reopen voids only the criteria that failed (ISS-845).
+- **Agents decide what a person was asked, outside strict**: an agent with the permission answers or voids any question, giving its reason; an agent asking a person what it may decide is refused by name (ISS-845).
+
+### Fixed
+
+- **Agents act first by default:** under `standard`, or no profile, a builder verdict, design record, pattern review, scope hold and release criteria hold only where a project asks (`strict` or an override); the master works direct.
+- **A requirement counts a carried pass as its issue's release does**: a pass at an earlier landing counts at a later landing that descends from it on the requirement's coverage too, unless a file it covers changed (ISS-845).
+- **A master in direct mode lands the way its project lands**: by merge request where the project lands by change request, by push only where it pushes. Direct mode covers every fast project outside strict (ISS-845, FB-453).
+- **A support check no longer posts in the room**: a diagnose call records its check on the action, and the session's answer is the thread's only message (ISS-848).
+
 ## [0.4.0-dev.418] - 2026-10-31
 
 Channel agents read their own project's issues, releases and requirements

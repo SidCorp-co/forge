@@ -1,1 +1,0 @@
-**Agents decide what a person was asked, outside strict**: an agent with the permission answers or voids any question, giving its reason; an agent asking a person what it may decide is refused by name (ISS-845).

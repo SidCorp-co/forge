@@ -1,1 +1,0 @@
-**A pass survives a later landing**: a verdict judged at an earlier commit counts at a landing that descends from it, unless a file it covers changed. A reopen voids only the criteria that failed (ISS-845).
