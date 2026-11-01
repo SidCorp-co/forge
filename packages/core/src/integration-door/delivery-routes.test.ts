@@ -30,6 +30,11 @@ vi.mock('../permissions/index.js', () => ({
       throw new HTTPException(403, { message: `needs ${action}`, cause: { code: 'FORBIDDEN' } });
     }
   },
+  // ISS-824: routes mount a declared permission; the gate under test here is requireCan
+  requiresOnParam: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  requiresOnResolved: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  requiresNoPermission: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  requireDeclared: () => {},
 }));
 
 vi.mock('../integrations/source-host/index.js', async (importOriginal) => {

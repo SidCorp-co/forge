@@ -148,7 +148,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:sourceRef field:query:feedback field:query:workflow field:query:ref
     field:json:activeOrgId field:json:agentSessionId field:json:agent_id field:json:areaId
     field:json:assigneeId field:json:attachmentIds field:json:boundProjectId
-    field:json:claimHolders field:json:claudeSessionId field:json:clientToken field:json:dependsOnId
+    field:json:claimHolders field:json:claudeSessionId field:json:clientToken field:json:commits field:json:dependsOnId
     field:json:deploymentUuid field:json:deviceId field:json:duplicateOf field:json:externalId
     field:json:fromTurnId field:json:id field:json:ids field:json:inReplyTo
     field:json:integrationId field:json:issue field:json:issueId field:json:issueIds
@@ -156,7 +156,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:option field:json:optionId field:json:orgId field:json:parentId field:json:passId field:json:patchId
     field:json:pipelineRunId field:json:project field:json:projectId field:json:projectIds field:json:proposal
     field:json:providerRef field:json:recommendedOptionId field:json:ref field:json:requirement
-    field:json:resourceUuid field:json:run field:json:runId field:json:runIds field:json:runnerId
+    field:json:resourceUuid field:json:rid field:json:run field:json:runId field:json:runIds field:json:runnerId
     field:json:sessionId field:json:slug field:json:sourceRef field:json:subjectId
     field:json:targetProjectSlug field:json:templateId field:json:turnId field:json:thread
     field:json:asker field:json:tool field:json:connectionId
@@ -391,7 +391,10 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     lib/reached-origin.ts HonoRequest.url in reachedOrigin
     requirements/route-kit.ts HonoRequest.param() in draftPictureFits
     workflows/template-routes.ts HonoRequest.param() in module code
-    questions/routes.ts HonoRequest.param(…) handed to questionId as { param: (k: string) => string; } in module code`,
+    questions/routes.ts HonoRequest.param(…) handed to questionId as { param: (k: string) => string; } in module code
+    permissions/declared.ts HonoRequest.param(param) in requiresOnParam`,
+  'a value core’s own middleware set on the context earlier in the same request': lines`
+    permissions/declared.ts Context.get(HELD) in requireDeclared`,
   'a request or socket used only as a key of a WeakMap': lines`
     middleware/route-refs.ts Request handed to lib:get in routeRefMs
     middleware/route-refs.ts Request handed to lib:set in resolveRouteRefs

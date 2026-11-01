@@ -22,6 +22,11 @@ vi.mock('../permissions/index.js', () => ({
   projectResource: (id: string) => ({ id }),
   requireCan: async () => {},
   requireOrgHeld: async () => {},
+  // ISS-824: routes mount a declared permission; the gate under test here is requireCan
+  requiresOnParam: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  requiresOnResolved: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  requiresNoPermission: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  requireDeclared: () => {},
 }));
 vi.mock('../integrations/index.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../integrations/index.js')>();
