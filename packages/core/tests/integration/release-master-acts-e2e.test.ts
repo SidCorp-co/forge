@@ -1,7 +1,7 @@
 // @direct-test-of packages/core/src/permissions/master-acts.ts
 // @direct-test-of packages/core/src/release-batch/routes.ts
 // @direct-test-of packages/core/src/release-batch/record-blocker.ts
-// @direct-test-of packages/core/src/release-batch/note-draft.ts
+// @direct-test-of packages/core/src/issues/draft-release-notes.ts
 /**
  * REQ-79 r6 BC-17 (owner ruling 2026-10-31): a project's master alone takes a landed issue through
  * release to close. Outside strict its agent token cuts and records the release that closes it

@@ -112,7 +112,7 @@ type Page = {
     version: string;
     build: string | null;
     environment: { name: string | null } | null;
-    approval: { required: boolean; state: string; by: { name: string } | null };
+    approval: { required: boolean; state: string; by: { name: string } | null; at: string | null };
   };
   highlights: {
     state: string;
@@ -263,7 +263,7 @@ describe('the page reads off the release record', () => {
     expect(await underStrict(projectId, ownerId, attempt)).toEqual(['RELEASE_AWAITING_APPROVAL']);
     expect((await page('member')).header.approval.state).toBe('pending');
     expect(await attempt()).toBeNull();
-    const first = (await page('member')).header.approval as { state: string; at: string | null };
+    const first = (await page('member')).header.approval;
     expect(first).toMatchObject({ required: false, state: 'unapproved', by: null });
     expect(first.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(await attempt()).toBeNull();

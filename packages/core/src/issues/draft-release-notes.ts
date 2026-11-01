@@ -2,9 +2,9 @@
 // outside strict a release never waits on a note. The door that cuts or records a release drafts each
 // missing one from its issue — the title as its one sentence, the section from its category — and a
 // stored note whose section no release can place is given the drafted section, its words kept. A
-// draft carries no short title, so `queries.ts:warnedReleaseNotes` names it to the master, who fills it
+// draft carries no short title, so `release-batch/queries.ts:warnedReleaseNotes` names it to the master, who fills it
 // in while the release runs; it stays off the release page until then. Under strict nothing is drafted
-// and the missing note is refused RELEASE_RECORD_MISSING (`record-blocker.ts`).
+// and the missing note is refused RELEASE_RECORD_MISSING (`release-batch/record-blocker.ts`).
 
 import { releaseNotesSections } from '@forge/contracts/release-notes';
 import { and, inArray, sql } from 'drizzle-orm';

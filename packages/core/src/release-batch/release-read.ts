@@ -178,7 +178,7 @@ function shippedFailingOf(metadata: unknown): ReleaseShippedFailing | null {
   return held && typeof held.sentence === 'string' && Array.isArray(held.criteria) ? held : null;
 }
 
-/** When a production act went ahead with no person's approval where one was advised (`approvals.ts`). */
+/** When a production act went ahead with no person's approval where one was advised (`unapproved.ts`). */
 function unapprovedOf(metadata: unknown): { at: string } | null {
   const held = (metadata as { unapproved?: { at?: unknown } } | null)?.unapproved;
   return typeof held?.at === 'string' ? { at: held.at } : null;

@@ -18,6 +18,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 import {
   create,
   draftOf,
@@ -27,7 +28,6 @@ import {
   useValueCheckWorld,
   world,
 } from '../helpers/value-check-world.js';
-import { enforceGates } from '../helpers/project-controls.js';
 
 useValueCheckWorld();
 let projectId: string;

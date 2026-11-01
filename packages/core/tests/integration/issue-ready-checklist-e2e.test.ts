@@ -94,7 +94,7 @@ type Row = {
 };
 /** What every checklist gap ends with on a project with no gate profile set (REQ-76 BC-2, BC-11). */
 const GATE_SAYS =
-  " Gate issue_ready is enforced by this project's gate profile standard (gates.profile); gates.overrides.issue_ready relaxes it.";
+  " Gate issue_ready is enforced by this project's gate profile strict (gates.profile); gates.overrides.issue_ready relaxes it.";
 
 /** Each refusal in the checklist's own words: the gate sentence it ends with is asserted, then set aside. */
 const refusalsOf = (body: ApiResponse['body']): Row[] =>

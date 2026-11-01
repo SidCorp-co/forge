@@ -16,7 +16,7 @@ import {
   makeAgreeReady,
   truncateAll,
 } from '../helpers/factories.js';
-import { declareControls } from '../helpers/project-controls.js';
+import { declareControls, enforceGates } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 type Res = { status: number; body: Record<string, unknown> };
@@ -95,6 +95,8 @@ async function currentRequirement(ready = false): Promise<string> {
 
 describe('agreeing a requirement (ready_check)', () => {
   it('stops on each blocking gap, naming its question, the same through a session and an agent token', async () => {
+    // REQ-79 r6 BC-11: standard advises requirement_ready; a project asking for the check enforces it
+    await enforceGates(projectId, ownerId, ['requirement_ready']);
     const key = await currentRequirement();
     const bySession = await on(member, 'POST', `/requirements/${key}/agree`, {
       revision: 1,
@@ -300,6 +302,8 @@ describe('approving a workflow design (design_check)', () => {
     on(token, 'POST', `/workflows/${id}/design/decision`, { revision: 1, decision: 'approve' });
 
   it('stops on a design a requirement links with no criterion traced to a step, the same for an agent', async () => {
+    // REQ-79 r6 BC-11: standard advises workflow_approval; a project asking for the check enforces it
+    await enforceGates(projectId, ownerId, ['workflow_approval']);
     const linked = fixture();
     linked.flow = 'linked';
     const id = await proposed(linked);

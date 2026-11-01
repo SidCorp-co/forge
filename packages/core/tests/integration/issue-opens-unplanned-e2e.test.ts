@@ -28,7 +28,7 @@ import {
   seedIssueStatus,
 } from '../helpers/factories.js';
 import { refusalCodes as codes, projectBuiltFrom, type Res } from '../helpers/pattern-world.js';
-import { declareControls } from '../helpers/project-controls.js';
+import { declareControls, underStrict } from '../helpers/project-controls.js';
 
 let adminId = '';
 let owner = '';
@@ -149,9 +149,10 @@ async function atDesign(projectId: string, plan: string | null = null): Promise<
 }
 
 describe('a draft linked to an agreed requirement, with no plan', () => {
-  it('opens under standard against the current revision, recording that answer on the move', async () => {
+  // REQ-79 r6 BC-12: the requirement-and-criteria checklist is strict's; outside it an issue opens on the minimum
+  it('opens under strict against the current revision, recording that answer on the move', async () => {
     const issue = await linkedDraft(projects.standard);
-    const res = await move(issue, 'open');
+    const res = await underStrict(projects.standard, adminId, () => move(issue, 'open'));
     expect([res.status, details(res)]).toEqual([200, '']);
     expect((await rowOf(issue))?.status).toBe('open');
     const [moved] = await rows<{ checklist_answers: Array<{ question: string; value: string }> }>(

@@ -8,7 +8,7 @@ import type { ReleaseBlocker } from './blocker-sentences.js';
  * The one blocker a roster's notes owe on a strict project: the issues with no note, and the issues
  * whose stored note holds a section the cut cannot place, named with the issue, the section it holds
  * and the accepted ones, never read as no note (ISS-835). Null where every note stands, and on every
- * other project, where the door that cuts or records drafts each of them instead (`note-draft.ts`,
+ * other project, where the door that cuts or records drafts each of them instead (`issues/draft-release-notes.ts`,
  * REQ-79 r6 BC-16).
  */
 export async function releaseRecordBlocker(

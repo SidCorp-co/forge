@@ -93,6 +93,7 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     cuts: [],
     continuedAs: null,
     naming: null,
+    unapproved: null,
     mergeSteps: null,
     landedOn: null,
     shippedFailing: null,

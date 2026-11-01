@@ -12,6 +12,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
 import {
+  draftMissingReleaseNotes,
   issueDisplayIds,
   landingShapeOf,
   landingShortfall,
@@ -43,7 +44,6 @@ import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { cleanupBlocker } from './cleanup-hold.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
-import { draftMissingReleaseNotes } from './note-draft.js';
 import { promotionBlockers } from './promotion-standing.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { releaseRecordBlocker } from './record-blocker.js';
