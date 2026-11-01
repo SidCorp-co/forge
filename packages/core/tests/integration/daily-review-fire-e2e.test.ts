@@ -11,7 +11,6 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   closeWorld,
-  type Doc,
   ok,
   type Reply,
   requester,
@@ -71,8 +70,14 @@ async function dailyReview(): Promise<string> {
 /** Press run, and read back the fire it settled: a missed one answers 422 naming why, a delivered one 202. */
 async function fire(scheduleId: string, status: number) {
   const run = await say('owner', 'POST', `/api/schedules/${scheduleId}/run`);
-  expect(run.status, JSON.stringify(run.body)).toBe(status);
-  const [settled] = await rows<{ id: string; status: string; reason: string | null; refusal: string | null; output: string | null }>(
+  expect(run.status, JSON.stringify(run.json)).toBe(status);
+  const [settled] = await rows<{
+    id: string;
+    status: string;
+    reason: string | null;
+    refusal: string | null;
+    output: string | null;
+  }>(
     sql`SELECT id, status, reason, refusal, output FROM schedule_runs WHERE schedule_id = ${scheduleId} ORDER BY started_at DESC LIMIT 1`,
   );
   if (!settled) throw new Error('the run pressed recorded no fire');
@@ -93,7 +98,11 @@ describe('a daily review fire (ISS-862)', () => {
 
   it('is recorded missed by name when the project has no live master', async () => {
     const settled = await fire(await dailyReview(), 422);
-    expect(settled).toMatchObject({ status: 'skipped', reason: 'gate-refused', refusal: 'DAILY_REVIEW_NO_MASTER' });
+    expect(settled).toMatchObject({
+      status: 'skipped',
+      reason: 'gate-refused',
+      refusal: 'DAILY_REVIEW_NO_MASTER',
+    });
     expect(settled.output).toContain('no live master');
   });
 
@@ -112,7 +121,8 @@ describe('a daily review fire (ISS-862)', () => {
       sql`SELECT kind, body FROM session_inbox WHERE agent_session_id = ${sessionId} AND intent_id = ${`daily-review:${fireId}`}`,
     );
     expect(inbox).toHaveLength(1);
-    const [brief] = inbox as [Doc];
+    const [brief] = inbox;
+    if (!brief) throw new Error("the fire left no brief in the master's inbox");
     expect(brief.kind).toBe('inject');
     expect(brief.body).toContain('Vietnamese');
     expect(brief.body).toContain('Forge-Communicate');

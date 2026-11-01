@@ -24,19 +24,34 @@ export async function routeScheduleDailyReviewFire(
       settle: { status: 'skipped', reason: 'project-not-found' },
     };
   }
-  const delivery = await deliverDailyReview({ projectId, slug: project.slug, fireId, at: new Date() });
+  const delivery = await deliverDailyReview({
+    projectId,
+    slug: project.slug,
+    fireId,
+    at: new Date(),
+  });
   if (delivery.kind === 'missed') {
     const refusal = { code: delivery.code, path: '', detail: delivery.detail };
     return {
       result: { ok: false, reason: 'rule-refused', status: 'skipped', refusal },
-      settle: { status: 'skipped', reason: 'gate-refused', refusal: refusal.code, output: refusal.detail },
+      settle: {
+        status: 'skipped',
+        reason: 'gate-refused',
+        refusal: refusal.code,
+        output: refusal.detail,
+      },
     };
   }
   const output = delivery.published
     ? `the daily review brief was handed to master session ${delivery.sessionId}`
     : `the daily review brief waits in master session ${delivery.sessionId}'s inbox: its box was not reachable`;
   return {
-    result: { ok: true, sessionId: delivery.sessionId, status: 'success', resolvedProjectId: projectId },
+    result: {
+      ok: true,
+      sessionId: delivery.sessionId,
+      status: 'success',
+      resolvedProjectId: projectId,
+    },
     settle: { status: 'success', output },
   };
 }

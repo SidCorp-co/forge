@@ -31,7 +31,10 @@ const scheduleFields = {
   timeZone: z.string().trim().min(1).max(64).nullable().optional(),
 };
 
-const SELF_NAMED: Record<'release_batch' | 'sentry_pull' | 'status_report' | 'daily_review', string> = {
+const SELF_NAMED: Record<
+  'release_batch' | 'sentry_pull' | 'status_report' | 'daily_review',
+  string
+> = {
   release_batch: 'it cuts whatever is waiting at the gate',
   daily_review: "it hands the project's master its daily review brief",
   sentry_pull: "it pulls whatever the project's Sentry binding declares",

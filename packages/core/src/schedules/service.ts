@@ -138,7 +138,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   }
   if (kind === 'daily_review' && input.targetProjectSlug) {
     throw badRequest(
-      "targetProjectSlug must be omitted when kind is \"daily_review\": it hands its own project's master the review",
+      'targetProjectSlug must be omitted when kind is "daily_review": it hands its own project\'s master the review',
     );
   }
   const params =

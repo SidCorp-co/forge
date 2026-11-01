@@ -21,6 +21,7 @@ export {
   selectLessonEntries,
   setLessonEntryInjection,
 } from './lesson-entries.js';
+export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
 export { provideKnowledgePorts } from './ports.js';
 export { keywordSearchKnowledge, searchKnowledge } from './search.js';
 export {
@@ -31,4 +32,3 @@ export {
   selectOnDemandSlugsFromKnowledge,
   updateKnowledgeLinks,
 } from './service.js';
-export { orgKnowledgeRoutes } from './org-knowledge-routes.js';

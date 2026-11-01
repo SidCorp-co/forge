@@ -33,7 +33,10 @@ export async function orgKnowledgeOf(orgId: string): Promise<OrgKnowledgeEntry[]
 }
 
 /** The org's entry under `slug`, or null where it holds none. */
-export async function orgKnowledgeEntryOf(orgId: string, slug: string): Promise<OrgKnowledgeEntry | null> {
+export async function orgKnowledgeEntryOf(
+  orgId: string,
+  slug: string,
+): Promise<OrgKnowledgeEntry | null> {
   const [row] = await db
     .select()
     .from(orgKnowledgeEntries)
