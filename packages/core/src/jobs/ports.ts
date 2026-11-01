@@ -122,6 +122,12 @@ interface JobsPorts {
    * token, minted at the claim so it is never stored with the job.
    */
   stewardJobCredential(job: { id: string; projectId: string; payload: unknown }): Promise<string>;
+  /**
+   * The brief a job of a type whose method lives in core is given at its claim, written from the
+   * method as it stands now (ISS-865); null where the type keeps the brief it was queued with. A
+   * retry copies its payload, so without this a brief its tools outlived is replayed every attempt.
+   */
+  currentBrief(job: { type: string; projectId: string; payload: unknown }): Promise<string | null>;
   /** Re-dispatches a schedule's session on another box after a failover-class failure. */
   redispatchScheduleSessionOnFailover(
     sessionId: string,

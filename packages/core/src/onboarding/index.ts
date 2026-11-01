@@ -5,6 +5,6 @@ export {
   firstRequirementsStarterOf,
   registerFirstRequirementsCase,
 } from './first-requirements.js';
-export { afterOnboardingSubmit } from './job.js';
+export { afterOnboardingSubmit, currentOnboardingBrief } from './job.js';
 export { provideOnboardingPorts } from './ports.js';
 export { onboardingRoomOf, onboardingStatusesOf } from './read.js';

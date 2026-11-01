@@ -13,10 +13,10 @@ import { ThreadSub } from "./thread-sub";
 
 vi.mock("@/features/chat-dock/dock", () => ({ useChatDock: () => ({ show: vi.fn() }) }));
 
-/** The hint core's hint.ts:failedHint sends for forge's shape: revise attempt 10, read by `who`. */
+/** The hint core's hint.ts:failedHint sends for forge's shape, read by `who`: a state and no count (ISS-865). */
 function failedHint(who: Said, mayReanalyze: boolean): Hint {
   const lead = say("onboarding.hint.failed");
-  const text = say("onboarding.hint.failedWaits", { n: 10, who });
+  const text = say("onboarding.hint.failedWaits", { who });
   const actionLabel = say("onboarding.hint.askReanalysis");
   return {
     tone: "err",
@@ -54,7 +54,7 @@ describe("a failed onboarding analysis", () => {
     renderIn("en");
     const line = await screen.findByTestId("onboarding-hint");
     expect(line).toHaveTextContent("Onboarding analysis failed.");
-    expect(line).toHaveTextContent("Attempt 10 failed · Waits on: Member");
+    expect(line).toHaveTextContent("Waits on: Member");
     expect(line).not.toHaveTextContent("onboarding.request");
     expect(line).not.toHaveTextContent("Onboarding done.");
     expect(screen.queryByTestId("onboarding-hint-action")).toBeNull();
@@ -66,7 +66,7 @@ describe("a failed onboarding analysis", () => {
     fakeCore(() => ({ body: failedState(YOU, true) }));
     renderIn("en");
     const line = await screen.findByTestId("onboarding-hint");
-    expect(line).toHaveTextContent("Attempt 10 failed · Waits on: You");
+    expect(line).toHaveTextContent("Waits on: You");
     expect(screen.getByTestId("onboarding-hint-action")).toHaveTextContent("Ask for a re-analysis");
     expect(screen.queryByTestId("onboarding-hint-act")).toBeNull();
   });
@@ -75,7 +75,7 @@ describe("a failed onboarding analysis", () => {
     fakeCore(() => ({ body: failedState() }));
     renderIn("vi");
     const line = await screen.findByTestId("onboarding-hint");
-    expect(line).toHaveTextContent("Lần thử 10 thất bại · Đang chờ: Thành viên · Yêu cầu phân tích lại"); // i18n-allow: asserts the vi copy of the failed line
+    expect(line).toHaveTextContent("Đang chờ: Thành viên · Yêu cầu phân tích lại"); // i18n-allow: asserts the vi copy of the failed line
     expect(line).not.toHaveTextContent("onboarding.request");
     expect(line.textContent).not.toContain("⟦");
   });

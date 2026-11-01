@@ -121,16 +121,18 @@ function liveJobText(job: NonNullable<OnboardingView['job']>): Said {
   return say(job.status === 'queued' ? 'onboarding.hint.jobQueued' : 'onboarding.hint.jobRunning');
 }
 
-/** A retry names its attempt, so a page read while core retries never looks like the first try (ISS-268). */
+/**
+ * A retry says it retries, so a page read while core retries never looks like the first try
+ * (ISS-268); the count is the Developer view's `job.attempt`, never the line (ISS-865).
+ */
 const attemptLine = (job: NonNullable<OnboardingView['job']>, line: Said): Said =>
-  job.attempt > 1 ? say('onboarding.hint.retrying', { n: job.attempt, line }) : line;
+  job.attempt > 1 ? say('onboarding.hint.retrying', { line }) : line;
 
 /**
  * An attempt that is over and drew nothing says so. Why it ended is the runner's own tag, agent
  * text the view carries as `job.endedWith` for the Developer view, never this line (ISS-605).
  */
-const drewNothing = (job: NonNullable<OnboardingView['job']>): Said =>
-  say('onboarding.hint.drewNothing', { n: job.attempt });
+const drewNothing = (): Said => say('onboarding.hint.drewNothing');
 
 /** What the reader holds that the hint reads: whether they may ask for a re-analysis (onboarding.request). */
 export interface HintViewer {
@@ -147,20 +149,12 @@ const reanalysisAsker = (viewer: HintViewer): Said =>
     ? say('standing.who.you')
     : say('standing.who.holderOf', { perm: 'onboarding.request' });
 
-/** A failed onboarding's line (ISS-605): the attempt that failed and who acts; the action is the act. */
-function failedHint(
-  view: OnboardingView,
-  viewer: HintViewer,
-  mayReanalyze: boolean,
-): OnboardingHint {
-  const job = view.job;
+/** A failed onboarding's line (ISS-605): who acts, a state and no count (ISS-865); the action is the act. */
+function failedHint(viewer: HintViewer, mayReanalyze: boolean): OnboardingHint {
   return hint(
     'err',
     say('onboarding.hint.failed'),
-    say('onboarding.hint.failedWaits', {
-      n: job?.attempt ?? 1,
-      who: reanalysisAsker(viewer),
-    }),
+    say('onboarding.hint.failedWaits', { who: reanalysisAsker(viewer) }),
     'reanalyze',
     say('onboarding.hint.askReanalysis'),
     mayReanalyze,
@@ -185,7 +179,7 @@ export function hintOf(
   const live = view.job !== null && LIVE.has(view.job.status);
   const mayReanalyze = !live && viewer.canRequest;
   const open = say('onboarding.hint.openOnboarding');
-  if (view.status === 'failed') return failedHint(view, viewer, mayReanalyze);
+  if (view.status === 'failed') return failedHint(viewer, mayReanalyze);
   if (view.status === 'done') {
     if (drafted > 0 && approved === drafted) return null;
     return hint(
@@ -216,7 +210,7 @@ export function hintOf(
     drafted
       ? say('onboarding.hint.drafted', { designs: designs(drafted) })
       : view.job
-        ? drewNothing(view.job)
+        ? drewNothing()
         : say('onboarding.hint.waitingAnalysis'),
     'open',
     open,

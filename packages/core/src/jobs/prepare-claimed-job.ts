@@ -109,7 +109,9 @@ async function promptStringFor(
   resume: ReturnType<typeof finalizeResumeForDevice>,
   systemPrompt: string,
 ): Promise<string | null> {
-  const base = (job.payload as { promptString?: unknown } | null)?.promptString;
+  const base =
+    (await jobsPorts().currentBrief(job)) ??
+    (job.payload as { promptString?: unknown } | null)?.promptString;
   if (typeof base !== 'string') return null;
   const resumed =
     resume.priorClaudeSessionId && base ? injectTurnLevelRules(base, systemPrompt) : base;

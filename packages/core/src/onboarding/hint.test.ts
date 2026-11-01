@@ -61,7 +61,7 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
     const h = hintOf(view({ status: 'failed', job: job({ status: 'failed' }) }), 'none', VIEWER);
     expect(h).toMatchObject({ tone: 'err', action: 'reanalyze', mayReanalyze: false });
     expect(h?.lead).toBe('Onboarding analysis failed.');
-    expect(h?.text).toBe('Attempt 1 failed · Waits on: Member');
+    expect(h?.text).toBe('Waits on: Member');
     expect(h?.text).not.toContain('onboarding.request');
     expect(h?.says.text.vars?.who).toEqual(
       say('standing.who.holderOf', { perm: 'onboarding.request' }),
@@ -71,7 +71,7 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
   it('reads You to the reader who holds onboarding.request, and offers them the act (ISS-605)', () => {
     const h = hintOf(view({ status: 'failed', job: job({ status: 'failed' }) }), 'none', HOLDER);
     expect(h).toMatchObject({ action: 'reanalyze', mayReanalyze: true });
-    expect(h?.text).toBe('Attempt 1 failed · Waits on: You');
+    expect(h?.text).toBe('Waits on: You');
     expect(h?.says.text.vars?.who).toEqual(say('standing.who.you'));
   });
 
@@ -84,7 +84,7 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
       'none',
       VIEWER,
     );
-    expect(h?.text).toBe('Attempt 3 failed · Waits on: Member');
+    expect(h?.text).toBe('Waits on: Member');
     expect(h?.text).not.toContain('the runner went offline');
   });
 
@@ -111,7 +111,7 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
       'none',
       VIEWER,
     );
-    expect(failed?.text).toBe('Attempt 10 failed · Waits on: Member');
+    expect(failed?.text).toBe('Waits on: Member');
   });
 
   it('names the re-analysis, not an answer, while a round still holds a question open (ISS-605)', () => {
@@ -130,11 +130,11 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
     expect(h?.tone).toBe('err');
   });
 
-  it('heads a live retry with its attempt number, and leaves a first attempt unnumbered', () => {
+  it('heads a live retry as a retry, with no count, and leaves a first attempt plain (ISS-865)', () => {
     const first = hintOf(view({ job: job({ status: 'queued' }) }), 'none')?.text ?? '';
     const third = hintOf(view({ job: job({ status: 'queued', attempt: 3 }) }), 'none')?.text ?? '';
-    expect(first).not.toMatch(/^Attempt/);
-    expect(third).toBe(`Attempt 3: ${first}`);
+    expect(first).not.toMatch(/^Retrying/);
+    expect(third).toBe(`Retrying: ${first}`);
   });
 
   it('never offers it while a job of the onboarding is live (ONBOARDING_ALREADY_RUNNING)', () => {
@@ -166,7 +166,7 @@ describe('project-onboarding reanalyze: the dashboard hint offers a re-analysis'
       view({ job: job({ status: 'failed', attempt: 2, endedWith: 'cc-startup-death' }) }),
       'none',
     );
-    expect(h?.text).toBe('Attempt 2 drew nothing');
+    expect(h?.text).toBe('Drew nothing');
   });
 
   it('is not offered before an onboarding exists', () => {

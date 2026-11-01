@@ -17,11 +17,13 @@ import { analysePrompt, type OnboardingPromptContext, revisePrompt } from './pro
 import { liveJobOf, type OnboardingRow, onboardingOf, projectHoldsSensitiveData } from './read.js';
 import { settlesPhaseJob } from './rules.js';
 
-export async function enqueueJob(
+type PhaseExtra = { batchId?: string; reason?: string | null; request?: string | null };
+
+/** The method a phase's job runs, written from the onboarding and its project as they stand now. */
+async function phaseBrief(
   row: OnboardingRow,
   phase: OnboardingJobPhase,
-  createdBy: string,
-  extra: { batchId?: string; reason?: string | null; request?: string | null } = {},
+  extra: PhaseExtra,
 ): Promise<string> {
   const [project] = await db
     .select({ name: projects.name })
@@ -40,6 +42,17 @@ export async function enqueueJob(
     reason: extra.reason ?? null,
     request: extra.request ?? null,
   };
+  return phase === 'revise' && extra.batchId
+    ? revisePrompt({ ...ctx, batchId: extra.batchId })
+    : analysePrompt(ctx);
+}
+
+export async function enqueueJob(
+  row: OnboardingRow,
+  phase: OnboardingJobPhase,
+  createdBy: string,
+  extra: PhaseExtra = {},
+): Promise<string> {
   const run = await openOneShotRun({
     projectId: row.projectId,
     kind: 'system',
@@ -52,19 +65,50 @@ export async function enqueueJob(
     createdBy,
     type: 'onboarding',
     skillName: `onboarding-${phase}`,
-    promptString:
-      phase === 'revise' && extra.batchId
-        ? revisePrompt({ ...ctx, batchId: extra.batchId })
-        : analysePrompt(ctx),
+    promptString: await phaseBrief(row, phase, extra),
     payloadExtras: {
       onboardingId: row.id,
       onboardingPhase: phase,
       ...(extra.batchId ? { batchId: extra.batchId } : {}),
+      ...(extra.reason ? { reason: extra.reason } : {}),
+      ...(extra.request ? { request: extra.request } : {}),
       timeoutSeconds: 3600,
     },
   });
   await db.update(onboardings).set({ lastJobId: jobId }).where(eq(onboardings.id, row.id));
   return jobId;
+}
+
+const text = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+
+/**
+ * An onboarding job's brief at its claim (ISS-865): the method as core writes it now, for the
+ * onboarding and phase its payload names. A job queued before the method changed, and every retry of
+ * it (a retry copies its payload), would otherwise run the brief it was first queued with: forge's
+ * revise job 1779f21f named MCP tools removed hours before it ran (9181ac9b1), its agent ended with no
+ * tool to call, and all ten attempts replayed the same brief. A payload naming no onboarding of this
+ * project keeps the brief it carries.
+ */
+export async function currentOnboardingBrief(job: {
+  type: string;
+  projectId: string;
+  payload: unknown;
+}): Promise<string | null> {
+  if (job.type !== 'onboarding') return null;
+  const payload = (job.payload ?? {}) as Record<string, unknown>;
+  const row = await onboardingOf(db, job.projectId);
+  if (!row || row.id !== payload.onboardingId) return null;
+  // a job queued before its phase was carried names it only by its skill (`onboarding-revise`)
+  const phase: OnboardingJobPhase =
+    payload.onboardingPhase === 'revise' || payload.skillName === 'onboarding-revise'
+      ? 'revise'
+      : 'analyse';
+  const batchId = text(payload.batchId);
+  return phaseBrief(row, phase, {
+    ...(batchId ? { batchId } : {}),
+    reason: text(payload.reason) ?? null,
+    request: text(payload.request) ?? null,
+  });
 }
 
 /** The agent's last act of a phase settles the job that ran it. */

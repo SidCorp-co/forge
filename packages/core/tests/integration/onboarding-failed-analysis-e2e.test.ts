@@ -11,6 +11,8 @@
  * @direct-test-of packages/core/src/onboarding/hint.ts
  * @direct-test-of packages/core/src/onboarding/rules.ts
  * @direct-test-of packages/core/src/onboarding/routes.ts
+ * @direct-test-of packages/core/src/onboarding/job.ts
+ * @direct-test-of packages/core/src/jobs/prepare-claimed-job.ts
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,7 +28,14 @@ import {
   startQueue,
   testEnv,
 } from '../helpers/ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  bindTestRunner,
+  createTestDevice,
+  createTestProject,
+  createTestUser,
+  rows,
+} from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 type Who = 'owner' | 'master' | 'viewer';
@@ -232,7 +241,8 @@ describe('c1: a failed analysis never reads done, and says it failed', () => {
     expect(s.hint).not.toBeNull();
     expect(s.hint.tone).toBe('err');
     expect(s.hint.says.lead.key).toBe('onboarding.hint.failed');
-    expect(s.hint.text).toContain('Attempt 10 failed');
+    // a state and who acts, never the attempt count (ISS-865)
+    expect(s.hint.text).toBe('Waits on: You');
     // the runner's failure tag is agent text: the view carries it for the Developer view, never the line
     expect(s.hint.text).not.toContain('cc-startup-death');
     expect(await roomStatus(doneRoom)).toBe('failed');
@@ -246,7 +256,7 @@ describe('c2: the failed state names who acts and what they do', () => {
   it('names You to a person holding onboarding.request, whose act is a re-analysis', async () => {
     const { hint } = await state(doneProject, 'owner');
     expect(hint.says.text.vars.who).toEqual({ key: 'standing.who.you' });
-    expect(hint.text).toBe('Attempt 10 failed · Waits on: You');
+    expect(hint.text).toBe('Waits on: You');
     expect(hint).toMatchObject({
       action: 'reanalyze',
       actionLabel: 'Ask for a re-analysis',
@@ -260,7 +270,7 @@ describe('c2: the failed state names who acts and what they do', () => {
       key: 'standing.who.holderOf',
       vars: { perm: 'onboarding.request' },
     });
-    expect(hint.text).toBe('Attempt 10 failed · Waits on: Member');
+    expect(hint.text).toBe('Waits on: Member');
     expect(hint.text).not.toContain('onboarding.request');
     expect(hint).toMatchObject({ action: 'reanalyze', mayReanalyze: false });
     const r = await say('viewer', 'POST', at(doneProject, '/onboarding/reanalyze'), {});
@@ -271,7 +281,7 @@ describe('c2: the failed state names who acts and what they do', () => {
   it('names You to the master too: it holds onboarding.request, so it is offered the act (REQ-72 BC-4)', async () => {
     const { hint } = await state(doneProject, 'master');
     expect(hint.says.text.vars.who).toEqual({ key: 'standing.who.you' });
-    expect(hint.text).toBe('Attempt 10 failed · Waits on: You');
+    expect(hint.text).toBe('Waits on: You');
     expect(hint.mayReanalyze).toBe(true);
   });
 
@@ -308,5 +318,57 @@ describe('c3: a failed analysis waits on no answer; an open question stays open 
     expect(s.onboarding.status).toBe('in_progress');
     expect(s.onboarding.job).toMatchObject({ phase: 'analyse', status: 'queued', attempt: 1 });
     expect(await roomStatus(openRoom)).toBe('in_progress');
+  });
+});
+
+// ISS-865: why forge's revise job 1779f21f failed ten times. It was queued 2026-10-04 15:17 with a
+// brief naming the MCP tools forge_onboarding, forge_workflows and forge_knowledge, which 9181ac9b1
+// removed that day; its agent ended its turn with no tool to call (cc-startup-death), and each retry
+// copied the payload, so every attempt replayed the same brief.
+describe('c4: a claimed onboarding job is briefed with the method as it stands (ISS-865)', () => {
+  const STALE = [
+    'Onboarding of project "Forge": the person answered questionnaire q. Turn the answers into revisions, then stop.',
+    '',
+    'Tools (Forge MCP; every write is refused by name with what is valid):',
+    '- forge_onboarding: { action: post_questionnaire | read_answers | post_update | mark_done, projectId }.',
+    '- forge_workflows: templates / template, write, propose { workflowId, revision }.',
+  ].join('\n');
+  const policy = {
+    revision: 1,
+    qa: 'none',
+    status: 'onboarding',
+    from: 'job',
+    model: 'opus',
+    profile: 'default',
+    deniedTools: [],
+  } as const;
+
+  it('replaces the brief a retry copied from its first attempt, and runs it on no MCP tool', async () => {
+    const first = await lastJobOf(openProject);
+    await kernel(sql`
+      UPDATE jobs SET payload = jsonb_set(payload, '{promptString}', to_jsonb(${STALE}::text))
+       WHERE id = ${first}`);
+    await failAndRetry(first, 'cc-startup-death (≤3 msgs, no tool use)');
+    const retry = await newestAttempt(first);
+    expect(retry).not.toBe(first);
+
+    const ownerId = (
+      await rows<{ id: string }>(
+        sql`SELECT created_by AS id FROM projects WHERE id = ${openProject}`,
+      )
+    )[0]?.id as string;
+    const deviceId = await createTestDevice(ownerId);
+    await bindTestRunner(openProject, deviceId);
+    const { prepareClaimedJob } = await import('../../src/jobs/prepare-claimed-job.js');
+    const prepared = await prepareClaimedJob({
+      jobId: retry,
+      deviceId,
+      policy: policy as unknown as Parameters<typeof prepareClaimedJob>[0]['policy'],
+    });
+
+    expect(prepared.promptString).not.toContain('forge_onboarding');
+    expect(prepared.promptString).toContain('forge-runner api');
+    expect(prepared.promptString).toContain(`P is projects/${openProject}`);
+    expect(prepared.promptString).toContain('`P/onboarding/answers`');
   });
 });

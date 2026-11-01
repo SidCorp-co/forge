@@ -2710,16 +2710,13 @@ export const SAID = {
 	"onboarding.hint.reading": { en: "Reading the code." },
 	"onboarding.hint.failed": { en: "Onboarding analysis failed." },
 	"onboarding.hint.failedWaits": {
-		en: "Attempt {n} failed · Waits on: {who}",
-		vars: { n: "count", who: "said" },
+		en: "Waits on: {who}",
+		vars: { who: "said" },
 	},
-	"onboarding.hint.drewNothing": {
-		en: "Attempt {n} drew nothing",
-		vars: { n: "count" },
-	},
+	"onboarding.hint.drewNothing": { en: "Drew nothing" },
 	"onboarding.hint.retrying": {
-		en: "Attempt {n}: {line}",
-		vars: { n: "count", line: "said" },
+		en: "Retrying: {line}",
+		vars: { line: "said" },
 	},
 	"onboarding.hint.askReanalysis": { en: "Ask for a re-analysis" },
 	"onboarding.hint.inProgress": { en: "Onboarding in progress." },
