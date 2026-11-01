@@ -38,6 +38,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
@@ -348,6 +349,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/master-posts',
   projectParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(supportMasterPostRequestSchema, '{ text, rid? }'),
   async (c) => {
     const out = await postAsMaster(
