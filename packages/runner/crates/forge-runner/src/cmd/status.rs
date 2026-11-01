@@ -590,6 +590,7 @@ mod orientation_tests {
             boot_id: "b".into(),
             issue_keys: vec!["ISS-71".into()],
             role: None,
+            requirement: None,
         })
         .unwrap();
         let why = format!(

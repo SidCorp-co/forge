@@ -54,8 +54,12 @@ pub struct DeclareArgs {
     #[arg(long)]
     pub project: String,
     /// The issues the subagent is being given, repeated or comma-separated.
-    #[arg(long, value_delimiter = ',', required = true)]
+    #[arg(long, value_delimiter = ',', required_unless_present = "requirement")]
     pub issue: Vec<String>,
+    /// The requirement a judge run judges at the requirement, in place of any issue (a shipped
+    /// requirement owes no verifying issue). Only with `--role qa` or `--role reviewer`.
+    #[arg(long, conflicts_with = "issue")]
+    pub requirement: Option<String>,
     /// The worktree the subagent will work in.
     #[arg(long)]
     pub worktree: String,
@@ -251,6 +255,7 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
                 &o.issue,
                 &o.worktree,
                 o.role.as_deref(),
+                o.requirement.as_deref(),
             )
             .await?
         }
@@ -320,6 +325,7 @@ mod tests {
                 boot_id: "b".into(),
                 issue_keys: vec![format!("ISS-{n}")],
                 role: None,
+                requirement: None,
             })
             .unwrap();
         }

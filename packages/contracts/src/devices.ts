@@ -51,6 +51,10 @@ export const DEVICE_REFUSAL_CODES = [
 	"REVIEW_RUN_BOX_AMBIGUOUS",
 	/** A review run named an issue that is none of its project's: absent, another project's, or no issue reference. */
 	"REVIEW_RUN_ISSUE_NOT_IN_PROJECT",
+	/** A run declared over a requirement named one its project does not hold (ISS-735). */
+	"RUN_REQUIREMENT_UNKNOWN",
+	/** A run declared over a requirement is not a judge's, or names issues beside it (ISS-735). */
+	"RUN_REQUIREMENT_NOT_JUDGED",
 	/** A login poll named a pairing code this instance holds no row for. */
 	"PAIRING_CODE_GONE",
 	/** A login poll named a pairing code whose device token was already handed out. */

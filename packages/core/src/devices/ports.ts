@@ -80,6 +80,8 @@ interface DevicesPorts {
       tx?: Tx,
     ): Promise<string | null>;
   };
+  /** The id of requirement `ref` (`REQ-76`) of the project, or null where it holds none (ISS-735). */
+  requirementIdOf(projectId: string, ref: string): Promise<string | null>;
   /** The user a project's workspace handle acts as, minted when the project has none. */
   projectHandleUserId(tx: Tx, projectId: string): Promise<string>;
 }

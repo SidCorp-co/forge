@@ -826,6 +826,7 @@ mod holder_tests {
             boot_id: "boot-1".into(),
             issue_keys: vec![key.into()],
             role: None,
+            requirement: None,
         })
         .unwrap();
     }

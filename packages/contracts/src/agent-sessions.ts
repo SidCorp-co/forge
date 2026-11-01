@@ -72,6 +72,8 @@ export const RUN_ISSUE_STATUSES_METADATA_KEY = "runIssueStatuses";
 export const RUN_DECLARATION_REFUSAL_METADATA_KEY = "declarationRefusal";
 /** What each carried issue was given when the run opened (`run-standing.ts:RunGiven`); nothing rewrites it. */
 export const RUN_GIVEN_METADATA_KEY = "runGiven";
+/** On a run judging a shipped requirement at the requirement rather than an issue, its key (`REQ-76`, ISS-735). */
+export const RUN_REQUIREMENT_METADATA_KEY = "runRequirement";
 /**
  * On a run a PERSON declared for review (`POST /api/projects/:id/review-runs`), who declared it, the
  * one testing profile it reads and when it ends (`ReviewRunDeclaration`). A run a master declared

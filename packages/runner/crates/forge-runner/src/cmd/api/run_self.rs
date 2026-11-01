@@ -116,6 +116,7 @@ mod tests {
             boot_id: "b".into(),
             issue_keys: vec!["ISS-49".into()],
             role: Some("qa".into()),
+            requirement: None,
         })
         .unwrap();
         (Scratch(root), led)

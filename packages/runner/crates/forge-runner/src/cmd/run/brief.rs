@@ -47,6 +47,8 @@ pub struct Held {
 pub struct Facts {
     pub run_id: String,
     pub issues: Vec<(String, String)>,
+    /// The requirement a judge run judges at the requirement, in place of any issue (ISS-735).
+    pub requirement: Option<String>,
     pub project_slug: String,
     pub project_id: String,
     pub base: String,
@@ -110,6 +112,11 @@ pub fn compose(f: &Facts) -> String {
     let mut lines = Vec::new();
     for (key, id) in &f.issues {
         lines.push(format!("{key} · issue {id}"));
+    }
+    if let Some(req) = &f.requirement {
+        lines.push(format!(
+            "{req} · judged at the requirement: no issue is taken, and verdicts go on its criteria"
+        ));
     }
     lines.push(format!("Project: {} · {}", f.project_slug, f.project_id));
     lines.push(format!("Run: {} (declared on this box)", f.run_id));
@@ -375,8 +382,12 @@ pub fn no_base_branch(project_id: &str, config: Option<&Value>) -> String {
     }
 }
 
-/// The refusal for a run this box cannot brief, or the run with its project and issue keys.
-pub fn declared(led: &Ledger, run_id: &str) -> anyhow::Result<(PathBuf, String, Vec<String>)> {
+/// What a declared run is briefed over: its tree, project, issue keys and any requirement it judges.
+pub type Declared = (PathBuf, String, Vec<String>, Option<String>);
+
+/// The refusal for a run this box cannot brief, or the run with its project, issue keys and the
+/// requirement a judge run judges.
+pub fn declared(led: &Ledger, run_id: &str) -> anyhow::Result<Declared> {
     let Some(run) = led.run(run_id)? else {
         anyhow::bail!(
             "no run {run_id} on this box — a brief is for a run `forge-runner run declare` answered; declare the run first, then brief the id it prints"
@@ -396,13 +407,13 @@ pub fn declared(led: &Ledger, run_id: &str) -> anyhow::Result<(PathBuf, String, 
         .into_iter()
         .map(|m| m.issue_key)
         .collect();
-    Ok((run.worktree_path, project_id, keys))
+    Ok((run.worktree_path, project_id, keys, run.requirement))
 }
 
 pub async fn brief(client: &CoreClient, run_id: &str) -> anyhow::Result<String> {
     let led = Ledger::open_read_only(&Ledger::default_path()?)?;
     let run_id = &super::full_id(&led, run_id)?;
-    let (worktree, project_id, keys) = declared(&led, run_id)?;
+    let (worktree, project_id, keys, requirement) = declared(&led, run_id)?;
 
     let project_path = format!("/api/projects/{project_id}");
     let project = get_json(client, &project_path)
@@ -442,6 +453,7 @@ pub async fn brief(client: &CoreClient, run_id: &str) -> anyhow::Result<String> 
     Ok(compose(&Facts {
         run_id: run_id.to_string(),
         issues,
+        requirement,
         project_slug,
         project_id,
         base,
@@ -485,6 +497,7 @@ mod tests {
         let text = compose(&Facts {
             run_id: "70d69d6e".into(),
             issues: vec![("ISS-294".into(), "6d86898e".into())],
+            requirement: None,
             project_slug: "forge".into(),
             project_id: "d1bb4907".into(),
             base: "dev".into(),
@@ -744,6 +757,7 @@ mod tests {
         let text = compose(&Facts {
             run_id: "r".into(),
             issues: vec![],
+            requirement: None,
             project_slug: "p".into(),
             project_id: "i".into(),
             base: "release".into(),
@@ -793,9 +807,10 @@ mod tests {
                 boot_id: "b".into(),
                 issue_keys: vec!["ISS-9".into()],
                 role: None,
+                requirement: None,
             })
             .unwrap();
-        let (path, project, keys) = declared(&led, &run.run_id).unwrap();
+        let (path, project, keys, _) = declared(&led, &run.run_id).unwrap();
         assert_eq!(
             (path, project.as_str(), keys),
             ("/r/one".into(), "p-1", vec!["ISS-9".to_string()])

@@ -1,4 +1,5 @@
 use super::*;
+use runner_transport::run_sessions::Said;
 
 pub(crate) fn run_choice(
     ctl: &Arc<Control>,
@@ -108,10 +109,13 @@ pub(crate) async fn preflight_refusal(
     core: Option<&runner_transport::CoreClient>,
     project_id: &str,
     issue_keys: &[String],
-    role: Option<&str>,
+    said: Said<'_>,
 ) -> Option<String> {
     let client = core?;
-    match runner_transport::run_sessions::preflight(client, project_id, issue_keys, role).await {
+    let Said { role, requirement } = said;
+    match runner_transport::run_sessions::preflight(client, project_id, issue_keys, role, requirement)
+        .await
+    {
         Ok(()) => None,
         Err(runner_platform::error::Error::Held { said, .. }) => Some(format!(
             "core would not open a run over these issues, so nothing was declared: {said}. A dispatch on them would be accepted by this box and refused at every sweep. Declare it once the hold named above has lifted. Nothing was recorded"
@@ -136,6 +140,60 @@ pub(crate) struct Declaration<'a> {
     pub issue_keys: &'a [String],
     pub worktree_path: &'a str,
     pub role: Option<&'a str>,
+    /// The requirement a judge run judges at the requirement, in place of any issue (ISS-735).
+    pub requirement: Option<&'a str>,
+}
+
+/// A graceful stop, as a CI agent drains for an upgrade: finish what is held,
+/// take nothing new. Core decided it; the box only refuses by it.
+fn draining_refusal(ctl: &Control, project_id: &str) -> Option<String> {
+    let live = ctl.masters.get(project_id).map(|(session, _)| session)?;
+    let because = ctl.masters.draining(project_id, &live)?;
+    Some(format!(
+        "this master is draining and declares no new run: {because}. Leave the issue unclaimed for its successor, which core places on the first sweep that finds no run this pane holds still working and it at its prompt, resuming this conversation. Nothing was recorded"
+    ))
+}
+
+/// The roles that judge and move nothing, which alone may declare a run over a requirement.
+const JUDGING_ROLES: [&str; 2] = ["qa", "reviewer"];
+
+/// Why a run over `requirement` cannot be declared, or `None` (ISS-735): a judge of a shipped
+/// requirement at the requirement takes no issue, so it names none beside it and is declared
+/// under a judging role.
+pub(crate) fn requirement_refusal(
+    requirement: Option<&str>,
+    issue_keys: &[String],
+    role: Option<&str>,
+) -> Option<String> {
+    let Some(req) = requirement else {
+        return issue_keys.is_empty().then(|| {
+            "a run is declared over at least one issue (`--issue`), or a judge run over the requirement it judges (`--requirement REQ-n --role qa`). Nothing was recorded".to_string()
+        });
+    };
+    let shaped = req
+        .to_ascii_uppercase()
+        .strip_prefix("REQ-")
+        .is_some_and(|n| {
+            !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) && !n.starts_with('0')
+        });
+    if !shaped {
+        return Some(format!(
+            "`{req}` is not a requirement reference — `--requirement` takes one key such as `REQ-76`. Nothing was recorded"
+        ));
+    }
+    if !issue_keys.is_empty() {
+        return Some(format!(
+            "a run over {req} judges that requirement and takes no issue; declare the issues as a run of their own. Nothing was recorded"
+        ));
+    }
+    let bare = role.map(|r| r.rsplit(':').next().unwrap_or(r));
+    if !bare.is_some_and(|r| JUDGING_ROLES.contains(&r)) {
+        return Some(format!(
+            "a run over {req} judges it and moves nothing, so it is declared `--role qa` or `--role reviewer`; declared with {}. Nothing was recorded",
+            role.map_or("no role".to_string(), |r| format!("`{r}`"))
+        ));
+    }
+    None
 }
 
 /// Why these issue references cannot be declared as one run, or `None`.
@@ -171,6 +229,7 @@ pub(crate) async fn run_declare_as(
         issue_keys,
         worktree_path,
         role,
+        requirement,
     } = declared;
     // First, before anything is read or written: a drain that admits a run is
     // waiting on a queue it keeps refilling (ISS-1223). The permit is held to
@@ -193,16 +252,12 @@ pub(crate) async fn run_declare_as(
     }
     // Every row below is keyed by the project's id, never by the slug it was named by.
     let project_id = serves.as_str();
-    // A graceful stop, as a CI agent drains for an upgrade: finish what is
-    // held, take nothing new. Core decided it; the box only refuses by it.
-    if let Some(live) = ctl.masters.get(project_id).map(|(session, _)| session) {
-        if let Some(because) = ctl.masters.draining(project_id, &live) {
-            return ClaimReply::refused(format!(
-                "this master is draining and declares no new run: {because}. Leave the issue unclaimed for its successor, which core places on the first sweep that finds no run this pane holds still working and it at its prompt, resuming this conversation. Nothing was recorded"
-            ));
-        }
+    if let Some(refused) = draining_refusal(ctl, project_id) {
+        return ClaimReply::refused(refused);
     }
-    if let Some(refused) = keys_refusal(issue_keys) {
+    if let Some(refused) =
+        requirement_refusal(requirement, issue_keys, role).or_else(|| keys_refusal(issue_keys))
+    {
         return ClaimReply::refused(refused);
     }
     // The master's own checkout: the working directory of the Claude Code
@@ -215,8 +270,9 @@ pub(crate) async fn run_declare_as(
     if let Some(refused) = tree_refusal(worktree_path, checkout.as_deref()).await {
         return ClaimReply::refused(refused);
     }
+    let said = Said { role, requirement };
     if let Some(refused) =
-        preflight_refusal(ctl.core.as_deref(), project_id, issue_keys, role).await
+        preflight_refusal(ctl.core.as_deref(), project_id, issue_keys, said).await
     {
         return ClaimReply::refused(refused);
     }
@@ -236,6 +292,7 @@ pub(crate) async fn run_declare_as(
         boot_id: ctl.boot_id.clone(),
         issue_keys: issue_keys.to_vec(),
         role: role.map(str::to_string),
+        requirement: requirement.map(str::to_string),
     };
     // A record's run is written while the registry is held, under the session
     // it names for the pane at that moment: an adoption between the bound
@@ -540,7 +597,7 @@ mod preflight_tests {
             )
         })
         .await;
-        let why = preflight_refusal(Some(&client), "proj-1", &keys(), None)
+        let why = preflight_refusal(Some(&client), "proj-1", &keys(), Said::default())
             .await
             .expect("a blocked issue is refused at declare");
         assert!(why.contains("ISS-46") && why.contains("ISS-44"), "{why}");
@@ -561,7 +618,7 @@ mod preflight_tests {
             )
         })
         .await;
-        let why = preflight_refusal(Some(&client), "proj-1", &keys(), None)
+        let why = preflight_refusal(Some(&client), "proj-1", &keys(), Said::default())
             .await
             .expect("a declaration over a parked issue was accepted; an issue at rest is refused at declare");
         assert!(
@@ -580,7 +637,7 @@ mod preflight_tests {
         let (client, seen) = crate::test_core::fake_core(|_| (200, r#"{"ok":true}"#)).await;
         let judged = vec!["ISS-575".to_string(), "ISS-576".to_string()];
         assert_eq!(
-            preflight_refusal(Some(&client), "proj-1", &judged, None).await,
+            preflight_refusal(Some(&client), "proj-1", &judged, Said::default()).await,
             None,
             "a judge over closed issues core admits was refused at declare"
         );
@@ -594,11 +651,20 @@ mod preflight_tests {
     async fn the_role_rides_the_preflight_body_only_when_given() {
         let (client, seen) = crate::test_core::fake_core(|_| (200, r#"{"ok":true}"#)).await;
         assert_eq!(
-            preflight_refusal(Some(&client), "proj-1", &keys(), Some("qa")).await,
+            preflight_refusal(
+                Some(&client),
+                "proj-1",
+                &keys(),
+                Said {
+                    role: Some("qa"),
+                    requirement: None
+                }
+            )
+            .await,
             None
         );
         assert_eq!(
-            preflight_refusal(Some(&client), "proj-1", &keys(), None).await,
+            preflight_refusal(Some(&client), "proj-1", &keys(), Said::default()).await,
             None
         );
         let seen = seen.lock().unwrap();
@@ -616,12 +682,31 @@ mod preflight_tests {
         let (client, seen) =
             crate::test_core::fake_core(|_| (200, r#"{"sessionId":"s","runId":"r"}"#)).await;
         let keys = keys();
-        runner_transport::run_sessions::open(&client, "p", "r", &keys, "n", None, Some("qa"))
-            .await
-            .unwrap();
-        runner_transport::run_sessions::open(&client, "p", "r", &keys, "n", None, None)
-            .await
-            .unwrap();
+        runner_transport::run_sessions::open(
+            &client,
+            "p",
+            "r",
+            &keys,
+            "n",
+            None,
+            runner_transport::run_sessions::Said {
+                role: Some("qa"),
+                requirement: None,
+            },
+        )
+        .await
+        .unwrap();
+        runner_transport::run_sessions::open(
+            &client,
+            "p",
+            "r",
+            &keys,
+            "n",
+            None,
+            runner_transport::run_sessions::Said::default(),
+        )
+        .await
+        .unwrap();
         let seen = seen.lock().unwrap();
         let with: serde_json::Value = serde_json::from_str(&seen[0].1).unwrap();
         let without: serde_json::Value = serde_json::from_str(&seen[1].1).unwrap();
@@ -632,9 +717,11 @@ mod preflight_tests {
     #[tokio::test]
     async fn an_unblocked_issue_is_declared_as_before() {
         let (client, _) = crate::test_core::fake_core(|_| (200, r#"{"ok":true}"#)).await;
-        assert!(preflight_refusal(Some(&client), "p", &keys(), None)
-            .await
-            .is_none());
+        assert!(
+            preflight_refusal(Some(&client), "p", &keys(), Said::default())
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -647,13 +734,15 @@ mod preflight_tests {
                 _ => crate::test_core::fake_core(|_| (503, "{}")).await,
             };
             assert!(
-                preflight_refusal(Some(&client), "p", &keys(), None)
+                preflight_refusal(Some(&client), "p", &keys(), Said::default())
                     .await
                     .is_none(),
                 "status {status} refused a declaration core had not held"
             );
         }
-        assert!(preflight_refusal(None, "p", &keys(), None).await.is_none());
+        assert!(preflight_refusal(None, "p", &keys(), Said::default())
+            .await
+            .is_none());
     }
 }
 
@@ -762,6 +851,7 @@ mod tree_tests {
                 issue_keys: &["ISS-1".to_string()],
                 worktree_path: &tree.to_string_lossy(),
                 role: None,
+                requirement: None,
             },
             MASTER,
             None,
@@ -838,5 +928,29 @@ mod tree_tests {
             assert!(why.contains(&*path.to_string_lossy()), "{why}");
         }
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// ISS-735: a judge of a shipped requirement is declared over the
+    /// requirement, with no issue, under a judging role; anything else naming a
+    /// requirement, and a declaration with neither, is refused by name.
+    #[test]
+    fn a_requirement_run_is_a_judges_and_takes_no_issue() {
+        let none: Vec<String> = Vec::new();
+        let keys = || vec!["ISS-1".to_string()];
+        assert_eq!(requirement_refusal(Some("REQ-76"), &none, Some("qa")), None);
+        assert_eq!(
+            requirement_refusal(Some("req-76"), &none, Some("forge:reviewer")),
+            None
+        );
+        assert_eq!(requirement_refusal(None, &keys(), None), None);
+        let why = |r: Option<&str>, k: &[String], role: Option<&str>| {
+            requirement_refusal(r, k, role).expect("refused")
+        };
+        assert!(why(Some("REQ-76"), &none, Some("runner")).contains("`--role qa`"));
+        assert!(why(Some("REQ-76"), &none, None).contains("no role"));
+        assert!(why(Some("REQ-76"), &keys(), Some("qa")).contains("takes no issue"));
+        assert!(why(Some("ISS-76"), &none, Some("qa")).contains("not a requirement reference"));
+        assert!(why(Some("REQ-0"), &none, Some("qa")).contains("not a requirement reference"));
+        assert!(why(None, &none, Some("qa")).contains("--requirement REQ-n"));
     }
 }

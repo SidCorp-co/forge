@@ -6,6 +6,7 @@ import { provideAgentSessionsPorts } from './agent-sessions/index.js';
 import { cleanupFirePlan } from './cleanup/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
+import { db } from './db/client.js';
 import {
   declaredRunElsewhere,
   declaredRunOfCall,
@@ -110,6 +111,7 @@ import {
   owedBreakdowns,
   owedRequirementRevisions,
   proposedDraftRequirements,
+  requirementIdIn,
 } from './requirements/index.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
@@ -265,6 +267,7 @@ export function provideExecutionPorts(): void {
     comments: { postIssueNotice, postIssueNoticeOnce, latestIssueCommentWith },
     projectHandleUserId: async (tx, projectId) =>
       (await resolveProjectHandle(tx, projectId)).userId,
+    requirementIdOf: (projectId, ref) => requirementIdIn(db, projectId, ref),
   });
 
   provideRunnersPorts({

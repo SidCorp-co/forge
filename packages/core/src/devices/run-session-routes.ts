@@ -43,10 +43,20 @@ const runRoleSchema = z
   )
   .max(60);
 
+/**
+ * A run judging a shipped requirement at the requirement carries its key instead of an issue
+ * (ISS-735); one carrying neither is refused by name (`run-requirement.ts:requirementSubject`).
+ */
+const requirementSchema = z
+  .string()
+  .regex(/^REQ-[1-9][0-9]{0,9}$/i, 'a requirement key such as `REQ-76`')
+  .optional();
+
 const runSessionBodySchema = z.object({
   projectId: z.string().uuid(),
   runId: z.string().uuid(),
-  issueKeys: z.array(z.string().min(1)).min(1).max(16),
+  issueKeys: z.array(z.string().min(1)).max(16),
+  requirement: requirementSchema,
   name: utf16String(60).min(1),
   // Validated here rather than absorbed: a run is kernel, and a gate condition
   // this route cannot read is a contract break the box is told about by name
@@ -68,6 +78,7 @@ deviceRunSessionRoutes.post(
         deviceId: c.get('device').id,
         projectId: body.projectId,
         issueKeys: body.issueKeys,
+        ...(body.requirement ? { requirement: body.requirement } : {}),
         name: body.name,
         boxRunId: body.runId,
         ...(body.gate ? { gate: body.gate } : {}),
@@ -90,7 +101,8 @@ deviceRunSessionRoutes.post(
 
 const preflightBodySchema = z.object({
   projectId: z.string().uuid(),
-  issueKeys: z.array(z.string().min(1)).min(1).max(16),
+  issueKeys: z.array(z.string().min(1)).max(16),
+  requirement: requirementSchema,
   role: runRoleSchema.optional(),
 });
 
@@ -108,6 +120,7 @@ deviceRunSessionRoutes.post(
     await preflightRunSession({
       projectId: body.projectId,
       issueKeys: body.issueKeys,
+      ...(body.requirement ? { requirement: body.requirement } : {}),
       ...(body.role ? { role: body.role } : {}),
     });
     return c.json({ ok: true as const });

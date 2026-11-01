@@ -733,6 +733,7 @@ mod resumed_brief_tests {
                 boot_id: "boot-1".into(),
                 issue_keys: vec![format!("ISS-{n}")],
                 role: None,
+                requirement: None,
             })
             .unwrap();
             led.bind_agent(run, &format!("agent-{n}")).unwrap();

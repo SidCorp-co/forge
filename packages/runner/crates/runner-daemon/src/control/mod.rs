@@ -99,6 +99,9 @@ enum Request {
         /// The shipped role the master will dispatch for this run. Absent from an older client.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         role: Option<String>,
+        /// The requirement a judge run judges at the requirement, with no issue (ISS-735).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        requirement: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     RunChoice {
@@ -501,6 +504,7 @@ async fn serve_request(
             issue_keys,
             worktree_path,
             role,
+            requirement,
             ..
         } => {
             run_declare_as(
@@ -511,6 +515,7 @@ async fn serve_request(
                     issue_keys: &issue_keys,
                     worktree_path: &worktree_path,
                     role: role.as_deref(),
+                    requirement: requirement.as_deref(),
                 },
                 session_id,
                 peer,

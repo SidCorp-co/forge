@@ -117,6 +117,14 @@ struct OpenReply {
     run_id: String,
 }
 
+/// What a declaration says of its run beside its issues: the role it is dispatched as, and the
+/// requirement a judge run judges in place of any issue (ISS-735).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Said<'a> {
+    pub role: Option<&'a str>,
+    pub requirement: Option<&'a str>,
+}
+
 pub async fn open(
     client: &CoreClient,
     project_id: &str,
@@ -124,8 +132,9 @@ pub async fn open(
     issue_keys: &[String],
     name: &str,
     gate: Option<&runner_proto::gate::Condition>,
-    role: Option<&str>,
+    said: Said<'_>,
 ) -> Result<(String, String)> {
+    let Said { role, requirement } = said;
     let mut body = serde_json::json!({
         "projectId": project_id,
         "runId": run_id,
@@ -140,6 +149,9 @@ pub async fn open(
     }
     if let Some(role) = role {
         body["role"] = serde_json::json!(role);
+    }
+    if let Some(requirement) = requirement {
+        body["requirement"] = serde_json::json!(requirement);
     }
     let req = client.post("/api/devices/me/run-sessions").json(&body);
     let resp = status::sent(req, "run-session open").await?;
@@ -166,10 +178,14 @@ pub async fn preflight(
     project_id: &str,
     issue_keys: &[String],
     role: Option<&str>,
+    requirement: Option<&str>,
 ) -> Result<()> {
     let mut body = serde_json::json!({ "projectId": project_id, "issueKeys": issue_keys });
     if let Some(role) = role {
         body["role"] = serde_json::json!(role);
+    }
+    if let Some(requirement) = requirement {
+        body["requirement"] = serde_json::json!(requirement);
     }
     let req = client
         .post("/api/devices/me/run-sessions/preflight")

@@ -679,6 +679,7 @@ mod role_tests {
                 boot_id: BOOT.into(),
                 issue_keys: vec![format!("ISS-{}", run_id.trim_start_matches("run-"))],
                 role: None,
+                requirement: None,
             })
             .unwrap();
     }

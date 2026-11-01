@@ -30,7 +30,7 @@ pub trait SessionOpener {
         issue_keys: &[String],
         name: &str,
         gate: Option<&runner_proto::gate::Condition>,
-        role: Option<&str>,
+        said: run_sessions::Said<'_>,
     ) -> runner_platform::error::Result<(String, String)>;
 }
 
@@ -44,9 +44,9 @@ impl SessionOpener for CoreSessions<'_> {
         issue_keys: &[String],
         name: &str,
         gate: Option<&runner_proto::gate::Condition>,
-        role: Option<&str>,
+        said: run_sessions::Said<'_>,
     ) -> runner_platform::error::Result<(String, String)> {
-        run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate, role).await
+        run_sessions::open(self.0, project_id, run_id, issue_keys, name, gate, said).await
     }
 }
 
@@ -74,6 +74,21 @@ const RECOMPUTED_EACH_SWEEP: &str = "gate: ";
 /// (`SESSION_SILENCE_REAP_MS`), so the interval is half of that: the queued row stays
 /// where the master reads it, and the open still lands within five minutes of the hold lifting.
 pub const SESSION_RETRY_MS: i64 = 5 * 60_000;
+
+/// A run's session name: its issues, or for a judge run over a requirement, that requirement (ISS-735).
+fn session_name_of(run: &runner_core::ledger::Run, keys: &[String]) -> String {
+    match &run.requirement {
+        Some(req) => run_sessions::session_name(std::slice::from_ref(req)),
+        None => run_sessions::session_name(keys),
+    }
+}
+
+fn said_of(run: &runner_core::ledger::Run) -> run_sessions::Said<'_> {
+    run_sessions::Said {
+        role: run.role.as_deref(),
+        requirement: run.requirement.as_deref(),
+    }
+}
 
 pub async fn open_declared_runs(
     opener: &impl SessionOpener,
@@ -134,18 +149,15 @@ pub async fn open_declared_runs_at(
                 continue;
             }
         };
-        if keys.is_empty() {
+        if keys.is_empty() && run.requirement.is_none() {
             tracing::warn!(
-                "[run-record] run {} carries no issues, which the ledger should have refused",
+                "[run-record] run {} carries no issues and no requirement, which the ledger should have refused",
                 run.run_id
             );
             continue;
         }
-        let name = run_sessions::session_name(&keys);
-        match opener
-            .open(&project_id, &run.run_id, &keys, &name, gate, run.role.as_deref())
-            .await
-        {
+        let (name, said) = (session_name_of(&run, &keys), said_of(&run));
+        match opener.open(&project_id, &run.run_id, &keys, &name, gate, said).await {
             Ok((session_id, _)) => match led.attach_session(&run.run_id, &session_id) {
                 Ok(()) => {
                     tracing::info!(
@@ -504,6 +516,7 @@ mod close_refusal_tests {
             boot_id: "boot-1".into(),
             issue_keys: vec!["ISS-1".into()],
             role: None,
+            requirement: None,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -547,6 +560,7 @@ mod close_refusal_tests {
             boot_id: "boot-1".into(),
             issue_keys: vec!["ISS-1".into()],
             role: None,
+            requirement: None,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -624,7 +638,7 @@ mod session_hold_tests {
             _issue_keys: &[String],
             _name: &str,
             _gate: Option<&runner_proto::gate::Condition>,
-            _role: Option<&str>,
+            _said: run_sessions::Said<'_>,
         ) -> runner_platform::error::Result<(String, String)> {
             self.sent.fetch_add(1, Ordering::SeqCst);
             if self.held.load(Ordering::SeqCst) {
@@ -650,6 +664,7 @@ mod session_hold_tests {
             boot_id: "boot-1".into(),
             issue_keys: vec!["ISS-46".into()],
             role: None,
+            requirement: None,
         })
         .unwrap();
         (Some(led), dir)
@@ -726,7 +741,7 @@ mod session_hold_tests {
                 _: &[String],
                 _: &str,
                 _: Option<&runner_proto::gate::Condition>,
-                _: Option<&str>,
+                _: run_sessions::Said<'_>,
             ) -> runner_platform::error::Result<(String, String)> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Err(Error::Other("run-session open 503".into()))
@@ -754,7 +769,7 @@ mod session_hold_tests {
                 _: &[String],
                 _: &str,
                 _: Option<&runner_proto::gate::Condition>,
-                _: Option<&str>,
+                _: run_sessions::Said<'_>,
             ) -> runner_platform::error::Result<(String, String)> {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Err(Error::AtRest {

@@ -2,10 +2,18 @@ use super::*;
 
 impl Ledger {
     pub fn create_run_group(&mut self, new: NewRun) -> Result<Run> {
-        if new.issue_keys.is_empty() {
-            return Err(Error::Other(
-                "ledger: a run must carry at least one issue".into(),
-            ));
+        match (new.issue_keys.is_empty(), new.requirement.is_some()) {
+            (true, false) => {
+                return Err(Error::Other(
+                    "ledger: a run must carry at least one issue, or the requirement a judge run judges".into(),
+                ))
+            }
+            (false, true) => {
+                return Err(Error::Other(
+                    "ledger: a run over a requirement carries no issue beside it".into(),
+                ))
+            }
+            _ => {}
         }
         let tx = self.conn.transaction().map_err(sql_err)?;
         for key in &new.issue_keys {
@@ -51,8 +59,8 @@ impl Ledger {
             )));
         }
         tx.execute(
-            "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at, role)
-             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at, role, requirement)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 new.run_id,
                 new.project_id,
@@ -62,7 +70,8 @@ impl Ledger {
                 Incarnation::Live.wire(),
                 Work::Runnable.wire(),
                 now(),
-                new.role
+                new.role,
+                new.requirement
             ],
         )
         .map_err(sql_err)?;
@@ -794,6 +803,7 @@ mod role_tests {
             boot_id: "boot-1".into(),
             issue_keys: vec![format!("ISS-{id}")],
             role: role.map(str::to_string),
+            requirement: None,
         })
         .unwrap();
     }
@@ -836,5 +846,41 @@ mod role_tests {
         let role_of = |id: &str| rows.iter().find(|r| r.run_id == id).unwrap().role.clone();
         assert_eq!(role_of("1").as_deref(), Some("qa"));
         assert_eq!(role_of("2"), None);
+    }
+
+    /// ISS-735: a judge run over a requirement carries no issue and holds none,
+    /// so a second judge over the requirement is declared beside a run holding
+    /// an issue; a run with neither, or both, is refused by name.
+    #[test]
+    fn a_run_over_a_requirement_carries_no_issue_and_holds_none() {
+        let dir = std::env::temp_dir().join(format!("forge-iss735-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+        declare(&mut led, "640", Some("qa"));
+        led.bind_agent("640", "agent-640").unwrap();
+        let req = |issue_keys: Vec<String>, requirement: Option<&str>| NewRun {
+            run_id: format!("req-{}", issue_keys.len()),
+            project_id: "proj-1".into(),
+            master_session_id: "master-640".into(),
+            worktree_path: format!("/w/req-{}", issue_keys.len()).into(),
+            boot_id: "boot-1".into(),
+            issue_keys,
+            role: Some("qa".into()),
+            requirement: requirement.map(str::to_string),
+        };
+        let run = led
+            .create_run_group(req(Vec::new(), Some("REQ-76")))
+            .unwrap();
+        assert_eq!(run.requirement.as_deref(), Some("REQ-76"));
+        assert!(led.issues(&run.run_id).unwrap().is_empty());
+        let neither = led.create_run_group(req(Vec::new(), None)).unwrap_err();
+        assert!(neither
+            .to_string()
+            .contains("at least one issue, or the requirement"));
+        let both = led
+            .create_run_group(req(vec!["ISS-9".into()], Some("REQ-76")))
+            .unwrap_err();
+        assert!(both.to_string().contains("no issue beside it"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -17,6 +17,7 @@ import {
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
+  RUN_REQUIREMENT_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
 import { scrubSecretsDeep } from '@forge/observability';
@@ -55,6 +56,7 @@ import {
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
+import { requirementSubject } from './run-requirement.js';
 import {
   type BoxRunSession,
   declarationLockKey,
@@ -151,8 +153,10 @@ async function openSessionForBoxRun(
 export async function preflightRunSession(args: {
   projectId: string;
   issueKeys: string[];
+  requirement?: string;
   role?: string;
 }): Promise<void> {
+  if (await requirementSubject(args)) return;
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   const statuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const taken = takenBy(canonical, statuses, args.role);
@@ -168,10 +172,9 @@ export async function openRunSession(args: {
   gate?: GateCondition;
   /** The role the run is dispatched as, where its box said: `qa` and `reviewer` judge, any other builds. */
   role?: string;
+  /** The requirement a judge run judges at the requirement, in place of any issue (ISS-735). */
+  requirement?: string;
 }): Promise<RunSession> {
-  if (args.issueKeys.length === 0) {
-    throw new Error('openRunSession: a run session must carry at least one issue');
-  }
   if (args.boxRunId) {
     const existing = await openSessionForBoxRun(db, {
       deviceId: args.deviceId,
@@ -197,6 +200,7 @@ export async function openRunSession(args: {
   // a run works issues the policy says how to run; a project with none is refused here by
   // the same name the job claim uses, before any run, session or lease is written.
   await devicesPorts().requirePolicy(args.projectId);
+  const requirement = await requirementSubject(args);
   // Core issues the owner edge. The box is authenticated as a device and says
   // which project it is running for; which master that is, core already knows.
   // No master registered yet leaves a root rather than a guess.
@@ -258,6 +262,7 @@ export async function openRunSession(args: {
     [RUN_GIVEN_METADATA_KEY]: given,
     ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
     ...(args.role ? { role: args.role } : {}),
+    ...(requirement ? { [RUN_REQUIREMENT_METADATA_KEY]: requirement } : {}),
   };
   const spec: OneShotRunSpec = { projectId: args.projectId, kind: 'system', metadata };
   const claimed = await db
