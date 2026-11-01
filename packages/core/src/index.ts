@@ -50,6 +50,7 @@ import {
   archivedIssueIdsSql,
   citedIssues,
   claimIssuePrefix,
+  explainNoIssue,
   heldIssuePrefixes,
   issueDisplayIds,
   issueHead,
@@ -327,6 +328,7 @@ provideMessageReads({
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issuesForChangeRequest: (args) => resolveIssuesForChangeRequest(args),
+  noIssueForChangeRequest: (args) => explainNoIssue(args),
   projectSlug: async (projectId) => (await projectHead(projectId))?.slug ?? null,
   projectsByIds: listProjectHeads,
   runProjectOf: pipelineRunProjectId,

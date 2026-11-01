@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { branchIssueReferences, deliveredDescriptionReferences } from './head-ref-link.js';
+import {
+  branchIssueReferences,
+  deliveredDescriptionReferences,
+  noIssueReason,
+  titleIssueReferences,
+} from './head-ref-link.js';
 
 const keys = (refs: Array<{ prefix: string; issSeq: number }>) =>
   refs.map((r) => `${r.prefix}-${r.issSeq}`);
@@ -82,5 +87,56 @@ describe('deliveredDescriptionReferences: only a delivery form delivers (ISS-705
 
   it("reads another project's prefix as a key and leaves it to the caller's held prefixes", () => {
     expect(keys(deliveredDescriptionReferences('Closes AH-11\nAH-18'))).toEqual(['AH-11', 'AH-18']);
+  });
+});
+
+// ISS-855 (FB-460, epod !97): titled 'ISS-31: …; ISS-24: …' on a keyless branch, linked nothing.
+describe('titleIssueReferences: the keys a title leads with, lists or closes (REQ-63 BC-4)', () => {
+  it('reads the !97 title as delivering ISS-31 and ISS-24, in order', () => {
+    expect(
+      keys(titleIssueReferences('ISS-31: tracking apikey error; ISS-24: domain wording')),
+    ).toEqual(['ISS-31', 'ISS-24']);
+  });
+
+  it('reads a bracketed or listed lead, and keys after a closing verb', () => {
+    expect(keys(titleIssueReferences('[ISS-12] fix login'))).toEqual(['ISS-12']);
+    expect(keys(titleIssueReferences('ISS-1, ISS-2 and ISS-3 — one change'))).toEqual([
+      'ISS-1',
+      'ISS-2',
+      'ISS-3',
+    ]);
+    expect(keys(titleIssueReferences('Login copy (fixes ISS-9)'))).toEqual(['ISS-9']);
+  });
+
+  it("reads nothing from prose or a key under another project's name (FB-295)", () => {
+    expect(titleIssueReferences('Port the work ISS-4 started')).toEqual([]);
+    expect(titleIssueReferences('Call adminhub-api ISS-11 from the widget')).toEqual([]);
+    expect(titleIssueReferences('chore: bump deps')).toEqual([]);
+  });
+});
+
+describe('noIssueReason: an MR that links nothing says what was read (ISS-855)', () => {
+  it('names the branch, the title, the description and the shapes that link', () => {
+    const why = noIssueReason({
+      headRef: 'fix/tracking-apikey-error-domain-wording',
+      title: 'Tracking copy',
+      description: 'Wording only.',
+      prefixes: ['ISS'],
+    });
+    expect(why).toContain('fix/tracking-apikey-error-domain-wording');
+    expect(why).toContain('Tracking copy');
+    expect(why).toContain('ISS-n');
+    expect(why).toMatch(/description/);
+  });
+
+  it("names a key it read that is no issue of this project, or another project's", () => {
+    const why = noIssueReason({
+      headRef: 'fix/iss-4000-x',
+      title: 'REQ-4: something',
+      description: null,
+      prefixes: ['ISS'],
+    });
+    expect(why).toContain('ISS-4000');
+    expect(why).toContain('REQ-4');
   });
 });

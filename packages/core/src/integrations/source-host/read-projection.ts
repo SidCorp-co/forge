@@ -8,7 +8,7 @@
  * would report, for the caller to emit: it stamps the issues the request delivers, once.
  */
 
-import type { InboundFact } from '../index.js';
+import { forgeReads, type InboundFact } from '../index.js';
 import { SourceHostCallError } from './errors.js';
 import { readMergedHead } from './merged-head.js';
 import { applyPullRequestEvent, type ProjectionContext, storeHostChecks } from './projection.js';
@@ -36,8 +36,10 @@ export interface ReadProjection {
   /** `superseded` where Forge already held a newer record of the request, which stands. */
   outcome: 'recorded' | 'superseded';
   state: string;
-  /** Every Forge issue the row delivers, by its branch and its description (REQ-63 BC-4). */
+  /** Every Forge issue the row delivers, by its branch, its title and its description (REQ-63 BC-4). */
   issueIds: string[];
+  /** Where it links no issue, why, named by what was read (ISS-855); null where it links one. */
+  noIssue: string | null;
   checks: ChecksProjection;
 }
 
@@ -118,6 +120,15 @@ export async function projectReadChangeRequest(args: {
     outcome: written > 0 ? 'recorded' : 'superseded',
     state: read.state,
     issueIds: row?.issueIds ?? [],
+    noIssue:
+      row && row.issueIds.length === 0
+        ? await forgeReads().noIssueForChangeRequest({
+            projectId: args.projectId,
+            headRef: read.headRef,
+            title: read.title ?? null,
+            description: read.body ?? null,
+          })
+        : null,
     checks,
   };
   if (read.state !== 'merged') return { projection, facts: [] };

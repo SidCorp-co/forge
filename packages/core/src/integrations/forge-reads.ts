@@ -6,12 +6,20 @@ import { portSlot } from '../lib/port-slot.js';
 interface ForgeReads {
   /** The repository the project document declares (`source.git.repository`), or null. */
   declaredRepository(projectId: string): Promise<string | null>;
-  /** Every issue a change request delivers: the keys its branch and its description name (REQ-63 BC-4). */
+  /** Every issue a change request delivers: the keys its branch, its title and its description name (REQ-63 BC-4). */
   issuesForChangeRequest(args: {
     projectId: string;
     headRef: string;
+    title: string | null;
     description: string | null;
-  }): Promise<Array<{ issueId: string; linkedBy: 'head-ref' | 'description' }>>;
+  }): Promise<Array<{ issueId: string; linkedBy: 'head-ref' | 'title' | 'description' }>>;
+  /** Why a change request links no issue, naming what was read and the shapes that link (ISS-855). */
+  noIssueForChangeRequest(args: {
+    projectId: string;
+    headRef: string;
+    title: string | null;
+    description: string | null;
+  }): Promise<string>;
   /** A project's slug, or null when no such project exists. */
   projectSlug(projectId: string): Promise<string | null>;
   /** Id, slug and name of each project in `ids` that exists. */

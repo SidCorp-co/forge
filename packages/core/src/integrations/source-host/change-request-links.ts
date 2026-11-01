@@ -1,7 +1,7 @@
 /**
  * ISS-705 (FB-295) — a person corrects which issues a change request delivers.
  *
- * The links are derived: every delivery rewrites them from the request's branch and description
+ * The links are derived: every delivery rewrites them from the request's branch, title and description
  * (`projection.ts:writeIssueLinks`), and Forge's own merge stamps each one (`merge.ts`).
  * A description cannot be edited through Forge and the host refuses a second request for the same
  * head, so a stray link had no way off. An unlink here is kept on its own row, which the rewrite
@@ -193,7 +193,7 @@ export async function relinkChangeRequestIssue(act: LinkAct): Promise<LinksOutco
       return {
         ok: false,
         code: 'CHANGE_REQUEST_ISSUE_NOT_UNLINKED',
-        detail: `${act.issueKey} was not unlinked from ${act.label}, so there is nothing to relink: a relink puts back only what an unlink took off, and the branch and description decide the rest`,
+        detail: `${act.issueKey} was not unlinked from ${act.label}, so there is nothing to relink: a relink puts back only what an unlink took off, and the branch, title and description decide the rest`,
       };
     }
     const [last] = await tx

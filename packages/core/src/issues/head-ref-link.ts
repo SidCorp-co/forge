@@ -91,27 +91,91 @@ export function deliveredDescriptionReferences(description: string): IssueRefere
   return out;
 }
 
+/** Where a title's key stands to be delivered: the title's start or a clause's (`;`, `,`, `|`, `(`, `[`). */
+const TITLE_LEAD_KEYS = new RegExp(`(?:^|[;,|([])\\s*(${KEY}(?:${BETWEEN_KEYS}${KEY})*)`, 'gi');
+
+/**
+ * The keys a title delivers, in the order it gives them (ISS-855): a key leading the title or one of
+ * its clauses, with any keys listed after it (`ISS-31: …; ISS-24: …`, `[ISS-12] …`, `ISS-1, ISS-2
+ * and ISS-3 — …`), or right after a closing verb (`… (fixes ISS-9)`). A key inside a sentence is
+ * prose, and one another project's slug qualifies (`adminhub-api ISS-11`) sits in neither form
+ * (FB-295).
+ */
+export function titleIssueReferences(title: string): IssueReference[] {
+  const line = title.replace(EMPHASIS, '').trim();
+  const hits: Array<{ at: number; refs: IssueReference[] }> = [];
+  for (const hit of line.matchAll(TITLE_LEAD_KEYS)) {
+    hits.push({ at: hit.index ?? 0, refs: keysIn(hit[1] ?? '') });
+  }
+  for (const hit of line.matchAll(VERB_THEN_KEYS)) {
+    hits.push({ at: hit.index ?? 0, refs: keysIn(hit[1] ?? '') });
+  }
+  return hits.sort((a, b) => a.at - b.at).flatMap((h) => h.refs);
+}
+
+const KEY_SHAPES =
+  'a branch `fix/iss-n-…` or `feat/…-iss-n`, a title leading with `ISS-n: …`, or a description line holding only `ISS-n` or `Closes ISS-n`';
+
+/**
+ * Why a change request links no issue, named by what was read (ISS-855): its branch, its title, the
+ * keys its description delivers, and the shapes that would have linked. A key read under a prefix
+ * this project does not hold, or with a number no issue carries, is named with it.
+ */
+export function noIssueReason(args: {
+  headRef: string;
+  title: string | null;
+  description: string | null;
+  prefixes: readonly string[];
+}): string {
+  const read = [
+    ...branchIssueReferences(args.headRef),
+    ...titleIssueReferences(args.title ?? ''),
+    ...deliveredDescriptionReferences(args.description ?? ''),
+  ].map((r) => `${r.prefix}-${r.issSeq}`);
+  const named = [...new Set(read)];
+  const keys =
+    named.length === 0
+      ? 'no issue key in a delivery form'
+      : `${named.join(', ')}, none an issue of this project (its prefixes: ${args.prefixes.join(', ')})`;
+  return (
+    `linked to no issue: branch \`${args.headRef}\`, title ${JSON.stringify(args.title ?? '')}, and ` +
+    `${args.description?.trim() ? 'its description' : 'no description'} carry ${keys}. ` +
+    `A key links from ${KEY_SHAPES}; edit the title or description and refresh it.`
+  );
+}
+
 export interface ChangeRequestIssueLink {
   issueId: string;
-  linkedBy: 'head-ref' | 'description';
+  linkedBy: 'head-ref' | 'title' | 'description';
+}
+
+/** The issue prefixes a project's keys are read under: its own, and the legacy `ISS`. */
+export async function changeRequestPrefixes(
+  projectId: string,
+  dbi: IssueRefReader = defaultDb,
+): Promise<string[]> {
+  const held = [LEGACY_ISSUE_PREFIX, ...(await heldIssuePrefixes(projectId, dbi))];
+  return [...new Set(held.map((p) => p.toUpperCase()))];
 }
 
 /**
  * Every issue of this project a change request delivers (REQ-63 BC-4), in the order it names them:
- * its branch's keys (`branchIssueReferences`), then the keys its description delivers
+ * its branch's keys (`branchIssueReferences`), then the keys its title delivers
+ * (`titleIssueReferences`), then the ones its description delivers
  * (`deliveredDescriptionReferences`). The first is its primary issue. A key is read only under a
  * prefix this project holds, so `REQ-4` or another project's key links nothing; a number no issue
- * carries links nothing either. A branch link wins over a description link for one issue.
+ * carries links nothing either. The first place to name an issue is the one its link records.
  */
 export async function resolveIssuesForChangeRequest(
-  args: { projectId: string; headRef: string; description?: string | null },
+  args: {
+    projectId: string;
+    headRef: string;
+    title?: string | null;
+    description?: string | null;
+  },
   dbi: IssueRefReader = defaultDb,
 ): Promise<ChangeRequestIssueLink[]> {
-  const held = new Set(
-    [LEGACY_ISSUE_PREFIX, ...(await heldIssuePrefixes(args.projectId, dbi))].map((p) =>
-      p.toUpperCase(),
-    ),
-  );
+  const held = new Set(await changeRequestPrefixes(args.projectId, dbi));
   const wanted = new Map<number, ChangeRequestIssueLink['linkedBy']>();
   const take = (refs: IssueReference[], linkedBy: ChangeRequestIssueLink['linkedBy']) => {
     for (const ref of refs) {
@@ -119,6 +183,7 @@ export async function resolveIssuesForChangeRequest(
     }
   };
   take(branchIssueReferences(args.headRef), 'head-ref');
+  take(titleIssueReferences(args.title ?? ''), 'title');
   take(deliveredDescriptionReferences(args.description ?? ''), 'description');
   if (wanted.size === 0) return [];
   const rows = await dbi
@@ -133,6 +198,21 @@ export async function resolveIssuesForChangeRequest(
 }
 
 /**
+ * Why a change request this project projects links no issue (ISS-855): an issue it names that a
+ * person unlinked stays off it (ISS-705), and is said so; otherwise `noIssueReason`.
+ */
+export async function explainNoIssue(
+  args: { projectId: string; headRef: string; title: string | null; description: string | null },
+  dbi: IssueRefReader = defaultDb,
+): Promise<string> {
+  const named = await resolveIssuesForChangeRequest(args, dbi);
+  if (named.length > 0) {
+    return `linked to no issue: the ${named.length} issue(s) it names were each unlinked from it by a person, and stay off it until relinked`;
+  }
+  return noIssueReason({ ...args, prefixes: await changeRequestPrefixes(args.projectId, dbi) });
+}
+
+/**
  * The issue this branch names on this project, or null: the first one its keys resolve to, read
  * by the same grammar a change request's links are (`resolveIssuesForChangeRequest`).
  *
@@ -144,6 +224,9 @@ export async function resolveIssueForHeadRef(
   args: { projectId: string; headRef: string },
   dbi: IssueRefReader = defaultDb,
 ): Promise<string | null> {
-  const [first] = await resolveIssuesForChangeRequest({ ...args, description: null }, dbi);
+  const [first] = await resolveIssuesForChangeRequest(
+    { ...args, title: null, description: null },
+    dbi,
+  );
   return first?.issueId ?? null;
 }

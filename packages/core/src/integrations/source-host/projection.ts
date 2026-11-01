@@ -14,6 +14,7 @@ import { and, eq, inArray, isNull, lte, notInArray, or, sql } from 'drizzle-orm'
 import { db, type Tx } from '../../db/client.js';
 import {
   type ChangeRequestHost,
+  type ChangeRequestLinkKind,
   type ProjectedCheckRun,
   type ProjectedReview,
   repoPullRequestIssues,
@@ -133,6 +134,7 @@ export async function applyPullRequestEvent(
   const links = await forgeReads().issuesForChangeRequest({
     projectId: ctx.projectId,
     headRef,
+    title: pr.title ?? null,
     description: pr.body ?? null,
   });
   const updatedAt = pr.updated_at ? new Date(pr.updated_at) : null;
@@ -193,13 +195,13 @@ export async function applyPullRequestEvent(
 
 /**
  * The issues a change request delivers, rewritten whole from the delivery that just landed: a key
- * taken out of its description, or a branch renamed, unlinks the issue (REQ-63 BC-4). `links` come
+ * taken out of its title or description, or a branch renamed, unlinks the issue (REQ-63 BC-4). `links` come
  * in the order the request names them and each keeps its place, so the first is its primary issue.
  * An issue a person unlinked from this request stays off it (ISS-705).
  */
 async function writeIssueLinks(
   pullRequestId: string,
-  named: ReadonlyArray<{ issueId: string; linkedBy: 'head-ref' | 'description' }>,
+  named: ReadonlyArray<{ issueId: string; linkedBy: ChangeRequestLinkKind }>,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     // the row lock an unlink takes too, so an unlink is never lost between this read and the write

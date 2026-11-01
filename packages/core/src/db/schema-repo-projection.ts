@@ -114,15 +114,15 @@ export const repoPullRequestsRelations = relations(repoPullRequests, ({ one }) =
   }),
 }));
 
-/** How a change request came to deliver an issue: its branch names it, or its description does. */
-export const changeRequestLinkKinds = ['head-ref', 'description'] as const;
+/** How a change request came to deliver an issue: its branch, its title or its description names it. */
+export const changeRequestLinkKinds = ['head-ref', 'title', 'description'] as const;
 export type ChangeRequestLinkKind = (typeof changeRequestLinkKinds)[number];
 
-const LINKED_BY_CHK = sql`linked_by IN ('head-ref', 'description')`;
+const LINKED_BY_CHK = sql`linked_by IN ('head-ref', 'title', 'description')`;
 
 /**
- * Every issue a change request delivers (REQ-63 BC-4): one row per issue its branch or its
- * description delivers, rewritten whole on each delivery, so a key taken out of the description
+ * Every issue a change request delivers (REQ-63 BC-4): one row per issue its branch, its title or
+ * its description delivers, rewritten whole on each delivery, so a key taken out of the description
  * unlinks it. Merging the request stamps every issue linked here. `position` is the order the request
  * names them in, branch keys first; the first is its primary issue (ISS-705). An issue a person
  * unlinked (`repoPullRequestIssueUnlinks`) is never written here until it is relinked.

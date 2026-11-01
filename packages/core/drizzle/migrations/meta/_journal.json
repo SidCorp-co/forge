@@ -3620,6 +3620,13 @@
       "when": 1832284800000,
       "tag": "0571_a_question_says_whether_it_is_serious",
       "breakpoints": true
+    },
+    {
+      "idx": 572,
+      "version": "7",
+      "when": 1832371200000,
+      "tag": "0572_a_change_request_links_by_its_title",
+      "breakpoints": true
     }
   ]
 }

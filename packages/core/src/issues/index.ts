@@ -112,6 +112,7 @@ export {
 export { type FlowIssue, type FlowMove, type IssueFlow, readIssueFlow } from './flow-history.js';
 export {
   type ChangeRequestIssueLink,
+  explainNoIssue,
   resolveIssueForHeadRef,
   resolveIssuesForChangeRequest,
 } from './head-ref-link.js';

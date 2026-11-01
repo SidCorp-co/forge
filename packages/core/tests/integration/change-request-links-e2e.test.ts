@@ -137,17 +137,22 @@ const NINETEEN_SEVENTY_NINE = [
 const crPath = (suffix = '') =>
   `/api/projects/${world.projectId}/integrations/source/change-requests${suffix}`;
 
-async function open(head: string, body: string | null) {
+async function open(head: string, body: string | null, title = `MR on ${head}`) {
   const res = await api(world.token, 'POST', crPath(), {
     head,
     base: BASE,
-    title: `MR on ${head}`,
+    title,
     ...(body === null ? {} : { body }),
   });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body as {
     number: number;
-    projection: { outcome: string; issueId: string | null; issueIds: string[] };
+    projection: {
+      outcome: string;
+      issueId: string | null;
+      issueIds: string[];
+      noIssue: string | null;
+    };
   };
 }
 
@@ -231,6 +236,41 @@ describe('c1, c2: the !1979 shape links its branch issue alone, and that issue i
   it('a request naming no key links nothing and has no primary', async () => {
     const opened = await open('chore/bump-deps', 'Bumps the client.');
     expect(opened.projection).toMatchObject({ outcome: 'recorded', issueId: null, issueIds: [] });
+  });
+});
+
+// ISS-855 (FB-460, epod !97): titled 'ISS-31: …; ISS-24: …' on a keyless branch, it linked nothing
+// and said nothing until the merge refused NO_PULL_REQUEST.
+describe('ISS-855: the title links, and a request that links nothing says why', () => {
+  beforeEach(seedWorld);
+
+  it('opens a keyless branch titled with its keys onto those issues, in title order', async () => {
+    const opened = await open(
+      'fix/tracking-apikey-error-domain-wording',
+      null,
+      'ISS-38: tracking apikey error; ISS-18: domain wording',
+    );
+    expect(opened.projection.issueIds).toEqual([ID[38], ID[18]]);
+    expect(opened.projection.noIssue).toBeNull();
+    const linked = await rows<{ linked_by: string }>(sql`
+      SELECT l.linked_by FROM repo_pull_request_issues l
+        JOIN repo_pull_requests p ON p.id = l.pull_request_id
+       WHERE p.number = ${opened.number}`);
+    expect(linked.map((r) => r.linked_by)).toEqual(['title', 'title']);
+  });
+
+  it("a title naming another project's key, or a key in prose, links nothing and says what it read", async () => {
+    for (const title of ['Call adminhub-api ISS-11 from the widget', 'Port what ISS-37 started']) {
+      const opened = await open('chore/bump-deps', 'Bumps the client.', title);
+      expect(opened.projection.issueIds).toEqual([]);
+      expect(opened.projection.noIssue).toContain('chore/bump-deps');
+      expect(opened.projection.noIssue).toContain(title);
+    }
+  });
+
+  it('a title with no key links nothing and says so', async () => {
+    const opened = await open('chore/bump-deps', null, 'Bump deps');
+    expect(opened.projection.noIssue).toContain('linked to no issue');
   });
 });
 

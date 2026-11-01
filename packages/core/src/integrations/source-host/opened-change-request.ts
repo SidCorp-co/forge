@@ -15,6 +15,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-projection.js';
+import { forgeReads } from '../index.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
 import { linkedIssuesOfNumber } from './repo-projection.js';
 import type { OpenedChangeRequest } from './types.js';
@@ -34,10 +35,12 @@ type OpenedProjectionOutcome =
 
 interface OpenedProjectionResult {
   outcome: OpenedProjectionOutcome;
-  /** Every Forge issue the row delivers, in the order it names them: its branch's keys, then the ones its description delivers (REQ-63 BC-4). */
+  /** Every Forge issue the row delivers, in the order it names them: its branch's keys, then its title's, then the ones its description delivers (REQ-63 BC-4). */
   issueIds: string[];
-  /** The primary issue: the branch's, else the first the description delivers; null where none is linked. */
+  /** The primary issue: the branch's, else the first the title or description delivers; null where none is linked. */
   issueId: string | null;
+  /** Where it links no issue, why, named by what was read (ISS-855); null where it links one, or nothing was read back. */
+  noIssue: string | null;
   /**
    * Why there is no row — or, under `recorded`, what could not be read back after there was one.
    * Null where the row was written and read.
@@ -194,12 +197,22 @@ export async function projectOpenedPullRequest(args: {
   }
   const issueIds = row?.issueIds ?? [];
   const issueId = issueIds[0] ?? null;
+  const noIssue =
+    row && issueIds.length === 0
+      ? await forgeReads().noIssueForChangeRequest({
+          projectId: args.projectId,
+          headRef: identity.headRef,
+          title: args.opened.title ?? null,
+          description: args.description ?? null,
+        })
+      : null;
 
   if (written > 0) {
     return {
       outcome: 'recorded',
       issueIds,
       issueId,
+      noIssue,
       reason: unread === null ? null : `${unread} The row itself was written.`,
     };
   }
@@ -215,6 +228,7 @@ export async function projectOpenedPullRequest(args: {
       outcome: 'superseded',
       issueIds: [],
       issueId: null,
+      noIssue: null,
       reason:
         `Forge already holds a record of #${identity.number} on ${args.repository}, which is at least as ` +
         `new as this creation answer, so the stored one stands and nothing was overwritten. ${unread}`,
@@ -225,6 +239,7 @@ export async function projectOpenedPullRequest(args: {
       outcome: 'superseded',
       issueIds,
       issueId,
+      noIssue,
       reason:
         `Forge already holds a record of #${args.opened.number} on ${args.repository}, which is at least ` +
         'as new as this creation answer, so the stored one stands. Nothing was overwritten.',
@@ -234,6 +249,7 @@ export async function projectOpenedPullRequest(args: {
     outcome: 'not-recorded',
     issueIds: [],
     issueId: null,
+    noIssue: null,
     reason:
       `the projection writer wrote no row for #${args.opened.number} on ${args.repository} and no row for ` +
       'that number is there, which is a state this path does not otherwise produce. The pull request EXISTS ' +
