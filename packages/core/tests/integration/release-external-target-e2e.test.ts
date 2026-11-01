@@ -36,15 +36,9 @@ const reads = vi.hoisted(() => ({ n: 0 }));
 // a record that reads production is the defect under test: each reader counts and refuses
 vi.mock('../../src/release-batch/verify.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/release-batch/verify.js')>()),
-  verifyServingNow: async () => {
+  readLiveState: async () => {
     reads.n += 1;
-    throw new Error('a release record read production (verifyServingNow)');
-  },
-}));
-vi.mock('../../src/release-batch/deployment-verify.js', () => ({
-  verifyByDeploymentRecord: async () => {
-    reads.n += 1;
-    throw new Error('a release record read the deployment record');
+    throw new Error('a release record read production (readLiveState)');
   },
 }));
 

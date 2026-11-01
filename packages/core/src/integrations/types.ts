@@ -621,8 +621,7 @@ export interface IntegrationDeclaration<
     args: StorefrontTargetArgs & { workflowIds: readonly string[] },
   ) => Promise<Map<string, StorefrontDraftReading>>;
   /** What the provider serves now of every workflow, route, page, theme and setting asked, each
-   *  kind read once for all: a release on a storefront is proved by it
-   *  (`release-batch/provider-verify.ts`). */
+   *  kind read once for all (`storefront-draft-read.ts`). */
   readonly storefrontPublished?: (
     args: StorefrontTargetArgs & { ask: StorefrontServedAsk },
   ) => Promise<StorefrontServed>;

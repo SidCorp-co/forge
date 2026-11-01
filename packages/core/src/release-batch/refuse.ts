@@ -1,7 +1,6 @@
 import type { ReleaseBlockerCode, ReleaseRefusalCode } from '@forge/contracts/releases';
-import { type Refusal, RefusalError, refuser } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import { type ReleaseBlockerReport, releaseBlockerSentence } from './blocker-sentences.js';
-import type { ProviderMismatch } from './provider-verify.js';
 
 /** Every release refusal, at every door, in the one refusal envelope. */
 export const refuseRelease = refuser<ReleaseRefusalCode>('RELEASE_REFUSED');
@@ -9,45 +8,6 @@ export const refuseRelease = refuser<ReleaseRefusalCode>('RELEASE_REFUSED');
 /** One blocker, answered under its code with the sentence readiness lists it with. */
 export function blockerRefusal(code: ReleaseBlockerCode, details?: Record<string, unknown>) {
   return refuseRelease(code, releaseBlockerSentence(code, details));
-}
-
-/**
- * The probes did not agree that the release is live. The row carries the commit production was
- * found serving, which the finish record keeps beside the reason.
- */
-export function notVerifiedRefusal(reason: string, live: string | null): RefusalError {
-  const row: Refusal & { live: string | null } = {
-    code: 'RELEASE_NOT_VERIFIED',
-    path: '',
-    detail: reason,
-    live,
-  };
-  return new RefusalError([row], 'RELEASE_REFUSED');
-}
-
-/**
- * A storefront provider's report did not carry the release. The row carries each landing it did not
- * carry, with the issue, the workflow and both identities, beside the sentence naming them.
- */
-export function providerNotVerifiedRefusal(
-  reason: string,
-  mismatches: readonly ProviderMismatch[],
-): RefusalError {
-  const row: Refusal & { live: null; mismatches: readonly ProviderMismatch[] } = {
-    code: 'RELEASE_NOT_VERIFIED',
-    path: '',
-    detail: reason,
-    live: null,
-    mismatches,
-  };
-  return new RefusalError([row], 'RELEASE_REFUSED');
-}
-
-/** The commit a `RELEASE_NOT_VERIFIED` refusal found serving, or null. */
-export function liveOf(err: unknown): string | null {
-  if (!(err instanceof RefusalError)) return null;
-  const live = (err.refusals[0] as { live?: unknown } | undefined)?.live;
-  return typeof live === 'string' ? live : null;
 }
 
 /** A finish worker's hold on its attempt was taken over; it must write nothing more. */

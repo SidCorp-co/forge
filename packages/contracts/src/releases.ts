@@ -351,10 +351,9 @@ export interface ReleaseSummary
 }
 
 /**
- * How a release's close is proved: `probed` by production's source probes, `deployment` by the
- * commit production's deployment record names, `provider` by what a storefront provider reports it
- * serves against what each issue landed — workflows, routes, pages, the theme and store settings, or
- * a design approval's record (core `release-batch/provider-verify.ts`).
+ * How a release closed. `probed` (production's source probes), `deployment` (the commit production's
+ * deployment record named) and `provider` (what a storefront provider served) are how releases
+ * closed before 2026-11-01, kept as they were recorded; no release closes so since (ISS-851).
  * `recorded` is a release its agent recorded under the version it shipped (core
  * `release-batch/recorded.ts`; owner 2026-11-01, `release-is-the-agents-record`): the agent's record
  * IS the release, a complete state. `landed` is a

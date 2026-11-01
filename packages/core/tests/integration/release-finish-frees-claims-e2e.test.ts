@@ -129,7 +129,7 @@ describe('a release whose finish closed none of its roster is failed, not shippe
     await recordDeploy(runId);
     fx.serve(SERVED);
 
-    const result = await finishReleaseBatch(runId, actor(), { commit: SERVED });
+    const result = await finishReleaseBatch(runId, actor());
 
     expect(result.closed).toEqual([]);
     expect(result.failed.map((f) => f.id)).toEqual([asked]);
@@ -157,7 +157,7 @@ describe('a release that shipped lets go of what it could not close', () => {
     await recordDeploy(runId);
     fx.serve(SERVED);
 
-    const result = await finishReleaseBatch(runId, actor(), { commit: SERVED });
+    const result = await finishReleaseBatch(runId, actor());
 
     expect(result.closed).toEqual([closes]);
     expect(result.failed.map((f) => f.id)).toEqual([asked]);

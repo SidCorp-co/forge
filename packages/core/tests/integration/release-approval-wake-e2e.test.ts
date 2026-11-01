@@ -110,8 +110,9 @@ describe('a release approval decided reaches the run that asked', () => {
     expect(inbox[0]?.body).toContain(`Release approval ${approvalId} was APPROVED`);
     expect(inbox[0]?.body).toContain(`release run ${runId} are allowed now`);
     const page = await call('owner', 'GET', '/releases/0.1.0');
+    // the release closes on its agent's record: no deployment record is read (ISS-851)
     expect((page.body.release as { verifiedBy: unknown }).verifiedBy).toMatchObject({
-      kind: 'deployment',
+      kind: 'recorded',
     });
   });
 

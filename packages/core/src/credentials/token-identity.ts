@@ -18,7 +18,7 @@ export interface TokenIdentity {
   /**
    * The holder's own: a token they minted for themselves, or the access token an MCP client holds
    * on their consent. False for every token core mints to act for someone (a turn's, an agreed
-   * proposal's, a sandbox read's, a probe replay's) and for a box's or a checkout's.
+   * proposal's, a sandbox read's) and for a box's or a checkout's.
    */
   holdersOwn: boolean;
   /** The MCP client holding it, where it is an OAuth access token; null for every other token. */

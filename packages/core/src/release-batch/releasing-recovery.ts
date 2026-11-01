@@ -88,10 +88,10 @@ interface RecoverStrandedReleasingOptions {
    *  sweep's, buying a batch that promoted and cannot verify a status some door closes from
    *  (ISS-1199). */
   settlePromotedRoster?: boolean;
-  /** The release verified production serving but wrote no ship stamp, because its finish closed
-   *  none of its roster (ISS-811): what production serves is known, so the roster is let go like a
+  /** The agent recorded the release but no ship stamp was written, because its finish closed none
+   *  of its roster (ISS-811): the release is on the agent's record, so the roster is let go like a
    *  shipped release's, and each issue is told it was not closed rather than that it shipped. */
-  verifiedLive?: boolean;
+  recordedLive?: boolean;
   /** Run inside each write's own transaction before it writes; throws to stop the recovery. */
   fence?: ((tx: Tx) => Promise<void>) | undefined;
 }
@@ -202,7 +202,7 @@ export async function recoverStrandedReleasing(
   const alreadyClosed = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
   const promoted = await runRecordedPromotion(runId);
   const shipped = promoted && (await runRecordedShip(runId));
-  const known = shipped || options.verifiedLive === true;
+  const known = shipped || options.recordedLive === true;
   if (promoted && !known && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },

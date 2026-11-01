@@ -13,7 +13,6 @@ export { type Admission, admitBorn } from './admission.js';
 export { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 export {
   applyStatusTransition,
-  reopenAsItsRelease,
   transitionIssueStatus,
 } from './apply-transition.js';
 export { issueArchiveSide } from './archive.js';
@@ -53,12 +52,6 @@ export {
 export { createIssue, insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { namedCriteriaOf } from './criteria/criterion-names.js';
-export {
-  type ReplayTarget,
-  type ReplayVerdict,
-  recordReplayVerdicts,
-  replayTargetsOf,
-} from './criteria/probe-replay.js';
 export { requirementRecordingSessionOf } from './criteria/recording-session.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export { type VerdictRefusal, verdictDraftFault } from './criteria/verdict-input.js';

@@ -304,7 +304,6 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integration-door/github-connect-shared.ts URLSearchParams.toString in strandedAt
     integrations/deploy/coolify/client.ts URLSearchParams.toString in CoolifyClient
     integrations/deploy/coolify/health-probe.ts URL handed to @types/node:fetchImpl in probeHealth
-    integrations/deploy/kept-probe-request.ts Headers handed to @types/node:fetchImpl in sendKeptProbeRequest
     integrations/deploy/runtime-probe.ts URL handed to @types/node:fetchImpl in readRuntimeProbe
     integrations/github/octokit.ts URL handed to @types/node:inner in boundedFetch
     integrations/github/published-releases/fetch-release.ts URL.href in isMain

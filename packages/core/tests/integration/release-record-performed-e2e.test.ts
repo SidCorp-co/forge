@@ -8,7 +8,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
 import {
@@ -21,12 +21,6 @@ import {
   world,
 } from '../helpers/landed-world.js';
 import { seedProduction } from '../helpers/release-world.js';
-
-vi.mock('../../src/release-batch/deployment-verify.js', () => ({
-  verifyByDeploymentRecord: async () => {
-    throw new Error('a release record read the deployment record');
-  },
-}));
 
 let projectId: string;
 let token: string;

@@ -3,12 +3,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
-import { isRefusal } from '../lib/refusal.js';
-import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
+import { type ReleaseChannel, resolveReleaseChannels } from './channel.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
-import { readProbeReplay } from './probe-replay.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 import { attemptsOf } from './versions.js';
@@ -34,19 +32,20 @@ interface ReleaseRunState {
   methodUnloaded: boolean;
   /** The last finish attempt, `null` before the first `finish` call. */
   finish: ReleaseFinishRecord | null;
-  /** The kept probes the verified deploy replayed and what each did; `null` before the replay. */
+  /** The kept probes a release replayed before releases closed on the agent's record (2026-11-01);
+   *  null on every release since, which replays none. */
   probeReplay: ProbeReplayRecord | null;
 }
 
-/** The probes the close reads, or none: a refused declaration has nothing to read either. */
+/** What an earlier release recorded of its probe replay, kept as it was written. */
+function readProbeReplay(metadata: Record<string, unknown>): ProbeReplayRecord | null {
+  const value = metadata.probeReplay;
+  return value && typeof value === 'object' ? (value as ProbeReplayRecord) : null;
+}
+
+/** The probes production declares, read for this state's live line only: no close reads them. */
 function liveProbes(channels: ReleaseChannel[]): VerifyConfig | null {
-  try {
-    const verification = closeVerification(channels);
-    return verification.kind === 'probed' ? verification.cfg : null;
-  } catch (err) {
-    if (isRefusal(err, 'RELEASE_PROBES_UNREADABLE')) return null;
-    throw err;
-  }
+  return channels.find((c) => c.verify !== null)?.verify ?? null;
 }
 
 /** The run's own record of how its close is proved, stamped at create and again at the close. */

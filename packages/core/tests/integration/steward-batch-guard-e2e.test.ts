@@ -321,21 +321,6 @@ describe('the kernel refuses any reopen of a running release batch member (ISSUE
     expect(await statusOf(issue)).toBe('awaiting_release');
   });
 
-  it("lets the claiming release's own replay send it back, and no other release's", async () => {
-    const issue = await atTheGate(632);
-    const run = await batchClaims([issue]);
-    const { reopenAsItsRelease } = await import('../../src/issues/index.js');
-    const actor = { type: 'user' as const, id: ownerId, agency: 'agent' as const };
-    const reason = { transitionReason: 'The kept probe failed on the served build.' };
-
-    await expect(reopenAsItsRelease(await row(issue), randomUUID(), actor, reason)).rejects.toThrow(
-      /ISSUE_REOPEN_RELEASING/,
-    );
-    await reopenAsItsRelease(await row(issue), run, actor, reason);
-
-    expect(await statusOf(issue)).toBe('reopen');
-  });
-
   it('allows a reopen again once the batch has finished', async () => {
     const issue = await atTheGate(635);
     await batchClaims([issue], 'completed');

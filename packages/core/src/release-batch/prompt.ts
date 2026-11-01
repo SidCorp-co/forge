@@ -117,26 +117,13 @@ function renderProcedure(plan: ReleasePlan): string {
     const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
     blocks.push(`### Deploy channel notes (${named})\n${channel.instructions}`);
   }
-  const probeUrls = plan.channels.flatMap((c) => c.verify?.probes.map((p) => p.url) ?? []);
-  if (probeUrls.length > 0) {
-    const urls = probeUrls.map((u) => `- ${u}`).join('\n');
-    blocks.push(
-      `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed. \`finish\` answers at once with the attempt at \`accepted\`; the server then reads these probes itself:\n${urls}\nIt goes green when the live build matches your \`commit\` — a finish naming no commit goes green only when the live build CHANGED from what was serving when this batch opened, and is refused where nothing was recorded serving then — and then closes the roster on its own. Read the verdict with \`state\`: \`finish.state\` ends at \`finished\` or \`failed\`, and a \`failed\` one carries its \`refusal\`. A healthy site still serving the old build is a RED: at that reading the deploy had not landed, and nothing you can pass to \`finish\` works around it. A \`failed\` attempt is not the end of the batch. Once the deploy has landed — it was still coming up when the window closed, or you repaired forward and deployed again — call \`finish\` again with the commit you last pushed, which starts a new attempt. Where it will not land inside this run, the next section says what to do.`,
-    );
-  } else if (plan.channels.some((c) => c.providerRecord)) {
-    blocks.push(PROVIDER_PROOF);
-  } else if (plan.channels.length > 0) {
-    blocks.push(DEPLOYMENT_PROOF);
-  }
+  if (plan.channels.length > 0) blocks.push(RECORD_CLOSES);
   blocks.push(renderRepairForward(plan));
   return `\n${blocks.join('\n\n')}\n`;
 }
 
-const DEPLOYMENT_PROOF = `### Proof (production's deployment record)
-The production environment declares no runtime probe identifying the source, so when you call \`finish\` the server reads the commit production's own deployment record names — the finished deployment the platform reports — and closes the roster only when it is the \`commit\` you pass, the whole SHA you pushed. A finish naming no commit, a deployment that has not finished, or a platform that records no commit is refused \`RELEASE_NOT_VERIFIED\` and nothing closes. Read the verdict with \`state\`: \`finish.verification\` reads \`deployment\`.`;
-
-const PROVIDER_PROOF = `### Proof (what the storefront provider serves)
-This project's work lives on a storefront, so there is no commit to prove: when you call \`finish\` the server reads what production's provider serves now and closes the roster only when it carries every issue's landing. A workflow is carried where its published graph is the draft the issue's verdicts judged (or its mark named), or a graph first live after that; a route or page where it is live; the theme where the served theme is the one landed with every file at the sha-256 named, or a theme published after the landing that still holds each file; a store setting where it holds the value landed. An issue whose mark is only a design approval is proved by that approval's record. An artifact a mark says is carried by another issue (\`carriedBy\`) is reported carried while that issue is open and not in this release, and checked in that issue's own release; never publish another issue's work to make this release pass. A landing it does not carry, or an issue naming nothing the provider can attest, is refused \`RELEASE_NOT_VERIFIED\` naming the issue, what it landed and both identities, and nothing closes. \`commit\` is not read here. Read the verdict with \`state\`: \`finish.verification\` reads \`provider\`.`;
+const RECORD_CLOSES = `### Your finish is the release's record
+Call \`finish\` once you have watched the deploy go live: your finish is the record of this release under the version it was cut with, and it closes the roster (owner ruling 2026-11-01). The server reads no probe, no deployment record and no provider report, and replays no kept probe. Pass \`commit\`, the SHA you pushed, as your evidence: it is kept, never compared. Read the outcome with \`state\`: \`finish.verification\` reads \`recorded\`. Never call \`finish\` for a deploy you did not see land.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.

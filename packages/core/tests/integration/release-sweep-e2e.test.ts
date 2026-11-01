@@ -23,7 +23,6 @@ import {
   releaseWorld,
   seedProductionDeployTrigger,
   seedProjectDocument,
-  stubProbe,
   verdictComment,
 } from '../helpers/release-world.js';
 
@@ -263,15 +262,12 @@ describe('a finish that cannot close a roster issue does not get it cut again (I
       INSERT INTO release_attempts (run_id, stage, idempotency_key, verdict, settled_at)
       VALUES (${first}, 'deploy', ${`deploy-${first}`}, 'ok', now())
     `);
-    // production's source probe, which the world's own stub does not answer
-    const fetchBefore = globalThis.fetch;
-    stubProbe({ [PRODUCTION_PROBE]: () => Response.json({ commit: SERVING }) });
-    const finished = await finishReleaseBatch(
-      first,
-      { type: 'user', id: ownerId, agency: 'human' },
-      { commit: SERVING, probeSleep: async () => {}, stableReads: 1 },
-    );
-    vi.stubGlobal('fetch', fetchBefore);
+    // the agent's finish is the release's record: no probe is read (ISS-851)
+    const finished = await finishReleaseBatch(first, {
+      type: 'user',
+      id: ownerId,
+      agency: 'human',
+    });
     expect(finished.closed).toEqual([]);
     expect(finished.failed.map((f) => f.id)).toEqual([id]);
 

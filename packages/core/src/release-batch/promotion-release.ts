@@ -126,7 +126,6 @@ export async function cutPromotionRelease(
     gateStatus: RELEASE_GATE_STATUS,
     version,
     ownerDeadlineAt: null,
-    openedAfterRelease: false,
     verification: RECORDED_VERIFICATION,
     changeRequests: [{ number: request.number, label: me, headSha: request.headSha }],
   };

@@ -1,10 +1,11 @@
 // A release batch's finish, accepted at the door and done by a job.
 //
 // The door checks what the database can answer and writes a finish record onto
-// the run (`pipeline_runs.metadata.finish`); the job verifies the probes and
-// closes the roster. Nothing the caller does after the door answers — hanging
-// up included — changes what happens to the batch, and the verdict is read off
-// the record rather than off a response that may never arrive.
+// the run (`pipeline_runs.metadata.finish`); the job records the release on the
+// agent's word and closes the roster (owner 2026-11-01): it reads no probe.
+// Nothing the caller does after the door answers — hanging up included —
+// changes what happens to the batch, and the verdict is read off the record
+// rather than off a response that may never arrive.
 //
 // The record is the truth and the queue is only the wake-up. A worker owns an
 // attempt by a lease it renews while it works; every write is a compare-and-set
@@ -31,16 +32,9 @@ import {
   readFinishRecord,
   stamp,
 } from './finish-record.js';
-import {
-  FENCE_LOST,
-  fenceLost,
-  liveOf,
-  notVerifiedRefusal,
-  reasonOf,
-  refuseRelease,
-} from './refuse.js';
+import { RECORDED_VERIFICATION } from './recorded.js';
+import { FENCE_LOST, fenceLost, reasonOf, refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
-import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */
 const FINISH_LEASE_MS = 120_000;
@@ -55,6 +49,7 @@ export { isInFlight, type ReleaseFinishRecord, readFinishRecord } from './finish
 // ── The door ────────────────────────────────────────────────────────────────
 
 interface AcceptFinishOptions {
+  /** A commit the agent carries as evidence; kept on the record, never compared or checked. */
   commit?: string | undefined;
 }
 
@@ -70,7 +65,7 @@ type Enqueue = (runId: string) => Promise<void>;
 /**
  * Take a finish: refuse what the database can refuse, write the attempt, wake
  * the job, and answer. Its cost is a handful of reads and one write whatever
- * the roster holds and however long the probes take to agree.
+ * the roster holds.
  */
 export async function acceptReleaseBatchFinish(
   runId: string,
@@ -78,10 +73,7 @@ export async function acceptReleaseBatchFinish(
   options: AcceptFinishOptions = {},
   enqueue: Enqueue = enqueueReleaseBatchFinish,
 ): Promise<AcceptFinishResult> {
-  const commit = options.commit === undefined ? null : claimedCommit(options.commit);
-  if (options.commit !== undefined && commit === null) {
-    throw notVerifiedRefusal(notAWholeCommit(options.commit, null), null);
-  }
+  const commit = options.commit?.trim().toLowerCase() || null;
 
   for (let round = 0; round < 3; round++) {
     const run = await readReleaseRun(runId);
@@ -102,17 +94,11 @@ export async function acceptReleaseBatchFinish(
     }
     if (current?.state === 'finished') {
       if (run.status === 'running' || run.status === 'paused') await enqueue(runId);
-      // A named commit the record never verified is refused, not answered with its 200.
-      if (commit !== null && current.commit !== commit) {
-        throw refuseRelease(
-          'RELEASE_FINISHED_FOR_OTHER_COMMIT',
-          `${finishedForSentence(current.commit, commit)} Read what it recorded with GET /api/projects/${run.projectId}/release-batches/${runId}/state (\`finish\`).`,
-        );
-      }
+      // a finished batch is its record: a later commit named is evidence, compared with nothing
       return { runId, finish: current, started: false };
     }
 
-    // A run that went `completed` with nothing left claimed has nothing to verify; every other
+    // A run that went `completed` with nothing left claimed has nothing to record; every other
     // run is held to what the work itself would refuse, here, before anything is written.
     const [left] = await db
       .select({ n: sql<number>`count(*)::int` })
@@ -121,11 +107,7 @@ export async function acceptReleaseBatchFinish(
     if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) {
       // Closing the roster is the batch's last production act: the approval that let it deploy lets it close.
       await assertApprovalAllowsAttempt(runId, run.projectId);
-      const verification = await assertFinishable(runId, run);
-      const before = (run.metadata as { commitBefore?: unknown } | null)?.commitBefore;
-      if (verification.kind === 'probed' && commit === null && typeof before !== 'string') {
-        throw notVerifiedRefusal(NOTHING_TO_COMPARE, null);
-      }
+      await assertFinishable(runId, run);
     }
 
     const now = new Date().toISOString();
@@ -234,18 +216,9 @@ function leaseStands(record: ReleaseFinishRecord, now: number): boolean {
   return record.owner !== null && record.leaseUntil !== null && Date.parse(record.leaseUntil) > now;
 }
 
-/** Which commit a finished batch verified, against the one a later finish names. */
-function finishedForSentence(finishedCommit: string | null, askedCommit: string): string {
-  const verified =
-    finishedCommit === null
-      ? 'finished with no named commit, on a live build that had changed from what was serving when it opened'
-      : `finished for ${finishedCommit}`;
-  return `This batch already ${verified}, and this call names ${askedCommit}, which that finish never verified. A finished batch is not verified again, so its issues' closes say nothing about ${askedCommit}; a release of ${askedCommit} is a batch of its own.`;
-}
-
 function refusalOf(err: unknown): FinishRefusal {
   const code = refusalCodeOf(err);
-  if (code) return { code, reason: reasonOf(err), live: liveOf(err) };
+  if (code) return { code, reason: reasonOf(err), live: null };
   return {
     code: 'RELEASE_FINISH_ERRORED',
     reason: `the finish stopped on an error this code did not expect: ${err instanceof Error ? err.message : String(err)}. Nothing about the release is implied by it; call finish again to take a new attempt.`,
@@ -349,12 +322,9 @@ async function runReleaseBatchFinish(runId: string): Promise<void> {
 
   try {
     await finishReleaseBatch(runId, record.requestedBy, {
-      commit: record.commit ?? undefined,
-      alreadyVerified: record.state === 'closing' && record.verification !== 'recorded',
-      whileVerifying: () => refuseIfAborted(runId),
-      onVerified: async (verification) => {
+      onRecorded: async () => {
         await refuseIfAborted(runId);
-        await hold.commit(() => ({ state: 'closing', verification }));
+        await hold.commit(() => ({ state: 'closing', verification: RECORDED_VERIFICATION }));
       },
       fence: hold.fence,
       onRosterClosed: async (result) => {

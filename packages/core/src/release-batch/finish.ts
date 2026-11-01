@@ -1,7 +1,8 @@
-// The two ends of a release run, the only writers that end the release step: finish closes every
-// claimed issue once the probes agree and the kept probes replayed on the served build hold
-// (`probe-replay.ts`), and completes the run; abort cancels it and closes no issue. Both hand the
-// claims to `releasing-recovery.ts`.
+// The two ends of a release run, the only writers that end the release step: finish is the agent's
+// record of the release under the version the batch was cut with, closes every claimed issue and
+// completes the run; abort cancels it and closes no issue. Both hand the claims to
+// `releasing-recovery.ts`. Forge reads no probe, deployment record or provider report to close, and
+// replays no kept probe (owner ruling 2026-11-01, `release-is-the-agents-record`).
 
 import type { ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
@@ -26,30 +27,15 @@ import {
   stampAbort,
 } from './abort-stamp.js';
 import { recordCarried, refuseContradiction } from './carried.js';
-import {
-  type CloseVerification,
-  closeVerification,
-  type ReleaseVerification,
-  resolveReleaseChannels,
-} from './channel.js';
 import { refuseLostReleaseClaim } from './claim-conflicts.js';
-import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { abortBlockedHold, heldFromUnattendedCut, writeReleaseHolds } from './hold.js';
-import { replayKeptProbes } from './probe-replay.js';
-import { rosterOfRun, verifyByProviderRecord } from './provider-verify.js';
-import {
-  FENCE_LOST,
-  notVerifiedRefusal,
-  providerNotVerifiedRefusal,
-  reasonOf,
-  refuseRelease,
-} from './refuse.js';
+import { RECORDED_VERIFICATION } from './recorded.js';
+import { FENCE_LOST, reasonOf, refuseRelease } from './refuse.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
 import { openQuestionIdsOf, unclosedHold } from './unclosed-hold.js';
-import { claimedCommit, verifyDeployed } from './verify.js';
 import { lockRunVersions } from './version-store.js';
 
 interface FinishReleaseBatchResult {
@@ -58,21 +44,8 @@ interface FinishReleaseBatchResult {
 }
 
 interface FinishReleaseBatchOptions {
-  /** The commit the release says it pushed, for the probes to match against. */
-  commit?: string | undefined;
-  /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
-  alreadyVerified?: boolean | undefined;
-  whileVerifying?: (() => Promise<void>) | undefined;
-  /**
-   * The pause between two probe readings, and how many agreeing readings count as arrived. Absent,
-   * the wait is verify.ts's own (5 s) and the count is the project's `stableReads` (default 2);
-   * a test hands a no-wait sleep and one read so a probed finish does not sit through real time.
-   */
-  probeSleep?: ((ms: number) => Promise<void>) | undefined;
-  stableReads?: number | undefined;
-  /** Called once verification is green, by the probes or by the deployment record, before the
-   *  first issue closes. */
-  onVerified?: ((verification: ReleaseVerification) => Promise<void>) | undefined;
+  /** Called once the release is recorded on the agent's finish, before the first issue closes. */
+  onRecorded?: (() => Promise<void>) | undefined;
   /** Called with the roster's outcome before the claims are released, so it outlives them. */
   onRosterClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
   /**
@@ -109,14 +82,8 @@ export async function readReleaseRun(runId: string): Promise<ReleaseRunRow | und
   return run;
 }
 
-/**
- * Every refusal a finish can decide from the database alone, and how the release will be proved.
- * Nothing here makes an outbound request, so a door may call it inline.
- */
-export async function assertFinishable(
-  runId: string,
-  run: ReleaseRunRow,
-): Promise<CloseVerification> {
+/** Every refusal a finish can decide from the database alone. Nothing here makes an outbound request. */
+export async function assertFinishable(runId: string, run: ReleaseRunRow): Promise<void> {
   if (batchAborted(run)) throw await abortedError(runId);
   // A release closes its roster claiming a ship; without a version nothing can name WHICH release
   // carried these issues, so it is refused by name. `createReleaseBatch` cuts the number in the
@@ -127,8 +94,6 @@ export async function assertFinishable(
       `Release run ${runId} carries no version on its row, so it has no identity and nothing afterwards could name which release carried these issues. A release is given its version at the instant it is cut, so a run without one was never cut as a release. Abort this run and cut a new release.`,
     );
   }
-
-  return closeVerification(await resolveReleaseChannels(run.projectId));
 }
 
 interface ClaimedRow {
@@ -138,80 +103,18 @@ interface ClaimedRow {
   projectId: string;
 }
 
-/** The run carries how its close was proved, which may differ from how it opened, and the commit
- *  the verified deploy serves, which a resumed finish replays the kept probes against. */
-async function stampRunVerification(
-  runId: string,
-  kind: ReleaseVerification,
-  servedCommit: string | null,
-): Promise<void> {
-  await writeRunMetadata(runId, { merge: { verification: kind, servedCommit }, touch: false });
-}
-
-/** The whole commit a verified deploy serves: the one the finish named, else the one it read. */
-function servedCommitOf(named: string | undefined, read: string | null): string | null {
-  const claimed = named === undefined ? null : claimedCommit(named);
-  return claimed ?? (read !== null && /^[0-9a-f]{40,64}$/.test(read) ? read : null);
-}
-
-function stampedServedCommit(run: ReleaseRunRow): string | null {
-  const value = (run.metadata as { servedCommit?: unknown } | null)?.servedCommit;
-  return typeof value === 'string' ? value : null;
-}
-
 /**
- * The deploy is checked before any issue closes: against the commit by the probes where production
- * declares a source probe; against each claimed issue's landed draft by what the provider publishes
- * where the work lives on a storefront; else against the commit its deployment record names. None
- * showing it is `RELEASE_NOT_VERIFIED`, and nothing closes. Answers the commit the deploy serves,
- * or null where the verification names none (a storefront's provider record).
+ * The agent's finish is the release's record under the version the batch was cut with (owner
+ * 2026-11-01): the run is stamped `recorded` before any issue closes. Nothing is read to prove it.
  */
-export async function verifyBeforeClose(
+async function recordBeforeClose(
   runId: string,
   run: ReleaseRunRow,
   options: FinishReleaseBatchOptions,
-): Promise<string | null> {
-  const verification = await assertFinishable(runId, run);
-  // a resumed finish reads what its first attempt stamped, else the commit the finish names
-  let served = stampedServedCommit(run) ?? servedCommitOf(options.commit, null);
-  if (!options.alreadyVerified) {
-    if (verification.kind === 'probed') {
-      const meta = (run.metadata ?? {}) as Record<string, unknown>;
-      const outcome = await verifyDeployed({
-        cfg:
-          options.stableReads === undefined
-            ? verification.cfg
-            : { ...verification.cfg, stableReads: options.stableReads },
-        ...(options.probeSleep ? { sleep: options.probeSleep } : {}),
-        commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
-        expected: options.commit ?? null,
-        checkpoint: options.whileVerifying,
-      });
-      if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
-      served = servedCommitOf(options.commit, outcome.identity);
-      if (!outcome.moved) {
-        logger.warn(
-          { runId, identity: outcome.identity },
-          'release-batch: the deployment was already serving this commit when the batch opened, so this is a release recorded after the fact rather than one this batch watched arrive',
-        );
-      }
-    } else if (verification.kind === 'provider') {
-      const outcome = await verifyByProviderRecord({
-        projectId: run.projectId,
-        issueIds: await rosterOfRun(runId),
-        channel: verification.channel,
-      });
-      if (!outcome.ok) throw providerNotVerifiedRefusal(outcome.reason, outcome.mismatches);
-      served = null;
-    } else {
-      const outcome = await verifyByDeploymentRecord(run.projectId, options.commit ?? null);
-      if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
-      served = servedCommitOf(options.commit, outcome.identity);
-    }
-  }
-  await options.onVerified?.(verification.kind);
-  await stampRunVerification(runId, verification.kind, served);
-  return served;
+): Promise<void> {
+  await assertFinishable(runId, run);
+  await options.onRecorded?.();
+  await writeRunMetadata(runId, { merge: { verification: RECORDED_VERIFICATION }, touch: false });
 }
 
 /** Each claimed issue closed under the fence; one that will not close is named with its reason. */
@@ -280,31 +183,14 @@ export async function finishReleaseBatch(
   }
 
   const { fence } = options;
-  const keepOpen = new Map<string, string>();
-  if (run) {
-    const served = await verifyBeforeClose(runId, run, options);
-    const replay = await replayKeptProbes({
-      runId,
-      projectId: run.projectId,
-      served,
-      version: run.releaseVersion,
-      actor,
-      fence,
-    });
-    for (const [id, why] of replay.keepOpen) keepOpen.set(id, why);
-  }
+  if (run) await recordBeforeClose(runId, run, options);
 
-  const closing = claimed.filter((c) => !keepOpen.has(c.id));
-  const { closed, failed } = await closeRoster(closing, runId, actor, fence);
-  for (const c of claimed) {
-    const why = keepOpen.get(c.id);
-    if (why !== undefined) failed.push({ id: c.id, reason: why });
-  }
+  const { closed, failed } = await closeRoster(claimed, runId, actor, fence);
 
   await options.onRosterClosed?.({ closed, failed });
 
-  // A release whose finish closed none of its roster did not ship it: production was verified
-  // serving, but nothing here was closed into the release, so it reads `failed` and carries no ship
+  // A release whose finish closed none of its roster did not ship it: the agent recorded it, but
+  // nothing here was closed into the release, so it reads `failed` and carries no ship
   // stamp (ISS-811; agenfold's ISS-11 was the whole roster of seven releases, each stamped shipped
   // and each closing nothing). A release that closed any of its roster did ship, and what it could
   // not close is held below, so it is not cut again into the same refusal.
@@ -334,7 +220,7 @@ export async function finishReleaseBatch(
     reason: 'the release finished but this issue could not be closed',
     actorUserId: actor.type === 'user' ? actor.id : undefined,
     comment: true,
-    verifiedLive: shipsNone,
+    recordedLive: shipsNone,
     fence,
   });
   await holdUnclosed(runId, run?.releaseVersion ?? null, failed);

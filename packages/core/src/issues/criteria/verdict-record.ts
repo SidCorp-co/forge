@@ -333,8 +333,6 @@ export async function recordVerdict(
     run?: string | undefined;
     /** The recording session a door already resolved; given, `run` is not read. */
     runSession?: string | null | undefined;
-    /** False where the door moves the issue itself on a fail (a release's probe replay). */
-    reopens?: boolean;
   },
 ): Promise<{
   id: string;
@@ -463,7 +461,7 @@ export async function recordVerdict(
   const commitSha = identity.identityKind === 'commit' ? (identity.commitSha ?? null) : null;
   const runtimeRef = identity.identityKind === 'runtime' ? (identity.runtimeRef ?? null) : null;
   const failed =
-    draft.verdict === 'fail' && args.reopens !== false
+    draft.verdict === 'fail'
       ? {
           criterion: draft.criterion,
           requirement: null,

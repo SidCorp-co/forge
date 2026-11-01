@@ -18,7 +18,6 @@ export type {
   CoolifySecrets,
   CoolifyTarget,
 } from './coolify/types.js';
-export { type KeptProbeRequest, sendKeptProbeRequest } from './kept-probe-request.js';
 export type {
   DeployAdapter,
   DeploymentRecord,

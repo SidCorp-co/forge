@@ -45,8 +45,8 @@
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
  *   on_hold, reopen    a reason                                                  TRANSITION_REASON_REQUIRED
- *   reopen, from       no running release batch claims it, but the claiming      ISSUE_REOPEN_RELEASING
- *   awaiting_release   release's own probe replay (`release-claim-guard.ts`)
+ *   reopen, from       no running release batch claims it                        ISSUE_REOPEN_RELEASING
+ *   awaiting_release   (`release-claim-guard.ts`)
  *   awaiting_release,  back the way it came: a requirement-level fail reopened  REOPEN_NOT_BY_REQUIREMENT_FAIL,
  *   closed, from       it from this status and is routed past it now            ILLEGAL_TRANSITION,
  *   reopen             (`fail-return.ts`, ISS-760); to closed, a design-only     REOPEN_CRITERIA_NOT_PASSING,
@@ -441,8 +441,6 @@ function entryGuardsOf(to: IssueStatus): readonly string[] {
 type IssueGuardContext = Omit<GuardContext, 'from' | 'to' | 'executor'> & {
   /** The run a recovery move hands the issue back from: its own hold is the one ending. */
   recoveringRunId?: string | null | undefined;
-  /** The release whose own probe replay sends a member back (`apply-transition.ts:reopenAsItsRelease`). */
-  releaseReplayRunId?: string | null | undefined;
   /** Where the `fail_routed` guard leaves the note its move posts, once it lets the move go back. */
   failReturned?: { note: string | null } | undefined;
 };
@@ -491,8 +489,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
     filing_released: async (input) =>
       refusalOf(await filingReleasedGuard(ctxOf(input), base.facts.filing ?? null)),
-    not_releasing: (input) =>
-      releaseClaimRefusal(input.tx, input.row.id, base.releaseReplayRunId ?? null),
+    not_releasing: (input) => releaseClaimRefusal(input.tx, input.row.id),
     // back the way a requirement-level fail's reopen came (ISS-760); the edge to `closed` is also a
     // design-only issue's close from `reopen`, answered as from any other live status
     fail_routed: async (input) => {

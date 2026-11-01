@@ -22,7 +22,7 @@ import { projectCreatorOf } from '../projects/index.js';
 import { requestApproval } from './approvals.js';
 import { admitRoster } from './blockers.js';
 import { label, mergeOrderOf, openChangeRequestsOf } from './change-request-roster.js';
-import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
+import { resolveReleasePlan } from './channel.js';
 import { claimRoster } from './claim-conflicts.js';
 import { assertDeclaredGate, gateAtProduction } from './declared-gate.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -32,10 +32,10 @@ import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { cutPromotionRelease } from './promotion-release.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
+import { RECORDED_VERIFICATION } from './recorded.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
-import { liveCarriesRoster, readLiveCommit } from './verify.js';
 import { cutReleaseVersion } from './version-store.js';
 
 interface CreateReleaseBatchArgs {
@@ -61,16 +61,9 @@ export interface CreateReleaseBatchResult {
   /** When this batch must have an owner, or it is cancelled and its roster handed back; null where
    *  it runs no job and waits on its approval instead. */
   ownerDeadlineAt: string | null;
-  /**
-   * Whether what was already serving when this batch opened carries a roster issue's merge — so
-   * this release shipped before the batch recording it existed, and its finish will be earned by
-   * identity rather than by a transition. Said here and not at the fifth finish (ISS-1199).
-   */
-  openedAfterRelease: boolean;
-  /** `deployment` where production declares no source probe: its deployment record must name the commit;
-   *  `provider` where the work lives on a storefront whose provider reports what it publishes;
-   *  `recorded` on a promotion, closed by the agent's record of its deploy (ISS-851). */
-  verification: ReleaseVerification | 'merged' | 'recorded';
+  /** `recorded`: the release closes on its agent's record, its finish or its deploy's record
+   *  (owner 2026-11-01); `merged` on a release that merges change requests. */
+  verification: 'merged' | typeof RECORDED_VERIFICATION;
   /** The change requests the release merges, in its order; absent on a release that deploys. */
   changeRequests?: { number: number; label: string; headSha: string }[];
 }
@@ -252,23 +245,15 @@ export async function createReleaseBatch(
   await assertDeclaredGate(projectId, gateAtProduction(decl));
   const { defaultBranch, promotePlanned } = releaseBranches(decl.path);
   const deployPlanned = plan.channels.length > 0;
-  const verification = closeVerification(plan.channels);
-  const commitBefore =
-    verification.kind === 'probed' ? await readLiveCommit(verification.cfg) : null;
 
   const issueRows = await db
     .select({
       id: issues.id,
       issSeq: issues.issSeq,
       title: issues.title,
-      mergedCommitSha: issues.mergedCommitSha,
     })
     .from(issues)
     .where(inArray(issues.id, issueIds));
-  const openedAfterRelease = liveCarriesRoster(
-    commitBefore,
-    issueRows.map((r) => r.mergedCommitSha),
-  );
 
   const { run, version } = await openClaimedRun({
     projectId,
@@ -279,9 +264,7 @@ export async function createReleaseBatch(
       issueIds,
       deployPlanned,
       promotePlanned,
-      commitBefore,
-      openedAfterRelease,
-      verification: verification.kind,
+      verification: RECORDED_VERIFICATION,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
       ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
     },
@@ -319,8 +302,7 @@ export async function createReleaseBatch(
     gateStatus,
     version,
     ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
-    openedAfterRelease,
-    verification: verification.kind,
+    verification: RECORDED_VERIFICATION,
   };
 }
 
@@ -393,7 +375,6 @@ async function cutChangeRequestRelease(
     gateStatus: RELEASE_GATE_STATUS,
     version,
     ownerDeadlineAt: null,
-    openedAfterRelease: false,
     verification: 'merged',
     changeRequests: steps.map((s) => ({
       number: s.number,

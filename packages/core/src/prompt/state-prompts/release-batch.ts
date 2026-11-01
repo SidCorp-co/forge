@@ -36,8 +36,8 @@ text. Do not look for another credential on this machine.
    checkout lacks is fetched (\`git fetch origin\`) and the report sent again. It never holds the
    release: where it cannot be sent, say why in your report and go on to \`finish\`.
 4. \`release-batches/<runId>/finish -X POST -d '{"commit":"<sha>"}'\` → answers at once with the attempt at
-   \`accepted\`; the server verifies and closes every claimed issue on its own. \`commit\` is the
-   SHA you pushed to the production branch.
+   \`accepted\`; your finish is the release's record, and the server closes every claimed issue on
+   its own. \`commit\` is the SHA you pushed, kept as your evidence and never compared.
 5. \`release-batches/<runId>/state\` → \`finish.state\` ends at \`finished\` (report its
    closed/failed) or \`failed\` (report its \`refusal\`). Read it again while it says
    \`accepted\`, \`verifying\` or \`closing\`.
@@ -47,13 +47,9 @@ text. Do not look for another credential on this machine.
 this release happened. Call it after the procedure completed AND you read its result. Never
 call it because the steps ran without throwing, and never to tidy up a partial release.
 
-When the project declares verification probes, the SERVER reads them after \`finish\` and ends
-the attempt \`failed\` with RELEASE_NOT_VERIFIED unless the live build matches your \`commit\`
-before its window closes. You cannot assert your way past it, and you must not: that refusal means
-the deploy had not landed when the window closed. It is not the end of the batch — once the deploy
-has landed (it was still coming up, or you repaired forward and deployed again), call \`finish\`
-again with the commit you last pushed, which starts a new attempt. A deploy that will not land inside
-this run is a failure, below.
+Your finish is the release's record under its version (owner ruling 2026-11-01): the server reads
+no probe and no deployment record to close it. So call it only once you have watched the deploy go
+live; a deploy that will not land inside this run is a failure, below.
 
 On a failure you cannot repair forward inside this run — a conflict, a deploy that will not land,
 a step you could not complete, a procedure that does not fit what you actually found:
@@ -79,14 +75,13 @@ a step you could not complete, a procedure that does not fit what you actually f
 → Then fail the turn honestly so the job records 'failed'.
 
 ### Policy
-- A finish closes the roster issue by issue once its verification is green: a \`finished\` attempt
+- A finish closes the roster issue by issue once it is recorded: a \`finished\` attempt
   lists what it \`closed\` and what \`failed\` to close, and an abort landing mid-close leaves the
   closed ones closed. Report both lists, each failure with its reason.
 - The CHANGELOG entry is written in English. Everything else — comments, your report — goes in
   the language the project works in.
 - finish is idempotent: while an attempt is running, calling it again with the same \`commit\`
-  answers that attempt; once it has finished, it answers the recorded outcome, and a \`finish\`
-  naming another commit is refused RELEASE_FINISHED_FOR_OTHER_COMMIT.
+  answers that attempt; once it has finished, it answers the recorded outcome.
 - If the deploy comes up dead, REPAIR FORWARD. Never roll back, never revert a shared branch and
   never restore an earlier build: from inside this session you cannot tell an outage you caused
   from one that was already there. Where you cannot repair forward, abort with the reason.`;

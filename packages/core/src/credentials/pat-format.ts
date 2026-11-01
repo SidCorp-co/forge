@@ -81,16 +81,6 @@ const SCRIPT_READ_NAME_PREFIX = 'script read ';
 export const scriptReadTokenName = (at: Date, nonce: string) =>
   `${SCRIPT_READ_NAME_PREFIX}${at.toISOString()} ${nonce}`;
 
-const PROBE_REPLAY_NAME_PREFIX = 'probe replay ';
-
-/**
- * The token one release run replays kept probes under, as its requester
- * (`release-batch/probe-replay.ts`): read-only, fenced to the project, sent only to this Forge's own
- * origin, and revoked when the replay ends.
- */
-export const probeReplayTokenName = (at: Date, nonce: string) =>
-  `${PROBE_REPLAY_NAME_PREFIX}${at.toISOString()} ${nonce}`;
-
 const STEWARD_NAME_PREFIX = 'steward ';
 
 /**
@@ -146,7 +136,6 @@ const CORE_NAME_PREFIXES = [
   TURN_DEFAULT_NAME_PREFIX,
   AGREEMENT_NAME_PREFIX,
   SCRIPT_READ_NAME_PREFIX,
-  PROBE_REPLAY_NAME_PREFIX,
   STEWARD_NAME_PREFIX,
   MCP_OAUTH_NAME_PREFIX,
 ];
