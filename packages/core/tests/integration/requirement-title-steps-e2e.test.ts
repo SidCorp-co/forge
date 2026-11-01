@@ -16,6 +16,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
+import { readyForDelivery } from '../helpers/steward-checked.js';
 
 let projectId: string;
 let adminId: string;
@@ -194,6 +195,7 @@ describe('the author is told at every step change (BC-21)', () => {
     });
     const { consumerOf } = await import('../../src/outbox/consumers.js');
     expect(consumerOf('issue.transitioned', 'notify-requirement-step')).toBeUndefined();
+    await readyForDelivery(projectId, key);
     const moved = await on(admin, 'POST', `/requirements/${key}/start-delivery`, {});
     expect(moved.status, JSON.stringify(moved.body)).toBe(200);
     await deliver('requirement.transitioned', 'notify-requirements', id);

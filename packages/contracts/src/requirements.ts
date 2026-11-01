@@ -10,6 +10,7 @@ import {
 	type EntityCommentView,
 	REASON_TEXT_MAX,
 } from "./comments.js";
+import type { RequirementDeliveryCheck } from "./delivery-check.js";
 import type {
 	FeedbackKind,
 	FeedbackPhase,
@@ -840,6 +841,10 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NOT_DROPPABLE",
 	/** The move into delivery: no live issue is linked to it. */
 	"REQUIREMENT_NO_LIVE_ISSUE",
+	/** A question about it is still open: delivery waits on its answer (REQ-67 BC-4, BC-5). */
+	"REQUIREMENT_QUESTION_OPEN",
+	/** The steward has not finished a check of it since its head was agreed (REQ-67 BC-1, BC-3). */
+	"REQUIREMENT_UNCHECKED",
 	/** The move to delivered: a live criterion has no pass on the running build. */
 	"REQUIREMENT_CRITERIA_UNPROVEN",
 	"REQUIREMENT_DECISION_REASON_REQUIRED",
@@ -1256,6 +1261,8 @@ export interface RequirementDetail extends RequirementSummary {
 	questions: RequirementQuestionView[];
 	/** How many of `questions` are open: what is still unclear. */
 	unclear: number;
+	/** What holds its move into delivery (REQ-67): read while it is agreed, null at any other status. */
+	deliveryCheck: RequirementDeliveryCheck | null;
 }
 
 export interface RequirementContractRequest {

@@ -33,6 +33,10 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_HOLD_BLOCKER_UNKNOWN",
 	"QUESTION_ABOUT_UNKNOWN",
 	"QUESTION_ABOUT_NO_REQUIREMENT",
+	/** `{feedback: null}` on an issue that carries no feedback item, or several (name it by key). */
+	"QUESTION_ABOUT_NO_FEEDBACK",
+	/** A question a delivery run asks on an issue that delivers a requirement or carries feedback names it in `about` (REQ-67 BC-5). */
+	"QUESTION_ABOUT_REQUIRED",
 	"QUESTION_ABOUT_ON_MERGE_WAIT",
 	/** A park waiting on a design revision's decision: the approver's decision answers it, never a business answer. */
 	"QUESTION_ABOUT_ON_DESIGN_WAIT",
@@ -138,8 +142,9 @@ export type AnswerResume = AnswerOutcome & { at: string };
  * It is not `requirementId`: that column is the BA clarification link and moves the question to the
  * requirement's operational surface, while `about` keeps the question where it was asked (its issue,
  * or no issue at all) and only lists it on the requirement it names, whose page records its answer
- * as a decision. A contract is `<project>/<contract>`. A feedback item is named only by the steward's
- * decision about it (REQ-48 BC-5): `feedbackId` is a reporter's clarification, which this is not.
+ * as a decision. A contract is `<project>/<contract>`. A feedback item is named by the steward's
+ * decision about it (REQ-48 BC-5) and by a delivery run's question about it (REQ-67 BC-5), whose
+ * answer is recorded on it as a decision: `feedbackId` is a reporter's clarification, which this is not.
  */
 export type QuestionAbout =
 	| { kind: "requirement"; requirementId: string }
@@ -149,11 +154,13 @@ export type QuestionAbout =
 /**
  * `about` on an ask body. `{ requirement }` names a requirement by key (REQ-n) or uuid; on a question
  * asked on an issue it may be left out (`{ requirement: null }`), which names the requirement the
- * issue delivers. `{ contract }` names `<project>/<contract>`, a contract this project publishes or
- * consumes. Core never reads it from the prompt's prose.
+ * issue delivers. `{ feedback }` names a feedback item by key (FB-n) or uuid, or the one the asking
+ * issue carries (`{ feedback: null }`), REQ-67 BC-5. `{ contract }` names `<project>/<contract>`, a
+ * contract this project publishes or consumes. Core never reads it from the prompt's prose.
  */
 export const questionAboutRequestSchema = z.union([
 	z.strictObject({ requirement: z.string().trim().min(1).max(200).nullable() }),
+	z.strictObject({ feedback: z.string().trim().min(1).max(200).nullable() }),
 	z.strictObject({
 		contract: z
 			.string()
@@ -171,7 +178,7 @@ export type QuestionAboutRequest = z.infer<typeof questionAboutRequestSchema>;
  * (`QUESTION_ABOUT_SHAPE`): a bare `"REQ-n"` names nothing until it sits under `requirement`.
  */
 export const QUESTION_ABOUT_SHAPE_SENTENCE =
-	'`about` is an object naming one thing: {"requirement":"REQ-n"} (a requirement key or uuid), {"requirement":null} (the requirement the asking issue delivers), or {"contract":"<project>/<contract>"}; never a bare string';
+	'`about` is an object naming one thing: {"requirement":"REQ-n"} (a requirement key or uuid), {"requirement":null} (the requirement the asking issue delivers), {"feedback":"FB-n"} (a feedback item key or uuid), {"feedback":null} (the feedback item the asking issue carries), or {"contract":"<project>/<contract>"}; never a bare string';
 
 /**
  * What a question is about, as every read a person answers it from names it (`subject`): a requirement

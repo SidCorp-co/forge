@@ -7536,6 +7536,27 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "feedback": {
+                            "anyOf": [
+                              {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "feedback"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "contract": {
                             "pattern": "^[a-z][a-z0-9-]{0,62}\\/[a-z][a-z0-9-]{0,62}$",
                             "type": "string"
@@ -15998,6 +16019,27 @@
                         },
                         "required": [
                           "requirement"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "feedback": {
+                            "anyOf": [
+                              {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "feedback"
                         ],
                         "type": "object"
                       },
@@ -52622,6 +52664,27 @@
                         },
                         "required": [
                           "requirement"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "feedback": {
+                            "anyOf": [
+                              {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "feedback"
                         ],
                         "type": "object"
                       },

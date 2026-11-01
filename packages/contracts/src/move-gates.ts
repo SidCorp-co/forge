@@ -12,6 +12,7 @@ import { DESIGN_RECORD_INCOMPLETE, DESIGN_RECORD_MISSING } from "./issue-design.
 import { MACHINES, type MachineEntity } from "./machines.js";
 import { PATTERN_ENTRY_MISSING, PATTERN_RETURNED, PATTERN_REVIEW_PENDING } from "./patterns.js";
 import {
+	REQUIREMENT_CHECKED_GUARD,
 	REQUIREMENT_CRITERIA_PROVEN_GUARD,
 	REQUIREMENT_HAS_LIVE_ISSUE_GUARD,
 } from "./requirement-machine.js";
@@ -91,6 +92,14 @@ export const MOVE_CHECKS = defineMoveChecks([
 		gates: { machine: "requirement", from: ["agreed"], to: "in_delivery" },
 		guard: REQUIREMENT_HAS_LIVE_ISSUE_GUARD,
 		codes: ["REQUIREMENT_NO_LIVE_ISSUE"],
+	},
+	{
+		id: "requirement_checked",
+		title: "Checked before delivery",
+		version: 1,
+		gates: { machine: "requirement", from: ["agreed"], to: "in_delivery" },
+		guard: REQUIREMENT_CHECKED_GUARD,
+		codes: ["REQUIREMENT_QUESTION_OPEN", "REQUIREMENT_UNCHECKED"],
 	},
 	{
 		id: "requirement_proven",

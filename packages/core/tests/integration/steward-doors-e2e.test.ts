@@ -281,7 +281,7 @@ describe('a requirement comment is deleted by its author or a project.write hold
     expect(await left(asked)).toBe(1);
   });
 
-  it("undoes the steward's intake question and its brief through the delete door", async () => {
+  it("undoes the steward's intake question by its void and its brief through the delete door", async () => {
     resetScript();
     script.steps = [
       {
@@ -309,7 +309,13 @@ describe('a requirement comment is deleted by its author or a project.write hold
     const out = await actAs('intake_check', { kind: 'requirement', ...req });
     expect(out).toMatchObject({ refused: [], error: null });
     expect(out.acts).toHaveLength(2);
-    for (const actId of out.acts) {
+    // ISS-688: the ask is a question about the requirement, undone by voiding it
+    const [askId, ...briefs] = out.acts;
+    const [ask] = await actRow(askId ?? '');
+    expect(ask?.undo?.door).toMatch(/^POST \/api\/questions\/[0-9a-f-]{36}\/void$/);
+    const voided = await say('member', 'POST', at(`/steward-acts/${askId}/undo`));
+    expect(voided.status, JSON.stringify(voided.json)).toBe(200);
+    for (const actId of briefs) {
       const [act] = await actRow(actId);
       expect(act?.undo?.door).toMatch(
         new RegExp(

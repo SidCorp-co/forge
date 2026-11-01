@@ -30,6 +30,7 @@ import { refuser } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { emitEvent, emitEvents } from '../outbox/index.js';
 import { holds, type PermissionFacts } from '../permissions/index.js';
+import { refuseAboutMissing } from './about-feedback.js';
 import { refuseAboutOnWait, resolveAbout } from './ask-about.js';
 import {
   type AwaitedDesign,
@@ -236,6 +237,7 @@ export async function insertAskedQuestion(executor: QuestionExecutor, input: Ask
   await refuseFinishedWork(executor, input.issueId);
   refuseAboutOnWait(input);
   const blockerKind = await owedBlockerOf(input);
+  await refuseAboutMissing(executor, { ...input, blockerKind });
   const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
   return insertQuestion(executor, { ...input, blockerKind }, about);
 }
@@ -266,6 +268,7 @@ export async function askParkQuestion(
     );
   }
   refuseAboutOnWait(input);
+  await refuseAboutMissing(executor, { ...input, blockerKind: 'human' });
   let needed = input.needed?.trim() ?? '';
   let prompt = input.prompt;
   if (input.awaitsDesign) {

@@ -42,6 +42,7 @@ import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { questionViewsOf } from './clarity.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
+import { deliveryCheckIn, stewardOn } from './delivery-check.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
 import { type IssueNaming, issueNamingOf, namedIssue } from './issue-projects.js';
@@ -343,6 +344,7 @@ export async function detailOf(
     traces,
     contracts,
     pictures,
+    deliveryCheck,
   ] = await Promise.all([
     detailRowsOf(row.id),
     activeIssuePrefix(row.projectId),
@@ -355,6 +357,9 @@ export async function detailOf(
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
     pictureRowsOf(row.id),
+    row.status === 'agreed'
+      ? stewardOn(row.projectId).then((owed) => deliveryCheckIn(db, row, owed))
+      : null,
   ]);
   const [bindings, request, questions] = await Promise.all([
     latestBaselineBindingsOf(db, baselines, pins).then((b) =>
@@ -428,6 +433,7 @@ export async function detailOf(
     bindings,
     questions,
     unclear: questions.filter((q) => q.status === 'open').length,
+    deliveryCheck,
   };
 }
 

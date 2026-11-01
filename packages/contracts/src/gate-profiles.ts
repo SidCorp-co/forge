@@ -289,6 +289,18 @@ export const GATE_CATALOG = defineGates([
 		relaxed: "advise moves it on, each gap recorded as waived",
 	},
 	{
+		// REQ-67 (ISS-688): the questions are the steward's, asked of the master, never a person's
+		// paper, so standard keeps it; yolo starts delivery unchecked
+		id: "requirement_checked",
+		title: "Checked before delivery",
+		refuses: "starting a requirement's delivery with a question about it open, or before the steward checked it",
+		codes: ["REQUIREMENT_QUESTION_OPEN", "REQUIREMENT_UNCHECKED"],
+		at: "requirement agreed → in_delivery",
+		modes: ENFORCE_OFF,
+		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		relaxed: "off: delivery starts with its questions open and its check unread",
+	},
+	{
 		id: "requirement_acceptance",
 		title: "Acceptance checklist",
 		refuses: "accepting a delivered requirement with a criterion unproven",

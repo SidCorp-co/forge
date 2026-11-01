@@ -176,15 +176,21 @@ A question only a person can answer parks the issue:
 A question about what the business wants — a rule, who may do what, a contract's shape — belongs to
 the requirement, not to this issue. Ask it first, naming what it is about:
 \`POST /api/questions\` \`{ issueId, prompt, options, recommendedOptionId, about }\`, \`about\` being
-always one of three objects: \`{ requirement: null }\` for the requirement this issue delivers,
-\`{ requirement: 'REQ-n' }\` for another by its key or id, or \`{ contract: '<project>/<contract>' }\`.
+always one object: \`{ requirement: null }\` for the requirement this issue delivers,
+\`{ requirement: 'REQ-n' }\` for another by its key or id, \`{ feedback: null }\` for the feedback
+item this issue carries, \`{ feedback: 'FB-n' }\` for one by its key or id, or
+\`{ contract: '<project>/<contract>' }\`. On an issue that delivers a requirement or carries
+feedback, a question a person owes is always asked about that item: one with no \`about\` is refused
+\`QUESTION_ABOUT_REQUIRED\` naming it, the waits on a merge mark or a design decision aside, so it is
+listed on the item and answered there, never parked on the issue alone (REQ-67 BC-5).
 A bare \`'REQ-n'\` or any other shape is refused \`QUESTION_ABOUT_SHAPE\`. Then park with \`needs\`
 left out, and the park waits on that question. A question asked in words needs no second call: the
 park takes the same \`about\` beside \`needs\`, and the question it mints carries it. Either way it
 stays on this issue, is listed on the requirement, names it to the person answering, and its answer
 is recorded there as a decision. An \`about\` naming nothing is \`QUESTION_ABOUT_UNKNOWN\`;
 \`{ requirement: null }\` on an issue that delivers no requirement is
-\`QUESTION_ABOUT_NO_REQUIREMENT\`. A business question that stands on no issue is asked with
+\`QUESTION_ABOUT_NO_REQUIREMENT\`, and \`{ feedback: null }\` on one carrying no item, or several, is
+\`QUESTION_ABOUT_NO_FEEDBACK\`. A business question that stands on no issue is asked with
 \`projectId\` in place of \`issueId\` and \`about\` naming the requirement by its key or the contract;
 it is listed on that requirement and on Needs you, and its answer is recorded there as a decision.
 On no issue, \`{ requirement: null }\` names nothing (\`QUESTION_ABOUT_NO_REQUIREMENT\`), and a

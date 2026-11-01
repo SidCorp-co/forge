@@ -11,7 +11,7 @@ import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { IssueDependencyExecutor } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
-import { feedbackAbout } from './about-feedback.js';
+import { feedbackAbout, feedbackAboutRequest } from './about-feedback.js';
 import type { AwaitedDesign } from './design-wait.js';
 import type { AwaitedMerge } from './merge-wait.js';
 import { contractAboutRefusal, requirementIdIn } from './ports.js';
@@ -55,6 +55,7 @@ export async function resolveAbout(
   about: QuestionAboutRequest | { feedbackId: string },
 ): Promise<QuestionAbout> {
   if ('feedbackId' in about) return feedbackAbout(executor, input.projectId, about.feedbackId);
+  if ('feedback' in about) return feedbackAboutRequest(executor, input, about.feedback);
   if ('contract' in about) {
     const refusal = await contractAboutRefusal(input.projectId, about.contract);
     if (refusal) throw refuse('QUESTION_ABOUT_UNKNOWN', refusal, '/about/contract');

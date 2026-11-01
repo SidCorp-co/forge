@@ -72,8 +72,13 @@ pub struct AskArgs {
     #[arg(long, value_name = "REQ-N", conflicts_with = "contract")]
     pub requirement: Option<String>,
     /// The contract a business question is about, `<project>/<contract>`.
-    #[arg(long, value_name = "PROJECT/CONTRACT")]
+    #[arg(long, value_name = "PROJECT/CONTRACT", conflicts_with = "feedback")]
     pub contract: Option<String>,
+    /// The feedback item a question is about, by key (FB-n) or id: a question
+    /// a run raises on an issue that carries feedback is asked about the item,
+    /// listed on it and its answer recorded there as a decision (REQ-67 BC-5).
+    #[arg(long, value_name = "FB-N", conflicts_with = "requirement")]
+    pub feedback: Option<String>,
     /// The run this question belongs to. Minted where absent, and printed
     /// either way, because the answer is served back only under it.
     #[arg(long)]
@@ -266,10 +271,11 @@ async fn send_ask(
 /// refuses one naming nothing (`QUESTION_ABOUT_UNKNOWN`), so that rule has one
 /// authority and its wording reaches the caller unaltered.
 fn about_of(a: &AskArgs) -> Option<serde_json::Value> {
-    match (a.requirement.as_deref(), a.contract.as_deref()) {
-        (Some(r), _) => Some(serde_json::json!({ "requirement": r })),
-        (None, Some(c)) => Some(serde_json::json!({ "contract": c })),
-        (None, None) => None,
+    match (a.requirement.as_deref(), a.contract.as_deref(), a.feedback.as_deref()) {
+        (Some(r), _, _) => Some(serde_json::json!({ "requirement": r })),
+        (None, Some(c), _) => Some(serde_json::json!({ "contract": c })),
+        (None, None, Some(f)) => Some(serde_json::json!({ "feedback": f })),
+        (None, None, None) => None,
     }
 }
 
@@ -369,10 +375,11 @@ fn asked(
 
 /// What the question is about, as the line after an ask names it.
 fn subject_of(a: &AskArgs) -> Option<String> {
-    match (a.requirement.as_deref(), a.contract.as_deref()) {
-        (Some(r), _) => Some(format!("requirement {}", r.trim())),
-        (None, Some(c)) => Some(format!("contract {}", c.trim())),
-        (None, None) => None,
+    match (a.requirement.as_deref(), a.contract.as_deref(), a.feedback.as_deref()) {
+        (Some(r), _, _) => Some(format!("requirement {}", r.trim())),
+        (None, Some(c), _) => Some(format!("contract {}", c.trim())),
+        (None, None, Some(f)) => Some(format!("feedback item {}", f.trim())),
+        (None, None, None) => None,
     }
 }
 
@@ -445,6 +452,7 @@ mod tests {
             issue: None,
             requirement: None,
             contract: None,
+            feedback: None,
             run: None,
             blocker: "human".into(),
             authority: "writer".into(),
@@ -513,6 +521,21 @@ mod tests {
         let line = asked("q1", "r1", None, subject_of(&a), None);
         assert!(line.contains("about requirement REQ-74"), "{line}");
         assert!(line.contains("Needs you"), "{line}");
+    }
+
+    #[test]
+    fn a_feedback_ask_sends_the_item_as_its_about() {
+        let a = ask_line(&["--issue", "ISS-9", "--feedback", "FB-12", "--needs", "which"]).unwrap();
+        assert_eq!(about_of(&a), Some(serde_json::json!({ "feedback": "FB-12" })));
+        assert_eq!(subject_of(&a).as_deref(), Some("feedback item FB-12"));
+    }
+
+    #[test]
+    fn a_feedback_and_a_requirement_together_are_refused_by_name() {
+        let err = ask_line(&["--requirement", "REQ-1", "--feedback", "FB-2", "--needs", "x"])
+            .err()
+            .expect("refused");
+        assert!(err.to_string().contains("--feedback"), "{err}");
     }
 
     #[test]

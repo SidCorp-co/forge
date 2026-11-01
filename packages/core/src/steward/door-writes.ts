@@ -1,4 +1,4 @@
-// The steward's write doors (REQ-48 BC-2..BC-7): ask, comment, reject a breakdown, move an issue,
+// The steward's write doors (REQ-48 BC-2..BC-7): ask (`door-ask.ts`), comment, reject a breakdown, move an issue,
 // ask whoever owes an act (`door-wake.ts`) and write the note, each one existing door and each logged
 // with how it is undone.
 
@@ -11,6 +11,7 @@ import {
 } from '@forge/contracts/steward';
 import { z } from 'zod';
 import type { StewardUndo } from '../db/schema-steward-runs.js';
+import { ASK } from './door-ask.js';
 import { type DoorRequest, doorName, refusalCodeOfAnswer } from './door-call.js';
 import { DECIDE } from './door-decide.js';
 import {
@@ -29,71 +30,6 @@ import { PREPARE } from './door-prepare.js';
 import { WAKE } from './door-wake.js';
 import { noteWriteOf } from './note.js';
 import { openStandings } from './ports.js';
-
-const optionsParam = z
-  .array(
-    z.strictObject({
-      id: z.string().trim().min(1).max(40),
-      label: z.string().trim().min(1).max(200),
-    }),
-  )
-  .min(2)
-  .max(4);
-
-/**
- * What a content question may be about: a requirement. A stuck item's question, an issue's, a
- * requirement's or a feedback item's, is a decision with Forge's own options: `steward_decide`'s.
- */
-const askAbout = key
-  .superRefine((value, ctx) => {
-    if (/^REQ-\d+$/i.test(value)) return;
-    ctx.addIssue({
-      code: 'custom',
-      message: /^FB-\d+$/i.test(value)
-        ? `${value} is a feedback item: its question is a decision with Forge's own options, asked with steward_decide about ${value.toUpperCase()} (keep or decline it while nobody triages it; verify, reopen or keep a shipped fix).`
-        : `${value} is no requirement: a question about an issue is a decision with Forge's own options, asked with steward_decide.`,
-    });
-  })
-  .describe('REQ-n: the requirement the question is about');
-
-const askParams = z.strictObject({
-  about: askAbout,
-  prompt: z.string().trim().min(10).max(2000),
-  options: optionsParam,
-  recommended: z.string().trim().min(1).max(40).describe('the id of the option you recommend'),
-});
-
-const ASK: DoorSpec<z.infer<typeof askParams>> = {
-  name: 'steward_ask',
-  describe:
-    "Ask a requirement's author one question about what it says, with 2-4 options and the one you recommend: a question comment on the requirement.",
-  params: askParams,
-  write: true,
-  async call(args, ctx) {
-    const choices = args.options.map((o) => `${o.id}: ${o.label}`).join('; ');
-    const sent = await send(
-      {
-        method: 'POST',
-        path: `/api/projects/${ctx.projectId}/requirements/${args.about}/comments`,
-        body: {
-          intent: 'question',
-          body: `${args.prompt}\n\nOptions: ${choices}. Recommended: ${args.recommended}.`,
-        },
-      },
-      ctx,
-    );
-    const comment = sent.answer.json?.comment as { id?: unknown } | undefined;
-    return {
-      ...sent,
-      act: {
-        door: doorName(sent.request),
-        did: `Asked on ${args.about}: ${args.prompt}`,
-        wrote: cite('comment', comment?.id),
-        undo: requirementCommentUndo(ctx, args.about, comment?.id),
-      },
-    };
-  },
-};
 
 const commentRequirementParams = z.strictObject({
   requirement: key,

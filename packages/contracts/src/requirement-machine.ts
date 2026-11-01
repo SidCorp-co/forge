@@ -18,12 +18,19 @@ import { defineMachine, fromEach } from "./state-machine.js";
 
 /** The guard of agreed → in_delivery: a live issue is linked (REQUIREMENT_NO_LIVE_ISSUE). */
 export const REQUIREMENT_HAS_LIVE_ISSUE_GUARD = "requirement_has_live_issue";
+/**
+ * The guard of agreed → in_delivery: the delivery check holds nothing (REQ-67): no question about it
+ * open, and the steward's check finished since its head was agreed where the steward is on
+ * (REQUIREMENT_QUESTION_OPEN, REQUIREMENT_UNCHECKED; `delivery-check.ts`). A gap it finds goes back
+ * as one of those questions, never as a refusal of its own.
+ */
+export const REQUIREMENT_CHECKED_GUARD = "requirement_checked";
 /** The guard of in_delivery → delivered: every live criterion passes on the running build (REQUIREMENT_CRITERIA_UNPROVEN). */
 export const REQUIREMENT_CRITERIA_PROVEN_GUARD = "requirement_criteria_proven";
 
 export const REQUIREMENT_MACHINE = defineMachine({
 	entity: "requirement",
-	shapes: ["7bf2075a", "96abf038", "4befa9c4", "5a00cd50", "e8899387", "2b612d32"],
+	shapes: ["7bf2075a", "96abf038", "4befa9c4", "5a00cd50", "e8899387", "2b612d32", "b6c2417d"],
 	design: { flow: "requirement-lifecycle", revision: 11 },
 	states: REQUIREMENT_STATUSES,
 	initial: ["draft"],
@@ -32,7 +39,7 @@ export const REQUIREMENT_MACHINE = defineMachine({
 	edges: [
 		// approvals.agree and approvals.accept off (the default): project.write moves them (REQ-4 BC-16 r6)
 		{ from: "draft", to: "agreed", act: "requirement.agreed", permission: "requirements.approve", personGate: "agree", guards: [CHECKLIST_GUARD], checklist: REQUIREMENT_READY_CHECKLIST.id },
-		{ from: "agreed", to: "in_delivery", act: "requirement.deliveryStarted", permission: "requirements.approve", personGate: "accept", guards: [REQUIREMENT_HAS_LIVE_ISSUE_GUARD] },
+		{ from: "agreed", to: "in_delivery", act: "requirement.deliveryStarted", permission: "requirements.approve", personGate: "accept", guards: [REQUIREMENT_HAS_LIVE_ISSUE_GUARD, REQUIREMENT_CHECKED_GUARD] },
 		{ from: "in_delivery", to: "delivered", act: "requirement.delivered", permission: "requirements.approve", personGate: "accept", guards: [REQUIREMENT_CRITERIA_PROVEN_GUARD] },
 		// accepted from any delivering status, judged by the acceptance checklist; an accept by
 		// decision waives its blocking items, each recorded on the move

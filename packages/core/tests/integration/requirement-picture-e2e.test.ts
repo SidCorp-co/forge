@@ -18,6 +18,7 @@ import {
   pictureDoors,
   TABLE,
 } from '../helpers/requirement-picture-world.js';
+import { readyForDelivery } from '../helpers/steward-checked.js';
 
 const w = openPictureWorld();
 const { as, read, requirement, revision, history, picture, kindOf, agreeR1, ready } =
@@ -229,6 +230,7 @@ describe('no picture gates the requirement (criterion 5)', () => {
     await seedIssueStatus(filed.issue_id, 'closed');
     // moved by its acts, never read off the evidence (REQ-74 BC-8)
     expect((await read(key)).status).toBe('agreed');
+    await readyForDelivery(w.projectId, key);
     ok(await as('owner', 'POST', `/requirements/${key}/start-delivery`, {}));
     ok(await as('owner', 'POST', `/requirements/${key}/mark-delivered`, {}));
     expect((await read(key)).status).toBe('delivered');

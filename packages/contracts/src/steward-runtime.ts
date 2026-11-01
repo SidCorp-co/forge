@@ -48,6 +48,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 	intake_check: [
 		"steward_read_item",
 		"steward_read_standings",
+		"steward_list_requirements",
 		"steward_read_requirement",
 		"steward_ask",
 		"steward_comment_requirement",
@@ -57,8 +58,10 @@ export const STEWARD_ACT_DOORS: Readonly<
 	breakdown_check: [
 		"steward_read_item",
 		"steward_read_standings",
+		"steward_list_requirements",
 		"steward_read_requirement",
 		"steward_read_suggestion",
+		"steward_ask",
 		"steward_reject_breakdown",
 		"steward_write_note",
 		"steward_raise_lesson_confusion",

@@ -30,6 +30,7 @@ import {
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import { enforceGates } from '../helpers/project-controls.js';
+import { readyForDelivery } from '../helpers/steward-checked.js';
 
 const JUDGED = 'a'.repeat(40);
 
@@ -138,6 +139,7 @@ describe('a delivery whose pass nobody could check against the live build', () =
   });
 
   it('refuses the move to delivered while production cannot be read, naming the criterion', async () => {
+    await readyForDelivery(projectId, req);
     ok(await say('POST', `/requirements/${req}/start-delivery`, {}));
     const refused = await say('POST', `/requirements/${req}/mark-delivered`, {});
     expect(refused.status).toBe(422);
