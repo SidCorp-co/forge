@@ -331,18 +331,20 @@ describe('a landing recorded before Forge versioned recorded landings', () => {
   });
 });
 
-describe('a project with a production environment records as it did', () => {
-  it('reads the deployment record, never the landing', async () => {
+describe('a project with a production environment records the release its agent names', () => {
+  it('records the version its agent names, never the landing (ISS-851)', async () => {
     await seedProduction({ projectId, ownerId, probes: 'none' });
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, F4);
 
-    const res = await record([issue], F4);
-
-    expect(res.status).toBe(422);
-    const codes = refusalsOf(res.body).map((r) => r.code);
-    expect(codes).toEqual(['RELEASE_NOT_VERIFIED']);
+    const unnamed = await record([issue], F4);
+    expect(refusalsOf(unnamed.body).map((r) => r.code)).toEqual(['RELEASE_VERSION_MISSING']);
     expect(await statusOf(issue)).toBe('awaiting_release');
+
+    const res = await record([issue], F4, { version: 'v2.0.0' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ version: '2.0.0', verification: 'unverified' });
+    expect(await statusOf(issue)).toBe('closed');
   });
 });
 

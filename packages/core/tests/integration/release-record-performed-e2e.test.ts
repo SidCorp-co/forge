@@ -1,13 +1,10 @@
 /**
  * A release performed by hand on a project with production, recorded through
- * `POST /api/projects/:id/release-records` (`release-batch/recorded.ts:recordPerformedRelease`), is a
- * release that happened now: it takes the next version through the one rule
- * (`version-store.ts:cutReleaseVersion`), writes `metadata.versionCut` beside it, and the Releases
- * list shows it as any other release. Before this it opened a run with no version, which no page
- * could list and no later cut counted (coordinator ruling, 2026-10-27).
- *
- * What production serves is read from its deployment record; that reader is planted here to agree
- * with the claimed commit, since the subject is the version the record takes, not the read.
+ * `POST /api/projects/:id/release-records` (`release-batch/recorded.ts:recordPerformedRelease`), is
+ * the agent's record under the version it shipped (owner ruling 2026-11-01,
+ * `release-is-the-agents-record`): the run wears that version, `metadata.versionCut` says it was
+ * `given`, and the Releases list shows it as any other release. Forge reads nothing of production to
+ * accept it, so the deployment record reader is planted to fail if anything calls it.
  */
 
 import { sql } from 'drizzle-orm';
@@ -25,20 +22,10 @@ import {
 } from '../helpers/landed-world.js';
 import { seedProduction } from '../helpers/release-world.js';
 
-vi.mock('../../src/release-batch/ancestry-source.js', async (importOriginal) => {
-  const { reader } = await import('../helpers/landed-history.js');
-  return {
-    ...(await importOriginal<typeof import('../../src/release-batch/ancestry-source.js')>()),
-    ancestrySourceFor: async () => ({ kind: 'box', why: 'the planted box', reader }),
-  };
-});
-
 vi.mock('../../src/release-batch/deployment-verify.js', () => ({
-  verifyByDeploymentRecord: async (_projectId: string, expected: string) => ({
-    ok: true,
-    identity: expected,
-    readings: [`${expected} at the planted deployment record`],
-  }),
+  verifyByDeploymentRecord: async () => {
+    throw new Error('a release record read the deployment record');
+  },
 }));
 
 let projectId: string;
@@ -50,12 +37,15 @@ beforeEach(async () => {
   await seedProduction({ projectId, ownerId: world.ownerId, probes: 'none' });
 });
 
-async function performed(seq: number): Promise<{ runId: string; version: unknown }> {
+async function performed(
+  seq: number,
+  version: string,
+): Promise<{ runId: string; version: unknown }> {
   const issue = await landedIssue(seq, F4);
   await judgedAll(issue, F4);
-  const res = await record([issue], F4);
+  const res = await record([issue], F4, { version });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
-  expect(res.body).toMatchObject({ verification: 'deployment', closed: [issue], failed: [] });
+  expect(res.body).toMatchObject({ verification: 'unverified', closed: [issue], failed: [] });
   return { runId: String(res.body.runId), version: res.body.version };
 }
 
@@ -66,15 +56,17 @@ const versionCutOf = async (runId: string) => {
   return row;
 };
 
-describe('a release performed by hand takes a version as any release does', () => {
+describe('a release performed by hand wears the version its agent recorded', () => {
   it('appears on the list with its version and the rule that gave it', async () => {
-    const { runId, version } = await performed(1);
+    const { runId, version } = await performed(1, 'v0.1.0');
 
     expect(version).toBe('0.1.0');
     expect(await versionCutOf(runId)).toMatchObject({
       release_version: '0.1.0',
-      cut: { decided: 'first', attempt: 1 },
+      cut: { decided: 'given', attempt: 1 },
     });
+    const page0 = await ok(api(token, 'GET', `/api/projects/${projectId}/releases/0.1.0`));
+    expect(JSON.stringify(page0)).toContain('"given"');
     const list = await ok(api(token, 'GET', `/api/projects/${projectId}/releases`));
     expect(list.releases).toMatchObject([{ version: '0.1.0', state: 'shipped' }]);
     const page = await api(token, 'GET', `/api/projects/${projectId}/releases/0.1.0`);
@@ -82,8 +74,8 @@ describe('a release performed by hand takes a version as any release does', () =
   });
 
   it('never shares a number with a second one, and the next cut takes the number after both', async () => {
-    const first = await performed(1);
-    const second = await performed(2);
+    const first = await performed(1, '0.1.0');
+    const second = await performed(2, '0.2.0');
 
     expect([first.version, second.version]).toEqual(['0.1.0', '0.2.0']);
 

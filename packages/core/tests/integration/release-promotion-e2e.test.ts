@@ -161,9 +161,11 @@ const cutNaming = (issueIds: string[], request?: number) =>
     ...(request === undefined ? {} : { promotion: { request } }),
   });
 
-const record = (issueIds: string[], commit = DEPLOYED) =>
+/** The agent's record of the deploy, under the version the release was cut as (ISS-851). */
+const record = (issueIds: string[], version: string, commit = DEPLOYED) =>
   call('POST', '/release-records', {
     issueIds,
+    version,
     commit,
     account: 'Deployed release/production through forge-ops (k8s rollout adminhub-api).',
   });
@@ -192,7 +194,7 @@ describe('BC-9: an external production with one declared promotion is a release 
     expect(cut.status, JSON.stringify(cut.body)).toBe(201);
     expect(cut.body).toMatchObject({
       jobId: null,
-      verification: 'deployment',
+      verification: 'unverified',
       changeRequests: [{ number: 5053, label: '!5053', headSha: HEAD }],
     });
     expect(planted.compares).toBe(0);
@@ -319,7 +321,7 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
     );
     expect(codeOf(early.body), JSON.stringify(early.body)).toBe('RELEASE_MERGE_NOT_APPROVED');
 
-    const unmerged = await record(ids);
+    const unmerged = await record(ids, version);
     expect(codeOf(unmerged.body), JSON.stringify(unmerged.body)).toBe('RELEASE_PROMOTION_UNMERGED');
 
     await mergedOnHost(5053);
@@ -328,12 +330,15 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
       (seen.body.release as { promotion: { state: string; mergeCommitSha: string } }).promotion,
     ).toMatchObject({ state: 'merged', mergeCommitSha: MERGE });
 
-    const partial = await record([ids[0] as string]);
+    const partial = await record([ids[0] as string], version);
     expect(codeOf(partial.body)).toBe('RELEASE_PROMOTION_ROSTER');
 
-    const closed = await record(ids);
+    const other = await record(ids, '9.9.9');
+    expect(codeOf(other.body)).toBe('RELEASE_RECORD_VERSION_MISMATCH');
+
+    const closed = await record(ids, `v${version}`);
     expect(closed.status, JSON.stringify(closed.body)).toBe(201);
-    expect(closed.body).toMatchObject({ version, verification: 'deployment', failed: [] });
+    expect(closed.body).toMatchObject({ version, verification: 'unverified', failed: [] });
     const statuses = await rows<{ status: string }>(
       sql`SELECT status FROM issues WHERE project_id = ${world.projectId} ORDER BY iss_seq`,
     );
@@ -350,7 +355,7 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
     const ids = await landedIssues();
     await promotionRequest(5053, HEAD);
     await mergedOnHost(5053);
-    const refused = await record(ids);
+    const refused = await record(ids, '0.1.0');
     expect(codeOf(refused.body), JSON.stringify(refused.body)).toBe('RELEASE_PROMOTION_MISSING');
     expect(JSON.stringify(refused.body)).toContain('promotion: { request: <number> }');
   });
@@ -419,7 +424,7 @@ describe('ISS-762: a promotion already merged is cut as merged and asks nothing 
     );
     expect(approvals[0]?.n).toBe(0);
 
-    const closed = await record(ids, merge);
+    const closed = await record(ids, String(cut.body.version), merge);
     expect(closed.status, JSON.stringify(closed.body)).toBe(201);
     expect(closed.body).toMatchObject({ failed: [] });
     const statuses = await rows<{ status: string }>(
@@ -433,8 +438,9 @@ describe('ISS-762: a promotion already merged is cut as merged and asks nothing 
     const ids = await landedIssues();
     await promotionRequest(1023, HEAD);
     await mergedOnHost(1023, MERGE);
-    expect((await cutNaming(ids, 1023)).status).toBe(201);
-    expect((await record(ids, MERGE)).status).toBe(201);
+    const taken = await cutNaming(ids, 1023);
+    expect(taken.status).toBe(201);
+    expect((await record(ids, String(taken.body.version), MERGE)).status).toBe(201);
 
     const later = (await landedIssues(['f7'.repeat(20)], 2)).at(0) as string;
     const readiness = await call('GET', '/release-readiness');

@@ -173,9 +173,10 @@ const hostReportsMerge = () =>
     head: null,
   });
 
-const recordDeploy = (issueIds: string[]) =>
+const recordDeploy = (issueIds: string[], version: string) =>
   call('POST', '/release-records', {
     issueIds,
+    version,
     commit: DEPLOYED,
     account: 'Deployed release/production through forge-ops (k8s rollout adminhub-api).',
   });
@@ -272,7 +273,7 @@ describe('a promotion release tags the promotion merge the moment Forge sees it 
     });
 
     // the operator deploys from that merge and records it: the tag was already there
-    const closed = await recordDeploy(ids);
+    const closed = await recordDeploy(ids, version);
     expect(closed.status, JSON.stringify(closed.body)).toBe(201);
     await settleOutbox();
     expect(planted.writes).toEqual([{ name: `v${version}`, sha: MERGE }]);

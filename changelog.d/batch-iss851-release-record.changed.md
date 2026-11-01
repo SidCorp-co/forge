@@ -1,0 +1,1 @@
+**A release is the agent's record under its version.** `POST /api/projects/:id/release-records` takes `{ issueIds, version, account }` and closes the roster with no probe or commit; a production deployed outside Forge declares only its `deployment.target`.
