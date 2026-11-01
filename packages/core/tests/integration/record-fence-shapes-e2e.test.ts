@@ -124,3 +124,59 @@ describe('a tag line written above its fence', () => {
     expect(await stored()).toEqual({ comments: 1, verdicts: [1, 2] });
   });
 });
+
+// ISS-786 (FB-380): a qa run's four single-fence verdicts on an in_progress issue whose merged mark
+// was observed were each accepted, and `forge resume` read every criterion as none
+describe('one verdict fence, its tag line after the close, on an in_progress issue (ISS-786)', () => {
+  const single = (n: number) => [
+    `${FENCE}forge-record`,
+    `criterion: ${n}`,
+    'verdict: pass',
+    `commit: ${JUDGED}`,
+    'run: 0d3a0c3e-1111-4222-8333-944455556666',
+    'evidence: https://ci.example.test/runs/7',
+    'why: held on the served build',
+    FENCE,
+    'forge-record: verdict · contract 1',
+  ];
+
+  // a status is written only at insert outside the kernel transition, so the issue is made as it stood
+  beforeEach(async () => {
+    const [moved] = await rows<{ id: string }>(sql`
+      INSERT INTO issues (project_id, title, created_by_id, status, merged_at, merged_commit_sha)
+      SELECT project_id, 'judged in progress', created_by_id, 'in_progress', now(), ${JUDGED}
+        FROM issues WHERE id = ${issueId}
+      RETURNING id`);
+    issueId = String(moved?.id);
+    await rows(sql`
+      INSERT INTO issue_criteria (issue_id, n, statement, position)
+      VALUES (${issueId}, 1, 'one holds', 0), (${issueId}, 2, 'two holds', 1)`);
+  });
+
+  it('records the verdict on its criterion, and its kernel record beside the comment', async () => {
+    for (const n of [1, 2]) {
+      const res = await comment(single(n));
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+    }
+    expect(await stored()).toEqual({ comments: 2, verdicts: [1, 2] });
+    const [kernel] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM activity_log
+       WHERE issue_id = ${issueId} AND action = 'record.verdict'`);
+    expect(Number(kernel?.n)).toBe(2);
+  });
+
+  it('refuses a verdict fence that names no criterion, by name, and stores nothing', async () => {
+    const res = await comment([
+      `${FENCE}forge-record`,
+      'verdict: pass',
+      `commit: ${JUDGED}`,
+      'why: the criterion line was left out',
+      FENCE,
+      'forge-record: verdict · contract 1',
+    ]);
+    expect(res.status).toBe(422);
+    expect(detailOf(res)).toContain('rule VERDICT_RECORD_EMPTY');
+    expect(detailOf(res)).toContain('nothing was stored');
+    expect(await stored()).toEqual({ comments: 0, verdicts: [] });
+  });
+});

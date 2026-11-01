@@ -227,7 +227,6 @@ describe('a comment carrying several record fences (ISS-608)', () => {
     const res = await post(body);
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(warnings(res).filter((w) => w.startsWith('VERDICT_RECORD_EMPTY'))).toEqual([]);
     expect(await verdictsByCriterion()).toEqual([1, 2, 3]);
   });
 

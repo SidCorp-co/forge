@@ -59,6 +59,9 @@ record to `parseAll`. adminhub-api ISS-49 (FB-380) shows it:
 - Core's requirement coverage names why none counts yet: the production build declares no source
   probe, so whether it holds commit `6369aae6d` cannot be read.
 
+- **Core's half (shipped, ISS-786):** this shape records on an `in_progress` issue whose merge
+  was observed (`record-fence-shapes-e2e`). A verdict fence naming no criterion is refused
+  `VERDICT_RECORD_EMPTY` with its comment, never accepted unrecorded.
 - **Plugin's half:** match the tag per line (`m`), as `FIRST_TAG` already does.
 
 ## The legacy status ladder

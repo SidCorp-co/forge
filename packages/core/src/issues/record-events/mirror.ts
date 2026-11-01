@@ -8,6 +8,7 @@ import { isKernelOnlyRecordKind, isRecordEventKind } from '@forge/contracts/reco
 import { and, eq } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
+import { messageRefused } from '../../messaging/contract.js';
 import { readForgeRecords } from '../../messaging/forge-record.js';
 import { fenceNamed } from '../../messaging/record-screen.js';
 import type { Actor } from '../activity.js';
@@ -23,10 +24,25 @@ interface MirroredComment {
   readonly createdAt: Date;
 }
 
+/** The shape a verdict fence is read in, quoted by the refusal of one that names no criterion. */
+const VERDICT_SHAPE =
+  'a `verdict` fence holds one block per criterion: `criterion: <n>`, then `verdict: pass | short | fail | skipped` and what it was judged against (`commit:` or `runtime:`)';
+const VERDICT_EXAMPLE = [
+  '```forge-record',
+  'criterion: 1',
+  'verdict: pass',
+  'commit: 3641ba21fec5096e2d1a91a40f2d9e50e9239068',
+  'evidence: judge-log.txt',
+  '```',
+  'forge-record: verdict · contract 1',
+].join('\n');
+
 /**
  * Write the event a comment's record stands for, or return the warning owed where it is stored as
- * prose only: a kind outside the set, a kind core writes, or a verdict fence naming none (a fence
- * naming no kind is refused at the door, `messaging/record-screen.ts:untaggedFenceRefusal`).
+ * prose only: a kind outside the set or a kind core writes (a fence naming no kind is refused at the
+ * door, `messaging/record-screen.ts:untaggedFenceRefusal`). A verdict fence that names no criterion
+ * block is refused, the comment with it (ISS-786): a verdict accepted and never recorded reads as
+ * judged to whoever posted it and as unjudged to every gate.
  * A comment holding several fences reaches here only where every one is a verdict
  * (`comments/screen.ts:screenRecordFence`), and each one is recorded (ISS-608).
  */
@@ -49,12 +65,20 @@ export async function mirrorCommentRecord(
       actor,
       commentId: comment.id,
     });
-    return reads
-      .filter((_, at) => written[at] === 0)
-      .map(
-        ({ index }) =>
-          `VERDICT_RECORD_EMPTY: ${fenceNamed(index, of)}this comment's \`forge-record: verdict\` names no criterion with a verdict, so no verdict was recorded from it and no gate will read one — write \`criterion: <n>\` and \`verdict: pass | short | fail | skipped\` in each block, or record it with \`POST /api/issues/:id/verdicts\``,
+    const empty = reads.filter((_, at) => written[at] === 0);
+    if (empty.length > 0) {
+      throw messageRefused(
+        'comment-write',
+        empty.map(({ index }) => ({
+          rule: 'VERDICT_RECORD_EMPTY',
+          why: `${fenceNamed(index, of)}this \`forge-record: verdict\` names no criterion with a verdict, so no verdict would be recorded from it and no gate would read one; nothing was stored. Write \`criterion: <n>\` and \`verdict: pass | short | fail | skipped\` in each block, or record it with \`POST /api/issues/:id/verdicts\``,
+          quote: '```forge-record',
+          shape: VERDICT_SHAPE,
+          example: VERDICT_EXAMPLE,
+        })),
       );
+    }
+    return [];
   }
   if (!isRecordEventKind(record.kind)) {
     const named = record.kind ? `kind \`${record.kind}\`` : 'no kind';
