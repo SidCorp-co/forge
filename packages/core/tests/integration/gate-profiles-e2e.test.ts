@@ -210,7 +210,10 @@ describe('BC-3 and BC-12: a profile and one override, set through their door and
 });
 
 describe('BC-4: yolo opens an issue over its gaps', () => {
-  it('opens an issue with no requirement and no criteria, recording each gap as advice; standard refuses it', async () => {
+  it('opens an issue with no requirement and no criteria, recording each gap as advice; strict refuses it', async () => {
+    // ISS-845: standard admits an issue on its minimum (title, description, kind); the full
+    // checklist is strict's, so the refusal is read there
+    expect((await setGates(owner, { profile: 'strict' })).status).toBe(200);
     const held = await issueAt('draft');
     const refused = await api(owner, 'POST', `/api/issues/${held}/transition`, {
       toStatus: 'open',
@@ -218,7 +221,7 @@ describe('BC-4: yolo opens an issue over its gaps', () => {
     expect(refused.status).toBe(422);
     expect(codes(refused)).toEqual(['CHECKLIST_INCOMPLETE', 'CHECKLIST_INCOMPLETE']);
     expect(JSON.stringify(refused.body)).toContain(
-      "Gate issue_ready is enforced by this project's gate profile standard (gates.profile)",
+      "Gate issue_ready is enforced by this project's gate profile strict (gates.profile)",
     );
 
     expect((await setGates(owner, { profile: 'yolo' })).status).toBe(200);
@@ -232,8 +235,8 @@ describe('BC-4: yolo opens an issue over its gaps', () => {
        WHERE entity = 'issue' AND entity_id = ${id} AND to_status = 'open'
     `);
     const waived = (move?.answers ?? []).filter((a) => a.provenance === 'waived');
+    // ISS-845: outside strict criteria are written after admission, so only the requirement gap is waived
     expect(waived.map((a) => `${a.question} ${a.source}`).sort()).toEqual([
-      'criteria gate:issue_ready:yolo',
       'requirement gate:issue_ready:yolo',
     ]);
   });
@@ -260,7 +263,9 @@ describe('BC-5: yolo agrees a requirement over its checklist gaps', () => {
     return key;
   }
 
-  it('standard refuses the gaps naming the gate; yolo agrees and keeps them as advice', async () => {
+  it('strict refuses the gaps naming the gate; yolo agrees and keeps them as advice', async () => {
+    // ISS-845: the requirement checklist advises under standard; strict is where it refuses
+    expect((await setGates(owner, { profile: 'strict' })).status).toBe(200);
     const first = await currentRequirement();
     const refused = await api(
       owner,
@@ -316,15 +321,14 @@ describe('BC-10: the kernel holds under yolo', () => {
     const kernel = await setGates(owner, { profile: 'yolo', overrides: { merged: 'off' } });
     expect(codes(kernel)).toEqual(['GATE_UNKNOWN']);
     expect(JSON.stringify(kernel.body)).toContain('no profile or override relaxes it');
-    // ISS-809: the declared validation gate is a kernel rule too, in every mode
-    for (const mode of ['off', 'advise']) {
-      const declared = await setGates(owner, {
-        profile: 'yolo',
-        overrides: { declared_gate: mode },
-      });
-      expect(codes(declared), mode).toEqual(['GATE_UNKNOWN']);
-      expect(JSON.stringify(declared.body)).toContain('declared_gate');
-    }
+    // REQ-79 r6 BC-12/16 (ISS-845): the declared validation gate is a gate now, enforced by strict
+    // and advising elsewhere; it takes no `off`, so a red check is always recorded as debt
+    const declaredOff = await setGates(owner, {
+      profile: 'yolo',
+      overrides: { declared_gate: 'off' },
+    });
+    expect(codes(declaredOff)).toEqual(['GATE_MODE_UNSUPPORTED']);
+    expect(JSON.stringify(declaredOff.body)).toContain('declared_gate');
     const triage = await setGates(owner, {
       profile: 'yolo',
       overrides: { feedback_triage: 'off' },
