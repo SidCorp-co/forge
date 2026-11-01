@@ -10,11 +10,13 @@ export function verifiedSentence(v: ReleaseVerified, t: Copy): string {
   // the criteria were counted on the build the project's testing environment serves (REQ-36 BC-18)
   const head = v.judgedOn && v.total > 0 ? t("releases.verified.onEnvironment", { head: level, environment: v.judgedOn }) : level;
   if (v.check === "landed") return `${head}, ${t("releases.verified.landed")}`;
-  if (v.level === "deploy_only" || v.level === "none" || v.check === null || v.check === "unverified") return head;
+  // the agent's record is the release (owner, 2026-11-01): a complete state, never "not verified"
+  if (v.check === "recorded") return v.total > 0 ? `${head}, ${t("releases.verified.recorded").toLowerCase()}` : t("releases.verified.recorded");
+  if (v.level === "deploy_only" || v.level === "none" || v.check === null) return head;
   return `${head}, ${t("releases.verified.andDeploy", { how: deployCheck(v.check, v.provider, t) })}`;
 }
 
-function deployCheck(check: Exclude<RecordedReleaseVerification, "unverified" | "landed">, provider: string | null, t: Copy): string {
+function deployCheck(check: Exclude<RecordedReleaseVerification, "recorded" | "landed">, provider: string | null, t: Copy): string {
   if (check !== "provider") return t(`releases.verifiedBy.${check}`).toLowerCase();
   return provider ? t("releases.verified.byNamedProvider", { provider }) : t("releases.verified.byProvider");
 }

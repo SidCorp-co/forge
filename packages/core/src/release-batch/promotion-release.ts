@@ -17,7 +17,7 @@ import { label, type ReleaseMergeStep } from './change-request-roster.js';
 import { assertDeclaredGate } from './declared-gate.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
-import { admissibleIssues, closeRecorded, writeLedger } from './recorded.js';
+import { admissibleIssues, closeRecorded, RECORDED_VERIFICATION, writeLedger } from './recorded.js';
 import { refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
 
@@ -94,8 +94,8 @@ export async function cutPromotionRelease(
       issueIds,
       deployPlanned: false,
       promotePlanned: false,
-      // closed by the agent's record of the deploy, which Forge reads nothing to prove (ISS-851)
-      verification: 'unverified',
+      // closed by the agent's record of the deploy, which is the release (ISS-851)
+      verification: RECORDED_VERIFICATION,
       changeRequests: [step],
       promotion,
     },
@@ -127,7 +127,7 @@ export async function cutPromotionRelease(
     version,
     ownerDeadlineAt: null,
     openedAfterRelease: false,
-    verification: 'unverified' as const,
+    verification: RECORDED_VERIFICATION,
     changeRequests: [{ number: request.number, label: me, headSha: request.headSha }],
   };
 }
@@ -278,16 +278,14 @@ export async function recordPromotionRelease(
   }
   // owed when the merge was seen; a merge Forge never heard of before this record owes it here
   await oweReleaseTag(run.id, request.mergeCommitSha, 'promotion');
-  const readings = [
-    `recorded by its agent as ${run.version}${commit ? ` at ${commit}` : ''}; Forge read no deploy`,
-  ];
+  const readings = [`recorded by its agent as ${run.version}${commit ? ` at ${commit}` : ''}`];
   const providerRef = sent.providerRef ?? null;
   await writeLedger(run.id, {
     commit,
     outcome: { identity: null, readings, health: null },
     account,
     providerRef,
-    how: 'unverified',
+    how: RECORDED_VERIFICATION,
     version: run.version,
   });
   const issuesOf = await admissibleIssues(projectId, roster);
@@ -311,7 +309,7 @@ export async function recordPromotionRelease(
     commit,
     identity: null,
     readings,
-    verification: 'unverified' as const,
+    verification: RECORDED_VERIFICATION,
     closed,
     failed,
     issues: issuesOf,

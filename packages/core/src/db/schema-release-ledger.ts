@@ -35,9 +35,9 @@ export const releaseAttempts = pgTable(
     providerRef: text('provider_ref'),
     health: text('health').$type<'up' | 'down'>(),
     identity: text('identity'),
-    /** Core's verdict. NULL until the act reports back; `unverified` where no probe was declared
-     *  to read, which is neither a pass nor a red (ISS-1321). */
-    verdict: text('verdict').$type<'ok' | 'failed' | 'unverified'>(),
+    /** Core's verdict. NULL until the act reports back; `recorded` where the agent's record is the
+     *  release (ISS-851, owner 2026-11-01), a complete state. */
+    verdict: text('verdict').$type<'ok' | 'failed' | 'recorded'>(),
     /** Why the verdict, in core's words. */
     verdictReason: text('verdict_reason'),
     /** One line per probe, in declaration order, whatever the outcome. */
@@ -58,7 +58,7 @@ export const releaseAttempts = pgTable(
     ),
     verdictChk: check(
       'release_attempts_verdict_chk',
-      sql`${t.verdict} IS NULL OR ${t.verdict} IN ('ok', 'failed', 'unverified')`,
+      sql`${t.verdict} IS NULL OR ${t.verdict} IN ('ok', 'failed', 'recorded')`,
     ),
     healthChk: check(
       'release_attempts_health_chk',

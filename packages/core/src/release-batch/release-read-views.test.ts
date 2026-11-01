@@ -232,9 +232,9 @@ describe('what a release says it verified', () => {
     expect(summaryOf(part(1, []), autoflow).verified.provider).toBeNull();
   });
 
-  it('says nothing was verified with no criterion and no recorded check, or an unverified close', () => {
+  it('says nothing was verified with no criterion and no recorded check, or a release its agent recorded', () => {
     expect(summaryOf(shippedPart(1, null), shared(1)).verified.level).toBe('none');
-    expect(summaryOf(shippedPart(1, 'unverified'), shared(1)).verified.level).toBe('none');
+    expect(summaryOf(shippedPart(1, 'recorded'), shared(1)).verified.level).toBe('none');
   });
 
   it('counts proven criteria: every one proven, or some of them', () => {

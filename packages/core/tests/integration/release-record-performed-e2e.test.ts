@@ -45,7 +45,7 @@ async function performed(
   await judgedAll(issue, F4);
   const res = await record([issue], F4, { version });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
-  expect(res.body).toMatchObject({ verification: 'unverified', closed: [issue], failed: [] });
+  expect(res.body).toMatchObject({ verification: 'recorded', closed: [issue], failed: [] });
   return { runId: String(res.body.runId), version: res.body.version };
 }
 

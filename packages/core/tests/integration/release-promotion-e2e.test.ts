@@ -194,7 +194,7 @@ describe('BC-9: an external production with one declared promotion is a release 
     expect(cut.status, JSON.stringify(cut.body)).toBe(201);
     expect(cut.body).toMatchObject({
       jobId: null,
-      verification: 'unverified',
+      verification: 'recorded',
       changeRequests: [{ number: 5053, label: '!5053', headSha: HEAD }],
     });
     expect(planted.compares).toBe(0);
@@ -338,7 +338,7 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
 
     const closed = await record(ids, `v${version}`);
     expect(closed.status, JSON.stringify(closed.body)).toBe(201);
-    expect(closed.body).toMatchObject({ version, verification: 'unverified', failed: [] });
+    expect(closed.body).toMatchObject({ version, verification: 'recorded', failed: [] });
     const statuses = await rows<{ status: string }>(
       sql`SELECT status FROM issues WHERE project_id = ${world.projectId} ORDER BY iss_seq`,
     );

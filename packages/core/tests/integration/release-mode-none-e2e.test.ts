@@ -393,7 +393,7 @@ describe('a project with a production environment records the release its agent 
 
     const res = await record([issue], F4, { version: 'v2.0.0' });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body).toMatchObject({ version: '2.0.0', verification: 'unverified' });
+    expect(res.body).toMatchObject({ version: '2.0.0', verification: 'recorded' });
     expect(await statusOf(issue)).toBe('closed');
   });
 });

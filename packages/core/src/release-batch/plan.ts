@@ -75,8 +75,8 @@ export type CloseVerification =
 /** What a release stamps on its run, its finish and its answers: the kind, by itself. */
 export type ReleaseVerification = CloseVerification['kind'];
 
-/** What a run may carry on its record: `unverified` where Forge checked no deploy — a release recorded
- *  on its agent's word (`recorded.ts`), or a close from before the deployment check. */
+/** What a run may carry on its record: `recorded` where its agent's record is the release
+ *  (`recorded.ts`, owner 2026-11-01), `landed` on a project with no production. */
 export type RecordedVerification = RecordedReleaseVerification;
 
 export const RECORDED_VERIFICATIONS: readonly RecordedVerification[] = RELEASE_VERIFICATIONS;

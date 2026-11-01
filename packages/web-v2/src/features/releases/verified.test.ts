@@ -37,4 +37,15 @@ describe("what a release verified, in words", () => {
     );
     expect(verifiedSentence({ level: "none", proven: 0, total: 0, check: null, provider: null, judgedOn: "dev" }, en)).toBe("Not verified");
   });
+
+  // ISS-851, owner 2026-11-01: the agent's record IS the release, never "Not verified"
+  it("says a release its agent recorded is recorded, in both languages", () => {
+    const v = { level: "none", proven: 0, total: 0, check: "recorded", provider: null, judgedOn: null } as const;
+    expect(verifiedSentence(v, en)).toBe("Recorded by its agent");
+    expect(verifiedSentence(v, vi)).toBe(vi("releases.verified.recorded"));
+    expect(vi("releases.verified.recorded")).not.toBe(en("releases.verified.recorded"));
+    expect(verifiedSentence({ ...v, level: "some_criteria", proven: 1, total: 2 }, en)).toBe(
+      "Partly verified: 1 of 2 checks met, recorded by its agent",
+    );
+  });
 });

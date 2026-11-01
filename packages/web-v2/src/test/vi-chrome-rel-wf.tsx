@@ -127,7 +127,7 @@ const detail = {
   approvalRequired: true,
   attempts: [
     { id: "t1", stage: "deploy", verdict: "ok", health: "up", commit: "abcdef123", providerRef: null, identity: null, readings: ["doc"], verdictReason: null, account: null, startedAt: AT, settledAt: AT },
-    { id: "t2", stage: "verify", verdict: "unverified", health: "down", commit: null, providerRef: null, identity: null, readings: [], verdictReason: null, account: null, startedAt: AT, settledAt: null },
+    { id: "t2", stage: "verify", verdict: "recorded", health: "down", commit: null, providerRef: null, identity: null, readings: [], verdictReason: null, account: null, startedAt: AT, settledAt: null },
   ],
   cutCount: 6,
   cuts: [

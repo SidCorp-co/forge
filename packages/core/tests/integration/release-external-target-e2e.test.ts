@@ -126,7 +126,7 @@ describe('a production deployed outside Forge by a door it names (ISS-851)', () 
       version: '1.31.1',
       commit: null,
       identity: null,
-      verification: 'unverified',
+      verification: 'recorded',
       failed: [],
     });
     expect(new Set(res.body.closed as string[])).toEqual(new Set([a, b]));
@@ -145,7 +145,17 @@ describe('a production deployed outside Forge by a door it names (ISS-851)', () 
       'GET',
       `/api/projects/${world.projectId}/release-records/${res.body.runId}`,
     );
-    expect(read.body).toMatchObject({ account: ACCOUNT, verification: 'unverified' });
+    expect(read.body).toMatchObject({ account: ACCOUNT, verification: 'recorded' });
+    // the agent's record IS the release (owner, 2026-11-01): it reads recorded, never unverified
+    expect(read.body.readings).toEqual(['recorded by its agent as 1.31.1']);
+    const page = await api(world.token, 'GET', `/api/projects/${world.projectId}/releases/1.31.1`);
+    expect(page.status, JSON.stringify(page.body)).toBe(200);
+    expect(page.body.release).toMatchObject({
+      verifiedBy: { kind: 'recorded' },
+      verified: { check: 'recorded' },
+      attempts: [{ verdict: 'recorded', verdictReason: 'recorded by its agent as 1.31.1' }],
+    });
+    expect(JSON.stringify(page.body)).not.toMatch(/:"unverified"|read no deploy|checked no deploy/);
   });
 
   it('keeps a sha as evidence and never compares it, even where a source probe is declared', async () => {

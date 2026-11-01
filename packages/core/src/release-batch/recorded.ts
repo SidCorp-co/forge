@@ -30,6 +30,9 @@ import { reasonOf } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
 import { takeGivenVersion } from './version-store.js';
 
+/** What a release its agent recorded stores (owner, 2026-11-01): the agent's record is the release. */
+export const RECORDED_VERIFICATION = 'recorded' as const;
+
 /** The one ledger key a recorded release writes under. */
 const RECORD_ATTEMPT_KEY = 'release-record';
 
@@ -162,14 +165,12 @@ export async function recordPerformedRelease(
   const { projectId, account, userId } = args;
   const commit = args.commit ?? null;
   const providerRef = args.providerRef ?? null;
-  const verification: RecordedVerification = 'unverified';
+  const verification: RecordedVerification = RECORDED_VERIFICATION;
 
   const { issueIds } = await admitRoster(projectId, args.issueIds, 'record');
   const roster = await admissibleIssues(projectId, issueIds);
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
-  const readings = [
-    `recorded by its agent as ${args.version}${commit ? ` at ${commit}` : ''}; Forge read no deploy`,
-  ];
+  const readings = [`recorded by its agent as ${args.version}${commit ? ` at ${commit}` : ''}`];
 
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, {
@@ -260,7 +261,7 @@ export async function writeLedger(
     outcome: { identity: string | null; readings: string[]; health: 'up' | null };
     account: string;
     providerRef: string | null;
-    how: 'landed' | 'unverified';
+    how: 'landed' | typeof RECORDED_VERIFICATION;
     /** The working branch a landing landed on. */
     branch?: string;
     /** The version an agent's record names. */
@@ -268,8 +269,8 @@ export async function writeLedger(
   },
 ): Promise<void> {
   const { outcome } = args;
-  const reasons: Record<'landed' | 'unverified', string> = {
-    unverified: `recorded by its agent as ${args.version}; Forge reads no commit and checked no deploy`,
+  const reasons: Record<'landed' | typeof RECORDED_VERIFICATION, string> = {
+    recorded: `recorded by its agent as ${args.version}`,
     landed: `landed on ${args.branch} as ${args.version}, recorded by the agent; no environment is declared, so nothing was deployed`,
   };
   await db.insert(releaseAttempts).values({
@@ -282,7 +283,7 @@ export async function writeLedger(
     health: outcome.health,
     identity: outcome.identity,
     readings: outcome.readings,
-    verdict: args.how === 'landed' ? 'ok' : 'unverified',
+    verdict: args.how === 'landed' ? 'ok' : RECORDED_VERIFICATION,
     verdictReason: reasons[args.how],
     settledAt: new Date(),
   });

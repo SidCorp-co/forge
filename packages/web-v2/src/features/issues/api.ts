@@ -190,7 +190,7 @@ export interface CreateReleaseBatchResult {
   jobId: string;
   issueIds: string[];
   gateStatus: string;
-  verification: Exclude<RecordedReleaseVerification, "unverified">;
+  verification: Exclude<RecordedReleaseVerification, "landed">;
 }
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases";

@@ -350,7 +350,7 @@ async function runReleaseBatchFinish(runId: string): Promise<void> {
   try {
     await finishReleaseBatch(runId, record.requestedBy, {
       commit: record.commit ?? undefined,
-      alreadyVerified: record.state === 'closing' && record.verification !== 'unverified',
+      alreadyVerified: record.state === 'closing' && record.verification !== 'recorded',
       whileVerifying: () => refuseIfAborted(runId),
       onVerified: async (verification) => {
         await refuseIfAborted(runId);

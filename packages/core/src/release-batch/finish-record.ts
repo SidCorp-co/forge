@@ -39,7 +39,7 @@ export interface ReleaseFinishRecord {
   closed: string[] | null;
   failed: Array<{ id: string; reason: string }> | null;
   refusal: FinishRefusal | null;
-  /** How the close was proved; a resume re-reads a historical `unverified` one. `null` before
+  /** How the close was proved; `recorded` where it is the agent's record. `null` before
    *  that is known, and on older records, whose `closing` was only ever reached by a green probe. */
   verification: RecordedVerification | null;
   finishedAt: string | null;

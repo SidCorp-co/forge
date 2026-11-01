@@ -355,9 +355,9 @@ export interface ReleaseSummary
  * commit production's deployment record names, `provider` by what a storefront provider reports it
  * serves against what each issue landed — workflows, routes, pages, the theme and store settings, or
  * a design approval's record (core `release-batch/provider-verify.ts`).
- * `unverified` is a release Forge checked no deploy for: one recorded on its agent's word under the
- * version it shipped (core `release-batch/recorded.ts`, owner 2026-11-01), or a close from before the
- * deployment check, kept as it was recorded. `landed` is a
+ * `recorded` is a release its agent recorded under the version it shipped (core
+ * `release-batch/recorded.ts`; owner 2026-11-01, `release-is-the-agents-record`): the agent's record
+ * IS the release, a complete state. `landed` is a
  * project that declares no production environment: its landing on the working branch is the
  * delivery, nothing was deployed, and no deploy is checked (core `release-batch/recorded-landing.ts`).
  */
@@ -365,7 +365,7 @@ export const RELEASE_VERIFICATIONS = [
 	"probed",
 	"deployment",
 	"provider",
-	"unverified",
+	"recorded",
 	"landed",
 ] as const;
 export type RecordedReleaseVerification =
@@ -418,8 +418,8 @@ export function releaseVerifiedLevel(
 	if (criteria.total > 0) {
 		return criteria.proven === criteria.total ? "criteria" : "some_criteria";
 	}
-	// A landing deployed nothing, so no deploy check stands in for the criteria.
-	return check !== null && check !== "unverified" && check !== "landed"
+	// A release its agent recorded, or a landing, ran no deploy check to stand in for the criteria.
+	return check !== null && check !== "recorded" && check !== "landed"
 		? "deploy_only"
 		: "none";
 }
@@ -678,7 +678,7 @@ export type ReleaseAttemptStage = (typeof RELEASE_ATTEMPT_STAGES)[number];
 export interface ReleaseAttemptView {
 	id: string;
 	stage: ReleaseAttemptStage;
-	verdict: "ok" | "failed" | "unverified" | null;
+	verdict: "ok" | "failed" | "recorded" | null;
 	health: "up" | "down" | null;
 	commit: string | null;
 	providerRef: string | null;
