@@ -10,7 +10,11 @@ import { notificationVolumeOf } from './read.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), invalid('invalid path: the project id is a uuid'));
+const projectParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 const volumeQuery = zValidator(
   'query',
   z.object({ days: z.coerce.number().int().min(1).max(90).default(7) }).strict(),

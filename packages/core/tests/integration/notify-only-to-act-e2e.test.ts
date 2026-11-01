@@ -61,7 +61,10 @@ const bell = (issueId: string) =>
 
 describe('notify only to act (ISS-863)', () => {
   it('rings no bell for a status move that asks nothing of its reader', async () => {
-    const issue = await createTestIssue(w.projectId, w.ownerId, 1, { status: 'open', createdAt: new Date() });
+    const issue = await createTestIssue(w.projectId, w.ownerId, 1, {
+      status: 'open',
+      createdAt: new Date(),
+    });
     await moved(issue.id, 'in_progress', 'awaiting_release');
     await moved(issue.id, 'awaiting_release', 'reopen');
     await moved(issue.id, 'awaiting_release', 'closed');
@@ -69,11 +72,16 @@ describe('notify only to act (ISS-863)', () => {
   });
 
   it('rings one bell entry for a stop on its reader, however often it repeats', async () => {
-    const issue = await createTestIssue(w.projectId, w.ownerId, 2, { status: 'open', createdAt: new Date() });
+    const issue = await createTestIssue(w.projectId, w.ownerId, 2, {
+      status: 'open',
+      createdAt: new Date(),
+    });
     await moved(issue.id, 'in_progress', 'needs_info');
     const first = await bell(issue.id);
     expect(first).toHaveLength(1);
-    await rows(sql`UPDATE notification_deliveries SET read_at = now() WHERE id = ${first[0]?.delivery}`);
+    await rows(
+      sql`UPDATE notification_deliveries SET read_at = now() WHERE id = ${first[0]?.delivery}`,
+    );
     await moved(issue.id, 'open', 'needs_info');
     const after = await bell(issue.id);
     expect(after).toHaveLength(2);
@@ -82,11 +90,19 @@ describe('notify only to act (ISS-863)', () => {
   });
 
   it("reads the project's volume by type, records and bell entries apart", async () => {
-    const got = await api(w.token, 'GET', `/api/projects/${w.projectId}/notifications/volume?days=1`);
+    const got = await api(
+      w.token,
+      'GET',
+      `/api/projects/${w.projectId}/notifications/volume?days=1`,
+    );
     expect(got.status, JSON.stringify(got.body)).toBe(200);
     expect(got.body.types).toEqual([{ type: 'issue_status_changed', records: 2, deliveries: 1 }]);
     expect(got.body).toMatchObject({ records: 2, deliveries: 1 });
-    const bad = await api(w.token, 'GET', `/api/projects/${w.projectId}/notifications/volume?days=0`);
+    const bad = await api(
+      w.token,
+      'GET',
+      `/api/projects/${w.projectId}/notifications/volume?days=0`,
+    );
     expect(bad.status).toBe(400);
   });
 });
