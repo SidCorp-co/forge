@@ -41,6 +41,7 @@ import { type SupportActInput, supportAct } from './acts.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { ownerGitCredential } from './owner-git.js';
 import { supportActionsOf, supportRoomsOf } from './read.js';
+import { supportTurnsOf } from './turns.js';
 
 /**
  * A support group's and an operations room's doors (REQ-75). The session's acts, under
@@ -347,6 +348,11 @@ supportRoutes.get('/:id/support/rooms', projectParam, noQuery, async (c) => {
   const rooms = await supportRoomsOf(c.get('userId'), c.req.valid('param').id);
   return c.json({ rooms });
 });
+
+// each room's turn, for the bar that says what runs on the project now (REQ-15 BC-10)
+supportRoutes.get('/:id/support/turns', projectParam, noQuery, async (c) =>
+  c.json(await supportTurnsOf(c.get('userId'), c.req.valid('param').id)),
+);
 
 supportRoutes.get('/:id/support/rooms/:roomId/actions', roomParam, noQuery, async (c) => {
   const { id, roomId } = c.req.valid('param');

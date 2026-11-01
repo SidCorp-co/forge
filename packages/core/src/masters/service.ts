@@ -14,7 +14,7 @@ import { sayEn } from '@forge/contracts/said';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { mergeSessionMetadata } from '../agent-sessions/index.js';
+import { mergeSessionMetadata, pushProjectNow } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import {
   agentSessions,
@@ -71,6 +71,7 @@ export async function declareMasterSession(args: {
     await setMaxJobPanes(args.deviceId, args.maxJobPanes);
   }
   const session = await ensureMasterSession(args);
+  if (session.created) await pushProjectNow(db, args.projectId, 'master');
   return {
     ok: true,
     session: { ...session, maxJobPanes: args.maxJobPanes ?? device.maxJobPanes },
@@ -137,6 +138,7 @@ export async function openMasterPass(args: {
         RETURNING ${PASS_COLUMNS}`),
     );
     if (!row) throw new Error('openMasterPass: the insert returned no row');
+    await pushProjectNow(tx, master.projectId, 'master');
     return { ok: true, pass: openPassOf(row) };
   });
 }
@@ -186,6 +188,7 @@ export async function settleMasterPass(args: {
     const closed = row && (await readClosedPass(tx, { sessionId: master.id, passId: row.id }));
     if (!closed)
       throw new Error(`settleMasterPass: pass ${args.passId} was read open and closed nothing`);
+    await pushProjectNow(tx, master.projectId, 'master');
     return { ok: true, settled: { pass: closed, because: end.because } };
   });
 }

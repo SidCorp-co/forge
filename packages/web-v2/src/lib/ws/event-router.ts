@@ -6,6 +6,8 @@ import { scheduleInvalidation } from "./invalidation-coalescer";
 
 /** The Agents run list's root key (agents `RUNS_STANDING_ROOT`); a job or run move invalidates it. */
 const RUNS_STANDING_ROOT = "runs-standing";
+/** The support rooms' turns the project bar reads (agents `SUPPORT_TURNS_ROOT`). */
+const SUPPORT_TURNS_ROOT = "support-turns";
 
 /**
  * Dispatch a WS event to React Query cache invalidations. Every key must
@@ -129,6 +131,16 @@ function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
+			// a run's, the master's or a room's session moved: the project bar reads its sources again (REQ-15 BC-10)
+			if (data?.projectId) {
+				scheduleInvalidation(qc, [RUNS_STANDING_ROOT, data.projectId]);
+				scheduleInvalidation(qc, [SUPPORT_TURNS_ROOT, data.projectId]);
+			}
+			return true;
+		}
+		// what runs on the project moved where no other frame says so (REQ-15 BC-10)
+		case "project.now.changed": {
+			scheduleInvalidation(qc, data.source === "rooms" ? [SUPPORT_TURNS_ROOT, data.projectId] : [RUNS_STANDING_ROOT, data.projectId]);
 			return true;
 		}
 		case "agent-session.turn.appended":
@@ -387,6 +399,7 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["agent-sessions"],
 	["agent-session"],
 	[RUNS_STANDING_ROOT],
+	[SUPPORT_TURNS_ROOT],
 	["conversations"],
 	["attention"],
 	["pulse"],

@@ -24,6 +24,7 @@ import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import {
   insertSessionRow,
   liveMasterSessionId,
+  pushProjectNow,
   settleHandBacks,
   transitionSessions,
 } from '../agent-sessions/index.js';
@@ -280,6 +281,7 @@ export async function openRunSession(args: {
           });
           if (restartsSteps(args.role)) await restartStepsForNewRun(tx, args.projectId, taken.seqs);
         }
+        await pushProjectNow(tx, args.projectId, 'runs');
         return { opened: { sessionId: queued.sessionId, runId: queued.runId } };
       }
       const run = await insertOneShotRun(tx, spec);
@@ -308,6 +310,8 @@ export async function openRunSession(args: {
         });
         if (restartsSteps(args.role)) await restartStepsForNewRun(tx, args.projectId, taken.seqs);
       }
+      // no run move is written as it opens, so its project's pages are told here (REQ-15 BC-10)
+      await pushProjectNow(tx, args.projectId, 'runs');
       return { opened: { sessionId: row.id, runId: run.id } };
     })
     .catch(async (err: unknown) => {

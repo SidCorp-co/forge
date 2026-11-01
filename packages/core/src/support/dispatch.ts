@@ -14,9 +14,11 @@ import {
   type CheckoutView,
   dispatchChatTurn,
   mintFencedSessionCredential,
+  pushProjectNow,
   sessionRowById,
   turnCredentialChatDevice,
 } from '../agent-sessions/index.js';
+import { db } from '../db/client.js';
 import type { agentSessions } from '../db/schema.js';
 import { findBindingWithConnectionById, forgeReads } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
@@ -296,6 +298,15 @@ export type DeliverOutcome =
 export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   const room = await roomWithSession(roomId);
   if (!room) return 'nothing-waiting';
+  const outcome = await handOn(room);
+  // a message taken or a turn started moves the room's turn the project's pages read (REQ-15 BC-10)
+  if (outcome === 'injected' || outcome === 'dispatched') {
+    await pushProjectNow(db, room.projectId, 'rooms');
+  }
+  return outcome;
+}
+
+async function handOn(room: RoomRow): Promise<DeliverOutcome> {
   const session = await sessionOf(room);
   if (!session) return 'nothing-waiting';
   if (session.status === 'running') return injectWaiting(room, session);
@@ -392,6 +403,8 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
     await settleInjects(roomId);
     await deliverWaiting(roomId);
   }
+  // the turn ended: the rooms it answered read quiet or waiting on the project's pages (REQ-15 BC-10)
+  await pushProjectNow(db, row.projectId, 'rooms');
 }
 
 /** The ends of a turn that finished it; every other end left its messages unanswered. */

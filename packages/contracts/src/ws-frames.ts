@@ -11,6 +11,7 @@ import type {
 	RunnerChange,
 } from "./outbox-events.js";
 import type { PreviewChangedFrame } from "./preview.js";
+import type { ProjectNowFrame } from "./project-now.js";
 import type { ReplyVerdict } from "./reply-check.js";
 
 interface IssueRef {
@@ -133,6 +134,8 @@ export interface WsFramePayloads extends JobFrames {
 		issueId: string | null;
 		status: StateOf<"run">;
 	};
+	/** What runs on the project now moved where no other frame says so (REQ-15 BC-10). */
+	"project.now.changed": ProjectNowFrame;
 	"device.statusChanged": { deviceId: string };
 	"device.login": Record<string, unknown>;
 	"device.paired": { deviceId: string };

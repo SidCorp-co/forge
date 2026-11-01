@@ -5,6 +5,7 @@
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
 import { containsSecret, scrubLogText } from '@forge/observability';
+import { pushProjectNow } from '../agent-sessions/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import {
@@ -171,6 +172,8 @@ async function recordInbound(
       tx,
     );
     if (!action) return false;
+    // the bar on the project's pages reads the room's waiting message (REQ-15 BC-10)
+    await pushProjectNow(tx, room.projectId, 'rooms');
     await appendMessagesIn(tx, {
       conversationId,
       messages: [
