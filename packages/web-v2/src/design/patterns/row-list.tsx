@@ -8,6 +8,7 @@ import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { keyedNodes } from "../keyed";
+import { Tooltip } from "../primitives/tooltip";
 
 /**
  * The shell top bar's gutter (`shell-top-bar.tsx`), given to each row in place of its own inset: a list
@@ -41,6 +42,8 @@ export function RowList({
 
 export interface RowItemProps {
   title: ReactNode;
+  /** The record's identifier (a key, an id), kept off the face and shown on hovering the title (ui-copy-rule 10). */
+  tip?: string;
   lead?: ReactNode;
   /** The one secondary line under the title; parts are joined by a middle dot. */
   facts?: ReactNode[];
@@ -79,13 +82,19 @@ function Facts({ facts }: { facts: ReactNode[] }) {
   );
 }
 
-export function RowItem({ title, lead, facts, note, trailing, href, onClick, selected, dim, testId, rowKey, children, wrap, expanded, stack }: RowItemProps) {
+export function RowItem({ title, tip, lead, facts, note, trailing, href, onClick, selected, dim, testId, rowKey, children, wrap, expanded, stack }: RowItemProps) {
   const body = (
     <>
       {lead ? <span className="flex flex-none items-center font-mono text-11-5 font-semibold text-link">{lead}</span> : null}
       {/* the title keeps room to be read: trailing chips wrap or drop under it, never take its place */}
       <span className={cn("flex min-w-40 flex-1 flex-col", dim && "opacity-65")}>
-        <span className={cn("min-w-0 text-13-5 font-medium text-fg", wrap ? "break-words" : "truncate")}>{title}</span>
+        {tip ? (
+          <Tooltip label={tip} className="min-w-0 max-w-full">
+            <span className={cn("min-w-0 text-13-5 font-medium text-fg", wrap ? "break-words" : "truncate")}>{title}</span>
+          </Tooltip>
+        ) : (
+          <span className={cn("min-w-0 text-13-5 font-medium text-fg", wrap ? "break-words" : "truncate")}>{title}</span>
+        )}
         {facts?.length ? <Facts facts={facts} /> : null}
         {note ? <span className="mt-0.5 block text-12 text-muted">{note}</span> : null}
       </span>

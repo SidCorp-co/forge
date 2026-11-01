@@ -9,6 +9,7 @@ export { AGENT_TINT, type HealthKey, type AvatarHue } from "./status";
 export { Button, SecondaryRegion } from "./primitives/button";
 export { MonoTag } from "./primitives/mono-tag";
 export { Avatar } from "./primitives/avatar";
+export { initialsOf } from "./initials";
 export { ProjectMark } from "./primitives/project-mark";
 export { HealthDot } from "./primitives/health-dot";
 export { Stat } from "./primitives/stat";

@@ -1,5 +1,6 @@
 // contract -> packages/core/src/ecosystem/link-read.ts:readBus — the bus, link and builder-run shapes here are core's reads of link-v1 and builder-run-v1 (packages/core/src/ecosystem/link-schema.ts), so a field added or renamed there changes here in the same change
 
+import { initialsOf } from "@/design/initials";
 import { projectGlyph } from "@/features/projects";
 
 export type LinkState = "building" | "current" | "behind" | "breaking" | "unverified";
@@ -171,11 +172,7 @@ export function impactOf(link: BusLink): Verdict {
   return link.impact?.verdict ?? "unchecked";
 }
 
-export const initials = (slug: string) => {
-  const parts = slug.split(/[-_.\s]+/).filter(Boolean);
-  const two = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : slug.slice(0, 2);
-  return two.toUpperCase();
-};
+export const initials = (slug: string) => initialsOf(slug);
 
 /** The design ProjectMark's props for a member, hashed from its slug so it reads the same tile on every ecosystem screen. */
 export const projectMarkProps = (slug: string) => ({ ...projectGlyph(slug), initials: initials(slug), radius: "var(--r-sm)" });

@@ -1,4 +1,5 @@
 
+import { initialsOf } from "@/design/initials";
 import {
   ISSUE_STATUSES,
   ISSUE_TERMINAL_STATUSES,
@@ -160,13 +161,9 @@ export function creatorLabelOf(
 	return row.creatorLabel || row.creatorEmail || "Unknown user";
 }
 
-/** Two-letter initials from an email/id, for an Avatar. */
+/** Two-letter initials from an email or a name, letters only, for an Avatar. */
 export function initials(label: string): string {
-	const at = label.indexOf("@");
-	const base = at > 0 ? label.slice(0, at) : label;
-	const parts = base.split(/[.\-_\s]+/).filter(Boolean);
-	if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-	return base.slice(0, 2).toUpperCase();
+	return initialsOf(label);
 }
 
 /**

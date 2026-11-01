@@ -11,13 +11,15 @@ interface TooltipProps {
   children: ReactNode;
   side?: "top" | "bottom";
   multiline?: boolean;
+  /** The trigger's own layout, where the default inline box would cut a truncating child. */
+  className?: string;
 }
 
-export function Tooltip({ label, children, side = "top", multiline = false }: TooltipProps) {
+export function Tooltip({ label, children, side = "top", multiline = false, className }: TooltipProps) {
   return (
     <TooltipRoot>
       <TooltipTrigger
-        render={<span className="relative inline-flex" />}
+        render={<span className={cn("relative inline-flex", className)} />}
         tabIndex={-1}
       >
         {children}

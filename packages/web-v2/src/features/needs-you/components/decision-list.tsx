@@ -19,7 +19,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
-import { Button, Icon, Textarea } from "@/design";
+import { Button, Icon, Textarea, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { needsYouApi, prefillOf, pressBody, wordsAsItStands } from "../api";
@@ -103,14 +103,16 @@ function OwedDecision({
   return (
     <li className={dense ? "flex flex-col gap-1 py-2.5" : "flex flex-col gap-1.5 py-3"} data-testid="needs-you-decision" data-group={d.group} data-key={d.key}>
       <p className={dense ? "fg-caption truncate text-muted" : "fg-caption text-muted"}>
-        {href ? (
-          <Link href={href} className="font-mono text-fg underline-offset-2 hover:underline">
-            {d.opens?.key ?? d.key}
-          </Link>
-        ) : (
-          <span className="font-mono text-fg">{d.opens?.key ?? d.key}</span>
-        )}
-        {d.title && <span> · {d.title}</span>}
+        {/* the item's title leads; its key sits behind the link and in the tooltip (ui-copy-rule 10) */}
+        <Tooltip label={d.opens?.key ?? d.key} className="min-w-0 max-w-full">
+          {href ? (
+            <Link href={href} className="truncate text-fg underline-offset-2 hover:underline">
+              {d.title || (d.opens?.key ?? d.key)}
+            </Link>
+          ) : (
+            <span className="truncate text-fg">{d.title || (d.opens?.key ?? d.key)}</span>
+          )}
+        </Tooltip>
       </p>
       <p
         className={dense ? "fg-body-sm truncate text-fg" : "fg-body-sm whitespace-pre-wrap text-fg"}

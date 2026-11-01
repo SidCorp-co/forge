@@ -83,7 +83,8 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     expect(within(first).getByTestId("needs-you-decision-question")).toHaveTextContent("Keep the old export format or move to the new one?");
     expect(within(first).getByTestId("needs-you-decision-recommended")).toHaveTextContent('Recommended: Move to the new one. Whoever asked recommends "Move to the new one".');
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["Move to the new one", "Keep the old format"]);
-    expect(within(first).getByRole("link", { name: "ISS-1" })).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
+    // the item's title leads its link; its key sits behind it (ISS-865)
+    expect(within(first).getByRole("link", { name: "Export" })).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
     expect(screen.getByTestId("needs-you-left-out")).toHaveTextContent(
       "Left out, not decisions: 37 drafts nobody has proposed merging or dropping yet, 2 of your own drafts to finish.",
     );

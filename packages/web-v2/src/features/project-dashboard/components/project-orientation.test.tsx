@@ -37,9 +37,11 @@ describe("a project home that orients", () => {
   it("says what is in delivery now and what comes next, each a chip with its count", () => {
     render(<ProjectOrientation {...HOP} />);
     expect(screen.getByTestId("orient-now")).toHaveTextContent(/^Now4/);
-    expect(line("now").getByRole("link", { name: "REQ-7 Referrals" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-7");
+    // the title leads; the key is behind the link and in its tooltip, never on the face (ISS-865)
+    expect(line("now").getByRole("link", { name: "Referrals" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-7");
+    expect(line("now").queryByText(/REQ-\d/)).toBeNull();
     expect(line("now").getAllByRole("link")).toHaveLength(4);
-    expect(line("next").getByRole("link", { name: "REQ-12 Campaign approval" })).toBeInTheDocument();
+    expect(line("next").getByRole("link", { name: "Campaign approval" })).toBeInTheDocument();
   });
 
   it("names four requirements a row and counts the rest", () => {

@@ -5,11 +5,11 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
-  MonoTag,
   PageContainer,
   PageTitle,
   ProjectLoader,
   ProjectMark,
+  Tooltip,
 } from "@/design";
 import { type FeedbackFigures, feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
 import type { ProjectStatus } from "@forge/contracts/project-status";
@@ -155,11 +155,13 @@ function ProjectOverviewPage() {
     <OnboardingHint projectId={project.id} projectName={project.name} />
     <PageContainer className="min-h-dvh">
       <header className="mb-6 flex items-center gap-4">
-        <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
+        {/* the slug is the URL's, never the face's: it sits in the mark's tooltip (ui-copy-rule 10) */}
+        <Tooltip label={project.slug}>
+          <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
+        </Tooltip>
         <div className="flex-1">
           <PageTitle className="fg-h2">{project.name}</PageTitle>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <MonoTag>{project.slug}</MonoTag>
             <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{t(project.role === "admin" ? "common.role.admin" : project.role === "member" ? "common.role.member" : project.role === "viewer" ? "common.role.viewer" : "common.role.org")}</Badge>
           </div>
         </div>

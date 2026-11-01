@@ -6,6 +6,7 @@
 // The release live and the one being prepared are the Dashboard's figures above it.
 
 import type { RoadmapItem } from "@forge/contracts/project-status";
+import { Tooltip } from "@/design";
 import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -39,10 +40,11 @@ function Items({ slug, items }: { slug: string; items: RoadmapItem[] }) {
   return (
     <>
       {shown.map((r) => (
-        <Link key={r.key} href={requirementHref(slug, r.key)} className={CHIP} title={`${r.key} ${r.title}`} aria-label={`${r.key} ${r.title}`}>
-          <span className="flex-none font-mono font-semibold text-link">{r.key}</span>
-          <span className="truncate">{r.title}</span>
-        </Link>
+        <Tooltip key={r.key} label={r.key} className="min-w-0">
+          <Link href={requirementHref(slug, r.key)} className={CHIP}>
+            <span className="truncate">{r.title}</span>
+          </Link>
+        </Tooltip>
       ))}
       {items.length > shown.length ? <Quiet>{t("dash.orient.moreModules", { n: items.length - shown.length })}</Quiet> : null}
     </>

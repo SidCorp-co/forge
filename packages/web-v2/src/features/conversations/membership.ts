@@ -12,6 +12,7 @@
 // provider history window and not by when an agent joined. So the sentence says
 // the agent is shown what has already been said, and it says the bound.
 
+import { initialsOf as lettersOf } from "@/design/initials";
 import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import type {
   ConversationMembership,
@@ -57,9 +58,7 @@ const list2 = (names: readonly string[], t: Copy): string => (names.length === 0
 
 /** Two letters for an avatar, from whatever name there is. */
 export function initialsOf(name: string): string {
-  const parts = name.trim().split(/[\s@._-]+/).filter(Boolean);
-  const letters = parts.slice(0, 2).map((w) => w[0] ?? "");
-  return (letters.join("") || "?").toUpperCase();
+  return lettersOf(name);
 }
 
 /** Where a room's projects come from, said as the derivation it is. */

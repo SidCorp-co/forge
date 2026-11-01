@@ -1,13 +1,11 @@
+import { initialsOf } from '@/design/initials';
 import { AVATAR_HUE, type AvatarHue } from '@/design/status';
 
 const HUES: AvatarHue[] = ['cobalt', 'flame', 'green', 'amber', 'ink'];
 
-/** First letters of up to two words, uppercased (e.g. "Forge Dev" → "FD"). */
+/** First letters of up to two words, letters only (e.g. "Forge Dev" → "FD", "Epod (ops)" → "EO"). */
 export function projectInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+  return initialsOf(name);
 }
 
 /** Stable hue pick from a project key (id or slug). */
