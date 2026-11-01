@@ -60,6 +60,7 @@ export function dailyReviewBrief(args: {
     "Goal: tell the owner how the project's day went, short, in Vietnamese, in your own words, in the project's Forge-Communicate thread: what shipped and is live, what is in flight, what is blocked and on whom, and what you found and folded into the next batch.",
     'Then hunt on your own for what to fix, optimise or build: Sentry errors, production logs and slow endpoints, failed or flaky runs, UX rough edges, debt, and your own backlog. File or fix what you find, and fold it into the running batch.',
     `Facts: ${at('/releases')} · ${at('/runs/standing?scope=finished')} · ${at('/runs/standing?scope=live')} · ${at('/issues/standing?scope=open')} · ${at('/integrations/sentry/issues')} · ${at('/support/rooms')}.`,
+    `Post: POST ${at('/support/master-posts')} { text, rid? }, rid naming the room where the project binds several.`,
   ].join('\n');
 }
 

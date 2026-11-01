@@ -19,6 +19,7 @@ import {
   supportCheckResultRequestSchema,
   supportCommonIssueRequestSchema,
   supportGitCredentialRequestSchema,
+  supportMasterPostRequestSchema,
   supportMemberRequestSchema,
   supportRouteRequestSchema,
   supportRuleRequestSchema,
@@ -39,6 +40,7 @@ import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import { mountChannelRoutes } from './channel-routes.js';
+import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
 import { supportActionsOf, supportRoomsOf } from './read.js';
 import { supportTurnsOf } from './turns.js';
@@ -339,6 +341,21 @@ supportRoutes.post(
     );
     if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
     return c.json(out.value);
+  },
+);
+
+// the project's master posts its own words, its daily review, in the project's team room (ISS-862)
+supportRoutes.post(
+  '/:id/support/master-posts',
+  projectParam,
+  strictBody(supportMasterPostRequestSchema, '{ text, rid? }'),
+  async (c) => {
+    const out = await postAsMaster(
+      { userId: c.get('userId'), projectId: c.req.valid('param').id },
+      c.req.valid('json'),
+    );
+    if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+    return c.json(out.value, 201);
   },
 );
 

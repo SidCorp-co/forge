@@ -186,6 +186,20 @@ export const supportAnnounceRequestSchema = z.strictObject({
 });
 
 /**
+ * `POST /api/projects/:id/support/master-posts` (ISS-862): the project's master posts its own words,
+ * a daily review say, at the top level of the project's bound room. `rid` names the room where the
+ * project binds several. Core writes none of the words (agent-is-the-voice): it screens, posts and
+ * records who posted.
+ */
+export const supportMasterPostRequestSchema = z.strictObject({
+	text: z.string().trim().min(3).max(4000),
+	rid: z.string().trim().min(1).max(200).optional(),
+});
+export type SupportMasterPostRequest = z.infer<
+	typeof supportMasterPostRequestSchema
+>;
+
+/**
  * A question to the owner through the channel (REQ-77 BC-12). It is posted in the thread it names;
  * the owner's next message there, by the id the chat server signed, is the answer: it reaches the
  * asking session, and the issue `record` names, where one is named, as a note.
