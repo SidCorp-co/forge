@@ -26,6 +26,15 @@ export {
   requireOrgHeld,
   visibleFilter,
 } from './can.js';
+export {
+  type DeclaredPermission,
+  declaredPermissions,
+  type PermissionOn,
+  requireDeclared,
+  requiresNoPermission,
+  requiresOnParam,
+  requiresOnResolved,
+} from './declared.js';
 export { holderNames, type NamedHolder, namedHolders } from './holders-named.js';
 export {
   actsAsMaster,

@@ -20,7 +20,7 @@ import { db, type Tx } from '../db/client.js';
 import { type Actor, issueDisplayIds, resolveIssueRouteRef } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
-import { requireHeld } from '../permissions/index.js';
+import type { PermissionFacts } from '../permissions/index.js';
 import {
   readDeliveryShape,
   readFastDelivery,
@@ -63,13 +63,12 @@ import {
 
 const refuse = refuser<CleanupRefusal['code']>('CLEANUP_REFUSED');
 
-async function writer(projectId: string, userId: string): Promise<void> {
-  requireHeld(await loadProjectAccess(projectId, userId), 'project.write');
-}
-
-async function reader(projectId: string, userId: string): Promise<void> {
-  requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
-}
+/**
+ * The permission the route declares for an act whose project is found here (ISS-824): the route
+ * hands its check in, so the check is the declaration's (`permissions/declared.ts:requireDeclared`).
+ * The project-path doors are checked by their declaration before they reach this module.
+ */
+type HeldAsDeclared = (access: PermissionFacts) => void;
 
 /** The issue `ref` names on this project, or null where it names none. */
 async function issueOf(
@@ -95,9 +94,10 @@ export async function recordImpact(args: {
   projectId?: string | undefined;
   request: RecordImpactRequest;
   userId: string;
+  held: HeldAsDeclared;
 }): Promise<{ impact: ImpactView; waits: boolean; window: CleanupWindow | null }> {
   const issue = await resolveIssueRouteRef(args.issueRef, args.projectId, args.userId);
-  await writer(issue.projectId, args.userId);
+  args.held(await loadProjectAccess(issue.projectId, args.userId));
   const { commit, ...impact } = args.request;
   const kept = await insertImpact(db, {
     projectId: issue.projectId,
@@ -117,8 +117,10 @@ export async function readImpacts(args: {
   issueRef: string;
   projectId?: string | undefined;
   userId: string;
+  held: HeldAsDeclared;
 }): Promise<{ issueId: string; current: ImpactView | null; history: ImpactView[] }> {
   const issue = await resolveIssueRouteRef(args.issueRef, args.projectId, args.userId);
+  args.held(await loadProjectAccess(issue.projectId, args.userId));
   const history = await issueImpacts(issue.id);
   return { issueId: issue.id, current: history[0] ?? null, history };
 }
@@ -130,7 +132,6 @@ export async function recordDebts(args: {
   userId: string;
 }): Promise<{ debts: string[]; window: CleanupWindow | null }> {
   const { projectId, request, userId } = args;
-  await writer(projectId, userId);
   if (!(await readFastDelivery(projectId))) {
     throw refuse('FAST_DELIVERY_OFF', FAST_DELIVERY_OFF_DETAIL, '/items');
   }
@@ -169,7 +170,6 @@ export async function carryDebt(args: {
   userId: string;
 }): Promise<{ debt: string; carried: boolean }> {
   const { projectId, debtId, carry, userId } = args;
-  requireHeld(await loadProjectAccess(projectId, userId), 'project.admin');
   if (!(await setCarried({ projectId, debtId, carry, by: userId }))) {
     throw refuse(
       'CLEANUP_DEBT_UNKNOWN',
@@ -191,7 +191,6 @@ export async function addDebtEvidence(args: {
   userId: string;
 }): Promise<{ debt: string; evidence: true }> {
   const { projectId, debtId, request, userId } = args;
-  await writer(projectId, userId);
   if (!(await insertEvidence({ projectId, debtId, evidence: request.evidence, by: userId }))) {
     throw refuse(
       'CLEANUP_DEBT_UNKNOWN',
@@ -237,7 +236,6 @@ export async function recordCleanupReport(args: {
   userId: string;
 }): Promise<{ report: CleanupReportView; open: number; waiting: string[] }> {
   const { projectId, request, userId } = args;
-  await writer(projectId, userId);
   if (request.fire && (await fireProjectOf(request.fire)) !== projectId) {
     throw refuse(
       'CLEANUP_REFUSED',
@@ -278,8 +276,7 @@ export async function recordCleanupReport(args: {
   };
 }
 
-export async function listCleanupReports(projectId: string, userId: string) {
-  await reader(projectId, userId);
+export async function listCleanupReports(projectId: string) {
   return { reports: await readReports(projectId) };
 }
 
@@ -307,8 +304,7 @@ async function waitingIssues(projectId: string): Promise<DebtLedgerView['waiting
 }
 
 /** The ledger (BC-3, BC-7): open and cleared debt, the changes waiting on a cleanup, the window. */
-export async function readLedger(projectId: string, userId: string): Promise<DebtLedgerView> {
-  await reader(projectId, userId);
+export async function readLedger(projectId: string): Promise<DebtLedgerView> {
   const [fast, debts, waiting, window] = await Promise.all([
     readFastDelivery(projectId),
     readDebts(projectId),

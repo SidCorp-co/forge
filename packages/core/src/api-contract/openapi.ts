@@ -1,4 +1,3 @@
-import { PROBLEM_CONTENT_TYPE, REFUSAL_STATUSES } from '@forge/contracts/refusal';
 import { COMPOSED_HANDLER } from 'hono/utils/constants';
 import { z } from 'zod';
 import { AUTH_GATES, type AuthGate, declaredGates } from '../middleware/declared-gate.js';
@@ -8,12 +7,20 @@ import {
   declaredInputs,
   declaredRawBodies,
 } from '../middleware/zod-validator.js';
+import { type DeclaredPermission, declaredPermissions } from '../permissions/declared.js';
+import { COMPONENTS } from './components.js';
 import {
   OPEN_QUERY_READS,
   type OpenQuery,
   queryClosure,
   unmountedAmnesties,
 } from './open-queries.js';
+import {
+  permissionField,
+  UNDECLARED_PERMISSION_ROUTES,
+  undeclaredPermission,
+  undeclaredPermissionAmnesties,
+} from './permission-amnesty.js';
 import { type RequestRead, readsOf } from './request-reads.js';
 
 type MountedRoute = { method: string; path: string; handler: unknown };
@@ -25,60 +32,6 @@ type ApiContract = { document: JsonSchema; operations: number; refusals: string[
 
 export const UNDECLARED_RESPONSE =
   'Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.';
-
-const REFUSAL_SCHEMA: JsonSchema = {
-  type: 'object',
-  required: ['code', 'path', 'detail'],
-  properties: {
-    code: { type: 'string' },
-    path: {
-      type: 'string',
-      description: "A JSON pointer into the request, '' for the whole of it.",
-    },
-    detail: { type: 'string' },
-  },
-};
-
-const PROBLEM_SCHEMA: JsonSchema = {
-  type: 'object',
-  description:
-    'RFC 9457 problem details, one body for every refusal and error. `code` and `message` are ' +
-    'extension members (RFC 9457 section 3.2) equal to `error.code` and `error.message`: a client ' +
-    'reads either. `error.refusals` is ordered most relevant first; an error that is not a rule ' +
-    'refusal carries one row at the request naming its sentence, and may carry `details`.',
-  required: ['type', 'title', 'status', 'detail', 'code', 'message', 'error'],
-  properties: {
-    type: { type: 'string', description: 'urn:forge:refusal:<code>' },
-    title: { type: 'string' },
-    status: { type: 'integer' },
-    detail: { type: 'string' },
-    code: { type: 'string', description: 'Equal to error.code.' },
-    message: { type: 'string', description: 'Equal to error.message.' },
-    details: {},
-    error: {
-      type: 'object',
-      required: ['code', 'message', 'refusals'],
-      properties: {
-        code: { type: 'string' },
-        message: { type: 'string' },
-        refusals: { type: 'array', minItems: 1, items: { $ref: '#/components/schemas/Refusal' } },
-      },
-    },
-  },
-};
-
-const COMPONENTS: JsonSchema = {
-  schemas: { Refusal: REFUSAL_SCHEMA, Problem: PROBLEM_SCHEMA },
-  responses: {
-    Problem: {
-      description:
-        `Refused or failed. A refusal answers ${REFUSAL_STATUSES.join(', ')} by what the client ` +
-        'should do: 400 fix the request, 403 stop, 404 not there for it, 409 re-read and retry, ' +
-        '422 change what the rule names.',
-      content: { [PROBLEM_CONTENT_TYPE]: { schema: { $ref: '#/components/schemas/Problem' } } },
-    },
-  },
-};
 
 const INPUT_TARGETS = ['json', 'form', 'param', 'query'] as const;
 
@@ -100,6 +53,7 @@ type Declaration =
   | { kind: 'input'; input: DeclaredInput }
   | { kind: 'raw'; body: DeclaredRawBody }
   | { kind: 'gate'; gate: AuthGate }
+  | { kind: 'permission'; permission: DeclaredPermission }
   | { kind: 'handler'; reads: RequestRead[] };
 
 function declarationOf(handler: unknown): Declaration {
@@ -111,6 +65,8 @@ function declarationOf(handler: unknown): Declaration {
   if (body !== undefined) return { kind: 'raw', body };
   const gate = declaredGates.get(inner);
   if (gate !== undefined) return { kind: 'gate', gate };
+  const permission = declaredPermissions.get(inner);
+  if (permission !== undefined) return { kind: 'permission', permission };
   return { kind: 'handler', reads: readsOf(Function.prototype.toString.call(inner)) };
 }
 
@@ -342,8 +298,11 @@ function describe(shape: PathShape, endpoint: Endpoint): Described {
     ...(query === undefined ? [] : queryParameters(query, refusals)),
   ];
   const raw = endpoint.raws[0];
+  const permission = permissionField(endpoint.permissions);
+  if (permission.refusal) refusals.push(permission.refusal);
   const operation: Operation = {
     'x-forge-auth': endpoint.gates,
+    ...permission.field,
     'x-forge-validated': INPUT_TARGETS.filter((t) => schemas.has(t)),
     responses: {
       '4XX': { $ref: '#/components/responses/Problem' },
@@ -380,6 +339,7 @@ type Endpoint = {
   inputs: DeclaredInput[];
   raws: DeclaredRawBody[];
   gates: AuthGate[];
+  permissions: DeclaredPermission[];
   reads: RequestRead[];
   last: number;
 };
@@ -389,7 +349,8 @@ function declare(endpoint: Endpoint, declaration: Declaration): void {
   else if (declaration.kind === 'raw') endpoint.raws.push(declaration.body);
   else if (declaration.kind === 'gate') {
     if (!endpoint.gates.includes(declaration.gate)) endpoint.gates.push(declaration.gate);
-  } else endpoint.reads.push(...declaration.reads);
+  } else if (declaration.kind === 'permission') endpoint.permissions.push(declaration.permission);
+  else endpoint.reads.push(...declaration.reads);
 }
 
 // Hono runs a route's handlers in registration order and stops at the one that answers,
@@ -405,6 +366,7 @@ function endpointsOf(routes: MountedRoute[], refusals: string[]): Endpoint[] {
       inputs: [],
       raws: [],
       gates: [],
+      permissions: [],
       reads: [],
       last: index,
     };
@@ -439,9 +401,11 @@ export function buildApiContract(
   routes: MountedRoute[],
   info: JsonSchema,
   openQueries: Readonly<Record<string, OpenQuery>> = OPEN_QUERY_READS,
+  undeclaredPermissions: ReadonlySet<string> = UNDECLARED_PERMISSION_ROUTES,
 ): ApiContract {
   const refusals: string[] = [];
   const reads = new Set<string>();
+  const declaresNone = new Set<string>();
   const paths: Record<string, Record<string, Operation>> = {};
   let operations = 0;
   const endpoints = endpointsOf(routes, refusals).sort((a, b) =>
@@ -460,6 +424,10 @@ export function buildApiContract(
     }
     const described = describe(shape, endpoint);
     for (const why of described.refusals) refusals.push(`${name}: ${why}`);
+    // every route names the permission it needs where it is mounted (REQ-12 BC-20, ISS-824)
+    if (endpoint.permissions.length === 0) declaresNone.add(name);
+    const undeclared = undeclaredPermission(name, endpoint.permissions, undeclaredPermissions);
+    if (undeclared) refusals.push(undeclared);
     if (endpoint.method === 'GET') {
       reads.add(name);
       const closure = queryClosure(described.operation, openQueries[name]);
@@ -478,6 +446,7 @@ export function buildApiContract(
     operations += 1;
   }
   refusals.push(...unmountedAmnesties(openQueries, reads));
+  refusals.push(...undeclaredPermissionAmnesties(undeclaredPermissions, declaresNone));
   const document = {
     openapi: '3.1.0',
     info,

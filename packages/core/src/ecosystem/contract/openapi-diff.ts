@@ -35,6 +35,12 @@ function fromChangelog(entries: readonly OasdiffEntry[]): MeasuredChange[] {
 // oasdiff judges the OpenAPI vocabulary and reports no check for an x- extension; forge's validated and input markers describe a schema oasdiff already judged, while a gate, a refinement or a foreign extension changes what a caller may send in a way no check here can decide
 const DESCRIPTIVE_EXTENSIONS = new Set(['x-forge-validated', 'x-forge-input', 'x-forge-generator']);
 
+// a permission declared where none was names the check the route already made in handler code
+// (ISS-824's sweep moves each one, never changes it); a declared permission changed or removed
+// changes who may call, which no check here decides
+const descriptive = (name: string, kind: ChangeKind) =>
+  DESCRIPTIVE_EXTENSIONS.has(name) || (name === 'x-forge-permission' && kind === 'added');
+
 interface ExtensionDiff {
   added?: string[];
   deleted?: string[];
@@ -50,7 +56,7 @@ function extensionChanges(element: string, d: ExtensionDiff): MeasuredChange[] {
   return named.map(([name, kind]) => ({
     element,
     kind,
-    level: DESCRIPTIVE_EXTENSIONS.has(name) ? 'info' : 'warning',
+    level: descriptive(name, kind) ? 'info' : 'warning',
     text: `the ${name} extension was ${kind === 'changed' ? 'changed' : kind}; oasdiff has no check for an extension, so what it means to a caller is not measured.`,
     check: 'forge-extension-changed',
   }));
