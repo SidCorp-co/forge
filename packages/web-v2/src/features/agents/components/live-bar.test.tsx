@@ -2,11 +2,18 @@
 // REQ-15 BC-10 (ISS-856) as a person sees it: the bar on a project page says nothing runs and when
 // the project last moved; names the master, the runs, a release and a room's turn, each a link; says
 // "can't read" for a source that did not answer and never that nothing runs; and moves when a
-// project-room frame says so, reading again only then.
+// project-room frame says so, reading again only then. Its face is plain words in the person's
+// language, with no issue key, room id, step or box on it: those sit in the tooltip and behind the
+// link (ISS-864, ui-copy-rule 10).
 import type { SupportTurnsView } from "@forge/contracts/project-now";
 import { QueryClient } from "@tanstack/react-query";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/design";
+import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { routeEvent } from "@/lib/ws/event-router";
 import type { MasterStanding, RunStanding, RunStandingList } from "../types";
@@ -28,6 +35,7 @@ const master = (over: Partial<MasterStanding> = {}): MasterStanding => ({
     device: { id: "d1", name: "box-a" },
     since: null,
     pass: null,
+    passIssueTitle: null,
     lastPass: null,
     slots: null,
     runsOut: 0,
@@ -47,7 +55,7 @@ const run = (over: Partial<RunStanding>): RunStanding =>
     issue: { key: "ISS-5", title: "Fix it", status: "in_progress" },
     title: "Fix it",
     says: { title: { key: "verbatim", text: "Fix it" }, rule: { key: "verbatim", text: "" } },
-    step: { source: "run_column", step: "build", since: null },
+    step: { source: "work_state", step: "build", since: null },
     startedAt: minutesAgo(4),
     finishedAt: null,
     device: { id: "d1", name: "box-a" },
@@ -76,9 +84,23 @@ function core(world: World): Call[] {
   });
 }
 
+const viCopy = productCopy("vi");
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
-const mount = (qc = client()) => renderWithQuery(<LiveBar projectId={P} slug="forge" />, qc);
+const within = (ui: ReactElement, language: "en" | "vi") => (
+  <InterfaceLanguageScope language={language}>
+    <TooltipProvider delay={0}>{ui}</TooltipProvider>
+  </InterfaceLanguageScope>
+);
+const mount = (qc = client(), language: "en" | "vi" = "en") => renderWithQuery(within(<LiveBar projectId={P} slug="forge" />, language), qc);
 const bar = () => screen.getByTestId("live-bar");
+const tip = () =>
+  waitFor(() => {
+    const el = document.querySelector<HTMLElement>('[data-slot="tooltip-content"]');
+    if (!el) throw new Error("no tooltip is shown");
+    return el;
+  });
+/** What no face of the bar may carry: keys, room ids, boxes, raw steps. */
+const CODES = /ISS-\d|GENERAL|HELP|box-a|\bbuild\b|\bdeploy\b|run_column/;
 
 afterEach(() => {
   cleanup();
@@ -94,18 +116,38 @@ describe("the project bar (REQ-15 BC-10)", () => {
     const nothing = screen.getByTestId("live-bar-nothing");
     expect(nothing.textContent).toContain("Nothing running");
     expect(nothing.textContent).toMatch(/last activity \d{2}:\d{2}/);
-    expect(bar().textContent).toContain("idle");
+    // an idle master is what "nothing running" already says
+    expect(bar().textContent).not.toContain("Master");
     expect(screen.queryByText("can't read", { exact: false })).toBeNull();
   });
 
-  it("names the master on its issue, each run, a release and a room's turn, each a link", async () => {
+  it("says so in the person's language", async () => {
+    core({ live: list([]), recent: list([]), rooms: turns([]) });
+    mount(client(), "vi");
+    await waitFor(() => expect(bar().dataset.state).toBe("quiet"));
+    expect(viCopy("agents.now.nothing")).not.toBe(productCopy("en")("agents.now.nothing"));
+    expect(screen.getByTestId("live-bar-nothing").textContent).toContain(viCopy("agents.now.nothing"));
+    cleanup();
+    core({
+      live: list([], master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-9", trigger: "nudge" }, passIssueTitle: "Fix the release page" })),
+      recent: list([]),
+      rooms: turns([{ roomId: "room-1", rid: "GENERAL", kind: "support", state: "answering", waiting: 0, waitingSince: null, lastActivityAt: minutesAgo(0) }]),
+    });
+    mount(client(), "vi");
+    await waitFor(() => expect(bar().dataset.state).toBe("busy"));
+    expect(bar().textContent).toContain(viCopy("agents.now.master.on", { title: "Fix the release page" }));
+    expect(bar().textContent).toContain(viCopy("agents.now.answering"));
+    expect(bar().textContent).not.toMatch(CODES);
+  });
+
+  it("names the master on its issue, each run, a release and a room's turn in words, each a link with its codes behind it", async () => {
     core({
       live: list(
         [
           run({}),
           run({ id: "r2", lane: "release", issue: null, release: { version: "1.4.0", stage: "deploy", verdict: null, attemptAt: null }, startedAt: minutesAgo(12) }),
         ],
-        master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-9", trigger: "nudge" } }),
+        master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-9", trigger: "nudge" }, passIssueTitle: "Fix the release page" }),
       ),
       recent: list([]),
       rooms: turns([{ roomId: "room-1", rid: "GENERAL", kind: "support", state: "answering", waiting: 0, waitingSince: null, lastActivityAt: minutesAgo(0) }]),
@@ -118,24 +160,38 @@ describe("the project bar (REQ-15 BC-10)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show all" }));
     const rows = screen.getByTestId("live-bar-list");
     const href = (name: string) => screen.getAllByRole("link", { name }).map((a) => a.getAttribute("href"));
-    expect(href("Master")).toContain("/projects/forge/agents/master");
-    expect(rows.textContent).toContain("working");
-    expect(href("ISS-9")).toContain("/projects/forge/issues/ISS-9");
-    expect(href("ISS-5")).toContain("/projects/forge/issues/ISS-5");
-    expect(rows.textContent).toContain("build");
+    expect(href("Master working: Fix the release page")).toContain("/projects/forge/issues/ISS-9");
+    expect(href("Build: Fix it")).toContain("/projects/forge/issues/ISS-5");
     expect(rows.textContent).toContain("4m");
-    expect(rows.textContent).toContain("box-a");
-    expect(href("Release 1.4.0")).toContain("/projects/forge/releases/1.4.0");
-    expect(rows.textContent).toContain("deploy");
-    expect(href("Room GENERAL")).toContain("/projects/forge/channels/GENERAL");
-    expect(rows.textContent).toContain("answering");
+    expect(href("Releasing 1.4.0")).toContain("/projects/forge/releases/1.4.0");
+    expect(href("Bot answering")).toContain("/projects/forge/channels/GENERAL");
     expect(screen.queryByTestId("live-bar-nothing")).toBeNull();
+    // no face carries a code; each sits in the item's tooltip
+    expect(bar().textContent).not.toMatch(CODES);
+    const [build] = screen.getAllByRole("link", { name: "Build: Fix it" });
+    if (!build) throw new Error("no run link");
+    await userEvent.setup().hover(build);
+    expect((await tip()).textContent).toBe("ISS-5 · build · box-a");
+  });
+
+  it("says the master's work once when a run carries the issue it works", async () => {
+    core({
+      live: list([run({})], master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-5", trigger: "nudge" } })),
+      recent: list([]),
+      rooms: turns([]),
+    });
+    mount();
+    await waitFor(() => expect(bar().dataset.state).toBe("busy"));
+    expect(screen.getAllByTestId("live-bar-item")).toHaveLength(1);
+    expect(bar().textContent).toContain("Master working: Fix it");
+    expect(bar().textContent).toContain("4m");
+    expect(bar().textContent).not.toMatch(CODES);
   });
 
   it("says can't read for a source that did not answer, and never that nothing runs", async () => {
     core({ live: list([]), recent: list([]), rooms: { status: 500 } });
     mount();
-    await waitFor(() => expect(screen.getByTestId("live-bar-unreadable-rooms").textContent).toBe("Rooms can't read"));
+    await waitFor(() => expect(screen.getByTestId("live-bar-unreadable-rooms").textContent).toBe("Can't read chat rooms"));
     expect(bar().dataset.state).toBe("unreadable");
     expect(screen.queryByTestId("live-bar-nothing")).toBeNull();
     expect(bar().textContent).not.toContain("Nothing running");
@@ -156,13 +212,13 @@ describe("the project bar (REQ-15 BC-10)", () => {
     // a run is declared on an issue: core tells the project room
     world.live = list([run({ issue: { key: "ISS-7", title: "New", status: "in_progress" } })]);
     routeEvent({ event: "project.now.changed", data: { projectId: P, source: "runs" }, timestamp: minutesAgo(0) }, qc);
-    await waitFor(() => expect(screen.getByRole("link", { name: "ISS-7" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("link", { name: "Build: New" })).toBeTruthy());
     expect(bar().dataset.state).toBe("busy");
     expect(liveReads()).toBe(2);
     // a member's message waits in a room: only the rooms are read again
     world.rooms = turns([{ roomId: "room-1", rid: "HELP", kind: "support", state: "waiting", waiting: 2, waitingSince: minutesAgo(3), lastActivityAt: minutesAgo(0) }]);
     routeEvent({ event: "project.now.changed", data: { projectId: P, source: "rooms" }, timestamp: minutesAgo(0) }, qc);
-    await waitFor(() => expect(bar().textContent).toContain("2 waiting"));
+    await waitFor(() => expect(bar().textContent).toContain("2 messages waiting"));
     expect(roomReads()).toBe(2);
     expect(liveReads()).toBe(2);
   });

@@ -1,12 +1,15 @@
 // The bar on every project page that says what runs on the project now (REQ-15 BC-10, ISS-856): the
 // master, the runs and jobs in flight, releases and deploys, and the support rooms' turns, one line
 // collapsed and a short flat list open, each item a link. It reads the run standing and the rooms'
-// turns once and again only when a project-room frame says they moved; it never polls.
+// turns once and again only when a project-room frame says they moved; it never polls. Its face is
+// plain words in the person's language (ISS-864, `ui-copy-rule` 10): an issue's title, never its key;
+// keys, room ids, steps and boxes sit in each item's tooltip and behind its link.
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { LiveDot, useNow } from "@/design";
+import { LiveDot, Tooltip, useNow } from "@/design";
 import { formatClock, formatElapsed } from "@/lib/i18n/format";
-import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import { Link } from "@/lib/navigation/router";
 import { masterHref, runHref } from "@/lib/routes/agents";
@@ -28,53 +31,62 @@ const readOfQuery = <T,>(q: UseQueryResult<T>): Read<T> =>
 
 const channelHref = (slug: string, rid: string) => `/projects/${encodeURIComponent(slug)}/channels/${encodeURIComponent(rid)}`;
 
+/** The identifiers an item keeps off its face, for its tooltip. */
+const tipOf = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(" · ");
+
 interface Row {
   key: string;
-  label: string;
+  text: string;
   href: string;
-  detail: string | null;
+  tip: string;
   since: string | null;
-  box: string | null;
-  issue?: { key: string; href: string };
 }
 
-function useRows(now: ProjectNow, slug: string): Row[] {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  const runDetail = (r: RunStanding) => r.step.step ?? r.lane;
-  const rowOf = (item: NowItem): Row => {
+type Language = ReturnType<typeof useInterfaceLanguage>;
+type Label = ReturnType<typeof useLabel>;
+
+function runRow(r: RunStanding, t: Copy, label: Label, language: Language, slug: string): Row {
+  const title = r.issue?.title ?? said(r.says.title, language);
+  const step = r.step.source === "work_state" ? label("workStep", r.step.step) : null;
+  return {
+    key: r.id,
+    text: step ? t("agents.now.run", { step, title }) : title,
+    href: r.issue ? issueHref(slug, r.issue.key) : runHref(slug, r.id),
+    tip: tipOf(r.issue?.key, r.step.step, r.device?.name),
+    since: r.startedAt,
+  };
+}
+
+function rowsOf(now: ProjectNow, t: Copy, label: Label, language: Language, slug: string): Row[] {
+  const master = now.items.find((i) => i.kind === "master");
+  const masterKey = master?.issue?.key ?? null;
+  // a run on the issue the master works is the master's work: said once, on the master's line
+  const folded = now.items.find((i) => i.kind === "run" && masterKey !== null && i.run.issue?.key === masterKey);
+  const rowOf = (item: NowItem): Row | null => {
     switch (item.kind) {
-      case "master":
+      case "master": {
+        if (item.word === "idle") return null;
+        const fold = folded?.kind === "run" ? folded.run : null;
+        const title = item.issue?.title ?? null;
         return {
           key: "master",
-          label: t("agents.now.master"),
-          href: masterHref(slug),
-          detail: t(`agents.now.master.${item.word}`),
-          since: null,
-          box: null,
-          ...(item.issueKey ? { issue: { key: item.issueKey, href: issueHref(slug, item.issueKey) } } : {}),
-        };
-      case "run": {
-        const r = item.run;
-        return {
-          key: r.id,
-          label: r.issue?.key ?? said(r.says.title, language),
-          href: r.issue ? issueHref(slug, r.issue.key) : runHref(slug, r.id),
-          detail: runDetail(r),
-          since: r.startedAt,
-          box: r.device?.name ?? null,
+          text: item.word === "working" && title ? t("agents.now.master.on", { title }) : t(`agents.now.master.${item.word}`),
+          href: item.issue ? issueHref(slug, item.issue.key) : masterHref(slug),
+          tip: tipOf(item.issue?.key, fold?.step.step, fold?.device?.name ?? item.box),
+          since: fold?.startedAt ?? null,
         };
       }
+      case "run":
+        return item === folded ? null : runRow(item.run, t, label, language, slug);
       case "release": {
         const r = item.run;
         const version = r.release?.version ?? null;
         return {
           key: r.id,
-          label: version ? t("agents.now.release", { v: version }) : t("agents.now.releaseBatch"),
+          text: version ? t("agents.now.releasing", { v: version }) : t("agents.now.releasingAny"),
           href: version ? releaseHref(slug, version) : runHref(slug, r.id),
-          detail: r.release?.stage ?? runDetail(r),
+          tip: tipOf(r.release?.stage ?? r.step.step, r.device?.name),
           since: r.startedAt,
-          box: r.device?.name ?? null,
         };
       }
       case "deploy": {
@@ -82,44 +94,44 @@ function useRows(now: ProjectNow, slug: string): Row[] {
         const lock = r.deployLocks[0];
         return {
           key: r.id,
-          label: lock ? t("agents.now.deploy", { subject: lock.subject, env: lock.environment }) : said(r.says.title, language),
+          text: lock ? t("agents.now.deploying", { env: lock.environment }) : t("agents.now.deployingAny"),
           href: runHref(slug, r.id),
-          detail: runDetail(r),
+          tip: tipOf(lock?.subject, r.device?.name),
           since: r.startedAt,
-          box: r.device?.name ?? null,
         };
       }
-      case "room": {
-        const room = item.room;
+      case "answering":
         return {
-          key: room.roomId,
-          label: t("agents.now.room", { rid: room.rid }),
-          href: channelHref(slug, room.rid),
-          detail: room.state === "answering" ? t("agents.now.room.answering") : t("agents.now.room.waiting", { n: room.waiting }),
-          since: room.state === "waiting" ? room.waitingSince : null,
-          box: null,
+          key: "answering",
+          text: item.rooms.length === 1 ? t("agents.now.answering") : t("agents.now.answeringIn", { n: item.rooms.length }),
+          href: channelHref(slug, item.rooms[0]?.rid ?? ""),
+          tip: tipOf(...item.rooms.map((r) => r.rid)),
+          since: null,
         };
-      }
+      case "waiting":
+        return {
+          key: "waiting",
+          text: item.messages === 1 ? t("agents.now.waitingOne") : t("agents.now.waiting", { n: item.messages }),
+          href: channelHref(slug, item.rooms[0]?.rid ?? ""),
+          tip: tipOf(...item.rooms.map((r) => r.rid)),
+          since: item.since,
+        };
     }
   };
-  return now.items.map(rowOf);
+  return now.items.map(rowOf).filter((r): r is Row => r !== null);
 }
 
 function RowLine({ row, at }: { row: Row; at: number }) {
   const language = useInterfaceLanguage();
+  const link = (
+    <Link href={row.href} className="block max-w-md truncate font-medium text-link hover:underline">
+      {row.text}
+    </Link>
+  );
   return (
     <>
-      <Link href={row.href} className="font-medium text-link hover:underline">
-        {row.label}
-      </Link>
-      {row.detail ? <span className="text-muted">{row.detail}</span> : null}
-      {row.issue ? (
-        <Link href={row.issue.href} className="font-mono hover:underline">
-          {row.issue.key}
-        </Link>
-      ) : null}
+      {row.tip ? <Tooltip label={row.tip}>{link}</Tooltip> : link}
       {row.since ? <span className="text-muted tabular-nums">{formatElapsed(at - Date.parse(row.since), language)}</span> : null}
-      {row.box ? <span className="text-muted">{row.box}</span> : null}
     </>
   );
 }
@@ -134,11 +146,11 @@ export function LiveBar({ projectId, slug }: { projectId: string; slug: string }
   const recent = useQuery(nowQueries.recent(projectId));
   const rooms = useQuery(nowQueries.rooms(projectId));
   const now = projectNowOf(readOfQuery(live), readOfQuery(recent), readOfQuery(rooms));
-  const rows = useRows(now, slug);
+  const label = useLabel();
+  const rows = rowsOf(now, t, label, language, slug);
   const quiet = !now.busy && !now.loading && now.unreadable.length === 0;
-  const shown = quiet ? rows.filter((r) => r.key === "master") : rows;
-  const line = shown.slice(0, LINE_ITEMS);
-  const rest = shown.length - line.length;
+  const line = rows.slice(0, LINE_ITEMS);
+  const rest = rows.length - line.length;
   return (
     <section
       aria-label={t("agents.now.region")}
@@ -150,7 +162,7 @@ export function LiveBar({ projectId, slug }: { projectId: string; slug: string }
         <LiveDot state={now.busy ? "live" : "offline"} />
         {now.unreadable.map((source) => (
           <span key={source} data-testid={`live-bar-unreadable-${source}`} className="text-danger">
-            {t("agents.now.cantRead", { source: t(`agents.now.source.${source}`) })}
+            {t(`agents.now.cantRead.${source}`)}
           </span>
         ))}
         {now.loading && now.unreadable.length === 0 ? <span className="text-muted">{t("agents.now.reading")}</span> : null}
@@ -168,7 +180,7 @@ export function LiveBar({ projectId, slug }: { projectId: string; slug: string }
           </span>
         ))}
         {rest > 0 ? <span className="text-muted">{t("agents.now.more", { n: rest })}</span> : null}
-        {shown.length > LINE_ITEMS ? (
+        {rows.length > LINE_ITEMS ? (
           <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="ml-auto text-muted hover:underline">
             {open ? t("agents.now.collapse") : t("agents.now.expand")}
           </button>
@@ -176,7 +188,7 @@ export function LiveBar({ projectId, slug }: { projectId: string; slug: string }
       </div>
       {open ? (
         <ul data-testid="live-bar-list" className="border-t border-line px-4 py-1">
-          {shown.map((row) => (
+          {rows.map((row) => (
             <li key={row.key} className="flex flex-wrap items-center gap-x-3 py-0.5">
               <RowLine row={row} at={at} />
             </li>

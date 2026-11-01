@@ -269,6 +269,16 @@ export function masterServingOf(projectId: string): Promise<MasterServing> {
   });
 }
 
+/** The title of the project's issue a pass's key names by its number (`ISS-412`), or null where it names none (ISS-864). */
+async function issueTitleOf(projectId: string, key: string): Promise<string | null> {
+  const seq = /-(\d+)$/.exec(key)?.[1];
+  if (!seq) return null;
+  const [row] = rowsOf<{ title: string }>(
+    await db.execute(sql`SELECT title FROM issues WHERE project_id = ${projectId} AND iss_seq = ${Number(seq)}`),
+  );
+  return row?.title ?? null;
+}
+
 export async function readMasterStanding(projectId: string): Promise<MasterStanding> {
   const [master, lastPass] = await Promise.all([
     liveMaster(projectId),
@@ -289,6 +299,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       device: null,
       since: null,
       pass: null,
+      passIssueTitle: null,
       slots: null,
       runsOut: 0,
       lastBeatAt: null,
@@ -306,6 +317,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
     master.device_id ? runsOutOf(projectId, master.device_id) : Promise.resolve(0),
   ]);
+  const passIssueTitle = pass?.issueKey ? await issueTitleOf(projectId, pass.issueKey) : null;
   const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
   return {
     ...base,
@@ -327,6 +339,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     device,
     since: master.started_at ? iso(master.started_at) : null,
     pass,
+    passIssueTitle,
     slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, held) : null,
     lastBeatAt: master.last_beat ? iso(master.last_beat) : null,
   };

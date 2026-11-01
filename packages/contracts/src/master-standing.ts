@@ -283,6 +283,8 @@ export interface MasterStanding {
 	device: { id: string; name: string } | null;
 	since: string | null;
 	pass: MasterOpenPass | null;
+	/** The title of the issue the open pass names, where it names one of this project's; the key is the pass's. */
+	passIssueTitle: string | null;
 	lastPass: MasterClosedPass | null;
 	slots: MasterSlots | null;
 	/** Live run sessions this project's master declared on its box (`forge-runner run declare`), still out. */

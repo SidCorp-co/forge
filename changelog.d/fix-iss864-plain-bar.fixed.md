@@ -1,0 +1,1 @@
+**The project bar speaks plainly.** It says what runs in words and in your language, such as "Master working: <issue title>" or "Bot answering", with keys, room ids and boxes in each item's tooltip (ISS-864).

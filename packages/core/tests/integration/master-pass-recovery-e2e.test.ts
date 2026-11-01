@@ -11,6 +11,7 @@ import {
 import {
   bindTestRunner,
   createTestDevice,
+  createTestIssue,
   createTestProject,
   createTestUser,
 } from '../helpers/factories.js';
@@ -22,6 +23,7 @@ import {
 type Who = 'owner' | 'box' | 'otherBox';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
+let ownerId = '';
 
 beforeAll(async () => {
   testEnv();
@@ -29,7 +31,7 @@ beforeAll(async () => {
   await startQueue();
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   const { mintPat } = await import('../../src/credentials/pat.js');
-  const ownerId = (await createTestUser({ verified: true })).id;
+  ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   const deviceId = await createTestDevice(ownerId);
   const otherDevice = await createTestDevice(ownerId);
@@ -155,5 +157,28 @@ describe('the first pass that ran after refused passes is marked as the recovery
     const ran = await aPass('otherBox', theirs, 'ran');
     const items: Doc[] = ok(await say('owner', 'GET', at('/masters/passes?limit=5'))).items;
     expect(items.find((p) => p.id === ran.id)?.recovers).toBeNull();
+  });
+});
+
+// ISS-864: the project bar says what the master works in words, so standing names the open pass's
+// issue by its title beside the key the pass carries; a key naming none of the project's issues
+// leaves the title null rather than a guess.
+describe('standing names the issue an open pass works by its title', () => {
+  it('carries the title of the issue the pass names, and null for a key naming none', async () => {
+    const issue = await createTestIssue(projectId, ownerId, 7, { status: 'open', createdAt: new Date() });
+    const sessionId = await masterSession('box');
+    const pass = (body: Doc) => say('box', 'POST', '/api/devices/me/master-session/pass', body);
+    const opened = ok(await pass({ op: 'open', sessionId, verb: 'dispatch', issueKey: issue.key }), 201).pass;
+    const standing = ok(await say('owner', 'GET', at('/masters/standing')));
+    expect(standing.pass).toMatchObject({ id: opened.id, issueKey: issue.key });
+    expect(standing.passIssueTitle).toBe('issue 7');
+    await pass({
+      op: 'settle',
+      sessionId,
+      passId: opened.id,
+      facts: { openedBy: 'adopted', served: true, openedAgoMs: 1_000, hooks: null, writtenAgoMs: null, dispatched: [], record: { worked: false, refusal: null } },
+    });
+    ok(await pass({ op: 'open', sessionId, verb: 'dispatch', issueKey: 'ISS-9999' }), 201);
+    expect(ok(await say('owner', 'GET', at('/masters/standing'))).passIssueTitle).toBeNull();
   });
 });
