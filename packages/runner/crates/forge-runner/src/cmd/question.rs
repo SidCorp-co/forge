@@ -271,7 +271,11 @@ async fn send_ask(
 /// refuses one naming nothing (`QUESTION_ABOUT_UNKNOWN`), so that rule has one
 /// authority and its wording reaches the caller unaltered.
 fn about_of(a: &AskArgs) -> Option<serde_json::Value> {
-    match (a.requirement.as_deref(), a.contract.as_deref(), a.feedback.as_deref()) {
+    match (
+        a.requirement.as_deref(),
+        a.contract.as_deref(),
+        a.feedback.as_deref(),
+    ) {
         (Some(r), _, _) => Some(serde_json::json!({ "requirement": r })),
         (None, Some(c), _) => Some(serde_json::json!({ "contract": c })),
         (None, None, Some(f)) => Some(serde_json::json!({ "feedback": f })),
@@ -375,7 +379,11 @@ fn asked(
 
 /// What the question is about, as the line after an ask names it.
 fn subject_of(a: &AskArgs) -> Option<String> {
-    match (a.requirement.as_deref(), a.contract.as_deref(), a.feedback.as_deref()) {
+    match (
+        a.requirement.as_deref(),
+        a.contract.as_deref(),
+        a.feedback.as_deref(),
+    ) {
         (Some(r), _, _) => Some(format!("requirement {}", r.trim())),
         (None, Some(c), _) => Some(format!("contract {}", c.trim())),
         (None, None, Some(f)) => Some(format!("feedback item {}", f.trim())),
@@ -525,16 +533,34 @@ mod tests {
 
     #[test]
     fn a_feedback_ask_sends_the_item_as_its_about() {
-        let a = ask_line(&["--issue", "ISS-9", "--feedback", "FB-12", "--needs", "which"]).unwrap();
-        assert_eq!(about_of(&a), Some(serde_json::json!({ "feedback": "FB-12" })));
+        let a = ask_line(&[
+            "--issue",
+            "ISS-9",
+            "--feedback",
+            "FB-12",
+            "--needs",
+            "which",
+        ])
+        .unwrap();
+        assert_eq!(
+            about_of(&a),
+            Some(serde_json::json!({ "feedback": "FB-12" }))
+        );
         assert_eq!(subject_of(&a).as_deref(), Some("feedback item FB-12"));
     }
 
     #[test]
     fn a_feedback_and_a_requirement_together_are_refused_by_name() {
-        let err = ask_line(&["--requirement", "REQ-1", "--feedback", "FB-2", "--needs", "x"])
-            .err()
-            .expect("refused");
+        let err = ask_line(&[
+            "--requirement",
+            "REQ-1",
+            "--feedback",
+            "FB-2",
+            "--needs",
+            "x",
+        ])
+        .err()
+        .expect("refused");
         assert!(err.to_string().contains("--feedback"), "{err}");
     }
 

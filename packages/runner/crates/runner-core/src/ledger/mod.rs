@@ -17,6 +17,7 @@
 mod masters;
 mod release;
 pub use release::{Rearmed, RETIRED_HOLDER_REFUSAL};
+mod resume_choices;
 mod runs;
 mod schema;
 

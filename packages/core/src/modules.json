@@ -173,7 +173,7 @@
     "cleanup": {
       "kind": "domain",
       "context": "release",
-      "owns": ["changeImpacts", "cleanupReports", "deliveryDebts"],
+      "owns": ["changeImpacts", "cleanupReports", "deliveryDebts", "deliveryDebtEvidence"],
       "serves": ["REQ-79"]
     },
     "comments": {
