@@ -8,29 +8,19 @@
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { Context, MiddlewareHandler } from 'hono';
 import { loadProjectAccess } from '../lib/authz.js';
+import {
+  type DeclaredPermission,
+  registerDeclaredPermission,
+} from '../middleware/declared-permission.js';
 import { type PermissionFacts, requireHeld } from './can.js';
 
-/** Where the project a declared permission is held on is found. */
-export type PermissionOn =
-  /** The path parameter that names the project. */
-  | { param: string }
-  /** The handler finds it, as this says (`the issue's project`); it checks with requireDeclared. */
-  | { resolved: string };
-
-export type DeclaredPermission =
-  | { permission: ProjectPermission; on: PermissionOn }
-  /** No project permission: the route's credential gate is the whole check, for the reason given. */
-  | { permission: null; why: string };
-
-const declared = new WeakMap<object, DeclaredPermission>();
-
-/** What the API contract reads off a mounted handler. */
-export const declaredPermissions: Pick<WeakMap<object, DeclaredPermission>, 'get'> = declared;
+export type { DeclaredPermission, PermissionOn } from '../middleware/declared-permission.js';
+export { declaredPermissions } from '../middleware/declared-permission.js';
 
 const HELD = 'declaredPermission' as never;
 
 function register(declaration: DeclaredPermission, mw: MiddlewareHandler): MiddlewareHandler {
-  declared.set(mw, declaration);
+  registerDeclaredPermission(mw, declaration);
   return mw;
 }
 

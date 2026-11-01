@@ -1,13 +1,13 @@
 import { COMPOSED_HANDLER } from 'hono/utils/constants';
 import { z } from 'zod';
 import { AUTH_GATES, type AuthGate, declaredGates } from '../middleware/declared-gate.js';
+import { type DeclaredPermission, declaredPermissions } from '../middleware/declared-permission.js';
 import {
   type DeclaredInput,
   type DeclaredRawBody,
   declaredInputs,
   declaredRawBodies,
 } from '../middleware/zod-validator.js';
-import { type DeclaredPermission, declaredPermissions } from '../permissions/declared.js';
 import { COMPONENTS } from './components.js';
 import {
   OPEN_QUERY_READS,

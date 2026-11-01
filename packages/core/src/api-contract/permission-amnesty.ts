@@ -9,7 +9,7 @@
 // empty and both files go. The generator refuses a new route missing from it, and an entry naming a
 // route that now declares one or is no longer mounted, so the list only shrinks.
 
-import type { DeclaredPermission } from '../permissions/declared.js';
+import type { DeclaredPermission } from '../middleware/declared-permission.js';
 import amnesty from './permission-amnesty.json' with { type: 'json' };
 
 /** Keyed `METHOD /path` as the router mounts it, the name every generator refusal uses. */
