@@ -131,6 +131,11 @@ const WORDS: Readonly<Record<string, Words>> = {
     act: 'issues.releaseHold.act.releaseThroughChangeRequests',
     actor: 'person',
   },
+  RELEASE_DEPLOYED_OUTSIDE: {
+    cause: 'issues.releaseHold.cause.releaseDeployedOutside',
+    act: 'issues.releaseHold.act.releaseDeployedOutside',
+    actor: 'person',
+  },
   RELEASE_RECORD_MISSING: {
     cause: 'issues.releaseHold.cause.releaseRecordMissing',
     act: 'issues.releaseHold.act.releaseRecordMissing',

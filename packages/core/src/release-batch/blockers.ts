@@ -320,7 +320,20 @@ export async function collectReleaseBlockers(
   if (read) {
     // With no production environment a record is the landing's own (`recorded-landing.ts`): there is
     // no gate to refuse, and its roster owes what every record's does.
-    if (read.kind === 'no-release' && door === 'record') {
+    // Production deployed outside Forge by a door it names (ISS-851): its record is the release, owing
+    // what every record's roster does; any other door cuts nothing and is refused by name.
+    if (read.kind === 'external' && door !== 'record') {
+      blockers.push(blocker('RELEASE_DEPLOYED_OUTSIDE'));
+      return {
+        projectId,
+        projectExists: true,
+        declaration: read,
+        channels: [],
+        blockers,
+        warnings,
+      };
+    }
+    if ((read.kind === 'no-release' || read.kind === 'external') && door === 'record') {
       const { issueIds } = options;
       const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, blockers);
       if (issueIds && issueIds.length > 0) {

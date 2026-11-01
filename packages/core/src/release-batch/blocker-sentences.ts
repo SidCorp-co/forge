@@ -106,6 +106,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'A change request this release merges also delivers an issue it does not carry, so merging it would ship work nobody was asked to accept.',
   RELEASE_THROUGH_CHANGE_REQUESTS:
     'This project releases through change requests (`release.changeRequests`): a release is its requests merged in order once the owner approves the cut, so a landing is not recorded by hand. Cut a release naming the issues (`POST /api/projects/:id/release-batches`), have it approved, then merge each request through `POST /api/issues/:id/merge-pull-request`; the last merge closes the release.',
+  RELEASE_DEPLOYED_OUTSIDE:
+    "This project's production is deployed outside Forge by the door its environment names (`deployment.target`), so Forge cuts and deploys nothing: a release is the record of that door's deploy. Once it lands, record it — `POST /api/projects/:id/release-records` with `{ issueIds, commit, account }`, `commit` the whole sha production now serves — and production's runtime probe proves it.",
   RELEASE_PROMOTION_MISSING:
     'This project releases through its promotion: production is deployed outside Forge, and a release is the change request {promotion}. None is open, or merged and not yet released, so nothing would ship {named}. Open it at a head judged on the branch work lands on, then cut again naming it as `promotion.request`.',
   RELEASE_SHIPPED_IN_OWED:
@@ -156,6 +158,7 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_CHANGE_REQUEST_MISSING: [],
   RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED: [],
   RELEASE_THROUGH_CHANGE_REQUESTS: [],
+  RELEASE_DEPLOYED_OUTSIDE: [],
   RELEASE_PROMOTION_MISSING: [],
   RELEASE_SHIPPED_IN_OWED: [],
   RELEASE_CLEANUP_PENDING: [],

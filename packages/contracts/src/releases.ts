@@ -828,6 +828,8 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED",
 	/** A change-request project's landing recorded by hand, which would skip its approval and merges. */
 	"RELEASE_THROUGH_CHANGE_REQUESTS",
+	/** Production is deployed outside Forge by the door it names: nothing is cut, and a release is the record of that deploy (ISS-851). */
+	"RELEASE_DEPLOYED_OUTSIDE",
 	/** A promotion release with no change request across its promotion that is open, or merged and not yet released (REQ-63 BC-9). */
 	"RELEASE_PROMOTION_MISSING",
 	/** A roster issue marked merged after a shipped release was cut that may hold it: its agent records which release shipped it (ISS-774). */

@@ -131,7 +131,17 @@ export const environmentSchema = z
     deploysFrom: gitRef().optional(),
     deployment: z.union([
       z.strictObject({ binding: uuid(), trigger: z.enum(DEPLOYMENT_TRIGGERS) }),
-      z.strictObject({ mode: z.literal('external') }),
+      z.strictObject({
+        mode: z.literal('external'),
+        // the door outside Forge that deploys this environment (`forge-ops`, a CI pipeline): with a
+        // runtime probe identifying the source, a release lands here by its record (ISS-851)
+        target: z
+          .string()
+          .min(1)
+          .max(120)
+          .regex(/^\S(?:.*\S)?$/, 'a name with no leading or trailing space')
+          .optional(),
+      }),
     ]),
     services: sized(z.record(slug(), httpsUrl()), { max: 10 }).optional(),
     testing: slug().optional(),

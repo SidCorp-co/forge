@@ -9,6 +9,9 @@ export const SAID = {
 	"standing.act.carryOrUnlink": {
 		en: "name its other issues in this release, or unlink them",
 	},
+	"standing.act.recordExternalDeploy": {
+		en: "record the release once its deploy lands",
+	},
 	"standing.act.cutAndApprove": {
 		en: "cut a release and approve it; its merges close it",
 	},
@@ -53,6 +56,10 @@ export const SAID = {
 	"standing.gate.title.changeRequestCarries": { en: "Request carries other work" },
 	"standing.gate.title.changeRequestMissing": { en: "Request missing" },
 	"standing.gate.title.throughChangeRequests": { en: "Released by merge" },
+	"standing.gate.deployedOutside": {
+		en: "Production is deployed outside Forge; a release is the record of that deploy.",
+	},
+	"standing.gate.title.deployedOutside": { en: "Deployed outside Forge" },
 	"standing.gate.promotionMissing": {
 		en: "This release waits on a promotion change request carrying it.",
 	},
@@ -518,6 +525,8 @@ export const SAID = {
 	"issues.releaseHold.act.releaseChangeRequestCarriesUnreleased": { en: "settle the change request" },
 	"issues.releaseHold.cause.releaseThroughChangeRequests": { en: "This project releases through change requests" },
 	"issues.releaseHold.act.releaseThroughChangeRequests": { en: "file a change request" },
+	"issues.releaseHold.cause.releaseDeployedOutside": { en: "Production is deployed outside Forge" },
+	"issues.releaseHold.act.releaseDeployedOutside": { en: "record the release once it is deployed" },
 	"issues.releaseHold.cause.releaseRecordMissing": { en: "The release record is missing" },
 	"issues.releaseHold.act.releaseRecordMissing": { en: "write the release record" },
 	"issues.releaseHold.cause.releaseRosterEmpty": { en: "The release has nothing ready in it" },

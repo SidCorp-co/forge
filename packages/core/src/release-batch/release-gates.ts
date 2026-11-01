@@ -190,6 +190,10 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'standing.gate.title.throughChangeRequests',
     plain: plain('standing.gate.throughChangeRequests'),
   },
+  RELEASE_DEPLOYED_OUTSIDE: {
+    title: 'standing.gate.title.deployedOutside',
+    plain: plain('standing.gate.deployedOutside'),
+  },
   RELEASE_PROMOTION_MISSING: {
     title: 'standing.gate.title.promotionMissing',
     plain: plain('standing.gate.promotionMissing'),
@@ -323,6 +327,7 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
     act: act('standing.act.carryOrUnlink'),
   },
   RELEASE_THROUGH_CHANGE_REQUESTS: { by: 'admin', act: act('standing.act.cutAndApprove') },
+  RELEASE_DEPLOYED_OUTSIDE: { by: 'master', act: act('standing.act.recordExternalDeploy') },
   RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
   RELEASE_SHIPPED_IN_OWED: { by: 'master', act: onThem('standing.act.recordShippedIn') },
   RELEASE_CLEANUP_PENDING: { by: 'master', act: onThem('standing.act.runCleanup') },

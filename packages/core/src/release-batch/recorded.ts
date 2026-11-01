@@ -26,6 +26,7 @@ import { admitRoster } from './blockers.js';
 import {
   type CloseVerification,
   closeVerification,
+  externalVerification,
   type RecordedVerification,
   type ReleaseVerification,
 } from './channel.js';
@@ -201,7 +202,11 @@ export async function recordPerformedRelease(
   const gateStatus = RELEASE_GATE_STATUS;
   // Taken from the report rather than read again: a second read would refuse in its own order
   // (ISS-1127). A refused declaration is already the report's blocker, so this cannot throw.
-  const verification = closeVerification(report.channels ?? []);
+  // production deployed outside Forge is proved by its own runtime probe, no binding (ISS-851)
+  const verification =
+    report.declaration?.kind === 'external'
+      ? externalVerification(report.declaration.production)
+      : closeVerification(report.channels ?? []);
   const roster = await admissibleIssues(projectId, issueIds);
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
 

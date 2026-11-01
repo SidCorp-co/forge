@@ -35,6 +35,18 @@ export type ReleaseDeclaration =
       production: NamedEnvironment;
       promotion: { from: string; to: string };
     }
+  /**
+   * Production is deployed outside Forge by the door its environment names (`deployment.target`),
+   * and a runtime probe identifying the source reads what it serves (ISS-851): issues wait at the
+   * gate, nothing is cut, and a release is the record of that door's deploy, proved by the probe.
+   */
+  | {
+      kind: 'external';
+      path: ReleasePath;
+      defaultBranch: string | null;
+      production: NamedEnvironment;
+      target: string;
+    }
   | {
       kind: 'gated';
       path: ReleasePath;
@@ -45,6 +57,15 @@ export type ReleaseDeclaration =
       binding: BindingWithConnection;
     };
 
+/** The door an external production names, where it also declares a probe that reads its source. */
+function externalTarget(production: NamedEnvironment): string | null {
+  const { deployment, verification } = production.declaration;
+  if (!('mode' in deployment) || !deployment.target) return null;
+  return (verification?.runtime ?? []).some((p) => p.identifies === 'source')
+    ? deployment.target
+    : null;
+}
+
 async function productionBinding(
   projectId: string,
   production: NamedEnvironment,
@@ -53,7 +74,7 @@ async function productionBinding(
   if (id === null) {
     return {
       ok: false,
-      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external) and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
+      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external), names no door that deploys it with a runtime probe identifying the source, and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — name the door (\`deployment.target\`) beside a \`verification.runtime\` probe with \`identifies: source\` (a release is then the record of its deploy), declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
     };
   }
   const pair = await findBindingWithConnectionById(id);
@@ -95,6 +116,16 @@ export async function resolveReleaseDeclaration(
       promotion: { from: path.crossing.from, to: path.crossing.to },
     };
   }
+  const target = bindingOf(path.production) === null ? externalTarget(path.production) : null;
+  if (target) {
+    return {
+      kind: 'external',
+      path,
+      defaultBranch: path.defaultBranch,
+      production: path.production,
+      target,
+    };
+  }
   const bound = await productionBinding(projectId, path.production);
   if (!bound.ok) return { kind: 'undeclared-target', reason: bound.reason };
   return {
@@ -130,7 +161,10 @@ export async function resolveReleaseGate(projectId: string): Promise<IssueStatus
   if (decl.kind === 'undeclared-target') {
     throw blockerRefusal('RELEASE_TARGET_UNDECLARED', { reason: decl.reason });
   }
-  return decl.kind === 'gated' || decl.kind === 'change-requests' || decl.kind === 'promotion'
+  return decl.kind === 'gated' ||
+    decl.kind === 'change-requests' ||
+    decl.kind === 'promotion' ||
+    decl.kind === 'external'
     ? RELEASE_GATE_STATUS
     : null;
 }

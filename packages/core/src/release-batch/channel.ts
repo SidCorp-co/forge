@@ -131,6 +131,21 @@ export function closeVerification(channels: readonly ReleaseChannel[]): CloseVer
   return provider ? { kind: 'provider', channel: provider } : { kind: 'deployment' };
 }
 
+/**
+ * How a release of production deployed outside Forge is proved (ISS-851): by production's own
+ * runtime probes identifying the source, the only reading of what that door deployed. The declaration
+ * admits such a production only with one, so a missing probe here is a declaration read wrongly.
+ */
+export function externalVerification(production: NamedEnvironment): CloseVerification {
+  const { verify } = releaseProbesOf(production);
+  if (!verify) {
+    throw blockerRefusal('RELEASE_PROBES_UNREADABLE', {
+      bindings: [`environment \`${production.name}\` (deployed outside Forge)`],
+    });
+  }
+  return { kind: 'probed', cfg: verify };
+}
+
 /** The production binding's provider as a person reads it (`Autoflow`), or `null` where none is bound. */
 export function productionProviderOf(channels: readonly ReleaseChannel[]): string | null {
   const channel = channels[0];
