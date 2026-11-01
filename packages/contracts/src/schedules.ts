@@ -10,8 +10,14 @@ export const SCHEDULE_KINDS = [
 	"status_report",
 	/** A cleanup window (REQ-79 BC-7): starts the project's cleanup run on its own slot. */
 	"cleanup",
+	/** A daily review (ISS-862): hands the project's master its review brief, a nudge in its pane. */
+	"daily_review",
 ] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
+
+/** Why a daily review fire reached no master, recorded as its refusal (`schedule_runs.refusal`): missed by name. */
+export const DAILY_REVIEW_FIRE_REFUSALS = ["DAILY_REVIEW_NO_MASTER", "DAILY_REVIEW_MASTER_SILENT"] as const;
+export type DailyReviewFireRefusal = (typeof DAILY_REVIEW_FIRE_REFUSALS)[number];
 
 export const SCHEDULE_RUN_TRIGGERS = ["manual", "scheduled"] as const;
 export type ScheduleRunTrigger = (typeof SCHEDULE_RUN_TRIGGERS)[number];

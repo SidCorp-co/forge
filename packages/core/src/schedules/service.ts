@@ -32,6 +32,7 @@ const SELF_NAMED_KINDS: ReadonlySet<ScheduleKind> = new Set([
   'sentry_pull',
   'status_report',
   'cleanup',
+  'daily_review',
 ]);
 
 // Cross-project routing via `targetProjectSlug` would otherwise let a source
@@ -133,6 +134,11 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   if (kind === 'status_report' && input.targetProjectSlug) {
     throw badRequest(
       'targetProjectSlug must be omitted when kind is "status_report": it reports on its own project to its members',
+    );
+  }
+  if (kind === 'daily_review' && input.targetProjectSlug) {
+    throw badRequest(
+      "targetProjectSlug must be omitted when kind is \"daily_review\": it hands its own project's master the review",
     );
   }
   const params =

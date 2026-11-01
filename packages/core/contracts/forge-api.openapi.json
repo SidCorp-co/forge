@@ -53864,7 +53864,8 @@
                       "release_batch",
                       "sentry_pull",
                       "status_report",
-                      "cleanup"
+                      "cleanup",
+                      "daily_review"
                     ],
                     "type": "string"
                   },
@@ -54028,7 +54029,8 @@
                       "release_batch",
                       "sentry_pull",
                       "status_report",
-                      "cleanup"
+                      "cleanup",
+                      "daily_review"
                     ],
                     "type": "string"
                   },
