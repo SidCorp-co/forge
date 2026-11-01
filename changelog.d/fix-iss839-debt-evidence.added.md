@@ -1,0 +1,1 @@
+**Evidence on a cleanup debt reaches the cleanup run.** A debt keeps the evidence given on it in its giver's name, and the cleanup run's brief prints it with the debt's detail and who priced its amnesty (ISS-839).

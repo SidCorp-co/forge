@@ -7,6 +7,7 @@ import type {
   CarryDebtRequest,
   CleanupReportRequest,
   CleanupReportView,
+  DebtEvidenceRequest,
   DebtLedgerView,
   Impact,
   ImpactView,
@@ -46,6 +47,7 @@ import {
   currentRatings,
   greenCoverage,
   insertDebts,
+  insertEvidence,
   insertImpact,
   insertReport,
   issueImpacts,
@@ -176,6 +178,28 @@ export async function carryDebt(args: {
     );
   }
   return { debt: debtId, carried: carry !== null };
+}
+
+/**
+ * Keep evidence on an open debt (ISS-839): what someone found about it, in their name, which every
+ * later cleanup brief and ledger read carries beside the debt. A writer's act: whoever saw it says it.
+ */
+export async function addDebtEvidence(args: {
+  projectId: string;
+  debtId: string;
+  request: DebtEvidenceRequest;
+  userId: string;
+}): Promise<{ debt: string; evidence: true }> {
+  const { projectId, debtId, request, userId } = args;
+  await writer(projectId, userId);
+  if (!(await insertEvidence({ projectId, debtId, evidence: request.evidence, by: userId }))) {
+    throw refuse(
+      'CLEANUP_DEBT_UNKNOWN',
+      `debt ${debtId} is not open on this project: it was never recorded here, or a cleanup report already cleared it, and evidence is kept on open debt only. Read the ledger (GET /api/projects/${projectId}/debts). Nothing was recorded`,
+      '/debt',
+    );
+  }
+  return { debt: debtId, evidence: true };
 }
 
 /**

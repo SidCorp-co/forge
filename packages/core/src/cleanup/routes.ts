@@ -4,6 +4,7 @@
 import {
   carryDebtRequestSchema,
   cleanupReportRequestSchema,
+  debtEvidenceRequestSchema,
   recordDebtsRequestSchema,
   recordImpactRequestSchema,
 } from '@forge/contracts/cleanup';
@@ -12,6 +13,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import {
+  addDebtEvidence,
   carryDebt,
   listCleanupReports,
   readImpacts,
@@ -106,6 +108,29 @@ cleanupProjectRoutes.delete('/:projectId/debts/:debt/carry', debtParam, noQuery,
   const { projectId, debt } = c.req.valid('param');
   return c.json(await carryDebt({ projectId, debtId: debt, carry: null, userId: c.get('userId') }));
 });
+
+cleanupProjectRoutes.use('/:projectId/debts/:debt/evidence', requireAuth(), assertEmailVerified());
+
+cleanupProjectRoutes.post(
+  '/:projectId/debts/:debt/evidence',
+  debtParam,
+  strictBody(
+    debtEvidenceRequestSchema,
+    '{ evidence } keeps what you found about an open debt on it, in your name, for every later cleanup brief (ISS-839)',
+  ),
+  async (c) => {
+    const { projectId, debt } = c.req.valid('param');
+    return c.json(
+      await addDebtEvidence({
+        projectId,
+        debtId: debt,
+        request: c.req.valid('json'),
+        userId: c.get('userId'),
+      }),
+      201,
+    );
+  },
+);
 
 cleanupProjectRoutes.get('/:projectId/debts', projectParam, noQuery, async (c) =>
   c.json(await readLedger(c.req.valid('param').projectId, c.get('userId'))),

@@ -5,6 +5,7 @@ import type {
   CarryDebtRequest,
   CleanupReportRequest,
   CleanupReportView,
+  DebtEvidenceView,
   DebtItem,
   DebtView,
   Impact,
@@ -13,8 +14,13 @@ import type {
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { issues } from '../db/schema.js';
-import { changeImpacts, cleanupReports, deliveryDebts } from '../db/schema-cleanup.js';
+import { issues, users } from '../db/schema.js';
+import {
+  changeImpacts,
+  cleanupReports,
+  deliveryDebtEvidence,
+  deliveryDebts,
+} from '../db/schema-cleanup.js';
 import { issueDisplayIds } from '../issues/index.js';
 import type { LastReport, OpenDebt, RatedIssue } from './rules.js';
 
@@ -167,6 +173,67 @@ export async function setCarried(args: {
   return written.length > 0;
 }
 
+/**
+ * Keep evidence on an open debt of the project, in the name of who gave it (ISS-839). Answers whether
+ * an open debt was found to keep it on; a cleared or unknown one is not.
+ */
+export async function insertEvidence(args: {
+  projectId: string;
+  debtId: string;
+  evidence: string;
+  by: string;
+}): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [open] = await tx
+      .select({ id: deliveryDebts.id })
+      .from(deliveryDebts)
+      .where(
+        and(
+          eq(deliveryDebts.id, args.debtId),
+          eq(deliveryDebts.projectId, args.projectId),
+          isNull(deliveryDebts.clearedAt),
+        ),
+      )
+      .for('update')
+      .limit(1);
+    if (!open) return false;
+    await tx.insert(deliveryDebtEvidence).values({
+      debtId: args.debtId,
+      projectId: args.projectId,
+      evidence: args.evidence,
+      recordedBy: args.by,
+    });
+    return true;
+  });
+}
+
+/** Each debt's evidence, oldest first, among `debtIds`. */
+async function evidenceOf(debtIds: readonly string[]): Promise<Map<string, DebtEvidenceView[]>> {
+  const out = new Map<string, DebtEvidenceView[]>();
+  if (debtIds.length === 0) return out;
+  const rows = await db
+    .select()
+    .from(deliveryDebtEvidence)
+    .where(inArray(deliveryDebtEvidence.debtId, [...debtIds]))
+    .orderBy(asc(deliveryDebtEvidence.createdAt), asc(deliveryDebtEvidence.id));
+  for (const r of rows) {
+    const list = out.get(r.debtId) ?? [];
+    list.push({ evidence: r.evidence, by: r.recordedBy, at: r.createdAt.toISOString() });
+    out.set(r.debtId, list);
+  }
+  return out;
+}
+
+/** The names the given users go by, falling back to their email; an unknown id is left out. */
+export async function userNames(ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: users.id, displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(inArray(users.id, [...new Set(ids)]));
+  return new Map(rows.map((r) => [r.id, r.displayName?.trim() || r.email]));
+}
+
 /** The project's debts, open or cleared, newest first, at most `limit` of each. */
 export async function readDebts(
   projectId: string,
@@ -187,6 +254,7 @@ export async function readDebts(
   const [open, cleared] = await Promise.all([read(false), read(true)]);
   const ids = [...open, ...cleared].flatMap((r) => (r.issueId ? [r.issueId] : []));
   const keys = ids.length ? await issueDisplayIds([...new Set(ids)]) : new Map<string, string>();
+  const evidence = await evidenceOf([...open, ...cleared].map((r) => r.id));
   const view = (r: typeof deliveryDebts.$inferSelect): DebtView => ({
     id: r.id,
     issueId: r.issueId,
@@ -212,6 +280,7 @@ export async function readDebts(
             at: r.carriedAt.toISOString(),
           }
         : null,
+    evidence: evidence.get(r.id) ?? [],
   });
   return { open: open.map(view), cleared: cleared.map(view) };
 }

@@ -184,7 +184,31 @@ export interface BriefDebt {
   where: string;
   rating: string;
   issueKey: string | null;
-  carried: { trades: string; costs: string; endsWhen: string } | null;
+  /** What was recorded about it when it was left (BC-3). */
+  detail: string;
+  /** The priced amnesty it is carried under, with who priced it (BC-10, ISS-839). */
+  carried: { trades: string; costs: string; endsWhen: string; by: string | null } | null;
+  /** What was found about it since, oldest first, each in its giver's name (ISS-839). */
+  evidence: readonly { evidence: string; by: string | null; at: string }[];
+}
+
+const whoGave = (by: string | null) => by ?? 'someone no longer on Forge';
+
+/** One open debt as the brief lists it: the line, its detail, its amnesty and its evidence. */
+function briefDebt(d: BriefDebt): string {
+  const lines = [
+    `- ${d.id} [${d.kind}${d.check ? ` ${d.check}` : ''}, ${d.rating}] ${d.where}${d.issueKey ? ` (seen on ${d.issueKey})` : ''}`,
+    `  detail: ${d.detail}`,
+  ];
+  if (d.carried) {
+    lines.push(
+      `  CARRIED, a priced amnesty by ${whoGave(d.carried.by)}: trades ${d.carried.trades}; costs ${d.carried.costs}; ends when ${d.carried.endsWhen}`,
+    );
+  }
+  for (const e of d.evidence) {
+    lines.push(`  evidence from ${whoGave(e.by)}, ${e.at.slice(0, 10)}: ${e.evidence}`);
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -198,14 +222,7 @@ export function cleanupBrief(args: {
   waiting: readonly { key: string; reason: string }[];
 }): string {
   const { projectId, fireId } = args;
-  const debts = args.debts.length
-    ? args.debts
-        .map(
-          (d) =>
-            `- ${d.id} [${d.kind}${d.check ? ` ${d.check}` : ''}, ${d.rating}] ${d.where}${d.issueKey ? ` (seen on ${d.issueKey})` : ''}${d.carried ? `\n  CARRIED, a priced amnesty: trades ${d.carried.trades}; costs ${d.carried.costs}; ends when ${d.carried.endsWhen}` : ''}`,
-        )
-        .join('\n')
-    : '- none recorded';
+  const debts = args.debts.length ? args.debts.map(briefDebt).join('\n') : '- none recorded';
   const waiting = args.waiting.length
     ? args.waiting.map((w) => `- ${w.key}: ${w.reason}`).join('\n')
     : '- none';
@@ -223,7 +240,8 @@ export function cleanupBrief(args: {
     "2. Run the project's checks at the head you leave, and record any new debt you find but do not clear: POST /api/projects/" +
       `${projectId}/debts { items: [{ kind, check?, where, detail, impact: { type, rating, reason } }] }.`,
     `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the head you leave> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }], covers: [<each waiting key above whose merge the green head carries, checked with git merge-base --is-ancestor>] }.`,
-    'Every open debt is named once, cleared with how or remaining with why; only a green report covers anything.',
+    'Every open debt is named once, cleared with how or remaining with why; only a green report covers anything. Weigh the evidence given on a debt before you work it; what you find yourself, keep on it: POST /api/projects/' +
+      `${projectId}/debts/<debt>/evidence { evidence }.`,
     'The result is not yours to judge (REQ-79 BC-10): it is green exactly when every debt you leave in remains is CARRIED above, and red when you leave one that is not. Core refuses any other result (CLEANUP_RESULT_DISAGREES). A carried debt still remains until it is cleared, and never makes a report red; carrying a debt is not yours either.',
     '',
     'This run is headless: once your turn ends nothing wakes it, and no notification of a CI run, a background task or a message ever reaches it. So never end your turn waiting on anything; your turn ends only after the report is posted.',

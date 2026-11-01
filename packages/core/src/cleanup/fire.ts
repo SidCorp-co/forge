@@ -6,7 +6,7 @@ import { readFastDelivery } from '../project-config/index.js';
 import type { CleanupFirePlan } from '../schedules/index.js';
 import { cleanupBrief, FAST_DELIVERY_OFF_DETAIL } from './rules.js';
 import { cleanupReportOwed, waitingIssues } from './service.js';
-import { readDebts } from './store.js';
+import { readDebts, userNames } from './store.js';
 
 export async function cleanupFirePlan(args: {
   projectId: string;
@@ -27,6 +27,13 @@ export async function cleanupFirePlan(args: {
       why: `no cleanup debt is open but ${debts.open.length ? 'debt carried under a priced amnesty' : 'none'}, no change rated high waits on a cleanup, and the base owes no report, so this window starts no run`,
     };
   }
+  const names = await userNames(
+    debts.open.flatMap((d) => [
+      ...(d.carried?.by ? [d.carried.by] : []),
+      ...d.evidence.flatMap((e) => (e.by ? [e.by] : [])),
+    ]),
+  );
+  const named = (id: string | null) => (id ? (names.get(id) ?? null) : null);
   return {
     kind: 'run',
     prompt: cleanupBrief({
@@ -39,9 +46,16 @@ export async function cleanupFirePlan(args: {
         where: d.where,
         rating: d.impact.rating,
         issueKey: d.issueKey,
+        detail: d.detail,
         carried: d.carried
-          ? { trades: d.carried.trades, costs: d.carried.costs, endsWhen: d.carried.endsWhen }
+          ? {
+              trades: d.carried.trades,
+              costs: d.carried.costs,
+              endsWhen: d.carried.endsWhen,
+              by: named(d.carried.by),
+            }
           : null,
+        evidence: d.evidence.map((e) => ({ evidence: e.evidence, by: named(e.by), at: e.at })),
       })),
       waiting: waiting.map((w) => ({ key: w.issueKey, reason: w.impact.reason })),
     }),

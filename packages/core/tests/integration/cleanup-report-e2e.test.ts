@@ -195,8 +195,10 @@ describe('a debt no change can clear, carried as a priced amnesty (BC-10, ISS-84
     const plan = await cleanupFirePlan({ projectId, fireId: randomUUID() });
     if (plan.kind !== 'run') throw new Error(`no run: ${JSON.stringify(plan)}`);
     expect(plan.prompt).toContain(debt);
-    expect(plan.prompt).toContain(
-      `CARRIED, a priced amnesty: trades ${PRICE.trades}; costs ${PRICE.costs}; ends when ${PRICE.endsWhen}`,
+    expect(plan.prompt).toMatch(
+      new RegExp(
+        `CARRIED, a priced amnesty by [^:]+: trades ${PRICE.trades}; costs ${PRICE.costs}; ends when ${PRICE.endsWhen}`,
+      ),
     );
     expect(plan.prompt).toContain('The result is not yours to judge (REQ-79 BC-10)');
   });
@@ -219,5 +221,85 @@ describe('a debt no change can clear, carried as a priced amnesty (BC-10, ISS-84
     const green = await reportCleanup({ base: { branch: 'main', sha: 'c'.repeat(40) }, remains });
     expect([green.status, codes(green)]).toEqual([201, []]);
     expect((await plan()).kind).toBe('nothing');
+  });
+});
+
+// ISS-839 (FB-432, forge-dev 2026-10-31): the amnesty on 3d01ab3d and the master's evidence on
+// 15f71b1d could go only into project memory, which the cleanup run reads only if recall finds it.
+describe('evidence kept on a debt, where the cleanup run reads it (ISS-839)', () => {
+  const evidence = (debt: string, body: unknown, as = token) =>
+    call('POST', `/api/projects/${projectId}/debts/${debt}/evidence`, body, as);
+  const SEEN = 'Coolify answers 401 to the dev deploy hook: the token is empty, not wrong';
+
+  it("is kept on the debt in its giver's name, and the brief prints it with who priced the amnesty", async () => {
+    await db.execute(sql`UPDATE users SET display_name = 'Decision Holder' WHERE id = ${ownerId}`);
+    const memberId = (await createTestUser({ verified: true })).id;
+    await addProjectMember(projectId, memberId, 'member');
+    await db.execute(sql`UPDATE users SET display_name = 'The Master' WHERE id = ${memberId}`);
+    const debt = await deployDebt();
+    expect((await carry(debt)).status).toBe(200);
+    const kept = await evidence(debt, { evidence: SEEN }, await userToken(memberId));
+    expect([kept.status, kept.body]).toEqual([201, { debt, evidence: true }]);
+
+    const open = (await ledger()).body.open as Doc[];
+    expect(open.find((d) => d.id === debt)?.evidence).toEqual([
+      { evidence: SEEN, by: memberId, at: expect.any(String) },
+    ]);
+
+    const high = await fx.insertIssue('in_progress');
+    await rate(high, 'high');
+    const plan = await cleanupFirePlan({ projectId, fireId: randomUUID() });
+    if (plan.kind !== 'run') throw new Error(`no run: ${JSON.stringify(plan)}`);
+    expect(plan.prompt).toContain(
+      `CARRIED, a priced amnesty by Decision Holder: trades ${PRICE.trades}; costs ${PRICE.costs}; ends when ${PRICE.endsWhen}`,
+    );
+    expect(plan.prompt).toMatch(
+      new RegExp(`evidence from The Master, \\d{4}-\\d{2}-\\d{2}: ${SEEN}`),
+    );
+    expect(plan.prompt).toContain(
+      'detail: COOLIFY_DEV_DEPLOY_TOKEN is empty; no diff can set a secret',
+    );
+    expect(plan.prompt).toContain(`/api/projects/${projectId}/debts/<debt>/evidence { evidence }`);
+  });
+
+  it('reads the same on every later brief, and a report leaving the carried debt stays green', async () => {
+    const debt = await deployDebt();
+    await carry(debt);
+    await evidence(debt, { evidence: SEEN });
+    const high = await fx.insertIssue('in_progress');
+    await rate(high, 'high');
+    const brief = async () => {
+      const plan = await cleanupFirePlan({ projectId, fireId: randomUUID() });
+      if (plan.kind !== 'run') throw new Error(`no run: ${JSON.stringify(plan)}`);
+      return plan.prompt.split('\n').filter((l) => l.includes(SEEN) || l.startsWith('  CARRIED'));
+    };
+    const first = await brief();
+    expect(first).toHaveLength(2);
+    const remains = [{ debt, why: 'a person must set the token' }];
+    const green = await reportCleanup({ remains });
+    expect([green.status, codes(green)]).toEqual([201, []]);
+    expect(await brief()).toEqual(first);
+  });
+
+  it('is refused by name on a debt that is not open here, and with no evidence', async () => {
+    const debt = await deployDebt();
+    expect(codes(await evidence(randomUUID(), { evidence: SEEN }))).toEqual([
+      'CLEANUP_DEBT_UNKNOWN',
+    ]);
+    const cleared = await reportCleanup({ cleared: [{ debt, how: 'set the token' }] });
+    expect(cleared.status).toBe(201);
+    expect(codes(await evidence(debt, { evidence: SEEN }))).toEqual(['CLEANUP_DEBT_UNKNOWN']);
+    const other = await deployDebt();
+    expect((await evidence(other, { evidence: '' })).status).toBe(400);
+    expect((await evidence(other, {})).status).toBe(400);
+    expect((await evidence(other, { evidence: SEEN, by: 'someone' })).status).toBe(400);
+    expect((await ledger()).body.open.find((d: Doc) => d.id === other)?.evidence).toEqual([]);
+  });
+
+  it('is refused to a reader who may not write on the project', async () => {
+    const debt = await deployDebt();
+    const outsider = await userToken((await createTestUser({ verified: true })).id);
+    const res = await evidence(debt, { evidence: SEEN }, outsider);
+    expect(res.status).toBe(403);
   });
 });

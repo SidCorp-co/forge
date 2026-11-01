@@ -101,6 +101,22 @@ export const carryDebtRequestSchema = z.strictObject({
 });
 export type CarryDebtRequest = z.infer<typeof carryDebtRequestSchema>;
 
+/**
+ * `POST /api/projects/:id/debts/:debt/evidence` (ISS-839): what someone found about an open debt, kept
+ * on it in their name, which every later cleanup brief and ledger read carries.
+ */
+export const debtEvidenceRequestSchema = z.strictObject({
+	evidence: text("evidence", LIMITS.detail),
+});
+export type DebtEvidenceRequest = z.infer<typeof debtEvidenceRequestSchema>;
+
+/** One piece of evidence on a debt: what it says, who gave it, when. */
+export interface DebtEvidenceView {
+	evidence: string;
+	by: string | null;
+	at: string;
+}
+
 export const CLEANUP_RESULTS = ["green", "red"] as const;
 export type CleanupResult = (typeof CLEANUP_RESULTS)[number];
 
@@ -172,6 +188,8 @@ export interface DebtView {
 	cleared: { reportId: string; how: string; at: string } | null;
 	/** The priced amnesty it is carried under (BC-10), or null. */
 	carried: (CarryDebtRequest & { by: string | null; at: string }) | null;
+	/** What was found about it, oldest first (ISS-839). */
+	evidence: DebtEvidenceView[];
 }
 
 export interface CleanupReportView {

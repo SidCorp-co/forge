@@ -138,7 +138,9 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
           where: 'scripts',
           rating: 'medium',
           issueKey: 'ISS-4',
+          detail: 'copy budget over',
           carried: null,
+          evidence: [],
         },
       ],
       waiting: [{ key: 'ISS-7', reason: 'a migration' }],
@@ -217,17 +219,27 @@ describe('a report green exactly when every debt it leaves is carried (REQ-79 BC
           where: '.github/workflows',
           rating: 'medium',
           issueKey: null,
+          detail: 'the token is empty',
           carried: {
             trades: 'Deploy dev stays red',
             costs: 'hand deploys',
             endsWhen: 'the token is set',
+            by: 'Decision Holder',
           },
+          evidence: [
+            { evidence: 'the hook answers 401', by: 'The Master', at: '2026-10-31T09:00:00.000Z' },
+            { evidence: 'still 401 after the rotation', by: null, at: '2026-11-01T09:00:00.000Z' },
+          ],
         },
       ],
       waiting: [],
     });
     expect(brief).toContain(
-      'CARRIED, a priced amnesty: trades Deploy dev stays red; costs hand deploys; ends when the token is set',
+      'CARRIED, a priced amnesty by Decision Holder: trades Deploy dev stays red; costs hand deploys; ends when the token is set',
+    );
+    // ISS-839: the evidence given on it, oldest first, each in its giver's name
+    expect(brief).toContain(
+      '  evidence from The Master, 2026-10-31: the hook answers 401\n  evidence from someone no longer on Forge, 2026-11-01: still 401 after the rotation',
     );
     expect(brief).toContain('The result is not yours to judge (REQ-79 BC-10)');
     expect(brief).toContain('CLEANUP_RESULT_DISAGREES');

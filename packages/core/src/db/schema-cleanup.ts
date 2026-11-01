@@ -84,6 +84,29 @@ export const cleanupReports = pgTable(
 );
 
 /**
+ * What someone found about a debt (ISS-839): kept on it in their name, oldest first, for the cleanup
+ * run that weighs it. Append-only; it goes with its debt.
+ */
+export const deliveryDebtEvidence = pgTable(
+  'delivery_debt_evidence',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    debtId: uuid('debt_id')
+      .notNull()
+      .references(() => deliveryDebts.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    evidence: text('evidence').notNull(),
+    recordedBy: uuid('recorded_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    debtIdx: index('delivery_debt_evidence_debt_idx').on(t.debtId, t.createdAt),
+  }),
+);
+
+/**
  * The cleanup ledger (REQ-79 BC-3, BC-7): debt an agent saw and left for the cleanup lane, rated as
  * a change is. Cleared once, by the cleanup report that names it cleared.
  */

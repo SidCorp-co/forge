@@ -3627,6 +3627,13 @@
       "when": 1832371200000,
       "tag": "0572_a_change_request_links_by_its_title",
       "breakpoints": true
+    },
+    {
+      "idx": 573,
+      "version": "7",
+      "when": 1832457600000,
+      "tag": "0573_a_debt_keeps_the_evidence_given_on_it",
+      "breakpoints": true
     }
   ]
 }
