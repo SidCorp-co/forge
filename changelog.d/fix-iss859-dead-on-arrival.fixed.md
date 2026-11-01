@@ -1,1 +1,0 @@
-**Dead master panes are replaced.** A pane never heard from within five minutes is recorded dead on arrival, ended and placed once more; a second dead arrival in a row is reported as a finding (ISS-859).

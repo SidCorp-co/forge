@@ -9,6 +9,30 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.421] - 2026-11-01
+
+Live project activity, secret deletion, release news in rooms, master pane recovery
+
+### Added
+
+- **A channel room can hear about each release.** With `announce.releases` on, its bot is handed each production release's user-facing notes, an hour's worth at a time, and tells the room in its own words (ISS-854).
+- **See what runs on a project.** Every project page carries a live bar naming what runs there now: the master, runs, releases, deploys and support-room turns (ISS-856).
+
+### Changed
+
+- **Batches are gated once.** Agents working on Forge gate a whole batch once instead of each issue, and no longer mark every document they opened (ISS-861).
+- **The support room bot speaks only in its own words.** It asks before recording or running a change and takes a plain "ok" as consent; no more `confirm` codes, canned "Recorded as" lines or typed link codes (ISS-845).
+- **The assistant follows judgement, not a script.** Its prompts drop the "never file an issue" rule and the Record-it card ritual; a write still waits on the person (ISS-861).
+
+### Fixed
+
+- **A project secret can be deleted.** One a testing profile still names is refused by name, and the removal is audited (ISS-847).
+- **GitLab merges stop failing on stale conflicts.** A merge refused on a stale first reading is read again after GitLab's recheck, and refused only when that read agrees (ISS-852).
+- **Resume asks only what is open.** A resumed master's brief asks for a resume choice only on runs that have none, and shows the choice that stands on the rest (ISS-853).
+- **Change requests link the issues in their title.** A change request links the issues its title leads with or lists, and one that links nothing says why, naming what it read (ISS-855).
+- **A draining master waits for its background work.** Its pane is replaced only once its background agents, shells and monitors end, or three hours after one whose end was never read (ISS-858).
+- **Dead master panes are replaced.** A pane never heard from within five minutes is recorded dead on arrival, ended and placed once more; a second dead arrival in a row is reported as a finding (ISS-859).
+
 ## [0.4.0-dev.420] - 2026-11-01
 
 Room messages cut off by a core restart get answered; standard projects need no approvals
