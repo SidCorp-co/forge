@@ -1,1 +1,0 @@
-**Questions on an issue by its key.** `forge-runner question ask --issue ISS-n` stands the question on that issue, and a key naming no issue is refused by name instead of failing with an internal error (ISS-619).

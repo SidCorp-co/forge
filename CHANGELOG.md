@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.424] - 2026-11-01
+
+Box questions name their issue by key; routes declare permissions; master room review
+
+### Added
+
+- **Routes name their permission.** The published API names the permission each declared route needs as `x-forge-permission`, and the route is checked against that same declaration; the cleanup routes declare theirs first (ISS-824).
+- **A project's master posts its daily review in the project's room.** `POST /api/projects/:id/support/master-posts` posts the master's own words at the top level of its team room.
+
+### Fixed
+
+- **Questions on an issue by its key.** `forge-runner question ask --issue ISS-n` stands the question on that issue, and a key naming no issue is refused by name instead of failing with an internal error (ISS-619).
+- **A batch's merge check covers each commit it landed.** A high-rated issue landed mid-batch is marked on the batch's later passing check, whose range holds its commit.
+- **The dashboard leads with names, not codes.** Requirement and issue titles lead their rows, keys and the project slug sit in tooltips, and avatars draw letters only (ISS-865).
+- **Onboarding retries run the current method.** A retried onboarding analysis is briefed with today's method instead of replaying a stale one, and the failure banner drops its attempt count (ISS-865).
+
 ## [0.4.0-dev.423] - 2026-11-01
 
 Patched dependencies, a daily project review, and notifications only when you must act

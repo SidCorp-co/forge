@@ -1,1 +1,0 @@
-**Routes name their permission.** The published API names the permission each declared route needs as `x-forge-permission`, and the route is checked against that same declaration; the cleanup routes declare theirs first (ISS-824).
