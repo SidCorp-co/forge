@@ -42,7 +42,11 @@ async function factsOfRooms(roomIds: readonly string[]): Promise<Map<string, Roo
   return new Map(
     rows.map((r) => [
       r.roomId,
-      { waiting: r.waiting, waitingSince: at(r.waitingSince), lastActivityAt: at(r.lastActivityAt) },
+      {
+        waiting: r.waiting,
+        waitingSince: at(r.waitingSince),
+        lastActivityAt: at(r.lastActivityAt),
+      },
     ]),
   );
 }

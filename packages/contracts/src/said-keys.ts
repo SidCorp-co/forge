@@ -2539,7 +2539,7 @@ export const SAID = {
 		vars: { pane: "name", m: "count" },
 	},
 	"masters.verdict.deadOnArrivalAgain": {
-		en: "{pane} placed {m} min ago and never heard from, the second dead arrival in a row: left for a person",
+		en: "{pane} dead on arrival twice, {m} min unheard; left for a person",
 		vars: { pane: "name", m: "count" },
 	},
 	"masters.verdict.deafReplace": {

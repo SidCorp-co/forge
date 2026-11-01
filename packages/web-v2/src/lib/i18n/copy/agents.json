@@ -355,7 +355,7 @@
     "agents.now.region": "What runs now",
     "agents.now.nothing": "Nothing running",
     "agents.now.lastActivity": "last activity {at}",
-    "agents.now.noActivity": "no activity yet",
+    "agents.now.noActivity": "No activity",
     "agents.now.cantRead": "{source} can't read",
     "agents.now.source.runs": "Runs",
     "agents.now.source.rooms": "Rooms",

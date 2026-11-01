@@ -19,7 +19,6 @@ import { SupportWorld } from '../helpers/support-world.js';
 
 const w = new SupportWorld();
 let roomId = '';
-let sessionId = '';
 let publish: MockInstance;
 
 const turns = async (token = w.owner, id = w.projectId) =>
@@ -37,7 +36,6 @@ beforeAll(async () => {
   await w.bind();
   const [room] = await w.rooms();
   roomId = String(room?.id);
-  sessionId = String(room?.sessionId);
   const { roomManager } = await import('../../src/lib/rooms.js');
   publish = vi.spyOn(roomManager, 'publish');
 }, 120_000);

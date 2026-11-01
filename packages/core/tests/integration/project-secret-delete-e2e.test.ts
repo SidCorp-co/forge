@@ -19,7 +19,8 @@ import { addProjectMember, createTestProject, createTestUser } from '../helpers/
 
 const VALUE = 'REVOKED-but-still-a-value-9f2c';
 const w = { projectId: '', owner: '', member: '', ownerId: '' };
-const path = (scope: string, name: string) => `/api/projects/${w.projectId}/secrets/${scope}/${name}`;
+const path = (scope: string, name: string) =>
+  `/api/projects/${w.projectId}/secrets/${scope}/${name}`;
 const listed = async () => {
   const got = await api(w.owner, 'GET', `/api/projects/${w.projectId}/secrets`);
   expect(got.status).toBe(200);
@@ -36,7 +37,12 @@ beforeAll(async () => {
   w.owner = await userToken(owner.id);
   w.member = await userToken(member.id);
   for (const name of ['channel-reader', 'stg-admin']) {
-    const put = await api(w.owner, 'PUT', path(name === 'stg-admin' ? 'test' : 'production', name), { value: VALUE });
+    const put = await api(
+      w.owner,
+      'PUT',
+      path(name === 'stg-admin' ? 'test' : 'production', name),
+      { value: VALUE },
+    );
     expect(put.status, JSON.stringify(put.body)).toBe(200);
   }
   const profile = await api(w.owner, 'PUT', `/api/projects/${w.projectId}/testing-profiles/stg`, {
@@ -89,7 +95,9 @@ describe('DELETE /api/projects/:id/secrets/:scope/:name (ISS-847)', () => {
   it('refuses a secret a testing profile names, naming the profile, and keeps it', async () => {
     const got = await api(w.owner, 'DELETE', path('test', 'stg-admin'));
     expect(got.status).toBe(422);
-    const refusals = (got.body.error as { refusals: { code: string; path: string; detail: string }[] }).refusals;
+    const refusals = (
+      got.body.error as { refusals: { code: string; path: string; detail: string }[] }
+    ).refusals;
     expect(refusals).toEqual([
       expect.objectContaining({ code: 'SECRET_IN_USE', path: '/testing-profiles/stg' }),
     ]);
