@@ -1,1 +1,1 @@
-A drained master pane is replaced only once the background agents, shells and monitors it started have ended, or three hours after one whose end was never read.
+**A draining master waits for its background work.** Its pane is replaced only once its background agents, shells and monitors end, or three hours after one whose end was never read (ISS-858).
