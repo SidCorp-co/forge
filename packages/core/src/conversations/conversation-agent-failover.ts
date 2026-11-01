@@ -148,7 +148,6 @@ export async function redispatchConversationAgentTurn(
       project,
       deviceId,
       authorised,
-      marker: next,
       message: firstUser,
       attachmentIds: carried.ids,
       ...(priorMeta.lensOverride

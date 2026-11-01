@@ -102,9 +102,10 @@ describe('the release that ships an item tells its reporter', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.title).toContain(fb);
     expect(sent[0]?.title).toContain('0.1.0');
-    expect(sent[0]?.body, 'what changed, then the ask to confirm (REQ-66 BC-8)').toBe(
-      'Saving the board keeps every card.\nConfirm it is fixed, or reopen it saying what you still see.',
-    );
+    expect(sent[0]?.title).toBe(`${fb} · shipped · 0.1.0 · feedback ${Number(fb.slice(3))}`);
+    // ISS-857: what the release notes say changed, and no canned confirm-or-reopen ask (REQ-66 BC-8)
+    expect(sent[0]?.body).toBe('Saving the board keeps every card.');
+    expect(sent[0]?.body).not.toMatch(/confirm|reopen/i);
     expect(sent[0]?.delivered).toBe(1);
 
     const after = await detail(fb);
@@ -234,7 +235,7 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     expect(recent.feedbackToldCounts).toMatchObject({ before_notices: 0, not_told: 1 });
   });
 
-  it('tells the reporter now, in their language, once; then the item reads told', async () => {
+  it('tells the reporter now, the fact and the release note, once; then the item reads told', async () => {
     await db.execute(
       sql`INSERT INTO user_preferences (user_id, language) VALUES (${reporter}, 'vi')`,
     );
@@ -258,8 +259,8 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     `)) as unknown as { payload: Body }[];
     expect(event?.payload).toMatchObject({
       recipients: [reporter],
-      title: `${before} đã được phát hành trong bản 0.0.9: feedback ${Number(before.slice(3))}`,
-      body: 'Bảng giữ bộ lọc sau khi tải lại.\nHãy xác nhận lỗi đã được sửa, hoặc mở lại và cho biết bạn vẫn thấy gì.',
+      title: `${before} · shipped · 0.0.9 · feedback ${Number(before.slice(3))}`,
+      body: 'Bảng giữ bộ lọc sau khi tải lại.',
     });
     const again = await api(v.token, 'POST', at(`/feedback/${before}/tell-shipped`), {});
     expect(again.status).toBe(422);
@@ -315,7 +316,7 @@ describe('the release page lists the feedback it answers', () => {
 });
 
 describe("the notice is the reporter's, in their words, once", () => {
-  it('is written in the language the reporter reads, with the release note as what changed', async () => {
+  it('is the same fact whatever language the reporter reads, with the release note as what changed', async () => {
     await db.execute(sql`
       INSERT INTO user_preferences (user_id, language) VALUES (${w.userId}, 'vi')
       ON CONFLICT (user_id) DO UPDATE SET language = 'vi'
@@ -327,12 +328,9 @@ describe("the notice is the reporter's, in their words, once", () => {
       const runId = await releaseRun('0.3.0', [carrier.id]);
       await ship(runId, '0.3.0', [carrier.id]);
       const [sent] = (await notices('feedback_shipped')).filter((n) => n.title.includes(fb));
-      expect(sent?.title, 'a reporter who reads Vietnamese is told in Vietnamese').toContain(
-        `${fb} đã được phát hành trong bản 0.3.0`,
-      );
-      expect(sent?.body).toBe(
-        'Lưu bảng giữ nguyên mọi thẻ.\nHãy xác nhận lỗi đã được sửa, hoặc mở lại và cho biết bạn vẫn thấy gì.',
-      );
+      // ISS-857: the kernel fact and the release note as written; core translates and composes nothing
+      expect(sent?.title).toBe(`${fb} · shipped · 0.3.0 · feedback ${Number(fb.slice(3))}`);
+      expect(sent?.body).toBe('Lưu bảng giữ nguyên mọi thẻ.');
     } finally {
       await db.execute(sql`DELETE FROM user_preferences WHERE user_id = ${w.userId}`);
     }
@@ -344,10 +342,12 @@ describe("the notice is the reporter's, in their words, once", () => {
     const runId = await releaseRun('0.3.1', [carrier.id]);
     await ship(runId, '0.3.1', [carrier.id]);
     const [sent] = (await notices('feedback_shipped')).filter((n) => n.title.includes(fb));
-    expect(sent?.body).toBe(
-      '0.3.1 carries the work your feedback asked for.\nConfirm it is fixed, or reopen it saying what you still see.',
-    );
-    expect(sent?.body).not.toContain('ISS-');
+    expect(sent?.title).toBe(`${fb} · shipped · 0.3.1 · feedback ${Number(fb.slice(3))}`);
+    expect(
+      sent?.body ?? null,
+      'no release note: the fact alone, no sentence core composed',
+    ).toBeNull();
+    expect(sent?.title).not.toContain('ISS-');
   });
 
   it('tells the reporter once when a second release carries the same item again', async () => {

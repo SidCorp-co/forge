@@ -1,10 +1,11 @@
-// What a turn posts when it runs past its first ceiling and keeps working: the writes that landed,
-// with the keys they returned, then what it read, counted by tool in plain words ("ran 3 reports,
-// drew 2 tables"), and that the rest follows in this thread. Code writes it from the turn's own
-// ledger, so it states nothing the turn did not do. A call's arguments and its result are never
-// quoted: they are the asker's, the whole room reads this message, and JSON is not a sentence.
+// The ledger a failed turn's report shows (`turn-findings.ts`, `turn-compose.ts`): the writes that
+// landed, with the keys they returned, the writes held for a go-ahead, then what it read, counted by
+// tool in plain words ("ran 3 reports, drew 2 tables"). Code writes it from the turn's own ledger, so
+// it states nothing the turn did not do. A call's arguments and its result are never quoted: they are
+// the asker's, the whole room reads the report, and JSON is not a sentence. A turn still working past
+// its first ceiling posts nothing of it (owner ruling agent-is-the-voice, ISS-857).
 
-import { partialReplyWords, type ReplyLanguage } from '../conversations/index.js';
+import { findingsWords, type ReplyLanguage } from '../conversations/index.js';
 import { type DoneCall, type HeldCall, isProposalCall } from './turn-writes.js';
 
 const NAMED_WRITES = 10;
@@ -182,7 +183,7 @@ export function ledgerLines(
   language: ReplyLanguage,
   held: readonly HeldCall[] = [],
 ): string[] {
-  const words = partialReplyWords(language);
+  const words = findingsWords(language);
   const writes = calls.filter((c) => c.write);
   const reads = readsSaid(
     calls.filter((c) => !c.write),
@@ -201,17 +202,4 @@ export function ledgerLines(
     lines.push(`${words.read} ${reads}`);
   }
   return lines;
-}
-
-export function partialReplyText(args: {
-  calls: readonly DoneCall[];
-  held?: readonly HeldCall[];
-  language: ReplyLanguage;
-  handleName: string;
-  waitedMs: number;
-}): string {
-  const words = partialReplyWords(args.language);
-  const head = words.head(args.handleName, Math.round(args.waitedMs / 1000));
-  const ledger = ledgerLines(args.calls, args.language, args.held);
-  return [head, '', ...(ledger.length > 0 ? ledger : [words.nothingYet])].join('\n');
 }

@@ -34,16 +34,24 @@ const CRASHED: Partial<Record<FailureCause, string>> = {
   runner_unreachable: 'its box stopped answering',
 };
 
-/** What the person does next after each reading. */
+/**
+ * What the person does next after each reading, in their words: it is shown in the room, a last
+ * resort no agent wrote (owner ruling agent-is-the-voice, ISS-857), so it names no machinery. The
+ * cause in full is the reading's `reason`, on the turn's record.
+ */
 export const AGENT_TURN_NEXT_STEP: Record<AgentTurnFailureKind, string> = {
-  crashed:
-    "Send your message again: a new turn starts a fresh session. If it crashes again, the session's page in Forge names the cause.",
-  'timed-out':
-    'Send your message again. If it times out again, check that forge-runner is running and online on the paired box.',
-  'not-reached':
-    'Send your message again. If it does not reach the box again, check that forge-runner is running and online on the paired box.',
-  'box-cannot-confine':
-    'The box holder can run `forge-runner doctor` on that box to see what is missing: a chat runs confined only on Linux with bubblewrap (`bwrap`) installed and a current forge-runner (`forge-runner update`). Until then, ask in Assistant mode for anything that does not need the repository.',
+  crashed: 'Send your message again.',
+  'timed-out': 'Send your message again in a few minutes.',
+  'not-reached': 'Send your message again in a few minutes.',
+  'box-cannot-confine': 'Ask in Assistant mode for anything that does not need the code.',
+};
+
+/** What happened, as the room is shown it: one plain sentence per reading. */
+const SAID: Record<AgentTurnFailureKind, string> = {
+  crashed: 'The agent stopped before it answered.',
+  'timed-out': 'The agent ran out of time before it answered.',
+  'not-reached': 'The agent could not be reached.',
+  'box-cannot-confine': 'Agent mode cannot run here yet.',
 };
 
 /** A limit in the words a person reads it in: "90 seconds", "3 minutes". */
@@ -134,7 +142,7 @@ export function agentTurnFailure(session: EndedSession): AgentTurnFailure | null
   };
 }
 
-/** The sentence the room is shown for a reading: what happened, then what to do. */
+/** The sentence the room is shown for a reading: what happened, then what to do, in plain words. */
 export function agentTurnFailureText(failure: AgentTurnFailure): string {
-  return `${failure.reason.charAt(0).toUpperCase()}${failure.reason.slice(1)}. ${failure.next}`;
+  return `${SAID[failure.kind]} ${failure.next}`;
 }

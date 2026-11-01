@@ -94,7 +94,7 @@ function session() {
         deliveryKey: 'window:w-1',
         question: 'Where does the project stand?',
         asker: { userId: 'u-asker', viaTokenId: null },
-        replies: { ack: null, dedup: 'd', failed: 'f', noDevice: 'n' },
+        replies: { dedup: 'd', failed: 'f', noDevice: 'n' },
       },
     },
   };

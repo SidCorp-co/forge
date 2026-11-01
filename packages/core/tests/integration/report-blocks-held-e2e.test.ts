@@ -54,7 +54,7 @@ async function agentTurn(conversationId = roomId) {
       question: 'where does it stand?',
       asker: { userId: w.userId, viaTokenId: null },
       door: 'web-agent-completion',
-      replies: { dedup: 'd', noDevice: 'n', failed: 'f', ack: null },
+      replies: { dedup: 'd', noDevice: 'n', failed: 'f' },
     } as never,
   });
   return { sessionId: session.id, token: await turnToken(turnTokenNameFor(session.id)) };

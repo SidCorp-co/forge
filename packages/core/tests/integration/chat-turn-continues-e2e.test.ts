@@ -1,9 +1,11 @@
 /**
- * A chat turn that runs past its first ceiling posts what it has and keeps working (chat mining
+ * A chat turn that runs past its first ceiling keeps working and answers when it is done (chat mining
  * 2026-10-07, the top harm: 38 of 304 people's turns, 18 of 41 in October, hit the 90 s ceiling and
  * the person got nothing; a long issue spec was the common case, 18 of 46 failed). The asks are the
  * production ones, anonymised. The model is the one thing scripted: it reads the issue, writes to
- * it, then keeps thinking past the ceiling, as the timed-out turns did.
+ * it, then keeps thinking past the ceiling, as the timed-out turns did. Since ISS-857 (owner ruling
+ * agent-is-the-voice) nothing is posted at the ceiling: no "still working" line core wrote stands in
+ * for the agent's own words, and the answer is the turn's one message.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -220,14 +222,14 @@ beforeAll(async () => {
   await createTestIssue(projectId, owner, 61, { status: 'draft', createdAt: new Date() });
 });
 
-describe('a turn past its first ceiling posts what it did, and the rest in the same thread', () => {
+describe('a turn past its first ceiling posts nothing at the ceiling, and its answer in the same thread', () => {
   const FINISHED = 'ISS-61 spec: press Record on its card.';
   const SPEC_ASK =
     'Viết spec chi tiết cho ISS-61: cần cụ thể thêm rule, field, situation do vẫn còn general';
 
-  // Since REQ-30 BC-4 a chat's comment is held for the person's go-ahead (ISS-439): the partial names
-  // it as waiting on their card, never as done, and the turn writes nothing itself.
-  it('posts a partial naming the write it holds for a go-ahead, then the finished answer as a second message', async () => {
+  // Since REQ-30 BC-4 a chat's comment is held for the person's go-ahead (ISS-439): the turn writes
+  // nothing itself, and since ISS-857 it posts no core-written line while it works on.
+  it('posts nothing at the ceiling, then the finished answer as the one message', async () => {
     const t: Tracker = { reads: 0, comments: 0, knowledge: 0, memory: 0, readMs: 0 };
     script.at = 0;
     script.rounds = [
@@ -255,26 +257,16 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
     const continuation = outcome.kind === 'delivered' ? outcome.continuation?.rest : undefined;
     expect(continuation, 'the turn outran its first ceiling and must keep working').toBeDefined();
 
-    const partial = await said(room.id);
-    expect(partial).toHaveLength(1);
-    expect(partial[0]?.content).toContain('đang làm tiếp');
-    // the held write by what it would make and the key it names, never by its call (lane A8d), and
-    // never among what was done
-    expect(partial[0]?.content).toContain(
-      'Waiting for a go-ahead, nothing written until Record it is pressed on its card:\n- a comment → ISS-61',
-    );
-    expect(partial[0]?.content).not.toContain('Đã làm:'); // i18n-allow: the Vietnamese partial under test
-    expect(partial[0]?.content).not.toContain('["comment"');
+    expect(await said(room.id), 'nothing is posted at the first ceiling').toHaveLength(0);
 
     expect(await continuation).toMatchObject({ kind: 'delivered' });
-    const both = await said(room.id);
-    expect(both).toHaveLength(2);
-    // the second message is the turn's own finished answer, pointing the person at the card's press,
-    // and never a claim that the held comment was written (ISS-439 round 3: the judge found only
-    // non-empty asserted here)
-    expect(both[1]?.content, 'the finished answer follows as a second message').toBe(FINISHED);
-    expect(both[1]?.content).not.toContain('đang làm tiếp');
-    expect(both[1]?.content).not.toMatch(/\b(recorded|posted|added) (it|the comment)\b/i);
+    const one = await said(room.id);
+    expect(one).toHaveLength(1);
+    // the one message is the turn's own finished answer, and never a claim that the held comment was
+    // written (ISS-439 round 3: the judge found only non-empty asserted here)
+    expect(one[0]?.content, 'the finished answer is the one message').toBe(FINISHED);
+    expect(one[0]?.content).not.toContain('đang làm tiếp'); // i18n-allow: the removed Vietnamese partial
+    expect(one[0]?.content).not.toMatch(/\b(recorded|posted|added) (it|the comment)\b/i);
     expect(t.comments, 'the held comment is not written by the turn').toBe(0);
     const { chatProposals } = await import('../../src/db/schema-chat-proposals.js');
     const waiting = await db
@@ -306,14 +298,13 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
     const continuation = outcome.kind === 'delivered' ? outcome.continuation?.rest : undefined;
     expect(continuation).toBeDefined();
     await continuation;
-    const both = await said(room.id);
-    expect(both).toHaveLength(2);
-    expect(both[0]?.content).toContain('Đã đọc: tra cứu tracker.'); // i18n-allow: the Vietnamese partial under test
-    expect(both[0]?.content).not.toContain('forge ["issue","ISS-61"]');
-    expect(both[1]?.content).toContain(
+    const one = await said(room.id);
+    expect(one).toHaveLength(1);
+    expect(one[0]?.content).toContain(
       'forge chưa trả lời xong trong thời gian cho phép của một lượt. (ASSISTANT_TURN_TIMED_OUT)', // i18n-allow: the Vietnamese report under test
     );
-    expect(both[1]?.content).toContain('Đã đọc: tra cứu tracker.'); // i18n-allow: the Vietnamese report under test
+    expect(one[0]?.content).toContain('Đã đọc: tra cứu tracker.'); // i18n-allow: the Vietnamese report under test
+    expect(one[0]?.content).not.toContain('forge ["issue","ISS-61"]');
   });
 
   it('a room that may stay silent hears no partial from a turn that only read', async () => {

@@ -47,8 +47,6 @@ export {
   type HeldClaim,
   heldFallbackReply,
   isTurnFailureCode,
-  nothingMoreReply,
-  partialReplyWords,
   type ReplyLanguage,
   replyLanguageOf,
   type TurnFailureCause,

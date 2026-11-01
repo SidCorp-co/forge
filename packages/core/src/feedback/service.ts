@@ -33,8 +33,7 @@ import { embedFeedbackLater } from './embeddings.js';
 import { phaseOfRow } from './list-read.js';
 import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
-import { tellReporters } from './reporter-language.js';
-import { declinedNotice } from './reporter-notices.js';
+import { declinedNotice, tellReporters } from './reporter-notices.js';
 import { reportersOf, tellStepToReporters, withBell } from './reporters.js';
 import {
   decideActRefusal,
@@ -313,7 +312,7 @@ export async function declineIn(
     tx,
     { projectId: row.projectId, feedbackId: row.id, kind: 'declined' },
     told,
-    (language) => declinedNotice(language, feedbackKey(row.fbSeq), row.title, reason ?? ''),
+    declinedNotice(feedbackKey(row.fbSeq), row.title, reason ?? ''),
   );
   return null;
 }

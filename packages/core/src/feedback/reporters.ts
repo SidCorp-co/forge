@@ -11,8 +11,7 @@ import type { Tx } from '../db/client.js';
 import { feedback, feedbackOccurrences } from '../db/schema-feedback.js';
 import { occurrenceReportersIn } from './occurrences.js';
 import type { Row } from './read.js';
-import { tellReporters } from './reporter-language.js';
-import { stepNotice } from './reporter-notices.js';
+import { stepNotice, tellReporters } from './reporter-notices.js';
 
 export interface Reporter {
   id: string;
@@ -76,6 +75,6 @@ export async function tellStepToReporters(
     tx,
     { projectId: row.projectId, feedbackId: row.id, kind: 'step' },
     told,
-    (language) => stepNotice(language, step, feedbackKey(row.fbSeq), row.title, carrier),
+    stepNotice(step, feedbackKey(row.fbSeq), row.title, carrier),
   );
 }

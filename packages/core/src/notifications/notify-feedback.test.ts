@@ -20,9 +20,8 @@ vi.mock('./auto-resolve.js', () => ({
 }));
 
 vi.mock('../feedback/index.js', async () => {
-  const { noticeCopy } = await import('../feedback/reporter-language.js');
-  const { shippedNotice } = await import('../feedback/reporter-notices.js');
-  return { noticeCopy, shippedNotice, reporterLanguageOf: async () => 'vi' };
+  const { shippedNotice, verifyAskNotice } = await import('../feedback/reporter-notices.js');
+  return { shippedNotice, verifyAskNotice };
 });
 
 const { consumerOf } = await import('../outbox/consumers.js');
@@ -50,9 +49,9 @@ describe('feedback-triage verify-ask: the ask reaches the reporter', () => {
       resolutionKey: 'feedback-verify:f1',
       dedupeKey: 'feedback-verify-ask:e1',
     });
-    expect(String(state.notices[0]?.title), 'in the language the reporter reads').toBe(
-      'FB-4 đã được giải quyết: Export breaks', // i18n-allow: the Vietnamese notice a vi reporter reads
-    );
+    // ISS-857: the kernel fact, and no canned confirm-or-reopen ask; verify and reopen stay actions
+    expect(state.notices[0]?.title).toBe('FB-4 · resolved · Export breaks');
+    expect(state.notices[0]?.body ?? null).toBeNull();
   });
 
   it('settles the ask when the item is verified or reopened', async () => {

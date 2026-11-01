@@ -225,7 +225,11 @@ export interface WidgetStatus {
 	title: string;
 	/** received → triaged → in_progress → shipped, or closed (declined, duplicate, answered). */
 	phase: "received" | "triaged" | "in_progress" | "shipped" | "closed";
-	/** One plain sentence for the visitor; never an internal name, an issue key or a person. */
+	/**
+	 * The step the item is at, as one word: received, reopened, accepted, planned, started, shipped,
+	 * declined, duplicate, answered or deleted. A fact, never a sentence core composed (ISS-857), and
+	 * never an internal name, an issue key or a person.
+	 */
 	says: string;
 	filedAt: string;
 	updatedAt: string;

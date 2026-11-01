@@ -118,7 +118,7 @@ export interface RoutedWindow {
    * The claim moved on under this route, so the window is another holder's now.
    */
   superseded?: true;
-  /** The turn posted a partial reply and works on: the window closes, its record waits on this. */
+  /** The turn let the window go and works on: the window closes, its record waits on this. */
   continuation?: ContinuedRest;
   /** Settles once the continued turn's rest is written onto the closed window's record. */
   continued?: Promise<void>;
@@ -174,7 +174,8 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
 const UNSETTLED = Symbol('unsettled');
 
 /**
- * A window closes on a partial reply so the room is not held for the rest of the turn, but its
+ * A window closes when its turn works past its first ceiling, so the room is not held for the rest
+ * of the turn (and no other holder takes it once the claim's lease lapses), but its
  * record stays open until the rest settles: the rest's decision, and the blocks it drew that nobody
  * will see, are written onto it. It is waited on until `until` — the turn's ceiling from its start,
  * the grace a handle is given past its abort, and the grace its delivery is given — and a rest that

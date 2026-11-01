@@ -1,10 +1,10 @@
-// feedback-triage `verify-ask`: an ask to verify a resolved item reaches its reporter's bell, and the
+// feedback-triage `verify-ask`: a resolved item waiting on its reporter reaches their bell, and the
 // verify or reopen of that item settles it. A decline, a merge into an original and a triager's
 // message each reach their reporters as one notice, the text the event carries. The release that
-// ships the work of an item asks its reporter to confirm it by itself (REQ-66 BC-8), in their
-// language: the release, what it changed for them, the violated criterion's verdict and clip, and the
-// ask, cleared like any verify ask once they verify or reopen. Once per item: a second release or a
-// redelivery carrying the same item tells nobody twice.
+// ships the work of an item tells its reporter by itself (REQ-66 BC-8): the release, what its notes
+// say changed for them, the violated criterion's verdict and clip — the kernel fact and words people
+// wrote, no ask composed by core (ISS-857) — cleared like any verify ask once they verify or reopen.
+// Once per item: a second release or a redelivery carrying the same item tells nobody twice.
 
 import { feedbackKey } from '@forge/contracts/feedback';
 import { feedbackShippedKey, feedbackShippedPrefix } from '@forge/contracts/notifications';
@@ -13,12 +13,7 @@ import { and, eq, inArray, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications } from '../db/schema.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
-import {
-  noticeCopy,
-  reporterLanguageOf,
-  shipEvidenceOf,
-  shippedNotice,
-} from '../feedback/index.js';
+import { shipEvidenceOf, shippedNotice, verifyAskNotice } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { resolveNotifications } from './auto-resolve.js';
@@ -26,14 +21,15 @@ import { emitNotification } from './emit.js';
 
 const verifyKey = (feedbackId: string) => `feedback-verify:${feedbackId}`;
 
+/** A notice as the bell stores it: the fact as its title, a body only where somebody wrote one. */
+const bellOf = (n: { title: string; body: string }) => ({ title: n.title, body: n.body || null });
+
 async function asked(p: Payload<'feedback.verifyAsked'>, eventId: string): Promise<void> {
-  const language = await reporterLanguageOf(p.reporter, p.projectId);
   await emitNotification({
     recipients: [p.reporter],
     projectId: p.projectId,
     type: 'feedback_verify_asked',
-    title: noticeCopy(language, 'verifyAsk.title', { key: p.key, title: p.title }),
-    body: noticeCopy(language, 'verifyAsk.body', {}),
+    ...bellOf(verifyAskNotice(p.key, p.title)),
     resolutionKey: verifyKey(p.feedbackId),
     dedupeKey: `feedback-verify-ask:${eventId}`,
   });
@@ -48,8 +44,7 @@ async function told(p: Payload<'feedback.reporterTold'>, eventId: string): Promi
     recipients: p.recipients,
     projectId: p.projectId,
     type: 'feedback_message',
-    title: p.title,
-    body: p.body,
+    ...bellOf(p),
     dedupeKey: `feedback-told:${eventId}`,
   });
 }
@@ -114,14 +109,13 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
       .filter((c) => p.issueIds.includes(c.id))
       .map((c) => c.notes?.userFacing?.trim())
       .filter((t): t is string => Boolean(t));
-    const language = await reporterLanguageOf(item.reporter, p.projectId);
     const evidence = await shipEvidenceOf({ projectId: p.projectId, ...item });
     await emitNotification({
       recipients: [item.reporter],
       projectId: p.projectId,
       type: 'feedback_shipped',
-      ...shippedNotice(language, key, item.title, p.version, said, evidence),
-      // the ask to confirm: cleared by the verify or reopen that settles it, as an asked verify is
+      ...bellOf(shippedNotice(key, item.title, p.version, said, evidence)),
+      // the item waits on its reporter's verify or reopen, which clears it as an asked verify is
       resolutionKey: verifyKey(item.id),
       dedupeKey: feedbackShippedKey(item.id, p.runId),
     });

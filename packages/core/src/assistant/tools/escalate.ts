@@ -31,7 +31,16 @@ export function buildEscalationToolset(): ChatToolset {
       },
     ],
     execute: async () => ({
-      content: [{ type: 'text', text: JSON.stringify({ status: 'escalation_queued' }) }],
+      // the fact, never a line: the turn's own words are what the room hears, or nothing (ISS-857)
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            status: 'escalation_queued',
+            note: 'A research agent now investigates this; its answer is posted in this thread when it is ready. If the person should hear that now, tell them in your own words, in their language, without a time.',
+          }),
+        },
+      ],
     }),
     ranAs: () => null,
   };

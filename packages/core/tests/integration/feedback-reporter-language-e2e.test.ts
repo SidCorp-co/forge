@@ -1,9 +1,12 @@
 /**
- * Every notice a reporter gets about their item reads in their language: the person's own choice,
- * else the project's content language, else English. One notice kind per test: a decline, a merge
- * into an original, a triager's message (each reporter of a merged item in their own language), a
- * triager's verify on their behalf past the window, the ask to verify, and "tell the reporter now". The project here writes
- * Vietnamese; bo chose nothing and reads it, ann chose English and reads English.
+ * Every notice a reporter gets about their item is the kernel fact — key, step, title — and only words
+ * a person wrote, the same for every reader whatever language they read (ISS-857, owner ruling
+ * agent-is-the-voice: no agent speaks on the bell, so core composes no sentence and translates none).
+ * One notice kind per test: a decline, a merge into an original, a triager's message (each reporter of
+ * a merged item), a triager's verify on their behalf past the window, and the ask to verify. The
+ * project here writes Vietnamese; bo chose nothing, ann chose English, and both read the same fact.
+ *
+ * @direct-test-of packages/core/src/feedback/reporter-notices.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -99,8 +102,8 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('a reporter reads each notice about their item in their language', () => {
-  it('declined: in the project language for one who chose none, in English for one who chose it', async () => {
+describe('a reporter reads each notice about their item as the kernel fact, in any language', () => {
+  it('declined: the fact and the triager reason as written, the same for a reader of either language', async () => {
     const fb = await file('bo', 'Bảng mất bộ lọc');
     ok(
       await say('owner', 'POST', item(fb, 'triage'), { route: 'decline', note: 'Ngoài phạm vi.' }),
@@ -108,15 +111,16 @@ describe('a reporter reads each notice about their item in their language', () =
     expect(await bell('bo', fb)).toEqual([
       {
         type: 'feedback_message',
-        title: `${fb} đã bị từ chối: Bảng mất bộ lọc`,
-        body: 'Mục này sẽ không được thực hiện.\nLý do: Ngoài phạm vi.',
+        title: `${fb} · declined · Bảng mất bộ lọc`,
+        body: 'Ngoài phạm vi.',
       },
     ]);
     const en = await file('ann', 'Board drops its filter');
     ok(await say('owner', 'POST', item(en, 'triage'), { route: 'decline', note: 'Not planned.' }));
-    expect((await bell('ann', en))[0]?.title, 'a chosen language wins over the project').toBe(
-      `${en} was declined: Board drops its filter`,
-    );
+    expect((await bell('ann', en))[0], 'no language changes the fact').toMatchObject({
+      title: `${en} · declined · Board drops its filter`,
+      body: 'Not planned.',
+    });
   });
 
   it('duplicate: told which item carries their report', async () => {
@@ -130,13 +134,11 @@ describe('a reporter reads each notice about their item in their language', () =
       }),
     );
     const [n] = await bell('bo', fb);
-    expect(n?.title).toBe(`${fb}: Xuất file rất chậm đã được báo trước đó trong ${original}`);
-    expect(n?.body).toBe(
-      `Báo cáo của bạn đã được gộp vào ${original}. Bạn sẽ nhận tin về nó ở đó, và báo cáo của bạn vẫn được lưu lại.`,
-    );
+    expect(n?.title).toBe(`${fb} · duplicate of ${original} · Xuất file rất chậm`);
+    expect(n?.body ?? null, 'no sentence core composed').toBeNull();
   });
 
-  it('message: each reporter of a merged item gets it in their own language, the words as written', async () => {
+  it('message: each reporter of a merged item gets the same fact, the words as written', async () => {
     const fb = await file('bo', 'Thẻ bị trùng');
     const dup = await file('ann', 'Cards repeat');
     ok(
@@ -153,17 +155,18 @@ describe('a reporter reads each notice about their item in their language', () =
       }),
       201,
     );
-    const vi = (await bell('bo', fb)).filter((n) => n.title.startsWith('Tin nhắn'));
-    expect(vi).toEqual([
-      { type: 'feedback_message', title: `Tin nhắn về ${fb}: Thẻ bị trùng`, body: 'Đang xem.' },
-    ]);
-    const en = (await bell('ann', fb)).filter((n) => n.title.startsWith('A message'));
-    expect(en).toEqual([
-      { type: 'feedback_message', title: `A message about ${fb}: Thẻ bị trùng`, body: 'Đang xem.' },
+    const told = {
+      type: 'feedback_message',
+      title: `${fb} · message · Thẻ bị trùng`,
+      body: 'Đang xem.',
+    };
+    expect((await bell('bo', fb)).filter((n) => n.title.includes(' · message · '))).toEqual([told]);
+    expect((await bell('ann', fb)).filter((n) => n.title.includes(' · message · '))).toEqual([
+      told,
     ]);
   });
 
-  it('verified for them: the sweep tells nothing, and the triager who verifies from the record is told in their language', async () => {
+  it('verified for them: the sweep tells nothing, and the triager who verifies from the record is told the fact', async () => {
     const fb = await answered('bo', 'Vì sao bảng chỉ đọc?');
     const [row] = (await db.execute(sql`
       SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${seq(fb)}
@@ -184,20 +187,20 @@ describe('a reporter reads each notice about their item in their language', () =
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     await sweepResolvedFeedback();
     expect(
-      (await bell('bo', fb)).filter((x) => x.title.includes('xác nhận')),
+      (await bell('bo', fb)).filter((x) => x.title.includes(' · verified · ')),
       'Feedback triage r16: nothing verifies an item by itself',
     ).toEqual([]);
     ok(await say('owner', 'POST', item(fb, 'verify'), {}));
-    const [n] = (await bell('bo', fb)).filter((x) => x.title.includes('xác nhận'));
-    expect(n?.title).toBe(`${fb} đã được xác nhận: Vì sao bảng chỉ đọc?`);
-    expect(n?.body).toBe('Bản sửa đã được xác nhận thay cho bạn.');
+    const [n] = (await bell('bo', fb)).filter((x) => x.title.includes(' · verified · '));
+    expect(n?.title).toBe(`${fb} · verified · Vì sao bảng chỉ đọc?`);
+    expect(n?.body ?? null).toBeNull();
   });
 
-  it('verify-ask: asked to confirm the fix', async () => {
+  it('verify-ask: the resolved fact, and no canned ask to confirm or reopen', async () => {
     const fb = await answered('bo', 'Lọc theo khoa?');
     ok(await say('owner', 'POST', item(fb, 'verify-ask'), {}));
     const [n] = (await bell('bo', fb)).filter((x) => x.type === 'feedback_verify_asked');
-    expect(n?.title).toBe(`${fb} đã được giải quyết: Lọc theo khoa?`);
-    expect(n?.body).toContain('Hãy xác nhận bản sửa');
+    expect(n?.title).toBe(`${fb} · resolved · Lọc theo khoa?`);
+    expect(n?.body ?? null).toBeNull();
   });
 });

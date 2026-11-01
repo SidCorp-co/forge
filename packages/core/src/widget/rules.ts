@@ -1,5 +1,5 @@
 // The widget's guards, pure: where a request may come from, who a visitor is under the binding's
-// identity mode, the caps a binding sets, and what a status link says of a phase.
+// identity mode, the caps a binding sets, and the phase fact a status link shows.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FeedbackPhase, FeedbackRoute } from '@forge/contracts/feedback';
@@ -168,47 +168,35 @@ export function signatureRefusal(
 
 type Said = Pick<WidgetStatus, 'phase' | 'says'>;
 
-const SAYS = {
-  received: 'We received your report and will look at it soon.',
-  again: 'We are looking at your report again.',
-  accepted: 'Your report was accepted and is waiting to be worked on.',
-  planned: 'Your report was accepted as a change we plan to make.',
-  started: 'Work on your report has started.',
-  shipped: 'A fix for your report has been released.',
-  declined: 'We decided not to act on this report.',
-  duplicate: 'This was already reported, and we follow it there.',
-  answered: 'Your question was answered by the team.',
-  deleted: 'The details of this report were deleted.',
-} as const;
-
 /**
- * What a visitor's status link says of where their item stands: one of five phases and one plain
- * sentence, never the issue, the requirement or the person carrying it.
+ * What a visitor's status link says of where their item stands: one of five phases, and the finer
+ * step it is at as one word — the fact, never a sentence core composed for the visitor (owner ruling
+ * agent-is-the-voice, ISS-857), and never the issue, the requirement or the person carrying it.
  */
 export function visitorStatusOf(item: {
   phase: FeedbackPhase;
   route: FeedbackRoute | null;
   redacted: boolean;
 }): Said {
-  if (item.redacted) return { phase: 'closed', says: SAYS.deleted };
-  if (item.route === 'duplicate') return { phase: 'closed', says: SAYS.duplicate };
-  if (item.route === 'answer') return { phase: 'closed', says: SAYS.answered };
+  if (item.redacted) return { phase: 'closed', says: 'deleted' };
+  if (item.route === 'duplicate') return { phase: 'closed', says: 'duplicate' };
+  if (item.route === 'answer') return { phase: 'closed', says: 'answered' };
   switch (item.phase) {
     case 'new':
-      return { phase: 'received', says: SAYS.received };
+      return { phase: 'received', says: 'received' };
     case 'reopened':
-      return { phase: 'triaged', says: SAYS.again };
+      return { phase: 'triaged', says: 'reopened' };
     case 'triaged':
       return {
         phase: 'triaged',
-        says: item.route === 'issue' || item.route === null ? SAYS.accepted : SAYS.planned,
+        says: item.route === 'issue' || item.route === null ? 'accepted' : 'planned',
       };
     case 'planned':
-      return { phase: 'in_progress', says: SAYS.started };
+      return { phase: 'in_progress', says: 'started' };
     case 'resolved':
     case 'verified':
-      return { phase: 'shipped', says: SAYS.shipped };
+      return { phase: 'shipped', says: 'shipped' };
     case 'declined':
-      return { phase: 'closed', says: SAYS.declined };
+      return { phase: 'closed', says: 'declined' };
   }
 }

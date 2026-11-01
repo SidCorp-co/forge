@@ -2,10 +2,8 @@
  * Where a message is screened, and what happens when it cannot pass.
  *
  * This is a separate table from `cells.ts` because one cell is screened at
- * doors whose lifecycles differ: `role:ask` is read at `question-ask`, where the
- * agent is still on the line, and at `question-delivery`, which posts into a
- * room minutes later with nobody left to ask again; `public:report` is read at
- * three doors that can repair 1, 1 and 0 times. A repair count on the cell would
+ * doors whose lifecycles differ: `public:report` is read at three doors that
+ * can repair 1, 1 and 0 times. A repair count on the cell would
  * have to be right for all of them and can only be right for one (ISS-997).
  */
 
@@ -28,13 +26,7 @@ export const DOORS: readonly DoorPolicy[] = [
     id: 'question-ask',
     cell: 'role:ask',
     ending: 'refusal',
-    why: 'the same, and the reason the round is screened here rather than only at delivery: refused to its author, a bad round never becomes owed and unpostable',
-  },
-  {
-    id: 'question-delivery',
-    cell: 'role:ask',
-    ending: 'refusal',
-    why: 'it posts into a room and still refuses, because a question round is the AGENT asking and nobody is waiting on it — the only text the round has is the text that failed, and a stand-in would announce that a decision is waiting while hiding what it is (ISS-978)',
+    why: 'the same, and the one door a round is screened at as its author wrote it: refused to its author, a bad round never becomes owed. A room then hears it from its own agent, in its words, screened at `chat-sync` (ISS-857)',
   },
   {
     id: 'chat-sync',

@@ -1,5 +1,5 @@
 // A visitor's private status link: what they may know of what they filed, and nothing more — the
-// item's key and title as they confirmed it, one of five phases and one plain sentence.
+// item's key and title as they confirmed it, one of five phases and the step it is at, as one word.
 
 import type { WidgetStatus } from '@forge/contracts/widget';
 import { externalFeedbackStatus } from '../feedback/index.js';

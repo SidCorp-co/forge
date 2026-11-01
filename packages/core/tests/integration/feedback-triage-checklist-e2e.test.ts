@@ -489,9 +489,9 @@ describe('loop close reads the record for a person (criterion 4)', () => {
     expect(asked?.resolution_key, 'the notice is the verify ask, cleared by the verify').toBe(
       `feedback-verify:${fbId}`,
     );
-    expect(asked?.body).toContain(`${req} BC-1 passes on the running build.`);
-    expect(asked?.body).toContain('Its clip, bc1.webm, is on the item.');
-    expect(asked?.body).toContain('Confirm it is fixed, or reopen it saying what you still see.');
+    expect(asked?.body).toContain(`${req} BC-1 · passing`);
+    expect(asked?.body).toContain('clip · bc1.webm');
+    expect(asked?.body, 'ISS-857: no canned confirm-or-reopen ask').not.toMatch(/confirm|reopen/i);
   });
 
   it('leaves it resolved for a person where the criterion is not proven on the running build', async () => {

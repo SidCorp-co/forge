@@ -37,7 +37,7 @@ async function agentTurnEndedAs(failureReason: 'agent_killed' | 'no_client_ack',
         question: 'where does the export break?',
         asker: { userId: w.userId, viaTokenId: null },
         door: 'web-agent-completion',
-        replies: { dedup: 'd', noDevice: 'n', failed: FAILED, ack: null },
+        replies: { dedup: 'd', noDevice: 'n', failed: FAILED },
       },
     },
   });
@@ -84,26 +84,29 @@ describe('an Agent turn that left no reply reads in its room as what ended it', 
     externalId = String(row?.externalId);
   }, 120_000);
 
-  it('a crashed session posts the crash and its next step, never the generic sentence', async () => {
+  it('a crashed session posts the crash in plain words and its next step, never the generic sentence', async () => {
     const { windowId } = await agentTurnEndedAs('agent_killed', 5_000);
     const { messages, turn } = await roomOnceSettled(windowId);
     const said = messages.map((m) => String(m.content));
-    expect(said).toContain(
-      "The Agent session crashed: it was killed by a signal. Send your message again: a new turn starts a fresh session. If it crashes again, the session's page in Forge names the cause.",
-    );
+    expect(said).toContain('The agent stopped before it answered. Send your message again.');
     expect(said).not.toContain(FAILED);
+    // the cause in full stays on the turn's record
     expect(turn.reason).toBe('the Agent session crashed: it was killed by a signal');
-    expect(turn.nextStep).toMatch(/^Send your message again: a new turn starts a fresh session\./);
+    expect(turn.nextStep).toBe('Send your message again.');
   });
 
-  it('a timed-out turn posts the timeout naming the limit it hit, with its next step', async () => {
+  it('a timed-out turn posts the timeout in plain words, with the limit it hit on its record', async () => {
     const { windowId } = await agentTurnEndedAs('no_client_ack', 4 * 60_000);
     const { messages, turn } = await roomOnceSettled(windowId);
     const said = messages.map((m) => String(m.content));
     expect(said).toContain(
-      'The Agent turn timed out: no box started a session for it within 3 minutes. Send your message again. If it times out again, check that forge-runner is running and online on the paired box.',
+      'The agent ran out of time before it answered. Send your message again in a few minutes.',
     );
+    expect(said.join('\n')).not.toMatch(/forge-runner|paired box/);
     expect(said).not.toContain(FAILED);
-    expect(turn.nextStep).toMatch(/If it times out again/);
+    expect(turn.reason).toBe(
+      'the Agent turn timed out: no box started a session for it within 3 minutes',
+    );
+    expect(turn.nextStep).toBe('Send your message again in a few minutes.');
   });
 });

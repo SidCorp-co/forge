@@ -1,11 +1,12 @@
-// The message a turn posts at 90 s is read by the whole room, so it says what the turn read in plain
-// words and never quotes a call. REQ-32, lane A8d: on dev.185 its read list was a dump of
+// The ledger a failed turn's report shows is read by the whole room, so it says what the turn read in
+// plain words and never quotes a call. REQ-32, lane A8d: on dev.185 its read list was a dump of
 // `forge_show {"block":{"kind":"table",…}}` lines — the tool calls' JSON, run ids and a narrative
-// draft, in the room.
+// draft, in the room. Since ISS-857 a turn still working at its first ceiling posts none of it: that
+// was a line core wrote in the agent's place.
 
 import { describe, expect, it } from 'vitest';
 import type { ChatToolset } from './tools/mcp-adapter.js';
-import { partialReplyText } from './turn-partial.js';
+import { ledgerLines } from './turn-partial.js';
 import type { DoneCall } from './turn-writes.js';
 import { turnWrites } from './turn-writes.js';
 
@@ -53,9 +54,9 @@ const DEV_185: DoneCall[] = [
 ];
 
 const text = (calls: readonly DoneCall[], language: 'en' | 'vi') =>
-  partialReplyText({ calls, language, handleName: 'forge', waitedMs: 90_400 });
+  ledgerLines(calls, language).join('\n');
 
-describe('the partial a turn posts at its first ceiling', () => {
+describe('the ledger a failed turn reports', () => {
   it('holds no JSON, no argument and no result: only what it read, in plain words', () => {
     for (const language of ['en', 'vi'] as const) {
       const said = text(DEV_185, language);
@@ -75,7 +76,6 @@ describe('the partial a turn posts at its first ceiling', () => {
     expect(text(DEV_185, 'vi')).toContain(
       'Đã đọc: đọc tình trạng dự án, chạy 6 báo cáo, vẽ 3 bảng.', // i18n-allow: the Vietnamese partial under test
     );
-    expect(text(DEV_185, 'vi')).toContain('đang làm tiếp'); // i18n-allow: the Vietnamese partial under test
   });
 
   it('names a write by what it did and the keys it returned, never by its call', () => {
@@ -100,8 +100,21 @@ describe('the partial a turn posts at its first ceiling', () => {
     expect(said).not.toMatch(/[{}[\]"]/);
   });
 
-  it('says it is still reading when nothing has landed yet', () => {
-    expect(text([], 'en')).toContain('Nothing is finished yet; it is still reading the project.');
+  it('is empty when nothing has landed yet, so the report says so in its own line', () => {
+    expect(ledgerLines([], 'en')).toEqual([]);
+  });
+
+  it('names a held write without the card ritual', () => {
+    const said = ledgerLines([], 'en', [
+      {
+        name: 'forge',
+        arguments: JSON.stringify({ argv: ['comment', 'ISS-61', '-'] }),
+        proposal: null,
+        keys: ['ISS-61'],
+      },
+    ]).join('\n');
+    expect(said).toBe('Held for a go-ahead, not written:\n- a comment → ISS-61');
+    expect(said).not.toMatch(/Record it|card/);
   });
 
   // REQ-32 BC-6 r3, dev.193 ISS-430: a turn that only read through `forge issue` was told as "updated an issue".

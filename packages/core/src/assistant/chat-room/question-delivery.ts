@@ -1,11 +1,13 @@
-// Carrying a parked run's question to a room, and remembering which thread it went to. The
-// ledger of owed rounds and its operator alerts are `question-ledger.ts`.
+// Carrying a parked run's question to a room, and remembering which thread it went to. The room's
+// agent asks it in its own words (`question-voice.ts`); a round it could not ask is retried, and
+// the ledger of owed rounds and its operator alerts are `question-ledger.ts`.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import {
+  liveConnectionFor,
   registerThread,
   releaseQuestionThread,
   resolveRoomPostAuth,
@@ -13,8 +15,7 @@ import {
 } from '../../integrations/rocketchat/index.js';
 import { issueDisplayIds } from '../../issues/index.js';
 import { logger } from '../../lib/logger.js';
-import { refusalsOf } from '../../messaging/contract.js';
-import { type ProvenMessage, screenForDoor } from '../../messaging/proven.js';
+import type { ProvenMessage } from '../../messaging/proven.js';
 import {
   isUnreachableRoom,
   type QuestionDestination,
@@ -31,7 +32,7 @@ import {
   roundOf,
   settle,
 } from './question-ledger.js';
-import { renderRound } from './question-render.js';
+import { agentAsks, type Spoken } from './question-voice.js';
 
 async function noteFailure(
   owed: OwedRound,
@@ -71,7 +72,7 @@ async function deliverOwedRound(owed: OwedRound, now: Date = new Date()): Promis
   return typeof prepared === 'string' ? prepared : postRound(owed, prepared, now);
 }
 
-/** Claim the round, find where it goes and screen what it says; an outcome where it stops. */
+/** Claim the round, find where it goes and have the room's agent ask it; an outcome where it stops. */
 async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outcome> {
   const [question] = await db
     .select()
@@ -95,31 +96,31 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
   const issueKey = owed.issueId
     ? ((await issueDisplayIds([owed.issueId])).get(owed.issueId) ?? null)
     : null;
-  const screening = screenForDoor(
-    'question-delivery',
-    renderRound({
+  // the room's agent asks it in its own words; core composes no line of the round (ISS-857)
+  const spoken = await agentAsks({
+    projectId: owed.projectId,
+    botName: liveConnectionFor(destination.connectionId)?.username ?? undefined,
+    round: {
       issueKey,
       step,
-      rounds: question.steps.length,
       parkDeadlineAt: question.parkDeadlineAt ?? null,
       askedBy: question.origin?.kind === 'conversation' ? question.origin.askedByLabel : null,
-    }),
-  );
-  if (screening.ok) return { attempt, destination, proven: screening.proven };
-  const refusals = refusalsOf(screening.verdict);
+    },
+  }).catch((err: unknown): Spoken => ({ kind: 'error', reason: messageOf(err) }));
+  if (spoken.kind === 'spoken') return { attempt, destination, proven: spoken.message };
   logger.error(
-    { questionId: owed.questionId, round: owed.round, refusals },
-    'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
+    { questionId: owed.questionId, round: owed.round, kind: spoken.kind, reason: spoken.reason },
+    'rocketchat.question-delivery: the room agent did not ask the round; nothing posted',
   );
   return noteFailure(
     owed,
     attempt,
-    `screen refused the round: ${refusals.map((r) => r.why).join('; ')}`,
+    `the room's agent did not ask it (${spoken.kind}): ${spoken.reason}`,
     now,
   );
 }
 
-/** Post the screened round into its room and record the thread it now lives in. */
+/** Post the agent's ask into its room and record the thread it now lives in. */
 async function postRound(
   owed: OwedRound,
   { attempt, destination, proven }: Prepared,

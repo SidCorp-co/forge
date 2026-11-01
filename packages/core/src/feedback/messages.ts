@@ -22,8 +22,7 @@ import type { Refusal } from '../lib/refusal.js';
 import { writtenLangFor } from '../lib/written-lang.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
-import { reporterLanguageOf, tellReporters } from './reporter-language.js';
-import { messageNotice } from './reporter-notices.js';
+import { messageNotice, tellReporters } from './reporter-notices.js';
 import { type Reporter, reportersOf, withBell } from './reporters.js';
 import { decideActRefusal } from './rules.js';
 import { answer, inTx, lockFeedback, roleFacts } from './service.js';
@@ -39,9 +38,7 @@ async function plan(tx: Tx, row: Row, audience: ToReporters, text: string) {
   const said = storedText(level, text.trim()).text;
   const addressed = audienceOf(await reportersOf(tx, row), audience);
   const reached = withBell(addressed);
-  // the preview reads as the first reporter it reaches will read it; each reporter gets their own language
-  const first = reached[0] ? await reporterLanguageOf(reached[0].id, row.projectId) : 'en';
-  const notice = messageNotice(first, feedbackKey(row.fbSeq), row.title, said);
+  const notice = messageNotice(feedbackKey(row.fbSeq), row.title, said);
   return { addressed, reached, notice, said };
 }
 
@@ -155,7 +152,7 @@ export async function sendMessage(input: {
       tx,
       { projectId, feedbackId: row.id, kind: 'message' },
       recipients,
-      (language) => messageNotice(language, feedbackKey(row.fbSeq), row.title, p.said),
+      p.notice,
     );
     return null;
   });

@@ -39,13 +39,6 @@ vi.mock('../conversations/index.js', () => ({
   recordDeliveredReply: async (reply: { askedBy?: string | null; deliveryKey?: string }) => {
     recorded.push(reply);
   },
-  nothingMoreReply: () => 'nothing more to add',
-  partialReplyWords: () => ({
-    head: () => 'still working',
-    did: 'did',
-    read: 'read',
-    nothingYet: 'nothing yet',
-  }),
 }));
 vi.mock('./turn-compose.js', () => ({
   composeReply: async (ctx: {
@@ -145,7 +138,7 @@ describe('a turn that runs past its first ceiling', () => {
     expect(bound).toBeGreaterThanOrEqual(65_000);
     expect(bound).toBeLessThan(66_000);
     expect(await continuation?.rest).toMatchObject({
-      kind: 'delivered',
+      kind: 'declined',
       droppedBlocks: [{ kind: 'table', runId: 'r' }],
     });
   });
@@ -170,8 +163,30 @@ describe('the reply a turn records', () => {
     await continuation?.rest;
     expect(recorded).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ deliveryKey: 'window:w-1:continued', askedBy: 'u-asker' }),
+        expect.objectContaining({ deliveryKey: 'window:w-1', askedBy: 'u-asker' }),
       ]),
     );
+  });
+});
+
+// ISS-857 (owner ruling agent-is-the-voice): a turn that outruns its first ceiling posts no line
+// core wrote — no "still working" partial, no "nothing more to add" — only the agent's own answer.
+describe('a turn past its first ceiling speaks only in its own words', () => {
+  it('posts nothing at the ceiling, then the answer itself as the one message', async () => {
+    ends = 'answer-late';
+    const outcome = await run({ partialAfterMs: 10, ceilingMs: 5000 });
+    expect(handed, 'nothing is posted at the first ceiling').toEqual([]);
+    const continuation = outcome.kind === 'delivered' ? outcome.continuation : undefined;
+    expect(continuation, 'the turn keeps working past the ceiling').toBeDefined();
+    await continuation?.rest;
+    expect(handed.map((h) => h.text)).toEqual(['REQ-1 is agreed.']);
+  });
+
+  it('posts nothing at all when the rest declines', async () => {
+    ends = 'decline-late';
+    const outcome = await run({ partialAfterMs: 10, ceilingMs: 5000 });
+    const continuation = outcome.kind === 'delivered' ? outcome.continuation : undefined;
+    await continuation?.rest;
+    expect(handed).toEqual([]);
   });
 });

@@ -59,7 +59,7 @@ export interface TurnHookContext {
 
 /**
  * The text the screen admitted; `heldPart` where it is the part of a held answer the check passed
- * (REQ-41 BC-3), never a turn's early partial reply.
+ * (REQ-41 BC-3).
  */
 export interface SettledReply {
   text: string;
@@ -95,8 +95,8 @@ export type TurnReply =
     };
 
 /**
- * Where a turn that outran its first ceiling streams and records the rest: a fresh entry beside
- * the partial reply already delivered under the first one.
+ * Where a turn that outran its first ceiling streams and records the rest: a fresh entry, since
+ * the first one closes with the window the turn let go.
  */
 export interface ContinuedEntry {
   onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
@@ -107,7 +107,7 @@ export interface ContinuedEntry {
   close: () => Promise<void>;
 }
 
-/** How long a turn runs before it posts what it has, and the most it may run in all. */
+/** How long a turn runs before it lets its window go and works on, and the most it may run in all. */
 export interface TurnBudget {
   partialAfterMs: number;
   ceilingMs: number;
@@ -197,8 +197,8 @@ export interface ConversationTurnRequest {
   /** Released once the turn is over, however it ended. */
   dispose?: () => Promise<void>;
   /**
-   * The entry the rest of a turn streams into once a partial reply went out under the first one;
-   * absent where the venue streams nothing.
+   * The entry the rest of a turn streams into once it let its window go; absent where the venue
+   * streams nothing.
    */
   continueEntry?: (() => ContinuedEntry) | undefined;
   /** The turn's ceilings; the runner's defaults where absent. */
@@ -211,7 +211,8 @@ export interface ConversationTurnRequest {
  */
 export type TurnOutcome =
   /**
-   * `continuation`: the delivered text was a partial reply; see {@link ContinuedRest}.
+   * `continuation`: the turn let its window go and works on, nothing posted yet (`messageId` null);
+   * see {@link ContinuedRest}.
    */
   (
     | { kind: 'delivered'; messageId: string | null; continuation?: ContinuedRest }
@@ -240,8 +241,8 @@ export type TurnOutcome =
   };
 
 /**
- * The rest of a turn that posted a partial reply. `rest` settles once it has been posted to the same
- * thread, or the line saying why it was not; `until` is the latest it is waited on, past which its
+ * The rest of a turn that let its window go. `rest` settles once its answer has been posted to the
+ * same thread, or once it ended without one; `until` is the latest it is waited on, past which its
  * window's record says it never settled.
  */
 export interface ContinuedRest {

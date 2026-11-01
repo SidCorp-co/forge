@@ -158,7 +158,7 @@ describe('Forge verifies no item nobody confirmed: past its window it writes wha
   it('leaves an item still inside its window, however recently it was last swept', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await resolved('ann', 'Why does the badge say Planned?');
-    // the reporter's own "is triaged" notice is already there; the sweeps add nothing to it
+    // the reporter's own triaged notice is already there; the sweeps add nothing to it
     const before = (await bell('ann')).length;
     await sweepResolvedFeedback();
     await seen(fb, 6);

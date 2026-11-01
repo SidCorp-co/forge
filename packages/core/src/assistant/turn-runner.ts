@@ -10,10 +10,8 @@
 import {
   codeAuthored,
   conversationTransport,
-  nothingMoreReply,
   openConversation,
   recordDeliveredReply,
-  type ScreenedMessage,
   turnFailureReason,
 } from '../conversations/index.js';
 import {
@@ -28,7 +26,6 @@ import { isRefusal } from '../lib/refusal.js';
 import { registerTurnStop, STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
 import { composeReply, reportOfFailure, type TurnContext } from './turn-compose.js';
-import { partialReplyText } from './turn-partial.js';
 import {
   type ContinuedEntry,
   type ConversationTurnRequest,
@@ -48,7 +45,10 @@ export type {
   TurnReply,
 } from './turn-request.js';
 
-/** When a turn still answering posts what it has so far and keeps working. */
+/**
+ * When a turn still answering lets its window go and keeps working: inside the window's claim
+ * lease, so no other holder takes the window while the turn runs on.
+ */
 const PARTIAL_AFTER_MS = 90_000;
 /** The most a turn that keeps working may run, from its start; inside its token's life. */
 const CONTINUED_CEILING_MS = 8 * 60 * 1000;
@@ -95,11 +95,14 @@ type Transport = NonNullable<ReturnType<typeof conversationTransport>>;
 
 const STOPPED: TurnOutcome = { kind: 'stopped', reason: STOPPED_BY_A_PERSON };
 
-/** A turn that outran its first ceiling: the partial reply to post now, and the work still running. */
-interface PartialReply {
-  partial: ScreenedMessage;
+/**
+ * A turn that outran its first ceiling: the work still running. Nothing is posted for it in the
+ * meantime — no line core wrote stands in for the agent's own (owner ruling agent-is-the-voice,
+ * ISS-857); the room's acknowledgement is the transport's own mark, not words.
+ */
+interface ContinuingTurn {
   rest: Promise<TurnReply | TurnOutcome>;
-  /** End the work still running: its partial could not be delivered, so nothing may follow it. */
+  /** End the work still running: the right to answer moved on, so nothing may follow. */
   cancel: () => void;
   /** Point the work's stream at the entry the rest is recorded under. */
   continueIn: (entry: ContinuedEntry | null) => void;
@@ -107,9 +110,9 @@ interface PartialReply {
   continuesUntil: Date;
 }
 
-type Composed = TurnReply | TurnOutcome | PartialReply;
+type Composed = TurnReply | TurnOutcome | ContinuingTurn;
 
-/** A turn whose answer is the model's reply can post a partial one; one that answers only through `room_send` cannot. */
+/** A turn whose answer is the model's reply can work past its window; one that answers only through `room_send` cannot. */
 function budgetOf(req: ConversationTurnRequest): TurnBudget & { continues: boolean } {
   const continues = req.sendMode !== 'tool';
   const partialAfterMs = req.budget?.partialAfterMs ?? PARTIAL_AFTER_MS;
@@ -134,11 +137,11 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   const conversation = await openConversation(req.venue);
   const stage = new TurnBlockStage();
   const reply = await composeWithin(req, conversation.id, stage);
-  if ('rest' in reply) return deliverPartial(req, transport, conversation.id, reply, stage);
+  if ('rest' in reply) return continueQuietly(req, transport, conversation.id, reply, stage);
   return withDrops(req, stage, await settledOutcome(req, transport, conversation.id, reply, stage));
 }
 
-/** How a composed turn that posted no partial reply ends: delivered, or the reason it was not. */
+/** How a composed turn that did not work past its window ends: delivered, or the reason it was not. */
 async function settledOutcome(
   req: ConversationTurnRequest,
   transport: Transport,
@@ -179,7 +182,7 @@ function withDrops(
 
 /**
  * Compose under the turn's ceilings, its abort and its token; a stop from the room wins every arm.
- * A turn still running at its first ceiling hands back what it did so far and keeps going; its
+ * A turn still running at its first ceiling hands back the work still running and keeps going; its
  * token, its abort and its stop stay held until the rest has settled.
  */
 async function composeWithin(
@@ -243,10 +246,10 @@ async function composeWithin(
     await settle();
     return first;
   }
-  // a room that may stay silent hears a partial only when the turn already changed something in it:
-  // a write that landed, or one held for the person's go-ahead, whose card the room now shows (REQ-30
-  // BC-4: a chat's write lands only on that press, so a held one is the change a chat makes);
-  // otherwise the turn ends at the first ceiling, as a turn there always has
+  // a room that may stay silent keeps a turn past its first ceiling only when the turn already
+  // changed something in it: a write that landed, or one held for the person's go-ahead, whose card
+  // the room now shows (REQ-30 BC-4: a chat's write lands only on that press, so a held one is the
+  // change a chat makes); otherwise the turn ends at the first ceiling, as a turn there always has
   const changed =
     (ctx.writes?.calls().some((c) => c.write) ?? false) || (ctx.writes?.held().length ?? 0) > 0;
   if (req.fallbacks === 'silence' && !changed) {
@@ -257,18 +260,9 @@ async function composeWithin(
   }
   logger.info(
     { ...req.log, phase, partialAfterMs: budget.partialAfterMs },
-    'conversations: the turn outran its first ceiling; posting what it has and working on',
+    'conversations: the turn outran its first ceiling; letting its window go and working on',
   );
   return {
-    partial: codeAuthored(
-      partialReplyText({
-        calls: ctx.writes?.calls() ?? [],
-        held: ctx.writes?.held() ?? [],
-        language: req.replyLanguage ?? 'en',
-        handleName: req.handleName,
-        waitedMs: Date.now() - startedAt,
-      }),
-    ),
     rest: work.finally(settle),
     cancel: () => abort.abort(STOPPED_BY_A_PERSON),
     continueIn: (entry) => {
@@ -334,33 +328,31 @@ async function failedTurn(
 }
 
 /**
- * Post the partial reply under the window's own delivery, then let the work finish and post the
- * rest into the same thread. A partial that could not be delivered ends the work: nothing may
- * follow a message the thread never got.
+ * Let the window go while the turn works on: the right to answer is reserved under the window's
+ * claim, the window closes on the continuation, and the rest is delivered as the turn's one message
+ * once it settles. Nothing is posted in the meantime. A reservation the claim no longer holds ends
+ * the work: another holder answers now.
  */
-async function deliverPartial(
+async function continueQuietly(
   req: ConversationTurnRequest,
   transport: Transport,
   conversationId: string,
-  reply: PartialReply,
+  reply: ContinuingTurn,
   stage: TurnBlockStage,
 ): Promise<TurnOutcome> {
-  const outcome = await deliverReply(
-    req,
-    transport,
-    conversationId,
-    { send: true, message: reply.partial, screenReplaced: false },
-    stage,
-  );
-  if (outcome.kind !== 'delivered') {
+  if (req.onBeforeDeliver && !(await req.onBeforeDeliver())) {
     reply.cancel();
     void reply.rest.catch(() => undefined);
-    return withDrops(req, stage, outcome);
+    return withDrops(req, stage, {
+      kind: 'superseded',
+      reason: 'the right to answer here moved to another holder',
+    });
   }
   const entry = req.continueEntry?.() ?? null;
   reply.continueIn(entry);
   return {
-    ...outcome,
+    kind: 'delivered',
+    messageId: null,
     continuation: {
       rest: continueInThread(req, transport, conversationId, reply, entry, stage).then((rest) =>
         withDrops(req, stage, rest),
@@ -370,12 +362,15 @@ async function deliverPartial(
   };
 }
 
-/** The rest of a turn that posted a partial reply, delivered into the same thread as its own message. */
+/**
+ * The rest of a turn that worked past its window, delivered into the same thread as its own message:
+ * the agent's answer, the report of a failure, or nothing where it chose to say nothing.
+ */
 async function continueInThread(
   req: ConversationTurnRequest,
   transport: Transport,
   conversationId: string,
-  reply: PartialReply,
+  reply: ContinuingTurn,
   entry: ContinuedEntry | null,
   stage: TurnBlockStage,
 ): Promise<TurnOutcome> {
@@ -386,12 +381,10 @@ async function continueInThread(
   try {
     const rest = await reply.rest;
     if ('kind' in rest) return rest;
-    const language = req.replyLanguage ?? 'en';
-    const message = rest.send
-      ? rest.message
-      : rest.ended === 'failed'
-        ? rest.report
-        : codeAuthored(nothingMoreReply(req.handleName, language));
+    if (!rest.send && rest.ended !== 'failed') {
+      return { kind: rest.ended ?? 'diverted', reason: rest.reason };
+    }
+    const message = rest.send ? rest.message : rest.report;
     entry?.onSettled?.({
       text: message.text,
       screenReplaced: rest.send && rest.screenReplaced,
@@ -409,7 +402,7 @@ async function continueInThread(
       projectId: req.venue.projectId,
       text: receipt.deliveredText ?? message.text,
       receipt,
-      ...(req.deliveryKey ? { deliveryKey: `${req.deliveryKey}:continued` } : {}),
+      ...(req.deliveryKey ? { deliveryKey: req.deliveryKey } : {}),
       askedBy: req.authority.userId,
       awaitsReplyFrom: awaitsReplyFrom(req, rest.send && rest.awaitsReply === true),
       ...(row ? { messageId: row.id, blocks: row.blocks } : {}),

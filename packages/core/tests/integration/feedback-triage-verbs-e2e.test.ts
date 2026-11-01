@@ -132,7 +132,7 @@ describe('decline: the reporter is told the reason once', () => {
     const notices = (await bell('ann')).slice(before);
     expect(notices).toHaveLength(1);
     expect(notices[0]?.title).toContain(fb);
-    expect(notices[0]?.body).toContain('Reason: The palette is fixed by the brand guide.');
+    expect(notices[0]?.body).toBe('The palette is fixed by the brand guide.');
     expect(await bell('bo')).toHaveLength(bystander);
   });
 });
@@ -185,8 +185,7 @@ describe('duplicate: the reporters and evidence read on the original, each told 
 
     const notices = (await bell('bo')).slice(before);
     expect(notices, 'each moved reporter gets exactly one notice').toHaveLength(1);
-    expect(notices[0]?.title).toContain(original);
-    expect(notices[0]?.body).toContain(original);
+    expect(notices[0]?.title).toContain(`duplicate of ${original}`);
 
     const root = await read(original);
     expect((root.reporters as Doc[]).map((r) => [r.id, r.from])).toEqual([
@@ -342,7 +341,7 @@ describe('messages: an audience, an exact preview, and notes that never reach a 
         text: '  We are fixing accents this week.  ',
       }),
     ).preview;
-    expect(p.title).toBe(`A message about ${original}: Search ignores accents`);
+    expect(p.title).toBe(`${original} · message · Search ignores accents`);
     expect(p.body).toBe('We are fixing accents this week.');
     expect((p.recipients as Doc[]).map((r) => r.id)).toEqual([people.ann, people.bo]);
     expect((await told())[0]?.n).toBe(sent);

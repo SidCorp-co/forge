@@ -195,7 +195,8 @@ describe('what a visitor reads back', () => {
       ['feedbackKey', 'filedAt', 'phase', 'says', 'title', 'updatedAt'].sort(),
     );
     expect(status.body.phase).toBe('received');
-    expect(status.body.says).toBe('We received your report and will look at it soon.');
+    // ISS-857: the phase fact, never a sentence core composed for the visitor
+    expect(status.body.says).toBe('received');
     expect(status.headers.get('cache-control')).toBe('no-store');
     expect(JSON.stringify(status.body)).not.toMatch(/ISS-|@|widget-/);
 
@@ -211,7 +212,7 @@ describe('what a visitor reads back', () => {
     expect(decline.status, JSON.stringify(decline.body)).toBe(200);
     const declined = await api(null, 'GET', `/api/widget/status/${statusToken}`);
     expect(declined.body.phase).toBe('closed');
-    expect(declined.body.says).toBe('We decided not to act on this report.');
+    expect(declined.body.says).toBe('declined');
     // the reason the team gave is theirs, and the link never carries it
     expect(JSON.stringify(declined.body)).not.toContain('Not planned');
 

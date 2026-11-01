@@ -18,25 +18,23 @@ import type { TurnReply } from './turn-request.js';
 import type { WebTurnArgs } from './web-turn-args.js';
 
 /**
- * What the thread is shown when an Agent turn has no answer to give it. English only (owner ruling,
- * ISS-403). A crash, a timeout and a box that cannot confine are read from the session's own cause
- * by the bridge (`conversations/conversation-agent-failure.ts`); `failed` is kept for an ending none
- * of those names.
+ * What the thread is shown when an Agent turn has no answer to give it: a last resort no agent wrote
+ * (owner ruling agent-is-the-voice, ISS-857), so it is short and names no machinery. English only
+ * (owner ruling, ISS-403). A crash, a timeout and a box that cannot confine are read from the
+ * session's own cause by the bridge (`conversations/conversation-agent-failure.ts`); `failed` is kept
+ * for an ending none of those names.
  */
 const WEB_AGENT_REPLIES = {
   dedup:
     'This conversation already has an Agent turn running. Wait for it to answer, or open another conversation to ask something else in parallel.',
   noDevice:
-    'No paired device is free to take this turn right now. Try again in a few minutes, or open a new conversation in Assistant mode for anything that does not need the repository.',
+    'Agent mode cannot take this right now. Try again in a few minutes, or ask in Assistant mode for anything that does not need the code.',
   failed:
-    'The Agent session ended without an answer. Ask again — a new turn starts a fresh session — or open a conversation in Assistant mode if the question does not need the repository.',
-  ack: null,
+    'The agent ended without an answer. Ask again, or ask in Assistant mode if it does not need the code.',
 } as const;
 
-/** A turn refused because its box cannot confine a chat: the refusal names the box and why. */
-function cannotConfineReply(refusal: string): string {
-  return `Agent mode did not run this turn. ${refusal} ${AGENT_TURN_NEXT_STEP['box-cannot-confine']}`;
-}
+/** A turn refused because its box cannot confine a chat; the refusal naming the box stays on its session. */
+const CANNOT_CONFINE_REPLY = `Agent mode did not run this turn. ${AGENT_TURN_NEXT_STEP['box-cannot-confine']}`;
 
 const ATTACHMENT_UNREADABLE = {
   en: (file: string) =>
@@ -82,7 +80,6 @@ export async function divertToAgent(
     ),
     door: 'web-agent-completion',
     replies: WEB_AGENT_REPLIES,
-    ackAfterMs: null,
   });
   if (started.started) return { send: false, reason: 'agent-turn-dispatched' };
   const text = notStartedText(started, language);
@@ -110,12 +107,7 @@ function notStartedText(
     case 'attachment-unreadable':
       return ATTACHMENT_UNREADABLE[language](started.file ?? ATTACHMENT_NAMELESS[language]);
     case 'box-cannot-confine':
-      if (!started.message) {
-        throw new Error(
-          'web-turn-inputs: a turn refused BOX_CANNOT_CONFINE_CHAT carried no sentence naming the box',
-        );
-      }
-      return cannotConfineReply(started.message);
+      return CANNOT_CONFINE_REPLY;
     case 'dispatch-failed':
       return null;
   }

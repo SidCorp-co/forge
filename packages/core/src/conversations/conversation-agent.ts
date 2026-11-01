@@ -21,7 +21,6 @@ import { buildProgressFactsBlock, computeProjectProgress } from '../issues/index
 import { egressShown } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { scheduleAck } from './conversation-agent-ack.js';
 import { carryImagesToSession } from './conversation-agent-images.js';
 import {
   CONVERSATION_AGENT_MARKER,
@@ -114,14 +113,13 @@ export function mintTurnCredential(
   });
 }
 
-/** Mint the asker's credential for this session and hand the turn to the box; the ack is then due. */
+/** Mint the asker's credential for this session and hand the turn to the box. */
 export async function dispatchAgentTurn(input: {
   session: SessionRow;
   project: { id: string; slug: string };
   deviceId: string;
   authorised: Authorised;
   message: string;
-  marker: ConversationAgentMeta;
   attachmentIds?: string[];
   forceLenses?: readonly MemberLens[];
 }): Promise<SessionRow> {
@@ -130,7 +128,7 @@ export async function dispatchAgentTurn(input: {
     deviceId: input.deviceId,
     value: input.authorised.value,
   });
-  const dispatched = await dispatchChatTurn({
+  return dispatchChatTurn({
     session: input.session,
     project: input.project,
     client: { deviceId: input.deviceId, migrated: false },
@@ -140,8 +138,6 @@ export async function dispatchAgentTurn(input: {
     ...(input.forceLenses ? { forceLenses: input.forceLenses } : {}),
     broadcastEvent: 'agent-session.created',
   });
-  scheduleAck(dispatched.id, input.marker);
-  return dispatched;
 }
 
 /** The marker a fresh turn's session carries: what the bridge needs to deliver its reply. */
@@ -160,7 +156,6 @@ function markerOf(
     asker,
     door: args.door,
     replies: args.replies,
-    ackAfterMs: args.ackAfterMs ?? null,
     claimedAt: null,
     deliveredAt: null,
     failure: null,
@@ -234,7 +229,6 @@ export async function startConversationAgentTurn(
       project: args.project,
       deviceId,
       authorised,
-      marker,
       attachmentIds: carried.ids,
       message: buildConversationAgentPrompt({
         persona: args.persona,

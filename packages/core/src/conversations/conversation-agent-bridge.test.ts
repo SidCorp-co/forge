@@ -113,7 +113,7 @@ function session(
         windowId: 'w-1',
         deliveryKey: 'window:w-1',
         asker: { userId: 'u-asker', viaTokenId: null },
-        replies: { ack: null, dedup: 'd', failed: FAILED, noDevice: 'n' },
+        replies: { dedup: 'd', failed: FAILED, noDevice: 'n' },
       },
     },
   };
@@ -189,9 +189,8 @@ describe('a session that left no reply reads as what ended it', () => {
     expect(delivered).toHaveLength(1);
     expect(delivered[0]).not.toBe(FAILED);
     expect(delivered[0]).not.toMatch(/ended without an answer/);
-    expect(delivered[0]).toBe(
-      `The Agent session crashed: ${how}. Send your message again: a new turn starts a fresh session. If it crashes again, the session's page in Forge names the cause.`,
-    );
+    // the room reads plain words (ISS-857); the cause in full is the stamped failure
+    expect(delivered[0]).toBe('The agent stopped before it answered. Send your message again.');
     expect(stamped('failure')).toEqual([`the Agent session crashed: ${how}`]);
   });
 
@@ -219,7 +218,7 @@ describe('a session that left no reply reads as what ended it', () => {
       expect(delivered).toHaveLength(1);
       expect(delivered[0]).not.toBe(FAILED);
       expect(delivered[0]).toBe(
-        `The Agent turn timed out: ${clause}. Send your message again. If it times out again, check that forge-runner is running and online on the paired box.`,
+        'The agent ran out of time before it answered. Send your message again in a few minutes.',
       );
       expect(stamped('failure')).toEqual([`the Agent turn timed out: ${clause}`]);
     },
@@ -230,7 +229,9 @@ describe('a session that left no reply reads as what ended it', () => {
     try {
       transcript = [];
       await deliver?.(session('failed', 'no_client_ack', 11 * MIN));
-      expect(delivered[0]).toContain('no box started a session for it within 10 minutes');
+      expect(stamped('failure')).toEqual([
+        'the Agent turn timed out: no box started a session for it within 10 minutes',
+      ]);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -239,16 +240,21 @@ describe('a session that left no reply reads as what ended it', () => {
   it('a timeout cause written before its limit ran out is not called a timeout: the turn never reached the box', async () => {
     transcript = [];
     await deliver?.(session('failed', 'no_client_ack', 400));
-    expect(delivered[0]).toMatch(/^The Agent turn never reached its box: /);
-    expect(delivered[0]).not.toMatch(/timed out|ended without an answer/);
+    expect(delivered[0]).toBe(
+      'The agent could not be reached. Send your message again in a few minutes.',
+    );
+    expect(stamped('failure')[0]).toMatch(/^the Agent turn never reached its box: /);
+    expect(delivered[0]).not.toMatch(/ran out of time|ended without an answer/);
   });
 
   it('a box that cannot confine reads as that, with what the box holder can do', async () => {
     transcript = [];
     await deliver?.(session('failed', 'box_cannot_confine_chat'));
-    expect(delivered[0]).toMatch(/cannot confine a chat session, so nothing ran/);
-    expect(delivered[0]).toContain('The box holder can run `forge-runner doctor`');
-    expect(delivered[0]).not.toMatch(/ended without an answer|No paired device is free/);
+    expect(delivered[0]).toBe(
+      'Agent mode cannot run here yet. Ask in Assistant mode for anything that does not need the code.',
+    );
+    expect(stamped('failure')[0]).toMatch(/cannot confine a chat session, so nothing ran/);
+    expect(delivered[0]).not.toMatch(/ended without an answer|forge-runner/);
   });
 
   it('a reply the screen held is still read as held, whatever cause the session row carries', async () => {
@@ -298,12 +304,12 @@ describe('a failed turn row carries the next step its own cause calls for', () =
       );
 
     expect(next('agent_killed').state).toBe('failed');
-    expect(next('agent_killed').nextStep).toMatch(
-      /^Send your message again: a new turn starts a fresh session\./,
+    expect(next('agent_killed').nextStep).toBe('Send your message again.');
+    expect(next('queue_timeout', 3 * 60_000).nextStep).toBe(
+      'Send your message again in a few minutes.',
     );
-    expect(next('queue_timeout', 3 * 60_000).nextStep).toMatch(/If it times out again/);
-    expect(next('box_cannot_confine_chat').nextStep).toMatch(
-      /^The box holder can run `forge-runner doctor`/,
+    expect(next('box_cannot_confine_chat').nextStep).toBe(
+      'Ask in Assistant mode for anything that does not need the code.',
     );
     expect(next('box_cannot_confine_chat').nextStep).not.toMatch(
       /ask again to start a fresh session/i,

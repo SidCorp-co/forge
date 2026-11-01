@@ -22,35 +22,10 @@ import { hasInFlightRoomSession } from './room-replies.js';
 
 const ESCALATION_TITLE_MAX = 80;
 
-type Said = Record<'en' | 'vi', (botName: string) => string>;
-
-const ACK: Said = {
-  en: (botName) =>
-    `${botName} is looking into this question in depth and will come back with an answer shortly.`,
-  vi: (botName) => `${botName} đang tìm hiểu kỹ câu hỏi này, lát nữa quay lại trả lời bạn nhé.`, // i18n-allow: user-facing channel reply
-};
-const DEDUP: Said = {
-  en: (botName) =>
-    `${botName} is still looking into this room's previous question; please wait a little longer.`,
-  vi: (botName) =>
-    `${botName} vẫn đang tìm hiểu câu hỏi trước đó cho phòng này, chờ thêm chút nhé.`, // i18n-allow: user-facing channel reply
-};
-const NO_DEVICE: Said = {
-  en: (botName) =>
-    `Sorry, no runner is free right now for ${botName} to look into this in depth — please try again in a few minutes.`,
-  vi: (botName) =>
-    `Xin lỗi, hiện không có runner nào sẵn sàng để ${botName} tìm hiểu sâu câu hỏi này — bạn thử lại sau ít phút nhé.`, // i18n-allow: user-facing channel reply
-};
-
-export const ESCALATION_ACK = (botName: string, language: 'en' | 'vi' = 'vi'): string =>
-  ACK[language](botName);
-
-export const ESCALATION_DEDUP_REPLY = (botName: string, language: 'en' | 'vi' = 'vi'): string =>
-  DEDUP[language](botName);
-
-export const ESCALATION_NO_DEVICE_REPLY = (botName: string, language: 'en' | 'vi' = 'vi'): string =>
-  NO_DEVICE[language](botName);
-
+// The fast turn that escalates says so in its own words, or says nothing (owner ruling
+// agent-is-the-voice, ISS-857): this file writes no ack, no "still looking" and no "no runner" line.
+// The one line it keeps is the last resort when the investigation's answer cannot be relayed by the
+// room's agent at all.
 export const ESCALATION_FALLBACK_REPLY = (botName: string): string =>
   `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 

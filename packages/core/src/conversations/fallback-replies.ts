@@ -231,9 +231,27 @@ const FAILURE_HEAD: Record<TurnFailureCause, Line> = {
   },
 };
 
+/**
+ * Leads the writes a turn proposed and core holds for the person's go-ahead (REQ-30 BC-4): nothing
+ * of them is written. English in every room: new copy is English only (owner ruling ISS-403).
+ */
+const FINDINGS_HELD = 'Held for a go-ahead, not written:';
+
 const FINDINGS_WORDS: Record<
   ReplyLanguage,
-  { so: string; nothing: string; again: string; draft: string; unchecked: string }
+  {
+    so: string;
+    nothing: string;
+    again: string;
+    draft: string;
+    unchecked: string;
+    /** Leads the writes that landed. */
+    did: string;
+    /** Leads the one sentence that says, by tool in plain words, what the turn read. */
+    read: string;
+    /** Leads the writes held for the person's agreement. */
+    held: string;
+  }
 > = {
   en: {
     so: 'What it did and found before it stopped:',
@@ -242,6 +260,9 @@ const FINDINGS_WORDS: Record<
     draft: 'What it had written so far, unfinished, checked against what it read:',
     unchecked:
       'It had started an answer, but that draft did not pass the reply check, so it is not shown.',
+    did: 'Done so far:',
+    read: 'Read so far:',
+    held: FINDINGS_HELD,
   },
   vi: {
     so: 'Những gì đã làm và tìm được trước khi dừng:', // i18n-allow: user-facing channel reply
@@ -250,6 +271,9 @@ const FINDINGS_WORDS: Record<
     draft: 'Phần đã viết được, chưa xong, đã đối chiếu với những gì đã đọc:', // i18n-allow: user-facing channel reply
     unchecked:
       'Đã bắt đầu viết câu trả lời, nhưng bản nháp chưa qua bước kiểm tra nên không hiển thị.', // i18n-allow: user-facing channel reply
+    did: 'Đã làm:', // i18n-allow: user-facing channel reply
+    read: 'Đã đọc:', // i18n-allow: user-facing channel reply
+    held: FINDINGS_HELD,
   },
 };
 
@@ -276,57 +300,6 @@ export function failedTurnReport(args: {
 /** The cause a failure code stands for where nothing finer was recorded. */
 export const causeOfCode = (code: TurnFailureCode): TurnFailureCause =>
   code === 'ASSISTANT_TURN_TIMED_OUT' ? 'timeout' : 'provider';
-
-/**
- * What a turn that ran past its first ceiling posts while it keeps working: what it did, what it
- * read, and that the rest follows in this same thread. `seconds` is how long the person has waited.
- */
-/**
- * Leads the writes a turn proposed and core holds for the person's go-ahead (REQ-30 BC-4): nothing
- * of them is written. English in every room: new copy is English only (owner ruling ISS-403).
- */
-const PARTIAL_HELD =
-  'Waiting for a go-ahead, nothing written until Record it is pressed on its card:';
-
-const PARTIAL: Record<
-  ReplyLanguage,
-  {
-    head: (name: string, seconds: number) => string;
-    did: string;
-    /** Leads the one sentence that says, by tool in plain words, what the turn read. */
-    read: string;
-    /** Leads the writes held for the person's agreement. */
-    held: string;
-    nothingYet: string;
-  }
-> = {
-  en: {
-    head: (name, seconds) =>
-      `${name} has not finished this after ${seconds} seconds, so here is what it has so far — still working… the rest will be posted in this conversation.`,
-    did: 'Done so far:',
-    read: 'Read so far:',
-    held: PARTIAL_HELD,
-    nothingYet: 'Nothing is finished yet; it is still reading the project.',
-  },
-  vi: {
-    head: (name, seconds) =>
-      `${name} chưa xong yêu cầu này sau ${seconds} giây nên gửi trước phần đã có — đang làm tiếp… phần còn lại sẽ được gửi ngay trong cuộc trò chuyện này.`, // i18n-allow: user-facing channel reply
-    did: 'Đã làm:', // i18n-allow: user-facing channel reply
-    read: 'Đã đọc:', // i18n-allow: user-facing channel reply
-    held: PARTIAL_HELD,
-    nothingYet: 'Chưa có việc nào xong; đang đọc dữ liệu dự án.', // i18n-allow: user-facing channel reply
-  },
-};
-
-export const partialReplyWords = (lang: ReplyLanguage) => PARTIAL[lang];
-
-const NOTHING_MORE: Line = {
-  en: (name) => `${name} finished; there is nothing to add to what is above.`,
-  vi: (name) => `${name} đã làm xong; không có gì thêm ngoài phần ở trên.`, // i18n-allow: user-facing channel reply
-};
-
-export const nothingMoreReply = (name: string, lang: ReplyLanguage): string =>
-  NOTHING_MORE[lang](name);
 
 export const isTurnFailureCode = isAssistantTurnFailureCode;
 

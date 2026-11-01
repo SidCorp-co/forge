@@ -174,12 +174,13 @@ describe('identityOf', () => {
 });
 
 describe('visitorStatusOf', () => {
-  it('says a sentence for every phase, never naming an issue, a requirement or a person', () => {
+  // ISS-857 (agent-is-the-voice): core composes no sentence for a visitor; `says` is the phase fact
+  it('says the phase fact for every phase, one word and no sentence, never an issue, a requirement or a person', () => {
     for (const phase of FEEDBACK_PHASES) {
       for (const route of [null, 'issue', 'revision', 'new_requirement'] as const) {
         const said = visitorStatusOf({ phase, route, redacted: false });
-        expect(said.says).toMatch(/^[A-Z].*\.$/s);
-        expect(said.says).not.toMatch(/ISS-|REQ-|FB-|@/);
+        expect(said.says).toMatch(/^[a-z]+$/);
+        expect(said.says).not.toMatch(/ISS-|REQ-|FB-|@|\./);
       }
     }
   });
@@ -199,7 +200,20 @@ describe('visitorStatusOf', () => {
     expect(at('triaged', 'duplicate')).toBe('closed');
     expect(visitorStatusOf({ phase: 'planned', route: 'issue', redacted: true })).toEqual({
       phase: 'closed',
-      says: 'The details of this report were deleted.',
+      says: 'deleted',
     });
+    const says = (
+      phase: (typeof FEEDBACK_PHASES)[number],
+      route: 'issue' | 'answer' | 'duplicate' | 'revision' | null = null,
+    ) => visitorStatusOf({ phase, route, redacted: false }).says;
+    expect(says('new')).toBe('received');
+    expect(says('reopened')).toBe('reopened');
+    expect(says('triaged', 'issue')).toBe('accepted');
+    expect(says('triaged', 'revision')).toBe('planned');
+    expect(says('planned', 'issue')).toBe('started');
+    expect(says('resolved', 'issue')).toBe('shipped');
+    expect(says('declined')).toBe('declined');
+    expect(says('triaged', 'duplicate')).toBe('duplicate');
+    expect(says('triaged', 'answer')).toBe('answered');
   });
 });

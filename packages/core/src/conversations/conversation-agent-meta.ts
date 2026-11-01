@@ -29,8 +29,6 @@ interface ConversationAgentReplies {
   noDevice: string;
   /** It ran and produced nothing this venue can be shown. */
   failed: string;
-  /** Posted only if the turn is still running after `ackAfterMs`; null sends none. */
-  ack: string | null;
 }
 
 export interface ConversationAgentTurnArgs {
@@ -54,8 +52,6 @@ export interface ConversationAgentTurnArgs {
   /** Where the reply is screened when it comes back. */
   door: 'agent-chat-completion' | 'web-agent-completion';
   replies: ConversationAgentReplies;
-  /** How long a still-running turn waits before its ack is posted; null posts none. */
-  ackAfterMs?: number | null | undefined;
   /** The chat voice this session's cold-start preamble is pinned to. */
   forceLenses?: readonly MemberLens[] | null | undefined;
   /**
@@ -140,7 +136,6 @@ export interface ConversationAgentMeta {
   asker: SessionAsker | null;
   door: 'agent-chat-completion' | 'web-agent-completion';
   replies: ConversationAgentReplies;
-  ackAfterMs: number | null;
   /**
    * When the bridge took this turn's delivery, which is NOT when it was delivered.
    */
@@ -227,9 +222,7 @@ export function readConversationAgentMeta(metadata: unknown): ConversationAgentM
       dedup: typeof replies.dedup === 'string' ? replies.dedup : '',
       noDevice: typeof replies.noDevice === 'string' ? replies.noDevice : '',
       failed: typeof replies.failed === 'string' ? replies.failed : '',
-      ack: typeof replies.ack === 'string' ? replies.ack : null,
     },
-    ackAfterMs: typeof m.ackAfterMs === 'number' ? m.ackAfterMs : null,
     claimedAt:
       typeof m.claimedAt === 'string'
         ? m.claimedAt

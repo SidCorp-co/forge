@@ -9,11 +9,12 @@
  * Both messages go through the real send route: the owner's opens the window its turn answers, the
  * colleague's opens a window of its own and is routed after, under the group room's hearing rules
  * (dev.123): heard and declined, left out as addressed to a person, or a stop request quieting the
- * room. The owner's turn ends three ways: a delivered reply, a partial reply and its continuation
- * (dev.129), and a failure whose report is posted (dev.139). The model is the one thing scripted;
- * the continued case also gives the turn a short first ceiling and a comment, since a group room
- * hears a partial only from a turn that already changed something in it: since REQ-30 BC-4 that
- * comment is held for the owner's go-ahead (ISS-439), and the card it puts in the room is the change.
+ * room. The owner's turn ends three ways: a delivered reply, a turn that worked past its window and
+ * answered later (dev.129; since ISS-857 it posts nothing at the ceiling), and a failure whose report
+ * is posted (dev.139). The model is the one thing scripted; the continued case also gives the turn a
+ * short first ceiling and a comment, since a group room keeps a turn past its ceiling only when it
+ * already changed something in it: since REQ-30 BC-4 that comment is held for the owner's go-ahead
+ * (ISS-439), and the card it puts in the room is the change.
  */
 
 import { asc, eq } from 'drizzle-orm';
@@ -220,7 +221,7 @@ describe('P7: the colleague writes while the turn answering the owner is out', (
       expect(await readings(room.id), JSON.stringify(said)).toEqual(waitingOnOwner);
     });
 
-    it(`the continuation of a partial reply that asked waits on the owner, not the colleague (${hearing})`, async () => {
+    it(`a turn that worked past its window and asked waits on the owner, not the colleague (${hearing})`, async () => {
       race.continues = true;
       const room = await open(`continued ${hearing}`);
       let release: () => void = () => undefined;
@@ -229,7 +230,7 @@ describe('P7: the colleague writes while the turn answering the owner is out', (
       });
       race.attempts = [{ reply: QUESTION, ask: true, write: true, during: () => held }, ...c.model];
       await send(ownerToken, room, 'Draft REQ-9 for the export screen');
-      // the partial is out and the window it answered is closed; the colleague writes now
+      // the window the turn answers is closed while it works on; the colleague writes now
       await send(colleagueToken, room, c.says);
       await routeOwed(room);
       release();
@@ -240,7 +241,8 @@ describe('P7: the colleague writes while the turn answering the owner is out', (
       const said = await rows(room.id);
       const asked = said.findIndex((m) => m.content === QUESTION);
       expect(said.findIndex((m) => m.content === c.says)).toBeLessThan(asked);
-      expect(said.filter((m) => m.role === 'assistant' && !m.silence).length).toBeGreaterThan(1);
+      // nothing core wrote stood in for the turn while it worked on (ISS-857)
+      expect(said.filter((m) => /still working|đang làm tiếp/.test(m.content))).toEqual([]); // i18n-allow: the removed Vietnamese partial
       expect(race.attempts).toEqual([]);
       expect(await readings(room.id), JSON.stringify(said)).toEqual(waitingOnOwner);
     });

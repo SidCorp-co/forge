@@ -19,6 +19,7 @@ import {
   type ConversationVenue,
   codeAuthored,
   replyLanguageOf,
+  screened,
 } from '../../conversations/index.js';
 import type {
   RocketChatImageRef,
@@ -26,15 +27,12 @@ import type {
   RoomShape,
   Route,
 } from '../../integrations/rocketchat/index.js';
+import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
+import { correctFalseClaims } from '../confab.js';
 import type { WindowCut, WindowTurnInputs } from '../route-window.js';
 import type { TurnInputs, TurnReply } from '../turn-runner.js';
 import { buildConversationContext } from './context.js';
-import {
-  ESCALATION_ACK,
-  ESCALATION_DEDUP_REPLY,
-  ESCALATION_NO_DEVICE_REPLY,
-  startEscalation,
-} from './escalation.js';
+import { startEscalation } from './escalation.js';
 import { prepareFastTurn } from './images.js';
 import { rocketChatPersona } from './persona.js';
 
@@ -84,6 +82,9 @@ interface RocketChatTurnArgs {
   };
 }
 
+/** The door a Rocket.Chat room's fast turn answers through. */
+const DOOR = 'chat-sync';
+
 /** Everything the neutral turn takes bar what the window and its venue settle. */
 type RocketChatTurn = WindowTurnInputs;
 
@@ -125,7 +126,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
   };
 
   return {
-    door: 'chat-sync',
+    door: DOOR,
     handleName: bot.botName,
     log: {
       connectionId: args.connectionId,
@@ -168,7 +169,13 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
 
 type Divert = NonNullable<RocketChatTurn['divertAfterTurn']>;
 
-/** A turn whose model called the escalate tool is answered by the escalation's own reply. */
+/**
+ * A turn whose model called the escalate tool: the escalation is started, and the room hears the
+ * model's own words about it, screened at the room's door, or nothing (owner ruling
+ * agent-is-the-voice, ISS-857). A started or already-running investigation answers later through
+ * `escalation-bridge.ts`; one that could not start ends the turn not dispatched. Only a refusal of
+ * the asker's own authority is a line core writes, the last resort no agent can say.
+ */
 async function divertToEscalation(
   args: RocketChatTurnArgs,
   result: Parameters<Divert>[0],
@@ -192,20 +199,44 @@ async function divertToEscalation(
     shape: args.shape,
     asker: authority,
   });
-  // a room's agent lines answer in the asker's language; a room that cannot tell keeps Vietnamese
-  const language = replyLanguageOf(subject.text) ?? 'vi';
-  const text = started.started
-    ? ESCALATION_ACK(bot.botName, language)
-    : started.reason === 'deduped'
-      ? ESCALATION_DEDUP_REPLY(bot.botName, language)
-      : started.reason === 'no-device'
-        ? ESCALATION_NO_DEVICE_REPLY(bot.botName, language)
-        : started.reason === 'runner-outdated' || started.reason === 'authority-refused'
-          ? agentRefusalText(started, language)
-          : null;
-  return text === null
-    ? { send: false, reason: 'escalation-dispatch-failed', ended: 'not-dispatched' }
-    : { send: true, message: codeAuthored(text), screenReplaced: true };
+  if (started.started) return ownWords(route.projectId, result, 'escalation-started');
+  if (started.reason === 'deduped') return ownWords(route.projectId, result, 'escalation-deduped');
+  if (started.reason === 'runner-outdated' || started.reason === 'authority-refused') {
+    // a room's refusal lines answer in the asker's language; a room that cannot tell keeps Vietnamese
+    const language = replyLanguageOf(subject.text) ?? 'vi';
+    return {
+      send: true,
+      message: codeAuthored(agentRefusalText(started, language)),
+      screenReplaced: true,
+    };
+  }
+  return { send: false, reason: `escalation-${started.reason}`, ended: 'not-dispatched' };
+}
+
+/**
+ * What the model itself said beside its escalate call, admitted at the room's door; nothing where it
+ * said nothing or its words did not pass. The investigation's own answer follows later either way.
+ */
+async function ownWords(
+  projectId: string,
+  result: Parameters<Divert>[0],
+  reason: string,
+): Promise<TurnReply> {
+  const text =
+    result.terminal === 'done'
+      ? correctFalseClaims(result.reply, result.toolCalls).text.trim()
+      : '';
+  if (!text) return { send: false, reason: `${reason}: the turn said nothing beside it` };
+  const verdict = await screenReplyAtDoor(DOOR, {
+    projectId,
+    segments: [text],
+    toolCalls: result.toolCalls,
+    progress: result.progress,
+  });
+  const message = screened(text, DOOR, verdict);
+  return message
+    ? { send: true, message, screenReplaced: false }
+    : { send: false, reason: `${reason}: its words did not pass the reply check` };
 }
 
 function escalationQuestion(rawArguments: string, fallback: string): string {

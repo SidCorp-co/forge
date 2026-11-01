@@ -1,7 +1,7 @@
 /**
  * "Tell the reporter now": anyone who holds feedback.approve may tell the reporters of a shipped item
- * nothing told yet that its work shipped, in each reporter's language, naming the release and what
- * the release notes say changed. Kept on the thread as a message to reporters, so `ship-notice.ts`
+ * nothing told yet that its work shipped: the kernel fact naming the release, and what the release
+ * notes say changed (`reporter-notices.ts:shippedNotice`). Kept on the thread as a message to reporters, so `ship-notice.ts`
  * reads the reporter told, by whom and when. Meant above all for an item that shipped before this
  * project's releases sent notices, which owes nobody a relay.
  */
@@ -17,8 +17,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { phaseOfRow } from './list-read.js';
 import { shipEvidenceOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
-import { reporterLanguageOf, tellReporters } from './reporter-language.js';
-import { shippedNotice } from './reporter-notices.js';
+import { shippedNotice, tellReporters } from './reporter-notices.js';
 import { reportersOf, withBell } from './reporters.js';
 import { decideActRefusal, refusal } from './rules.js';
 import { answer, inTx, lockFeedback, roleFacts } from './service.js';
@@ -77,13 +76,14 @@ async function tellIn(tx: Tx, row: Row, actor: FeedbackActor): Promise<Refusal[]
   const key = feedbackKey(row.fbSeq);
   const said = await saidOf(tx, row.id);
   const version = notice.shipped.release;
-  const first = await reporterLanguageOf(reached[0] as string, row.projectId);
   const evidence = await shipEvidenceOf(row);
+  const told = shippedNotice(key, row.title, version, said, evidence);
   await tx.insert(feedbackMessages).values({
     projectId: row.projectId,
     feedbackId: row.id,
     audience: 'all_reporters',
-    body: shippedNotice(first, key, row.title, version, said, evidence).body,
+    // the thread keeps what the reporter was told: the release note, else the fact itself
+    body: told.body || told.title,
     recipients: reached,
     sentBy: actor.userId,
     sentAgency: actor.agency,
@@ -92,7 +92,7 @@ async function tellIn(tx: Tx, row: Row, actor: FeedbackActor): Promise<Refusal[]
     tx,
     { projectId: row.projectId, feedbackId: row.id, kind: 'message' },
     reached,
-    (language) => shippedNotice(language, key, row.title, version, said, evidence),
+    told,
   );
   return null;
 }

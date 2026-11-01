@@ -1,0 +1,1 @@
+**Chat rooms, feedback notices and the widget hear the agent, not canned core lines.** A parked run's question is asked by the room's agent and a plain answer is recorded; acks, progress lines and confirm-or-reopen copy are gone (ISS-857).

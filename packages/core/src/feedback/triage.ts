@@ -44,8 +44,7 @@ import {
 } from './read.js';
 import { standingReplyOf } from './reply.js';
 import { answerAddressRefusal } from './reply-rules.js';
-import { tellReporters } from './reporter-language.js';
-import { duplicateNotice } from './reporter-notices.js';
+import { duplicateNotice, tellReporters } from './reporter-notices.js';
 import { reportersOf, tellStepToReporters, withBell } from './reporters.js';
 import { NO_ROUTE, writeRouteIn } from './route-write.js';
 import {
@@ -455,7 +454,7 @@ async function tellDuplicateReporters(tx: Tx, row: Row, original: string) {
     tx,
     { projectId: row.projectId, feedbackId: row.id, kind: 'duplicate' },
     told,
-    (language) => duplicateNotice(language, feedbackKey(row.fbSeq), row.title, original),
+    duplicateNotice(feedbackKey(row.fbSeq), row.title, original),
   );
 }
 

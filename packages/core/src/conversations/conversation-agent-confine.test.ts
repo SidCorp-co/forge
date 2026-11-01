@@ -42,7 +42,6 @@ vi.mock('../issues/index.js', () => ({
 vi.mock('./conversation-agent-read.js', () => ({
   hasInFlightConversationAgentTurn: async () => false,
 }));
-vi.mock('./conversation-agent-ack.js', () => ({ scheduleAck: () => undefined }));
 
 const { startConversationAgentTurn, notDispatchedCause } = await import('./conversation-agent.js');
 
@@ -61,7 +60,7 @@ function turn() {
     asker: { userId: 'u-1', viaTokenId: null },
     persona: 'persona',
     door: 'web-agent-completion',
-    replies: { dedup: 'd', noDevice: 'n', failed: 'f', ack: null },
+    replies: { dedup: 'd', noDevice: 'n', failed: 'f' },
   });
 }
 
