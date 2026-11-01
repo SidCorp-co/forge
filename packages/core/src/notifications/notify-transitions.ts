@@ -1,5 +1,4 @@
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import type { NotificationSeverity } from '@forge/contracts/notifications';
 import { owedCloseResolutionKey, strandedResolutionKey } from '@forge/contracts/notifications';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { eq } from 'drizzle-orm';
@@ -13,27 +12,10 @@ import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
 import { statusWords } from './subject.js';
 
-const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
-  'awaiting_release',
-  'reopen',
-  'needs_info',
-  'closed',
-]);
-
-/** Per-`to`-status severity for the `issue_status_changed` notification. */
-function severityForStatus(to: IssueStatus): NotificationSeverity {
-  switch (to) {
-    case 'reopen':
-      return 'error';
-    case 'needs_info':
-    case 'awaiting_release':
-      return 'warning';
-    case 'closed':
-      return 'success';
-    default:
-      return 'info';
-  }
-}
+// ISS-863 (owner, 2026-11-01, `notify-only-to-act`): a status move is activity, not a notice. The
+// one move that asks a person to act is `needs_info`, the issue stopped on them; every other move
+// (awaiting_release, reopen, closed) stays in the issue's activity and rings no bell.
+const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>(['needs_info']);
 
 /**
  * ISS-849 — redelivery-dedup key for one outbox event's delivery. Distinct from
@@ -44,21 +26,10 @@ function transitionDedupeKey(eventId: string): string {
   return `transition:${eventId}`;
 }
 
-/** Per-status one-line body explaining why the recipient is being pinged. */
-function bodyForStatus(to: IssueStatus, reason: string | null): string {
+/** The one-line body: the reason the move gave, else what the stop asks of its reader. */
+function bodyFor(reason: string | null): string {
   if (reason && reason.trim().length > 0) return reason.trim();
-  switch (to) {
-    case 'awaiting_release':
-      return 'Merged — waiting for the release.';
-    case 'reopen':
-      return 'Reopened — needs another look.';
-    case 'needs_info':
-      return 'Stopped on you — it cannot continue until you answer.';
-    case 'closed':
-      return 'Closed.';
-    default:
-      return `Moved to ${to}.`;
-  }
+  return 'Stopped on you — it cannot continue until you answer.';
 }
 
 /**
@@ -123,9 +94,9 @@ async function notifyTransition(
       projectId: p.projectId,
       type: 'issue_status_changed',
       title: `${label} moved to ${statusWords(p.to)}`,
-      body: bodyForStatus(p.to, p.reason),
+      body: bodyFor(p.reason),
       issueId: p.id,
-      severity: severityForStatus(p.to),
+      severity: 'warning',
       resolutionKey: null,
       dedupeKey: transitionDedupeKey(eventId),
     });

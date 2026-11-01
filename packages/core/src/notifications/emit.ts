@@ -27,12 +27,21 @@ interface EmitNotificationInput {
   groupTitle?: string | null;
 }
 
+/**
+ * Where an emitter names no group, the item it is about does (ISS-863: repeats per item collapse
+ * into one): every record of one type on one issue reaches a reader as one delivery, read again as
+ * new when a repeat lands after it was read. A record about no issue stands alone.
+ */
+const itemGroupOf = (input: EmitNotificationInput): string | null =>
+  input.issueId ? `item:${input.type}:${input.issueId}` : null;
+
 /** The one write entry: a record of `type` at its contract severity unless overridden, delivered. */
 export async function emitNotification(
   input: EmitNotificationInput,
 ): Promise<{ id: string; delivered: number }> {
   return recordAndDeliver({
     ...input,
+    groupKey: input.groupKey ?? itemGroupOf(input),
     recipients: input.recipients ?? (input.userId ? [input.userId] : []),
     severity: input.severity ?? notificationContractOf(input.type).severity,
   });

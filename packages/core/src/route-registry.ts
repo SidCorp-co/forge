@@ -121,6 +121,7 @@ import type { RequestIdVars } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
 import { noQuery } from './middleware/zod-validator.js';
 import { mockupRoutes } from './mockups/routes.js';
+import { notificationVolumeRoutes } from './notifications/index.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
@@ -383,6 +384,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issue-step-contexts', stepHandoffRoutes);
   app.route('/api/notifications', notificationRoutes);
+  app.route('/api/projects', notificationVolumeRoutes);
   app.route('/api/me', meAttentionRoutes);
   app.route('/api/me', mePulseRoutes);
   app.route('/api/me', productStateRoutes);

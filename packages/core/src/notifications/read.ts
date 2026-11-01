@@ -116,3 +116,32 @@ export async function liveConditionOf(
     .limit(1);
   return live ?? null;
 }
+
+/** One notification type's volume on a project in a window (ISS-863). */
+export interface NotificationVolumeRow {
+  type: string;
+  /** Records written. */
+  records: number;
+  /** Bell entries people received: a grouped repeat joins an entry rather than adding one. */
+  deliveries: number;
+}
+
+/**
+ * How many notifications a project raised by type since `since` (ISS-863: measured before and after
+ * notices were cut to what a person must act on), and how many bell entries reached people.
+ */
+export async function notificationVolumeOf(
+  projectId: string,
+  since: Date,
+): Promise<NotificationVolumeRow[]> {
+  const rows = await db.execute(sql`
+    SELECT n.type,
+           count(DISTINCT n.id)::int AS records,
+           count(DISTINCT m.delivery_id)::int AS deliveries
+      FROM notifications n
+      LEFT JOIN notification_delivery_members m ON m.notification_id = n.id
+     WHERE n.project_id = ${projectId} AND n.created_at >= ${since.toISOString()}
+     GROUP BY n.type
+     ORDER BY records DESC, n.type`);
+  return [...(rows as Iterable<NotificationVolumeRow>)];
+}
