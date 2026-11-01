@@ -10,6 +10,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, NoObjectGeneratedError, NoOutputGeneratedError, Output } from 'ai';
 import type { z } from 'zod';
+import { bodyShapeOf } from '../../lib/body-shape.js';
 import { type EgressScope, egressScoped } from '../../lib/data-egress.js';
 import { env } from '../../lib/env.js';
 import { logger } from '../../lib/logger.js';
@@ -144,9 +145,22 @@ type FastModelAnswer<T> =
   | { ok: false; miss: FastModelMiss; detail: string };
 
 /**
+ * The line every typed prompt ends with: the answer's JSON shape, read off its schema. The provider
+ * is OpenAI-compatible without structured outputs, so it is sent JSON mode alone and never the
+ * schema; a prompt that named its lists but not their fields got keys the schema refused, and every
+ * such answer was dropped as unreadable (ISS-867).
+ */
+export function answerShapeLine(schema: z.ZodType): string {
+  const shape = bodyShapeOf(schema);
+  return shape
+    ? `Answer with ONLY one JSON object of this shape (? marks a field you may leave out): ${shape}`
+    : 'Answer with ONLY one JSON value.';
+}
+
+/**
  * One completion whose answer must parse against `schema` through the AI SDK's structured output.
  * `modelId` is the model the endpoint says answered, which pins an alias to the version behind it.
- * The prompt still states the answer's shape: an OpenAI-compatible proxy may only honour JSON mode.
+ * The prompt is sent with the answer's shape appended (`answerShapeLine`).
  */
 export async function callFastModelObject<T>(
   scope: EgressScope,
@@ -164,7 +178,7 @@ export async function callFastModelObject<T>(
     try {
       const out = await generateText({
         model: fastModelSdk().chatModel(model),
-        prompt: sent.text,
+        prompt: `${sent.text}\n\n${answerShapeLine(schema)}`,
         output: Output.object({ schema }),
         ...callSettings(opts.maxTokens, reasoningEffort),
       });

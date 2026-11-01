@@ -14,14 +14,20 @@ import {
   type LessonScope,
   lessonKey,
 } from '@forge/contracts/lessons';
-import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 
 const DAY_MS = 86_400_000;
-const GATHER_CORRECTIONS = 40;
+/**
+ * The corrections one grouping reads: the newest, so a correction said today always reaches the
+ * steward. Read oldest-first, a project with more than this many lone corrections handed the same
+ * oldest ones to every pass, and nothing said after them was ever grouped (ISS-867: 193 corrections
+ * in October, 0 lessons). A lone correction older than the window waits until a newer one repeats it.
+ */
+export const GATHER_CORRECTIONS = 60;
 /**
  * Proposals, and confusions, the steward settles in one pass; the rest wait for the next. Each read
  * takes the items least recently tried first, and an attempt that settles nothing marks its item
@@ -47,7 +53,7 @@ export interface GatherLesson {
   scope: string;
 }
 
-/** The corrections no lesson holds and the steward has not rejected, oldest first, beside the live lessons. */
+/** The newest corrections no lesson holds and the steward has not rejected, shown oldest first, beside the live lessons. */
 export async function gatherInput(
   projectId: string,
 ): Promise<{ corrections: GatherCorrection[]; lessons: GatherLesson[] }> {
@@ -69,7 +75,7 @@ export async function gatherInput(
           isNull(corrections.rejectedAt),
         ),
       )
-      .orderBy(corrections.saidAt)
+      .orderBy(desc(corrections.saidAt))
       .limit(GATHER_CORRECTIONS),
     db
       .select({
@@ -86,7 +92,7 @@ export async function gatherInput(
       ),
   ]);
   return {
-    corrections: open,
+    corrections: open.reverse(),
     lessons: live.map((l) => ({
       number: l.number,
       sentence: l.sentence,

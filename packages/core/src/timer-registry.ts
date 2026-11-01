@@ -207,7 +207,7 @@ function stewardTimers(): Timer[] {
             t.rejected +
             t.settled +
             t.retired;
-          return moved + t.waiting + t.checks + t.failed > 0;
+          return moved + t.waiting + t.checks + t.failed + t.dropped + t.ungrouped > 0;
         },
       ),
     },

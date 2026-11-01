@@ -49,26 +49,39 @@ import {
 } from './lessons-review.js';
 import { stewardStanceOf } from './policy.js';
 
-const GROUP_MAX_TOKENS = 1500;
+/** The longest rejection reason the grouping asks for; the store takes up to `REASON_SENTENCE_MAX`. */
+export const GROUP_REASON_CHARS = 160;
+// the answer is sized by the corrections it reads: each may come back rejected with a reason, and a
+// fixed 1500 truncated an answer over sixty corrections, which then parsed as nothing (ISS-867)
+const GROUP_BASE_TOKENS = 1500;
+const GROUP_TOKENS_PER_CORRECTION = 75;
+
+/** The output budget for grouping `corrections` corrections. */
+export const groupingBudget = (corrections: number): number =>
+  GROUP_BASE_TOKENS + corrections * GROUP_TOKENS_PER_CORRECTION;
 const CHECK_TITLE_CHARS = 120;
 
-const grouping = z.object({
-  rejections: z.array(
-    z.object({ correction: z.string(), reason: z.string().min(1).max(REASON_SENTENCE_MAX) }),
-  ),
-  links: z.array(z.object({ correction: z.string(), lesson: z.number().int() })),
-  proposals: z.array(
-    z.object({
-      sentence: z.string().min(1).max(240),
-      scope: z.enum(['project', 'area', 'item_kind']),
-      areaId: z.string().nullable(),
-      itemKind: z.enum(LESSON_ITEM_KINDS).nullable(),
-      corrections: z.array(z.string()),
-      supersedes: z.number().int().nullable(),
-    }),
-  ),
+// a list the model leaves out is empty, and a key it leaves out is null: an answer that omits what
+// it has nothing to say about is still read, never dropped whole as unreadable (ISS-867)
+export const groupingSchema = z.object({
+  rejections: z
+    .array(z.object({ correction: z.string(), reason: z.string().min(1).max(REASON_SENTENCE_MAX) }))
+    .default([]),
+  links: z.array(z.object({ correction: z.string(), lesson: z.number().int() })).default([]),
+  proposals: z
+    .array(
+      z.object({
+        sentence: z.string().min(1).max(240),
+        scope: z.enum(['project', 'area', 'item_kind']),
+        areaId: z.string().nullish(),
+        itemKind: z.enum(LESSON_ITEM_KINDS).nullish(),
+        corrections: z.array(z.string()),
+        supersedes: z.number().int().nullish(),
+      }),
+    )
+    .default([]),
 });
-export type LessonGrouping = z.infer<typeof grouping>;
+export type LessonGrouping = z.infer<typeof groupingSchema>;
 
 /** How the pass groups: the fast model through the gateway, or a test's own answer. */
 export type Grouper = (
@@ -82,9 +95,10 @@ export function groupingPrompt(input: {
 }): string {
   return [
     "You are the project's steward. People corrected the project's agents; each correction below says what was wrong.",
-    '1. Reject a correction that is not one (`rejections`), with one sentence saying why: it names nothing the agent did wrong, it is a test or probe, or it is a question, thanks or noise. A rejected correction never feeds a lesson. Reject only what plainly is not a correction.',
-    '2. Link a correction to an existing lesson only when it repeats that lesson (`links`).',
-    `3. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative sentence an agent can apply, and a scope: \`project\`, \`area\` (with the corrections' areaId) or \`item_kind\` (requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
+    `1. Reject a correction that is not one (\`rejections\`: its \`correction\` id and a \`reason\` of one sentence under ${GROUP_REASON_CHARS} characters): it names nothing the agent did wrong, it is a test or probe, or it is a question, thanks or noise. A rejected correction never feeds a lesson. Reject only what plainly is not a correction.`,
+    '2. Link a correction to an existing lesson only when it repeats that lesson (`links`: its `correction` id and the `lesson` number).',
+    `3. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative \`sentence\` an agent can apply, the \`corrections\` ids it came from, and a \`scope\`: \`project\`, \`area\` (with the corrections' \`areaId\`) or \`item_kind\` (with an \`itemKind\`: requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
+    'Corrections on different items make the same point when one general mistake lies behind them: the same rule missed, the same kind of check skipped, the same wording or habit corrected. Say that general rule, not the item.',
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     `Lessons:\n${input.lessons.map((l) => `- ${lessonKey(l.number)} (${l.status}, ${l.scope}): ${l.sentence}`).join('\n') || '(none)'}`,
     `Corrections:\n${markUntrusted(
@@ -103,8 +117,8 @@ export const modelGrouper: Grouper = async (projectId, input) => {
   const answer = await callFastModelObject(
     { surface: 'lessons', projectId, what: 'corrections grouped into lessons' },
     groupingPrompt(input),
-    grouping,
-    { maxTokens: GROUP_MAX_TOKENS },
+    groupingSchema,
+    { maxTokens: groupingBudget(input.corrections.length) },
   );
   if (answer.ok) return answer.value;
   logger.warn(
@@ -127,10 +141,27 @@ async function proposeGroups(
   answer: LessonGrouping,
 ) {
   let proposed = 0;
+  let dropped = 0;
   for (const p of answer.proposals) {
     const corrections = [...new Set(p.corrections.filter((c) => ids.has(c)))];
     const scope = scopeOf(p);
-    if (corrections.length < LESSON_PROPOSE_MIN || !scope) continue;
+    if (corrections.length < LESSON_PROPOSE_MIN || !scope) {
+      // a group the model named that cannot become a lesson is said, never skipped in silence
+      dropped += 1;
+      logger.warn(
+        {
+          projectId,
+          sentence: p.sentence,
+          scope: p.scope,
+          named: p.corrections.length,
+          open: corrections.length,
+        },
+        scope
+          ? `steward: a proposed group holds fewer than ${LESSON_PROPOSE_MIN} open corrections; it was not proposed`
+          : 'steward: a proposed group names a scope without its areaId or itemKind; it was not proposed',
+      );
+      continue;
+    }
     try {
       await proposeLesson({
         projectId,
@@ -146,10 +177,11 @@ async function proposeGroups(
       proposed += 1;
     } catch (err) {
       if (!isRefusal(err)) throw err;
+      dropped += 1;
       logger.warn({ projectId, err: err.message }, 'steward: a lesson proposal was refused');
     }
   }
-  return proposed;
+  return { proposed, dropped };
 }
 
 function checkBody(owed: OwedCheck): string {
@@ -221,6 +253,10 @@ export interface LessonsPassTally extends SettleTally {
   correctionsRejected: number;
   linked: number;
   proposed: number;
+  /** Groups the model proposed that did not become a lesson: too few open corrections, no scope, or refused. */
+  dropped: number;
+  /** Projects whose corrections the model gave no readable grouping for (logged with why). */
+  ungrouped: number;
   retired: number;
   checks: number;
   failed: number;
@@ -250,7 +286,11 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
       const links = answer.links.filter((l) => ids.has(l.correction));
       tally.linked += await linkRepeats(projectId, links);
       for (const l of links) ids.delete(l.correction);
-      tally.proposed += await proposeGroups(projectId, stewardId, ids, answer);
+      const groups = await proposeGroups(projectId, stewardId, ids, answer);
+      tally.proposed += groups.proposed;
+      tally.dropped += groups.dropped;
+    } else {
+      tally.ungrouped += 1;
     }
   }
   await settleLessons(projectId, stewardId, judges, tally);
@@ -280,6 +320,8 @@ export async function runLessonsPass(
     correctionsRejected: 0,
     linked: 0,
     proposed: 0,
+    dropped: 0,
+    ungrouped: 0,
     approved: 0,
     rejected: 0,
     settled: 0,

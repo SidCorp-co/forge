@@ -16,6 +16,7 @@ export {
   checksOwed,
   deferConfusion,
   deferLesson,
+  GATHER_CORRECTIONS,
   type GatherCorrection,
   type GatherLesson,
   gatherInput,
