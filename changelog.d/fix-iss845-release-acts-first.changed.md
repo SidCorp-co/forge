@@ -1,1 +1,0 @@
-**The master takes a landed issue through release outside strict:** it cuts and records the release and approves its own contracts; a red declared check becomes cleanup debt, a missing note is drafted, an unasked approval holds nothing (ISS-845).

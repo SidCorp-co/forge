@@ -1,1 +1,0 @@
-**Standard waits on no person's paper:** issues open on title, description and kind; requirement links, design approval and master placement no longer wait; checklists advise; a release nobody approved ships marked "Not approved by a person". Strict unchanged (ISS-845).

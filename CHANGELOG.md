@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.420] - 2026-11-01
+
+Room messages cut off by a core restart get answered; standard projects need no approvals
+
+### Changed
+
+- **Outside strict the project's master triages, agrees and approves:** an agent's token or a paired box's holds feedback triage, requirement sign-off and workflow design approval on its own project; under strict they stay the approvers' (ISS-845).
+- **The master takes a landed issue through release outside strict:** it cuts and records the release and approves its own contracts; a red declared check becomes cleanup debt, a missing note is drafted, an unasked approval holds nothing (ISS-845).
+- **Standard waits on no person's paper:** issues open on title, description and kind; requirement links, design approval and master placement no longer wait; checklists advise; a release nobody approved ships marked "Not approved by a person". Strict unchanged (ISS-845).
+
+### Fixed
+
+- **A room message whose turn a core restart cut off is answered again.** Once that turn goes silent it is handed to the session once more, or its thread is told it went unanswered (ISS-850).
+
 ## [0.4.0-dev.419] - 2026-11-01
 
 Support answers arrive alone; agents act first and passes carry forward
