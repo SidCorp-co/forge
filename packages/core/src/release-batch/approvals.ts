@@ -12,6 +12,7 @@ import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
+import { writeRunMetadata } from '../pipeline/index.js';
 import {
   approvalRequired,
   bindingOf,
@@ -368,7 +369,7 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
     .limit(1);
   const gate = await gateOf(projectId, 'release_approval');
   if (!latest) {
-    if (gate.mode !== 'enforce') return;
+    if (gate.mode !== 'enforce') return recordUnapproved(runId, gate.mode);
     throw refuseRelease(
       'RELEASE_APPROVAL_REQUIRED',
       `project ${projectId} requires release approval, and release run ${runId} has none: ask with POST /api/projects/${projectId}/release-batches/${runId}/approvals and wait for an admin to approve it. ${gateSays(gate)}`,
@@ -377,7 +378,8 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
   if (latest.decision === 'approved') return;
   // where gate release_approval is not enforced nobody's approval is owed, so a request the master
   // asked anyway does not hold the act while it waits (REQ-79 r6); a returned one still does
-  if (latest.decision === null && gate.mode !== 'enforce') return;
+  if (latest.decision === null && gate.mode !== 'enforce')
+    return recordUnapproved(runId, gate.mode);
   if (latest.decision === null) {
     throw refuseRelease(
       'RELEASE_AWAITING_APPROVAL',
@@ -388,4 +390,15 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
     'RELEASE_APPROVAL_RETURNED',
     `release run ${runId} was returned (${latest.reason}); ask for approval again once that is answered`,
   );
+}
+
+// where the gate advises an approval, a production act that goes ahead with none says so on its
+// release, once, at the first such act (REQ-79 r6): the release reads `unapproved`, never silent
+async function recordUnapproved(runId: string, mode: 'advise' | 'off'): Promise<void> {
+  if (mode !== 'advise') return;
+  await writeRunMetadata(runId, {
+    merge: { unapproved: { at: new Date().toISOString() } },
+    when: sql`${pipelineRuns.metadata} -> 'unapproved' is null`,
+    touch: false,
+  });
 }

@@ -209,6 +209,7 @@ describe('admitting an issue (Issue lifecycle ready-check)', () => {
     });
 
   it('a birth asked at open with a gap stays at draft, its admission naming the gap', async () => {
+    // no description: what it delivers is said nowhere, so the minimum holds it outside strict too
     const r = await create(agent);
     expect(r.status, JSON.stringify(r.body)).toBe(201);
     const admission = r.body.admission as {
@@ -218,6 +219,39 @@ describe('admitting an issue (Issue lifecycle ready-check)', () => {
     expect(admission.status).toBe('draft');
     expect(admission.refusals.map((x) => `${x.code} ${x.path}`)).toContain(
       'CHECKLIST_INCOMPLETE /answers/requirement',
+    );
+  });
+
+  // REQ-79 r6 BC-12 (forge-core-61, 2026-11-01): outside strict an issue opens on the minimum, its
+  // title, description and kind; it names no requirement, and its run writes the criteria after
+  const described = (token: string) =>
+    on(token, 'POST', '/issues', {
+      title: 'Show the reminder',
+      description: 'A nurse sees a reminder before each visit, on the visit list.',
+      status: 'open',
+      priority: 'medium',
+      category: 'feature',
+    });
+  const admissionOf = (r: Res) =>
+    r.body.admission as { status: string; refusals: { code: string; path: string }[] };
+
+  it('outside strict, opens on its title, description and kind, with no requirement and no criteria', async () => {
+    const r = await described(agent);
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    expect(admissionOf(r)).toEqual({ status: 'open', refusals: [] });
+  });
+
+  it('under strict, the same issue stays at draft owing its requirement and its criteria', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    const r = await described(owner);
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    const admission = admissionOf(r);
+    expect(admission.status).toBe('draft');
+    expect(admission.refusals.map((x) => `${x.code} ${x.path}`)).toEqual(
+      expect.arrayContaining([
+        'CHECKLIST_INCOMPLETE /answers/requirement',
+        'CHECKLIST_INCOMPLETE /answers/criteria',
+      ]),
     );
   });
 

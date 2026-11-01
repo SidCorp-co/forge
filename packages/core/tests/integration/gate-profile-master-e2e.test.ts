@@ -121,13 +121,17 @@ afterAll(async () => {
 });
 
 /** `project`'s gate profile, through the gates door with a reason, as a person sets it. */
-async function profile(project: string, name: 'standard' | 'yolo' | 'strict'): Promise<void> {
+async function profile(
+  project: string,
+  name: 'standard' | 'yolo' | 'strict',
+  overrides: Record<string, string> = {},
+): Promise<void> {
   const read = ok(await say('owner', 'GET', `/api/projects/${project}/gates`));
   ok(
     await say('owner', 'PUT', `/api/projects/${project}/gates`, {
       baseRevision: read.revision,
       profile: name,
-      overrides: {},
+      overrides,
       reason: `planted: ${name} for the master and chat test`,
     }),
   );
@@ -166,8 +170,11 @@ const verdict = async (): Promise<Doc> =>
   );
 
 describe('REQ-76 BC-9: a master for a chat or direct request', () => {
-  it('standard places none while only requests wait', async () => {
+  // REQ-79 r6: standard places one for a waiting request; a project asking the gate places none
+  it('standard places one while only requests wait, and none where the gate is asked', async () => {
     await profile(projectId, 'standard');
+    expect((await verdict()).verdict).toMatchObject({ act: 'place' });
+    await profile(projectId, 'standard', { master_admitted_only: 'enforce' });
     const answer = await verdict();
     expect(answer.verdict).toMatchObject({ act: 'withhold', reason: 'nothing_owed' });
     expect(answer.work).toMatchObject({ admissible: 0, owed: 0 });
@@ -296,7 +303,7 @@ describe('a draft a feedback triage routed an item to', () => {
   });
 
   it('places a master under standard, its nudge naming the draft, though the gate holds requests', async () => {
-    await profile(projectId, 'standard');
+    await profile(projectId, 'standard', { master_admitted_only: 'enforce' });
     const answer = await verdict();
     expect(answer.verdict, JSON.stringify(answer.verdict)).toMatchObject({ act: 'place' });
     expect(answer.work.owed).toBe(1);

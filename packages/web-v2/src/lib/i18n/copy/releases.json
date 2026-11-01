@@ -2,6 +2,7 @@
   "en": {
     "releases.approval": "Approval",
     "releases.approvals": "Approvals",
+    "releases.unapproved": "Not approved by a person",
     "releases.approve": "Approve release",
     "releases.askedBy": "Asked by {who},",
     "releases.attemptAbortReason": "Abort reason:",
@@ -302,6 +303,7 @@
   "vi": {
     "releases.approval": "Duyệt",
     "releases.approvals": "Các lần duyệt",
+    "releases.unapproved": "Chưa có người duyệt",
     "releases.approve": "Duyệt release",
     "releases.askedBy": "{who} xin duyệt,",
     "releases.attemptAbortReason": "Lý do hủy:",

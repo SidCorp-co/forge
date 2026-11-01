@@ -1,5 +1,7 @@
+import type { GateId } from '@forge/contracts/gate-profiles';
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
+import { readGateModes } from '../../src/project-config/gates.js';
 import { type ProjectDocument, projectDocumentSchema } from '../../src/project-config/schema.js';
 import { rows } from './factories.js';
 import { seedProjectDocument } from './release-world.js';
@@ -63,4 +65,45 @@ export async function underStrict<T>(
   } finally {
     await declareControls(projectId, updatedBy, { gates: before ?? { profile: 'standard' } });
   }
+}
+
+const gatesHeld = async (projectId: string): Promise<ProjectDocument['gates'] | undefined> => {
+  const [held] = await rows<{ document: ProjectDocument }>(
+    sql`SELECT document FROM project_config_documents WHERE project_id = ${projectId}`,
+  );
+  return held?.document.gates;
+};
+
+/**
+ * Enforces `ids` over the gates the project holds now. REQ-79 r6 (BC-11, BC-12, BC-17) turned a
+ * person's paper off or to advice under standard; a test of what one of those gates refuses
+ * declares it, as a project asking for that control does.
+ */
+export async function enforceGates(
+  projectId: string,
+  updatedBy: string,
+  ids: readonly GateId[],
+): Promise<void> {
+  const held = await gatesHeld(projectId);
+  const overrides = { ...held?.overrides, ...Object.fromEntries(ids.map((id) => [id, 'enforce'])) };
+  await declareControls(projectId, updatedBy, { gates: { ...held, overrides } });
+}
+
+/**
+ * Strict's issue-ready checklist (an agreed requirement, criteria traced to it: REQ-79 r6 BC-12) with
+ * every other gate as the project holds it now: the profile is strict, each other gate overridden
+ * back to the mode it reads today, and `ids` enforced.
+ */
+export async function strictChecklist(
+  projectId: string,
+  updatedBy: string,
+  ids: readonly GateId[] = [],
+): Promise<void> {
+  const modes = Object.values(await readGateModes(projectId));
+  const overrides = Object.fromEntries(
+    modes
+      .filter((g) => g.id !== 'issue_ready')
+      .map((g) => [g.id, ids.includes(g.id) ? 'enforce' : g.mode]),
+  );
+  await declareControls(projectId, updatedBy, { gates: { profile: 'strict', overrides } });
 }

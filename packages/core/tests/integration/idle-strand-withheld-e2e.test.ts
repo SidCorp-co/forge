@@ -18,6 +18,7 @@ import {
   rows,
   truncateAll,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let reconcileIdleIssues: typeof import('../../src/pipeline/idle-issues.js').reconcileIdleIssues;
 let projectId: string;
@@ -89,7 +90,7 @@ describe('the finding on a withheld row', () => {
     });
   });
 
-  it('names the unapproved design of the workflow a row builds', async () => {
+  it('names the unapproved design of the workflow a row builds, where approval before build is asked', async () => {
     const build = await staleOpen();
     const workflowId = randomUUID();
     await db.execute(sql`
@@ -101,8 +102,12 @@ describe('the finding on a withheld row', () => {
       VALUES (${build.id}, ${workflowId}, ${projectId}, ${ownerId})
     `);
 
+    // REQ-79 r6: under standard a design waiting on approval holds no build
     await reconcileIdleIssues(new Date(), { projectId });
+    expect((await strandOf(build.id))?.strand).toMatchObject({ owes: 'agent' });
 
+    await enforceGates(projectId, ownerId, ['design_approved_for_build']);
+    await reconcileIdleIssues(new Date(), { projectId });
     expect((await strandOf(build.id))?.strand).toMatchObject({
       owes: 'blocker',
       reason: expect.stringContaining('design is not approved'),

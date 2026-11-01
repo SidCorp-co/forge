@@ -37,6 +37,7 @@ const APPROVAL_WORDS: Record<
 	pending: "Approval pending",
 	approved: "Approved",
 	returned: "Returned for changes",
+	unapproved: "Not approved by a person",
 };
 
 const day = (iso: string) => iso.slice(0, 10);

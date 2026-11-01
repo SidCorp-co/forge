@@ -38,13 +38,16 @@ import {
   type SurfaceMap,
 } from '../release-batch/index.js';
 
-/** Who approved it, or that nobody was asked: an approval given anyway still shows (BC-12). */
+/** Who approved it, that nobody was asked, or that it went ahead unapproved: an approval given anyway still shows (BC-12). */
 export function approvalOf(detail: ReleaseDetail): ReleasePageApproval {
   const required = detail.approvalRequired;
   const asked = detail.approval;
   if (asked?.decision && asked.decidedBy) {
     return { required, state: asked.decision, by: asked.decidedBy, at: asked.decidedAt };
   }
+  // a release that went ahead where an approval was only advised says no person approved it (REQ-79 r6)
+  if (detail.unapproved)
+    return { required, state: 'unapproved', by: null, at: detail.unapproved.at };
   if (asked) return { required, state: 'pending', by: null, at: null };
   const owed = required && detail.state !== 'shipped';
   return { required, state: owed ? 'pending' : 'not_asked', by: null, at: null };

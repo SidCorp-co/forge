@@ -75,6 +75,8 @@ export interface Part {
   landedOn: string | null;
   /** What a recorded landing shipped failing (`metadata.shippedFailing`); null elsewhere. */
   shippedFailing: ReleaseShippedFailing | null;
+  /** When a production act went ahead with no person's approval where one was advised (`metadata.unapproved`). */
+  unapproved: { at: string } | null;
   /** Its tag on the source host (`release-tag-record.ts`); null on a draft and until its commit is known. */
   tag: ReleaseTag | null;
 }
@@ -484,6 +486,7 @@ export function detailOf(
     approvals: p.approvals.map(strip),
     approvers: s.approvers,
     approvalRequired: s.required,
+    unapproved: p.unapproved,
     attempts: p.attempts.map(attemptView),
     cuts: p.cuts,
     production,

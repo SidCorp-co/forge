@@ -488,10 +488,12 @@ export function judgeHighlights(
 /**
  * Who approved it (BC-1), and whether the release setting asked anyone to (BC-12): `not_asked` where
  * it asks nobody and nobody approved of their own accord; an approval given anyway still shows.
+ * `unapproved` where gate `release_approval` advised an approval and the release went ahead with no
+ * person's (REQ-79 r6): `at` is when its first production act was recorded so.
  */
 export interface ReleasePageApproval {
 	required: boolean;
-	state: "not_asked" | "pending" | "approved" | "returned";
+	state: "not_asked" | "pending" | "approved" | "returned" | "unapproved";
 	by: ReleasePerson | null;
 	at: string | null;
 }
@@ -803,7 +805,7 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 		}),
 		approval: z.strictObject({
 			required: z.boolean(),
-			state: z.enum(["not_asked", "pending", "approved", "returned"]),
+			state: z.enum(["not_asked", "pending", "approved", "returned", "unapproved"]),
 			by: PersonSchema.nullable(),
 			at: ISO.nullable(),
 		}),

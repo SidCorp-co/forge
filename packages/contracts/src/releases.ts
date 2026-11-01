@@ -772,6 +772,11 @@ export interface ReleaseDetail extends ReleaseSummary {
 	approvals: ReleaseApprovalView[];
 	approvers: ReleasePerson[];
 	approvalRequired: boolean;
+	/**
+	 * Where gate `release_approval` advised an approval and a production act went ahead with no
+	 * person's (`metadata.unapproved`, REQ-79 r6): when the first such act was recorded. Null elsewhere.
+	 */
+	unapproved: { at: string } | null;
 	attempts: ReleaseAttemptView[];
 	/** Every attempt at this release, first first (ADR 0011). */
 	cuts: ReleaseCutView[];

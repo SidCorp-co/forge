@@ -27,6 +27,7 @@ import {
   useValueCheckWorld,
   world,
 } from '../helpers/value-check-world.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 useValueCheckWorld();
 let projectId: string;
@@ -123,6 +124,8 @@ describe('a question blocks only on a missing problem or value, or a contradicte
       );
       expect(res.status, `${step}: ${JSON.stringify(res.body).slice(0, 400)}`).toBe(200);
     }
+    // REQ-79 r6: the requirement-ready checklist holds the agree where a project asks for it
+    await enforceGates(projectId, ownerId, ['requirement_ready']);
     const agree = await api(owner, 'POST', `/api/projects/${projectId}/requirements/${key}/agree`, {
       revision: 1,
       reason: 'Reads right to me.',

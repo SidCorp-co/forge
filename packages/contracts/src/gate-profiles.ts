@@ -10,7 +10,11 @@
 //    so a project with no `gates` keeps every switch it set (BC-2). `standard` otherwise acts first
 //    (REQ-79 r6, owner ruling 2026-10-31): a builder verdict, a design record, a pattern review and a
 //    scope hold are `strict`'s, the human control a project asks for, and never hold an agent by default;
-//    a declared gate check that is not a pass is cleanup debt outside strict, never a hold.
+//    a declared gate check that is not a pass is cleanup debt outside strict, never a hold. Nor does
+//    `standard` wait on a person's paper: a linked requirement need not be agreed, a design need not be
+//    approved before build, a master is placed for a waiting request, the requirement and workflow
+//    checklists advise, an issue is admitted on its title, description and kind (`issue_ready`'s
+//    minimum), and a release with no person's approval ships saying so (`release_approval` advises).
 // A profile Forge raised after an incident (BC-13) is an ordinary profile with `raised` beside it;
 // only a person lowers it again.
 //
@@ -91,7 +95,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["REQUIREMENT_NOT_AGREED"],
 		at: "issue ↔ requirement link",
 		modes: ENFORCE_OFF,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		defaults: { strict: "enforce", standard: "off", yolo: "off" },
 		relaxed: "off links a requirement still in draft",
 	},
 	{
@@ -131,7 +135,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["WORKFLOW_DESIGN_NOT_APPROVED"],
 		at: "issue take",
 		modes: ENFORCE_OFF,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		defaults: { strict: "enforce", standard: "off", yolo: "off" },
 		relaxed: "off: the issue is taken while its design waits",
 	},
 	{
@@ -281,7 +285,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["CHECKLIST_INCOMPLETE"],
 		at: "requirement draft → agreed; revision → current",
 		modes: CHECKLIST_MODES,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "advise" },
+		defaults: { strict: "enforce", standard: "advise", yolo: "advise" },
 		relaxed: "advise moves it on, each gap recorded as waived",
 	},
 	{
@@ -291,7 +295,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["CHECKLIST_INCOMPLETE"],
 		at: "requirement delivered → accepted",
 		modes: CHECKLIST_MODES,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "advise" },
+		defaults: { strict: "enforce", standard: "advise", yolo: "advise" },
 		relaxed: "advise accepts it, each gap recorded as waived",
 	},
 	{
@@ -311,7 +315,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["CHECKLIST_INCOMPLETE"],
 		at: "workflow design decision",
 		modes: CHECKLIST_MODES,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "advise" },
+		defaults: { strict: "enforce", standard: "advise", yolo: "advise" },
 		relaxed: "advise approves it, each gap recorded as waived",
 	},
 	{
@@ -330,9 +334,9 @@ export const GATE_CATALOG = defineGates([
 		refuses: "a release reaching production with no approval",
 		codes: ["RELEASE_APPROVAL_REQUIRED", "RELEASE_AWAITING_APPROVAL"],
 		at: "release attempt",
-		modes: ENFORCE_OFF,
+		modes: ALL_MODES,
 		defaults: { strict: "enforce", standard: KEYED("release.approval.required"), yolo: "off" },
-		relaxed: "off: a release ships with nobody approving",
+		relaxed: "advise ships it unapproved and records on the release that no person approved it; off: a release ships with nobody approving",
 	},
 	{
 		// REQ-79 r6 BC-12, BC-16 (owner ruling 2026-10-31): outside strict only the build and a healthy
@@ -373,7 +377,7 @@ export const GATE_CATALOG = defineGates([
 		codes: ["nothing_owed"],
 		at: "master placement",
 		modes: ENFORCE_OFF,
-		defaults: { strict: "enforce", standard: "enforce", yolo: "off" },
+		defaults: { strict: "enforce", standard: "off", yolo: "off" },
 		relaxed: "off: a master is placed for a waiting chat or direct request too",
 	},
 	{
@@ -532,7 +536,8 @@ function switchMode(doc: GateSwitches | null | undefined, policy: PolicySwitches
 		case "intake":
 			return on(policy?.intake?.mode === "manual");
 		case "release_approval":
-			return on(doc?.release?.approval?.required === true);
+			// outside its switch a release still says it went out with no person's approval (REQ-79 r6)
+			return doc?.release?.approval?.required === true ? "enforce" : "advise";
 		case "release_criteria":
 			return on(verdictsRequiredOf(doc?.delivery));
 		default:

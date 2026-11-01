@@ -83,6 +83,38 @@ describe("REQ-79 r6: standard acts first, and strict holds", () => {
 	});
 });
 
+// REQ-79 r6 BC-11, BC-12, BC-17: outside strict an agent does not wait on a person's paper. A
+// requirement's agreement, a design's approval and a release's approval are strict's to require.
+describe("REQ-79 r6: standard waits on no person's paper, and strict still does", () => {
+	const OFF = ["link_requirement_agreed", "design_approved_for_build", "master_admitted_only"] as const;
+	const ADVISED = ["requirement_ready", "requirement_acceptance", "workflow_approval"] as const;
+
+	it("turns the paper gates off and the requirement and workflow checklists to advice, with or without a profile", () => {
+		for (const doc of [null, { gates: { profile: "standard" as const } }]) {
+			for (const id of OFF) expect(modeOf(doc, id), id).toBe("off");
+			for (const id of ADVISED) expect(modeOf(doc, id), id).toBe("advise");
+		}
+	});
+
+	it("keeps the issue-ready checklist enforcing its minimum under standard", () => {
+		expect(modeOf(null, "issue_ready")).toBe("enforce");
+	});
+
+	it("advises release approval under standard, so a release says no person approved it, and enforces it where asked", () => {
+		expect(projectGate(null, null, "release_approval")).toMatchObject({ mode: "advise", from: "key" });
+		expect(modeOf({ release: { approval: { required: false } } }, "release_approval")).toBe("advise");
+		expect(modeOf({ release: { approval: { required: true } } }, "release_approval")).toBe("enforce");
+		expect(gatesConfigSchema.safeParse({ profile: "strict", overrides: { release_approval: "advise" } }).success).toBe(true);
+	});
+
+	it("enforces every one of them under strict", () => {
+		const strict = { gates: { profile: "strict" as const } };
+		for (const id of [...OFF, ...ADVISED, "release_approval", "issue_ready"] as const) {
+			expect(modeOf(strict, id), id).toBe("enforce");
+		}
+	});
+});
+
 describe("REQ-76 profiles", () => {
 	it("strict enforces every gate that has no switch of its own to read", () => {
 		const doc = { gates: { profile: "strict" as const } };

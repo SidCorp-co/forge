@@ -27,7 +27,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
-import { declareControls } from '../helpers/project-controls.js';
+import { declareControls, underStrict } from '../helpers/project-controls.js';
 import { BUILD, CLIP_BYTES, MERGED, releasePageWorld } from '../helpers/release-page-world.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
 
@@ -248,6 +248,26 @@ describe('the page reads off the release record', () => {
     expect(after.header.approval).toMatchObject({ required: false, state: 'approved' });
     expect(after.header.approval.by?.name).toBeTruthy();
     expect(JSON.stringify(after.header)).not.toMatch(/@[a-z0-9.-]+\.[a-z]{2,}/i);
+  });
+
+  // REQ-79 r6: outside strict release approval advises, so a production act goes ahead with no
+  // person's approval and the release says so, once, from the first such act
+  it('reads unapproved once a production act went ahead with nobody approving, and strict still refuses it', async () => {
+    const w = await releaseWorldOfFour();
+    const { assertApprovalAllowsAttempt } = await import('../../src/release-batch/approvals.js');
+    const attempt = () =>
+      assertApprovalAllowsAttempt(w.runId, projectId).then(
+        () => null,
+        (err: { refusals?: { code: string }[] }) => err.refusals?.map((r) => r.code),
+      );
+    expect(await underStrict(projectId, ownerId, attempt)).toEqual(['RELEASE_AWAITING_APPROVAL']);
+    expect((await page('member')).header.approval.state).toBe('pending');
+    expect(await attempt()).toBeNull();
+    const first = (await page('member')).header.approval as { state: string; at: string | null };
+    expect(first).toMatchObject({ required: false, state: 'unapproved', by: null });
+    expect(first.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(await attempt()).toBeNull();
+    expect((await page('member')).header.approval).toMatchObject({ at: first.at });
   });
 
   it('reads improvements and fixes in user terms, and what an admin must do, naming each artifact', async () => {

@@ -29,6 +29,7 @@ import {
   seedIssueStatus,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 const JUDGED = 'a'.repeat(40);
 
@@ -53,6 +54,8 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   const owner = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(owner)).id;
+  // REQ-79 r6: standard advises these; this file reads what they refuse where a project asks for them
+  await enforceGates(projectId, owner, ['requirement_acceptance']);
   const as = requester(app, { owner: await signUserToken(owner) });
   say = (method, path, body) => as('owner', method, at(path), body);
 

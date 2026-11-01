@@ -25,6 +25,7 @@ import {
   createTestRequirement,
   createTestUser,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let projectId: string;
 let ownerId: string;
@@ -171,6 +172,8 @@ describe('a pin-only re-pin of a design whose linking requirement traces nothing
     const id = ids.get('billing-ux') as string;
     const current = ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
     expect(current.status).toBe('proposed');
+    // REQ-79 r6: the workflow approval checklist holds the approve where a project asks for it
+    await enforceGates(projectId, ownerId, ['workflow_approval']);
     const refused = await say('owner', 'POST', at(`/workflows/${id}/design/decision`), {
       revision: current.revision,
       decision: 'approve',

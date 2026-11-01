@@ -14,6 +14,7 @@ import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { createTestProject, createTestUser, makeAgreeReady, rows } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let owner = '';
 let ownerId = '';
@@ -102,6 +103,8 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   owner = await userToken(ownerId);
   projectId = (await createTestProject(ownerId)).id;
+  // REQ-79 r6: standard advises these; this file reads what they refuse where a project asks for them
+  await enforceGates(projectId, ownerId, ['requirement_ready', 'link_requirement_agreed']);
 }, 60_000);
 
 describe('a revision that leaves business questions open', () => {

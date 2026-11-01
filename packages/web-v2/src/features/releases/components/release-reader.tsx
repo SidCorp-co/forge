@@ -14,7 +14,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { ANCHOR, type Anchor, GROUP_TITLE, type Reach } from "./release-anchors";
 import { BeforeYouRelease, ChangeGroup, GroupTitle, OtherChanges, Requirements, StillOpen } from "./release-groups";
-import { DisclosureToggle, ShippedFailingBanner } from "./release-bits";
+import { DisclosureToggle, ShippedFailingBanner, UnapprovedBanner } from "./release-bits";
 import { ReleaseHighlightList } from "./release-highlights";
 import { checksByIssue } from "./release-row-detail";
 import { Technical } from "./release-technical";
@@ -190,6 +190,7 @@ export function ReleaseReader({
         <ReleaseSummary page={page} />
         {/* what a landing shipped failing is said to every reader, a shared link's included */}
         <ShippedFailingBanner r={{ shippedFailing: page.header.shippedFailing ?? null }} />
+        <UnapprovedBanner approval={page.header.approval} />
         <ReleaseTally glance={glance} />
       </div>
       {/* the summary and the tally are this page's lead: below 1024px the rail follows them */}

@@ -26,6 +26,7 @@ import {
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 import { declareGate, seedProjectDocument } from '../helpers/release-world.js';
 
 const planted = vi.hoisted(() => ({
@@ -311,10 +312,11 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
       roster: ['ISS-1', 'ISS-2'],
     });
 
-    // Forge merges the promotion only on the owner's go: named through a roster issue, it is refused before approval
-    const early = await api(world.token, 'POST', `/api/issues/${ids[0]}/merge-pull-request`, {
-      pullRequest: 5053,
-    });
+    // under strict Forge merges the promotion only on the owner's go: named through a roster issue, it
+    // is refused before approval; outside strict a pending request holds nothing (REQ-79 r6)
+    const early = await underStrict(world.projectId, world.ownerId, () =>
+      api(world.token, 'POST', `/api/issues/${ids[0]}/merge-pull-request`, { pullRequest: 5053 }),
+    );
     expect(codeOf(early.body), JSON.stringify(early.body)).toBe('RELEASE_MERGE_NOT_APPROVED');
 
     const unmerged = await record(ids);

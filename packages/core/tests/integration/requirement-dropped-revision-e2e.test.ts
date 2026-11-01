@@ -29,6 +29,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let say: (who: 'owner' | 'member', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
@@ -44,6 +45,8 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // REQ-79 r6: standard advises these; this file reads what they refuse where a project asks for them
+  await enforceGates(projectId, ownerId, ['requirement_acceptance']);
   const member = (await createTestUser({ verified: true })).id;
   await addProjectMember(projectId, member, 'member');
   say = requester(app, {

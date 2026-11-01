@@ -43,9 +43,11 @@ let token: string;
 let box: string;
 let unplant: (() => void) | null = null;
 
-// REQ-79 r6: builder_verdict is strict's now; this test asks for it
+// REQ-79 r6: builder_verdict and the acceptance checklist are strict's now; this test asks for them
 const enforceBuilderVerdict = () =>
-  declareControls(projectId, ownerId, { gates: { overrides: { builder_verdict: 'enforce' } } });
+  declareControls(projectId, ownerId, {
+    gates: { overrides: { builder_verdict: 'enforce', requirement_acceptance: 'enforce' } },
+  });
 
 beforeEach(async () => {
   await truncateAll();

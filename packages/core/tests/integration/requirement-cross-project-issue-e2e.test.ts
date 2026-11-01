@@ -27,6 +27,7 @@ import {
   type TestProject,
   truncateAll,
 } from '../helpers/factories.js';
+import { enforceGates, strictChecklist } from '../helpers/project-controls.js';
 
 /** The commit the front end shipped and was judged at: its own live build holds it, the api's does not. */
 const FE_COMMIT = 'fe00000000000000000000000000000000000001';
@@ -171,6 +172,13 @@ describe("a sibling project's issue delivering a requirement", () => {
       ).key,
     );
     const { id } = await feIssue(116, 'draft');
+    // REQ-79 r6: under standard a draft requirement links, and the issue opens on the minimum
+    const loose = await onApi(owner, 'POST', `/requirements/${key}/issues`, { issue: id });
+    expect(loose.status, JSON.stringify(loose.body)).toBeLessThan(300);
+    await ok(onApi(owner, 'DELETE', `/requirements/${key}/issues/${id}`));
+    // a project asking for an agreed requirement, and strict's checklist, refuse both by name
+    await enforceGates(apiProject.id, ownerId, ['link_requirement_agreed']);
+    await strictChecklist(feProject.id, ownerId);
     const linked = await onApi(owner, 'POST', `/requirements/${key}/issues`, { issue: id });
     expect(linked.status, JSON.stringify(linked.body)).toBe(422);
     expect(refusalOf(linked.body).code).toBe('REQUIREMENT_NOT_AGREED');

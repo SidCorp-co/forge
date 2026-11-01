@@ -81,6 +81,22 @@ describe('who approved the release (BC-1, BC-12)', () => {
       ),
     ).toEqual({ required: false, state: 'approved', by: OWNER, at });
   });
+
+  // REQ-79 r6: where release approval is advised, a release that went ahead unapproved says so
+  it('reads unapproved where it went ahead with no person approving, pending request or not', () => {
+    const at = '2026-10-09T10:00:00.000Z';
+    expect(approvalOf(detail({ unapproved: { at } }))).toEqual({
+      required: false,
+      state: 'unapproved',
+      by: null,
+      at,
+    });
+    expect(approvalOf(detail({ unapproved: { at }, approval: approval({}) })).state).toBe(
+      'unapproved',
+    );
+    const decided = approval({ decision: 'approved', decidedBy: OWNER, decidedAt: at });
+    expect(approvalOf(detail({ unapproved: { at }, approval: decided })).state).toBe('approved');
+  });
 });
 
 describe('the build a page describes', () => {

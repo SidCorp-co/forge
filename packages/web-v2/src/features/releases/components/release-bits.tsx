@@ -150,6 +150,13 @@ export function ShippedFailingBanner({ r, className }: { r: Pick<ReleaseDetail, 
   return <WaitBanner tone="err" head={t(f.count === 1 ? "releases.shippedFailing.one" : "releases.shippedFailing.many", { n: f.count })} body={named} className={className} testId="release-shipped-failing" />;
 }
 
+/** A release that went ahead where a person's approval was only advised says so (REQ-79 r6). */
+export function UnapprovedBanner({ approval, className }: { approval: { state: string }; className?: string }) {
+  const t = useCopy();
+  if (approval.state !== "unapproved") return null;
+  return <WaitBanner tone="you" head={t("releases.unapproved")} body={null} className={className} testId="release-unapproved" />;
+}
+
 export function RefusalText({ error }: { error: unknown }) {
   if (!error) return null;
   const code = error instanceof ApiError ? error.code : null;

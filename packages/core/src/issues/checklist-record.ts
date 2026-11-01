@@ -1,15 +1,24 @@
 /**
  * What an issue's own record answers to the issue-ready checklist
  * (`@forge/contracts/checklist-registry:ISSUE_READY_CHECKLIST`, Issue lifecycle r12 ready-check). The
- * kernel calls it under the issue's row lock, through the move's transaction; it reads nothing else.
+ * kernel calls it under the issue's row lock, through the move's transaction; it reads nothing else
+ * but the project's gate profile, from the project document as the kernel's other gates read it.
+ *
+ * Under strict the checklist asks what it always asked: an agreed requirement, and criteria traced to
+ * it. Outside strict (REQ-79 r6 BC-12, forge-core-61 2026-11-01) an issue opens on the minimum: its
+ * title, description and kind. It may name no requirement, a requirement not agreed yet, and no
+ * criteria, which its run writes after; the requirement question is then answered by the issue's own
+ * description and kind, and a gap only where it says neither.
  */
 
 import type { ChecklistId } from '@forge/contracts/checklist-registry';
 import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
+import { gateProfileOf } from '@forge/contracts/gate-profiles';
 import { AGREED_STATUSES, requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { strayTraceTagsOf } from './criteria/criteria-text.js';
+import { readProjectDocument } from './ports.js';
 
 type Reader = Pick<Tx, 'execute'>;
 
@@ -26,6 +35,13 @@ export interface Planned {
   currentRevision: number | null;
 }
 
+/** What the issue says of itself: the minimum it opens on outside strict. */
+interface Itself {
+  projectId: string;
+  described: boolean;
+  kind: string | null;
+}
+
 /**
  * The revision the issue plans against (Issue lifecycle ready-check, item 1): its plan's, else the
  * requirement's current one. The plan is the run's to write once it claims the open issue, so a
@@ -33,9 +49,10 @@ export interface Planned {
  */
 export const plannedAgainst = (p: Planned): number | null => p.plannedRevision ?? p.currentRevision;
 
-async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
+async function plannedOf(exec: Reader, issueId: string): Promise<Planned & { itself: Itself }> {
   const rows = (await exec.execute(sql`
-    SELECT r.req_seq, r.status, i.planned_revision, r.current_revision,
+    SELECT r.req_seq, r.status, i.planned_revision, r.current_revision, i.project_id,
+           coalesce(btrim(i.description), '') <> '' AS described, nullif(btrim(i.category), '') AS kind,
            CASE WHEN r.project_id <> i.project_id THEN p.slug END AS project
       FROM issues i LEFT JOIN requirements r ON r.id = i.requirement_id
       LEFT JOIN projects p ON p.id = r.project_id
@@ -46,6 +63,9 @@ async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
     status: string | null;
     planned_revision: number | null;
     current_revision: number | null;
+    project_id: string;
+    described: boolean;
+    kind: string | null;
   }>;
   const row = rows[0];
   if (!row) throw new Error(`issue checklist: issue ${issueId} has no row to read`);
@@ -55,6 +75,42 @@ async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
     status: row.status,
     plannedRevision: row.planned_revision,
     currentRevision: row.current_revision,
+    itself: { projectId: row.project_id, described: row.described, kind: row.kind },
+  };
+}
+
+/**
+ * The requirement answer outside strict: the issue may deliver no agreed requirement, so its own
+ * description and kind say what it delivers, and only an issue saying neither has a gap.
+ */
+export function requirementAnswerOutsideStrict(p: Planned, itself: Itself): RecordAnswer {
+  const linked = p.key === null ? null : p.project ? `${p.project}/${p.key}` : p.key;
+  const agreed = linked !== null && p.status !== null && DELIVERABLE.includes(p.status);
+  if (!itself.described || itself.kind === null) {
+    // an agreed requirement says what it delivers, as it always did
+    if (agreed) return { value: `${linked} (${p.status})` };
+    const missing = [!itself.described && 'description', itself.kind === null && 'kind']
+      .filter(Boolean)
+      .join(' and ');
+    return {
+      gap: `The issue has no ${missing}, and names no agreed requirement to say what it delivers.`,
+      fix: `Write its ${missing}, saying what it delivers, or link the agreed requirement it delivers.`,
+    };
+  }
+  const as = `its own description, a ${itself.kind}`;
+  if (linked === null) return { value: `None linked: it delivers ${as}` };
+  return { value: `${linked} (${p.status}), and ${as}` };
+}
+
+/** The criteria answer outside strict: they are its run's to write and trace after admission. */
+export function criteriaAnswerOutsideStrict(rows: readonly CriterionTrace[]): RecordAnswer {
+  if (rows.length === 0) return { value: 'None yet: its run writes them' };
+  const untraced = rows.filter((r) => r.traced !== true).length;
+  return {
+    value:
+      untraced === 0
+        ? `${criteriaCount(rows.length)}, each traced`
+        : `${criteriaCount(rows.length)}, ${untraced} not traced yet: its run traces them`,
   };
 }
 
@@ -102,7 +158,7 @@ export interface CriterionTrace {
   strayTag?: boolean;
 }
 
-async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promise<RecordAnswer> {
+async function criteriaRows(exec: Reader, issueId: string): Promise<CriterionTrace[]> {
   const rows = (await exec.execute(sql`
     SELECT c.n, rc.code, c.statement,
            (rc.id IS NOT NULL
@@ -117,13 +173,10 @@ async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promis
      WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
      ORDER BY c.position
   `)) as unknown as Array<CriterionTrace & { statement: string }>;
-  return criteriaAnswerOf(
-    rows.map(({ statement, ...row }) => ({
-      ...row,
-      strayTag: strayTraceTagsOf(statement).length > 0,
-    })),
-    p,
-  );
+  return rows.map(({ statement, ...row }) => ({
+    ...row,
+    strayTag: strayTraceTagsOf(statement).length > 0,
+  }));
 }
 
 export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): RecordAnswer {
@@ -178,10 +231,16 @@ async function designAnswer(exec: Reader, issueId: string): Promise<RecordAnswer
 }
 
 async function issueReadyRecord(exec: Reader, issueId: string): Promise<RecordAnswers> {
-  const planned = await plannedOf(exec, issueId);
+  const { itself, ...planned } = await plannedOf(exec, issueId);
+  const rows = await criteriaRows(exec, issueId);
+  // the profile as every kernel gate reads it: the project document's `gates` (`gateProfileOf`)
+  const held = await readProjectDocument(itself.projectId);
+  const strict = gateProfileOf(held?.document.gates) === 'strict';
   return {
-    requirement: requirementAnswer(planned),
-    criteria: await criteriaAnswer(exec, issueId, planned),
+    requirement: strict
+      ? requirementAnswer(planned)
+      : requirementAnswerOutsideStrict(planned, itself),
+    criteria: strict ? criteriaAnswerOf(rows, planned) : criteriaAnswerOutsideStrict(rows),
     design: await designAnswer(exec, issueId),
   };
 }

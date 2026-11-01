@@ -93,6 +93,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       mergeSteps: null,
       landedOn: null,
       shippedFailing: null,
+      unapproved: null,
       tag: null,
     },
   };
@@ -166,6 +167,7 @@ function runPart(
     mergeSteps: mergeStepsOf(run.metadata),
     landedOn: run.releasedAt ? landedOffProduction(run.metadata, deploysFrom) : null,
     shippedFailing: shippedFailingOf(run.metadata),
+    unapproved: unapprovedOf(run.metadata),
     tag: releaseTagOf(run.metadata),
   };
 }
@@ -174,6 +176,12 @@ function runPart(
 function shippedFailingOf(metadata: unknown): ReleaseShippedFailing | null {
   const held = (metadata as { shippedFailing?: ReleaseShippedFailing } | null)?.shippedFailing;
   return held && typeof held.sentence === 'string' && Array.isArray(held.criteria) ? held : null;
+}
+
+/** When a production act went ahead with no person's approval where one was advised (`approvals.ts`). */
+function unapprovedOf(metadata: unknown): { at: string } | null {
+  const held = (metadata as { unapproved?: { at?: unknown } } | null)?.unapproved;
+  return typeof held?.at === 'string' ? { at: held.at } : null;
 }
 
 /** The verification a run stamped on its row, or `null` where it stamped none it could name. */

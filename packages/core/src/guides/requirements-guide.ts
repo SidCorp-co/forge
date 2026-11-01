@@ -114,7 +114,8 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
    ${guideRef('mockups')}.
 
 ### Issues against a requirement
-- **link_issue** once the requirement is agreed or accepted (\`REQUIREMENT_NOT_AGREED\` before that). An
+- **link_issue** once the requirement is agreed or accepted under strict (\`REQUIREMENT_NOT_AGREED\` before that);
+  outside strict a draft links too (gate \`link_requirement_agreed\`). An
   issue serves one requirement: linking one held elsewhere is \`REQUIREMENT_ISSUE_LINKED_ELSEWHERE\`, naming
   the requirement that holds it. **unlink_issue** \`DELETE /api/projects/:id/requirements/:req/issues/:issue\`
   frees it there first.

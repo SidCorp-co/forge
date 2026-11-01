@@ -25,6 +25,7 @@ import {
   rows,
   truncateAll,
 } from '../helpers/factories.js';
+import { strictChecklist } from '../helpers/project-controls.js';
 
 let projectId: string;
 let ownerId: string;
@@ -38,6 +39,8 @@ beforeEach(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   await addProjectMember(projectId, ownerId, 'admin');
+  // REQ-79 r6 BC-12: an agreed requirement and traced criteria are strict's issue-ready checklist
+  await strictChecklist(projectId, ownerId);
   token = await userToken(ownerId);
   const ready = await createReadyDraftIssue(projectId, ownerId, 1, 1);
   issueId = ready.id;

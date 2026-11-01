@@ -19,6 +19,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, makeAgreeReady, rows } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let projectId = '';
 let ownerId = '';
@@ -62,6 +63,8 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // REQ-79 r6: standard advises these; this file reads what they refuse where a project asks for them
+  await enforceGates(projectId, ownerId, ['requirement_ready']);
   say = requester(app, { owner: await signUserToken(ownerId) });
 }, 120_000);
 

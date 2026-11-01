@@ -281,9 +281,10 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
   it("refuses an open the kernel's ready check refuses, by its name, and leaves the question open", async () => {
     const issue = await readyDraft(85);
     const q = await asked(issue);
-    // the draft loses its criteria between the question and its answer
+    // the draft loses what it delivers between the question and its answer: outside strict the
+    // ready check asks the minimum, an agreed requirement or its own description and kind (REQ-79 r6)
     await rows(
-      sql`UPDATE issue_criteria SET retired_at = now() WHERE issue_id = ${issue.id} RETURNING id`,
+      sql`UPDATE issues SET requirement_id = NULL, description = '' WHERE id = ${issue.id} RETURNING id`,
     );
     const refused = await answer(q.id, { optionId: IDS.open });
     expect([refused.status, refused.json.code]).toEqual([422, 'CHECKLIST_INCOMPLETE']);

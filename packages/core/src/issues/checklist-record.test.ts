@@ -9,8 +9,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type CriterionTrace,
   criteriaAnswerOf,
+  criteriaAnswerOutsideStrict,
   type Planned,
   requirementAnswer,
+  requirementAnswerOutsideStrict,
 } from './checklist-record.js';
 
 const planned = (over: Partial<Planned>): Planned => ({
@@ -58,6 +60,16 @@ const CRITERIA_STATES: [CriterionTrace[], Planned][] = [
 /** Every answer the reader can give, from every state it reads. */
 const EVERY_ANSWER: RecordAnswer[] = [
   ...REQUIREMENT_STATES.map(requirementAnswer),
+  // REQ-79 r6 BC-12: outside strict the issue's own description and kind answer the requirement
+  ...REQUIREMENT_STATES.flatMap((p) =>
+    [
+      { described: true, kind: 'feature' },
+      { described: false, kind: 'bug' },
+      { described: true, kind: null },
+      { described: false, kind: null },
+    ].map((it) => requirementAnswerOutsideStrict(p, { projectId: 'p', ...it })),
+  ),
+  ...CRITERIA_STATES.map(([rows]) => criteriaAnswerOutsideStrict(rows)),
   ...CRITERIA_STATES.map(([rows, p]) => criteriaAnswerOf(rows, p)),
 ];
 
@@ -66,10 +78,11 @@ const sentencesOf = (a: RecordAnswer) => ('gap' in a ? [a.gap, a.fix] : []);
 describe("the issue-ready record reader's words", () => {
   // five requirement gaps (not linked; draft, dropped, deferred; no revision to plan against) and
   // seven criteria gaps (none; no revision, for one criterion and for two; one untraced; several
-  // untraced; one and several whose BC tag is not leading) are each read below
+  // untraced; one and several whose BC tag is not leading), and outside strict three (no description,
+  // no kind, neither), are each read below
   it('reach every gap it can name', () => {
     const gaps = new Set(EVERY_ANSWER.flatMap((a) => ('gap' in a ? [a.gap] : [])));
-    expect(gaps.size).toBe(12);
+    expect(gaps.size).toBe(15);
   });
 
   it('never show a record field key or code formatting', () => {
@@ -130,5 +143,29 @@ describe("the issue-ready record reader's words", () => {
     for (const sentence of EVERY_ANSWER.flatMap(sentencesOf)) {
       expect(sentence, sentence).not.toMatch(/\bplan\b/i);
     }
+  });
+});
+
+describe('REQ-79 r6 BC-12: outside strict an issue opens on its title, description and kind', () => {
+  it('answers the requirement from the issue itself, a gap only where it says neither', () => {
+    const none = planned({ key: null, status: null, plannedRevision: null, currentRevision: null });
+    const own = { projectId: 'p', described: true, kind: 'feature' };
+    expect(requirementAnswerOutsideStrict(none, own)).toEqual({
+      value: 'None linked: it delivers its own description, a feature',
+    });
+    expect(requirementAnswerOutsideStrict(planned({ status: 'draft' }), own)).toHaveProperty(
+      'value',
+    );
+    const bare = requirementAnswerOutsideStrict(none, { ...own, described: false, kind: null });
+    expect(bare).toMatchObject({ gap: expect.stringContaining('no description and kind') });
+    // an agreed requirement says what it delivers, as it did before
+    expect(
+      requirementAnswerOutsideStrict(planned({}), { ...own, described: false, kind: null }),
+    ).toEqual({ value: 'REQ-7 (agreed)' });
+  });
+
+  it('owes no criteria before admission', () => {
+    expect(criteriaAnswerOutsideStrict([])).toEqual({ value: 'None yet: its run writes them' });
+    expect(criteriaAnswerOutsideStrict([trace(1, false)])).toHaveProperty('value');
   });
 });

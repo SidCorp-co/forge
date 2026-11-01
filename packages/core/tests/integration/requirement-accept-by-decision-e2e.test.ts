@@ -18,6 +18,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 let owner = '';
@@ -99,6 +100,8 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   owner = await userToken(ownerId);
   projectId = (await createTestProject(ownerId)).id;
+  // REQ-79 r6: standard advises these; this file reads what they refuse where a project asks for them
+  await enforceGates(projectId, ownerId, ['requirement_acceptance']);
   // accept is a person gate here: only a holder of requirements.approve accepts
   await seedProjectDocument(projectId, ownerId, {
     environments: {},

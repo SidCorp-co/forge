@@ -24,6 +24,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { strictChecklist } from '../helpers/project-controls.js';
 
 const SEQ = 31;
 const REQ_SEQ = 4;
@@ -40,6 +41,8 @@ beforeAll(async () => {
   const admin = await createTestUser({ verified: true });
   projectId = (await createTestProject(admin.id)).id;
   await addProjectMember(projectId, admin.id, 'admin');
+  // REQ-79 r6 BC-12: an agreed requirement and traced criteria are strict's issue-ready checklist
+  await strictChecklist(projectId, admin.id);
   const deviceId = await createTestDevice(admin.id);
   await bindTestRunner(projectId, deviceId);
   box = (
