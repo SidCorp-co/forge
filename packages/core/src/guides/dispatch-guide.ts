@@ -13,8 +13,8 @@ export const DISPATCH_GUIDE: CoreGuide = {
   audience: 'agent',
   title: "Running a wave: a master's dispatch and fold",
   summary:
-    "The method a project's master follows for one wave: read the order, triage each candidate on the record, group what shares a place, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (gate profile yolo, fast delivery on), build, land and record instead.",
-  version: 3,
+    "The method a project's master follows for one wave: read the order, triage each candidate on the record, group what shares a place, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
+  version: 4,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -65,13 +65,13 @@ A candidate that survives carries:
 - a split before dispatch where it is more than one run: the other half filed with a \`blocks\` edge
   in its create.
 
-### 4. Group what shares a place
-Issues that are unblocked, touch the same module and are proved by one build ride one branch: one
-dispatch, one run, one tree. Two issues that only share a file are neighbours, not a batch — they go
-to separate runs, and the second waits for the first to land. Two issues whose designs name one
-module or contract never run at once: core withholds the second from the admissible list and
-refuses its run \`ISSUE_SCOPE_HELD\`, naming the run that holds it, until that run ends. A judge
-run, declared over work that has landed, writes no code: it neither holds a scope nor waits on one.
+### 4. Batch by files
+A wave takes every issue it may, and an issue that arrives while it runs joins it; the records catch
+up after. Split it by files: runs out at once hold disjoint files, and issues that touch the same
+files ride one branch — one dispatch, one run, one tree. File overlap and conflict risk are the only
+bound on how many go out. Core still refuses a run whose design names a module or contract a live
+run holds, \`ISSUE_SCOPE_HELD\`, naming that run, until it ends. A judge run, declared over work that
+has landed, writes no code: it neither holds a scope nor waits on one.
 
 ### 5. A tree per run, and its brief
 - **The tree.** A worktree of its own inside the checkout, where the project's convention puts one
@@ -144,21 +144,28 @@ records — before acting on it.
 A project whose gate profile is not \`strict\` (\`GET /api/projects/:id/gates\`) and whose project
 document leaves \`delivery.fast\` on runs direct, and its nudge says so. Its master builds instead of
 dispatching, so §5 and §6 do not apply: no shipped role, no declaration, no printed brief, no plan
-approval, design record, review or judge before the landing. For each issue it takes:
-1. Claim it with a lease, as ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`.
-2. Build it in this session, or give a general-purpose subagent a short prompt: the issue, its tree,
-   the base branch and the standing rules.
-3. Land it by the route its project lands by when its build and its own tests are green, the
-   issue's key in the commit subject so the mark can read the commit as this issue's. Where the
-   project lands by change request (\`release.changeRequests\` on its document, or a project rule that
-   its branches change only through merged MRs), open one through core
-   (\`POST /api/projects/:id/integrations/source/change-requests\`): its merge is the landing, and the
-   mark waits for it. Push to the base branch only where the project lands by push; never force-push.
-4. Record in one go. Rate its impact (${guideRef('fast-delivery')}) and mark it,
+approval, design record, review or judge before the landing. It works in batches, as §4 splits them:
+1. Take every issue the order admits, and each that arrives mid-batch. Claim each with a lease, as
+   ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`.
+2. Build in this session, or hand each file-disjoint part to a general-purpose subagent: its issues,
+   its tree, the base branch and the standing rules. A gap a loose issue leaves is filled by
+   judgement, the assumption written as one line on the issue or in the commit body. No issue gets
+   its own plan, its own full suite or its own release.
+3. Land the batch once, by the route its project lands by, when the merged batch builds with its
+   typecheck; each issue's key stays in its own commit subject, so each mark reads its commit as
+   that issue's. Where the project lands by change request (\`release.changeRequests\` on its
+   document, or a project rule that its branches change only through merged MRs), open one through
+   core (\`POST /api/projects/:id/integrations/source/change-requests\`): its merge is the landing,
+   and the marks wait for it. Push to the base branch only where the project lands by push; never
+   force-push. Lint, tests and the merge-check record follow the push; a red there is fixed forward
+   in the next batch.
+4. Record each issue. Rate its impact (${guideRef('fast-delivery')}) and mark it,
    \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <the branch it landed on> }\`. Move it,
    \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`.
    Comment what shipped, then hand the lease back.
-5. Record a criterion's or a requirement BC's verdict only once it was checked live, after landing.
+5. Release the batch once, on the minimum bar: it builds and the app answers its health check. Then
+   one live judge pass over the batch: a criterion's or a requirement BC's verdict is recorded only
+   once it was checked on the running build.
 
 The kernel holds in this mode as in every other: a legal edge with its reason, \`awaiting_release\`
 only on a recorded merge, the holder alone moving the issue into \`in_progress\` and

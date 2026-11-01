@@ -14,10 +14,36 @@ describe('the dispatch guide teaches direct mode outside strict, landing by the 
   });
 
   it('lands through a change request where the project lands by one, and pushes only where it pushes', () => {
-    expect(prose).toContain('Land it by the route its project lands by');
+    expect(prose).toContain('Land the batch once, by the route its project lands by');
     expect(prose).toContain('`release.changeRequests`');
     expect(prose).toContain('POST /api/projects/:id/integrations/source/change-requests');
     expect(prose).toContain('Push to the base branch only where the project lands by push');
     expect(prose).not.toContain('Push it to the base branch when');
+  });
+});
+
+// ISS-845, batch-delivery (owner, 2026-11-01): a master works in batches split by files, never
+// issue by issue; a batch lands, releases and is judged once, and no issue carries its own ceremony.
+describe('the dispatch guide teaches batches by default', () => {
+  it('splits a wave by files and folds what arrives mid-wave into it', () => {
+    expect(prose).toContain('### 4. Batch by files');
+    expect(prose).toContain('an issue that arrives while it runs joins it');
+    expect(prose).toContain('issues that touch the same files ride one branch');
+    expect(prose).toContain('File overlap and conflict risk are the only bound');
+    expect(prose).not.toContain('Two issues that only share a file are neighbours');
+    expect(prose).not.toContain('the second waits for the first to land');
+  });
+
+  it('lands, releases and judges a direct batch once, with no per-issue ceremony', () => {
+    expect(prose).toContain('It works in batches');
+    expect(prose).toContain('Land the batch once');
+    expect(prose).toContain('No issue gets its own plan, its own full suite or its own release');
+    expect(prose).toContain('the assumption written as one line');
+    expect(prose).toContain('Release the batch once, on the minimum bar');
+    expect(prose).toContain('one live judge pass over the batch');
+    expect(prose).toContain('a red there is fixed forward in the next batch');
+    expect(prose).not.toContain('For each issue it takes');
+    expect(prose).not.toContain('gate profile yolo');
+    expect(DISPATCH_GUIDE.summary).not.toContain('yolo');
   });
 });

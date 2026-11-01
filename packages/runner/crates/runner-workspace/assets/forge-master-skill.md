@@ -97,27 +97,39 @@ mode. Every nudge on such a project says so; on a pass with no nudge in front of
 `forge-runner api projects/<projectId>/gates` (its `profile`) and
 `forge-runner api projects/<projectId>/config` (its `document.delivery`).
 
-On a project that runs direct:
+On a project that runs direct, work moves in **batches**, never one issue at a time:
 
-- **Build it yourself.** Take each issue in this session, or hand it to a general-purpose subagent
-  with a short prompt: the issue, its tree, the base branch, and the standing rules. No shipped
-  role is dispatched, so nothing is declared and no brief is printed; the box's dispatch gate and
-  the plugin's brief gate both ask only of a shipped role.
-- **Ask nothing before landing.** No plan approval, no design record, no review and no judge stand
-  between the build and the base branch. A project override that enforces one of those gates again
-  still refuses by name, and that refusal is followed, not routed around.
-- **Land through the project's own landing route** once it builds and its own tests pass, with the
-  issue's key in the commit subject. Where the project lands by change request (its document's
-  `release.changeRequests`, or a project rule that its branches change only through merged MRs),
-  open one through core (`forge-runner api projects/<projectId>/integrations/source/change-requests`,
-  POST): its merge is the landing, and the mark waits for it. Push to the base branch only where the
-  project lands by push; that push is yours to take, and a force-push still is not.
-- **Then record, in one go:** mark it merged at the landing sha (`forge-runner api issues/<id>/merge`,
+- **Take everything, and keep taking.** Every issue the board admits goes into the running batch,
+  and so does each one that arrives while it runs; a batch may span several requirements. Claim each
+  with the lease the `issue-flow` guide's Take it names, and bring the records up to date after.
+- **Split it by files.** Build it in this session, or hand parts of it to general-purpose subagents,
+  each with a short prompt: its issues, its tree, the base branch and the standing rules. Builders
+  that run side by side hold disjoint files; issues that touch the same files go to one builder.
+  File overlap and conflict risk are the only bound on how many run at once. No shipped role is
+  dispatched, so nothing is declared and no brief is printed; the box's dispatch gate and the
+  plugin's brief gate both ask only of a shipped role.
+- **Per issue, no ceremony.** No plan approval, no design record, no review and no judge stand
+  between the build and the base branch, and no issue gets its own full suite or its own release.
+  A loose issue is filled in by judgement, each assumption one line on the issue or in its commit
+  body. A project override that enforces one of those gates again still refuses by name, and that
+  refusal is followed, not routed around.
+- **Once per batch: one landing.** **Land through the project's own landing route** once the merged
+  batch builds, typecheck included, each issue's key in its own commit subject. Where the project
+  lands by change request (its document's `release.changeRequests`, or a project rule that its
+  branches change only through merged MRs), open one through core
+  (`forge-runner api projects/<projectId>/integrations/source/change-requests`, POST): its merge is
+  the landing, and the marks wait for it. Push to the base branch only where the project lands by
+  push; that push is yours to take, and a force-push still is not. Lint, tests and the merge-check
+  record run after the push, and a red there is fixed forward in the next batch, never by holding
+  this one.
+- **Then record each issue:** mark it merged at the landing sha (`forge-runner api issues/<id>/merge`,
   POST, naming the `commit` and its `target`), move it to `awaiting_release` with that sha as the
-  reason, and comment what shipped. Rate the change's impact before the mark, as fast delivery asks,
-  so a change rated high waits for a green cleanup.
-- **Judge after landing, and only what you checked live.** A criterion's or a requirement BC's
-  verdict is recorded once you have exercised it on the running build, never as a forecast.
+  reason, and comment what shipped. Rate each change's impact before its mark, as fast delivery
+  asks, so a change rated high waits for its green cleanup.
+- **Once per batch: one release and one live judge pass.** The batch releases once it builds and
+  the app answers its health check. Judge only what you checked live: a criterion's or a
+  requirement BC's verdict is recorded once you have exercised it on the running build, never as a
+  forecast.
 
 **The kernel does not relax with the mode.** Whatever the profile, core still refuses:
 

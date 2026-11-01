@@ -462,7 +462,8 @@ mod tests {
     /// Owner, 2026-10-30: a project that runs fast pays a dispatched runner, a printed brief, a plan,
     /// a design and a judge before every landing for nothing. The skill selects direct mode from
     /// what the project declares, says what the master does instead, and keeps the kernel it does
-    /// not relax.
+    /// not relax. Owner, 2026-11-01 (batch-delivery, ISS-845): it does so in batches split by
+    /// files, landing, releasing and judging once per batch.
     #[test]
     fn the_skill_teaches_direct_mode_and_the_kernel_it_keeps() {
         // read as prose, wherever a line wraps and whichever line ending the checkout carries
@@ -473,7 +474,14 @@ mod tests {
             "general-purpose subagent",
             "No shipped role is dispatched",
             "No plan approval, no design record, no review and no judge",
-            "**Land through the project's own landing route** once it builds and its own tests pass",
+            "work moves in **batches**, never one issue at a time",
+            "so does each one that arrives while it runs",
+            "Builders that run side by side hold disjoint files; issues that touch the same files go to one builder.",
+            "no issue gets its own full suite or its own release",
+            "each assumption one line on the issue or in its commit body",
+            "**Once per batch: one landing.** **Land through the project's own landing route** once the merged batch builds, typecheck included",
+            "fixed forward in the next batch",
+            "**Once per batch: one release and one live judge pass.**",
             "Where the project lands by change request",
             "Push to the base branch only where the project lands by push",
             "mark it merged at the landing sha",
@@ -493,7 +501,13 @@ mod tests {
         }
         // ISS-845 (FB-453): yolo alone no longer selects it, and a bare push to the base branch
         // would override a project whose branches change only by merged MR
-        for gone in ["gate profile is `yolo`", "**Land on the base branch**"] {
+        // ISS-845 (batch-delivery): the issue-by-issue build is gone
+        for gone in [
+            "gate profile is `yolo`",
+            "**Land on the base branch**",
+            "Take each issue in this session",
+            "once it builds and its own tests pass",
+        ] {
             assert!(
                 !prose.contains(gone),
                 "forge-master-skill.md still says {gone:?}, so a master outside yolo keeps dispatching, or pushes past a project that lands by MR"
