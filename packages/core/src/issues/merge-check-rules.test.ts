@@ -7,16 +7,7 @@ import {
   type RequiredMergeCheck,
 } from '@forge/contracts/merge-check';
 import { describe, expect, it } from 'vitest';
-import {
-  checkRefusal,
-  missingCheckDetail,
-  passingHeads,
-  passingRanges,
-  probeRefusals,
-  rangeCovers,
-  recordFields,
-  warningsOf,
-} from './merge-check-rules.js';
+import { checkRefusal, probeRefusals, recordFields, warningsOf } from './merge-check-rules.js';
 
 type Doc = Partial<MergeCheckReport['checks'][number]>;
 
