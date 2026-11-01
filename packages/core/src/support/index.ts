@@ -9,12 +9,15 @@ import {
   provideAgentSwitchGate,
   provideSupportRoomHandler,
 } from '../integrations/rocketchat/index.js';
+import { logger } from '../lib/logger.js';
+import { onBoxListening } from '../lib/ws-listening.js';
 import { consume } from '../outbox/index.js';
 import { fireDueChecks } from './checks.js';
 import { deliverWaiting, drainSupportRooms, onSupportTurnEnded } from './dispatch.js';
 import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
+import { recoverLostTurns } from './lost-turns.js';
 import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { agentSwitchGate } from './switches.js';
@@ -23,7 +26,7 @@ import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 export { forgetMemberships } from './health.js';
 export { supportRoutes } from './routes.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
-export { expireSupportFixes, fireDueChecks, tellAllResults, warmColdRooms };
+export { expireSupportFixes, fireDueChecks, recoverLostTurns, tellAllResults, warmColdRooms };
 
 /**
  * The recovery sweep (a process timer): a message written into a turn the box did not take waits
@@ -37,7 +40,8 @@ export async function recoverSupportRooms(): Promise<void> {
 
 /**
  * The group's messages to its handler, a turn's end to the next waiting messages, a write the box
- * refused back to the room, and the binding door's switch question; once at boot.
+ * refused back to the room, the binding door's switch question, and a box coming back to the turns
+ * core lost while it was away (ISS-850); once at boot.
  */
 export function registerSupportRooms(): void {
   provideSupportRoomHandler({ handle: handleSupportMessage });
@@ -45,6 +49,11 @@ export function registerSupportRooms(): void {
   provideAgentSwitchGate(agentSwitchGate);
   provideTerminalSessionBridge(SUPPORT_SESSION_MARKER, onSupportTurnEnded);
   provideSendRefusedListener(INJECT_INTENT, onInjectRefused);
+  onBoxListening(() => {
+    void recoverLostTurns().catch((err) =>
+      logger.error({ err }, 'support: recovering lost turns on a box reconnect failed'),
+    );
+  });
 }
 
 /**

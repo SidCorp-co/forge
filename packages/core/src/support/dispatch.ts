@@ -5,7 +5,8 @@
 // turn of its own when none runs, or written into the running turn (`inject.ts`), which Claude Code
 // takes at its next tool call or answers straight after it. The drain timer only recovers what a
 // crash left undelivered. A turn that ends without completing tells each thread it left unanswered
-// so, and those messages are not handed to a turn again.
+// so, and those messages are not handed to a turn again. A turn whose end core never heard, as one
+// cut off by a core restart, is read lost once it goes silent (`lost-turns.ts`, ISS-850).
 
 import type { SupportDeliveryPath, SupportRoomConfig, SupportTool } from '@forge/contracts/support';
 import type { ChatRole } from '@forge/contracts/support-operations';
@@ -25,7 +26,6 @@ import { buildBaseOf, buildKeyOf } from './build.js';
 import { briefChannel, channelNews } from './channel-read.js';
 import {
   claimUndelivered,
-  markDelivery,
   oldestUndelivered,
   roomsWithUndelivered,
   toldFailed,
@@ -41,7 +41,14 @@ import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
 import { isCheckThread } from './rules.js';
-import { insertAction, offlineToldSince, type RoomRow, roomById, roomsOfSession } from './store.js';
+import {
+  type ActionRow,
+  insertAction,
+  offlineToldSince,
+  type RoomRow,
+  roomById,
+  roomsOfSession,
+} from './store.js';
 import { postInThread } from './thread.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
@@ -302,9 +309,9 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   }
 
   const at = new Date();
-  const rows = await claimUndelivered(room.id, at);
-  if (rows.length === 0) return 'nothing-waiting';
   const path: SupportDeliveryPath = startsCold(session, client) ? 'start' : 'send';
+  const rows = await claimUndelivered(room.id, at, path);
+  if (rows.length === 0) return 'nothing-waiting';
   noteTurn(room.id, at);
   try {
     await handTurn(
@@ -314,10 +321,6 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
       {
         messages: await roomMessages(room, rows),
       },
-    );
-    await markDelivery(
-      rows.map((r) => r.id),
-      { path },
     );
     lastFailure.delete(room.id);
     return 'dispatched';
@@ -384,7 +387,7 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
     ? (await roomsOfSession(row.id)).map((r) => r.id)
     : [marker.roomId];
   for (const roomId of served) {
-    if (!COMPLETED.has(row.status)) await tellTurnFailed(roomId, row.status);
+    if (!COMPLETED.has(row.status)) await tellTurnFailed(roomId, row.status, row.updatedAt);
     // what the box refused to write into the turn now waits again, and goes with the rest
     await settleInjects(roomId);
     await deliverWaiting(roomId);
@@ -403,10 +406,23 @@ const TURN_FAILED_LINE =
  * a failed turn was already reported for is not reported again by a later one; a warm-up that fails
  * reports only what was written into it.
  */
-async function tellTurnFailed(roomId: string, status: string): Promise<void> {
+async function tellTurnFailed(roomId: string, status: string, endedAt: Date): Promise<void> {
   const room = await roomById(roomId);
   if (!room) return;
-  const taken = await unansweredOfLastTurn(room.id, lastTurn.get(room.id) ?? null);
+  // a message handed to the next turn after this one ended is that turn's, not this one's
+  const taken = await unansweredOfLastTurn(room.id, lastTurn.get(room.id) ?? null, endedAt);
+  await tellUnanswered(room, taken, `the session's turn ended ${status} before it answered`);
+}
+
+/**
+ * Tell each thread of `taken` that its messages have no answer, once, and record it with `reason`:
+ * a message some turn was already reported for is not reported again.
+ */
+export async function tellUnanswered(
+  room: RoomRow,
+  taken: readonly ActionRow[],
+  reason: string,
+): Promise<void> {
   const told = await toldFailed(
     room.id,
     taken.map((m) => m.id),
@@ -419,7 +435,7 @@ async function tellTurnFailed(roomId: string, status: string): Promise<void> {
       ? null
       : await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {
           logger.error(
-            { err, roomId, thread },
+            { err, roomId: room.id, thread },
             'support: the failed-turn notice could not be posted',
           );
           return null;
@@ -433,7 +449,7 @@ async function tellTurnFailed(roomId: string, status: string): Promise<void> {
       actorKind: 'core',
       tool: 'turn_failed',
       output: {
-        reason: `the session's turn ended ${status} before it answered`,
+        reason,
         messages: left.filter((m) => m.thread === thread).map((m) => m.id),
         posted: Boolean(posted),
       },

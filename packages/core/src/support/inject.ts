@@ -15,7 +15,7 @@ import { logger } from '../lib/logger.js';
 import {
   claimUndelivered,
   giveBackInjected,
-  markDelivery,
+  markInjected,
   roomOfAction,
   settleInjected,
   unclaim,
@@ -34,7 +34,7 @@ export const INJECT_INTENT = 'support:';
 export async function injectWaiting(room: RoomRow, session: SessionRow): Promise<DeliverOutcome> {
   if (!session.deviceId) return 'turn-running';
   const at = new Date();
-  const rows = await claimUndelivered(room.id, at);
+  const rows = await claimUndelivered(room.id, at, 'inject');
   const [first] = rows;
   if (!first) return 'nothing-waiting';
   const ids = rows.map((r) => r.id);
@@ -49,7 +49,7 @@ export async function injectWaiting(room: RoomRow, session: SessionRow): Promise
       await unclaim(ids, at);
       return 'turn-running';
     }
-    await markDelivery(ids, { path: 'inject', injectSeq: sent.row.seq });
+    await markInjected(ids, sent.row.seq);
     return 'injected';
   } catch (err) {
     logger.error(

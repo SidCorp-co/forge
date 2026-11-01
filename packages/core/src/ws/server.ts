@@ -7,8 +7,8 @@ import { verifyDeviceToken } from '../credentials/device-credential.js';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { type PatScope, runWithPatScope } from '../credentials/pat-scope.js';
 import { deviceOwnedBy, handleRunnerSessions } from '../devices/index.js';
-import { roomManager } from '../lib/rooms.js';
-import { markWsListening } from '../lib/ws-listening.js';
+import { deviceRoom, roomManager } from '../lib/rooms.js';
+import { boxBeganListening, markWsListening } from '../lib/ws-listening.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import {
@@ -296,6 +296,9 @@ export function attachWs(
             return;
           }
           roomManager.subscribe(ws, room);
+          if (ws.principal.type === 'device' && room === deviceRoom(ws.principal.deviceId)) {
+            boxBeganListening(ws.principal.deviceId);
+          }
           if (typeof replayMs === 'number' && Number.isFinite(replayMs) && replayMs >= 0) {
             const waited = Date.now() - receivedAt;
             const replay = roomManager.replay(ws, room, replayMs + waited + REPLAY_SLACK_MS);

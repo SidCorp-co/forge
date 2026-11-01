@@ -3,16 +3,27 @@
 // Kept beside `store.ts`, which owns the rest of the support tables' reads and writes.
 
 import type { SupportDeliveryPath } from '@forge/contracts/support';
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions, supportRooms } from '../db/schema-support.js';
 import type { ActionRow } from './store.js';
 
-/** Take every undelivered inbound message of a room for one turn, oldest first. */
-export async function claimUndelivered(roomId: string, at: Date): Promise<ActionRow[]> {
+/**
+ * Take every undelivered inbound message of a room for one turn, oldest first, recording how it
+ * reaches the session with the claim: a message stamped delivered with no `path` was kept as
+ * context and never handed to a turn (`inbound.ts`), so no turn's end may report it unanswered.
+ */
+export async function claimUndelivered(
+  roomId: string,
+  at: Date,
+  path: SupportDeliveryPath,
+): Promise<ActionRow[]> {
   return db
     .update(supportActions)
-    .set({ deliveredAt: at })
+    .set({
+      deliveredAt: at,
+      output: sql`COALESCE(${supportActions.output}, '{}'::jsonb) || ${JSON.stringify({ path })}::jsonb`,
+    })
     .where(
       and(
         eq(supportActions.roomId, roomId),
@@ -29,20 +40,28 @@ export async function unclaim(ids: readonly string[], at: Date): Promise<void> {
   if (ids.length === 0) return;
   await db
     .update(supportActions)
-    .set({ deliveredAt: null })
+    .set({
+      deliveredAt: null,
+      output: sql`COALESCE(${supportActions.output}, '{}'::jsonb) - 'path'`,
+    })
     .where(and(inArray(supportActions.id, [...ids]), eq(supportActions.deliveredAt, at)));
 }
+
+/** A message handed to a turn: its claim recorded how it reached the session. */
+const HANDED = sql`COALESCE(${supportActions.output}, '{}'::jsonb) ? 'path'`;
 
 /**
  * The messages the room's last turn took that the session wrote nothing back to: each delivered at
  * or after `since`, when that turn was handed over (a message written into the running turn is
- * delivered later), in a thread with no session action since. With no `since` (core restarted
- * while the turn ran) the turn is read as the newest handed over, which an injected message never
- * starts.
+ * delivered later) and, given `until` (when the turn ended), before it, in a thread with no session
+ * action since. With no `since` (core restarted while the turn ran) the turn is read as the newest
+ * handed over, which an injected message never starts. A message kept only as context, never
+ * handed to a turn, is never one of them.
  */
 export async function unansweredOfLastTurn(
   roomId: string,
   since: Date | null,
+  until?: Date,
 ): Promise<ActionRow[]> {
   let from = since;
   if (!from) {
@@ -57,7 +76,7 @@ export async function unansweredOfLastTurn(
         and(
           eq(supportActions.roomId, roomId),
           eq(supportActions.kind, 'message_in'),
-          sql`NOT (COALESCE(${supportActions.output}, '{}'::jsonb) ? 'injectSeq')`,
+          sql`${supportActions.output}->>'path' IN ('start', 'send')`,
         ),
       );
     from = last?.at ?? null;
@@ -71,6 +90,8 @@ export async function unansweredOfLastTurn(
         eq(supportActions.roomId, roomId),
         eq(supportActions.kind, 'message_in'),
         gte(supportActions.deliveredAt, from),
+        until ? lt(supportActions.deliveredAt, until) : undefined,
+        HANDED,
       ),
     )
     .orderBy(asc(supportActions.createdAt));
@@ -107,16 +128,13 @@ export async function toldFailed(roomId: string, ids: readonly string[]): Promis
   return new Set(ids.filter((id) => told.has(id)));
 }
 
-/** Record on each message how it reached the session (and, written into a turn, its inbox seq). */
-export async function markDelivery(
-  ids: readonly string[],
-  delivery: { path: SupportDeliveryPath; injectSeq?: number },
-): Promise<void> {
+/** Record on each message written into a running turn the inbox seq it went as. */
+export async function markInjected(ids: readonly string[], injectSeq: number): Promise<void> {
   if (ids.length === 0) return;
   await db
     .update(supportActions)
     .set({
-      output: sql`COALESCE(${supportActions.output}, '{}'::jsonb) || ${JSON.stringify(delivery)}::jsonb`,
+      output: sql`COALESCE(${supportActions.output}, '{}'::jsonb) || ${JSON.stringify({ injectSeq })}::jsonb`,
     })
     .where(inArray(supportActions.id, [...ids]));
 }
@@ -147,6 +165,28 @@ export async function settleInjected(ids: readonly string[]): Promise<void> {
       output: sql`COALESCE(${supportActions.output}, '{}'::jsonb) || '{"injectSettled": true}'::jsonb`,
     })
     .where(inArray(supportActions.id, [...ids]));
+}
+
+/**
+ * Messages a lost turn took wait again for the next turn, each marked handed on once at `at`
+ * (ISS-850): one already so marked is never given back again.
+ */
+export async function giveBackLost(ids: readonly string[], at: Date): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(supportActions)
+    .set({
+      deliveredAt: null,
+      output: sql`(COALESCE(${supportActions.output}, '{}'::jsonb) - 'injectSeq' - 'injectSettled' - 'path')
+        || jsonb_build_object('redelivered', ${at.toISOString()}::text)`,
+    })
+    .where(
+      and(
+        inArray(supportActions.id, [...ids]),
+        sql`${supportActions.deliveredAt} IS NOT NULL`,
+        sql`NOT (COALESCE(${supportActions.output}, '{}'::jsonb) ? 'redelivered')`,
+      ),
+    );
 }
 
 /** A message the box did not take into a turn waits again for the next one. */

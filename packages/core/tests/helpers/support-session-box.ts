@@ -344,6 +344,14 @@ export class SessionBox {
     await patch({ status: 'completed', claudeSessionId });
   }
 
+  /**
+   * The turn dies with no word to core, as one a core restart cut off does: its end is never
+   * reported, and a write into it is refused as no turn runs.
+   */
+  lose(sessionId: string): void {
+    this.running.delete(sessionId);
+  }
+
   /** The turns that carried member messages: what the session was asked, not its warm-ups. */
   asked(): Turn[] {
     return this.turns.filter((t) => !t.warmUp);

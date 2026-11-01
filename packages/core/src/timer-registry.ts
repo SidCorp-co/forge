@@ -46,6 +46,7 @@ import { sweepSuggestions } from './suggestions/index.js';
 import {
   expireSupportFixes,
   fireDueChecks,
+  recoverLostTurns,
   recoverSupportRooms,
   tellAllResults,
   warmColdRooms,
@@ -256,6 +257,15 @@ function conversationDrains(): Timer[] {
       everyMs: 2_000,
       runAtStart: true,
       run: recoverSupportRooms,
+    },
+    {
+      // a turn whose end core never heard, as one a core restart cut off, is read lost once it goes
+      // silent: its messages handed on once, or their threads told (ISS-850)
+      kind: 'process',
+      name: 'support.lost-turns',
+      everyMs: 30_000,
+      runAtStart: true,
+      run: recoverLostTurns,
     },
     {
       // a room whose session is not resident on its box is warmed before anyone writes (BC-11)
