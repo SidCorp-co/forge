@@ -140,10 +140,20 @@ const undecided = (mr: MergeRequestBody) =>
   mr.state === 'opened' && UNDECIDED.has(mr.detailed_merge_status ?? '');
 
 /**
+ * An open request read as anything but `mergeable` on the FIRST read: that read answers GitLab's
+ * reading from before the recheck it asks for, which right after a base merge can be a stale
+ * `conflict` (ISS-852: epod !87 and !88, 2026-11-01, merged on a plain retry 20s later). It stands
+ * only once a read after the recheck agrees.
+ */
+const unconfirmed = (mr: MergeRequestBody, reads: number) =>
+  reads === 1 && mr.state === 'opened' && mr.detailed_merge_status !== 'mergeable';
+
+/**
  * Re-read an open request while GitLab is still deciding whether it can merge (`UNDECIDED`): after
- * the request below it in a stack merges, GitLab reports `unchecked` until its recheck finishes. The
- * pauses back off from `firstDelayMs` and the whole wait stops at `budgetMs`; what it answers is the
- * last reading and how long it waited, so a refusal can say both.
+ * the request below it in a stack merges, GitLab reports `unchecked` until its recheck finishes.
+ * A first read that says no is read again too (`unconfirmed`). The pauses back off from
+ * `firstDelayMs` and the whole wait stops at `budgetMs`; what it answers is the last reading, how
+ * long it waited and how often it read, so a refusal can say all three.
  */
 async function awaitDecision(
   client: GitLabClient,
@@ -155,7 +165,7 @@ async function awaitDecision(
   let mr = first;
   let reads = 1;
   let delay = wait.firstDelayMs;
-  while (undecided(mr)) {
+  while (undecided(mr) || unconfirmed(mr, reads)) {
     const left = wait.budgetMs - (wait.now() - started);
     if (left <= 0) break;
     await wait.sleep(Math.min(delay, left));
@@ -242,6 +252,12 @@ export async function mergeGitLabMergeRequest(
   }
 
   const status = mr.detailed_merge_status ?? null;
+  if (status !== 'mergeable' && unconfirmed(mr, waited.reads)) {
+    return refused(
+      'mergeability-unknown',
+      `GitLab's only reading of merge request !${iid} is \`${status ?? 'no detailed_merge_status'}\`, from before the recheck it was asked for, and no budget was left to read it after — merge again once GitLab shows it mergeable`,
+    );
+  }
   if (status !== 'mergeable') {
     const reason =
       status === 'not_approved'
@@ -256,7 +272,7 @@ export async function mergeGitLabMergeRequest(
     const stillDeciding =
       reason === 'mergeability-unknown'
         ? ` — GitLab was asked to recheck it and was read ${waited.reads} time${waited.reads === 1 ? '' : 's'} over ${Math.round(waited.waitedMs / 1000)}s without deciding; merge again once GitLab shows it mergeable`
-        : '';
+        : ` — read ${waited.reads} times, the last after its recheck`;
     return refused(
       reason,
       `GitLab reports merge request !${iid} as \`${status ?? 'no detailed_merge_status'}\`, not \`mergeable\`, so it is not merged${stillDeciding}`,

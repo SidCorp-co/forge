@@ -97,14 +97,63 @@ describe('mergeGitLabMergeRequest: a mergeability GitLab has not decided yet', (
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
 
-  it('does not wait on a status GitLab has decided', async () => {
-    const { client } = clientReading(['broken_status']);
+  it('does not wait on a first read of `mergeable`', async () => {
+    const { client } = clientReading(['mergeable']);
     const wait = virtualWait();
 
     const result = await mergeGitLabMergeRequest(client, { number: 5011 }, wait);
 
-    expect(result).toMatchObject({ kind: 'refused', reason: 'not-mergeable' });
+    expect(result).toMatchObject({ kind: 'merged' });
     expect(wait.slept).toEqual([]);
+  });
+});
+
+// ISS-852 (FB-457, epod !87 and !88, 2026-11-01): the first read answers GitLab's reading from
+// before the recheck it asks for, and right after a base merge that can be a stale `conflict`.
+describe('mergeGitLabMergeRequest: a first read that says no is not yet GitLab after its recheck', () => {
+  it('merges when the read after the recheck says `mergeable`', async () => {
+    const { client, calls } = clientReading(['conflict', 'mergeable']);
+    const wait = virtualWait();
+
+    const result = await mergeGitLabMergeRequest(client, { number: 87 }, wait);
+
+    expect(result).toMatchObject({ kind: 'merged', commitSha: MERGE });
+    expect(wait.slept).toEqual([1_000]);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(true);
+  });
+
+  it('refuses by name when the read after the recheck agrees', async () => {
+    for (const status of ['conflict', 'broken_status']) {
+      const { client, calls, reads } = clientReading([status]);
+      const wait = virtualWait();
+
+      const result = await mergeGitLabMergeRequest(client, { number: 87 }, wait);
+
+      expect(result).toMatchObject({ kind: 'refused', reason: 'not-mergeable' });
+      expect((result as { detail: string }).detail).toContain(`\`${status}\``);
+      expect((result as { detail: string }).detail).toContain('after its recheck');
+      expect(reads()).toBe(2);
+      expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+    }
+  });
+
+  it('waits on through `checking` after a stale `conflict`, inside the same budget', async () => {
+    const { client } = clientReading(['conflict', 'checking', 'mergeable']);
+    const wait = virtualWait();
+
+    const result = await mergeGitLabMergeRequest(client, { number: 88 }, wait);
+
+    expect(result).toMatchObject({ kind: 'merged' });
+    expect(wait.slept).toEqual([1_000, 2_000]);
+  });
+
+  it('a first `conflict` with no budget left to re-read is refused as unconfirmed, not as a conflict', async () => {
+    const { client } = clientReading(['conflict']);
+    const wait = virtualWait(0);
+
+    const result = await mergeGitLabMergeRequest(client, { number: 87 }, wait);
+
+    expect(result).toMatchObject({ kind: 'refused', reason: 'mergeability-unknown' });
   });
 });
 
