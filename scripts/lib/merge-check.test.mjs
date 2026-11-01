@@ -196,7 +196,8 @@ describe('the commits the check covers (REQ-79 BC-5, ISS-845)', () => {
     const landed = 'd'.repeat(40);
     expect(reportOf({ ...at, commits: [HEAD, landed] }).commits).toEqual([HEAD, landed]);
     expect('commits' in reportOf(at)).toBe(false);
-    expect(CONTRACT).toContain('commits: z.array(wholeShaSchema("commits[]"))');
+    // the formatter may break the chain across lines; the shape is what is asserted
+    expect(CONTRACT).toMatch(/commits:\s*z\s*\.array\(wholeShaSchema\("commits\[\]"\)\)/);
     expect(CLI).toContain("gitOut(['rev-list', '--max-count=1000', `${baseSha}..${head}`], ROOT)");
   });
 });
