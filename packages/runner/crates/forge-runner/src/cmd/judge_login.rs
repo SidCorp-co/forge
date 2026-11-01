@@ -331,7 +331,7 @@ mod tests {
         );
         let what = Named::Actor("admin".into());
         let body = file_body(&answer(), "stg", &what).unwrap();
-        let path = write_private(&root.0.join("run"), "stg", &what, &body).unwrap();
+        write_private(&root.0.join("run"), "stg", &what, &body).unwrap();
         // written again, it replaces the earlier copy rather than failing
         let path = write_private(&root.0.join("run"), "stg", &what, &body).unwrap();
         assert_eq!(path, root.0.join("run/stg-actor-admin.json"));
