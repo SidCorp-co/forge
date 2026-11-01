@@ -7,7 +7,13 @@ import {
   type RequiredMergeCheck,
 } from '@forge/contracts/merge-check';
 import { describe, expect, it } from 'vitest';
-import { missingCheckDetail, passingHeads, passingRanges, rangeCovers, recordFields } from './merge-check-rules.js';
+import {
+  missingCheckDetail,
+  passingHeads,
+  passingRanges,
+  rangeCovers,
+  recordFields,
+} from './merge-check-rules.js';
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
