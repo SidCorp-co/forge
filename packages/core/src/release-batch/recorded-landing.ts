@@ -1,36 +1,26 @@
 // The record of a landing, on a project that declares no production environment (release mode
 // `none`). Landing on the working branch IS the delivery there (owner ruling 2026-10-22), so the
-// release a closed issue owes (`CLOSE_ONLY_BY_RELEASE`) is this record: it names the branch and the
-// commit, says nothing was deployed, and closes what it claimed as a finished release does.
+// release a closed issue owes (`CLOSE_ONLY_BY_RELEASE`) is this record: it names the branch, says
+// nothing was deployed, and closes what it claimed as a finished release does.
 //
-// A landing that happened is recorded as the fact it is (REQ-45 BC-11, owner ruling 2026-10-27): it
-// refuses only what is not a fact — a malformed body, an issue whose landing the commit does not
-// hold, a commit the source host reads as not on the named branch. Verdicts are gates before a
-// merge or a cut (BC-15), never after: each issue's coverage at the commit is read beside the
-// record (`landing-coverage.ts`, BC-14). Whether the landing is in the commit is read by the
-// project's ancestry reader — the source host, or the box holding a bound checkout — and a pair
-// nobody could read refuses by name, since the record could not show it. Whether the commit is on
-// the branch is read only where a source host is bound; the box answers commit pairs, never a branch.
+// A landing that happened is recorded as the fact it is (REQ-45 r7 BC-11; owner rulings 2026-10-27
+// and 2026-11-01, `release-is-the-agents-record`): the agent's own words, under the version it names
+// or one Forge cuts. A commit is optional evidence, kept and never required, compared or read for
+// ancestry. It refuses only what is not a fact: a malformed body, an issue with no recorded landing.
+// Verdicts are gates before a merge or a cut (BC-15), never after: each issue's coverage at its
+// landing is read beside the record (`landing-coverage.ts`, BC-14), refusing nothing.
 
 import { db } from '../db/client.js';
 import { issueDisplayIds, releaseRunClaims } from '../issues/index.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { closeRunIfOneShot, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
-import { pairKey } from '../runners/index.js';
-import { ancestrySourceFor } from './ancestry-source.js';
 import { admitRoster } from './blockers.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import type { JudgedBuildDeps } from './judged-build.js';
-import {
-  type Holding,
-  holdingPair,
-  LANDED_VERIFICATION,
-  landedBuildsOf,
-  readHolding,
-} from './landed-build.js';
-import { landingCoverage, shippedFailingOf } from './landing-coverage.js';
+import { LANDED_VERIFICATION, landedBuildsOf } from './landed-build.js';
+import { type CriterionCoverage, landingCoverage, shippedFailingOf } from './landing-coverage.js';
 import { carryNaming } from './naming.js';
 import {
   admissibleIssues,
@@ -41,82 +31,73 @@ import {
 } from './recorded.js';
 import { refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
-import { cutReleaseVersion } from './version-store.js';
+import { cutReleaseVersion, takeGivenVersion } from './version-store.js';
 
-const WHOLE = /^[0-9a-f]{40}$/;
 const short = (sha: string) => sha.slice(0, 12);
 
 type LandingDeps = Pick<JudgedBuildDeps, 'ancestry'>;
+type LandedBuilds = Awaited<ReturnType<typeof landedBuildsOf>>;
 
-/** Each issue's landing in `commit`, refused by name where it is not, or where nobody could say. */
-function landingRefusals(
-  ids: readonly string[],
-  shown: ReadonlyMap<string, string>,
-  landed: Awaited<ReturnType<typeof landedBuildsOf>>,
-  holding: ReadonlyMap<string, Holding>,
-  commit: string,
-): Refusal[] {
+/** Each issue with no recorded landing, refused by name: a record closes only work that landed. */
+function unrecordedRefusals(ids: readonly string[], landed: LandedBuilds): Refusal[] {
   return ids.flatMap((id): Refusal[] => {
-    const key = shown.get(id) ?? id;
     const build = landed.get(id);
-    if (!build || build.sha === null) {
-      const why = build?.why ?? `${key} was not found on this project`;
-      return [{ code: 'RELEASE_LANDING_UNRECORDED', path: '/issueIds', detail: why }];
-    }
-    const held = holding.get(pairKey(holdingPair(build.sha, commit)));
-    if (held === true) return [];
-    if (held === false) {
-      return [
-        {
-          code: 'RELEASE_LANDING_NOT_IN_COMMIT',
-          path: '/commit',
-          detail: `${build.basis}, and \`${short(commit)}\` does not hold it: record the commit ${key} landed at, or one holding it`,
-        },
-      ];
-    }
-    return [
-      {
-        code: 'RELEASE_LANDING_UNREAD',
-        path: '/commit',
-        detail: `${build.basis}, and whether \`${short(commit)}\` holds it could not be read: ${held?.unread ?? 'it was not asked'}`,
-      },
-    ];
+    if (build && build.sha !== null) return [];
+    const why = build?.why ?? `${id} was not found on this project`;
+    return [{ code: 'RELEASE_LANDING_UNRECORDED', path: '/issueIds', detail: why }];
   });
 }
 
-/** Whether the commit is on the branch, where a source host can say; the box reads no branch. */
-async function branchReading(
+/**
+ * Each issue's criteria coverage at its own landing (BC-14): the commit the agent named where it
+ * named one, else the commit the issue's own landing records. A reading, never a refusal.
+ */
+async function coverageAtLandings(
   projectId: string,
-  branch: string,
-  commit: string,
-): Promise<{ off: true } | { off: false; reading: string }> {
-  const unread = (why: string) => ({
-    off: false as const,
-    reading: `whether \`${branch}\` contains \`${short(commit)}\` was not read: ${why}`,
-  });
-  const source = await ancestrySourceFor(projectId);
-  if (source.kind === 'box')
-    return unread('no source host is bound, and a box reads commit ancestry, not a branch');
-  if (source.kind === 'none') return unread(source.why);
-  try {
-    if (!(await source.host.branchContains(branch, commit))) return { off: true };
-    return { off: false, reading: `the source host reads \`${short(commit)}\` on \`${branch}\`` };
-  } catch (err) {
-    return unread(err instanceof Error ? err.message : String(err));
+  issueIds: readonly string[],
+  commit: string | null,
+  landed: LandedBuilds,
+  shown: ReadonlyMap<string, string>,
+  deps: LandingDeps | undefined,
+): Promise<{ readings: string[]; coverage: Map<string, CriterionCoverage[]> }> {
+  const byCommit = new Map<string, string[]>();
+  for (const id of issueIds) {
+    const at = commit ?? landed.get(id)?.sha ?? null;
+    if (at) byCommit.set(at, [...(byCommit.get(at) ?? []), id]);
   }
+  const readings: string[] = [];
+  const coverage = new Map<string, CriterionCoverage[]>();
+  for (const [at, ids] of byCommit) {
+    // the landing's own commit is the build here, so a merged head's tree identity speaks only for it
+    const headOf = (id: string) => {
+      const build = landed.get(id);
+      return build?.sha === at ? (build.head ?? null) : null;
+    };
+    const read = await landingCoverage(projectId, ids, at, shown, headOf, deps);
+    readings.push(...read.readings);
+    for (const [id, c] of read.coverage) coverage.set(id, c);
+  }
+  return { readings, coverage };
 }
 
 /** The account the issue carries: where it landed, that nothing deployed, and the caller's words. */
-function landingNote(branch: string, commit: string, readings: readonly string[], account: string) {
+function landingNote(
+  branch: string,
+  version: string,
+  commit: string | null,
+  readings: readonly string[],
+  account: string,
+) {
   const lines = readings.map((r) => `- ${r}`).join('\n');
-  return `Landed on \`${branch}\` at \`${commit}\` — no environment. This project declares no production environment, so its landing on \`${branch}\` is its delivery and nothing was deployed.\n\n${lines}\n\n${account}`;
+  const at = commit ? ` at \`${commit}\`` : '';
+  return `Landed on \`${branch}\` as ${version}${at}, recorded by the agent — no environment. This project declares no production environment, so its landing on \`${branch}\` is its delivery and nothing was deployed.\n\n${lines}\n\n${account}`;
 }
 
 /**
  * Record a landing as the release of a project with no production environment, and close what it
- * carried. `args.branch` names the branch the commit is on, the declared landing branch where it
- * names none. Everything is read before anything is claimed, so a record that cannot be shown
- * leaves every issue where it stood, and names each reason at once.
+ * carried. `args.branch` names the branch it landed on, the declared landing branch where it names
+ * none; `args.version` the version the agent names, one Forge cuts where absent; `args.commit` the
+ * agent's evidence, kept and never checked. A record refused leaves every issue where it stood.
  */
 export async function recordLanding(
   args: RecordPerformedReleaseArgs,
@@ -124,7 +105,7 @@ export async function recordLanding(
   deps?: LandingDeps,
 ): Promise<RecordPerformedReleaseResult> {
   const { projectId, account, userId } = args;
-  const commit = (args.commit ?? '').trim().toLowerCase();
+  const commit = args.commit?.trim().toLowerCase() || null;
   const providerRef = args.providerRef ?? null;
   const branch = args.branch ?? declared;
   if (!branch) {
@@ -133,62 +114,36 @@ export async function recordLanding(
       'This project declares no production environment and no `source.git.defaultBranch`, so there is no branch a landing could be recorded on. Declare the branch work lands on in the project document (PUT /api/projects/:id/config).',
     );
   }
-  if (!WHOLE.test(commit)) {
-    throw refuseRelease(
-      'RELEASE_LANDING_COMMIT_SHAPE',
-      args.commit === undefined
-        ? `a landing on \`${branch}\` is recorded at the commit it landed at: send \`commit\`, the 40-character sha.`
-        : `\`${args.commit}\` is not a whole commit: a landing on \`${branch}\` is recorded at the 40-character sha it landed at.`,
-      '/commit',
-    );
-  }
 
   const { issueIds } = await admitRoster(projectId, args.issueIds, 'record');
   const [landed, shown] = await Promise.all([landedBuildsOf(issueIds), issueDisplayIds(issueIds)]);
-  const landings = [...landed.values()].flatMap((b) => (b.sha ? [holdingPair(b.sha, commit)] : []));
-  const holding = await readHolding(projectId, landings, deps);
-  const refusals = landingRefusals(issueIds, shown, landed, holding, commit);
+  const refusals = unrecordedRefusals(issueIds, landed);
   if (refusals.length > 0) throw new RefusalError(refusals, 'RELEASE_REFUSED');
-  const onBranch = await branchReading(projectId, branch, commit);
-  if (onBranch.off) {
-    const named = branch === declared ? ", the branch this project's work lands on" : '';
-    throw refuseRelease(
-      'RELEASE_LANDING_NOT_IN_COMMIT',
-      `the source host reads \`${commit}\` as not on \`${branch}\`${named}: record a commit on \`${branch}\`, or name the branch it is on in \`branch\`.`,
-      '/commit',
-    );
-  }
 
-  // the record's own commit is the build here, so a merged head's tree identity speaks only for it
-  const headOf = (id: string) => {
-    const build = landed.get(id);
-    return build?.sha === commit ? (build.head ?? null) : null;
-  };
-  const { readings: covered, coverage } = await landingCoverage(
+  const { readings: covered, coverage } = await coverageAtLandings(
     projectId,
     issueIds,
     commit,
+    landed,
     shown,
-    headOf,
     deps,
   );
   // a fail that shipped is said first and whole: it is the evidence the follow-up starts from
   const shippedFailing = shippedFailingOf(issueIds, coverage, shown);
+  const said = commit ? ` at \`${short(commit)}\`` : '';
   const readings = [
     ...(shippedFailing ? [shippedFailing.sentence] : []),
-    ...issueIds.map((id) => {
+    `landed on \`${branch}\`${said}, recorded by the agent`,
+    ...issueIds.flatMap((id) => {
       const build = landed.get(id);
-      const via = build?.sha === commit ? 'is' : 'is held by';
-      return `${build?.sha ? build.basis : id}, which ${via} \`${short(commit)}\``;
+      return build?.sha ? [build.basis] : [];
     }),
     ...covered,
-    onBranch.reading,
   ];
 
   const roster = await admissibleIssues(projectId, issueIds);
-  // A recorded landing is a release like any other: it takes the next version and its name in the
-  // transaction that opens it (catalog-api run 9ed968de, 2026-10-26, recorded with no version, which
-  // no release page could show and the naming door could not name).
+  // A recorded landing is a release like any other: it wears the version the agent names, else the
+  // next one Forge cuts, in the transaction that opens it (catalog-api run 9ed968de, 2026-10-26).
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, {
       projectId,
@@ -207,7 +162,9 @@ export async function recordLanding(
         ...(shippedFailing ? { shippedFailing } : {}),
       },
     });
-    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
+    const cut = args.version
+      ? await takeGivenVersion(tx, { runId: row.id, projectId, version: args.version })
+      : await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
     await carryNaming(tx, {
       projectId,
       version: cut,
@@ -217,8 +174,8 @@ export async function recordLanding(
       roster: issueIds,
     });
     await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });
-    // the landing this record names is the cut's commit (REQ-63 BC-13): its tag is owed in the same unit
-    await oweReleaseTag(row.id, commit, 'record', tx);
+    // a commit the agent named is the cut's commit (REQ-63 BC-13): its tag is owed in the same unit
+    if (commit) await oweReleaseTag(row.id, commit, 'record', tx);
     return { run: row, version: cut };
   });
   await claimRoster(projectId, issueIds, run.id);
@@ -229,8 +186,9 @@ export async function recordLanding(
     providerRef,
     how: 'landed',
     branch,
+    version,
   });
-  const note = landingNote(branch, commit, readings, account);
+  const note = landingNote(branch, version, commit, readings, account);
   const { closed, failed } = await closeRecorded(roster, {
     projectId,
     userId,

@@ -336,7 +336,7 @@ interface IssuePorts {
   /** On a project with no production environment, the landing that closed the issue; null where none did. */
   landedRecordOf: (
     issueId: string,
-  ) => Promise<{ branch: string; commit: string; at: string } | null>;
+  ) => Promise<{ branch: string; commit: string | null; at: string } | null>;
   plannedRevisionFor: (
     tx: Tx,
     issueId: string,

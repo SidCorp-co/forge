@@ -18,7 +18,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 8,
+  version: 9,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -396,8 +396,8 @@ naming its own rule before the green counts.
 **Never move an issue that ships code to \`closed\`.** Only a release that claimed it closes it
 (\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`. On a project that
 declares no production environment that release is the recorded landing
-(\`POST /api/projects/:id/release-records\`), which an admin records at a commit holding the
-merge. Verdicts are owed before the merge, never after it: the record reports each criterion by the
+(\`POST /api/projects/:id/release-records\`): the agent's record in its own words, a version
+optional and a commit only evidence, never checked. Verdicts are owed before the merge, never after it: the record reports each criterion by the
 pass it stands on, and never refuses a landing that happened. An issue whose only
 deliverable is a design closes once its design revisions are approved (\`DESIGN_NOT_DELIVERED\`
 until then).

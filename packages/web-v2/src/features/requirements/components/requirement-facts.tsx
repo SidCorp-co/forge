@@ -132,13 +132,14 @@ export function IssueShippedLink({ shippedIn, slug }: { shippedIn: Shipped; slug
   );
 }
 
-/** Where one of its issues landed, with no production environment: the branch and commit, no version. */
-export function IssueLandedIn({ landedIn }: { landedIn: { branch: string; commit: string } }) {
+/** Where one of its issues landed, with no production environment: the branch, and the commit the agent named. */
+export function IssueLandedIn({ landedIn }: { landedIn: { branch: string; commit: string | null } }) {
   const t = useCopy();
-  const said = t("issues.landedIn", { branch: landedIn.branch, sha: landedIn.commit.slice(0, 7) });
+  const sha = landedIn.commit?.slice(0, 7) ?? null;
+  const said = sha ? t("issues.landedIn", { branch: landedIn.branch, sha }) : t("issues.landedOn", { branch: landedIn.branch });
   return (
     <span title={said} className="flex-none font-mono text-12 text-muted" data-testid="rail-issue-landed">
-      {landedIn.branch}@{landedIn.commit.slice(0, 7)}
+      {sha ? `${landedIn.branch}@${sha}` : landedIn.branch}
     </span>
   );
 }

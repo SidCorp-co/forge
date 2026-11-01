@@ -33,7 +33,7 @@ export function releasesOf(
  *  project declares no production environment, which has a branch and commit but no version. */
 export interface Delivered {
   shipped: ReadonlyMap<string, ShippedRelease>;
-  landed: ReadonlyMap<string, { branch: string; commit: string; at: string }>;
+  landed: ReadonlyMap<string, { branch: string; commit: string | null; at: string }>;
 }
 
 /** What delivered each of `linked`, each read on its own project's releases. */

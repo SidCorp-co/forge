@@ -90,7 +90,9 @@ describe('a landing is recorded as the release of a project with no production e
     const [note] = (await db.execute(sql`
       SELECT body FROM comments WHERE issue_id = ${issue} AND body LIKE 'Landed on%'
     `)) as unknown as Array<{ body: string }>;
-    expect(note?.body).toContain(`Landed on \`${BRANCH}\` at \`${F4}\` — no environment.`);
+    expect(note?.body).toContain(
+      `Landed on \`${BRANCH}\` as 0.1.0 at \`${F4}\`, recorded by the agent — no environment.`,
+    );
     expect(note?.body).not.toMatch(/deployed to|serving/);
   });
 
@@ -196,19 +198,6 @@ describe('a landing is recorded as the release of a project with no production e
     ]);
   });
 
-  it('refuses a merge commit that is not in the recorded commit', async () => {
-    const issue = await landedIssue(5, ASIDE);
-    await judgedAll(issue, F4);
-
-    const res = await record([issue], F4);
-
-    expect(res.status).toBe(422);
-    const refusals = refusalsOf(res.body);
-    expect(refusals.map((r) => r.code)).toEqual(['RELEASE_LANDING_NOT_IN_COMMIT']);
-    expect(refusals[0]?.detail).toContain(`merge mark names \`${ASIDE.slice(0, 12)}\``);
-    expect(await statusOf(issue)).toBe('awaiting_release');
-  });
-
   it('refuses an issue whose merge records no commit, as ISS-5 stood on 2026-10-22', async () => {
     const issue = await landedIssue(5, null);
     await judgedAll(issue, F4);
@@ -220,16 +209,6 @@ describe('a landing is recorded as the release of a project with no production e
     expect(refusals.map((r) => r.code)).toEqual(['RELEASE_LANDING_UNRECORDED']);
     expect(refusals[0]?.detail).toContain("ISS-5's merge records no commit");
     expect(await statusOf(issue)).toBe('awaiting_release');
-  });
-
-  it('refuses a commit that is not a whole sha', async () => {
-    const issue = await landedIssue(5, F4);
-    await judgedAll(issue, F4);
-
-    const res = await record([issue], F4.slice(0, 7));
-
-    expect(res.status).toBe(422);
-    expect(refusalsOf(res.body)[0]?.code).toBe('RELEASE_LANDING_COMMIT_SHAPE');
   });
 
   it('names the record door where a release batch is refused NO_RELEASE_GATE', async () => {
@@ -245,6 +224,77 @@ describe('a landing is recorded as the release of a project with no production e
     const build = await ok(api(token, 'GET', `/api/issues/${issue}/judged-build`));
 
     expect(build).toMatchObject({ sha: F4, source: 'landed', version: null });
+  });
+});
+
+// REQ-45 r7 BC-11 (owner, 2026-11-01): a landing is the agent's record; its commit is evidence, never checked
+describe("a landing is recorded on its agent's word", () => {
+  it('records a commit that does not hold the merge, checking nothing', async () => {
+    const issue = await landedIssue(5, ASIDE);
+    await judgedAll(issue, F4);
+
+    const res = await record([issue], F4);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ commit: F4, closed: [issue], failed: [] });
+    expect(await statusOf(issue)).toBe('closed');
+  });
+
+  it("records a landing in the agent's own words, with no commit", async () => {
+    const issue = await landedIssue(5, F4);
+    await judgedAll(issue, F4);
+
+    const res = await api(token, 'POST', `/api/projects/${projectId}/release-records`, {
+      issueIds: [issue],
+      account: 'Merged to release/stg and confirmed by the agent that landed it.',
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({
+      verification: 'landed',
+      commit: null,
+      version: '0.1.0',
+      closed: [issue],
+    });
+    // coverage reads at the issue's own landing where the agent named no commit (BC-14)
+    expect(readingsOf(res.body)).toContain(
+      `ISS-5: 3 live criteria, c1-3 pass at \`${F4.slice(0, 12)}\``,
+    );
+    const detail = await ok(api(token, 'GET', `/api/issues/${issue}`));
+    expect(detail.landedIn).toEqual({ branch: BRANCH, commit: null, at: expect.any(String) });
+    expect(await statusOf(issue)).toBe('closed');
+  });
+
+  it('records a landing under the version its agent names', async () => {
+    const issue = await landedIssue(5, F4);
+    await judgedAll(issue, F4);
+
+    const res = await record([issue], F4, { version: 'v3.0.0' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ version: '3.0.0', verification: 'landed', closed: [issue] });
+    const list = await ok(api(token, 'GET', `/api/projects/${projectId}/releases`));
+    expect(list.releases).toMatchObject([{ version: '3.0.0', state: 'landed' }]);
+  });
+
+  it('refuses a misshapen version on a landing by name', async () => {
+    const issue = await landedIssue(5, F4);
+
+    const res = await record([issue], F4, { version: 'latest' });
+
+    expect(res.status).toBe(422);
+    expect(refusalsOf(res.body)[0]?.code).toBe('RELEASE_VERSION_SHAPE');
+    expect(await statusOf(issue)).toBe('awaiting_release');
+  });
+
+  it('keeps a short commit as the evidence it was sent as', async () => {
+    const issue = await landedIssue(5, F4);
+    await judgedAll(issue, F4);
+
+    const res = await record([issue], F4.slice(0, 7));
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ commit: F4.slice(0, 7), closed: [issue] });
   });
 });
 

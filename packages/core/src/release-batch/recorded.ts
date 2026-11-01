@@ -270,7 +270,7 @@ export async function writeLedger(
   const { outcome } = args;
   const reasons: Record<'landed' | 'unverified', string> = {
     unverified: `recorded by its agent as ${args.version}; Forge reads no commit and checked no deploy`,
-    landed: `landed on ${args.branch} at ${outcome.identity}; no environment is declared, so nothing was deployed and no deploy was checked`,
+    landed: `landed on ${args.branch} as ${args.version}, recorded by the agent; no environment is declared, so nothing was deployed`,
   };
   await db.insert(releaseAttempts).values({
     runId,

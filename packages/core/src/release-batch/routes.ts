@@ -221,9 +221,10 @@ const carriedBodySchema = z.object({ carried: carriedSchema }).strict();
 const releaseRecordBodySchema = z
   .object({
     issueIds: rosterIdsSchema.min(1),
-    /** The release the agent shipped, `v1.31.1` or `1.31.1`; required wherever production is declared. */
+    /** The release the agent shipped, `v1.31.1` or `1.31.1`; required wherever production is declared,
+     *  optional on a landing, which Forge versions where absent. */
     version: z.string().trim().min(1).max(100).optional(),
-    /** A sha carried as evidence, never compared; a landing's identity on its branch. */
+    /** A sha the agent carries as evidence: never required, never compared or checked. */
     commit: z.string().trim().min(1).max(200).optional(),
     account: z.string().trim().min(20).max(20_000),
     providerRef: z.string().trim().max(500).optional(),
@@ -417,19 +418,14 @@ releaseBatchRoutes.post(
 
     await requireReleaseAct(c, projectId, 'recording a release');
 
-    // With no production environment the landing is the delivery, and Forge versions it; anywhere
-    // else a release is the agent's record under the version it shipped (owner, 2026-11-01).
+    // With no production environment the landing is the delivery, under the agent's version or one
+    // Forge cuts; anywhere else a release is the agent's record under the version it shipped (owner, 2026-11-01).
     const declared = await resolveReleaseDeclaration(projectId);
     const sent = { projectId, userId, ...c.req.valid('json') };
     if (declared?.kind === 'no-release') {
-      if (sent.version !== undefined) {
-        throw refuseRelease(
-          'RELEASE_RECORD_VERSION_UNUSED',
-          'This project declares no production environment, so its landing is versioned by Forge: send the record without `version`.',
-          '/version',
-        );
-      }
-      return c.json(await recordLanding(sent, declared.defaultBranch), 201);
+      // a landing takes the version the agent names, else one Forge cuts (REQ-45 r7 BC-11)
+      const version = sent.version === undefined ? undefined : recordedVersion(sent.version);
+      return c.json(await recordLanding({ ...sent, version }, declared.defaultBranch), 201);
     }
     if (sent.branch !== undefined) {
       throw refuseRelease(

@@ -6,7 +6,7 @@ export const WHAT_IS_AN_ISSUE_GUIDE: CoreGuide = {
   title: 'What is an issue?',
   summary:
     'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
-  version: 3,
+  version: 4,
   body: `## What is an issue?
 
 An issue is a unit of **work** — not a note, not a question, not a record of something already done.
@@ -54,7 +54,7 @@ Finding a filed item that fails the gates is not someone else's job. You are the
 
 1. **Comment first** — which gate it fails, and where the content went (the memory entry, the proposals file, the issue it duplicates). A status move with no comment leaves the next reader unable to tell why.
 2. **Then move it**: \`needs_info\` when a human owes you requirements and it could become real work; \`dropped\` when it is not work at all.
-3. **Non-work leaves by \`dropped\`, never by \`closed\`.** \`closed\` means the work shipped: it is reached only from \`awaiting_release\`, by a release that claimed the issue (\`CLOSE_ONLY_BY_RELEASE\`), with its merge recorded (\`CLOSE_REQUIRES_SHIPPED\`). On a project that declares no production environment that release is its recorded landing (\`POST /api/projects/:id/release-records\`): it names the branch and commit, says nothing was deployed, and is refused only where an issue's merge is not in that commit: its verdicts never refuse it, and each criterion is reported beside the record by the pass it stands on. \`dropped\` is terminal without the claim, and it expires this issue's outgoing \`blocks\` edges so nothing is left waiting on an issue that can never land.
+3. **Non-work leaves by \`dropped\`, never by \`closed\`.** \`closed\` means the work shipped: it is reached only from \`awaiting_release\`, by a release that claimed the issue (\`CLOSE_ONLY_BY_RELEASE\`), with its merge recorded (\`CLOSE_REQUIRES_SHIPPED\`). On a project that declares no production environment that release is its recorded landing (\`POST /api/projects/:id/release-records\`): it is the agent's record in its own words, under the version it names or one Forge cuts, names the branch, says nothing was deployed, and keeps a commit only as evidence, never checked: its verdicts never refuse it, and each criterion is reported beside the record by the pass it stands on. \`dropped\` is terminal without the claim, and it expires this issue's outgoing \`blocks\` edges so nothing is left waiting on an issue that can never land.
 
 Do not move it INTO \`draft\` — no move of yours puts an issue back there; only a run's end hands back a draft its holder took. \`dropped\` is the exit for something that turned out not to be work.
 

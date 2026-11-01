@@ -874,20 +874,12 @@ export const RELEASE_REFUSAL_CODES = [
 	"CONTRACT_PROVIDER_NOT_LIVE",
 	"RELEASE_VERDICT_NOT_YOURS",
 	"RELEASE_NOT_VERIFIED",
-	/** Under release mode `none`, the record's commit is not a whole sha a landing can name. */
-	"RELEASE_LANDING_COMMIT_SHAPE",
 	/** Under release mode `none`, an issue whose merge records no commit, so nothing says what landed. */
 	"RELEASE_LANDING_UNRECORDED",
-	/** Under release mode `none`, an issue whose recorded merge is not in the record's commit. */
-	"RELEASE_LANDING_NOT_IN_COMMIT",
-	/** Under release mode `none`, an ancestry nobody could read, so the record cannot be shown. */
-	"RELEASE_LANDING_UNREAD",
 	/** Under release mode `none`, a project whose source names no branch for work to land on. */
 	"RELEASE_LANDING_NO_BRANCH",
 	/** A record naming a landing's `branch` on a project with production, whose record is its version. */
 	"RELEASE_RECORD_BRANCH_UNUSED",
-	/** A record naming `version` on a project with no production environment, whose landing Forge versions. */
-	"RELEASE_RECORD_VERSION_UNUSED",
 	/** A record naming a version another release of the project already wears (ISS-851). */
 	"RELEASE_RECORD_VERSION_TAKEN",
 	/** A promotion release's record naming a version other than the one its cut wears (ISS-851). */

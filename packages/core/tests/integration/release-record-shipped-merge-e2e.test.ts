@@ -214,33 +214,32 @@ describe('a promotion that already merged is recorded as the fact it is (REQ-45 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body).toMatchObject({ branch: PRODUCTION, commit: E2C9 });
     expect(readingsOf(res.body)).toContain(
-      `the source host reads \`${short(E2C9)}\` on \`${PRODUCTION}\``,
+      `landed on \`${PRODUCTION}\` at \`${short(E2C9)}\`, recorded by the agent`,
     );
   });
 });
 
-describe('it still refuses what is not a fact', () => {
-  it('refuses a commit the host does not hold on the named branch', async () => {
+describe('it refuses only what is not a fact', () => {
+  // REQ-45 r7 BC-11 (owner, 2026-11-01): the commit is the agent's evidence, never checked
+  it('records a commit the host does not hold on the named branch, reading no branch', async () => {
     const { i24 } = await adminhubShape();
 
     const res = await record([i24], E663, { branch: PRODUCTION });
 
-    expect(res.status).toBe(422);
-    const [refusal] = refusalsOf(res.body);
-    expect(refusal?.code).toBe('RELEASE_LANDING_NOT_IN_COMMIT');
-    expect(refusal?.detail).toContain(`as not on \`${PRODUCTION}\``);
-    expect(await statusOf(i24)).toBe('awaiting_release');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ branch: PRODUCTION, commit: E663, closed: [i24] });
+    expect(await statusOf(i24)).toBe('closed');
   });
 
-  it('refuses an issue whose landing the commit does not hold', async () => {
+  it('records an issue whose landing the commit does not hold, comparing nothing', async () => {
     const { i24 } = await adminhubShape();
     const elsewhere = await landed(26, ASIDE);
 
     const res = await record([i24, elsewhere], E2C9);
 
-    expect(res.status).toBe(422);
-    expect(refusalsOf(res.body).map((r) => r.code)).toEqual(['RELEASE_LANDING_NOT_IN_COMMIT']);
-    expect(await statusOf(i24)).toBe('awaiting_release');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(await statusOf(i24)).toBe('closed');
+    expect(await statusOf(elsewhere)).toBe('closed');
   });
 
   it('refuses an empty branch as a malformed body', async () => {

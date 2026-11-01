@@ -22,11 +22,11 @@ interface LandingRow {
   issue_ids: unknown;
 }
 
-/** The fields every landing carries; `recorded-landing.ts` refuses a record without them. */
+/** The fields every landing carries; a commit only where the agent named one (REQ-45 r7 BC-11). */
 interface Landing {
   runId: string;
   branch: string;
-  commit: string;
+  commit: string | null;
   at: string;
   issueIds: string[];
 }
@@ -36,10 +36,10 @@ const LANDINGS = sql`r.metadata ->> 'source' = ${RELEASE_RECORD_SOURCE}
 
 /** A landing row as recorded; one missing what every record carries is refused by name, never skipped. */
 function landingOf(row: LandingRow): Landing {
-  if (!row.branch || !row.commit || !row.at) {
+  if (!row.branch || !row.at) {
     throw new Error(
-      `landing record ${row.id} names no ${!row.branch ? 'branch' : !row.commit ? 'commit' : 'start time'}: ` +
-        'every landing is recorded on its branch at a whole commit (recorded-landing.ts:recordLanding)',
+      `landing record ${row.id} names no ${!row.branch ? 'branch' : 'start time'}: ` +
+        'every landing is recorded on its branch (recorded-landing.ts:recordLanding)',
     );
   }
   const ids = Array.isArray(row.issue_ids) ? (row.issue_ids as unknown[]) : [];
@@ -50,6 +50,17 @@ function landingOf(row: LandingRow): Landing {
     at: new Date(row.at).toISOString(),
     issueIds: ids.filter((id): id is string => typeof id === 'string'),
   };
+}
+
+/** A landing recorded before landings took a version: that door required its commit, so one without is refused. */
+function unversionedLandingOf(row: LandingRow): Landing & { commit: string } {
+  const landing = landingOf(row);
+  if (!landing.commit) {
+    throw new Error(
+      `landing record ${row.id} names no commit: every landing recorded before landings took a version names one`,
+    );
+  }
+  return { ...landing, commit: landing.commit };
 }
 
 /**
@@ -65,7 +76,7 @@ export async function landingRecordsOf(projectId: string): Promise<ReleaseLandin
      WHERE r.project_id = ${projectId}::uuid AND ${LANDINGS} AND r.release_version IS NULL
      ORDER BY r.started_at DESC, r.id DESC
   `)) as unknown as Array<LandingRow & { status: string }>;
-  const landings = rows.map((r) => ({ landing: landingOf(r), status: r.status }));
+  const landings = rows.map((r) => ({ landing: unversionedLandingOf(r), status: r.status }));
   const ids = landings.flatMap((l) => l.landing.issueIds);
   const shown = ids.length > 0 ? await issueDisplayIds(ids) : new Map<string, string>();
   return landings.map(({ landing: { issueIds, ...l }, status }) => ({
@@ -76,10 +87,10 @@ export async function landingRecordsOf(projectId: string): Promise<ReleaseLandin
   }));
 }
 
-/** Where an issue landed: the branch, the commit and when the landing was recorded. */
+/** Where an issue landed: the branch, the commit the agent named (null where none) and when. */
 export interface IssueLanding {
   branch: string;
-  commit: string;
+  commit: string | null;
   at: string;
 }
 

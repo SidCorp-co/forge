@@ -50,7 +50,7 @@ export interface RequirementDependents {
   /** The landing record that closed each issue standing closed (`release-batch/landing-records.ts`). */
   landedRecordsOf(
     issueIds: readonly string[],
-  ): Promise<ReadonlyMap<string, { branch: string; commit: string; at: string }>>;
+  ): Promise<ReadonlyMap<string, { branch: string; commit: string | null; at: string }>>;
 }
 
 const slot = portSlot<RequirementDependents>('requirements', 'provideRequirementDependents');

@@ -128,7 +128,11 @@ export function RailTraceRows({
       ) : issue.landedIn ? (
         <Row label={t("issues.rail.release")}>
           <span className="inline-flex items-baseline gap-2" data-testid="rail-landed">
-            <span className="text-12">{t("issues.landedIn", { branch: issue.landedIn.branch, sha: issue.landedIn.commit.slice(0, 7) })}</span>
+            <span className="text-12">
+              {issue.landedIn.commit
+                ? t("issues.landedIn", { branch: issue.landedIn.branch, sha: issue.landedIn.commit.slice(0, 7) })
+                : t("issues.landedOn", { branch: issue.landedIn.branch })}
+            </span>
             <span className="text-12 text-muted">{time.date(issue.landedIn.at)}</span>
           </span>
         </Row>
