@@ -166,6 +166,9 @@ pub(crate) fn inherited_runs(led: &Ledger, project_id: &str, boot_id: &str) -> V
             ended_by: r.ended_by,
             pid: r.pid,
             host: r.host_pid.zip(r.host_start),
+            choice: r
+                .resume_choice
+                .map(|c| (c, r.resume_choice_why.unwrap_or_default())),
         })
         .collect()
 }
@@ -394,6 +397,9 @@ pub(crate) struct InheritedRun {
     pub pid: Option<u32>,
     /// The Claude Code process recorded for its subagent, and its start time.
     pub host: Option<(u32, String)>,
+    /// The resume choice already recorded for it, and why: such a run is not
+    /// owed one, and `run choice` refuses a second (ISS-853).
+    pub choice: Option<(String, String)>,
 }
 
 impl InheritedRun {
@@ -465,11 +471,14 @@ pub(crate) fn resumed_brief(
         "\nThis pane was RESUMED, not started fresh: it is continuing conversation `{conversation}`, \
 so what you remember of this project may be from before the interruption that ended the last pane.\n"
     );
-    if runs.is_empty() {
+    let (chosen, owed): (Vec<&InheritedRun>, Vec<&InheritedRun>) =
+        runs.iter().partition(|r| r.choice.is_some());
+    if owed.is_empty() {
         out.push_str(
-            "\nNo run rows were left open under this master, so there is nothing to decide before \
-you carry on.\n",
+            "\nNo run left open under this master is owed a choice, so there is nothing to decide \
+before you carry on.\n",
         );
+        push_chosen(&mut out, &chosen);
         return out;
     }
     out.push_str(&format!(
@@ -477,9 +486,9 @@ you carry on.\n",
 work, record one of `continue`, `restart` or `leave` with your reason — the declaration will be \
 refused until you have. These are the fields this box can state about each. It states them and \
 judges none of them; the judgement is yours:\n",
-        runs.len()
+        owed.len()
     ));
-    for r in runs {
+    for r in owed {
         let incarnation = if placed && r.ends_with_placement(hosts) {
             "not running: its subagent ended with the pane this one was started in place of, \
 and the Claude Code process it ran in is gone"
@@ -504,7 +513,25 @@ you will carry it on; `restart` means it does not and you will cut it again; `le
 somebody else's to settle and you will touch neither. Whichever you pick, say why in your own \
 words: the record is what the next reader has.\n",
     );
+    push_chosen(&mut out, &chosen);
     out
+}
+
+/// The runs whose choice is already recorded, with the choice that stands:
+/// none is asked for again, since `run choice` records one once.
+fn push_chosen(out: &mut String, chosen: &[&InheritedRun]) {
+    if chosen.is_empty() {
+        return;
+    }
+    out.push_str("\nThese runs' choices are already recorded and stand; none is owed again:\n");
+    for r in chosen {
+        let (choice, why) = r
+            .choice
+            .as_ref()
+            .map(|(c, w)| (c.as_str(), w.as_str()))
+            .unwrap_or_default();
+        out.push_str(&format!("\n- run `{}`: {choice} ({why})\n", r.run_id));
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -665,5 +692,80 @@ pub(crate) fn transcript_at(
     match home {
         Some(h) => Some(transcript_under(h, cwd, conversation_id)),
         None => conversation_transcript(cwd, conversation_id),
+    }
+}
+
+#[cfg(test)]
+mod resumed_brief_tests {
+    use super::*;
+    use runner_core::ledger::NewRun;
+
+    struct NoHosts;
+    impl subagent_host::Hosts for NoHosts {
+        fn read(&self, _pid: u32, _start: &str) -> subagent_host::HostRead {
+            subagent_host::HostRead::Unreadable
+        }
+        fn above(&self, _peer: u32) -> Option<subagent_host::Host> {
+            None
+        }
+        fn running(&self, _conversation: &str) -> subagent_host::Running {
+            subagent_host::Running::Absent
+        }
+        fn beneath(&self, _pid: u32, _start: &str, _ancestor: u32) -> subagent_host::HostRead {
+            subagent_host::HostRead::Unreadable
+        }
+    }
+
+    fn ledger_with(runs: &[&str]) -> (Ledger, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-iss853-{}-{}",
+            std::process::id(),
+            agent_activity::now_ms()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+        for (n, run) in runs.iter().enumerate() {
+            led.create_run_group(NewRun {
+                run_id: (*run).into(),
+                project_id: "proj-1".into(),
+                master_session_id: "master-1".into(),
+                worktree_path: dir.join(format!("tree-{n}")),
+                boot_id: "boot-1".into(),
+                issue_keys: vec![format!("ISS-{n}")],
+                role: None,
+            })
+            .unwrap();
+            led.bind_agent(run, &format!("agent-{n}")).unwrap();
+        }
+        led.owe_resume_choices("master-1", "boot-1").unwrap();
+        (led, dir)
+    }
+
+    /// ISS-853's plant: a run whose choice is recorded is not owed one, and
+    /// the brief says the choice that stands; a run with none is still owed.
+    #[test]
+    fn a_run_with_a_recorded_choice_is_not_asked_for_one_again() {
+        let (led, dir) = ledger_with(&["run-chosen", "run-owed"]);
+        assert!(led
+            .record_resume_choice("run-chosen", "master-1", "continue", "the tree is green")
+            .unwrap());
+        let runs = inherited_runs(&led, "proj-1", "boot-1");
+        let brief = resumed_brief("conv-1", &runs, true, &NoHosts);
+        let (owed, rest) = brief
+            .split_once("already recorded and stand")
+            .unwrap_or((brief.as_str(), ""));
+        assert!(
+            owed.contains("1 run(s) were left open") && owed.contains("run `run-owed`"),
+            "{brief}"
+        );
+        assert!(
+            !owed.contains("run-chosen"),
+            "a run whose choice is recorded was asked for one again: {brief}"
+        );
+        assert!(
+            rest.contains("run `run-chosen`: continue (the tree is green)"),
+            "{brief}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
