@@ -1,7 +1,7 @@
 import { parseSecretRef, secretRefOf } from '@forge/contracts/project-config';
 import { parseVariableRef } from '@forge/contracts/variables';
 import type { z } from 'zod';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
 import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import {
@@ -32,7 +32,7 @@ import {
   type SecretName,
   type StoredDocument,
 } from './store.js';
-import { keysHeld } from './variables-store.js';
+import { insertEvents, keysHeld } from './variables-store.js';
 
 export interface Held<T> {
   revision: number;
@@ -408,6 +408,55 @@ export async function putSecret(input: {
     valueEnc: encryptSecret(input.value),
   });
   return { ok: true, secret: { ...row, ref: secretRefOf(row.scope, row.name) } };
+}
+
+/**
+ * Remove one project secret (ISS-847): refused by name while a testing profile names its ref, each
+ * profile a refusal of its own; the removal is written to the project's credential audit
+ * (`project_variable_events`, act `deleted`, keyed by the secret's ref, no value) in the same
+ * transaction, so a removal nobody can account for never happens.
+ */
+export async function deleteSecret(input: {
+  projectId: string;
+  scope: string;
+  name: string;
+  actor: { id: string; tokenId: string | null; agency: 'human' | 'agent' };
+}): Promise<DeleteOutcome> {
+  const ref = secretRefOf(input.scope, input.name);
+  const users = (await listTestingProfiles(input.projectId)).filter((p) =>
+    credentialRefs(p.document).some((r) => r.ref === ref),
+  );
+  if (users.length > 0) {
+    return {
+      ok: false,
+      notFound: false,
+      refusals: users.map((p) => ({
+        code: 'SECRET_IN_USE',
+        path: pointer(['testing-profiles', p.profileId]),
+        detail: `testing profile "${p.profileId}" names ${ref}; remove it from that profile first (PUT /api/projects/${input.projectId}/testing-profiles/${p.profileId}), then delete the secret.`,
+      })),
+    };
+  }
+  const deleted = await db.transaction(async (tx) => {
+    if (!(await drizzleConfigStore.deleteSecret(tx, input.projectId, input.scope, input.name))) {
+      return false;
+    }
+    await insertEvents(tx, [
+      {
+        projectId: input.projectId,
+        variableId: null,
+        act: 'deleted',
+        key: ref,
+        environment: null,
+        actorId: input.actor.id,
+        actorTokenId: input.actor.tokenId,
+        agency: input.actor.agency,
+        detail: { secret: true },
+      },
+    ]);
+    return true;
+  });
+  return deleted ? { ok: true } : { ok: false, notFound: true };
 }
 
 export async function listSecretNames(projectId: string) {

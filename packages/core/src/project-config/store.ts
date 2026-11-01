@@ -341,6 +341,21 @@ export const drizzleConfigStore = {
     return row;
   },
 
+  /** Remove one secret; false when the project holds none by that scope and name. */
+  async deleteSecret(exec: Tx, projectId: string, scope: string, name: string): Promise<boolean> {
+    const rows = await exec
+      .delete(projectSecrets)
+      .where(
+        and(
+          eq(projectSecrets.projectId, projectId),
+          eq(projectSecrets.scope, scope),
+          eq(projectSecrets.name, name),
+        ),
+      )
+      .returning({ name: projectSecrets.name });
+    return rows.length > 0;
+  },
+
   async deviceCheckout(projectId: string, deviceId: string): Promise<DeviceCheckout | null> {
     const [row] = await db
       .select({ deviceId: runners.deviceId, repoPath: runners.repoPath, branch: runners.branch })

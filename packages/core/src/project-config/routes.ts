@@ -7,7 +7,7 @@ import { verifyDeviceCredential } from '../credentials/device-credential.js';
 import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -22,6 +22,7 @@ import {
   secretValueElsewhere,
 } from './secret-value-door.js';
 import {
+  deleteSecret,
   deleteTestingProfile,
   type Held,
   listSecretNames,
@@ -350,6 +351,41 @@ projectConfigRoutes.put(
     return c.json(secretView(outcome.secret));
   },
 );
+
+// remove one secret (ISS-847): the PUT's rule, refused by name while a testing profile names it or
+// when there is none, and written to the project's credential audit (GET /variables/events)
+projectConfigRoutes.delete('/:id/secrets/:scope/:name', paramOf(secretParam), noQuery, async (c) => {
+  const { id, scope, name } = c.req.valid('param');
+  await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
+  if (scope === VARIABLE_SECRET_SCOPE) {
+    return refused(
+      c,
+      [
+        {
+          code: 'SECRET_SCOPE_RESERVED',
+          path: '/scope',
+          detail: `\`${VARIABLE_SECRET_SCOPE}\` holds the project's variable values and is removed only as a variable: DELETE /api/projects/${id}/variables/<variable id>.`,
+        },
+      ],
+      'CONFIG_REFUSED',
+    );
+  }
+  const actor = restActor(c);
+  const outcome = await deleteSecret({
+    projectId: id,
+    scope,
+    name,
+    actor: { id: actor.id, tokenId: actor.tokenId, agency: actor.agency },
+  });
+  if (outcome.ok) return c.json({ deleted: secretRefOf(scope, name) });
+  if (outcome.notFound) {
+    throw new HTTPException(404, {
+      message: `this project holds no secret ${secretRefOf(scope, name)}; GET /api/projects/${id}/secrets lists the ones it holds`,
+      cause: { code: 'SECRET_NOT_FOUND' },
+    });
+  }
+  return refused(c, outcome.refusals, 'CONFIG_REFUSED');
+});
 
 projectConfigRoutes.get('/:id/bindings', paramOf(idParam), noQuery, async (c) => {
   const { id } = c.req.valid('param');
