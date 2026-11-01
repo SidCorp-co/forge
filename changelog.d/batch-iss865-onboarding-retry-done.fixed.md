@@ -1,0 +1,1 @@
+**A retried onboarding job ends when its phase is done.** Marking onboarding done now settles the attempt that is running, so a retried analysis no longer fails 15 minutes after finishing and runs again.

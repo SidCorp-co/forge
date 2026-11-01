@@ -372,3 +372,21 @@ describe('c4: a claimed onboarding job is briefed with the method as it stands (
     expect(prepared.promptString).toContain('`P/onboarding/answers`');
   });
 });
+
+describe('c5: done settles the attempt that runs, not the first one (FB-468, ISS-865)', () => {
+  it('ends the retried attempt done when the agent marks the phase done on last_job_id', async () => {
+    const first = await lastJobOf(openProject);
+    await failAndRetry(first, 'stalled: has reported nothing since its agent ended a turn');
+    const running = await newestAttempt(first);
+    expect(running).not.toBe(first);
+    await kernel(sql`UPDATE jobs SET status = 'dispatched' WHERE id = ${running}`);
+
+    const { settlePhaseJob } = await import('../../src/onboarding/job.js');
+    await settlePhaseJob('agent', first);
+
+    const [after] = await rows<{ status: string; finished: boolean }>(
+      sql`SELECT status, finished_at IS NOT NULL AS finished FROM jobs WHERE id = ${running}`,
+    );
+    expect(after).toEqual({ status: 'done', finished: true });
+  });
+});

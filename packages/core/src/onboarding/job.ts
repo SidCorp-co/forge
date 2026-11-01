@@ -111,13 +111,26 @@ export async function currentOnboardingBrief(job: {
   });
 }
 
-/** The agent's last act of a phase settles the job that ran it. */
+/**
+ * The agent's last act of a phase settles the job that ran it: the newest attempt of the chain
+ * `last_job_id` starts. A pool retry is a new job (`jobs.retry_of`) and `last_job_id` keeps naming
+ * the first, so settling that one left the running attempt dispatched until the stall check failed
+ * it and retried a finished phase (FB-468).
+ */
 export async function settlePhaseJob(agency: ActorAgency, jobId: string | null) {
   if (!jobId) return;
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
+  let [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
+  for (let hop = 0; job && hop < MAX_RETRY_HOPS; hop++) {
+    const [next] = await db.select().from(jobs).where(eq(jobs.retryOf, job.id));
+    if (!next) break;
+    job = next;
+  }
   if (job && settlesPhaseJob(agency, job.status))
     await finalizeJobDone(job, 'onboarding_phase_settled');
 }
+
+/** A bound on following a retry chain; the pool retries a job at most 30 times. */
+const MAX_RETRY_HOPS = 64;
 
 /** After a submit commits: one revise job reads the answers, unless an onboarding job already runs. */
 export async function afterOnboardingSubmit(batch: BatchRow, submittedBy: string) {
