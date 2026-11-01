@@ -13,13 +13,16 @@ use serde::Deserialize;
 use runner_platform::error::{Error, Result};
 
 pub mod probation;
+pub mod stamp;
+pub use stamp::UNKNOWN_COMMIT;
 
 /// This build's identity, all three fixed by build.rs.
 ///
 /// `CURRENT_VERSION` is the RELEASED version — the one the release tag carried,
 /// stamped in at build time — and not Cargo's, because the released patch is the
-/// tag's. `BUILD_COMMIT` is the commit that release was built from, or `unknown`
-/// for a build nobody released. Core compares a box against both.
+/// tag's. `BUILD_COMMIT` is the commit the build came from: its checkout's `HEAD`
+/// (`-dirty` with uncommitted changes), else the release's stamp, else
+/// [`UNKNOWN_COMMIT`] (ISS-866). Core compares a box against both.
 pub const CURRENT_VERSION: &str = env!("FORGE_RUNNER_VERSION");
 pub const BUILD_COMMIT: &str = env!("FORGE_RUNNER_COMMIT");
 pub const BUILD_TARGET: &str = env!("FORGE_RUNNER_TARGET");
@@ -44,7 +47,7 @@ pub fn build_commit() -> Option<&'static str> {
 /// every shape a stamp arrives in rather than against whatever this build got.
 fn commit_or_none(raw: &str) -> Option<&str> {
     let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed == "unknown" {
+    if trimmed.is_empty() || trimmed == "unknown" || trimmed == UNKNOWN_COMMIT {
         None
     } else {
         Some(trimmed)
