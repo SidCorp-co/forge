@@ -23,192 +23,39 @@
  * @direct-test-of packages/core/src/issues/criteria/recording-session.ts
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { api, userToken } from '../helpers/api.js';
-import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import { closeWorld } from '../helpers/ecosystem-world.js';
+import { seedIssueStatus } from '../helpers/factories.js';
+import { refusalCodes as codes } from '../helpers/pattern-world.js';
 import {
-  addProjectMember,
-  bindTestRunner,
-  createTestDevice,
-  createTestIssue,
-  createTestUser,
-  seedIssueStatus,
-} from '../helpers/factories.js';
-import { refusalCodes as codes, projectBuiltFrom, type Res } from '../helpers/pattern-world.js';
-import { declareControls } from '../helpers/project-controls.js';
+  admissibleKeys,
+  call,
+  close,
+  DESIGNS,
+  design,
+  details,
+  open,
+  opened,
+  preflight,
+  startScopeWorld,
+  wave,
+  waveIn,
+} from '../helpers/scope-world.js';
 
 let projectId = '';
-/** A project that declares no module label: a design there names none and holds it whole (ISS-609). */
 let bareId = '';
-let deviceId = '';
-let adminId = '';
 let box = '';
 let author = '';
 
-/** The module labels the wave's designs name, under the group labels this project files them in. */
-const TREE: Record<string, string[]> = {
-  'work-delivery': ['issues', 'lifecycle', 'pipeline'],
-  'product-design': ['requirements', 'workflows', 'suggestions', 'feedback'],
-  'projects-config': ['project-config'],
-  execution: ['skills', 'prompt'],
-  platform: ['mcp', 'db'],
-};
-
-async function moduleLabel(name: string, parentId: string | null): Promise<string> {
-  const [row] = (await db.execute(sql`
-    INSERT INTO labels (project_id, name, color, kind, slug, parent_id)
-    VALUES (${projectId}, ${name}, '#888888', 'module', ${name}, ${parentId})
-    RETURNING id
-  `)) as unknown as Array<{ id: string }>;
-  return String(row?.id);
-}
-
 beforeAll(async () => {
-  testEnv();
-  await import('../../src/index.js');
-  await startQueue();
-  const { mintPat } = await import('../../src/credentials/pat.js');
-  const admin = await createTestUser({ verified: true });
-  const agent = await createTestUser({ kind: 'agent' });
-  adminId = admin.id;
-  projectId = await projectBuiltFrom(admin.id, null);
-  for (const [group, children] of Object.entries(TREE)) {
-    const parent = await moduleLabel(group, null);
-    for (const child of children) await moduleLabel(child, parent);
-  }
-  bareId = await projectBuiltFrom(admin.id, null);
-  deviceId = await createTestDevice(admin.id);
-  for (const p of [projectId, bareId]) {
-    // REQ-79 r6: scope_hold is strict's now; this test asks for it
-    await declareControls(p, admin.id, { gates: { overrides: { scope_hold: 'enforce' } } });
-    await addProjectMember(p, admin.id, 'admin');
-    await addProjectMember(p, agent.id, 'member');
-    await bindTestRunner(p, deviceId);
-  }
-  box = (
-    await mintPat({
-      permissions: ['*'],
-      userId: admin.id,
-      name: 'box-scope',
-      deviceId,
-      projectIds: [projectId, bareId],
-    })
-  ).plaintext;
-  author = await userToken(agent.id);
+  ({ projectId, bareId, box, author } = await startScopeWorld());
 }, 120_000);
 
 afterAll(async () => {
   await closeWorld();
 });
-
-async function call(
-  token: string,
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
-  path: string,
-  body?: unknown,
-): Promise<Res> {
-  const res = await api(token, method, path, body);
-  return { status: res.status, body: res.body as Doc };
-}
-
-const details = (res: Res): string =>
-  (res.body?.error?.refusals ?? []).map((r: Doc) => r.detail).join(' | ');
-
-let seqBase = 0;
-
-type Issue = { id: string; key: string };
-
-/** A fresh set of issues keyed like the wave's, each with its two criteria written, by name. */
-async function wave(...names: number[]): Promise<(n: number) => Issue> {
-  return waveIn(projectId, ...names);
-}
-
-async function waveIn(project: string, ...names: number[]): Promise<(n: number) => Issue> {
-  seqBase += 1000;
-  const out = new Map<number, Issue>();
-  for (const n of names) {
-    const issue = await createTestIssue(project, adminId, seqBase + n, {
-      status: 'open',
-      createdAt: new Date(),
-    });
-    const res = await call(author, 'PATCH', `/api/issues/${issue.id}`, {
-      acceptanceCriteria: '1. It holds.\n2. It is refused by name.',
-    });
-    expect(res.status).toBe(200);
-    out.set(n, issue);
-  }
-  return (n) => {
-    const issue = out.get(n);
-    if (!issue) throw new Error(`this wave made no issue ${n}`);
-    return issue;
-  };
-}
-
-/** The issue's design through the REST door, then its contracts as given. */
-async function design(issueId: string, modules: string[], contracts: string[] = []): Promise<void> {
-  const res = await call(author, 'PUT', `/api/issues/${issueId}/design`, {
-    criteria: [
-      { criterion: 1, class: 'observable', pattern: null, proof: 'run it' },
-      { criterion: 2, class: 'observable', pattern: null, proof: 'run it red' },
-    ],
-    modules,
-    contracts: [],
-  });
-  expect([res.status, details(res)]).toEqual([200, '']);
-  if (contracts.length > 0) {
-    await db.execute(sql`
-      UPDATE issue_designs SET contracts = ${sql`ARRAY[${sql.join(
-        contracts.map((c) => sql`${c}`),
-        sql`, `,
-      )}]::text[]`} WHERE issue_id = ${issueId}`);
-  }
-}
-
-/** The wave's designs: what each issue's tree and plan change, by module. */
-const DESIGNS = {
-  453: ['project-config', 'requirements', 'workflows', 'suggestions', 'issues'],
-  454: ['lifecycle', 'issues', 'feedback', 'pipeline'],
-  455: ['pipeline', 'requirements', 'skills', 'prompt', 'mcp'],
-  469: ['issues'],
-} as const;
-
-const preflight = (keys: string[], project = projectId) =>
-  call(box, 'POST', '/api/devices/me/run-sessions/preflight', {
-    projectId: project,
-    issueKeys: keys,
-  });
-
-async function open(keys: string[], project = projectId): Promise<{ res: Res; runId: string }> {
-  const runId = randomUUID();
-  const res = await call(box, 'POST', '/api/devices/me/run-sessions', {
-    projectId: project,
-    runId,
-    issueKeys: keys,
-    name: keys.join(','),
-  });
-  return { res, runId };
-}
-
-async function opened(
-  keys: string[],
-  project = projectId,
-): Promise<{ sessionId: string; runId: string }> {
-  const { res, runId } = await open(keys, project);
-  expect([res.status, details(res)]).toEqual([200, '']);
-  return { sessionId: String(res.body.sessionId), runId };
-}
-
-const close = (sessionId: string) =>
-  call(box, 'POST', `/api/devices/me/run-sessions/${sessionId}/close`, { outcome: 'ended' });
-
-async function admissibleKeys(): Promise<string[]> {
-  const { readAdmissibleIssues } = await import('../../src/devices/admissible.js');
-  const { items } = await readAdmissibleIssues({ deviceId, projectId });
-  return items.map((i) => String(i.issueKey));
-}
 
 describe('a declaration over an issue whose design meets a held one (criterion 1)', () => {
   it('is refused naming its holder at preflight and open, and taken after', async () => {
@@ -416,154 +263,5 @@ describe('a design naming no module, on a project that declares none (ISS-609)',
     await close(first.sessionId);
     expect((await step(7, 'build')).status).toBe(200);
     await close(second.sessionId);
-  });
-});
-
-/** Ends every run still open on the bare project, so a red test leaves no holder to the next. */
-async function closeBareRuns(): Promise<void> {
-  const open = (await db.execute(sql`
-    SELECT s.id FROM agent_sessions s
-     WHERE s.project_id = ${bareId} AND s.kind = 'run_session' AND s.status = 'running'`)) as unknown as Array<{
-    id: string;
-  }>;
-  for (const row of open) await close(row.id);
-}
-
-/** A run declared over landed work, as the QA master's judges are: it writes no code. */
-async function landed(issueId: string): Promise<void> {
-  await seedIssueStatus(issueId, 'awaiting_release');
-}
-
-// adminhub-fe ISS-54/55, 2026-10-26: judge run b7a0559f over ISS-54 held the whole project, and
-// ISS-55's judge declarations queued behind it ISSUE_SCOPE_HELD. The hold binds runs that build
-// or change the tree (REQ-36 BC-5); a judge neither holds a scope nor waits on one.
-describe('a judge run, declared over landed work (REQ-36 BC-5)', () => {
-  afterEach(closeBareRuns);
-
-  it('holds no scope: a builder is taken at preflight and open while it runs', async () => {
-    const w = await waveIn(bareId, 11, 12);
-    await design(w(11).id, []);
-    await design(w(12).id, []);
-    await landed(w(11).id);
-    const judge = await opened([w(11).key], bareId);
-
-    expect(codes(await preflight([w(12).key], bareId))).toEqual([]);
-    const builder = await opened([w(12).key], bareId);
-    await close(builder.sessionId);
-    await close(judge.sessionId);
-  });
-
-  it('waits on no scope: a judge is taken while a builder holds the whole project', async () => {
-    const w = await waveIn(bareId, 13, 14);
-    await design(w(13).id, []);
-    await design(w(14).id, []);
-    const builder = await opened([w(13).key], bareId);
-    await landed(w(14).id);
-
-    expect(codes(await preflight([w(14).key], bareId))).toEqual([]);
-    const judge = await opened([w(14).key], bareId);
-    await close(judge.sessionId);
-    await close(builder.sessionId);
-  });
-
-  it('holds no scope at the move into build either', async () => {
-    const w = await waveIn(bareId, 15, 16);
-    const builder = await opened([w(16).key], bareId);
-    await design(w(15).id, []);
-    await landed(w(15).id);
-    const judge = await opened([w(15).key], bareId);
-    await db.execute(sql`
-      INSERT INTO issue_work_state (issue_id, step, step_started_at) VALUES (${w(15).id}, 'release', now())
-      ON CONFLICT (issue_id) DO UPDATE SET step = 'release', step_started_at = now()`);
-    await seedIssueStatus(w(16).id, 'in_progress');
-    await design(w(16).id, []);
-
-    const moved = await call(author, 'PATCH', `/api/issues/${w(16).id}`, {
-      workState: { step: 'build' },
-    });
-
-    expect([moved.status, details(moved)]).toEqual([200, '']);
-    await close(judge.sessionId);
-    await close(builder.sessionId);
-  });
-
-  it('still leaves a builder holding the whole project against another builder', async () => {
-    const w = await waveIn(bareId, 17, 18);
-    await design(w(17).id, []);
-    await design(w(18).id, []);
-    const builder = await opened([w(17).key], bareId);
-    expect(codes(await preflight([w(18).key], bareId))).toEqual(['ISSUE_SCOPE_HELD']);
-    await close(builder.sessionId);
-  });
-});
-
-// adminhub-fe ISS-55, 2026-10-26: while its judge's declaration stood queued behind
-// ISSUE_SCOPE_HELD, the box posted verdicts naming that run; core kept them and read them as the
-// builder's (VERDICT_BY_BUILDER). A run core has not admitted writes no verdict.
-describe('a verdict from a run core has not admitted', () => {
-  afterEach(closeBareRuns);
-
-  const verdictRows = async (issueId: string) =>
-    (
-      (await db.execute(sql`
-        SELECT count(*)::int AS n FROM criterion_verdicts WHERE issue_id = ${issueId}`)) as unknown as Array<{
-        n: number;
-      }>
-    )[0]?.n;
-
-  it('is refused by name with the refusal its declaration waits behind, and nothing is written', async () => {
-    const w = await waveIn(bareId, 21, 22);
-    await design(w(21).id, []);
-    await design(w(22).id, []);
-    const holder = await opened([w(21).key], bareId);
-    const queued = await open([w(22).key], bareId);
-    expect(codes(queued.res)).toEqual(['ISSUE_SCOPE_HELD']);
-
-    const res = await call(box, 'POST', `/api/issues/${w(22).id}/verdicts`, {
-      criterion: 1,
-      verdict: 'fail',
-      reason: 'judged while queued',
-      identity: { kind: 'commit', sha: 'f4e5fb66700ba7b35c8c607c8f7309fc5980861a' },
-      withoutClip: 'an API route, nothing on screen',
-      run: queued.runId,
-    });
-
-    expect([res.status, codes(res)]).toEqual([422, ['VERDICT_SESSION_NOT_ADMITTED']]);
-    expect(res.body.error.refusals[0].path).toBe('/run');
-    expect(details(res)).toContain(`recorded by run ${queued.runId}, which core has not admitted`);
-    expect(details(res)).toContain('it waits behind ISSUE_SCOPE_HELD:');
-    expect(details(res)).toContain(`held by live run ${holder.runId}`);
-    expect(details(res)).toContain('Nothing was written.');
-    expect(details(res), 'a scope wait names no builder run to close').not.toContain(
-      'Close the builder run',
-    );
-    expect(details(res)).toContain('Record the verdict once the run is admitted.');
-    expect(await verdictRows(w(22).id)).toBe(0);
-    await close(holder.sessionId);
-  });
-
-  it('is refused for a pass queued behind another run holding the same issue, never read as the builder', async () => {
-    const w = await waveIn(bareId, 23);
-    const holder = await opened([w(23).key], bareId);
-    const queued = await open([w(23).key], bareId);
-    expect(codes(queued.res)).toEqual(['ISSUE_LEASE_HELD']);
-
-    const res = await call(box, 'POST', `/api/issues/${w(23).id}/verdicts`, {
-      criterion: 1,
-      verdict: 'pass',
-      reason: 'judged while queued',
-      identity: { kind: 'commit', sha: 'f4e5fb66700ba7b35c8c607c8f7309fc5980861a' },
-      run: queued.runId,
-    });
-
-    expect([res.status, codes(res)]).toEqual([422, ['VERDICT_SESSION_NOT_ADMITTED']]);
-    expect(details(res)).toContain('it waits behind ISSUE_LEASE_HELD:');
-    // forge-core-61, 2026-10-31 (ISS-838): a reviewer judges finished work, so the refusal names the
-    // builder run to close, not only its session.
-    expect(details(res)).toContain(
-      `Close the builder run ${holder.runId} first, then record the verdict once run ${queued.runId} is admitted.`,
-    );
-    expect(await verdictRows(w(23).id)).toBe(0);
-    await close(holder.sessionId);
   });
 });
