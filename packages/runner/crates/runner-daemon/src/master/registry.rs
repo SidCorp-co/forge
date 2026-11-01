@@ -77,11 +77,17 @@ pub(crate) struct Registry {
     /// pass settled: a turn started past it with no pass open is one the
     /// runner did not nudge, and is recorded as an unprompted pass.
     pub(crate) turns_settled: HashMap<String, (String, u64)>,
+    /// The projects whose last pane this box ended dead on arrival, until a
+    /// pane placed for it is heard: a second dead arrival is then said as a
+    /// finding rather than placed again (ISS-859).
+    pub(crate) dead_arrivals: std::collections::HashSet<String>,
 }
 
 /// One pane this box placed: when, and where its output begins.
 pub(crate) struct PlacedPane {
     pub(crate) at: Instant,
+    /// The same instant on the wall clock, which hooks and transcripts are dated by.
+    pub(crate) at_ms: i64,
     /// The transcript and its length when the pane started; `None` where the
     /// pane was placed with no transcript.
     pub(crate) output: Option<(std::path::PathBuf, u64)>,
@@ -434,14 +440,49 @@ impl Masters {
     }
 
     pub(crate) fn note_placed(&self, project_id: &str, output: Option<(std::path::PathBuf, u64)>) {
+        self.note_placed_at(project_id, output, agent_activity::now_ms());
+    }
+
+    pub(crate) fn note_placed_at(
+        &self,
+        project_id: &str,
+        output: Option<(std::path::PathBuf, u64)>,
+        at_ms: i64,
+    ) {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.placed.insert(
             project_id.to_string(),
             PlacedPane {
                 at: Instant::now(),
+                at_ms,
                 output,
             },
         );
+    }
+
+    /// When this daemon placed the project's pane, on the wall clock; `None`
+    /// for a pane it did not place.
+    pub(crate) fn placed_at_ms(&self, project_id: &str) -> Option<i64> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.placed.get(project_id).map(|p| p.at_ms)
+    }
+
+    /// The project's pane was ended dead on arrival.
+    pub(crate) fn note_dead_arrival(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.dead_arrivals.insert(project_id.to_string());
+    }
+
+    /// A pane placed for the project was heard, so the dead arrivals before it are over.
+    pub(crate) fn note_arrival_heard(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.dead_arrivals.remove(project_id);
+    }
+
+    /// Whether the pane before this one was ended dead on arrival.
+    pub(crate) fn dead_before(&self, project_id: &str) -> bool {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.dead_arrivals.contains(project_id)
     }
 
     pub(crate) fn take_placed(&self, project_id: &str) -> Option<PlacedPane> {

@@ -155,6 +155,21 @@ async fn leave(
             record_stale(t, adopted, authority);
             tend(t, found).await;
         }
+        ("dead_on_arrival", _) => {
+            let why = Unplaced::Withheld {
+                reason: reason.to_string(),
+                because: because.to_string(),
+                pane: Some(t.seen.pane_name.clone()),
+            };
+            if t.masters().note_unplaced(t.project_id(), why) {
+                tracing::error!(
+                    "[master] {}: finding: {} — it is left standing and not placed again; `forge-runner master kill {}` ends it once its hooks are mended",
+                    t.slug(),
+                    because,
+                    t.slug()
+                );
+            }
+        }
         _ => left_undriven(t, reason, because),
     }
 }
@@ -330,16 +345,26 @@ async fn end_for_replacement(
             tracing::info!(
                 "[master] {slug}: core replaces {name}: {because}. It is ended and placed again this sweep, resuming its conversation under the build and plugins this box holds now"
             );
-            match masters.get(project_id) {
-                Some((session, _)) => {
-                    let why = "outdated: replaced by a pane under the build this box runs";
-                    end_master(t.sw.client, masters, t.sw.tokens, project_id, &session, why).await;
-                }
-                None => {
-                    masters.forget(project_id);
-                }
-            }
+            end_replaced(
+                t,
+                "outdated: replaced by a pane under the build this box runs",
+            )
+            .await;
             masters.note_outdated(project_id, None);
+            Some(false)
+        }
+        ("dead_on_arrival", _) => {
+            if let Err(e) = terminal::kill(name).await {
+                tracing::error!(
+                    "[master] {slug}: {name} is dead on arrival ({because}) and tmux would not end it: {e}. `forge-runner master kill {slug}` ends it"
+                );
+                return None;
+            }
+            tracing::error!(
+                "[master] {slug}: {name} is dead on arrival: {because}. It is ended and placed once more; a second dead arrival is left for a person"
+            );
+            masters.note_dead_arrival(project_id);
+            end_replaced(t, "dead on arrival: never heard from after its placement").await;
             Some(false)
         }
         ("deaf", Some(adopted)) => {
@@ -354,6 +379,19 @@ async fn end_for_replacement(
         _ => {
             left_undriven(t, reason, because);
             None
+        }
+    }
+}
+
+/// Close the session of a pane just ended for its replacement.
+async fn end_replaced(t: &Turn<'_>, why: &str) {
+    let (masters, project_id) = (t.masters(), t.project_id());
+    match masters.get(project_id) {
+        Some((session, _)) => {
+            end_master(t.sw.client, masters, t.sw.tokens, project_id, &session, why).await;
+        }
+        None => {
+            masters.forget(project_id);
         }
     }
 }

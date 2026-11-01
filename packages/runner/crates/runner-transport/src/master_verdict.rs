@@ -35,6 +35,23 @@ pub struct Facts {
     pub idle: Idle,
     pub limit: Limit,
     pub nudge: NudgeFacts,
+    /// The pane this box placed and what it heard from it since; left out
+    /// where it placed none up now, so a core that predates it is not sent a
+    /// key it refuses (ISS-859).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arrival: Option<Arrival>,
+}
+
+/// What a box heard from a pane it placed; whether that is dead on arrival is core's.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Arrival {
+    pub pane: String,
+    pub placed_ago_seconds: u64,
+    /// Any hook or transcript write since the placement.
+    pub heard: bool,
+    /// The pane this one replaced was ended dead on arrival.
+    pub dead_before: bool,
 }
 
 /// Each input by name with its digest, as placed and as this box would hand

@@ -392,6 +392,7 @@ pub(crate) fn facts_of(
         idle,
         limit,
         nudge,
+        arrival: None,
     }
 }
 

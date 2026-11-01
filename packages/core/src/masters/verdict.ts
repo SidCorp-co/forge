@@ -415,6 +415,38 @@ function placeVerdict(facts: MasterJudged): MasterVerdict {
 }
 
 /**
+ * How long a placed pane may go unheard before it is read dead on arrival (ISS-859). A pane is
+ * briefed the moment it is up, so its first hook is its brief's `UserPromptSubmit`, seconds after
+ * Claude Code starts; five minutes outlasts a cold start loading its MCP servers and plugins, and
+ * bounds a pane that came up dead to one window rather than forever.
+ */
+export const DEAD_ON_ARRIVAL_SECONDS = 300;
+
+/**
+ * A pane placed and not heard from inside the window is ended and placed again, once: a second dead
+ * arrival in a row is left standing and said, since placing a third would only repeat it.
+ */
+function deadOnArrival(facts: MasterJudged): MasterVerdict | null {
+  const arrival = facts.arrival;
+  if (!arrival || arrival.heard || arrival.placedAgoSeconds < DEAD_ON_ARRIVAL_SECONDS) return null;
+  const vars = { pane: arrival.pane, m: minutes(arrival.placedAgoSeconds) };
+  if (arrival.deadBefore) {
+    return {
+      act: 'leave',
+      reason: 'dead_on_arrival',
+      ...because(say('masters.verdict.deadOnArrivalAgain', vars)),
+    };
+  }
+  return {
+    act: 'replace',
+    reason: 'dead_on_arrival',
+    resume: resumeOf(facts),
+    nudge: passAsked(facts),
+    ...because(say('masters.verdict.deadOnArrival', vars)),
+  };
+}
+
+/**
  * The whole of the placement and retirement decision for one project's master on one box. An
  * outdated pane that may be replaced is; a deaf one is judged next, since a pane nobody can hear
  * holds nothing an outdated pane is kept for; any other pane is kept and driven, an outdated one
@@ -427,6 +459,8 @@ export function masterVerdict(facts: MasterJudged, record: MasterRecord): Master
   if (!workWaits(facts) && facts.work.jobPanes === 0 && idleStay(facts) === null) {
     return { act: 'retire', ...because(retireBecause(facts)) };
   }
+  const dead = deadOnArrival(facts);
+  if (dead) return dead;
   const outdated = outdatedHold(facts);
   const replace = outdated ? outdatedReplace(facts, outdated) : null;
   if (replace) return replace;

@@ -42,6 +42,8 @@ mod outdated;
 use outdated::*;
 mod deaf;
 use deaf::*;
+mod arrival;
+use arrival::*;
 mod mcp;
 use mcp::*;
 mod place;

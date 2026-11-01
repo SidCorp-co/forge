@@ -136,7 +136,32 @@ fn facts_for(
         reported.as_ref(),
         agent_activity::now_ms(),
     );
-    facts_of(seen, work, judged, idle, limit, nudge, &resolved.repo_path)
+    let arrival = seen
+        .pane_alive
+        .then(|| {
+            let transcript = reported
+                .as_ref()
+                .and_then(|a| a.transcript.clone())
+                .map(std::path::PathBuf::from)
+                .or_else(|| {
+                    seen.stored_conversation
+                        .as_deref()
+                        .and_then(|c| conversation_transcript(&resolved.repo_path, c))
+                });
+            arrival_facts(
+                masters,
+                activity,
+                &runner.project_id,
+                &seen.pane_name,
+                transcript.as_deref(),
+                agent_activity::now_ms(),
+            )
+        })
+        .flatten();
+    wire::Facts {
+        arrival,
+        ..facts_of(seen, work, judged, idle, limit, nudge, &resolved.repo_path)
+    }
 }
 
 /// What the ledger and the drain said about the project before anything is awaited.

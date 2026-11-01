@@ -159,6 +159,21 @@ export const masterFactsSchema = z.strictObject({
 			.nullable(),
 		since: z.enum(MASTER_SINCE_NUDGE),
 	}),
+	/**
+	 * The pane this box placed and what it has heard from it since (ISS-859): whether core reads it
+	 * dead on arrival is core's. `heard` is any hook, transcript write or turn after the placement;
+	 * `deadBefore` that the pane this one replaced was itself ended dead on arrival. Absent from a
+	 * box that predates it, and null where this box placed no pane up now.
+	 */
+	arrival: z
+		.strictObject({
+			pane: z.string().trim().min(1).max(128),
+			placedAgoSeconds: age,
+			heard: z.boolean(),
+			deadBefore: z.boolean(),
+		})
+		.nullable()
+		.optional(),
 });
 export type MasterFacts = z.infer<typeof masterFactsSchema>;
 
@@ -168,7 +183,7 @@ export const masterVerdictRequestSchema = z.strictObject({
 	facts: masterFactsSchema,
 });
 export const MASTER_VERDICT_SHAPE =
-	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, placement, holding, turn, idle, limit, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
+	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, placement, holding, turn, idle, limit, nudge, arrival? } } — see @forge/contracts/master-verdict masterFactsSchema";
 
 /** Why no pane is placed, none ended and none nudged. */
 export const MASTER_WITHHOLD_REASONS = [
@@ -185,11 +200,11 @@ export const MASTER_WITHHOLD_REASONS = [
 export type MasterWithholdReason = (typeof MASTER_WITHHOLD_REASONS)[number];
 
 /** Why a standing pane is left running and not driven. An outdated pane is never left: it is kept and driven, draining. */
-export const MASTER_LEAVE_REASONS = ["stood_down", "deaf"] as const;
+export const MASTER_LEAVE_REASONS = ["stood_down", "deaf", "dead_on_arrival"] as const;
 export type MasterLeaveReason = (typeof MASTER_LEAVE_REASONS)[number];
 
 /** Why a standing pane is ended and a successor placed in the same sweep. */
-export const MASTER_REPLACE_REASONS = ["deaf", "outdated"] as const;
+export const MASTER_REPLACE_REASONS = ["deaf", "outdated", "dead_on_arrival"] as const;
 export type MasterReplaceReason = (typeof MASTER_REPLACE_REASONS)[number];
 
 /**

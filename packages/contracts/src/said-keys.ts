@@ -2534,6 +2534,14 @@ export const SAID = {
 		en: "its pane cannot be heard and {left}",
 		vars: { left: "said" },
 	},
+	"masters.verdict.deadOnArrival": {
+		en: "{pane} placed {m} min ago and never heard from: dead on arrival",
+		vars: { pane: "name", m: "count" },
+	},
+	"masters.verdict.deadOnArrivalAgain": {
+		en: "{pane} placed {m} min ago and never heard from, the second dead arrival in a row: left for a person",
+		vars: { pane: "name", m: "count" },
+	},
 	"masters.verdict.deafReplace": {
 		en: "its pane holds a replaced session's capability: every declaration refused",
 	},
