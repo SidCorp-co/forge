@@ -113,7 +113,7 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
     });
   });
 
-  it('diagnoses with a granted tool, shows the check in the thread, and never prints the credential (BC-12, BC-17)', async () => {
+  it('diagnoses with a granted tool, posts only its answer in the thread, records the check, and never prints the credential (BC-12, BC-15, BC-17)', async () => {
     w.box.model = async (turn, act) => {
       for (const m of turn.messages) {
         if (m.from === 'forge') continue;
@@ -132,10 +132,21 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
       }
     };
     const id = await w.chat.say(w.chat.alice, 'My order 4321 is stuck, the invoice never came');
-    const lines = await w.untilLines((ls) => ls.filter((l) => l.tmid === id).length >= 2);
+    const lines = await w.untilLines((ls) => ls.filter((l) => l.tmid === id).length >= 1);
     const thread = lines.filter((l) => l.tmid === id);
-    expect(thread[0]?.text).toMatch(/^Checked: read order status — answered 200 \(\d+ ms\)\.$/);
-    expect(thread[1]?.text).toContain('payment_pending');
+    // REQ-75 r8 BC-12, BC-15: the answer is the only post; a check is no progress line in the room
+    expect(thread).toHaveLength(1);
+    expect(thread[0]?.text).toContain('payment_pending');
+    expect(thread.some((l) => l.text.startsWith('Checked:'))).toBe(false);
+    const [check] = (await db.execute(sql`
+      SELECT kind, output, external_id FROM support_actions
+       WHERE thread = ${id} AND kind = 'diagnose'
+    `)) as unknown as Array<{
+      kind: string;
+      output: { status: number };
+      external_id: string | null;
+    }>;
+    expect(check).toMatchObject({ kind: 'diagnose', output: { status: 200 }, external_id: null });
     expect(w.product.calls.at(-1)).toMatchObject({
       method: 'GET',
       url: '/v1/orders/4321',

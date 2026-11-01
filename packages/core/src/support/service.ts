@@ -16,7 +16,7 @@ import {
 import { askerOf, mentionRefusal, readerOf } from './channel.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
-import { checkLine, limitsOf } from './rules.js';
+import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import { insertAction, type RoomRow, unansweredInThread } from './store.js';
 import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
@@ -97,11 +97,8 @@ export async function runDiagnose(
   });
   if ('refusal' in called) return refusedWith(called.refusal.code, called.refusal.detail);
   const { result } = called;
-  const posted = await postInThread({
-    room,
-    thread: input.thread,
-    text: checkLine(planned.plan.tool.summary, result.status, result.durationMs),
-  });
+  // REQ-75 r8 BC-12, BC-15: a check is recorded on its action and posts nothing in the room; the
+  // session's answer is the thread's only message
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
@@ -112,7 +109,6 @@ export async function runDiagnose(
     tool: input.tool,
     input: input.args,
     output: result,
-    externalId: posted.messageId,
   });
   return { ok: true, value: result };
 }

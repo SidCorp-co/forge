@@ -107,12 +107,6 @@ export function resultNote(phase: FeedbackPhase, key: string): string | null {
   }
 }
 
-/** The line a check the session ran posts in the thread, so the group sees what was looked at. */
-export function checkLine(summary: string, status: number, durationMs: number): string {
-  const outcome = status === 0 ? 'could not be reached' : `answered ${status}`;
-  return `Checked: ${summary} — ${outcome} (${durationMs} ms).`;
-}
-
 /** The line a fix posts after it ran, or failed. */
 export function fixResultLine(summary: string, status: number, ok: boolean): string {
   if (ok) return `Done: ${summary} (answered ${status}).`;
