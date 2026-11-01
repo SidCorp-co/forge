@@ -39,16 +39,26 @@ beforeAll(async () => {
 
 describe('org knowledge (ISS-861)', () => {
   it('refuses a member who is not an org admin by name, and writes nothing', async () => {
-    const got = await api(w.member, 'PUT', entry('agent-is-the-voice'), { title: 'Voice', body: RULING });
+    const got = await api(w.member, 'PUT', entry('agent-is-the-voice'), {
+      title: 'Voice',
+      body: RULING,
+    });
     expect(got.status).toBe(403);
     expect(JSON.stringify(got.body)).toMatch(/org\.admin|FORBIDDEN|PERMISSION/);
     expect((await api(w.admin, 'GET', entry('agent-is-the-voice'))).status).toBe(404);
   });
 
   it("reaches every project of the org, ahead of the project's own always-on entries", async () => {
-    const put = await api(w.admin, 'PUT', entry('agent-is-the-voice'), { title: 'Voice', body: RULING });
+    const put = await api(w.admin, 'PUT', entry('agent-is-the-voice'), {
+      title: 'Voice',
+      body: RULING,
+    });
     expect(put.status, JSON.stringify(put.body)).toBe(200);
-    expect(put.body).toMatchObject({ orgId: w.orgId, slug: 'agent-is-the-voice', injection: 'always' });
+    expect(put.body).toMatchObject({
+      orgId: w.orgId,
+      slug: 'agent-is-the-voice',
+      injection: 'always',
+    });
     const own = await api(w.admin, 'PUT', `/api/projects/${w.projectId}/knowledge/build-commands`, {
       kind: 'rule',
       title: 'Build',
@@ -63,14 +73,19 @@ describe('org knowledge (ISS-861)', () => {
     expect(await servedCheckoutOrientation(w.projectId, w.slug)).toContain(RULING);
   });
 
-  it("gives way to a project entry under the same slug, in that project only", async () => {
+  it('gives way to a project entry under the same slug, in that project only', async () => {
     const narrowed = 'Here the channel agent may post the release line itself.';
-    const own = await api(w.admin, 'PUT', `/api/projects/${w.projectId}/knowledge/agent-is-the-voice`, {
-      kind: 'rule',
-      title: 'Voice here',
-      body: narrowed,
-      injection: 'always',
-    });
+    const own = await api(
+      w.admin,
+      'PUT',
+      `/api/projects/${w.projectId}/knowledge/agent-is-the-voice`,
+      {
+        kind: 'rule',
+        title: 'Voice here',
+        body: narrowed,
+        injection: 'always',
+      },
+    );
     expect(own.status, JSON.stringify(own.body)).toBe(200);
     const preamble = await preambleOf(w.projectId);
     expect(preamble).toContain(narrowed);

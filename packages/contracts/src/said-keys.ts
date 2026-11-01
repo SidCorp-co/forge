@@ -57,7 +57,7 @@ export const SAID = {
 	"standing.gate.title.changeRequestMissing": { en: "Request missing" },
 	"standing.gate.title.throughChangeRequests": { en: "Released by merge" },
 	"standing.gate.deployedOutside": {
-		en: "Production is deployed outside Forge; a release is the record of that deploy.",
+		en: "Production deploys outside Forge; a release records that deploy.",
 	},
 	"standing.gate.title.deployedOutside": { en: "Deployed outside Forge" },
 	"standing.gate.promotionMissing": {

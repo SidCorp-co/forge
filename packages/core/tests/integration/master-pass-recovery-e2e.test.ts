@@ -165,10 +165,16 @@ describe('the first pass that ran after refused passes is marked as the recovery
 // leaves the title null rather than a guess.
 describe('standing names the issue an open pass works by its title', () => {
   it('carries the title of the issue the pass names, and null for a key naming none', async () => {
-    const issue = await createTestIssue(projectId, ownerId, 7, { status: 'open', createdAt: new Date() });
+    const issue = await createTestIssue(projectId, ownerId, 7, {
+      status: 'open',
+      createdAt: new Date(),
+    });
     const sessionId = await masterSession('box');
     const pass = (body: Doc) => say('box', 'POST', '/api/devices/me/master-session/pass', body);
-    const opened = ok(await pass({ op: 'open', sessionId, verb: 'dispatch', issueKey: issue.key }), 201).pass;
+    const opened = ok(
+      await pass({ op: 'open', sessionId, verb: 'dispatch', issueKey: issue.key }),
+      201,
+    ).pass;
     const standing = ok(await say('owner', 'GET', at('/masters/standing')));
     expect(standing.pass).toMatchObject({ id: opened.id, issueKey: issue.key });
     expect(standing.passIssueTitle).toBe('issue 7');
@@ -176,7 +182,15 @@ describe('standing names the issue an open pass works by its title', () => {
       op: 'settle',
       sessionId,
       passId: opened.id,
-      facts: { openedBy: 'adopted', served: true, openedAgoMs: 1_000, hooks: null, writtenAgoMs: null, dispatched: [], record: { worked: false, refusal: null } },
+      facts: {
+        openedBy: 'adopted',
+        served: true,
+        openedAgoMs: 1_000,
+        hooks: null,
+        writtenAgoMs: null,
+        dispatched: [],
+        record: { worked: false, refusal: null },
+      },
     });
     ok(await pass({ op: 'open', sessionId, verb: 'dispatch', issueKey: 'ISS-9999' }), 201);
     expect(ok(await say('owner', 'GET', at('/masters/standing'))).passIssueTitle).toBeNull();

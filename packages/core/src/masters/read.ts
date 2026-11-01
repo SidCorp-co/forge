@@ -274,7 +274,9 @@ async function issueTitleOf(projectId: string, key: string): Promise<string | nu
   const seq = /-(\d+)$/.exec(key)?.[1];
   if (!seq) return null;
   const [row] = rowsOf<{ title: string }>(
-    await db.execute(sql`SELECT title FROM issues WHERE project_id = ${projectId} AND iss_seq = ${Number(seq)}`),
+    await db.execute(
+      sql`SELECT title FROM issues WHERE project_id = ${projectId} AND iss_seq = ${Number(seq)}`,
+    ),
   );
   return row?.title ?? null;
 }
