@@ -153,7 +153,8 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
         await assertNoUnansweredReturn(issueId, tx);
         // a write naming the step the work is already at moves nothing, so it asks no design check
         // (a run at build recording its head is not a move into build)
-        if (designGate && (await readWorkState(tx, issueId))?.step !== workState.step) {
+        const from = (await readWorkState(tx, issueId))?.step ?? null;
+        if (designGate && from !== workState.step) {
           await assertDesignPasses(
             tx,
             { id: issueId, projectId: scope.projectId },
@@ -161,8 +162,16 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
             catalog,
           );
           planCheckpointAsked = true;
-          // the design it now passes may meet a scope another run is building (REQ-36 BC-5)
-          await refuseScopeHeldForBuild(tx, { id: issueId, projectId: scope.projectId });
+          // the design it now passes may meet a scope another run is building (REQ-36 BC-5): asked
+          // where the work starts, never on a move within build, test and release, where the
+          // change may already have landed (ISS-843)
+          if (!from || !BUILD_STEPS.includes(from)) {
+            await refuseScopeHeldForBuild(
+              tx,
+              { id: issueId, projectId: scope.projectId },
+              { from, to: workState.step },
+            );
+          }
         }
       }
       await writeWorkStateFields(tx, issueId, workState);

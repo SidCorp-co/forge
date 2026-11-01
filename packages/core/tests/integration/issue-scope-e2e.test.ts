@@ -338,6 +338,36 @@ describe('a design recorded after admission, at the move into build', () => {
   });
 });
 
+// orbit, ISS-2/3 (FB-444): three runs of one wave each sat at build with their work landed, and
+// each one's move build -> test was refused ISSUE_SCOPE_HELD "into build" while the others lived.
+describe('the hold is asked where the work starts, never within the build phase (ISS-843)', () => {
+  it('takes an issue already at build on to test while another run builds, and names the move it refuses', async () => {
+    const w = await waveIn(bareId, 8, 9);
+    const first = await opened([w(8).key], bareId);
+    const second = await opened([w(9).key], bareId);
+    for (const n of [8, 9]) {
+      await seedIssueStatus(w(n).id, 'in_progress');
+      await design(w(n).id, []);
+    }
+    const step = (n: number, to: string) =>
+      call(author, 'PATCH', `/api/issues/${w(n).id}`, { workState: { step: to } });
+    expect((await step(8, 'design')).status).toBe(200);
+    expect((await step(8, 'build')).status).toBe(200);
+    // the entry is where the hold stands, and the refusal names the move it refuses
+    expect((await step(9, 'design')).status).toBe(200);
+    const held = await step(9, 'build');
+    expect([held.status, codes(held)]).toEqual([422, ['ISSUE_SCOPE_HELD']]);
+    expect(details(held)).toContain('the move of the work from design into build is refused');
+    // the field's state: the second run reached build anyway (its work landed), as orbit's did
+    await db.execute(sql`UPDATE issue_work_state SET step = 'build', step_started_at = now()
+                          WHERE issue_id = ${w(9).id}`);
+    expect((await step(9, 'test')).status).toBe(200);
+    expect((await step(8, 'test')).status).toBe(200);
+    await close(first.sessionId);
+    await close(second.sessionId);
+  });
+});
+
 describe('a design naming no module, on a project that declares none (ISS-609)', () => {
   it('holds the whole project: a second designed issue waits, one with no design does not', async () => {
     const w = await waveIn(bareId, 1, 2, 3);

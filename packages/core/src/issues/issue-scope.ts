@@ -10,8 +10,8 @@
  *
  * Asked at three doors: the run-session preflight and open (`blocked-by.ts:refuseHeldTakeForSeqs`),
  * the lease take inside the open's transaction (`issue-lease.ts:takeIssueLeases`), and the move of
- * the work step into build (`update-service.ts`), where a design recorded after admission is first
- * required. The take and the build move hold `issueScope` on the project, so two of them cannot both
+ * the work step into the build phase (`update-service.ts`), where a design recorded after admission
+ * is first required; a move within build, test and release is never asked (ISS-843). The take and the build move hold `issueScope` on the project, so two of them cannot both
  * read the other as absent.
  */
 
@@ -164,14 +164,17 @@ export async function refuseScopeHeldForKeys(
 }
 
 /**
- * Refuses the move of `issueId`'s work into build while a run already building holds a scope its
- * design meets. Only building holders count, so of two admitted runs whose designs were recorded
- * after admission the first to build goes first and neither waits on the other in a circle; the
- * issue's own run, and every issue it carries, is never its holder.
+ * Refuses the move of `issueId`'s work into the build phase while a run already building holds a
+ * scope its design meets. Only building holders count, so of two admitted runs whose designs were
+ * recorded after admission the first to build goes first and neither waits on the other in a
+ * circle; the issue's own run, and every issue it carries, is never its holder. The caller asks it
+ * only where the work enters the phase, never on a move within it (ISS-843), and the refusal names
+ * the move it refuses.
  */
 export async function refuseScopeHeldForBuild(
   executor: Reader,
   issue: { id: string; projectId: string },
+  move: { from: string | null; to: string },
 ): Promise<void> {
   const gate = await issueGateOf(issue.projectId, 'scope_hold');
   if (gate.mode !== 'enforce') return;
@@ -187,5 +190,6 @@ export async function refuseScopeHeldForBuild(
     exceptRunId: own?.run_id ?? null,
     buildingOnly: true,
   });
-  if (holds.length > 0) throw saidByGate(gate, scopeHeld(holds, 'the move of the work into build'));
+  const door = `the move of the work ${move.from ? `from ${move.from} ` : ''}into ${move.to}`;
+  if (holds.length > 0) throw saidByGate(gate, scopeHeld(holds, door));
 }
