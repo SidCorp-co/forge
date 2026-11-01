@@ -3,9 +3,73 @@
 // a project entry under the same slug takes the org's place (`service.ts:selectAlwaysInjectFromKnowledge`).
 // Read and written at `/api/orgs/:orgId/knowledge/:slug` by an org admin.
 
+import type { OrgKnowledgeEntry, OrgKnowledgeWrite } from '@forge/contracts/org-knowledge';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { orgKnowledgeEntries, projects } from '../db/schema.js';
+
+type Row = typeof orgKnowledgeEntries.$inferSelect;
+
+const viewOf = (r: Row): OrgKnowledgeEntry => ({
+  orgId: r.orgId,
+  slug: r.slug,
+  title: r.title,
+  body: r.body,
+  injection: r.injection,
+  orderIndex: r.orderIndex,
+  updatedBy: r.updatedBy,
+  createdAt: r.createdAt.toISOString(),
+  updatedAt: r.updatedAt.toISOString(),
+});
+
+/** Every entry the org holds, in their order. */
+export async function orgKnowledgeOf(orgId: string): Promise<OrgKnowledgeEntry[]> {
+  const rows = await db
+    .select()
+    .from(orgKnowledgeEntries)
+    .where(eq(orgKnowledgeEntries.orgId, orgId))
+    .orderBy(asc(orgKnowledgeEntries.orderIndex), asc(orgKnowledgeEntries.slug));
+  return rows.map(viewOf);
+}
+
+/** The org's entry under `slug`, or null where it holds none. */
+export async function orgKnowledgeEntryOf(orgId: string, slug: string): Promise<OrgKnowledgeEntry | null> {
+  const [row] = await db
+    .select()
+    .from(orgKnowledgeEntries)
+    .where(and(eq(orgKnowledgeEntries.orgId, orgId), eq(orgKnowledgeEntries.slug, slug)))
+    .limit(1);
+  return row ? viewOf(row) : null;
+}
+
+/** Create or replace the org's entry under `slug`, written by `userId`. */
+export async function writeOrgKnowledge(
+  orgId: string,
+  slug: string,
+  write: OrgKnowledgeWrite,
+  userId: string,
+): Promise<OrgKnowledgeEntry> {
+  const now = new Date();
+  const [row] = await db
+    .insert(orgKnowledgeEntries)
+    .values({ orgId, slug, ...write, updatedBy: userId, updatedAt: now })
+    .onConflictDoUpdate({
+      target: [orgKnowledgeEntries.orgId, orgKnowledgeEntries.slug],
+      set: { ...write, updatedBy: userId, updatedAt: now },
+    })
+    .returning();
+  if (!row) throw new Error('org knowledge: the upsert returned no row');
+  return viewOf(row);
+}
+
+/** Remove the org's entry under `slug`; false where it held none. */
+export async function deleteOrgKnowledge(orgId: string, slug: string): Promise<boolean> {
+  const removed = await db
+    .delete(orgKnowledgeEntries)
+    .where(and(eq(orgKnowledgeEntries.orgId, orgId), eq(orgKnowledgeEntries.slug, slug)))
+    .returning({ slug: orgKnowledgeEntries.slug });
+  return removed.length > 0;
+}
 
 /** The always-on entries of the org `projectId` belongs to, in their order; none where it has no org. */
 export async function orgAlwaysInjectOf(

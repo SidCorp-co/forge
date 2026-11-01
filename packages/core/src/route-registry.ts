@@ -108,7 +108,7 @@ import {
   jobProjectRoutes,
   jobRoutes,
 } from './jobs/routes.js';
-import { orgKnowledgeRoutes } from './knowledge/org-knowledge-routes.js';
+import { orgKnowledgeRoutes } from './knowledge/index.js';
 import { knowledgeRoutes } from './knowledge/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { lessonRoutes } from './lessons/index.js';

@@ -31,3 +31,4 @@ export {
   selectOnDemandSlugsFromKnowledge,
   updateKnowledgeLinks,
 } from './service.js';
+export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
