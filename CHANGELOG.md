@@ -9,6 +9,31 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.422] - 2026-11-01
+
+Agent speaks for itself, runs free their claims, plain live bar
+
+### Added
+
+- **Rulings reach every project of an org.** An organisation holds its own always-on knowledge, carried into every project prompt ahead of the project's own (ISS-861).
+- **Evidence on a cleanup debt reaches the cleanup run.** A debt keeps the evidence given on it in its giver's name, and the cleanup run's brief prints it with the debt's detail and who priced its amnesty (ISS-839).
+
+### Changed
+
+- **Masters work in batches by default.** The forge-master skill and the dispatch guide teach one batch split by files, landed, released and judged once, with no per-issue plan, suite or release.
+- **Chat rooms, feedback notices and the widget hear the agent, not canned core lines.** A parked run's question is asked by the room's agent and a plain answer is recorded; acks, progress lines and confirm-or-reopen copy are gone (ISS-857).
+
+### Fixed
+
+- **A builder reads a peer's contract before consuming it.** A project's pane token reads the approved versions of contracts published to an ecosystem its project is a member of, so a builder run can map against them before it declares the consumption.
+- **A judge declares over a requirement.** `run declare --requirement REQ-n --role qa` declares a judge of a shipped requirement with no issue, so it no longer waits on another run holding an issue.
+- **A verdict that records nothing is refused.** A comment whose verdict fence names no criterion is refused by name instead of being accepted with nothing recorded (ISS-786).
+- **A closed run gives its claim back.** Closing a run returns the issue claim it held, even when the master declares the next run in the same tree before the close reaches core.
+- **A run at build can move its landed work on to test.** The scope hold is asked only where work enters build, and its refusal names the move it refuses (ISS-843).
+- **Projects deployed outside Forge can release.** A production deployed by its own pipeline names that door, and its release is recorded once the deploy lands (ISS-851).
+- **The project bar speaks plainly.** It says what runs in words and in your language, such as "Master working: <issue title>" or "Bot answering", with keys, room ids and boxes in each item's tooltip (ISS-864).
+- **A hand-built runner names its commit.** `forge-runner --version`, `forge-runner status` and the box's heartbeat name the checkout's commit, marked `-dirty` for uncommitted changes, instead of `unknown`.
+
 ## [0.4.0-dev.421] - 2026-11-01
 
 Live project activity, secret deletion, release news in rooms, master pane recovery

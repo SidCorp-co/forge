@@ -1,1 +1,0 @@
-**A builder reads a peer's contract before consuming it.** A project's pane token reads the approved versions of contracts published to an ecosystem its project is a member of, so a builder run can map against them before it declares the consumption.

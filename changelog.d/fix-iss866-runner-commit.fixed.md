@@ -1,1 +1,0 @@
-**A hand-built runner names its commit.** `forge-runner --version`, `forge-runner status` and the box's heartbeat name the checkout's commit, marked `-dirty` for uncommitted changes, instead of `unknown`.
