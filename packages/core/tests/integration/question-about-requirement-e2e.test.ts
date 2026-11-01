@@ -358,3 +358,32 @@ describe('a question that names nothing it carries is refused by name and writes
     expect(posted.warnings.join(' ')).toContain('QUESTION_SHAPE_INVALID');
   });
 });
+
+// ISS-619 (FB-224): `forge-runner question ask --issue ISS-5` sends the display key as `issueId`,
+// which the box's door read as a uuid and answered 500 INTERNAL_ERROR; without `--issue` it worked.
+describe('a box question naming its issue by display key (ISS-619)', () => {
+  const freeText = {
+    answerShape: 'free_text',
+    needed: 'the reading that holds',
+    recommended: 'the first',
+    options: undefined,
+    recommendedOptionId: undefined,
+  };
+
+  it('stands on the issue the key names in the project it is asked in', async () => {
+    const issue = await plantIssue(null);
+    const r = await askBox({ ...freeText, issueId: issue.key, prompt: 'Which flag guards it?' });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect((await storedRow(r.json.questionId as string))?.issue_id).toBe(issue.id);
+  });
+
+  it('refuses by name a key that names no issue of the project, or no key at all, and writes nothing', async () => {
+    const before = await questionCount();
+    const none = await askBox({ ...freeText, issueId: 'ISS-99999', prompt: 'Which flag?' });
+    expect(none.status, JSON.stringify(none.json)).toBe(404);
+    expect(JSON.stringify(none.json)).toContain('`ISS-99999` names no issue in this project');
+    const bent = await askBox({ ...freeText, issueId: 'issue five', prompt: 'Which flag?' });
+    expect(bent.status, JSON.stringify(bent.json)).toBe(400);
+    expect(await questionCount()).toBe(before);
+  });
+});

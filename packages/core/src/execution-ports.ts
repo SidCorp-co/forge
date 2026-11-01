@@ -47,6 +47,7 @@ import {
   owedFilings,
   owedMarks,
   recordRunSecretResolve,
+  resolveIssueKeyInProject,
   runSecretRefsOfSession,
 } from './issues/index.js';
 import {
@@ -261,7 +262,15 @@ export function provideExecutionPorts(): void {
     cmpVersion,
     checkoutOrientation: servedCheckoutOrientation,
     questions: {
-      askQuestion: (input) => askQuestion(input as AskInput),
+      // the box names its issue as `forge-runner question ask --issue ISS-n` does: a display key is
+      // resolved in the project it asks in, and one naming no issue there is refused by name (ISS-619)
+      askQuestion: async (input) =>
+        askQuestion({
+          ...input,
+          ...(typeof input.issueId === 'string'
+            ? { issueId: await resolveIssueKeyInProject(input.issueId, input.projectId) }
+            : {}),
+        } as AskInput),
       registerWaiter,
       waiterFor,
       answerOf,
