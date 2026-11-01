@@ -20,6 +20,7 @@ import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } fr
 import { sessionChannelView } from './channel-read.js';
 import { checkResult } from './checks.js';
 import { settleLatency } from './delivery.js';
+import { agreeTo } from './fixes.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { no } from './outcome.js';
@@ -28,8 +29,8 @@ import { readProjectFacts } from './project-read.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose } from './service.js';
+import { linkMember } from './speaker-link.js';
 import { insertAction, type RoomRow } from './store.js';
-import { postInThread } from './thread.js';
 
 export interface SupportCaller {
   userId: string;
@@ -94,7 +95,15 @@ export type SupportActInput =
     }
   | { action: 'announce'; text: string }
   | { action: 'ask_owner'; thread: string; question: string; record?: string | undefined }
-  | { action: 'check_result'; check: string; finding: string | null };
+  | { action: 'check_result'; check: string; finding: string | null }
+  | {
+      action: 'agree';
+      thread: string;
+      proposal: string;
+      message: string;
+      decision?: 'agree' | 'decline' | undefined;
+    }
+  | { action: 'link'; thread: string; member: string };
 
 /**
  * One act of a room's session. `rid` names the group a channel agent acts in where the act names no
@@ -115,8 +124,9 @@ export async function supportAct(
           '/action',
           `${input.action} is a support group's and a channel agent's act, and this room is an operations room: its acts are ${OPERATION_ACTIONS.join(', ')}, reply and thread`,
         );
-  // an ungranted ability is told in the thread by core itself, naming who can grant it (BC-28)
-  if (!out.ok && 'thread' in input) await tellNotGranted(room, input.thread, input.action, out);
+  // a refusal, an ungranted ability's included, is the session's to read and say in its own words:
+  // core posts nothing in the room (ISS-845), and records the ungranted one (BC-28)
+  if (!out.ok && 'thread' in input) await recordNotGranted(room, input.thread, input.action, out);
   // the session's first post in a thread answers every message of it the session had been handed
   if (out.ok && 'thread' in input && POSTS.has(input.action)) {
     await settleLatency(room.id, input.thread, new Date());
@@ -151,24 +161,11 @@ function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
   };
 }
 
-/** The acts that post in the thread they name. */
-const POSTS = new Set<SupportActInput['action']>([
-  'reply',
-  'run',
-  'propose_fix',
-  'record',
-  'command',
-  'deploy',
-  'build',
-  'route',
-  'ask_owner',
-]);
+/** The acts that post in the thread they name: each posts the session's own words. */
+const POSTS = new Set<SupportActInput['action']>(['reply', 'route', 'ask_owner']);
 
-/**
- * Post an ability refusal in the thread it was asked in, once per act, and record it: the reply
- * says who can grant it whether or not the session repeats it (REQ-75 r5 BC-28).
- */
-async function tellNotGranted(
+/** An ability refusal, recorded once per act on the thread it was asked in; nothing is posted. */
+async function recordNotGranted(
   room: RoomRow,
   thread: string,
   action: string,
@@ -176,17 +173,15 @@ async function tellNotGranted(
 ): Promise<void> {
   const refusal = out.refusals.find((r) => r.code === 'SUPPORT_ABILITY_NOT_GRANTED');
   if (!refusal) return;
-  const posted = await postInThread({ room, thread, text: refusal.detail }).catch(() => null);
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
-    conversationId: posted?.conversationId ?? null,
+    conversationId: null,
     thread,
     kind: 'refused',
     actorKind: 'core',
     tool: action,
-    output: { code: refusal.code, detail: refusal.detail, posted: Boolean(posted) },
-    externalId: posted?.messageId ?? null,
+    output: { code: refusal.code, detail: refusal.detail, posted: false },
   });
 }
 
@@ -229,9 +224,7 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
         args: input.args ?? {},
         asker: input.asker,
       });
-      return out.ok
-        ? { ok: true, value: { fixId: out.fixId, code: out.code, messageId: out.messageId } }
-        : out;
+      return out;
     }
     case 'record': {
       const refused = await abilityRefusal(
@@ -241,11 +234,8 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
       );
       if (refused) return refused;
       const { action: _, ...request } = input;
-      const out = await proposeRecord(room, request);
-      // nothing is filed yet: the asker confirms in the thread, and the session is told the key
-      return out.ok
-        ? { ok: true, value: { pending: true, code: out.code, messageId: out.messageId } }
-        : out;
+      // nothing is filed yet: the session asks, and `agree` files it on the asker's plain yes
+      return proposeRecord(room, request);
     }
     case 'move_issue': {
       const { action: _, ...request } = input;
@@ -289,5 +279,11 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     }
     case 'check_result':
       return checkResult(room, { check: input.check, finding: input.finding });
+    case 'agree': {
+      const { action: _, ...request } = input;
+      return agreeTo(room, request);
+    }
+    case 'link':
+      return linkMember(room, { thread: input.thread, member: input.member });
   }
 }

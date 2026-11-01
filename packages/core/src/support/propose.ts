@@ -1,9 +1,9 @@
-// Proposing a change its asker confirms (REQ-75 BC-13, BC-14): a fix through the product API, or a
-// filing of Feedback. The thread is shown what it does with the buttons that write `confirm` and
-// `cancel`; what becomes of it is `fixes.ts`'s.
+// Proposing a change its asker agrees to (REQ-75 BC-13, BC-14; ISS-845): a fix through the product
+// API, a filing of Feedback, or a build, a deploy or a host command. Core records the proposal and
+// posts nothing: the session asks the person in its own words, and what becomes of it once they
+// answer is `fixes.ts:agreeTo`'s.
 
 import { SUPPORT_FIX_TTL_MS } from '@forge/contracts/support';
-import type { RocketChatButtonAttachment } from '../integrations/rocketchat/index.js';
 import {
   activeSupportApi,
   planCall,
@@ -11,36 +11,23 @@ import {
 } from '../integrations/support-api/index.js';
 import { changeWaitsOnRole, whoConfirms } from './confirm-role.js';
 import { grantsOf, supportConfigOf } from './grants.js';
-import { type RecordRequest, threadLink } from './record.js';
+import { knownThread, threadUnknown } from './outcome.js';
+import type { RecordRequest } from './record.js';
 import { type Refusal, refusalOf } from './refusals.js';
-import { confirmPrompt, mintConfirmCode, recordPrompt } from './rules.js';
+import { mintConfirmCode } from './rules.js';
 import { insertAction, insertFix, type ProposalRow, type RoomRow, threadMembers } from './store.js';
-import { noteInThread, postInThread } from './thread.js';
+import { noteInThread } from './thread.js';
 
-export type ProposeOutcome =
-  | { ok: true; fixId: string; code: string; messageId: string | null }
-  | { ok: false; refusals: Refusal[] };
+/** What the session is handed for a proposal: its handle, whom it waits on, and until when. */
+export interface Proposed {
+  pending: true;
+  proposal: string;
+  waitsOn: string;
+  expiresAt: string;
+  next: string;
+}
 
-const buttons = (code: string): RocketChatButtonAttachment[] => [
-  {
-    actions: [
-      {
-        type: 'button',
-        text: 'Confirm',
-        msg: `confirm ${code}`,
-        msg_in_chat_window: true,
-        msg_processing_type: 'sendMessage',
-      },
-      {
-        type: 'button',
-        text: 'Cancel',
-        msg: `cancel ${code}`,
-        msg_in_chat_window: true,
-        msg_processing_type: 'sendMessage',
-      },
-    ],
-  },
-];
+export type ProposeOutcome = { ok: true; value: Proposed } | { ok: false; refusals: Refusal[] };
 
 type Member = { key: string; label: string | null };
 
@@ -78,9 +65,9 @@ async function askerOf(
 }
 
 /**
- * Put a change before its asker: a code minted, the thread shown what it does with the buttons
- * that write `confirm` and `cancel`, and the proposal recorded. Nothing happens until that account
- * confirms (`answerConfirm`); unconfirmed, it expires (`expireSupportFixes`).
+ * Put a change before its asker: a handle minted and the proposal recorded, nothing posted. The
+ * session asks in its own words; nothing happens until it cites the person's agreeing message
+ * (`agreeTo`); unanswered, it expires (`expireSupportFixes`).
  */
 export async function offerChange(input: {
   room: RoomRow;
@@ -91,12 +78,13 @@ export async function offerChange(input: {
    * the room's confirmers rather than on the asker (`waitsOn`).
    */
   change: { kind: 'fix'; tool: string } | { kind: 'filing' | 'build' | 'deploy' | 'command' };
-  /** Who confirms, as the session's note says it; the asker when absent. */
+  /** Who agrees, as the session is told it; the asker when absent. */
   waitsOn?: string;
   args: Record<string, unknown>;
-  prompt: (code: string) => string;
 }): Promise<ProposeOutcome> {
   const { room, asker } = input;
+  const conversationId = await knownThread(room, input.thread);
+  if (!conversationId) return threadUnknown(input.thread);
   const now = new Date();
   let fix: ProposalRow | null = null;
   for (let attempt = 0; attempt < 5 && !fix; attempt++) {
@@ -114,31 +102,34 @@ export async function offerChange(input: {
       expiresAt: new Date(now.getTime() + SUPPORT_FIX_TTL_MS),
     });
   }
-  if (!fix) throw new Error('support: five codes in a row were taken; no change was proposed');
-  const posted = await postInThread({
-    room,
-    thread: input.thread,
-    text: input.prompt(fix.code),
-    attachments: buttons(fix.code),
-  });
+  if (!fix) throw new Error('support: five handles in a row were taken; no change was proposed');
+  const waitsOn = input.waitsOn ?? `@${asker.label ?? asker.key}`;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
-    conversationId: posted.conversationId,
+    conversationId,
     thread: input.thread,
     kind: 'fix_proposed',
     actorKind: 'session',
     tool: fix.tool,
     input: input.args,
     output: { code: fix.code, asker: asker.key, expiresAt: fix.expiresAt.toISOString() },
-    externalId: posted.messageId,
     proposalId: fix.id,
   });
   await noteInThread(
-    posted.conversationId,
-    `Proposed: ${changeName(fix)}, waiting on ${input.waitsOn ?? asker.label ?? asker.key} to confirm ${fix.code}.`,
+    conversationId,
+    `Proposed: ${changeName(fix)}, waiting on ${waitsOn} to agree (${fix.code}).`,
   );
-  return { ok: true, fixId: fix.id, code: fix.code, messageId: posted.messageId };
+  return {
+    ok: true,
+    value: {
+      pending: true,
+      proposal: fix.code,
+      waitsOn,
+      expiresAt: fix.expiresAt.toISOString(),
+      next: `Nothing was posted. Ask ${waitsOn} in your own words, in this thread. When they answer, call agree { thread, proposal: "${fix.code}", message: <their message id>, decision?: "decline" }.`,
+    },
+  };
 }
 
 export async function proposeFix(input: {
@@ -199,21 +190,12 @@ export async function proposeFix(input: {
     change: { kind: 'fix', tool: planned.plan.tool.name },
     ...(confirmers ? { waitsOn: confirmers } : {}),
     args: input.args,
-    prompt: (code) =>
-      confirmPrompt({
-        askerLabel: asked.asker.label,
-        summary: planned.plan.tool.summary,
-        args: input.args,
-        code,
-        ...(confirmers ? { confirmers } : {}),
-      }),
   });
 }
 
 /**
- * Record what needs code as Feedback, once its asker agrees (REQ-75 BC-14; REQ-30 BC-4): the
- * thread is told what would be filed, of which kind, with the thread's link, and nothing is filed
- * until that account confirms; unconfirmed, it expires as a fix does.
+ * Record what needs code as Feedback, once its asker agrees (REQ-75 BC-14; REQ-30 BC-4): nothing is
+ * filed until the session cites the asker's agreeing message; unanswered, it expires as a fix does.
  */
 export async function proposeRecord(
   room: RoomRow,
@@ -222,25 +204,16 @@ export async function proposeRecord(
   const asked = await askerOf(room, input.thread, input.asker);
   if (!asked.ok) return asked;
   const { asker: _asker, ...request } = input;
-  const link = await threadLink(room, input.thread);
   return offerChange({
     room,
     thread: input.thread,
     asker: asked.asker,
     change: { kind: 'filing' },
     args: request,
-    prompt: (code) =>
-      recordPrompt({
-        askerLabel: asked.asker.label,
-        kind: input.kind,
-        title: input.title,
-        link,
-        code,
-      }),
   });
 }
 
-/** What did not happen to a change nobody confirmed. */
+/** What did not happen to a change nobody agreed to, as the session is told it. */
 export const nothingDone = (fix: Pick<ProposalRow, 'kind'>) =>
   fix.kind === 'filing'
     ? 'Nothing was recorded.'

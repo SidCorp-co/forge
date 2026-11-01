@@ -10,7 +10,7 @@ import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
-import { ProductApi, SupportWorld, type Turn } from '../helpers/support-world.js';
+import { ProductApi, refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.js';
 
 // REQ-75 r2: a project's Rocket.Chat group is answered by one session Forge manages on a runner.
 // The world runs the real Rocket.Chat connection manager against a chat server (a stand-in by
@@ -161,71 +161,56 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
 });
 
 describe('REQ-75: a fix, and what the session may not do', () => {
-  it('runs a fix only when the person who asked confirms it in the thread (BC-13)', async () => {
-    let code = '';
-    let proposal: Record<string, unknown> = {};
-    const notes: string[] = [];
+  it('runs a fix only when the person who asked agrees to it in the thread (BC-13)', async () => {
+    await w.settleWarm();
+    let proposal: Record<string, unknown> | null = null;
     w.box.model = async (turn, act) => {
       for (const m of turn.messages) {
-        if (m.from === 'forge') {
-          notes.push(m.text);
-          await act({
-            action: 'reply',
-            thread: m.thread,
-            text: 'The invoice is on its way again.',
-          });
-          continue;
-        }
-        const proposed = await act({
+        if (m.from === 'forge') continue;
+        proposal = await act({
           action: 'propose_fix',
           thread: m.thread,
           tool: 'resend_invoice',
           args: { orderId: '4321' },
           asker: (m.from as { id: string }).id,
         });
-        proposal = proposed;
-        code = String(proposed.code ?? '');
       }
     };
     const id = await w.chat.say(w.chat.alice, 'Can you send the invoice for 4321 again?');
-    const lines = await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === id && l.text.includes('Only you can confirm')),
-    );
-    const prompt = lines.find((l) => l.tmid === id && l.text.includes('Only you can confirm'));
-    await expect.poll(() => code).not.toBe('');
-    expect(code, JSON.stringify(proposal)).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
-    expect(prompt?.text).toContain(`confirm ${code}`);
-    expect(prompt?.attachments[0]?.actions?.map((a) => a.msg)).toEqual([
-      `confirm ${code}`,
-      `cancel ${code}`,
-    ]);
+    await expect.poll(() => proposal, { timeout: 15_000 }).not.toBeNull();
+    const offered = proposal as unknown as Record<string, unknown>;
+    expect(offered, JSON.stringify(offered)).toMatchObject({
+      pending: true,
+      proposal: expect.stringMatching(/^[A-HJ-NP-Z2-9]{6}$/),
+      waitsOn: '@alice',
+    });
+    const code = String(offered.proposal);
+    // the session asks in its own words: core posts no prompt and no buttons
+    expect(await w.linesIn(id)).toEqual([]);
     const posts = () => w.product.calls.filter((c) => c.method === 'POST').length;
     expect(posts()).toBe(0);
 
-    // someone else pressing the button runs nothing
-    await w.chat.say(w.chat.bob, `confirm ${code}`, id);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === id && l.text.startsWith('Only @alice can confirm')),
-    );
+    // someone else saying yes runs nothing
+    const bob = await w.agreeBy(w.chat.bob, 'yes do it', id, code);
+    expect(refusalCodes(bob.out), JSON.stringify(bob.out)).toEqual(['SUPPORT_NOT_A_CONFIRMER']);
     expect(posts()).toBe(0);
 
-    await w.chat.say(w.chat.alice, `confirm ${code}`, id);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === id && l.text.startsWith('Done: resend the invoice')),
-    );
+    const alice = await w.agreeBy(w.chat.alice, 'yes please', id, code);
+    expect(alice.out, JSON.stringify(alice.out)).toMatchObject({
+      ran: true,
+      result: { ok: true },
+    });
+    expect(String(alice.out.what)).toContain('the fix resend_invoice ran');
     expect(posts()).toBe(1);
     expect(w.product.calls.at(-1)?.url).toBe('/v1/orders/4321/invoice');
-    // the session is told, in its next turn, and answers
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === id && l.text === 'The invoice is on its way again.'),
-    );
-    expect(notes.join('\n')).toContain(`(${code}) ran after the asker confirmed it`);
+    // the result is the act's answer: nothing core-authored reached the thread
+    expect(await w.linesIn(id)).toEqual([]);
 
-    // the same code again runs nothing more
-    await w.chat.say(w.chat.alice, `confirm ${code}`, id);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === id && l.text.startsWith(`No change is waiting under ${code}`)),
-    );
+    // the same proposal again runs nothing more
+    const again = await w.agreeBy(w.chat.alice, 'once more?', id, code);
+    expect(refusalCodes(again.out), JSON.stringify(again.out)).toEqual([
+      'SUPPORT_PROPOSAL_UNKNOWN',
+    ]);
     expect(posts()).toBe(1);
   });
 
@@ -324,45 +309,42 @@ describe('REQ-75: a fix, and what the session may not do', () => {
 });
 
 describe('REQ-75: what needs code, a restart, and the record', () => {
-  it('records what needs code as Feedback linked to the thread once the asker confirms, never as an issue (BC-14)', async () => {
+  it('records what needs code as Feedback linked to the thread once the asker agrees, never as an issue (BC-14)', async () => {
     const issues = () => rows(sql`SELECT id FROM issues WHERE project_id = ${w.projectId}::uuid`);
     const issuesBefore = (await issues()).length;
-    let code = '';
+    await w.settleWarm();
+    let offered: Record<string, unknown> | null = null;
     w.box.model = async (turn, act) => {
       for (const m of turn.messages) {
         if (m.from === 'forge') continue;
-        const offered = await act({
+        offered = await act({
           action: 'record',
           thread: m.thread,
           kind: 'feature',
           title: 'Export the catalog to Excel',
           summary: 'Alice wants the catalog export as an Excel file, not only CSV.',
         });
-        code = String(offered.code ?? '');
       }
     };
     const id = await w.chat.say(
       w.chat.alice,
       'Could you add an Excel export? We need it for accounting',
     );
-    // the route, the title and the thread are restated first; it is filed on the asker's confirm
-    await w.untilLines((ls) => ls.some((l) => l.tmid === id && l.text.includes('I would record')));
-    await expect.poll(() => code).not.toBe('');
-    await w.chat.say(w.chat.alice, `confirm ${code}`, id);
-    const lines = await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === id && l.text.startsWith('Recorded as FB-')),
-    );
-    const line = lines.find((l) => l.tmid === id && l.text.startsWith('Recorded as FB-'));
-    // the external door's status token is never posted: in a group anyone could open it
-    expect(line?.text).not.toContain('/w/status/');
+    // nothing is filed and nothing posted until the session cites the asker's own yes
+    await expect.poll(() => offered, { timeout: 15_000 }).not.toBeNull();
+    const code = String((offered as unknown as Record<string, unknown>).proposal);
+    expect(await w.linesIn(id)).toEqual([]);
+    const { out } = await w.agreeBy(w.chat.alice, 'yes, record it', id, code);
+    expect(out, JSON.stringify(out)).toMatchObject({ recorded: true });
+    // the external door's status token is never handed out: in a group anyone could open it
+    expect(JSON.stringify(out)).not.toContain('/w/status/');
     const fb = await w.lastGroupFiling();
     expect(fb.kind).toBe('idea');
     expect(fb?.body).toContain('Rocket.Chat support group by alice');
-    expect(line?.text).toContain(`FB-${fb?.fb_seq}`);
+    expect(out.feedbackKey).toBe(`FB-${fb?.fb_seq}`);
     expect((await issues()).length).toBe(issuesBefore);
-    // the session is told the key in a turn of its own, and that turn ends
-    const told = () => w.box.turns.some((t) => t.text.includes(`was recorded as FB-${fb.fb_seq}`));
-    await expect.poll(told, { timeout: 10_000 }).toBe(true);
+    // the session is told the key as the act's answer; core posts nothing in the thread
+    expect(await w.linesIn(id)).toEqual([]);
     await w.untilWarm();
   });
 

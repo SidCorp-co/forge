@@ -179,7 +179,7 @@ describe('REQ-75 r6: nothing private kept, and one person mentioned', () => {
     await w.confirm('carol', { roles: ['technical'], askFor: 'DNS and the mail hosts' });
   });
 
-  it('keeps a member’s posted secret out of every record and asks one Technical member to delete it (BC-40)', async () => {
+  it('keeps a member’s posted secret out of every record and hands the session one Technical member to ask to delete it (BC-40)', async () => {
     const said = `my api token is ${TOKEN}, please check it`;
     const { id, turn } = await w.ask(w.chat.bob, said, async () => undefined);
     expect(turn.text).not.toContain(TOKEN);
@@ -190,15 +190,22 @@ describe('REQ-75 r6: nothing private kept, and one person mentioned', () => {
     const stored = await rows<{ content: string }>(sql`
       SELECT content FROM conversation_messages WHERE external_id = ${id}`);
     expect(stored[0]?.content).not.toContain(TOKEN);
-    const lines = await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === id && l.text.includes('holds a secret')),
-    );
-    const flag = lines.filter((l) => l.tmid === id && l.text.includes('holds a secret'));
-    expect(flag).toHaveLength(1);
-    expect(flag[0]?.text).toMatch(/^@carol /);
-    const [action] = await rows<{ output: { technical: string } }>(sql`
+    // the session is handed the fact once, naming whom to ask; it asks in its own words
+    const flags = () =>
+      w.box.turns
+        .flatMap((t) => t.messages)
+        .filter((m) => m.from === 'forge' && m.text.includes(`Message ${id} from @bob`));
+    await expect.poll(() => flags().length, { timeout: 15_000 }).toBe(1);
+    const [flag] = flags();
+    expect(flag?.thread).toBe(id);
+    expect(flag?.text).toContain('held a secret');
+    expect(flag?.text).toContain('Ask @carol to delete that message');
+    expect(flag?.text).not.toContain(TOKEN);
+    // core posts nothing in the thread
+    expect(await w.linesIn(id)).toEqual([]);
+    const [action] = await rows<{ output: { technical: string; posted: boolean } }>(sql`
       SELECT output FROM support_actions WHERE room_id = ${w.roomId}::uuid AND kind = 'secret_flagged'`);
-    expect(action?.output.technical).toBe('carol');
+    expect(action?.output).toEqual({ technical: 'carol', posted: false });
   });
 
   it('lets a reply mention one person the channel lists or the asker, and refuses any other (BC-34)', async () => {

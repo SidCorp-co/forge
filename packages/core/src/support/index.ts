@@ -5,6 +5,7 @@ import {
   provideSendRefusedListener,
   provideTerminalSessionBridge,
 } from '../agent-sessions/index.js';
+import { provideSpeakerLinkedListener } from '../assistant/index.js';
 import {
   provideAgentSwitchGate,
   provideSupportRoomHandler,
@@ -20,6 +21,7 @@ import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { recoverLostTurns } from './lost-turns.js';
 import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
+import { tellLinked } from './speaker-link.js';
 import { agentSwitchGate } from './switches.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
@@ -49,6 +51,8 @@ export function registerSupportRooms(): void {
   provideAgentSwitchGate(agentSwitchGate);
   provideTerminalSessionBridge(SUPPORT_SESSION_MARKER, onSupportTurnEnded);
   provideSendRefusedListener(INJECT_INTENT, onInjectRefused);
+  // a link confirmed on the link page is told to the sessions of the rooms its account wrote in
+  provideSpeakerLinkedListener(tellLinked);
   onBoxListening(() => {
     void recoverLostTurns().catch((err) =>
       logger.error({ err }, 'support: recovering lost turns on a box reconnect failed'),

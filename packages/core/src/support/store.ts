@@ -115,7 +115,7 @@ export interface NewAction {
   externalId?: string | null;
   proposalId?: string | null;
   feedbackId?: string | null;
-  /** A `message_in` that is not for the session (a confirm, one past the limit) is taken at once. */
+  /** A `message_in` that is not for the session (one past the limit) is taken at once. */
   deliveredAt?: Date | null;
 }
 
@@ -230,7 +230,7 @@ export async function threadWritings(
 
 /**
  * Whether a thread holds a message that arrived since the session's last reply in it, or no reply
- * yet: what a request is, for the one result each gets (REQ-77 BC-8). A confirm, a result core
+ * yet: what a request is, for the one result each gets (REQ-77 BC-8). An answer, a note core
  * tells the session and a member's message all count; the session's own checks and posts do not.
  */
 export async function unansweredInThread(roomId: string, thread: string): Promise<boolean> {

@@ -1,10 +1,10 @@
 // A message in a support group or an operations room (REQ-75 BC-11, BC-13, BC-18, BC-20): recorded on its thread's conversation
-// and as a `message_in` action, marked received, and handed to the group's session — unless it is a
-// `confirm`/`cancel` naming a fix, which core answers itself, or the writer is past the hourly limit.
+// and as a `message_in` action, marked received, and handed to the group's session — unless the
+// writer is past the hourly limit. A person's answer to a proposal ("ok", "confirm …") is an ordinary
+// message: the session cites it to `agree` (ISS-845).
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
 import { containsSecret, scrubLogText } from '@forge/observability';
-import { linkCodeIn } from '../assistant/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import {
@@ -17,11 +17,9 @@ import {
 import { logger } from '../lib/logger.js';
 import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
-import { answerConfirm } from './fixes.js';
-import { answerLinkCode } from './link-code.js';
 import { settleOwnerAnswer } from './owner-ask.js';
 import { ensureSupportRoom } from './rooms.js';
-import { clipMessage, limitsOf, parseConfirm, threadOf } from './rules.js';
+import { clipMessage, limitsOf, threadOf } from './rules.js';
 import { insertAction, limitToldSince, memberMessagesSince, type RoomRow } from './store.js';
 import { postInThread, roomAuth, threadConversationOf } from './thread.js';
 
@@ -49,7 +47,7 @@ export async function handleSupportMessage(input: {
   // a posted secret is never kept: the message is recorded and handed on without it (REQ-75 r6 BC-40)
   const secret = containsSecret(input.m.text);
   const m = secret ? { ...input.m, text: scrubLogText(input.m.text) } : input.m;
-  // an operations room runs under the default limits and takes no confirm: it proposes nothing
+  // an operations room runs under the default limits
   const config: SupportRoomConfig = route.support ?? route.agent ?? {};
   if (input.shape !== 'group') {
     // a support binding names a group; a direct room bound so is refused, never answered as one
@@ -83,33 +81,6 @@ export async function handleSupportMessage(input: {
     if (fresh && secret) await flagSecret(room, conversation.id, thread, m.id, by);
     return fresh;
   };
-
-  const confirm = room.kind !== 'operations' ? parseConfirm(input.m.text) : null;
-  if (confirm) {
-    await recordAndFlag(m, author, { deliver: false });
-    await answerConfirm({
-      room,
-      config,
-      ...confirm,
-      author,
-      thread,
-      conversationId: conversation.id,
-    });
-    // what became of the fix waits for the session as a note: hand it on now, not at the next drain
-    await deliverWaiting(room.id);
-    return;
-  }
-
-  // a member linking their chat account to the Forge user who minted the code: core answers it, and
-  // the code is never kept or shown to the session, since anyone in the room could read it there
-  const linkCode = linkCodeIn(input.m.text);
-  if (linkCode) {
-    await recordAndFlag({ ...m, text: 'link ********' }, author, {
-      deliver: false,
-    });
-    await answerLinkCode(room, namespace, thread, author, linkCode);
-    return;
-  }
 
   // the owner's message in a thread that asked them something is the answer to it, and is handed to
   // the asking session whatever the room's answering mode (REQ-77 BC-12)
@@ -166,7 +137,7 @@ export async function handleSupportMessage(input: {
 /**
  * The message as the thread's conversation row and the room's `message_in` action, in one write.
  * False when this message was already taken (a redelivered frame). A message that is not for the
- * session (a confirm, one past the limit) is recorded as already delivered.
+ * session (one past the limit) is recorded as already delivered.
  */
 async function recordInbound(
   room: RoomRow,

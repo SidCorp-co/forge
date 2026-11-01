@@ -23,7 +23,13 @@ import {
   rows,
 } from './factories.js';
 import { boxToken, type Served, serveCore, stopCore } from './preview-world.js';
-import { type BotLine, type ChatServer, chatServer } from './support-chat-server.js';
+import {
+  type BotLine,
+  type ChatServer,
+  chatServer,
+  type Member,
+  type StandInRocketChat,
+} from './support-chat-server.js';
 import { ProductApi, SUPPORT_TOOLS } from './support-product-api.js';
 import { SessionBox, SUPPORT_BOX_CAPS } from './support-session-box.js';
 
@@ -36,6 +42,17 @@ export {
   type Turn,
   type TurnMessage,
 } from './support-session-box.js';
+
+/**
+ * The refusal codes an act answered, as the tool hands them to the session (ISS-845: a refusal goes
+ * to the session, never into the room).
+ */
+export const refusalCodes = (out: Record<string, unknown> | null | undefined): string[] =>
+  (
+    (out?.error as { refusals?: { code: string }[] } | undefined)?.refusals ??
+    (out?.refusals as { code: string }[] | undefined) ??
+    []
+  ).map((r) => r.code);
 
 export class SupportWorld {
   core!: Served;
@@ -251,6 +268,52 @@ export class SupportWorld {
     );
     expect(got.status, JSON.stringify(got.body)).toBe(200);
     return got.body.actions as Record<string, unknown>[];
+  }
+
+  /** The lines the bot posted in a thread (its opening message's id), oldest first. */
+  async linesIn(thread: string): Promise<BotLine[]> {
+    return (await this.chat.botLines()).filter((l) => l.tmid === thread || l.id === thread);
+  }
+
+  /**
+   * `who` answers `text` in `thread` (of group `rid` when given), and the session cites that message
+   * to `agree` on `proposal` — or to decline it — as an agent does once a person answered in their
+   * own words (ISS-845). The act's answer comes back with the message's id. `cite` swaps the message
+   * or the thread the session names, as a session citing the wrong one would.
+   */
+  async agreeBy(
+    who: Member,
+    text: string,
+    thread: string,
+    proposal: string,
+    opts: {
+      decision?: 'agree' | 'decline';
+      rid?: string;
+      cite?: (id: string) => { message: string; thread?: string };
+    } = {},
+  ): Promise<{ id: string; out: Record<string, unknown> }> {
+    await this.settleWarm();
+    let out: Record<string, unknown> | null = null;
+    let armed = true;
+    this.box.model = async (turn, act) => {
+      for (const m of turn.messages) {
+        if (!armed || m.from === 'forge' || !m.message || !m.text.includes(text)) continue;
+        armed = false;
+        const cited = opts.cite ? opts.cite(m.message) : { message: m.message };
+        out = await act({
+          action: 'agree',
+          thread: cited.thread ?? m.thread,
+          proposal,
+          message: cited.message,
+          ...(opts.decision ? { decision: opts.decision } : {}),
+        });
+      }
+    };
+    const id = opts.rid
+      ? await (this.chat as StandInRocketChat).sayIn(opts.rid, who, text, thread)
+      : await this.chat.say(who, text, thread);
+    await expect.poll(() => out, { timeout: 15_000 }).not.toBeNull();
+    return { id, out: out as unknown as Record<string, unknown> };
   }
 
   /** The bot's lines, waited for until `pred` holds over them. */

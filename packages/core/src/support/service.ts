@@ -51,7 +51,7 @@ export async function listTools(room: RoomRow): Promise<Outcome<Omit<SupportTool
   };
 }
 
-/** Run a granted diagnose tool; the thread is shown what was checked (BC-12). */
+/** Run a granted diagnose tool; the session is handed what came back, the thread nothing (BC-12). */
 export async function runDiagnose(
   room: RoomRow,
   input: { thread: string; tool: string; args: SupportCallArgs },

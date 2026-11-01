@@ -10,7 +10,7 @@ import { db } from '../../src/db/client.js';
 import { rows } from '../helpers/factories.js';
 import { seedDeployBinding, seedProjectDocument } from '../helpers/release-world.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
-import { ProductApi, SupportWorld, type Turn } from '../helpers/support-world.js';
+import { ProductApi, refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.js';
 
 // REQ-77 r1 part 1 (ISS-763): a project's channel agent. The project's one rocketchat binding
 // carries `agent` over two groups; one session Forge places on the project's box answers both, and
@@ -245,7 +245,7 @@ describe('REQ-77 BC-3: only the ops tools its binding grants, credentials inside
 });
 
 describe('REQ-77 BC-4: a deploy goes only through Forge’s door, on a confirmer’s word', () => {
-  it('queues nothing on a non-confirmer’s confirm, and deploys through Forge on the confirmer’s', async () => {
+  it('queues nothing on a non-confirmer’s agreement, and deploys through Forge on the confirmer’s', async () => {
     let out: Record<string, unknown> = {};
     const { thread } = await onNextAsk(
       () => chat.sayIn(chat.rid2, chat.alice, 'please deploy dev'),
@@ -255,28 +255,19 @@ describe('REQ-77 BC-4: a deploy goes only through Forge’s door, on a confirmer
       },
     );
     expect(out, JSON.stringify(out)).toMatchObject({ pending: true });
-    await chat.sayIn(chat.rid2, chat.alice, `confirm ${String(out.code)}`, thread);
-    await expect
-      .poll(
-        () =>
-          chat.linesIn(chat.rid2).some((l) => l.tmid === thread && l.text.includes('Only @bob')),
-        {
-          timeout: 15_000,
-        },
-      )
-      .toBe(true);
+    const proposal = String(out.proposal);
+    const alice = await w.agreeBy(chat.alice, 'yes deploy it', thread, proposal, {
+      rid: chat.rid2,
+    });
+    expect(refusalCodes(alice.out), JSON.stringify(alice.out)).toEqual(['SUPPORT_NOT_A_CONFIRMER']);
+    expect(JSON.stringify(alice.out)).toContain('only @bob');
     expect(await deploysQueued()).toBe(0);
-    await chat.sayIn(chat.rid2, chat.bob, `confirm ${String(out.code)}`, thread);
-    await expect
-      .poll(
-        () =>
-          chat.linesIn(chat.rid2).some((l) => l.tmid === thread && l.text.startsWith('Deploying')),
-        {
-          timeout: 15_000,
-        },
-      )
-      .toBe(true);
+    const bob = await w.agreeBy(chat.bob, 'ok, go', thread, proposal, { rid: chat.rid2 });
+    expect(bob.out, JSON.stringify(bob.out)).toMatchObject({ ran: true });
+    expect(String(bob.out.what)).toContain('was dispatched');
     expect(await deploysQueued()).toBe(1);
+    // the session tells the thread in its words: core posted nothing there
+    expect(chat.linesIn(chat.rid2).filter((l) => l.tmid === thread)).toEqual([]);
   });
 });
 
@@ -359,7 +350,7 @@ describe('REQ-77 BC-21: under owner mode the agent does write work, and the owne
     expect(start?.sessionId).toBe(room?.session_id);
   });
 
-  it('runs a deploy on the owner’s confirm though the grant names them no confirmer', async () => {
+  it('runs a deploy on the owner’s agreement though the grant names them no confirmer', async () => {
     const before = await deploysQueued();
     let out: Record<string, unknown> = {};
     const { thread } = await onNextAsk(
@@ -370,17 +361,11 @@ describe('REQ-77 BC-21: under owner mode the agent does write work, and the owne
       },
     );
     expect(out, JSON.stringify(out)).toMatchObject({ pending: true });
-    await chat.say(chat.alice, `confirm ${String(out.code)}`, thread);
-    await expect
-      .poll(
-        () =>
-          chat.linesIn(chat.rid).some((l) => l.tmid === thread && l.text.startsWith('Deploying')),
-        {
-          timeout: 15_000,
-        },
-      )
-      .toBe(true);
+    expect(String(out.waitsOn)).toContain('the owner');
+    const owner = await w.agreeBy(chat.alice, 'ừ deploy đi', thread, String(out.proposal));
+    expect(owner.out, JSON.stringify(owner.out)).toMatchObject({ ran: true });
     expect(await deploysQueued()).toBe(before + 1);
+    expect(chat.linesIn(chat.rid).filter((l) => l.tmid === thread)).toEqual([]);
   });
 
   it('goes back to a confined session when owner mode is taken away', async () => {

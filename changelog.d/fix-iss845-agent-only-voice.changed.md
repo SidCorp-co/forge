@@ -1,0 +1,1 @@
+**The support room bot speaks only in its own words.** It asks before recording or running a change and takes a plain "ok" as consent; no more `confirm` codes, canned "Recorded as" lines or typed link codes (ISS-845).

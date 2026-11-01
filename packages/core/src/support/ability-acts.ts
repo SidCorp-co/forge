@@ -2,7 +2,8 @@
 // (`deliver`), run a command on a named host (`run_commands`), deploy a bound target (`deploy`) and
 // push a build (`build`). Each is gated by the room's grant first (`grants.ts`), refused by name when
 // not granted (BC-28). A command that only reads runs at once; a build, a deploy and a command that
-// changes a host are proposed and run only on a confirmer's `confirm <code>` (`ability-run.ts`).
+// changes a host are proposed and run only once a confirmer agrees (`fixes.ts:agreeTo`,
+// `ability-run.ts`). Every result goes back to the session as the act's answer; core posts nothing.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { SupportCommandResult, SupportGrants } from '@forge/contracts/support';
@@ -20,15 +21,11 @@ import { move } from './ops-writes.js';
 import { knownThread, no, threadUnknown } from './outcome.js';
 import { offerChange } from './propose.js';
 import { insertAction, latestThreadWriter, type RoomRow } from './store.js';
-import { postInThread, scrubbedForRoom } from './thread.js';
+import { scrubbedForRoom } from './thread.js';
 
 async function grantOf(room: RoomRow): Promise<SupportGrants> {
   return grantsOf(await supportConfigOf(room));
 }
-
-/** What every confirmer-gated prompt ends with: who confirms, how, and for how long. */
-const confirmTail = (room: RoomRow, g: SupportGrants, code: string) =>
-  `${whoConfirms(room, g)} can confirm it: reply \`confirm ${code}\` to go ahead, or \`cancel ${code}\`. It expires in 15 minutes.`;
 
 /** The member a confirmer-gated change is offered for: the thread's latest writer. */
 async function askingMember(room: RoomRow, thread: string) {
@@ -70,16 +67,6 @@ export async function scrubbedResult(
   };
 }
 
-/** The line a command posts once it ran. */
-export function commandLine(host: string, command: string, r: SupportCommandResult): string {
-  const outcome = r.timedOut
-    ? 'stopped at its time limit'
-    : r.exitCode === 0
-      ? 'exit 0'
-      : `exit ${r.exitCode ?? 'unknown'}`;
-  return `Ran on ${host}: \`${command}\` — ${outcome} (${r.durationMs} ms).`;
-}
-
 /**
  * Run a command on a host the room's grant names (`run_commands`). One that only reads runs at once
  * through the box; any other is proposed and waits for a confirmer.
@@ -104,12 +91,8 @@ export async function runCommand(
       change: { kind: 'command' },
       waitsOn: whoConfirms(room, grants),
       args: { host: input.host, command: input.command, why: cls.why },
-      prompt: (code) =>
-        `I would run on ${input.host}: \`${input.command}\`. It can change the host (${cls.why}), so it waits for a confirmer. ${confirmTail(room, grants, code)}`,
     });
-    return out.ok
-      ? { ok: true, value: { pending: true, code: out.code, waitsOn: grants.confirmers } }
-      : out;
+    return out.ok ? { ok: true, value: { ...out.value, changes: cls.why } } : out;
   }
   const box = await boxOfRoom(room, 'commands');
   if (!box.ok) return box;
@@ -134,22 +117,17 @@ export async function runCommand(
     return no('SUPPORT_COMMAND_FAILED', '/command', `nothing ran on ${input.host}: ${ran.why}`);
   }
   const result = await scrubbedResult(room, ran.value);
-  const posted = await postInThread({
-    room,
-    thread: input.thread,
-    text: commandLine(input.host, input.command, result),
-  });
+  // the output is the session's to read and tell; nothing is posted in the room (ISS-845)
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
-    conversationId: posted.conversationId,
+    conversationId,
     thread: input.thread,
     kind: 'diagnose',
     actorKind: 'session',
     tool: 'command',
     input,
     output: result,
-    externalId: posted.messageId,
   });
   return { ok: true, value: result };
 }
@@ -183,10 +161,8 @@ export async function proposeDeploy(
     change: { kind: 'deploy' },
     waitsOn: whoConfirms(room, grants),
     args: { target: input.target, label },
-    prompt: (code) =>
-      `I would deploy ${label} now. A production target still waits for its approver after this. ${confirmTail(room, grants, code)}`,
   });
-  return out.ok ? { ok: true, value: { pending: true, code: out.code } } : out;
+  return out;
 }
 
 /** How long the platform has to answer a deployment read before the read says so. */
@@ -255,8 +231,6 @@ export async function proposeBuild(
     change: { kind: 'build' },
     waitsOn: whoConfirms(room, grants),
     args: { ...input, base: base.value.base },
-    prompt: (code) =>
-      `I would commit my changes on ${input.branch}, push it and open a change request into ${base.value.base}: "${input.title}". Nothing merges into production from here. ${confirmTail(room, grants, code)}`,
   });
-  return out.ok ? { ok: true, value: { pending: true, code: out.code } } : out;
+  return out;
 }

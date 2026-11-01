@@ -1,5 +1,6 @@
-// Filing what needs code as Feedback for the team once its asker confirmed it (REQ-75 BC-14), then
-// telling its result once it is final (r6 BC-15, `result.ts`).
+// Filing what needs code as Feedback for the team once its asker agreed (REQ-75 BC-14), then telling
+// the session its result once it is final (r6 BC-15, `result.ts`). Core posts nothing: the session
+// is handed the key and tells the person in its own words (ISS-845).
 
 import { createHash } from 'node:crypto';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
@@ -10,7 +11,7 @@ import { knownThread, type Outcome, threadUnknown } from './outcome.js';
 import { refusalOf } from './refusals.js';
 import { FEEDBACK_KIND_OF, visitorIdOf } from './rules.js';
 import { insertAction, insertLink, type RoomRow } from './store.js';
-import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
+import { roomAuth, scrubbedForRoom } from './thread.js';
 
 /** What the session asks to file: the route (kind), a title, and the need in plain words. */
 export interface RecordRequest {
@@ -29,11 +30,11 @@ export async function threadLink(room: RoomRow, thread: string): Promise<string>
 }
 
 /**
- * File what needs code as Feedback for the team (BC-14), once the asker confirmed it
- * (`fixes.ts:proposeRecord`): filed as the room's own account through the external filing door,
- * the asker as its reporter, the thread's link in its body; the thread is told the key, and its
- * result once it is final (r6 BC-15). The external filing door hands a group member no status link:
- * in a group anyone could open it, and the result posted in the thread is what they are owed.
+ * File what needs code as Feedback for the team (BC-14), once the asker agreed
+ * (`fixes.ts:agreeTo`): filed as the room's own account through the external filing door, the asker
+ * as its reporter, the thread's link in its body. The key goes back to the session, which tells the
+ * thread; its result follows once it is final (r6 BC-15). The external filing door hands a group
+ * member no status link: in a group anyone could open it.
  */
 export async function fileRecord(
   room: RoomRow,
@@ -105,21 +106,15 @@ export async function fileRecord(
     };
   }
   if (filed.created) {
-    const posted = await postInThread({
-      room,
-      thread: input.thread,
-      text: `Recorded as ${filed.key} for the team. I will post the result here once it is live.`,
-    });
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,
-      conversationId: posted.conversationId,
+      conversationId,
       thread: input.thread,
       kind: 'feedback_recorded',
       actorKind: 'session',
       input: { kind: input.kind, title: input.title },
       output: { feedbackKey: filed.key },
-      externalId: posted.messageId,
       feedbackId: filed.id,
     });
   }

@@ -1,6 +1,6 @@
 // A room granted `build` (REQ-75 r5 BC-27): its session changes code in a writable working copy of
 // the project's development branch that the box keeps for the room, and proposes a build; once a
-// confirmer confirms, the box commits it on a feat/ or fix/ branch and pushes it without force, and
+// confirmer agrees, the box commits it on a feat/ or fix/ branch and pushes it without force, and
 // core opens a change request into the development branch through the project's source host. The
 // development branch is the project document's `source.git.defaultBranch`; one a production
 // environment deploys from is refused by name, so nothing reaches production from chat — the release

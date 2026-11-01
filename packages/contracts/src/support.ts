@@ -113,7 +113,7 @@ export const supportGrantsSchema = z
 		/** The project's deploy bindings (their ids) this room may deploy. */
 		deployTargets: z.array(z.uuid()).max(20).optional(),
 		hosts: z.array(supportCommandHostSchema).max(20).optional(),
-		/** Whose `confirm <code>` lets a deploy or a host change run: Rocket.Chat usernames. */
+		/** Whose plain agreement lets a build, a deploy or a host change run: Rocket.Chat usernames. */
 		confirmers: z.array(chatUsernameSchema).max(20).optional(),
 		/**
 		 * The owner `owner_mode` obeys (REQ-77 BC-20) and a channel agent asks (BC-12): the chat
@@ -266,7 +266,7 @@ export const supportToolSchema = z
 				/^\/[^\s?#]*$/,
 				"a path under the base URL, starting with /, no query",
 			),
-		/** What it does, in words the asker reads in the confirm prompt and the check line. */
+		/** What it does, in words the session reads in the tools list and says to the asker in its own. */
 		summary: z.string().trim().min(3).max(300),
 		params: z.record(paramName, supportToolParamSchema).optional(),
 	})
@@ -414,10 +414,10 @@ export const SUPPORT_ACTOR_KINDS = ["member", "session", "core"] as const;
 export type SupportActorKind = (typeof SUPPORT_ACTOR_KINDS)[number];
 
 /**
- * What waits on a confirm: a granted `fix`, or a `filing` of what needs code as Feedback, each on
- * its asker's; a `deploy` of a bound target, or a `command` that changes a host, each on a confirmer
- * the room's grant names (REQ-75 r5 BC-27). All share one code space per room, so one
- * `confirm <code>` names one of them.
+ * What waits on an agreement: a granted `fix`, or a `filing` of what needs code as Feedback, each on
+ * its asker's; a `deploy` of a bound target, a `build`, or a `command` that changes a host, each on a
+ * confirmer the room's grant names (REQ-75 r5 BC-27). All share one handle space per room, so one
+ * `agree` names one of them (ISS-845).
  */
 export const SUPPORT_PROPOSAL_KINDS = [
 	"fix",
@@ -441,11 +441,11 @@ export type SupportFixState = (typeof SUPPORT_FIX_STATES)[number];
 /** How long a proposed fix waits for its asker. */
 export const SUPPORT_FIX_TTL_MS = 15 * 60_000;
 
-/** A fix's code: what the asker types after `confirm`. Unambiguous letters and digits. */
+/**
+ * A proposal's handle: what the session names when it cites the agreement to it (ISS-845). Nobody in
+ * the room types it; unambiguous letters and digits.
+ */
 export const SUPPORT_CONFIRM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
-/** A message that confirms or declines a fix: the word, then the code, and nothing else. */
-export const SUPPORT_CONFIRM_MESSAGE_PATTERN =
-	/^\s*(confirm|cancel)\s+([A-HJ-NP-Z2-9]{6})\s*$/i;
 
 /** What the session records an item as: the kinds a group member's need maps to. */
 export const SUPPORT_RECORD_KINDS = ["defect", "feature", "request"] as const;
@@ -483,6 +483,8 @@ export const SUPPORT_ACTIONS = [
 	"announce",
 	"ask_owner",
 	"check_result",
+	"agree",
+	"link",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -519,6 +521,38 @@ export const supportRecordRequestSchema = z.strictObject({
 	whereSeen: z.string().trim().min(1).max(300).optional(),
 	/** The member who confirms the filing: their account id; the thread's first writer when omitted. */
 	asker: z.string().min(1).max(64).optional(),
+});
+
+/**
+ * The person's plain answer to a proposal, as the session cites it (ISS-845): the proposal's handle
+ * and the id of the message in which they agreed or declined, in their own words. Core checks who
+ * wrote that message, in which thread and when, before anything runs.
+ */
+export const supportAgreeRequestSchema = z.strictObject({
+	thread: threadId,
+	proposal: z
+		.string()
+		.regex(SUPPORT_CONFIRM_CODE_PATTERN, "a proposal handle, as `record`, `propose_fix`, `build`, `deploy` or `command` answered it")
+		.describe("the proposal the person answered: the `proposal` its act answered"),
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.describe("the id of the person's message that agrees or declines, as you were handed it (`message`)"),
+	decision: z.enum(["agree", "decline"]).optional(),
+});
+
+/**
+ * A member's chat account to link to their Forge user (ISS-845): the session is handed the link page
+ * to give them, where they confirm it signed in; no code passes through the room or the session.
+ */
+export const supportLinkRequestSchema = z.strictObject({
+	thread: threadId,
+	member: z
+		.string()
+		.min(1)
+		.max(64)
+		.describe("the member's chat account id, as you were handed it (`from.id`)"),
 });
 
 export const supportMoveIssueRequestSchema = z.strictObject({
@@ -704,6 +738,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_REPLY_REFUSED",
 	"SUPPORT_LIMIT_REACHED",
 	"SUPPORT_NOT_A_SUPPORT_ROOM",
+	/** No proposal waits under the handle an agreement names: it ran, was declined, expired or never was (ISS-845). */
+	"SUPPORT_PROPOSAL_UNKNOWN",
+	/** The proposal's time ran out before anyone agreed to it (ISS-845). */
+	"SUPPORT_PROPOSAL_EXPIRED",
+	/** The cited message, or the act, is in another thread than the proposal's (ISS-845). */
+	"SUPPORT_AGREEMENT_OTHER_THREAD",
+	/** The cited message was written before the proposal was made, so it agrees to nothing (ISS-845). */
+	"SUPPORT_AGREEMENT_BEFORE_PROPOSAL",
 	"OPS_NOT_AN_OPERATIONS_ROOM",
 	"OPS_NO_ROLE",
 	"OPS_ROLE_NOT_GRANTED",

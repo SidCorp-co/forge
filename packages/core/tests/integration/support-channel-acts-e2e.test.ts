@@ -269,24 +269,20 @@ describe("REQ-75 r6: #webmail's seed, and results never progress", () => {
   });
 
   it('tells the session an item’s result once it is live, and posts nothing for progress (BC-15)', async () => {
-    let code_ = '';
-    const asked = await w.ask(w.chat.bob, 'Please add a CSV export of orders', async (m, act) => {
-      const offered = await act({
+    const asked = await w.ask(w.chat.bob, 'Please add a CSV export of orders', async (m, act) =>
+      act({
         action: 'record',
         thread: m.thread,
         kind: 'feature',
         title: 'CSV export of orders',
         summary: 'Bob wants orders as CSV.',
-      });
-      code_ = String(offered.code ?? '');
-      return offered;
-    });
-    expect(code_).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
-    w.box.model = async () => {};
-    await w.chat.say(w.chat.bob, `confirm ${code_}`, asked.id);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === asked.id && l.text.startsWith('Recorded as FB-')),
+      }),
     );
+    const proposal = String(asked.out?.proposal);
+    expect(proposal, JSON.stringify(asked.out)).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    const agreed = await w.agreeBy(w.chat.bob, 'yes, record it', asked.id, proposal);
+    expect(agreed.out, JSON.stringify(agreed.out)).toMatchObject({ recorded: true });
+    w.box.model = async () => {};
     await w.settleWarm();
     const [link] = await rows<{ feedback_id: string }>(sql`
       SELECT feedback_id FROM support_feedback_links WHERE room_id = ${w.roomId}::uuid AND thread = ${asked.id}`);

@@ -1,7 +1,8 @@
-// What a confirmer's `confirm <code>` runs (REQ-75 r5 BC-27): a command that changes a host, a
+// What a confirmer's agreement runs (REQ-75 r5 BC-27; ISS-845): a command that changes a host, a
 // deploy of a bound target, or a build — committed and pushed by the box, its change request opened
-// by core into the development branch. The grant is read again here, as it stands at the confirm: a
-// host, a target or the ability itself taken away since the proposal runs nothing.
+// by core into the development branch. The grant is read again here, as it stands at the agreement: a
+// host, a target or the ability itself taken away since the proposal runs nothing. What came of it
+// goes back to the session as the act's answer; core posts nothing in the room.
 
 import {
   changeRequestOpen,
@@ -11,7 +12,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { dispatchCoolifyDeployDirect } from '../release-batch/index.js';
 import { pushSupportBuild, runHostCommand } from '../runners/index.js';
-import { commandLine, scrubbedResult } from './ability-acts.js';
+import { scrubbedResult } from './ability-acts.js';
 import { boxOfRoom } from './box.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
 import { mayConfirmChange } from './confirm-role.js';
@@ -24,17 +25,20 @@ import {
   type RoomRow,
   settleFixResult,
 } from './store.js';
-import { postInThread } from './thread.js';
 
-type Tell = (note: string) => Promise<void>;
-type Ran = 'ran' | 'failed';
+/** What a confirmed change came to, as the session is handed it to tell the thread. */
+export interface Ran {
+  state: 'ran' | 'failed';
+  /** What happened, for the session: never posted by core. */
+  what: string;
+  result: unknown;
+}
 
-/** A change that could not run: its proposal settled failed, the thread and the session told why. */
+/** A change that could not run: its proposal settled failed, and the session handed why. */
 async function failed(
   room: RoomRow,
   fix: ProposalRow,
   conversationId: string,
-  tell: Tell,
   why: string,
 ): Promise<Ran> {
   await settleFixResult(fix.id, 'failed', { refused: why });
@@ -50,37 +54,35 @@ async function failed(
     output: { refused: why },
     proposalId: fix.id,
   });
-  await postInThread({ room, thread: fix.thread, text: `It did not go ahead: ${why}` });
-  await tell(`${fix.kind} ${fix.code} was confirmed and did not go ahead: ${why}`);
-  return 'failed';
+  return {
+    state: 'failed',
+    what: `The ${fix.kind} did not go ahead: ${why}`,
+    result: { refused: why },
+  };
 }
 
 async function ran(
   room: RoomRow,
   fix: ProposalRow,
+  conversationId: string,
   result: unknown,
-  line: string,
-  tell: Tell,
-  note: string,
+  what: string,
   ok = true,
 ): Promise<Ran> {
   await settleFixResult(fix.id, ok ? 'ran' : 'failed', result);
-  const posted = await postInThread({ room, thread: fix.thread, text: line });
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
-    conversationId: posted.conversationId,
+    conversationId,
     thread: fix.thread,
     kind: ok ? 'fix_ran' : 'fix_failed',
     actorKind: 'core',
     tool: fix.kind,
     input: fix.args,
     output: result,
-    externalId: posted.messageId,
     proposalId: fix.id,
   });
-  await tell(note);
-  return ok ? 'ran' : 'failed';
+  return { state: ok ? 'ran' : 'failed', what, result };
 }
 
 /** Who confirmed a change: the account the chat server signed, and its username. */
@@ -95,15 +97,14 @@ export async function runConfirmed(
   room: RoomRow,
   fix: ProposalRow,
   conversationId: string,
-  tell: Tell,
   confirmer: Writer,
 ): Promise<Ran> {
   try {
-    return await runClaimed(room, fix, conversationId, tell, confirmer);
+    return await runClaimed(room, fix, conversationId, confirmer);
   } catch (err) {
     logger.error({ err, roomId: room.id, code: fix.code }, 'support: a confirmed change threw');
     const why = err instanceof Error ? err.message : String(err);
-    return failed(room, fix, conversationId, tell, `it broke while running (${why})`);
+    return failed(room, fix, conversationId, `it broke while running (${why})`);
   }
 }
 
@@ -111,7 +112,6 @@ async function runClaimed(
   room: RoomRow,
   fix: ProposalRow,
   conversationId: string,
-  tell: Tell,
   confirmer: Writer,
 ): Promise<Ran> {
   const args = (fix.args ?? {}) as Record<string, string>;
@@ -126,42 +126,34 @@ async function runClaimed(
         : undefined;
   const still = await abilityRefusal(room, grants, ability, reach);
   if (still && !still.ok) {
-    return failed(
-      room,
-      fix,
-      conversationId,
-      tell,
-      still.refusals[0]?.detail ?? 'no longer granted',
-    );
+    return failed(room, fix, conversationId, still.refusals[0]?.detail ?? 'no longer granted');
   }
   if (!(await mayConfirmChange(room, grants, confirmer))) {
     return failed(
       room,
       fix,
       conversationId,
-      tell,
       `@${confirmer.label ?? 'the confirmer'} may no longer confirm a change in this room`,
     );
   }
 
   if (fix.kind === 'command') {
     const box = await boxOfRoom(room, 'commands');
-    if (!box.ok) return failed(room, fix, conversationId, tell, box.refusals[0]?.detail ?? '');
+    if (!box.ok) return failed(room, fix, conversationId, box.refusals[0]?.detail ?? '');
     const out = await runHostCommand({
       deviceId: box.value,
       projectId: room.projectId,
       host: args.host ?? '',
       command: args.command ?? '',
     });
-    if (!out.ok) return failed(room, fix, conversationId, tell, out.why);
+    if (!out.ok) return failed(room, fix, conversationId, out.why);
     const result = await scrubbedResult(room, out.value);
     return ran(
       room,
       fix,
+      conversationId,
       result,
-      commandLine(args.host ?? '', args.command ?? '', result),
-      tell,
-      `The command ${fix.code} ran after a confirmer confirmed it. What came back: ${JSON.stringify(result).slice(0, 6000)}`,
+      `The command ran on ${args.host} after it was agreed to. What came back: ${JSON.stringify(result).slice(0, 6000)}`,
       result.exitCode === 0,
     );
   }
@@ -175,9 +167,8 @@ async function runClaimed(
       return ran(
         room,
         fix,
+        conversationId,
         out,
-        `${args.label} reaches production, so the deploy now waits for its approver in Forge. Nothing has changed yet.`,
-        tell,
         `The deploy ${fix.code} of ${args.label} waits for its production approver; nothing is deployed yet.`,
       );
     }
@@ -186,21 +177,19 @@ async function runClaimed(
         room,
         fix,
         conversationId,
-        tell,
         `the deploy of ${args.label} was not dispatched (${out.reason ?? 'no reason given'})`,
       );
     }
     return ran(
       room,
       fix,
+      conversationId,
       out,
-      `Deploying ${args.label} now.`,
-      tell,
       `The deploy ${fix.code} of ${args.label} was dispatched after a confirmer confirmed it.`,
     );
   }
 
-  return runBuild(room, fix, args, conversationId, tell, confirmer);
+  return runBuild(room, fix, args, conversationId, confirmer);
 }
 
 /** The change request a build opened, while its projection does not say it was merged or closed. */
@@ -216,13 +205,12 @@ async function runBuild(
   fix: ProposalRow,
   args: Record<string, string>,
   conversationId: string,
-  tell: Tell,
   confirmer: Writer,
 ): Promise<Ran> {
   const base = await buildBaseOf(room.projectId, args.branch ?? '');
-  if (!base.ok) return failed(room, fix, conversationId, tell, base.refusals[0]?.detail ?? '');
+  if (!base.ok) return failed(room, fix, conversationId, base.refusals[0]?.detail ?? '');
   const box = await boxOfRoom(room, 'build');
-  if (!box.ok) return failed(room, fix, conversationId, tell, box.refusals[0]?.detail ?? '');
+  if (!box.ok) return failed(room, fix, conversationId, box.refusals[0]?.detail ?? '');
   const branch = args.branch ?? '';
   const link = await threadLink(room, fix.thread);
   const body = `${args.summary ?? ''}\n\nAsked in ${link}; confirmed by @${confirmer.label ?? 'a confirmer'}.`;
@@ -235,7 +223,7 @@ async function runBuild(
     title: args.title ?? branch,
     body,
   });
-  if (!pushed.ok) return failed(room, fix, conversationId, tell, pushed.why);
+  if (!pushed.ok) return failed(room, fix, conversationId, pushed.why);
   // a second build on a branch still under review adds to the change request it opened; once that
   // one is merged or closed, the push opens a new one
   const open = await stillOpen(await builtChangeRequest(room.id, branch));
@@ -243,9 +231,8 @@ async function runBuild(
     return ran(
       room,
       fix,
+      conversationId,
       { ...pushed.value, changeRequest: open },
-      `Pushed ${pushed.value.sha.slice(0, 8)} to ${branch}; it updates the open change request ${open.url ?? `#${open.number}`}.`,
-      tell,
       `The build ${fix.code} pushed ${pushed.value.sha} to ${branch}, under the change request already open (${open.url ?? open.number}).`,
     );
   }
@@ -274,9 +261,8 @@ async function runBuild(
     return ran(
       room,
       fix,
+      conversationId,
       { ...pushed.value, changeRequest },
-      `Pushed ${branch} (${pushed.value.files.length} files) and opened a change request into ${base.value.base}: ${opened.url ?? `#${opened.number}`}. It merges through review, never from here.`,
-      tell,
       `The build ${fix.code} pushed ${pushed.value.sha} to ${branch} and opened change request ${opened.url ?? opened.number} into ${base.value.base}.`,
     );
   } catch (err) {
@@ -285,7 +271,6 @@ async function runBuild(
       room,
       fix,
       conversationId,
-      tell,
       `${branch} was pushed (${pushed.value.sha.slice(0, 8)}) and the change request could not be opened: ${why}`,
     );
   }

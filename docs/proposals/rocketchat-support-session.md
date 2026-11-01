@@ -111,31 +111,33 @@ undeclared tool, a diagnose tool with a writing method or an argument not declar
 name, and the credential is never in the session's hands, its prompt or any answer — responses and
 every posted line pass the scrubber with the credential's values named (BC-17).
 
-### Confirm: the asker's own message, with a button that writes it
+### Agreement: the person's own plain answer, cited by the session (ISS-845)
 
-Rocket.Chat's interactive blocks route a click only to an Apps-Engine app; a bot connected over
-REST and DDP receives nothing (forum: *How to call an action through a button sent on a sendMessage
-API block?*). Legacy attachment buttons with `msg_in_chat_window` post the button's text as the
-person who pressed it (forum: *Hide messages from attached buttons in chats*). So the confirm is a
-message `confirm <CODE>` from the asker, and the prompt carries a button that writes exactly that.
-Either way the only thing that counts is a message the server attributes to the asker's account,
-naming a pending fix's code — the chat-proposals principle (`contracts/src/chat-proposals.ts`).
-Anyone else's `confirm` is answered "only @asker can confirm this" and runs nothing; a fix not
-confirmed in 15 minutes expires. Slack bots built on Bolt do the same thing with their own buttons
-(the click carries the clicking user's id, and the app compares it with the requester).
+The owner ruled on 2026-11-01 that in a room the session agent is the only voice: nobody is asked to
+type a code. A proposal (`record`, `propose_fix`, `build`, `deploy`, a command that changes a host)
+posts nothing; the session is handed its handle, whom it waits on and when it expires, and asks in
+its own words. When the person answers in plain words ("ok", "yes", "no"), the session calls `agree`
+citing that message's id (`support/fixes.ts:agreeTo`). Core checks the citation against what the
+chat server signed: the message is a member's message this room received, in the proposal's
+thread, written after the proposal, by the asker (a fix, a filing) or a confirmer the room allows
+(a build, a deploy, a host change, and any fix in a channel agent's group). Anything else is refused
+to the session by name (`SUPPORT_MESSAGE_UNKNOWN`, `SUPPORT_AGREEMENT_OTHER_THREAD`,
+`SUPPORT_AGREEMENT_BEFORE_PROPOSAL`, `SUPPORT_NOT_A_CONFIRMER`, `SUPPORT_PROPOSAL_EXPIRED`,
+`SUPPORT_PROPOSAL_UNKNOWN`), never posted. What the change came to is the act's answer, which the
+session tells the person. A proposal unanswered in 15 minutes expires, recorded and posted nowhere.
 
 ### What needs code is Feedback, linked to the thread, followed to shipped
 
 Nothing is filed until its asker agrees (REQ-30 BC-4, the owner's confirm-before-recording rule):
-the session's `record` restates the route (defect, feature or request), the title and the thread's
-link in the thread, with the same `confirm <code>` / `cancel <code>` buttons a fix has, and waits in
+the session's `record` proposes the route (defect, feature or request) and the title, posting
+nothing; the session asks the asker in its own words, and the proposal waits in
 `support_proposals` as kind `filing` with no tool, beside the fixes (kind `fix`, their tool named) in
-one code space per room (`support/propose.ts:proposeRecord`; migration 0539 renamed `support_fixes`
-and ended the reserved `forge:record` tool name it used to hide under). Only the asker's confirm files it; another member's, a
-cancel or 15 minutes unconfirmed file nothing, and the session is told the key once it is filed.
+one handle space per room (`support/propose.ts:proposeRecord`; migration 0539 renamed `support_fixes`
+and ended the reserved `forge:record` tool name it used to hide under). Only the asker's agreement, cited with `agree`, files it; another member's, a
+decline or 15 minutes unanswered file nothing, and `agree` answers the session the key.
 Then core records a defect, a feature or an extra request as Feedback through the external
 filing door (`feedback/external.ts:fileExternalFeedback`, channel `rocketchat`), as the room's
-account, with the thread's permalink in the body and the thread told its key. A group member is
+account, with the thread's permalink in the body; the session tells the thread in its own words. A group member is
 handed no status link — in a group anyone could open it, and the result posted in the thread is
 what they are owed — so migration 0537 lets `feedback_external_reporters.status_token_hash` be null and checks
 it is held by exactly the widget rows (`feedback_external_reporters_status_link_chk`). Minting a token
@@ -312,8 +314,8 @@ anything runs (`support/grants.ts:abilityRefusal`). The refusal names:
 - what the room holds;
 - who can grant it — the project's admins by name, in Project settings → Integrations → Rocket.Chat.
 
-Core posts it in the thread whether or not the session repeats it, and records it. A confirm from
-anyone but a named confirmer is refused the same way. Prior art for the shape of the refusal:
+Core records it and posts nothing: the session says it in its own words (ISS-845). An agreement
+cited from anyone but a confirmer the room allows is refused by name the same way. Prior art for the shape of the refusal:
 - Slack's `missing_scope` answers `needed` and `provided`
   (`slackapi/node-slack-sdk packages/web-api/src/types/response/ChatPostMessageResponse.ts`);
 - Rocket.Chat's Apps-Engine `PermissionDeniedError` names the permission the app lacks
@@ -332,20 +334,16 @@ A box declares `hostCommands`, `chatCheckoutModes` and `supportBuilds`, the last
 can confine a session. A support turn on a box that cannot scope its checkout is refused
 (`BOX_CANNOT_SCOPE_CHECKOUT`), never run with the whole checkout writable.
 
-**A member links their own chat account by a code.** A bot account cannot read a member's address
-unless the server grants it `view-full-other-user-info`, an admin grant. Without it the address
-match finds no one, so a member can link the account themselves:
-1. Signed in to Forge, the member asks for a code (`POST /api/projects/:projectId/speaker-links/codes`
-   with `{ source: 'rocketchat' }`, project write access).
-2. They write `link <CODE>` in any bound room of that project.
-
-Core redeems the code before the session sees the line, and records the line as `link ********`. It
-links the account Rocket.Chat signed to the member who made the code (`confirmed_via: chat_code`), and
-answers in the thread (`assistant/identity/link-code.ts`, `support/link-code.ts`). A code is eight
-characters, kept only as its hash, spent once, and lapses after 15 minutes. It holds for one project
-and one channel. A code that is spent, lapsed, from another project or unknown is answered the same
-way: no link code waits under it. An account already linked to another Forge user stays as it is. The
-proof is `packages/core/tests/integration/support-link-code-e2e.test.ts`.
+**A member links their own chat account on the link page (ISS-845).** The session asks with
+`link { thread, member }` and is handed the page (`assistant/identity/link-url.ts:speakerLinkUrl`) to
+give the member, or `{ linked: true }`. The member opens it signed in to Forge and confirms
+(`POST /api/projects/:projectId/speaker-links`), where the address the chat server reports for the
+account must be their Forge address. No code passes through the room or the session, and core posts
+nothing: once the link is confirmed, the session of each room the account wrote in is handed the
+fact (`support/speaker-link.ts:tellLinked`). The address read needs `view-full-other-user-info` on
+the bot; without it the page refuses `SPEAKER_EMAIL_ABSENT` and nobody can link there, so the owner
+grants it. The typed `link <code>` path is gone. The proof is
+`packages/core/tests/integration/support-link-page-e2e.test.ts`.
 
 **Migration (BC-29).** Each hand-run watcher becomes a binding of its group, one room at a time:
 1. Its prompt file's standing instructions become `persona`.
@@ -537,10 +535,10 @@ These need orbit's binding to grant `deploy` with `deployTargets` naming 1445bbb
 - **Every turn's first tool call pays one 401.** Claude Code opens with the bearer it read last,
   which the previous turn's end revoked; it re-runs `headersHelper` on the 401 and retries
   (measured: tens of ms).
-- **The confirm is a typed message.** Legacy attachment buttons post `confirm <CODE>` as the person
-  who pressed them; Rocket.Chat's UIKit buttons would need an Apps-Engine app, which this does not
-  ship. A member who types the line by hand confirms just the same, and only the asker's account
-  counts.
+- **An agreement is the session's citation.** The session decides which message agreed; core checks
+  only who wrote it, where and when. A person who says "ok" to something else in that thread, after
+  the proposal, can be cited as agreeing; the session reads the conversation, and the audit row
+  names the message.
 - **The asker is the thread's latest writer.** A command and a second member's line landing before
   the session acts runs the command as the second member: never with more than that member holds,
   but not as the one who asked. Ask in a thread of your own.
@@ -659,8 +657,8 @@ The live bindings, made by the coordinator on chat.sidcorp.co:
 | AgentSocialTeams | Sy (`digital`) | `read`, `draft`, `research` | forge |
 
 Each person who acts in them is a Forge user by a verified address both sides share, or by a
-confirmed speaker link. The address match needs `view-full-other-user-info` on the bot; without it a
-member links by writing a code in the room (see the r5 section above).
+confirmed speaker link. The address match needs `view-full-other-user-info` on the bot (see the r5
+section above).
 
 ### What the owner gives
 

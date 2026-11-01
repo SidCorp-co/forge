@@ -308,12 +308,13 @@ export async function recordedThreads(
 export async function memberMessage(
   roomId: string,
   messageId: string,
-): Promise<{ authorKey: string; author: string | null; thread: string } | null> {
+): Promise<{ authorKey: string; author: string | null; thread: string; at: Date } | null> {
   const [row] = await db
     .select({
       key: supportActions.actorKey,
       label: supportActions.actorLabel,
       thread: supportActions.thread,
+      at: supportActions.createdAt,
     })
     .from(supportActions)
     .where(
@@ -325,7 +326,9 @@ export async function memberMessage(
       ),
     )
     .limit(1);
-  return row?.key ? { authorKey: row.key, author: row.label, thread: row.thread } : null;
+  return row?.key
+    ? { authorKey: row.key, author: row.label, thread: row.thread, at: row.at }
+    : null;
 }
 
 /** Whether any room of the channel announced since a time (BC-39). */

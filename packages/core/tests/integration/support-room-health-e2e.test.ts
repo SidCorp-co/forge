@@ -248,7 +248,7 @@ describe('REQ-75 r5: a build never changes what production deploys (BC-27)', () 
     expect(w.box.acts.filter((a) => a.event === 'build.push').length).toBe(pushes);
   });
 
-  it('refuses a build onto a branch an environment deploys from, at the proposal and again at the confirm', async () => {
+  it('refuses a build onto a branch an environment deploys from, at the proposal and again at the agreement', async () => {
     const declare = (live: string) =>
       seedProjectDocument(w.projectId, w.ownerId, {
         defaultBranch: 'dev',
@@ -274,7 +274,7 @@ describe('REQ-75 r5: a build never changes what production deploys (BC-27)', () 
       'fix/live is a branch this project deploys or promotes from',
     );
 
-    // proposed while allowed; production moves onto the branch before the confirm
+    // proposed while allowed; production moves onto the branch before the agreement
     const later = await sessionDoes({
       action: 'build',
       branch: 'fix/hotfix',
@@ -283,14 +283,17 @@ describe('REQ-75 r5: a build never changes what production deploys (BC-27)', () 
     });
     expect(later.out).toMatchObject({ pending: true });
     await declare('fix/hotfix');
-    await w.chat.say(w.chat.alice, `confirm ${String(later.out.code)}`, later.thread);
-    await w.untilLines((ls) =>
-      ls.some(
-        (l) =>
-          l.tmid === later.thread &&
-          l.text.startsWith('It did not go ahead: fix/hotfix is a branch this project deploys'),
-      ),
+    const agreed = await w.agreeBy(
+      w.chat.alice,
+      'yes, build it',
+      later.thread,
+      String(later.out.proposal),
     );
+    expect(agreed.out, JSON.stringify(agreed.out)).toMatchObject({ ran: false });
+    expect(String(agreed.out.what)).toMatch(
+      /^The build did not go ahead: fix\/hotfix is a branch this project deploys/,
+    );
+    expect(await w.linesIn(later.thread)).toEqual([]);
     expect(pushes()).toBe(before);
   });
 });

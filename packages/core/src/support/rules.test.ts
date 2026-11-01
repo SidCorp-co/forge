@@ -1,12 +1,10 @@
-import { supportToolSchema } from '@forge/contracts/support';
+import { SUPPORT_CONFIRM_CODE_PATTERN, supportToolSchema } from '@forge/contracts/support';
 import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
 import {
   clipMessage,
-  confirmRefusal,
   limitsOf,
   mintConfirmCode,
-  parseConfirm,
   resultNote,
   threadOf,
   visitorIdOf,
@@ -14,28 +12,9 @@ import {
 
 // REQ-75: the pure rules of a support group.
 
-describe('a confirm is the asker’s own message naming the code (BC-13)', () => {
-  it('reads confirm and cancel with a code, in any case, and nothing else', () => {
-    expect(parseConfirm('confirm K7QX2M')).toEqual({ verb: 'confirm', code: 'K7QX2M' });
-    expect(parseConfirm('  Cancel k7qx2m ')).toEqual({ verb: 'cancel', code: 'K7QX2M' });
-    expect(parseConfirm('please confirm K7QX2M')).toBeNull();
-    expect(parseConfirm('confirm K7QX2M and also delete')).toBeNull();
-    expect(parseConfirm('confirm K7QX1M')).toBeNull();
-  });
-
-  it('mints codes from the unambiguous alphabet the pattern reads', () => {
-    for (let i = 0; i < 200; i++) {
-      const code = mintConfirmCode();
-      expect(parseConfirm(`confirm ${code}`)?.code).toBe(code);
-    }
-  });
-
-  it('lets only the asker’s account confirm, naming the asker to anyone else', () => {
-    const fix = { askerKey: 'u-alice', askerLabel: 'alice' };
-    expect(confirmRefusal(fix, 'u-alice')).toBeNull();
-    expect(confirmRefusal(fix, 'u-bob')).toBe(
-      'Only @alice can confirm this change. Nothing was run.',
-    );
+describe('a proposal waits under a handle the session cites (BC-13, ISS-845)', () => {
+  it('mints handles from the unambiguous alphabet the agreement schema reads', () => {
+    for (let i = 0; i < 200; i++) expect(mintConfirmCode()).toMatch(SUPPORT_CONFIRM_CODE_PATTERN);
   });
 });
 

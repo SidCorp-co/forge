@@ -92,10 +92,9 @@ export async function askOwner(
     );
   }
   const username = await ownerUsername(room.projectId, owner);
-  const text = await scrubbedForRoom(
-    room,
-    `${username ? `@${username} ` : 'Owner: '}${input.question}\n\nAnswer in this thread: your next message here is the answer.`,
-  );
+  // the question is the agent's own words; the owner's next message in the thread counts as the
+  // answer by the kernel rule (`settleOwnerAnswer`), and the agent says so itself if it needs to
+  const text = await scrubbedForRoom(room, `${username ? `@${username} ` : ''}${input.question}`);
   const admitted = await screenForThread(
     room,
     conversationId,

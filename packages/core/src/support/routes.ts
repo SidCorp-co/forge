@@ -1,8 +1,10 @@
 import {
+  supportAgreeRequestSchema,
   supportBuildRequestSchema,
   supportCommandRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
+  supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
   supportProposeFixRequestSchema,
   supportRecordRequestSchema,
@@ -93,6 +95,8 @@ const SHAPES = {
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
   record: '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }',
+  agree: '{ thread, proposal, message, decision?: agree | decline }',
+  link: '{ thread, member }',
   issues: '{ project, status?, key? }',
   releases: '{ project }',
   requirements: '{ project }',
@@ -154,6 +158,20 @@ supportRoutes.post(
   projectParam,
   strictBody(supportRecordRequestSchema, SHAPES.record),
   (c) => act(c, c.req.valid('param').id, { action: 'record', ...c.req.valid('json') }),
+);
+// the person's plain answer to a proposal, cited by the session by its message id (ISS-845)
+supportRoutes.post(
+  '/:id/support/session/agreements',
+  projectParam,
+  strictBody(supportAgreeRequestSchema, SHAPES.agree),
+  (c) => act(c, c.req.valid('param').id, { action: 'agree', ...c.req.valid('json') }),
+);
+// a member's chat account linked to their Forge user through the link page (ISS-845)
+supportRoutes.post(
+  '/:id/support/session/links',
+  projectParam,
+  strictBody(supportLinkRequestSchema, SHAPES.link),
+  (c) => act(c, c.req.valid('param').id, { action: 'link', ...c.req.valid('json') }),
 );
 
 // what a room's grant opens (REQ-75 r5 BC-27): each refused by name where the room is not granted it

@@ -6,10 +6,12 @@ import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import {
   SUPPORT_ACTIONS,
   SUPPORT_RECORD_KINDS,
+  supportAgreeRequestSchema,
   supportBuildRequestSchema,
   supportCommandRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
+  supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
   supportProposeFixRequestSchema,
   supportRecordRequestSchema,
@@ -57,7 +59,7 @@ import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from 
 import { type SupportActInput, supportAct } from './acts.js';
 import { refusalOf } from './refusals.js';
 
-/** The actions that write nothing: the rest post in a thread, file an item or act for a member. */
+/** The actions that write nothing: the rest post in a thread, file an item, or act or record for a member. */
 export const SUPPORT_TOOL_READS: readonly string[] = [
   'search',
   'thread',
@@ -104,12 +106,17 @@ const REQUESTS = {
   announce: supportAnnounceRequestSchema,
   ask_owner: supportAskOwnerRequestSchema,
   check_result: supportCheckResultRequestSchema,
+  agree: supportAgreeRequestSchema,
+  link: supportLinkRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 // one flat strict input, every field but `action` optional, as the model is shown it: the action's
 // own request then refuses a field it does not take, by name
 const inputSchema = z.strictObject({
   action: z.enum(ACTIONS),
+  // an agreement's `message` comes first, so the channel acts' description of it is the one shown
+  ...supportAgreeRequestSchema.partial().shape,
+  ...supportLinkRequestSchema.partial().shape,
   // the channel acts' narrower `text` comes first, so the reply's wider one is the one shown
   ...supportMemberRequestSchema.partial().shape,
   ...supportRuleRequestSchema.partial().shape,
@@ -166,6 +173,8 @@ const SHAPE = [
   'announce { text }',
   'ask_owner { thread, question, record? }',
   'check_result { check, finding: string | null }',
+  'agree { thread, proposal, message, decision?: agree | decline }',
+  'link { thread, member }',
   'any action may add rid: the group, where you answer several and the act names no thread',
 ].join('; ');
 
@@ -174,11 +183,13 @@ const DESCRIPTION = [
   'search {query}: the project knowledge and its published OpenAPI contracts; each hit carries `cite`, which you put in brackets after what it supports.',
   'thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you.',
   'reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite.',
-  'run {thread, tool, args}: run a granted diagnose check; the thread is shown what was checked, and you get what came back.',
-  'propose_fix {thread, tool, args, asker}: offer a granted fix to the person who asked (`from.id`). It runs only when that person confirms in the thread; you are told the result as a later message.',
-  `record {thread, kind, title, summary, asker?}: what needs code or a decision is offered as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}); the thread is shown the route, the title and its link, and it is filed only when the asker (the thread's first writer unless named) confirms. You are told the key when it is filed, and told again once it is live, shipped or declined: then post its result in its thread. Never post progress, and never promise a date.`,
-  "The channel record (every bot of this group reads it): channel {} reads it. member {member, roles, askFor?, message} records the roles you inferred for a member from a message, and what to ask them for; a member a person confirmed is refused and stays as it is. rule {thread, message, text} keeps an instruction a confirmed team member gave as a channel rule linked to that message. common_issue {threads, question, answer, feedback?} keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key. route {thread, to, ...} sends a need where it belongs, never mixed: to forge {title, text} files a problem with Forge itself as Forge feedback and posts nothing; to technical or product {member, text} asks that one member, who holds the role, in the thread. announce {text} is the one top-level post, for news affecting everyone, at most one an hour. ask_owner {thread, question, record?} asks the owner this binding names, in that thread: the owner's next message there is the answer, which you read as your next message and which is also written on the issue `record` names (ISS-n). Ask only what no record, log or code can answer, once per question. check_result {check, finding} answers a scheduled check you were handed (its thread is the check): the one finding core posts in the channel, or null and nothing is posted; one result per check. A reply mentions at most one person: the asker or a member listed with what to ask them for; never @all or @here. Nothing secret or personal (an email, a phone number) is kept in the record.",
-  "What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the member who wrote last in the thread (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); deployment {target} reads that target's latest deployment record (its status, when, and the revision it runs), to watch a deploy after a merge, and posts nothing; project {} (a channel agent's) reads the project document, its source, environments and their deploy bindings; command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, anything else is proposed. A build, a deploy and a command that changes a host run only when a confirmer the room names confirms in the thread; you are told the result as a later message. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED, and core tells the thread who can grant it: do not repeat it.",
+  'run {thread, tool, args}: run a granted diagnose check; you get what came back, and the thread is shown nothing.',
+  'propose_fix {thread, tool, args, asker}: propose a granted fix for the person who asked (`from.id`). Nothing is posted: you are handed `proposal`, whom it waits on and when it expires. Ask that person in your own words; nothing runs until you cite their answer with agree.',
+  `record {thread, kind, title, summary, asker?}: propose recording what needs code or a decision as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}). Nothing is posted and nothing is filed yet: you are handed \`proposal\`. Ask the asker (the thread's first writer unless named) in your own words whether to record it; when they agree in plain words, call agree. You are handed the key then, and told again once it is live, shipped or declined: then post its result in its thread. Never post progress, and never promise a date.`,
+  'agree {thread, proposal, message, decision?}: the person answered your proposal. Cite the id of their message (`message` in what you were handed); decision "decline" when they said no. Forge checks the message is theirs (the asker, or for a build, a deploy, a host change or a channel fix a confirmer the room allows), in the proposal\'s thread, and written after the proposal, then runs or files it and hands you what came of it: tell the person in your own words. A refusal names why; nothing is posted either way.',
+  'link {thread, member}: whether a member (`from.id`) is linked to a Forge account, so what they ask you to do as them can run; where not, you are handed the page to give them, which they open signed in to Forge. You are told when they have linked. Nothing is posted.',
+  "The channel record (every bot of this group reads it): channel {} reads it. member {member, roles, askFor?, message} records the roles you inferred for a member from a message, and what to ask them for; a member a person confirmed is refused and stays as it is. rule {thread, message, text} keeps an instruction a confirmed team member gave as a channel rule linked to that message. common_issue {threads, question, answer, feedback?} keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key. route {thread, to, ...} sends a need where it belongs, never mixed: to forge {title, text} files a problem with Forge itself as Forge feedback and posts nothing; to technical or product {member, text} asks that one member, who holds the role, in the thread. announce {text} is the one top-level post, for news affecting everyone, at most one an hour. ask_owner {thread, question, record?} asks the owner this binding names, in that thread: the owner's next message there is the answer, which you read as your next message and which is also written on the issue `record` names (ISS-n). Ask only what no record, log or code can answer, once per question. check_result {check, finding} answers a scheduled check you were handed (its thread is the check): your one finding, in your words, screened and posted at the channel's top level, or null and nothing is posted; one result per check. A reply mentions at most one person: the asker or a member listed with what to ask them for; never @all or @here. Nothing secret or personal (an email, a phone number) is kept in the record.",
+  "What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the member who wrote last in the thread (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); deployment {target} reads that target's latest deployment record (its status, when, and the revision it runs), to watch a deploy after a merge, and posts nothing; project {} (a channel agent's) reads the project document, its source, environments and their deploy bindings; command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, posted nowhere; anything else is proposed. A build, a deploy and a command that changes a host are proposals: ask a confirmer the room names, in your own words, and cite their plain yes with agree; you are handed the result. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED, naming who can grant it; nothing is posted, so say it in your own words if the person should know.",
   "In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope; move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: tell the thread what the refusal says. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group.",
   `A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: ${SHAPE}.`,
 ].join(' ');

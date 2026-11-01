@@ -43,11 +43,15 @@ vi.mock('../../src/integrations/source-host/index.js', async (importOriginal) =>
 }));
 
 import { BASE, GrantedRoom } from '../helpers/support-grants-world.js';
+import { refusalCodes } from '../helpers/support-world.js';
 
 // REQ-75 r5: a room's binding is its whole setup (BC-25), says why it is not answering (BC-26),
 // grants its session named abilities (BC-27) and refuses an ungranted one by name, saying who can
 // grant it (BC-28). Each ability is driven here as the session calls it, against the stand-in box
-// that runs host commands and pushes builds as forge-runner does.
+// that runs host commands and pushes builds as forge-runner does. Since ISS-845 every answer —
+// a refusal, a command's output, a proposal, what an agreement ran — goes to the session as the act's
+// answer, and core posts nothing in the thread: a confirmer agrees in their own words and the session
+// cites that message with `agree`.
 
 const g = new GrantedRoom();
 const w = g.w;
@@ -57,6 +61,9 @@ let liveTarget = '';
 const sessionDoes = (...a: Parameters<GrantedRoom['sessionDoes']>) => g.sessionDoes(...a);
 const proposal = (code: string) => g.proposal(code);
 const deploysQueued = (bindingId: string) => g.deploysQueued(bindingId);
+/** `who` answers in `thread` and the session cites it to agree on `code`. */
+const agreed = (who: typeof w.chat.alice, text: string, thread: string, code: string) =>
+  w.agreeBy(who, text, thread, code);
 
 beforeAll(async () => {
   await g.start();
@@ -66,7 +73,7 @@ beforeAll(async () => {
 afterAll(() => w.stop());
 
 describe('REQ-75 r5: an ungranted ability is refused by name and says who grants it (BC-28)', () => {
-  it('refuses a host command, posts why in the thread, records it, and runs nothing on the box', async () => {
+  it('refuses a host command to the session, naming what the room holds and who grants it, posts nothing, and runs nothing on the box', async () => {
     const before = w.box.acts.length;
     const { thread, out } = await sessionDoes({
       action: 'command',
@@ -74,20 +81,22 @@ describe('REQ-75 r5: an ungranted ability is refused by name and says who grants
       command: 'systemctl status postfix',
     });
     expect(out).toMatchObject({ isError: true });
-    expect(JSON.stringify(out)).toContain('SUPPORT_ABILITY_NOT_GRANTED');
-    const lines = await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === thread && l.text.includes('not granted `run_commands`')),
-    );
-    const said = lines.find((l) => l.tmid === thread)?.text ?? '';
+    expect(refusalCodes(out), JSON.stringify(out)).toEqual(['SUPPORT_ABILITY_NOT_GRANTED']);
+    const said = JSON.stringify(out);
+    expect(said).toContain('not granted `run_commands`');
     expect(said).toContain('This room holds `read_checkout`, `file_items`.');
     expect(said).toMatch(
       /a project admin \(.+\) grants it in Project settings → Integrations → Rocket\.Chat/,
     );
     expect(w.box.acts.length).toBe(before);
-    const refused = (await w.actions(roomId)).filter(
-      (a) => a.kind === 'refused' && a.tool === 'command',
+    // the session says it in its own words: core posted nothing in the thread, and kept the refusal
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await w.linesIn(thread)).toEqual([]);
+    const kept = (await w.actions(roomId)).filter(
+      (a) => a.kind === 'refused' && a.thread === thread && a.tool === 'command',
     );
-    expect(refused.length).toBeGreaterThan(0);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.output).toMatchObject({ code: 'SUPPORT_ABILITY_NOT_GRANTED', posted: false });
   });
 
   it('refuses a build, a deploy and an issue move the room does not hold', async () => {
@@ -159,7 +168,7 @@ describe('REQ-75 r5: a binding is the whole setup and refuses a grant that could
 });
 
 describe('REQ-75 r5: a granted room runs commands on its hosts (BC-27)', () => {
-  it('runs a reading command on a named host at once, through the box, and posts what ran', async () => {
+  it('runs a reading command on a named host at once, through the box, and hands the session what ran, posting nothing', async () => {
     const { thread, out } = await sessionDoes({
       action: 'command',
       host: 'mta1',
@@ -170,13 +179,12 @@ describe('REQ-75 r5: a granted room runs commands on its hosts (BC-27)', () => {
       event: 'host.command',
       data: { host: 'mta1', command: 'journalctl -u postfix -n 50 | grep -i reject' },
     });
-    await w.untilLines((ls) =>
-      ls.some(
-        (l) =>
-          l.tmid === thread &&
-          l.text.startsWith('Ran on mta1: `journalctl -u postfix -n 50 | grep -i reject` — exit 0'),
-      ),
+    // recorded as the session's diagnosis, and told in the room only in the session's words
+    const recorded = (await w.actions(roomId)).filter(
+      (a) => a.kind === 'diagnose' && a.tool === 'command' && a.thread === thread,
     );
+    expect(recorded).toHaveLength(1);
+    expect(await w.linesIn(thread)).toEqual([]);
   });
 
   it('refuses a host the grant does not name, by name', async () => {
@@ -186,34 +194,26 @@ describe('REQ-75 r5: a granted room runs commands on its hosts (BC-27)', () => {
     expect(w.box.acts.length).toBe(before);
   });
 
-  it('holds a command that changes a host for a named confirmer: the asker’s confirm runs nothing, the confirmer’s runs it', async () => {
+  it('holds a command that changes a host for a named confirmer: the asker’s agreement runs nothing, the confirmer’s runs it', async () => {
     const before = w.box.acts.length;
     const { thread, out } = await sessionDoes({
       action: 'command',
       host: 'mail-01',
       command: 'systemctl restart stalwart',
     });
-    expect(out).toMatchObject({ pending: true, waitsOn: ['alice'] });
-    const code = String(out.code);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === thread && l.text.includes('so it waits for a confirmer')),
-    );
+    expect(out).toMatchObject({ pending: true, waitsOn: '@alice', changes: expect.any(String) });
+    const code = String(out.proposal);
     expect(w.box.acts.length).toBe(before);
-    // bob asked and is no confirmer: his confirm is refused and nothing runs
-    await w.chat.say(w.chat.bob, `confirm ${code}`, thread);
-    await w.untilLines((ls) =>
-      ls.some(
-        (l) => l.tmid === thread && l.text.startsWith('Only @alice can confirm this change.'),
-      ),
-    );
+    // bob asked and is no confirmer: his agreement is refused and nothing runs
+    const bob = await agreed(w.chat.bob, 'ok restart it', thread, code);
+    expect(refusalCodes(bob.out), JSON.stringify(bob.out)).toEqual(['SUPPORT_NOT_A_CONFIRMER']);
+    expect(JSON.stringify(bob.out)).toContain('only @alice can agree');
     expect(w.box.acts.length).toBe(before);
-    await w.chat.say(w.chat.alice, `confirm ${code}`, thread);
-    await w.untilLines((ls) =>
-      ls.some(
-        (l) =>
-          l.tmid === thread && l.text.startsWith('Ran on mail-01: `systemctl restart stalwart`'),
-      ),
-    );
+    const alice = await agreed(w.chat.alice, 'yes, go ahead', thread, code);
+    expect(alice.out, JSON.stringify(alice.out)).toMatchObject({ ran: true });
+    expect(String(alice.out.what)).toContain('The command ran on mail-01');
+    expect(alice.out.result).toMatchObject({ host: 'mail-01', exitCode: 0 });
+    expect(await w.linesIn(thread)).toEqual([]);
     expect(w.box.acts.at(-1)).toMatchObject({
       event: 'host.command',
       data: { host: 'mail-01', command: 'systemctl restart stalwart' },
@@ -222,8 +222,8 @@ describe('REQ-75 r5: a granted room runs commands on its hosts (BC-27)', () => {
   });
 });
 
-describe('REQ-75 r5: a granted room builds and deploys on a confirmer’s confirm (BC-27)', () => {
-  it('builds on a confirmer’s confirm: the box pushes the branch and a change request opens into dev, never production', async () => {
+describe('REQ-75 r5: a granted room builds and deploys on a confirmer’s agreement (BC-27)', () => {
+  it('builds on a confirmer’s agreement: the box pushes the branch and a change request opens into dev, never production', async () => {
     const { thread, out } = await sessionDoes({
       action: 'build',
       branch: 'fix/blank-invoice',
@@ -231,11 +231,11 @@ describe('REQ-75 r5: a granted room builds and deploys on a confirmer’s confir
       summary: 'The invoice template read an unset locale.',
     });
     expect(out, JSON.stringify(out)).toMatchObject({ pending: true });
-    const code = String(out.code);
-    await w.chat.say(w.chat.alice, `confirm ${code}`, thread);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === thread && l.text.includes('opened a change request into dev')),
-    );
+    const code = String(out.proposal);
+    const built = await agreed(w.chat.alice, 'được, build đi', thread, code);
+    expect(built.out, JSON.stringify(built.out)).toMatchObject({ ran: true });
+    expect(String(built.out.what)).toMatch(/opened change request \S+ into dev\.$/);
+    expect(await w.linesIn(thread)).toEqual([]);
     expect(w.box.acts.at(-1)).toMatchObject({
       event: 'build.push',
       data: { base: 'dev', branch: 'fix/blank-invoice', buildKey: roomId },
@@ -252,10 +252,9 @@ describe('REQ-75 r5: a granted room builds and deploys on a confirmer’s confir
       summary: 'Same locale read.',
     });
     const before = opened.length;
-    await w.chat.say(w.chat.alice, `confirm ${String(again.out.code)}`, again.thread);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === again.thread && l.text.includes('updates the open change request')),
-    );
+    const second = await agreed(w.chat.alice, 'ok', again.thread, String(again.out.proposal));
+    expect(second.out, JSON.stringify(second.out)).toMatchObject({ ran: true });
+    expect(String(second.out.what)).toContain('under the change request already open');
     expect(opened.length).toBe(before);
 
     // once that change request is merged, the next build on the branch opens a new one
@@ -266,12 +265,9 @@ describe('REQ-75 r5: a granted room builds and deploys on a confirmer’s confir
       title: 'Follow-up on the invoice',
       summary: 'One more locale read.',
     });
-    await w.chat.say(w.chat.alice, `confirm ${String(after.out.code)}`, after.thread);
-    await w.untilLines((ls) =>
-      ls.some(
-        (l) => l.tmid === after.thread && l.text.includes('opened a change request into dev'),
-      ),
-    );
+    const third = await agreed(w.chat.alice, 'yes', after.thread, String(after.out.proposal));
+    expect(third.out, JSON.stringify(third.out)).toMatchObject({ ran: true });
+    expect(String(third.out.what)).toMatch(/opened change request \S+ into dev\.$/);
     expect(opened.length).toBe(before + 1);
   });
 
@@ -284,46 +280,47 @@ describe('REQ-75 r5: a granted room builds and deploys on a confirmer’s confir
       summary: 'A build with nothing in it.',
     });
     const before = opened.length;
-    await w.chat.say(w.chat.alice, `confirm ${String(out.code)}`, thread);
-    await w.untilLines((ls) =>
-      ls.some(
-        (l) =>
-          l.tmid === thread &&
-          l.text === 'It did not go ahead: nothing to build: the working copy holds no change',
-      ),
-    );
+    const tried = await agreed(w.chat.alice, 'go', thread, String(out.proposal));
+    expect(tried.out, JSON.stringify(tried.out)).toMatchObject({
+      ran: false,
+      what: 'The build did not go ahead: nothing to build: the working copy holds no change',
+    });
+    expect(await w.linesIn(thread)).toEqual([]);
     expect(opened.length).toBe(before);
-    expect(await proposal(String(out.code))).toMatchObject({ kind: 'build', state: 'failed' });
+    expect(await proposal(String(out.proposal))).toMatchObject({ kind: 'build', state: 'failed' });
     w.box.buildAnswer = (d) => ({ branch: d.branch, base: d.base, sha: 'c'.repeat(40), files: [] });
   });
 
-  it('deploys a dev target on a confirmer’s confirm, and a production one waits for its approver', async () => {
+  it('deploys a dev target on a confirmer’s agreement, and a production one waits for its approver', async () => {
     const dev = await sessionDoes({ action: 'deploy', target: devTarget });
-    expect(dev.out).toMatchObject({ pending: true });
+    expect(dev.out).toMatchObject({ pending: true, waitsOn: '@alice' });
     expect(await deploysQueued(devTarget)).toBe(0);
-    await w.chat.say(w.chat.alice, `confirm ${String(dev.out.code)}`, dev.thread);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === dev.thread && l.text.startsWith('Deploying')),
-    );
+    const devRan = await agreed(w.chat.alice, 'deploy it', dev.thread, String(dev.out.proposal));
+    expect(devRan.out, JSON.stringify(devRan.out)).toMatchObject({ ran: true });
+    expect(String(devRan.out.what)).toContain('was dispatched after a confirmer confirmed it');
     expect(await deploysQueued(devTarget)).toBe(1);
 
     const live = await sessionDoes({ action: 'deploy', target: liveTarget });
-    await w.chat.say(w.chat.alice, `confirm ${String(live.out.code)}`, live.thread);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === live.thread && l.text.includes('waits for its approver in Forge')),
+    const liveRan = await agreed(w.chat.alice, 'ok', live.thread, String(live.out.proposal));
+    expect(liveRan.out, JSON.stringify(liveRan.out)).toMatchObject({
+      result: { pendingHumanConfirm: true },
+    });
+    expect(String(liveRan.out.what)).toContain(
+      'waits for its production approver; nothing is deployed yet',
     );
     expect(await deploysQueued(liveTarget)).toBe(0);
+    expect([...(await w.linesIn(dev.thread)), ...(await w.linesIn(live.thread))]).toEqual([]);
   });
 });
 
-describe('REQ-75 r5: a confirmed change runs on the grant as it stands at the confirm (BC-27)', () => {
-  it('counts a confirm only from a confirmer the grant names when it is confirmed, not when it was proposed', async () => {
+describe('REQ-75 r5: an agreed change runs on the grant as it stands at the agreement (BC-27)', () => {
+  it('counts an agreement only from a confirmer the grant names when it is agreed, not when it was proposed', async () => {
     const { thread, out } = await sessionDoes({
       action: 'command',
       host: 'mta1',
       command: 'postfix reload',
     });
-    expect(out).toMatchObject({ pending: true, waitsOn: ['alice'] });
+    expect(out).toMatchObject({ pending: true, waitsOn: '@alice' });
     const held = await w.regrant({
       ...BASE,
       readers: 'team',
@@ -336,21 +333,20 @@ describe('REQ-75 r5: a confirmed change runs on the grant as it stands at the co
     });
     expect(held.status, JSON.stringify(held.body)).toBe(200);
     const before = w.box.acts.length;
-    await w.chat.say(w.chat.alice, `confirm ${String(out.code)}`, thread);
-    await w.untilLines((ls) =>
-      ls.some((l) => l.tmid === thread && l.text.startsWith('Only @bob can confirm this change.')),
-    );
+    const alice = await agreed(w.chat.alice, 'yes reload', thread, String(out.proposal));
+    expect(refusalCodes(alice.out), JSON.stringify(alice.out)).toEqual(['SUPPORT_NOT_A_CONFIRMER']);
+    expect(JSON.stringify(alice.out)).toContain('only @bob can agree');
     expect(w.box.acts.length).toBe(before);
-    expect((await proposal(String(out.code)))?.state).toBe('pending');
+    expect((await proposal(String(out.proposal)))?.state).toBe('pending');
   });
 
-  it('runs nothing on a confirm once the ability was taken away after it was proposed', async () => {
+  it('runs nothing on an agreement once the ability was taken away after it was proposed', async () => {
     const { thread, out } = await sessionDoes({
       action: 'command',
       host: 'mta1',
       command: 'postsuper -d ALL',
     });
-    const code = String(out.code);
+    const code = String(out.proposal);
     const held = await w.regrant({
       ...BASE,
       readers: 'team',
@@ -358,15 +354,13 @@ describe('REQ-75 r5: a confirmed change runs on the grant as it stands at the co
     });
     expect(held.status, JSON.stringify(held.body)).toBe(200);
     const before = w.box.acts.length;
-    // alice still confirms for the room; the grant read at her confirm no longer holds run_commands
-    await w.chat.say(w.chat.alice, `confirm ${code}`, thread);
-    await w.untilLines((ls) =>
-      ls.some(
-        (l) =>
-          l.tmid === thread &&
-          l.text.startsWith('It did not go ahead: This room is not granted `run_commands`'),
-      ),
+    // alice still confirms for the room; the grant read at her agreement no longer holds run_commands
+    const alice = await agreed(w.chat.alice, 'yes', thread, code);
+    expect(alice.out, JSON.stringify(alice.out)).toMatchObject({ ran: false });
+    expect(String(alice.out.what)).toMatch(
+      /^The command did not go ahead: This room is not granted `run_commands`/,
     );
+    expect(await w.linesIn(thread)).toEqual([]);
     expect(w.box.acts.length).toBe(before);
     expect(await proposal(code)).toMatchObject({ kind: 'command', state: 'failed' });
   });

@@ -3,6 +3,7 @@ import type { SpeakerRefusal, SpeakerResolution } from '../../conversations/inde
 import { db } from '../../db/client.js';
 import { type ConversationAdapter, conversationAdapters } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
+import { logger } from '../../lib/logger.js';
 import { speakerLinkUrl } from './link-url.js';
 
 export type { SpeakerRefusal, SpeakerResolution };
@@ -80,4 +81,33 @@ export async function resolveSpeaker(
     };
   }
   return { linked: true, userId: row.userId };
+}
+
+/** A chat account a person just linked to their Forge user, on the link page. */
+export interface SpeakerLinked {
+  source: string;
+  namespace: string;
+  externalId: string;
+  label: string | null;
+  userId: string;
+}
+
+let linkedListener: ((linked: SpeakerLinked) => Promise<void>) | null = null;
+
+/**
+ * Who is told a link was confirmed: the support rooms, whose session hands the person the link
+ * page and is told when it is done, to say so in its own words (ISS-845).
+ */
+export function provideSpeakerLinkedListener(
+  listener: (linked: SpeakerLinked) => Promise<void>,
+): void {
+  linkedListener = listener;
+}
+
+/** Tell the listener a link was confirmed; a failure to tell is logged, never the link's. */
+export async function tellSpeakerLinked(linked: SpeakerLinked): Promise<void> {
+  if (!linkedListener) return;
+  await linkedListener(linked).catch((err: unknown) =>
+    logger.error({ err, source: linked.source }, 'identity: a confirmed link was not told'),
+  );
 }

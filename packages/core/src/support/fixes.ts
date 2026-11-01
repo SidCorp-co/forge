@@ -1,11 +1,12 @@
-// A change's life (REQ-75 BC-13, BC-14): the session proposes one, naming who asked — a fix through
-// the product API, or a filing of Feedback; the group is shown it with a button that writes
-// `confirm <code>`; only a message the Rocket.Chat server attributes to that same account, naming
-// that code, makes it — anyone else's confirm is refused in the thread and does nothing. Core makes
-// the call or the filing, never the session. Both wait in `support_fixes`: a filing under the
-// reserved name `forge:record`, which no granted tool can take (a tool name is `[a-z][a-z0-9_]*`).
+// A change's life (REQ-75 BC-13, BC-14; ISS-845): the session proposes one, naming who asked — a fix
+// through the product API, a filing of Feedback, or a build, a deploy or a host command — and asks
+// that person in its own words. Their plain answer ("ok", "yes", "no", in any language) is the consent: the session
+// cites the message it is in, and core checks the citation against what the chat server signed —
+// who wrote it, in which thread, and that it came after the proposal — before anything runs. Core
+// makes the call or the filing, never the session, and hands what came of it back to the session
+// as the act's answer; nothing of it is posted in the room by core. A filing waits in
+// `support_proposals` as kind `filing`.
 
-import type { SupportRoomConfig } from '@forge/contracts/support';
 import {
   activeSupportApi,
   callGranted,
@@ -13,11 +14,13 @@ import {
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
 import { runConfirmed } from './ability-run.js';
+import { memberMessage } from './channel-store.js';
 import { changeWaitsOnRole, mayConfirmChange, whoConfirms } from './confirm-role.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
 import { fileRecord, type RecordRequest } from './record.js';
-import { confirmRefusal, fixResultLine, limitsOf } from './rules.js';
+import { limitsOf } from './rules.js';
 import {
   decideFix,
   expiredPendingFixes,
@@ -26,10 +29,8 @@ import {
   type ProposalRow,
   pendingFixByCode,
   type RoomRow,
-  roomById,
   settleFixResult,
 } from './store.js';
-import { postInThread } from './thread.js';
 
 /** The changes that wait on a confirmer the room's grant names, not on the asker (REQ-75 r5 BC-27). */
 const CONFIRMER_KINDS = new Set<ProposalRow['kind']>(['build', 'deploy', 'command']);
@@ -42,166 +43,170 @@ const CONFIRMER_KINDS = new Set<ProposalRow['kind']>(['build', 'deploy', 'comman
 const waitsOnConfirmer = (room: RoomRow, fix: ProposalRow): boolean =>
   CONFIRMER_KINDS.has(fix.kind) || (changeWaitsOnRole(room) && fix.kind === 'fix');
 
-/**
- * A confirmer-gated change is confirmed only by who the room allows, by the username and id the
- * chat server signed the message with; the asker or such a confirmer may cancel it.
- */
-async function confirmerRefusal(
-  room: RoomRow,
-  grants: ReturnType<typeof grantsOf>,
-  fix: ProposalRow,
-  author: { key: string; label: string | null },
-  verb: 'confirm' | 'cancel',
-): Promise<string | null> {
-  if (await mayConfirmChange(room, grants, author)) return null;
-  if (verb === 'cancel' && author.key === fix.askerKey) return null;
-  return `Only ${whoConfirms(room, grants)} can confirm this change. ${nothingDone(fix)}`;
-}
-
-/** Tell the session what became of a fix, as a message of its own in the next turn. */
-async function tellSession(
-  room: RoomRow,
-  fix: ProposalRow,
-  conversationId: string,
-  note: string,
-): Promise<void> {
-  await insertAction({
-    roomId: room.id,
-    projectId: room.projectId,
-    conversationId,
-    thread: fix.thread,
-    kind: 'message_in',
-    actorKind: 'core',
-    input: { note },
-    externalId: `fix:${fix.id}:${note.slice(0, 24)}`,
-    proposalId: fix.id,
-  });
-}
+/** What an agreement came to, as the session is handed it to tell the thread in its own words. */
+export type Agreed =
+  | { declined: true; what: string }
+  | {
+      recorded: true;
+      feedbackKey: string;
+      created: boolean;
+      what: string;
+    }
+  | { ran: boolean; what: string; result: unknown };
 
 /**
- * A member's `confirm <code>` or `cancel <code>`. The author is the server's word for who wrote the
- * message; it runs the fix only when it is the account the fix was proposed to.
+ * The person's answer to a proposal, as the session cites it: the message `message` of thread
+ * `thread`, agreeing or declining (`decision`). Refused, by name and to the session alone, when no
+ * proposal waits under the handle, the message is no member's message of this room, it is in another
+ * thread than the proposal's, it was written before the proposal, or its writer may not agree to
+ * it: the asker for a fix or a filing, a confirmer the room allows for a build, a deploy or a host
+ * change (the asker may still decline one). The writer is the chat server's attribution of the
+ * message, never what it says.
  */
-export async function answerConfirm(input: {
-  room: RoomRow;
-  config: SupportRoomConfig;
-  verb: 'confirm' | 'cancel';
-  code: string;
-  author: { key: string; label: string | null };
-  thread: string;
-  conversationId: string;
-}): Promise<'ran' | 'failed' | 'declined' | 'refused' | 'unknown' | 'expired'> {
-  const { room, author } = input;
-  const record = (
+export async function agreeTo(
+  room: RoomRow,
+  input: {
+    thread: string;
+    proposal: string;
+    message: string;
+    decision?: 'agree' | 'decline' | undefined;
+  },
+): Promise<Outcome<Agreed>> {
+  const decision = input.decision ?? 'agree';
+  const conversationId = await knownThread(room, input.thread);
+  if (!conversationId) return threadUnknown(input.thread);
+  const audit = (
     kind: Parameters<typeof insertAction>[0]['kind'],
     fix: ProposalRow | null,
+    writer: { key: string; label: string | null } | null,
     output: unknown,
   ) =>
     insertAction({
       roomId: room.id,
       projectId: room.projectId,
-      conversationId: input.conversationId,
+      conversationId,
       thread: fix?.thread ?? input.thread,
       kind,
-      actorKind: 'member',
-      actorKey: author.key,
-      actorLabel: author.label,
+      actorKind: writer ? 'member' : 'session',
+      actorKey: writer?.key ?? null,
+      actorLabel: writer?.label ?? null,
       tool: fix?.tool ?? null,
-      input: { verb: input.verb, code: input.code },
+      // the audit fact: which message, cited by the session, said yes or no
+      input: { proposal: input.proposal, message: input.message, decision, citedBy: 'session' },
       output,
       proposalId: fix?.id ?? null,
     });
-  const fix = await pendingFixByCode(room.id, input.code);
+
+  const fix = await pendingFixByCode(room.id, input.proposal);
   if (!fix) {
-    await record('refused', null, { reason: 'no change waits under this code' });
-    await postInThread({
-      room,
-      thread: input.thread,
-      text: `No change is waiting under ${input.code}. Nothing was done.`,
-    });
-    return 'unknown';
+    return no(
+      'SUPPORT_PROPOSAL_UNKNOWN',
+      '/proposal',
+      `no proposal waits under ${input.proposal} in this group: it ran, was declined or expired, or was never made. Nothing was done.`,
+    );
   }
-  // the grant as the binding holds it now, never the routing's snapshot: a confirmer taken off the
-  // room since the message was routed confirms nothing
+  const said = await memberMessage(room.id, input.message);
+  if (!said) {
+    return no(
+      'SUPPORT_MESSAGE_UNKNOWN',
+      '/message',
+      `${input.message} is no member's message this group received; cite the id of the message in which the person answered. Nothing was done.`,
+    );
+  }
+  const writer = { key: said.authorKey, label: said.author };
+  if (said.thread !== fix.thread || input.thread !== fix.thread) {
+    await audit('refused', fix, writer, { reason: 'another thread', messageThread: said.thread });
+    return no(
+      'SUPPORT_AGREEMENT_OTHER_THREAD',
+      '/message',
+      `${input.proposal} was proposed in thread ${fix.thread}, and message ${input.message} is in thread ${said.thread}: only an answer in the proposal's own thread counts. Nothing was done.`,
+    );
+  }
+  if (said.at.getTime() <= fix.createdAt.getTime()) {
+    await audit('refused', fix, writer, { reason: 'before the proposal' });
+    return no(
+      'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
+      '/message',
+      `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Nothing was done.`,
+    );
+  }
+  // the grant as the binding holds it now: a confirmer taken off the room since the proposal agrees to nothing
   const gated = waitsOnConfirmer(room, fix);
-  const grants = grantsOf(gated ? await supportConfigOf(room) : input.config);
-  const refusedFor = gated
-    ? await confirmerRefusal(room, grants, fix, author, input.verb)
-    : confirmRefusal(fix, author.key, nothingDone(fix));
-  if (refusedFor) {
-    await record('refused', fix, {
+  const grants = grantsOf(await supportConfigOf(room));
+  const allowed = gated
+    ? (await mayConfirmChange(room, grants, writer)) ||
+      (decision === 'decline' && writer.key === fix.askerKey)
+    : writer.key === fix.askerKey;
+  if (!allowed) {
+    const who = gated ? whoConfirms(room, grants) : `@${fix.askerLabel ?? fix.askerKey}`;
+    await audit('refused', fix, writer, {
       reason: gated ? 'not a confirmer' : 'not the asker',
       asker: fix.askerKey,
       ...(gated ? { confirmers: grants.confirmers ?? [] } : {}),
     });
-    await postInThread({ room, thread: fix.thread, text: refusedFor });
-    return 'refused';
+    return no(
+      'SUPPORT_NOT_A_CONFIRMER',
+      '/message',
+      `@${writer.label ?? writer.key} wrote ${input.message}, and only ${who} can agree to ${changeName(fix)}. ${nothingDone(fix)}`,
+    );
   }
   const now = new Date();
   if (fix.expiresAt.getTime() <= now.getTime()) {
     if (await decideFix(fix.id, 'expired', now)) {
-      await record('fix_expired', fix, { expiredAt: fix.expiresAt.toISOString() });
-      await postInThread({
-        room,
-        thread: fix.thread,
-        text: `That change (${fix.code}) expired before it was confirmed. ${nothingDone(fix)} Ask again if you still need it.`,
-      });
+      await audit('fix_expired', fix, writer, { expiredAt: fix.expiresAt.toISOString() });
     }
-    return 'expired';
-  }
-  if (input.verb === 'cancel') {
-    if (!(await decideFix(fix.id, 'declined', now))) return 'unknown';
-    await record('fix_declined', fix, null);
-    await postInThread({
-      room,
-      thread: fix.thread,
-      text: `Cancelled ${fix.code}. ${nothingDone(fix)}`,
-    });
-    await tellSession(
-      room,
-      fix,
-      input.conversationId,
-      `${changeName(fix)} (${fix.code}) was cancelled by the person who asked. ${nothingDone(fix)}`,
+    return no(
+      'SUPPORT_PROPOSAL_EXPIRED',
+      '/proposal',
+      `${changeName(fix)} (${fix.code}) expired at ${fix.expiresAt.toISOString()} before anyone agreed. ${nothingDone(fix)} Propose it again if it is still wanted.`,
     );
-    return 'declined';
   }
-  const limits = limitsOf(input.config);
+  if (decision === 'decline') {
+    if (!(await decideFix(fix.id, 'declined', now))) return gone(input.proposal);
+    await audit('fix_declined', fix, writer, null);
+    return {
+      ok: true,
+      value: { declined: true, what: `${changeName(fix)} was declined. ${nothingDone(fix)}` },
+    };
+  }
+  const config = await supportConfigOf(room);
+  const limits = limitsOf(config);
   const today = new Date(now.getTime() - 24 * 60 * 60_000);
-  if ((await fixesConfirmedSince(room.id, author.key, today)) >= limits.fixesPerUserPerDay) {
-    await record('refused', fix, {
+  if ((await fixesConfirmedSince(room.id, writer.key, today)) >= limits.fixesPerUserPerDay) {
+    await audit('refused', fix, writer, {
       reason: 'limit',
       fixesPerUserPerDay: limits.fixesPerUserPerDay,
     });
-    await postInThread({
-      room,
-      thread: fix.thread,
-      text: `You have reached today's limit of ${limits.fixesPerUserPerDay} changes in this group. ${nothingDone(fix)}`,
-    });
-    return 'refused';
-  }
-  // the claim: of two confirms racing, one moves the row and runs it
-  const claimed = await decideFix(fix.id, 'ran', now);
-  if (!claimed) return 'unknown';
-  await record('fix_confirmed', fix, null);
-  if (fix.kind === 'filing') return recordConfirmed(room, fix, input.conversationId);
-  if (CONFIRMER_KINDS.has(fix.kind)) {
-    return runConfirmed(
-      room,
-      fix,
-      input.conversationId,
-      (note) => tellSession(room, fix, input.conversationId, note),
-      author,
+    return no(
+      'SUPPORT_LIMIT_REACHED',
+      '/message',
+      `@${writer.label ?? writer.key} has reached today's limit of ${limits.fixesPerUserPerDay} changes in this group. ${nothingDone(fix)}`,
     );
   }
-  return runFix(room, fix, limits.responseMaxBytes, input.conversationId);
+  // the claim: of two agreements racing, one moves the row and runs it
+  if (!(await decideFix(fix.id, 'ran', now))) return gone(input.proposal);
+  await audit('fix_confirmed', fix, writer, null);
+  if (fix.kind === 'filing') return recordAgreed(room, fix, conversationId);
+  if (CONFIRMER_KINDS.has(fix.kind)) {
+    const out = await runConfirmed(room, fix, conversationId, writer);
+    return { ok: true, value: { ran: out.state === 'ran', what: out.what, result: out.result } };
+  }
+  return runFix(room, fix, limits.responseMaxBytes, conversationId);
 }
 
-/** A filing its asker confirmed: filed now, and the session told the key or why it was not. */
-async function recordConfirmed(
+const gone = (proposal: string): Outcome<never> =>
+  no(
+    'SUPPORT_PROPOSAL_UNKNOWN',
+    '/proposal',
+    `${proposal} was settled by another answer a moment ago; nothing more was done.`,
+  );
+
+/** A filing its asker agreed to: filed now, and the key or why it was not handed to the session. */
+async function recordAgreed(
   room: RoomRow,
   fix: ProposalRow,
   conversationId: string,
-): Promise<'ran' | 'failed'> {
+): Promise<Outcome<Agreed>> {
   const filed = await fileRecord(room, {
     ...(fix.args as RecordRequest),
     reporter: { key: fix.askerKey, label: fix.askerLabel },
@@ -221,23 +226,18 @@ async function recordConfirmed(
       output: { refused: detail },
       proposalId: fix.id,
     });
-    await postInThread({ room, thread: fix.thread, text: `It was not recorded: ${detail}.` });
-    await tellSession(
-      room,
-      fix,
-      conversationId,
-      `${changeName(fix)} (${fix.code}) was confirmed but not recorded: ${detail}.`,
-    );
-    return 'failed';
+    return { ok: false, refusals: filed.refusals };
   }
   await settleFixResult(fix.id, 'ran', { feedbackKey: filed.value.feedbackKey });
-  await tellSession(
-    room,
-    fix,
-    conversationId,
-    `${changeName(fix)} (${fix.code}) was recorded as ${filed.value.feedbackKey} after the asker confirmed it. You are told again once its result is final; post nothing before then.`,
-  );
-  return 'ran';
+  return {
+    ok: true,
+    value: {
+      recorded: true,
+      feedbackKey: filed.value.feedbackKey,
+      created: filed.value.created,
+      what: `${changeName(fix)} was recorded as ${filed.value.feedbackKey}. You are told again once its result is final; tell the person it is recorded, in your words, and post nothing more before then.`,
+    },
+  };
 }
 
 async function runFix(
@@ -245,7 +245,7 @@ async function runFix(
   fix: ProposalRow,
   maxBytes: number,
   conversationId: string,
-): Promise<'ran' | 'failed'> {
+): Promise<Outcome<Agreed>> {
   const api = await activeSupportApi(room.projectId);
   const args = (fix.args ?? {}) as SupportCallArgs;
   const planned =
@@ -253,7 +253,7 @@ async function runFix(
       ? planCall({ config: api.config, tools: api.tools, name: fix.tool, kind: 'fix', args })
       : null;
   if (!api || !planned || 'refusal' in planned) {
-    // the grant changed between the proposal and the confirm: refused now, by the grant as it stands
+    // the grant changed between the proposal and the agreement: refused now, by the grant as it stands
     const detail = !api
       ? 'this project no longer grants its support session tools'
       : planned && 'refusal' in planned
@@ -272,14 +272,10 @@ async function runFix(
       output: { refused: detail },
       proposalId: fix.id,
     });
-    await postInThread({ room, thread: fix.thread, text: `The change was not run: ${detail}.` });
-    await tellSession(
-      room,
-      fix,
-      conversationId,
-      `${changeName(fix)} (${fix.code}) was confirmed but not run: ${detail}.`,
-    );
-    return 'failed';
+    return {
+      ok: true,
+      value: { ran: false, what: `${changeName(fix)} was not run: ${detail}.`, result: null },
+    };
   }
   const called = await callGranted({
     plan: planned.plan,
@@ -291,57 +287,44 @@ async function runFix(
     'result' in called
       ? called.result
       : { status: 0, ok: false, body: called.refusal.detail, truncated: false, durationMs: 0 };
-  const state = result.ok ? 'ran' : 'failed';
-  await settleFixResult(fix.id, state, result);
-  const posted = await postInThread({
-    room,
-    thread: fix.thread,
-    text: fixResultLine(planned.plan.tool.summary, result.status, result.ok),
-  });
+  await settleFixResult(fix.id, result.ok ? 'ran' : 'failed', result);
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
-    conversationId: posted.conversationId,
+    conversationId,
     thread: fix.thread,
     kind: result.ok ? 'fix_ran' : 'fix_failed',
     actorKind: 'core',
     tool: fix.tool,
     input: args,
     output: result,
-    externalId: posted.messageId,
     proposalId: fix.id,
   });
-  await tellSession(
-    room,
-    fix,
-    posted.conversationId,
-    `${changeName(fix)} (${fix.code}) ran after the asker confirmed it: answered ${result.status}. What came back: ${JSON.stringify(result.body).slice(0, 2000)}`,
-  );
-  return state;
+  const what = result.ok
+    ? `${changeName(fix)} ran: ${planned.plan.tool.summary} answered ${result.status}.`
+    : result.status === 0
+      ? `${changeName(fix)} did not go through: ${planned.plan.tool.summary} could not be reached. Nothing else was tried.`
+      : `${changeName(fix)} did not go through: ${planned.plan.tool.summary} answered ${result.status}. Nothing else was tried.`;
+  return { ok: true, value: { ran: result.ok, what, result } };
 }
 
-/** Expire every pending fix past its time, telling its thread (a process timer). */
+/**
+ * Expire every pending proposal past its time (a process timer), recorded and posted nowhere: the
+ * session that asked learns it when it cites an answer, and asks again if it is still wanted.
+ */
 export async function expireSupportFixes(): Promise<void> {
   const now = new Date();
   for (const fix of await expiredPendingFixes(now)) {
     if (!(await decideFix(fix.id, 'expired', now))) continue;
-    const room = await roomById(fix.roomId);
-    if (!room) continue;
-    const posted = await postInThread({
-      room,
-      thread: fix.thread,
-      text: `The change ${fix.code} expired before it was confirmed. ${nothingDone(fix)}`,
-    }).catch(() => null);
     await insertAction({
-      roomId: room.id,
-      projectId: room.projectId,
-      conversationId: posted?.conversationId ?? null,
+      roomId: fix.roomId,
+      projectId: fix.projectId,
+      conversationId: null,
       thread: fix.thread,
       kind: 'fix_expired',
       actorKind: 'core',
       tool: fix.tool,
       proposalId: fix.id,
-      externalId: posted?.messageId ?? null,
     });
   }
 }
