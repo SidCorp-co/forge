@@ -51,9 +51,10 @@ export function projectNamedBy(
   return slug ? { by: 'header', ref: slug } : null;
 }
 
-// What a fenced project builds against, read-only (FB-320): a provider's contract versions, which the
-// route answers only where a project of the fence consumes that contract
-// (`ecosystem/contract/party-read.ts:contractReader`). Every other route of the provider stays fenced.
+// What a fenced project builds against, read-only (FB-320, ISS-734): a provider's contract versions,
+// which the route answers only where a project of the fence is an active member of an ecosystem the
+// contract is published to (`ecosystem/contract/party-read.ts:contractReader`). Every other route of
+// the provider stays fenced.
 const PROVIDER_CONTRACT_READ =
   /^\/api\/projects\/[0-9a-f-]{36}\/contracts\/[^/]+\/versions(?:\/[^/]+)?\/?$/i;
 

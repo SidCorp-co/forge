@@ -5,8 +5,8 @@
  * credential, fenced to that project, and catalog-fe's builder runs were refused
  * PAT_PROJECT_OUTSIDE_FENCE on catalog-api's and adminhub-api's contract versions and
  * PAT_ACCOUNT_ROUTE on their ecosystem's bus. Anything wider stays fenced: another route of the
- * provider, a write, a contract the project does not consume, an ecosystem it is not in, a steward's
- * whole sight, the account's ecosystem list.
+ * provider, a write, a contract published to no ecosystem its project is an active member of, an
+ * ecosystem it is not in, a steward's whole sight, the account's ecosystem list (ISS-734).
  *
  * @direct-test-of packages/core/src/middleware/pat-fence.ts
  */
@@ -89,16 +89,23 @@ describe('a fenced token reads what its project builds against', () => {
   });
 });
 
-describe('anything wider stays fenced', () => {
-  it('refuses a contract its project does not consume, though the ecosystem offers it', async () => {
+// ISS-734 (FB-320's second ask): a builder run reads what its ecosystem's members publish BEFORE
+// its project consumes anything (ecosystem-inbox guide, builder step 2), so a fenced token reads the
+// approved versions of a contract published to an ecosystem one of its own projects is an active
+// member of, consuming it or not yet, and nothing its user sees through a project outside the fence.
+describe('a fenced token reads what its ecosystem publishes, as a member', () => {
+  it('reads a contract its project does not consume yet, the ecosystem offering it', async () => {
     const r = await as(
       'store',
       'GET',
       `/api/projects/${w.project.forge}/contracts/forge-api/versions/2026-09-20`,
     );
-    expect(r.status, JSON.stringify(r.json)).toBe(403);
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(r.json.reader).toMatchObject({ access: 'party' });
   });
+});
 
+describe('anything wider stays fenced', () => {
   it('refuses another route of the provider, and a write to its contract versions, by name', async () => {
     const read = await as('plugin', 'GET', `/api/projects/${w.project.forge}/interface`);
     expect(read.status).toBe(403);
@@ -128,5 +135,20 @@ describe('anything wider stays fenced', () => {
     const one = await as('plugin', 'GET', `/api/ecosystems/${w.eco}`);
     expect(one.status, JSON.stringify(one.json)).toBe(403);
     expect(codeOf(one)).toBe('PAT_ACCOUNT_ROUTE');
+  });
+});
+
+// Last in the file: the store leaves the ecosystem, and a membership that left is not re-entered.
+describe('a fenced token whose project left the ecosystem', () => {
+  it("refuses it once its project is no member, though the token's user reads it through another", async () => {
+    await db.execute(sql`
+      UPDATE ecosystem_memberships SET state = 'left', ended_at = now(), ended_reason = 'test'
+       WHERE ecosystem_id = ${w.eco} AND project_id = ${w.project.store}`);
+    const r = await as(
+      'store',
+      'GET',
+      `/api/projects/${w.project.forge}/contracts/forge-api/versions/2026-09-20`,
+    );
+    expect(r.status, JSON.stringify(r.json)).toBe(403);
   });
 });
