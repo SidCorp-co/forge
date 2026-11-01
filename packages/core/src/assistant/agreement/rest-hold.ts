@@ -140,7 +140,7 @@ async function holdSessionWrite(c: Context, kind: ChatProposalKind, sessionId: s
   });
   throw refuse(
     'CHAT_WRITE_AWAITS_AGREEMENT',
-    `nothing was written. Core holds this ${kind} as proposal ${row.id} until the person agrees; they see it in the conversation as a confirm card with Record it and Decline. End your reply by restating what it records and what it relates to and asking them to press Record it on the card; do not say it is recorded. Only their press writes it: a reply they type, yes or no, writes nothing, and nothing you send agrees for them. Do not send this request again unless they want it changed.`,
+    `nothing was written yet. Core holds this ${kind} as proposal ${row.id} until the person agrees to it in this conversation; nothing you send agrees for them. Send this request again only to change what it proposes.`,
   );
 }
 

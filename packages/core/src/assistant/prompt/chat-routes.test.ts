@@ -22,9 +22,9 @@ const DOORS = {
   ),
 };
 
-describe('every chat door routes a report or a wish to Feedback or a Requirement, never an issue', () => {
+describe('every chat door routes a report or a wish to Feedback or a Requirement, by judgement (ISS-861)', () => {
   for (const [door, prompt] of Object.entries(DOORS)) {
-    it(`${door}: tells the agent to file no issue, and how to record instead`, () => {
+    it(`${door}: tells the agent how to record, with no rule against filing an issue`, () => {
       for (const told of [
         /forge new/,
         /(?<!just )file (the|an|a draft) issue/i,
@@ -35,30 +35,34 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
       ]) {
         expect(prompt, `${door} still says ${told}`).not.toMatch(told);
       }
+      // ISS-861: the "never files an issue" absolute is cut; the gate profile's kernel refusal names itself
+      for (const gone of ['A chat never files an issue', 'Asked to "just file an issue"']) {
+        expect(prompt, `${door} still says ${gone}`).not.toContain(gone);
+      }
       for (const says of [
-        'A chat never files an issue',
         'Feedback, kind `bug`',
         '`change_request`',
         'draft Requirement',
-        'CHAT_FILES_FEEDBACK_NOT_ISSUES',
         'project_feedback',
       ]) {
         expect(prompt, `${door} does not say ${says}`).toContain(says);
       }
     });
 
-    it(`${door}: discusses before it writes, and asks the scope questions before the record`, () => {
-      expect(prompt).toContain('### Discuss before writing');
-      expect(prompt).toContain('what you understood');
-      expect(prompt).toContain('ask them to press Record it on the');
-      expect(prompt).toContain('Nothing you write lands until the person agrees: core holds it');
+    it(`${door}: states that a write waits on the person, with no card ritual (ISS-861)`, () => {
+      expect(prompt).toContain('### Writes wait on the person');
       expect(prompt).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
-      // agreement is the person's press alone (ISS-439): a typed yes or no writes nothing
-      expect(prompt).toContain('Only their press on the card records it.');
-      expect(prompt).toContain('A reply they type, yes or no, writes nothing');
+      expect(prompt).toContain('CHAT_WRITE_REFUSED');
+      // the hold is kernel; the scripted restatement and "press Record it" steps are gone
+      for (const ritual of [
+        '### Discuss before writing',
+        'press Record it',
+        'Only their press on the card records it.',
+        'comes BEFORE the record, never after it',
+      ]) {
+        expect(prompt, `${door} still says ${ritual}`).not.toContain(ritual);
+      }
       expect(prompt).not.toContain('forge_agree');
-      expect(prompt).toContain('comes BEFORE the record, never after it');
-      expect(prompt).toContain('Asked to "just file an issue"');
     });
   }
 
@@ -67,8 +71,9 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
     expect(agent).toContain(`forge-runner api projects/${PROJECT.id}/feedback -X POST`);
     expect(agent).toContain(`projects/${PROJECT.id}/requirements`);
     expect(agent).toContain(`projects/${PROJECT.id}/requirements/REQ-n/revisions`);
-    expect(agent).toContain('you file no issue');
-    expect(agent).toContain('Only their press writes it');
+    expect(agent).not.toContain('you file no issue');
+    expect(agent).not.toContain('press Record it');
+    expect(agent).toContain('nothing you send agrees for them');
     expect(agent).not.toContain('/agree');
   });
 

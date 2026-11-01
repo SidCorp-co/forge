@@ -188,11 +188,12 @@ describe('a typed reply agrees to nothing: the turn has no tool that agrees', ()
     expect(gate.tools.tools.map((t) => t.function.name)).toEqual(['project_feedback']);
   });
 
-  it('tells the model only the press records it, and a typed yes or no writes nothing', async () => {
+  it('tells the model the write waits on the person and no tool of its agrees, with no card ritual', async () => {
     const gate = await agreementGate(inner, turn);
     const r = await gate.tools.execute('project_feedback', feedback('Draft lost'));
-    expect(text(r)).toContain('Only their press records it');
-    expect(text(r)).toContain('a reply they type, yes or no, writes nothing');
+    expect(text(r)).toContain('until the person agrees to it in this conversation');
+    expect(text(r)).toContain('no tool of yours agrees for them');
+    expect(text(r)).not.toContain('press Record it');
     expect(text(r)).not.toContain('forge_agree');
   });
 });

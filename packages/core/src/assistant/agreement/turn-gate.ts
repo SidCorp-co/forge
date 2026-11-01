@@ -70,9 +70,8 @@ const KIND_WORDS: Record<ChatProposalKind, string> = {
 
 function heldText(row: ChatProposalRow, tool: string): string {
   return [
-    `CHAT_WRITE_AWAITS_AGREEMENT: nothing was written. Core holds this ${KIND_WORDS[row.kind]} as proposal ${row.id} (kind ${row.kind}) until the person agrees; they see it in this conversation as a confirm card, with Record it and Decline.`,
-    'End this reply by restating what it records, where, and what it relates to, with any question only they can answer, and ask them to press Record it on the card when it is right. Do not say it is recorded.',
-    `Only their press records it: a reply they type, yes or no, writes nothing, and no tool of yours agrees for them. If they say yes in words, tell them to press Record it on the card; if they want it changed, call ${tool} again with the change, which restates the card.`,
+    `CHAT_WRITE_AWAITS_AGREEMENT: nothing was written yet. Core holds this ${KIND_WORDS[row.kind]} as proposal ${row.id} (kind ${row.kind}) until the person agrees to it in this conversation; no tool of yours agrees for them.`,
+    `To change what it proposes, call ${tool} again with the change.`,
   ].join(' ');
 }
 

@@ -95,7 +95,8 @@ describe("an Agent-mode session's record write waits for the person", () => {
     const refusal = await codeOf(r);
     expect(refusal?.code).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
     expect(refusal?.detail).toContain('proposal p-1');
-    expect(refusal?.detail).toContain('Only their press writes it');
+    expect(refusal?.detail).toContain('nothing you send agrees for them');
+    expect(refusal?.detail).not.toContain('press Record it');
     expect(refusal?.detail).not.toContain('/agree');
     expect(held).toHaveLength(1);
     expect(held[0]).toMatchObject({

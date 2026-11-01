@@ -27,12 +27,12 @@ export interface BuildSystemPromptInput {
 }
 
 /**
- * The line a chat reads where its project's gate `chat_files_issue` is off (yolo): the base layer's
- * "a chat never files an issue" is the strict and standard rule, and the kernel no longer refuses it.
+ * The line a chat reads where its project's gate `chat_files_issue` is off (yolo): the kernel no
+ * longer refuses an issue from a chat there, so the chat is told it may file one (ISS-861).
  */
 export function chatGatesBlock(chatFilesIssue: { mode: string; profile: string }): string | null {
   if (chatFilesIssue.mode === 'enforce') return null;
-  return `## This project's gate profile\nThis project runs the \`${chatFilesIssue.profile}\` gate profile, which lets agents act first (gate \`chat_files_issue\` off). Here a chat may file the issue itself: where the person asks for development work and confirms it, file it (\`POST /api/projects/:id/issues\`) instead of offering Feedback or a Requirement draft; it meets the same ready check as any issue. The rule that a chat never files an issue holds on strict and standard projects, not this one.`;
+  return `## This project's gate profile\nThis project runs the \`${chatFilesIssue.profile}\` gate profile, which lets agents act first (gate \`chat_files_issue\` off). Here a chat may file an issue itself (\`POST /api/projects/:id/issues\`) where development work is what the person needs; it meets the same ready check as any issue.`;
 }
 
 function renderWho(self: SelfSummary): string | null {
