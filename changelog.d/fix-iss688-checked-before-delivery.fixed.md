@@ -1,1 +1,0 @@
-**Delivery starts from a checked requirement.** A requirement's delivery waits for the steward's check and for answers to its questions, which are asked on the requirement or feedback item, not on an issue.

@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.423] - 2026-11-01
+
+Patched dependencies, a daily project review, and notifications only when you must act
+
+### Added
+
+- **Every project can get a daily review.** A daily review schedule hands the project's master a brief each day to report the day to the owner and hunt for work; a day with no master online is recorded as missed (ISS-862).
+
+### Fixed
+
+- **Delivery starts from a checked requirement.** A requirement's delivery waits for the steward's check and for answers to its questions, which are asked on the requirement or feedback item, not on an issue.
+- **Patched dependencies.** dompurify 3.4.17, body-parser 2.4.0, undici 7.30.1 and fast-uri 3.1.9 replace versions with open security advisories (ISS-860).
+- **Bells ring only when you must act.** A status move no longer notifies anyone unless the issue stopped on them, and repeats on one issue reach you as one entry (ISS-863).
+
 ## [0.4.0-dev.422] - 2026-11-01
 
 Agent speaks for itself, runs free their claims, plain live bar

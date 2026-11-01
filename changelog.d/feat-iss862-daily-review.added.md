@@ -1,1 +1,0 @@
-**Every project can get a daily review.** A daily review schedule hands the project's master a brief each day to report the day to the owner and hunt for work; a day with no master online is recorded as missed (ISS-862).
