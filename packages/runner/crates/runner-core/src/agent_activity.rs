@@ -123,6 +123,12 @@ pub struct Activity {
     /// When the running turn began. `None` once it has ended.
     pub turn_started_at: Option<i64>,
     pub children: std::collections::BTreeSet<String>,
+    /// Every child this conversation started and has not reported the end
+    /// of, with when it started: `children` without its strip. A background
+    /// agent outlives the lead's next turn, which is what strips `children`,
+    /// so a reader that must not end a pane under a running child reads this
+    /// and bounds it itself (ISS-858).
+    pub background: std::collections::BTreeMap<String, i64>,
     /// The conversation these claims belong to (Claude Code's `session_id`).
     pub conversation: Option<String>,
     /// Where that conversation is written, as its hooks last named it. The one
@@ -176,6 +182,12 @@ impl Doing {
 }
 
 impl Activity {
+    /// When the lead's last turn ended, as its hooks said; `None` where none
+    /// has been heard ending.
+    pub fn lead_ended_at(&self) -> Option<i64> {
+        self.lead_ended_at
+    }
+
     pub fn doing(&self) -> Doing {
         if self.awaiting_permission {
             return Doing::AwaitingPermission;
@@ -245,6 +257,7 @@ impl Activities {
             last_event_at: at,
             turn_started_at: None,
             children: std::collections::BTreeSet::new(),
+            background: std::collections::BTreeMap::new(),
             conversation: None,
             transcript: None,
             awaiting_permission: false,
@@ -260,6 +273,7 @@ impl Activities {
             if a.conversation.as_deref().is_some_and(|had| had != seen) {
                 a.turn_started_at = None;
                 a.children.clear();
+                a.background.clear();
                 a.awaiting_permission = false;
                 a.lead_ended = false;
                 // The old conversation's file ages nothing about this one.
@@ -315,11 +329,13 @@ impl Activities {
             Event::SubagentStarted => {
                 if let Some(id) = r.subject {
                     a.children.insert(id.to_string());
+                    a.background.entry(id.to_string()).or_insert(at);
                 }
             }
             Event::SubagentStopped | Event::TeammateWentIdle => {
                 if let Some(id) = r.subject {
                     a.children.remove(id);
+                    a.background.remove(id);
                 }
             }
         }
@@ -435,6 +451,24 @@ mod tests {
         assert_eq!(
             seen.turns, 0,
             "a turn begun before this daemon heard the pane was counted as its own"
+        );
+    }
+
+    #[test]
+    fn a_child_the_leads_next_turn_strips_is_still_held_as_background() {
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, 1_000);
+        child(&a, Event::SubagentStarted, 1_100);
+        lead(&a, Event::Stopped, 2_000);
+        lead(&a, Event::PromptSubmitted, 3_000);
+        let seen = lead(&a, Event::Stopped, 4_000);
+        assert_eq!(seen.doing(), Doing::Idle);
+        assert_eq!(seen.background.get("agent-1"), Some(&1_100));
+        assert_eq!(seen.lead_ended_at(), Some(4_000));
+        let gone = child(&a, Event::SubagentStopped, 5_000);
+        assert!(
+            gone.background.is_empty(),
+            "a child's reported end left it held"
         );
     }
 

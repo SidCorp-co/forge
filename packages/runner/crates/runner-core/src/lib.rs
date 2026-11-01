@@ -1,4 +1,5 @@
 pub mod agent_activity;
+pub mod background_tasks;
 pub mod checkpoint;
 pub mod degraded;
 pub mod dialog_answer;

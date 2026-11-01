@@ -217,7 +217,12 @@ pub(crate) fn placement_facts(
             now: now.0,
         },
         holding: holding_wire(&holding),
-        turn: turn_wire(turn_of(seen.as_ref(), transcript.as_deref())),
+        turn: turn_wire(turn_of(
+            seen.as_ref(),
+            transcript.as_deref(),
+            &background_of(transcript.as_deref()),
+            agent_activity::now_ms(),
+        )),
     })
 }
 
@@ -238,11 +243,15 @@ fn holding_wire(holding: &Holding) -> wire::Holding {
     }
 }
 
+/// The longest account of a turn core takes (`master-verdict.ts`, `TEXT_MAX`).
+const TURN_WHAT_CHARS: usize = 1000;
+
 fn turn_wire(turn: TurnRead) -> wire::Turn {
     match turn {
         TurnRead::Ended => wire::Turn::Ended,
+        // Core refuses a longer one, and with it the whole verdict.
         TurnRead::InTurn(what) => wire::Turn::InTurn {
-            what: what.to_string(),
+            what: what.chars().take(TURN_WHAT_CHARS).collect(),
         },
         TurnRead::Unknown => wire::Turn::Unknown,
     }

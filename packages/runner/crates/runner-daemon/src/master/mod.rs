@@ -73,6 +73,7 @@ use crate::run_record;
 use crate::session_tokens;
 use crate::wake_source::WakeSource;
 use runner_core::agent_activity;
+use runner_core::background_tasks;
 use runner_core::checkpoint;
 use runner_core::job_exit;
 use runner_core::job_unheard;
