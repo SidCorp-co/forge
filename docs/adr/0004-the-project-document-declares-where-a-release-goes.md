@@ -61,9 +61,9 @@ read from `scripts/export-legacy-project-config.mjs` run against the database be
 
 - **One production environment means one release channel.** `RELEASE_RUNNER_AMBIGUOUS` and
   `RELEASE_MULTI_CHANNEL_UNSUPPORTED` cannot arise, and they are gone.
-- **A release's verification window is not declarable.** `project-v1` carries no
-  `timeoutSeconds` or `stableReads`, so every release waits the defaults in
-  `packages/core/src/release-batch/verify.ts:verifyDeployed`: 300 s, two stable reads.
+- **A release has no verification window.** `project-v1` carries no `timeoutSeconds` or
+  `stableReads`, and Forge waits on no reading to close a release: the release agent's record
+  closes it (ISS-851).
 - **Test credentials leave the project row.** A tester gets in through the testing profile an
   environment names. That profile holds `secret://` references. The one route that hands out the
   value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets?actor=<actor>` (`self`, or

@@ -14,9 +14,6 @@ interface VerifyProbe {
 
 export interface VerifyConfig {
   probes: VerifyProbe[];
-  /** Give up after this long (300s), and believe a reading only `stableReads` (2) times running. */
-  timeoutSeconds?: number;
-  stableReads?: number;
 }
 
 /** Whether the application is alive, and the identity it reports if it is. */
