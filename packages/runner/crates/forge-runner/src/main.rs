@@ -27,6 +27,9 @@ struct Cli {
 enum Command {
     /// Call any Forge REST endpoint with a personal access token (`gh api` shaped).
     Api(cmd::api::Args),
+    /// Read one actor's testing secret into a 0600 file; prints its path, never the value.
+    #[command(name = "judge-login")]
+    JudgeLogin(cmd::judge_login::Args),
     /// Pair this device with Forge via browser approval (OAuth device flow).
     Login(cmd::login::Args),
     /// Bind a project slug to a local repo path.
@@ -103,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Api(a) => cmd::api::run(ctx, a).await,
+        Command::JudgeLogin(a) => cmd::judge_login::run(ctx, a).await,
         Command::Login(a) => cmd::login::run(ctx, a).await,
         Command::Bind(a) => cmd::bind::run(ctx, a).await,
         Command::Start(a) => cmd::start::run(ctx, a).await,

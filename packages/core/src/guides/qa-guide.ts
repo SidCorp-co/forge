@@ -66,7 +66,9 @@ Read these before judging anything, while whoever sent you can still equip you.
   behind that actor of the profile, to log in with (\`service=<service>\` for a service, \`ref=<ref>\`
   for one reference). Name the one actor the criterion needs: a read naming none is refused
   \`TESTING_SECRET_UNCHOSEN\` with the profile's actor and service names, and no read answers the
-  whole profile. A job sends \`self\`. A run a master declared reads under
+  whole profile. On a box, prefer \`forge-runner judge-login <profile> <actor>\` from inside the
+  run's checkout: it writes that one secret to a 0600 file and prints only the file's path and field
+  names, so the value never enters your transcript. A job sends \`self\`. A run a master declared reads under
   its box's credential with \`forge-runner api 'jobs/self/testing-profiles/<profile>/secrets?actor=<actor>'\` from
   inside its own checkout, where the box sends the id of the run declared over that checkout in place
   of \`self\` and says so on stderr; from anywhere else it sends that run id as \`<run>\` itself. Core learns of a declared run on the box's next sweep,

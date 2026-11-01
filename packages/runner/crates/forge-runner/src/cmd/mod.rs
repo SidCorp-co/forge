@@ -8,6 +8,7 @@ pub mod egress_bridge;
 pub mod gate;
 pub mod git_credential;
 pub mod hook;
+pub mod judge_login;
 pub mod login;
 pub mod logs;
 pub mod master;

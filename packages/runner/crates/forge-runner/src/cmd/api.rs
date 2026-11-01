@@ -1,7 +1,7 @@
 use std::io::Read;
 
 mod mark_paths;
-mod run_self;
+pub(crate) mod run_self;
 
 use clap::Args as ClapArgs;
 use runner_core::ledger::Ledger;
