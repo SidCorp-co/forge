@@ -1,10 +1,11 @@
 // The halves of a testing-secrets read every judge shares (`testing-secrets.ts`, `review-run-secrets.ts`):
-// the refusal shape, the profile's refs, and the values decrypted from the project's vault.
+// the refusal shape, the one ref a read names, and the value decrypted from the project's vault.
 
 import type { TestingSecretsRefusalCode } from '@forge/contracts/project-config';
 import { parseVariableRef } from '@forge/contracts/variables';
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
+import type { TestingProfile } from './policy-schema.js';
 import type { projectConfigPorts } from './ports.js';
 import { credentialRefs, readTestingProfile } from './service.js';
 import { drizzleConfigStore } from './store.js';
@@ -49,33 +50,74 @@ export type DeclaredRun = Extract<
   { kind: 'run' }
 >;
 
-/** The secret refs to resolve: every ref the profile names, or the asked subset of them. */
+/**
+ * The one secret a read names (ISS-868, FB-464): an actor or a service of the profile by its name,
+ * or one ref the profile names. A read names exactly one; a run is never handed the whole profile.
+ */
+export type SecretChoice = { actor: string } | { service: string } | { ref: string };
+
+/** The names a profile declares, as a refusal lists them: never a value. */
+function namesOf(profile: TestingProfile) {
+  return { actors: Object.keys(profile.actors), services: Object.keys(profile.services) };
+}
+
+function listed(names: { actors: string[]; services: string[] }): string {
+  const say = (kind: string, all: string[]) =>
+    all.length > 0 ? `${kind} ${all.join(', ')}` : `no ${kind}`;
+  return `${say('actors', names.actors)}; ${say('services', names.services)}`;
+}
+
+/** The secret ref the read names, held to the profile: one ref, or the refusal naming the valid names. */
 export async function profileRefs(
   projectId: string,
   profileId: string,
   /** Who named the profile, as the refusal of a profile gone says it: an environment, or a review run. */
   namedBy: string,
-  asked: readonly string[] | null,
+  asked: SecretChoice | null,
 ): Promise<Refused | { ok: true; wanted: string[] }> {
-  const profile = await readTestingProfile(projectId, profileId);
-  if (!profile) {
+  const held = await readTestingProfile(projectId, profileId);
+  if (!held) {
     return refuse(
       422,
       'TESTING_PROFILE_NOT_DECLARED',
       `${namedBy} testing profile \`${profileId}\`, and this project holds no profile of that id.`,
     );
   }
-  const named = [...new Set(credentialRefs(profile.document).map((r) => r.ref))];
-  const wanted = asked === null ? named : [...new Set(asked)];
-  const unnamed = wanted.filter((r) => !named.includes(r));
-  if (unnamed.length > 0) {
+  const profile = held.document;
+  const names = namesOf(profile);
+  if (asked === null) {
+    return refuse(
+      422,
+      'TESTING_SECRET_UNCHOSEN',
+      `a read names the one secret the run needs: ?actor=<name>, ?service=<name> or ?ref=<secret ref>. Testing profile \`${profileId}\` declares ${listed(names)}. Nothing was read.`,
+      names,
+    );
+  }
+  let ref: string | undefined;
+  let said: string;
+  if ('actor' in asked) {
+    ref = Object.hasOwn(profile.actors, asked.actor)
+      ? profile.actors[asked.actor]?.credential
+      : undefined;
+    said = `actor \`${asked.actor}\``;
+  } else if ('service' in asked) {
+    ref = Object.hasOwn(profile.services, asked.service)
+      ? profile.services[asked.service]?.credential
+      : undefined;
+    said = `service \`${asked.service}\``;
+  } else {
+    ref = credentialRefs(profile).some((r) => r.ref === asked.ref) ? asked.ref : undefined;
+    said = asked.ref;
+  }
+  if (ref === undefined) {
     return refuse(
       422,
       'SECRET_NOT_NAMED',
-      `testing profile \`${profileId}\` names none of ${unnamed.join(', ')}; it names ${named.join(', ') || 'no secret'}.`,
-      { unnamed },
+      `testing profile \`${profileId}\` names no ${said}; it declares ${listed(names)}. Nothing was read.`,
+      { asked, ...names },
     );
   }
+  const wanted = [ref];
   if (!isVaultConfigured()) {
     return refuse(
       503,

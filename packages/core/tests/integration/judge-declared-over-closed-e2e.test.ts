@@ -196,7 +196,7 @@ describe('a judge declared over a closed issue', () => {
     const secrets = await api(
       world.boxToken,
       'GET',
-      `/api/jobs/${runId}/testing-profiles/dev/secrets`,
+      `/api/jobs/${runId}/testing-profiles/dev/secrets?actor=admin`,
     );
     expect(secrets.status, JSON.stringify(secrets.body)).toBe(200);
     expect(secrets.body).toMatchObject({

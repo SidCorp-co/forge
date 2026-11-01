@@ -7,6 +7,7 @@ import {
   decryptedValues,
   profileRefs,
   refuse,
+  type SecretChoice,
   type TestingSecretsOutcome,
 } from './testing-secret-values.js';
 
@@ -20,7 +21,7 @@ import {
 export async function resolveForReviewRun(args: {
   principal: PatPrincipal;
   profileId: string;
-  refs: readonly string[] | null;
+  asked: SecretChoice | null;
   run: DeclaredRun;
   review: NonNullable<DeclaredRun['review']>;
 }): Promise<TestingSecretsOutcome> {
@@ -50,7 +51,7 @@ export async function resolveForReviewRun(args: {
     run.projectId,
     profileId,
     `${judge} was declared to read`,
-    args.refs,
+    args.asked,
   );
   if (!refs.ok) return refs;
   const values = await decryptedValues(run.projectId, profileId, refs.wanted, environment);

@@ -62,7 +62,7 @@ export async function declareReviewRun(args: {
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const read = `forge-runner api jobs/${run.runId}/testing-profiles/${profile}/secrets`;
+  const read = `forge-runner api 'jobs/${run.runId}/testing-profiles/${profile}/secrets?actor=<actor>'`;
   const close = `forge-runner api -X POST devices/me/run-sessions/${run.sessionId}/close -f outcome=ended`;
   const borrow = `FORGE_BORROW_FROM=<the runner's config dir>/forge-runner/master/${project?.slug ?? '<project slug>'}/forge-cli.json`;
   return {

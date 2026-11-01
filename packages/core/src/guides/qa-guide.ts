@@ -62,9 +62,12 @@ Read these before judging anything, while whoever sent you can still equip you.
   (\`source: judged-on\`), judged there as a \`runtime\` verdict at that commit.
 - \`GET /api/projects/:id/config\` answers the project document: each environment's address and the
   testing profile its testers get in through, whose \`limits\` say what that environment does not have.
-- \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets\` answers the values behind that profile's
-  \`secret://\` references, to log in with. A job sends \`self\`. A run a master declared reads under
-  its box's credential with \`forge-runner api jobs/self/testing-profiles/<profile>/secrets\` from
+- \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets?actor=<actor>\` answers the one secret
+  behind that actor of the profile, to log in with (\`service=<service>\` for a service, \`ref=<ref>\`
+  for one reference). Name the one actor the criterion needs: a read naming none is refused
+  \`TESTING_SECRET_UNCHOSEN\` with the profile's actor and service names, and no read answers the
+  whole profile. A job sends \`self\`. A run a master declared reads under
+  its box's credential with \`forge-runner api 'jobs/self/testing-profiles/<profile>/secrets?actor=<actor>'\` from
   inside its own checkout, where the box sends the id of the run declared over that checkout in place
   of \`self\` and says so on stderr; from anywhere else it sends that run id as \`<run>\` itself. Core learns of a declared run on the box's next sweep,
   seconds after \`forge-runner run declare\`: a read before it is refused
@@ -75,7 +78,7 @@ Read these before judging anything, while whoever sent you can still equip you.
   person: someone holding project admin calls \`POST /api/projects/:id/review-runs\` with
   \`{ issue, box, profile, minutes? }\`, and the session reads that one profile under the box's
   credential (\`FORGE_BORROW_FROM=<runner config dir>/forge-runner/master/<slug>/forge-cli.json
-  forge-runner api jobs/<runId>/testing-profiles/<profile>/secrets\`) until the run is closed at
+  forge-runner api 'jobs/<runId>/testing-profiles/<profile>/secrets?actor=<actor>'\`) until the run is closed at
   \`devices/me/run-sessions/<sessionId>/close\` or reaches its end (30 minutes unless named, 120 at most).
 
 A criterion you have no route to is a \`skipped\` naming what is missing. Where every criterion you

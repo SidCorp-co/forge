@@ -506,7 +506,7 @@ describe('a testing profile names a stored variable instead of a copy (BC-7)', (
     const res = await api(
       world.boxToken,
       'GET',
-      `/api/jobs/${run.boxRunId}/testing-profiles/stg/secrets`,
+      `/api/jobs/${run.boxRunId}/testing-profiles/stg/secrets?service=db`,
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toMatchObject({ secrets: [{ ref: 'var://DATABASE_URL', value: STG_DB }] });

@@ -15,6 +15,7 @@ import {
   profileRefs,
   type Refused,
   refuse,
+  type SecretChoice,
   type TestingSecretsOutcome,
 } from './testing-secret-values.js';
 
@@ -77,14 +78,14 @@ async function judgingJob(jobId: string) {
   return { ok: true as const, job };
 }
 
-// testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
-// the one testing profile its environment names, and nothing else. A run a master declared reads
+// testing-secrets/resolve — a job credential reads the value behind the one actor, service or ref it
+// names of the one testing profile its environment names, and nothing else (ISS-868). A run a master declared reads
 // them the same way under its box's credential, naming itself (`resolveForDeclaredRun`).
 export async function resolveTestingSecrets(args: {
   principal: PatPrincipal;
   jobId: string;
   profileId: string;
-  refs: readonly string[] | null;
+  asked: SecretChoice | null;
 }): Promise<TestingSecretsOutcome> {
   const { principal, profileId } = args;
   if (args.jobId !== SELF_JOB && principal.deviceId) {
@@ -132,7 +133,7 @@ export async function resolveTestingSecrets(args: {
     job.projectId,
     profileId,
     `environment \`${environment}\` names`,
-    args.refs,
+    args.asked,
   );
   if (!refs.ok) return refs;
   const { wanted } = refs;
@@ -217,7 +218,7 @@ export const DECLARED_RUN_REFUSAL = {
 async function resolveForDeclaredRun(args: {
   principal: PatPrincipal;
   profileId: string;
-  refs: readonly string[] | null;
+  asked: SecretChoice | null;
   run: DeclaredRun;
 }): Promise<TestingSecretsOutcome> {
   const { principal, profileId, run } = args;
@@ -263,7 +264,7 @@ async function resolveForDeclaredRun(args: {
     run.projectId,
     profileId,
     `environment \`${environment}\` names`,
-    args.refs,
+    args.asked,
   );
   if (!refs.ok) return refs;
   const values = await decryptedValues(run.projectId, profileId, refs.wanted, environment);

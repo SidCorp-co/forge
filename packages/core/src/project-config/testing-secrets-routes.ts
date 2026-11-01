@@ -10,6 +10,8 @@ import { parseBearerHeader } from '../middleware/bearer.js';
 import { authenticatePat, type PatPrincipal } from '../middleware/require-pat.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
+import type { SecretChoice } from './testing-secret-values.js';
 import { resolveTestingSecrets } from './testing-secrets.js';
 
 export const jobTestingSecretsRoutes = new Hono();
@@ -61,11 +63,36 @@ export async function jobCredential(c: Context): Promise<PatPrincipal> {
   return principal;
 }
 
-const refsQuery = z.strictObject({
-  ref: z
-    .union([z.string().regex(SECRET_REF), z.array(z.string().regex(SECRET_REF)).min(1)])
-    .optional(),
+const NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,62}$/;
+
+// one secret per read (ISS-868, FB-464): the actor or service of the profile the run logs in as, or
+// one ref the profile names; a read naming none is refused after the run is known, listing the names
+const choiceQuery = z.strictObject({
+  actor: z.string().regex(NAME).optional(),
+  service: z.string().regex(NAME).optional(),
+  ref: z.string().regex(SECRET_REF).optional(),
 });
+
+/** The one secret the query names, null where it names none, or the refusal of more than one. */
+function choiceOf(query: z.infer<typeof choiceQuery>): SecretChoice | null {
+  const named = (['actor', 'service', 'ref'] as const).filter((k) => query[k] !== undefined);
+  if (named.length > 1) {
+    throw new RefusalError(
+      [
+        {
+          code: 'TESTING_SECRET_ONE_PER_READ',
+          path: '',
+          detail: `a read names one secret, and this one names ${named.join(' and ')}; read each in its own call. Nothing was read.`,
+        },
+      ],
+      'TESTING_SECRET_ONE_PER_READ',
+    );
+  }
+  if (query.actor !== undefined) return { actor: query.actor };
+  if (query.service !== undefined) return { service: query.service };
+  if (query.ref !== undefined) return { ref: query.ref };
+  return null;
+}
 
 jobTestingSecretsRoutes.get(
   '/:id/testing-profiles/:profileId/secrets',
@@ -78,21 +105,26 @@ jobTestingSecretsRoutes.get(
   ),
   zValidator(
     'query',
-    refsQuery,
+    choiceQuery,
     invalid(
-      'the only query is ref, repeated as needed, each secret://<scope>/<name> with both parts matching ^[a-z][a-z0-9-]{0,62}$, or var://<KEY> naming a stored variable',
+      'the query names one secret, once: actor=<actor name> or service=<service name> as the testing profile declares them, or ref=secret://<scope>/<name> (both parts ^[a-z][a-z0-9-]{0,62}$) or var://<KEY> the profile names',
       'SECRET_REF_SHAPE',
     ),
   ),
+  // the credential is the whole gate: a running job's, or a box's naming a run it declared, and what
+  // it reads is decided by that job or run, never by a project grant (`jobCredential`)
+  requiresNoPermission(
+    'a running job’s credential, or a box’s naming a run it declared; the job or run decides the one profile and secret it reads',
+  ),
   async (c) => {
     const { id, profileId } = c.req.valid('param');
-    const { ref } = c.req.valid('query');
+    const asked = choiceOf(c.req.valid('query'));
     const principal = await jobCredential(c);
     const outcome = await resolveTestingSecrets({
       principal,
       jobId: id,
       profileId,
-      refs: ref === undefined ? null : [ref].flat(),
+      asked,
     });
     if (!outcome.ok) {
       const { status, code, message, details } = outcome.refusal;

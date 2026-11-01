@@ -14,6 +14,8 @@
  * @direct-test-of packages/core/src/project-config/testing-secrets.ts
  * @direct-test-of packages/core/src/devices/declared-run-of-call.ts
  * @direct-test-of packages/core/src/project-config/secret-value-door.ts
+ * @direct-test-of packages/core/src/project-config/testing-secret-values.ts
+ * @direct-test-of packages/core/src/project-config/testing-secrets-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -126,8 +128,8 @@ async function declaredRun(
   return { boxRunId, runId, session: s.id };
 }
 
-const secrets = (token: string, id: string) =>
-  api(token, 'GET', `/api/jobs/${id}/testing-profiles/stg/secrets`);
+const secrets = (token: string, id: string, query = 'actor=admin') =>
+  api(token, 'GET', `/api/jobs/${id}/testing-profiles/stg/secrets${query ? `?${query}` : ''}`);
 
 const codeOf = (body: unknown): string | undefined => {
   const b = body as { code?: string; error?: { code?: string } };
@@ -346,7 +348,9 @@ describe('a declared run read under a credential that carries no box', () => {
 // routes looking for the value, found neither a value nor a pointer, and gave up. Each read it made
 // now names the one door; none serves the value.
 describe('a judge looking for a testing secret is pointed at the one door by every read it tries', () => {
-  const DOOR = `/api/jobs/<run id>/testing-profiles/stg/secrets?ref=${REF}`;
+  const AT = '/api/jobs/<run id>/testing-profiles/stg/secrets';
+  const TEMPLATE = `${AT}?actor=<actor>`;
+  const BY_REF = `${AT}?ref=${REF}`;
 
   it('the profile, the guessed paths and the secrets list each name the jobs route, and none the value', async () => {
     // read as the project member the run acts for, whose reads reach the project's routes
@@ -372,33 +376,149 @@ describe('a judge looking for a testing secret is pointed at the one door by eve
       expect(text, `${path} served the value`).not.toContain(VALUE);
     }
     const byPath = new Map(answers);
-    const profile = byPath.get('/testing-profiles/stg')?.body as { valueDoor?: { route?: string } };
-    expect(profile.valueDoor?.route).toBe(`GET ${DOOR}`);
-    for (const path of [
-      '/testing-profiles/stg/credentials',
-      '/testing-profiles/stg/resolve',
-      '/testing-profiles/stg/secrets',
-      '/secrets/test/stg-admin',
-    ]) {
+    const profile = byPath.get('/testing-profiles/stg')?.body as {
+      valueDoor?: { route?: string; doors?: string[] };
+    };
+    // one door per actor: no pointer reads the whole profile (ISS-868)
+    expect(profile.valueDoor?.route).toBe(`GET ${TEMPLATE}`);
+    expect(profile.valueDoor?.doors).toEqual([`GET ${AT}?actor=admin`]);
+    for (const [path, door] of [
+      ['/testing-profiles/stg/credentials', TEMPLATE],
+      ['/testing-profiles/stg/resolve', TEMPLATE],
+      ['/testing-profiles/stg/secrets', TEMPLATE],
+      ['/secrets/test/stg-admin', BY_REF],
+    ] as const) {
       const res = byPath.get(path);
       expect([res?.status, codeOf(res?.body)], path).toEqual([
         404,
         'TESTING_SECRET_READ_ELSEWHERE',
       ]);
-      expect(JSON.stringify(res?.body), path).toContain(DOOR);
+      expect(JSON.stringify(res?.body), path).toContain(door);
     }
     expect(codeOf(byPath.get('/test-credentials')?.body)).toBe('TESTING_SECRET_READ_ELSEWHERE');
     const list = byPath.get('/secrets')?.body as {
       secrets: Array<{ ref: string; valueAt: string[] }>;
     };
-    expect(list.secrets).toEqual([expect.objectContaining({ ref: REF, valueAt: [`GET ${DOOR}`] })]);
+    expect(list.secrets).toEqual([
+      expect.objectContaining({ ref: REF, valueAt: [`GET ${BY_REF}`] }),
+    ]);
   });
 
-  it('the door it names answers the declared run', async () => {
+  it('the doors it names answer the declared run', async () => {
     await landedIssue(world.projectId, 68);
     const run = await declaredRun(world.projectId, 68);
-    const res = await api(world.boxToken, 'GET', DOOR.replace('<run id>', run.boxRunId));
+    for (const door of [`${AT}?actor=admin`, BY_REF]) {
+      const res = await api(world.boxToken, 'GET', door.replace('<run id>', run.boxRunId));
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({ secrets: [{ ref: REF, value: VALUE }] });
+    }
+  });
+});
+
+// FB-464 (catalog-api qa runs 94ef974e and 575d3ace, 2026-11-01): a judge needing one actor was
+// handed every secret of the profile, a service key to another system among them, and printed them
+// into its transcript. A read names the one secret it needs and receives only that (ISS-868).
+describe('a run receives only the one secret it names', () => {
+  const VIEWER = 'stg-viewer@adminhub.test:An0ther-Stap1e-Phrase';
+  const VIEWER_REF = 'secret://test/stg-viewer';
+  const STORE = 'store-service-key:9f8e7d6c5b4a3210-planted';
+  const STORE_REF = 'secret://dev/epod-store';
+
+  beforeEach(async () => {
+    const token = await userToken(world.ownerId);
+    for (const [scope, name, value] of [
+      ['test', 'stg-viewer', VIEWER],
+      ['dev', 'epod-store', STORE],
+    ] as const) {
+      await ok(
+        api(token, 'PUT', `/api/projects/${world.projectId}/secrets/${scope}/${name}`, { value }),
+      );
+    }
+    await ok(
+      api(token, 'PUT', `/api/projects/${world.projectId}/testing-profiles/stg`, {
+        baseRevision: 1,
+        document: {
+          $schema: 'https://forge.sidcorp.co/schemas/testing-profile-v1.json',
+          version: 1,
+          id: 'stg',
+          actors: {
+            admin: { role: 'project-admin', credential: REF },
+            viewer: { role: 'viewer', credential: VIEWER_REF },
+          },
+          services: { store: { access: 'readonly', credential: STORE_REF } },
+          limits: [],
+        },
+      }),
+    );
+  });
+
+  async function run() {
+    await landedIssue(world.projectId, 68);
+    return declaredRun(world.projectId, 68);
+  }
+
+  it('refuses a read naming no secret, listing the names and no value', async () => {
+    const { boxRunId } = await run();
+    const res = await secrets(world.boxToken, boxRunId, '');
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(codeOf(res.body)).toBe('TESTING_SECRET_UNCHOSEN');
+    const text = JSON.stringify(res.body);
+    expect(text).toContain('actors admin, viewer');
+    expect(text).toContain('services store');
+    for (const value of [VALUE, VIEWER, STORE]) expect(text).not.toContain(value);
+  });
+
+  it('answers actor A with A’s secret alone: neither B’s nor the service’s value is in the body', async () => {
+    const { boxRunId } = await run();
+    const res = await secrets(world.boxToken, boxRunId, 'actor=admin');
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toMatchObject({ secrets: [{ ref: REF, value: VALUE }] });
+    expect((res.body as { secrets: unknown[] }).secrets).toHaveLength(1);
+    const text = JSON.stringify(res.body);
+    expect(text).not.toContain(VIEWER);
+    expect(text).not.toContain(STORE);
+    expect(text).not.toContain(STORE_REF);
+  });
+
+  it('answers a service, or one ref, by its name alone', async () => {
+    const { boxRunId } = await run();
+    const service = await secrets(world.boxToken, boxRunId, 'service=store');
+    expect(service.status, JSON.stringify(service.body)).toBe(200);
+    expect((service.body as { secrets: unknown[] }).secrets).toEqual([
+      { ref: STORE_REF, value: STORE },
+    ]);
+    const byRef = await secrets(world.boxToken, boxRunId, `ref=${VIEWER_REF}`);
+    expect((byRef.body as { secrets: unknown[] }).secrets).toEqual([
+      { ref: VIEWER_REF, value: VIEWER },
+    ]);
+  });
+
+  it('refuses a name the profile does not declare, listing the valid names and no value', async () => {
+    const { boxRunId } = await run();
+    for (const query of ['actor=ghost', 'service=ghost', 'ref=secret://test/ghost']) {
+      const res = await secrets(world.boxToken, boxRunId, query);
+      expect([res.status, codeOf(res.body)], query).toEqual([422, 'SECRET_NOT_NAMED']);
+      const text = JSON.stringify(res.body);
+      expect(text, query).toContain('actors admin, viewer; services store');
+      for (const value of [VALUE, VIEWER, STORE]) expect(text, query).not.toContain(value);
+    }
+  });
+
+  it('refuses a read naming two secrets, or one twice', async () => {
+    const { boxRunId } = await run();
+    const two = await secrets(world.boxToken, boxRunId, 'actor=admin&service=store');
+    expect([two.status, codeOf(two.body)]).toEqual([422, 'TESTING_SECRET_ONE_PER_READ']);
+    const twice = await secrets(world.boxToken, boxRunId, 'actor=admin&actor=viewer');
+    expect([twice.status, codeOf(twice.body)]).toEqual([400, 'SECRET_REF_SHAPE']);
+    for (const res of [two, twice]) {
+      const text = JSON.stringify(res.body);
+      for (const value of [VALUE, VIEWER, STORE]) expect(text).not.toContain(value);
+    }
+  });
+
+  it('lists no name to a caller the route refuses: the run is known before the profile is', async () => {
+    const res = await secrets(world.boxToken, randomUUID(), '');
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(res.body)).not.toContain('viewer');
   });
 });

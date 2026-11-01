@@ -97,8 +97,8 @@ async function devProfile(projectId: string): Promise<void> {
 const declare = (token: string, body: Record<string, unknown>, projectId = world.projectId) =>
   api(token, 'POST', `/api/projects/${projectId}/review-runs`, body);
 
-const secrets = (token: string, id: string, profile = 'dev') =>
-  api(token, 'GET', `/api/jobs/${id}/testing-profiles/${profile}/secrets`);
+const secrets = (token: string, id: string, profile = 'dev', actor = 'member') =>
+  api(token, 'GET', `/api/jobs/${id}/testing-profiles/${profile}/secrets?actor=${actor}`);
 
 const codeOf = (body: unknown): string | undefined => {
   const b = body as { code?: string; error?: { code?: string } };
@@ -183,7 +183,7 @@ describe('a person-declared review run reads the testing profile it names under 
       box: { id: world.box, name: world.boxName },
       profile: 'dev',
       declaredBy: world.adminId,
-      read: `forge-runner api jobs/${run.runId}/testing-profiles/dev/secrets`,
+      read: `forge-runner api 'jobs/${run.runId}/testing-profiles/dev/secrets?actor=<actor>'`,
       close: `forge-runner api -X POST devices/me/run-sessions/${run.sessionId}/close -f outcome=ended`,
     });
     expect(run.says).toContain(`master/${world.slug}/forge-cli.json`);
@@ -201,10 +201,9 @@ describe('a person-declared review run reads the testing profile it names under 
     expect(body.run).toEqual({ session: run.sessionId, id: run.runId });
     // the one environment naming `dev`, though two deploy the branch and the issue has not landed
     expect(body.environment).toBe('dev');
-    expect(body.secrets.map((s) => s.ref).sort()).toEqual([OWNER_REF, MEMBER_REF].sort());
-    expect(body.secrets.map((s) => s.value.length).sort()).toEqual(
-      [OWNER.length, MEMBER.length].sort(),
-    );
+    // the one actor it named, never the profile's other actor (ISS-868)
+    expect(body.secrets).toEqual([{ ref: MEMBER_REF, value: MEMBER }]);
+    expect(JSON.stringify(body)).not.toContain(OWNER);
   });
 
   it('records who declared it, for which issue, on which box and profile, and audits each read naming the declarer', async () => {

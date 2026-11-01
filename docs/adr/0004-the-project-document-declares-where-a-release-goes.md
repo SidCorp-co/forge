@@ -66,9 +66,10 @@ read from `scripts/export-legacy-project-config.mjs` run against the database be
   `packages/core/src/release-batch/verify.ts:verifyDeployed`: 300 s, two stable reads.
 - **Test credentials leave the project row.** A tester gets in through the testing profile an
   environment names. That profile holds `secret://` references. The one route that hands out the
-  value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets` (`self`, or the job's own
-  id)
-  (`packages/core/src/project-config/testing-secrets.ts:resolveTestingSecrets`): it answers only a
+  value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets?actor=<actor>` (`self`, or
+  the job's own id; `service=<service>` or `ref=<ref>` in place of `actor`)
+  (`packages/core/src/project-config/testing-secrets.ts:resolveTestingSecrets`): it answers the one
+  secret the read names, never the whole profile, and refuses a read naming none (ISS-868); only a
   running job's own credential, or a box's credential naming, in place of the job id, a live run a
   master on that box declared for a project the box serves (2026-10-27, adminhub-fe's stg judges),
   which `forge-runner api` sends in place of `self` said from inside that run's own checkout;

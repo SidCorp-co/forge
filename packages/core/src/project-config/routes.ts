@@ -238,7 +238,7 @@ projectConfigRoutes.get(
     const held = await readTestingProfile(id, profileId);
     const door = held
       ? profileValueDoor(profileId, held.document).route
-      : secretValueDoor(profileId, []);
+      : secretValueDoor(profileId, 'actor=<actor>');
     throw secretValueElsewhere(
       `GET /api/projects/${id}/testing-profiles/${profileId}/${part}`,
       door,
@@ -295,7 +295,7 @@ projectConfigRoutes.get('/:id/secrets/:scope/:name', paramOf(secretParam), noQue
   const [door] = secretValueDoors(await listTestingProfiles(id), ref);
   throw secretValueElsewhere(
     `GET /api/projects/${id}/secrets/${scope}/${name}`,
-    door ?? secretValueDoor('<profile naming it>', [ref]),
+    door ?? secretValueDoor('<profile naming it>', `ref=${ref}`),
   );
 });
 
@@ -304,7 +304,7 @@ projectConfigRoutes.get('/:id/test-credentials', paramOf(idParam), noQuery, asyn
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   throw secretValueElsewhere(
     `GET /api/projects/${id}/test-credentials`,
-    secretValueDoor('<profile>', ['<ref>']),
+    secretValueDoor('<profile>', 'actor=<actor>'),
   );
 });
 

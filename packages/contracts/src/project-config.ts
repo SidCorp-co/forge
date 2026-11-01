@@ -172,6 +172,10 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 	"TESTING_SECRETS_NO_TESTING_PROFILE",
 	"TESTING_PROFILE_NOT_NAMED",
 	"TESTING_PROFILE_NOT_DECLARED",
+	/** A read named no actor, service or ref: a run receives only the one secret it names (ISS-868). */
+	"TESTING_SECRET_UNCHOSEN",
+	/** A read named more than one of actor, service and ref: one secret per read (ISS-868). */
+	"TESTING_SECRET_ONE_PER_READ",
 	"SECRET_NOT_NAMED",
 	"SECRET_VALUE_MISSING",
 	"SECRET_VALUE_UNREADABLE",

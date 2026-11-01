@@ -145,7 +145,6 @@
     "GET /api/issues/:issueId/preview",
     "GET /api/jobs/:id",
     "GET /api/jobs/:id/events",
-    "GET /api/jobs/:id/testing-profiles/:profileId/secrets",
     "GET /api/jobs/:id/variables/:environment",
     "GET /api/llms.txt",
     "GET /api/mcp-auth/authorize",
