@@ -1,15 +1,12 @@
-// A release that already happened, written down from its evidence.
+// A release that already happened, written down on its agent's word.
 //
-// `createReleaseBatch` is the normal path and stays it. This one is gated on
-// evidence rather than machinery — the application answers, every probe agrees
-// on one commit, and that commit is the one the caller claims — so no runner,
-// label or job is needed to record a release that shipped (ISS-1129). With no
-// source probe declared, production's deployment record has to name the commit;
-// where nothing can show it, the record is refused `RELEASE_NOT_VERIFIED`.
-//
-// It does NOT establish per-issue ancestry: that needs a git provider, and
-// requiring one would put the coupling straight back. `merged_at` is required
-// instead, and the residual is priced on ISS-1129.
+// `createReleaseBatch` is the path where Forge deploys and reads the deploy back. This one is the
+// record of a release a door outside it performed — a binding deployed by hand, a storefront, a
+// production deployed outside Forge by the door it names (ISS-851): the agent names the issues, the
+// version it released and its account, and the roster closes. Forge reads no commit and asks no
+// probe (owner ruling 2026-11-01, `release-is-the-agents-record`); a sha the agent sends is kept as
+// its evidence, never compared. What stays kernel: only the issues named close, each waiting at the
+// gate on this project, and each close carries the version and the account.
 
 import type { ReleaseShippedFailing } from '@forge/contracts/releases';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -23,24 +20,15 @@ import { isRefusal } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { closeRunIfOneShot, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
-import {
-  type CloseVerification,
-  closeVerification,
-  externalVerification,
-  type RecordedVerification,
-  type ReleaseVerification,
-} from './channel.js';
+import type { RecordedVerification } from './channel.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
-import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { carryNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
-import { verifyByProviderRecord } from './provider-verify.js';
-import { notVerifiedRefusal, providerNotVerifiedRefusal, reasonOf } from './refuse.js';
+import { reasonOf } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
-import { verifyServingNow } from './verify.js';
-import { cutReleaseVersion } from './version-store.js';
+import { takeGivenVersion } from './version-store.js';
 
 /** The one ledger key a recorded release writes under. */
 const RECORD_ATTEMPT_KEY = 'release-record';
@@ -48,8 +36,12 @@ const RECORD_ATTEMPT_KEY = 'release-record';
 export interface RecordPerformedReleaseArgs {
   projectId: string;
   issueIds: string[];
-  /** The whole sha the caller says production is serving. */
-  commit: string;
+  /** The release the agent says it shipped, in the stored shape (`version-store.ts:givenReleaseVersion`);
+   *  absent on a landing, which Forge versions. */
+  version?: string | undefined;
+  /** A sha the agent carries as evidence; never required on a release and never compared. A landing's
+   *  is its identity on the branch. */
+  commit?: string | undefined;
   /** How the release was performed, and why it was not a batch. */
   account: string;
   /** The provider's own handle on the act — a deployment uuid, a tag. Never the evidence. */
@@ -68,15 +60,15 @@ export interface RecordedIssue {
 
 export interface RecordPerformedReleaseResult {
   runId: string;
-  /** What the caller claimed, normalized by nothing. */
-  commit: string;
-  /** What the probes, or the deployment record, agreed production is serving; a landing's commit. */
-  identity: string;
+  /** The sha the caller carried, normalized by nothing; null where it sent none. */
+  commit: string | null;
+  /** A landing's commit; null on a release recorded on its agent's word, where nothing was read. */
+  identity: string | null;
   readings: string[];
   verification: RecordedVerification;
   /** The working branch a landing record names; absent on a release production serves. */
   branch?: string;
-  /** The version the record took, through the one rule every release is cut by (`cutReleaseVersion`). */
+  /** The version the agent recorded; on a landing, the one Forge cut (`cutReleaseVersion`). */
   version: string;
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
@@ -102,23 +94,16 @@ export async function admissibleIssues(
   }));
 }
 
-const SOURCE_OF: Record<ReleaseVerification, string> = {
-  probed: 'the live probes',
-  provider: 'what the storefront provider publishes',
-  deployment: "production's deployment record",
-};
-
 /** The account, as the issue itself will carry it. */
 function issueNote(args: {
-  commit: string;
-  identity: string;
-  how: ReleaseVerification;
+  version: string;
+  commit: string | null;
   account: string;
   providerRef: string | null;
 }): string {
+  const sha = args.commit ? `, at \`${args.commit}\` as its agent recorded it` : '';
   const handle = args.providerRef ? ` The provider's handle on it: \`${args.providerRef}\`.` : '';
-  const source = SOURCE_OF[args.how];
-  return `Released outside a release batch, and recorded from what production is serving.\n\n- commit claimed: \`${args.commit}\`\n- deployment identity read back from ${source}: \`${args.identity}\`\n\n${args.account}${handle}`;
+  return `Released as ${args.version}${sha}, recorded by the agent that performed it.\n\n${args.account}${handle}`;
 }
 
 /** Each recorded issue told how it shipped, then closed; one that will not close is named. */
@@ -167,98 +152,69 @@ export async function closeRecorded(
   return { closed, failed };
 }
 
-/** What production serves, read once by the way this release is proved; refused where it does not
- *  show the claim (the commit, or on a storefront every landing of the issues recorded). */
-async function readWhatServes(
-  verification: CloseVerification,
-  args: { projectId: string; commit: string; issueIds: string[] },
-): Promise<{ identity: string; readings: string[] }> {
-  if (verification.kind === 'provider') {
-    const read = await verifyByProviderRecord({ ...args, channel: verification.channel });
-    if (!read.ok) throw providerNotVerifiedRefusal(read.reason, read.mismatches);
-    return read;
-  }
-  const read =
-    verification.kind === 'probed'
-      ? await verifyServingNow({ cfg: verification.cfg, expected: args.commit })
-      : await verifyByDeploymentRecord(args.projectId, args.commit);
-  if (!read.ok) throw notVerifiedRefusal(read.reason, read.live);
-  return read;
-}
-
 /**
- * Record a release that has already happened, and close what it carried. The
- * probes are read BEFORE anything is claimed, so a record that cannot be earned
- * leaves every issue where it stood.
+ * Record a release that has already happened, on its agent's word, and close what it carried. The
+ * roster is admitted before anything is written, so a record refused leaves every issue where it stood.
  */
 export async function recordPerformedRelease(
-  args: RecordPerformedReleaseArgs,
+  args: RecordPerformedReleaseArgs & { version: string },
 ): Promise<RecordPerformedReleaseResult> {
-  const { projectId, commit, account, userId } = args;
+  const { projectId, account, userId } = args;
+  const commit = args.commit ?? null;
   const providerRef = args.providerRef ?? null;
+  const verification: RecordedVerification = 'unverified';
 
-  const { report, issueIds } = await admitRoster(projectId, args.issueIds, 'record');
-
-  const gateStatus = RELEASE_GATE_STATUS;
-  // Taken from the report rather than read again: a second read would refuse in its own order
-  // (ISS-1127). A refused declaration is already the report's blocker, so this cannot throw.
-  // production deployed outside Forge is proved by its own runtime probe, no binding (ISS-851)
-  const verification =
-    report.declaration?.kind === 'external'
-      ? externalVerification(report.declaration.production)
-      : closeVerification(report.channels ?? []);
+  const { issueIds } = await admitRoster(projectId, args.issueIds, 'record');
   const roster = await admissibleIssues(projectId, issueIds);
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
+  const readings = [
+    `recorded by its agent as ${args.version}${commit ? ` at ${commit}` : ''}; Forge read no deploy`,
+  ];
 
-  const read = await readWhatServes(verification, { projectId, commit, issueIds });
-  // The deployment record says what was built, not that it answers, so only a probe reads health.
-  const outcome = {
-    identity: read.identity,
-    readings: read.readings,
-    health: verification.kind === 'probed' ? ('up' as const) : null,
-  };
-  const identity = outcome.identity;
-
-  // A release performed by hand happened now, so it takes the next version and its name in the
-  // transaction that opens it, as a recorded landing does; before, it opened with none, and no page
-  // could list it nor any later cut count it (coordinator ruling, 2026-10-27).
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, {
       projectId,
       kind: 'system',
       metadata: {
         source: RELEASE_RECORD_SOURCE,
-        gateStatus,
+        gateStatus: RELEASE_GATE_STATUS,
         issueIds,
         commit,
-        identity,
-        verification: verification.kind,
+        identity: null,
+        verification,
         providerRef,
         recordedBy: userId,
         issues: roster,
         ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
       },
     });
-    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
+    const given = await takeGivenVersion(tx, { runId: row.id, projectId, version: args.version });
     await carryNaming(tx, {
       projectId,
-      version: cut,
+      version: given,
       runId: row.id,
       given: null,
       by: userId,
       roster: issueIds,
     });
-    await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });
-    // the commit this record names is the cut's (REQ-63 BC-13): its tag is owed in the same unit
-    await oweReleaseTag(row.id, commit, 'record', tx);
-    return { run: row, version: cut };
+    await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: given });
+    // a sha the agent named is the cut's commit (REQ-63 BC-13): its tag is owed in the same unit
+    if (commit) await oweReleaseTag(row.id, commit, 'record', tx);
+    return { run: row, version: given };
   });
 
   await claimRoster(projectId, issueIds, run.id);
 
-  await writeLedger(run.id, { commit, outcome, account, providerRef, how: verification.kind });
+  await writeLedger(run.id, {
+    commit,
+    outcome: { identity: null, readings, health: null },
+    account,
+    providerRef,
+    how: verification,
+    version,
+  });
 
-  const note = issueNote({ commit, identity, how: verification.kind, account, providerRef });
+  const note = issueNote({ version, commit, account, providerRef });
   const { closed, failed } = await closeRecorded(roster, {
     projectId,
     userId,
@@ -280,41 +236,40 @@ export async function recordPerformedRelease(
       .map((f) => `${f.id} (${f.reason})`)
       .join('; ')}`,
   });
-  // production was read serving the commit before anything was claimed: a record that closed what it
-  // claimed shipped, as a finished release does
+  // the agent recorded the release as shipped: a record that closed what it claimed shipped
   if (failed.length === 0) await stampReleaseShipped(run.id);
 
   return {
     runId: run.id,
     version,
     commit,
-    identity,
-    readings: outcome.readings,
-    verification: verification.kind,
+    identity: null,
+    readings,
+    verification,
     closed,
     failed,
     issues: roster,
   };
 }
 
-/** The ledger row: the intent, the account, and what the probes or the deployment record said. */
+/** The ledger row: the intent, the account, and what was read — on an agent's record, nothing. */
 export async function writeLedger(
   runId: string,
   args: {
-    commit: string;
-    outcome: { identity: string; readings: string[]; health: 'up' | null };
+    commit: string | null;
+    outcome: { identity: string | null; readings: string[]; health: 'up' | null };
     account: string;
     providerRef: string | null;
-    how: ReleaseVerification | 'landed';
+    how: 'landed' | 'unverified';
     /** The working branch a landing landed on. */
     branch?: string;
+    /** The version an agent's record names. */
+    version?: string;
   },
 ): Promise<void> {
   const { outcome } = args;
-  const reasons: Record<ReleaseVerification | 'landed', string> = {
-    provider: `what the storefront provider publishes (${outcome.identity}) carries every landing of the issues this record names`,
-    probed: `what production serves reads ${outcome.identity}, which is the commit this record claims`,
-    deployment: `what production serves reads ${outcome.identity}, which is the commit this record claims`,
+  const reasons: Record<'landed' | 'unverified', string> = {
+    unverified: `recorded by its agent as ${args.version}; Forge reads no commit and checked no deploy`,
     landed: `landed on ${args.branch} at ${outcome.identity}; no environment is declared, so nothing was deployed and no deploy was checked`,
   };
   await db.insert(releaseAttempts).values({
@@ -327,7 +282,7 @@ export async function writeLedger(
     health: outcome.health,
     identity: outcome.identity,
     readings: outcome.readings,
-    verdict: 'ok',
+    verdict: args.how === 'landed' ? 'ok' : 'unverified',
     verdictReason: reasons[args.how],
     settledAt: new Date(),
   });

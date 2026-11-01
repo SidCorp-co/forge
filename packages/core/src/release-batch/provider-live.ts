@@ -11,7 +11,6 @@ import {
   notLiveSentence,
   type ProviderLiveGate,
 } from '@forge/contracts/contract-waits';
-import { guideRef } from '../guides/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from '../integrations/source-host/index.js';
 import { portSlot } from '../lib/port-slot.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -27,8 +26,6 @@ import { deploymentConfirms, readLiveState } from './verify.js';
 export type Reading<T> = { ok: true; value: T } | { ok: false; why: string };
 
 const why = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
-const HOW_TO_DECLARE = `how to declare one: \`${guideRef('release-source-probe')}\``;
 
 /**
  * What an environment's declared source probes answer now, read straight off its declaration. A
@@ -47,8 +44,8 @@ export async function servedBySourceProbes(
       ok: false,
       why:
         verifySource === 'declared-unusable'
-          ? `${named} declares runtime probes that each identify an artifact, never the source, so nothing reads which commit it serves; ${HOW_TO_DECLARE}`
-          : `${named} declares no source probe, so nothing reads which commit it serves; ${HOW_TO_DECLARE}`,
+          ? `${named} declares runtime probes that each identify an artifact, never the source, so nothing reads which commit it serves`
+          : `${named} declares no source probe, so nothing reads which commit it serves`,
     };
   }
   const state = await readLiveState(verify);

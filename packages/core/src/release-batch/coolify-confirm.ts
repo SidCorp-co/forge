@@ -1,7 +1,6 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
-import { guideRef } from '../guides/index.js';
 import {
   buildClient,
   type CoolifyConfig,
@@ -189,7 +188,7 @@ async function readServed(projectId: string, bindingId: string): Promise<ServedR
   if (!channel?.verify) {
     return {
       kind: 'unreadable',
-      why: `the production environment deployed through binding ${bindingId} declares no runtime probe identifying the source, so nothing reports the commit it serves; how to declare one: \`${guideRef('release-source-probe')}\``,
+      why: `the production environment deployed through binding ${bindingId} declares no runtime probe identifying the source, so nothing reports the commit it serves`,
     };
   }
   const live = await readLiveState(channel.verify);

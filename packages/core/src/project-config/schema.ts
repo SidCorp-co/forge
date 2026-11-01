@@ -133,8 +133,8 @@ export const environmentSchema = z
       z.strictObject({ binding: uuid(), trigger: z.enum(DEPLOYMENT_TRIGGERS) }),
       z.strictObject({
         mode: z.literal('external'),
-        // the door outside Forge that deploys this environment (`forge-ops`, a CI pipeline): with a
-        // runtime probe identifying the source, a release lands here by its record (ISS-851)
+        // the door outside Forge that deploys this environment (`forge-ops`, a CI pipeline): a release
+        // lands here by the agent's record of that deploy (ISS-851)
         target: z
           .string()
           .min(1)

@@ -744,7 +744,6 @@
     "POST /api/projects/:projectId/release-batches/:runId/method",
     "POST /api/projects/:projectId/release-batches/:runId/range",
     "POST /api/projects/:projectId/release-batches/:runId/range/reads",
-    "POST /api/projects/:projectId/release-records",
     "POST /api/projects/:projectId/shipped-in-records",
     "POST /api/projects/:projectId/speaker-links",
     "POST /api/projects/:projectId/speaker-links/proposals",

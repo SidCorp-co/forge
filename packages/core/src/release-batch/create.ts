@@ -68,8 +68,9 @@ export interface CreateReleaseBatchResult {
    */
   openedAfterRelease: boolean;
   /** `deployment` where production declares no source probe: its deployment record must name the commit;
-   *  `provider` where the work lives on a storefront whose provider reports what it publishes. */
-  verification: ReleaseVerification | 'merged';
+   *  `provider` where the work lives on a storefront whose provider reports what it publishes;
+   *  `unverified` on a promotion, closed by the agent's record of its deploy (ISS-851). */
+  verification: ReleaseVerification | 'merged' | 'unverified';
   /** The change requests the release merges, in its order; absent on a release that deploys. */
   changeRequests?: { number: number; label: string; headSha: string }[];
 }

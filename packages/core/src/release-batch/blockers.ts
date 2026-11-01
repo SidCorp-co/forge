@@ -282,9 +282,9 @@ async function heldFleetBlocker(projectId: string, out: ReleaseBlocker[]): Promi
 /**
  * A production environment whose runtime probes all identify an artifact.
  *
- * Reported where the LIVE READ stands — last on a batch, after the roster on a
- * record — because that read is where this state fails. Any earlier and it
- * displaces a refusal the caller already gets for the same project.
+ * Reported where the LIVE READ stands — last on a batch — because that read is
+ * where this state fails. A record reads nothing live (ISS-851), so it never
+ * owes this.
  */
 function unreadableProbeBlockers(channels: ReleaseChannel[], out: ReleaseBlocker[]): void {
   const bindings = refusedVerifyBindings(channels);
@@ -320,8 +320,8 @@ export async function collectReleaseBlockers(
   if (read) {
     // With no production environment a record is the landing's own (`recorded-landing.ts`): there is
     // no gate to refuse, and its roster owes what every record's does.
-    // Production deployed outside Forge by a door it names (ISS-851): its record is the release, owing
-    // what every record's roster does; any other door cuts nothing and is refused by name.
+    // Production deployed outside Forge by a door it names (ISS-851): the agent's record is the
+    // release, owing what every record's roster does; any other door cuts nothing and is refused by name.
     if (read.kind === 'external' && door !== 'record') {
       blockers.push(blocker('RELEASE_DEPLOYED_OUTSIDE'));
       return {
@@ -430,7 +430,6 @@ async function gatedBlockers(
   }
 
   out.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));
-  if (door === 'record' && channels) unreadableProbeBlockers(channels, out);
 
   if (door === 'batch') {
     const active = await evaluate(

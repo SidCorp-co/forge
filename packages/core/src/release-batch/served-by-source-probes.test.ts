@@ -58,17 +58,17 @@ describe('servedBySourceProbes', () => {
     expect(await servedBySourceProbes(bound)).toEqual({ ok: true, value: SHA });
   });
 
-  it('names the guide where the environment declares no probe, or only artifact probes', async () => {
+  it('says nothing reads the commit where the environment declares no probe, or only artifact probes', async () => {
     const none = await servedBySourceProbes(env(null), 'its production');
     expect(none).toEqual({
       ok: false,
-      why: 'its production declares no source probe, so nothing reads which commit it serves; how to declare one: `GET /api/guides/release-source-probe.md`',
+      why: 'its production declares no source probe, so nothing reads which commit it serves',
     });
     const artifact = await servedBySourceProbes(env([{ identifies: 'artifact' }]));
     expect(!artifact.ok && artifact.why).toContain(
       'environment `stg` declares runtime probes that each identify an artifact, never the source',
     );
-    expect(!artifact.ok && artifact.why).toContain('GET /api/guides/release-source-probe.md');
+    expect(!artifact.ok && artifact.why).not.toContain('guides/');
   });
 
   it('says what the probe answered where it names no commit', async () => {

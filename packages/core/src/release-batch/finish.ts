@@ -405,8 +405,8 @@ interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
  * `hold` is the default: the code is on production, and the roster stays held at
  * `awaiting_release` at its `release` step. `return-to-gate` is the operator's route to terminal for
  * a batch that promoted and cannot verify, putting the roster back where
- * `POST /release-records` closes it against what production serves, with an
- * account (ISS-1199).
+ * `POST /release-records` closes it on the agent's record of the version it shipped, with an
+ * account (ISS-1199, ISS-851).
  */
 type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 

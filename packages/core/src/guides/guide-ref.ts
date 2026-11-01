@@ -26,7 +26,6 @@ const GUIDE_SLUGS = [
   'qa',
   'mockups',
   'release-tags',
-  'release-source-probe',
   'fast-delivery',
 ] as const;
 

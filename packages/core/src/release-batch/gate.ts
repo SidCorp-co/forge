@@ -36,9 +36,9 @@ export type ReleaseDeclaration =
       promotion: { from: string; to: string };
     }
   /**
-   * Production is deployed outside Forge by the door its environment names (`deployment.target`),
-   * and a runtime probe identifying the source reads what it serves (ISS-851): issues wait at the
-   * gate, nothing is cut, and a release is the record of that door's deploy, proved by the probe.
+   * Production is deployed outside Forge by the door its environment names (`deployment.target`)
+   * (ISS-851): issues wait at the gate, nothing is cut, and a release is the agent's record of that
+   * door's deploy under the version it released; Forge reads no commit (owner, 2026-11-01).
    */
   | {
       kind: 'external';
@@ -57,13 +57,10 @@ export type ReleaseDeclaration =
       binding: BindingWithConnection;
     };
 
-/** The door an external production names, where it also declares a probe that reads its source. */
+/** The door an external production names as the one that deploys it, or null where it names none. */
 function externalTarget(production: NamedEnvironment): string | null {
-  const { deployment, verification } = production.declaration;
-  if (!('mode' in deployment) || !deployment.target) return null;
-  return (verification?.runtime ?? []).some((p) => p.identifies === 'source')
-    ? deployment.target
-    : null;
+  const { deployment } = production.declaration;
+  return 'mode' in deployment ? (deployment.target ?? null) : null;
 }
 
 async function productionBinding(
@@ -74,7 +71,7 @@ async function productionBinding(
   if (id === null) {
     return {
       ok: false,
-      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external), names no door that deploys it with a runtime probe identifying the source, and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — name the door (\`deployment.target\`) beside a \`verification.runtime\` probe with \`identifies: source\` (a release is then the record of its deploy), declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
+      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external), names no door that deploys it, and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — name the door (\`deployment.target\`, a release is then your record of its deploy), declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
     };
   }
   const pair = await findBindingWithConnectionById(id);

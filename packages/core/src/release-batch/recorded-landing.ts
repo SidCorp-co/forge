@@ -124,7 +124,7 @@ export async function recordLanding(
   deps?: LandingDeps,
 ): Promise<RecordPerformedReleaseResult> {
   const { projectId, account, userId } = args;
-  const commit = args.commit.trim().toLowerCase();
+  const commit = (args.commit ?? '').trim().toLowerCase();
   const providerRef = args.providerRef ?? null;
   const branch = args.branch ?? declared;
   if (!branch) {
@@ -136,7 +136,9 @@ export async function recordLanding(
   if (!WHOLE.test(commit)) {
     throw refuseRelease(
       'RELEASE_LANDING_COMMIT_SHAPE',
-      `\`${args.commit}\` is not a whole commit: a landing on \`${branch}\` is recorded at the 40-character sha it landed at.`,
+      args.commit === undefined
+        ? `a landing on \`${branch}\` is recorded at the commit it landed at: send \`commit\`, the 40-character sha.`
+        : `\`${args.commit}\` is not a whole commit: a landing on \`${branch}\` is recorded at the 40-character sha it landed at.`,
       '/commit',
     );
   }

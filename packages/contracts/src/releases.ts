@@ -242,13 +242,14 @@ export interface ReleaseVersionCarrier {
  * How an attempt came to wear its version: `first` cut of a roster nothing cut before, `reused` from
  * the attempt before it on the same roster, `bumped` past it because something outside Forge
  * carries that one, another release already wears it, the declared prerelease line moved off it, or
- * an attempt has since claimed a higher one; `unrecorded` on a run cut before the rule was recorded
- * on the run.
+ * an attempt has since claimed a higher one; `given` by the agent that recorded the release it
+ * shipped (ISS-851); `unrecorded` on a run cut before the rule was recorded on the run.
  */
 export const RELEASE_VERSION_DECISIONS = [
 	"first",
 	"reused",
 	"bumped",
+	"given",
 	"unrecorded",
 ] as const;
 export type ReleaseVersionDecision = (typeof RELEASE_VERSION_DECISIONS)[number];
@@ -354,7 +355,9 @@ export interface ReleaseSummary
  * commit production's deployment record names, `provider` by what a storefront provider reports it
  * serves against what each issue landed — workflows, routes, pages, the theme and store settings, or
  * a design approval's record (core `release-batch/provider-verify.ts`).
- * `unverified` is a close from before the deployment check, kept as it was recorded. `landed` is a
+ * `unverified` is a release Forge checked no deploy for: one recorded on its agent's word under the
+ * version it shipped (core `release-batch/recorded.ts`, owner 2026-11-01), or a close from before the
+ * deployment check, kept as it was recorded. `landed` is a
  * project that declares no production environment: its landing on the working branch is the
  * delivery, nothing was deployed, and no deploy is checked (core `release-batch/recorded-landing.ts`).
  */
@@ -881,8 +884,14 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_LANDING_UNREAD",
 	/** Under release mode `none`, a project whose source names no branch for work to land on. */
 	"RELEASE_LANDING_NO_BRANCH",
-	/** A record naming a landing's `branch` on a project with production, whose record reads what it serves. */
+	/** A record naming a landing's `branch` on a project with production, whose record is its version. */
 	"RELEASE_RECORD_BRANCH_UNUSED",
+	/** A record naming `version` on a project with no production environment, whose landing Forge versions. */
+	"RELEASE_RECORD_VERSION_UNUSED",
+	/** A record naming a version another release of the project already wears (ISS-851). */
+	"RELEASE_RECORD_VERSION_TAKEN",
+	/** A promotion release's record naming a version other than the one its cut wears (ISS-851). */
+	"RELEASE_RECORD_VERSION_MISMATCH",
 	/** A promotion release cut without `promotion.request`, the change request the agent says carries its roster. */
 	"RELEASE_PROMOTION_REQUEST_UNNAMED",
 	/** A promotion release cut naming a request number the projection does not hold across the declared promotion. */

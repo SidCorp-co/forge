@@ -12,7 +12,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld, requireMasterAct } from '../permissions/index.js';
+import { requireHeld, requireMasterAct, requiresOnResolved } from '../permissions/index.js';
 import { readGateProfile } from '../project-config/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
@@ -34,7 +34,9 @@ import { refuseRelease } from './refuse.js';
 import { recordShippedIn } from './shipped-in.js';
 import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
 import { readReleaseRunState } from './state.js';
+import { RELEASE_VERSION_SHAPE } from './version.js';
 import { releaseVersionRoutes } from './version-routes.js';
+import { givenReleaseVersion } from './version-store.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -219,13 +221,36 @@ const carriedBodySchema = z.object({ carried: carriedSchema }).strict();
 const releaseRecordBodySchema = z
   .object({
     issueIds: rosterIdsSchema.min(1),
-    commit: z.string().trim().min(1).max(200),
+    /** The release the agent shipped, `v1.31.1` or `1.31.1`; required wherever production is declared. */
+    version: z.string().trim().min(1).max(100).optional(),
+    /** A sha carried as evidence, never compared; a landing's identity on its branch. */
+    commit: z.string().trim().min(1).max(200).optional(),
     account: z.string().trim().min(20).max(20_000),
     providerRef: z.string().trim().max(500).optional(),
     /** A landing's branch, where it is not the one work lands on (adminhub-api !5020, 2026-10-27). */
     branch: z.string().trim().min(1).max(255).optional(),
   })
   .strict();
+
+/** The version a production release is recorded under, refused by name where missing or misshapen. */
+function recordedVersion(sent: string | undefined): string {
+  if (sent === undefined) {
+    throw refuseRelease(
+      'RELEASE_VERSION_MISSING',
+      'A release is recorded under the version you released: send `version`, e.g. `v1.31.1`.',
+      '/version',
+    );
+  }
+  const version = givenReleaseVersion(sent);
+  if (!version) {
+    throw refuseRelease(
+      'RELEASE_VERSION_SHAPE',
+      `\`${sent}\` is no release version: send ${RELEASE_VERSION_SHAPE}, with or without a leading \`v\`.`,
+      '/version',
+    );
+  }
+  return version;
+}
 
 async function loadRunForProject(runId: string, projectId: string, userId: string) {
   const run = await findReleaseBatchRun(runId);
@@ -381,6 +406,10 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-records',
   zValidator('param', projectParamSchema),
+  requiresOnResolved(
+    'project.admin',
+    'the project `:projectId` names; outside strict its master holds the act too (REQ-79 r6 BC-17)',
+  ),
   zValidator('json', releaseRecordBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -388,22 +417,32 @@ releaseBatchRoutes.post(
 
     await requireReleaseAct(c, projectId, 'recording a release');
 
-    // With no production environment the landing is the delivery, and the record says so.
+    // With no production environment the landing is the delivery, and Forge versions it; anywhere
+    // else a release is the agent's record under the version it shipped (owner, 2026-11-01).
     const declared = await resolveReleaseDeclaration(projectId);
     const sent = { projectId, userId, ...c.req.valid('json') };
-    if (declared?.kind !== 'no-release' && sent.branch !== undefined) {
+    if (declared?.kind === 'no-release') {
+      if (sent.version !== undefined) {
+        throw refuseRelease(
+          'RELEASE_RECORD_VERSION_UNUSED',
+          'This project declares no production environment, so its landing is versioned by Forge: send the record without `version`.',
+          '/version',
+        );
+      }
+      return c.json(await recordLanding(sent, declared.defaultBranch), 201);
+    }
+    if (sent.branch !== undefined) {
       throw refuseRelease(
         'RELEASE_RECORD_BRANCH_UNUSED',
-        `\`branch\` names where a landing is recorded, and this project declares a production environment, whose record reads the commit production serves: send the record without \`branch\`.`,
+        '`branch` names where a landing is recorded, and this project declares a production environment, whose record is the version it released: send the record without `branch`.',
         '/branch',
       );
     }
+    const version = recordedVersion(sent.version);
     const result =
-      declared?.kind === 'no-release'
-        ? await recordLanding(sent, declared.defaultBranch)
-        : declared?.kind === 'promotion'
-          ? await recordPromotionRelease(sent, declared)
-          : await recordPerformedRelease(sent);
+      declared?.kind === 'promotion'
+        ? await recordPromotionRelease({ ...sent, version }, declared)
+        : await recordPerformedRelease({ ...sent, version });
     return c.json(result, 201);
   },
 );

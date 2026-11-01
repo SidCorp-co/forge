@@ -14,14 +14,12 @@ import { releaseRunClaims } from '../issues/index.js';
 import { closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
 import { label, type ReleaseMergeStep } from './change-request-roster.js';
-import { releaseProbesOf } from './channel.js';
 import { assertDeclaredGate } from './declared-gate.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
 import { admissibleIssues, closeRecorded, writeLedger } from './recorded.js';
-import { notVerifiedRefusal, refuseRelease } from './refuse.js';
+import { refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
-import { verifyServingNow } from './verify.js';
 
 /** The cut's own run opener (`create.ts:openClaimedRun`), handed in so neither module imports the other. */
 type OpenRun = (args: {
@@ -36,8 +34,6 @@ type OpenRun = (args: {
 interface PromotionMetadata extends Across {
   pullRequestId: string;
 }
-
-const WHOLE = /^[0-9a-f]{40}$/i;
 
 /**
  * Cuts the release as the promotion request the agent names (`promotion.request`) and the roster it
@@ -89,7 +85,6 @@ export async function cutPromotionRelease(
     issueIds,
   };
   const promotion: PromotionMetadata = { ...decl.promotion, pullRequestId: request.id };
-  const probed = releaseProbesOf(decl.production).verify !== null;
   const { run, version } = await openClaimedRun({
     projectId,
     issueIds,
@@ -99,7 +94,8 @@ export async function cutPromotionRelease(
       issueIds,
       deployPlanned: false,
       promotePlanned: false,
-      verification: probed ? 'probed' : 'deployment',
+      // closed by the agent's record of the deploy, which Forge reads nothing to prove (ISS-851)
+      verification: 'unverified',
       changeRequests: [step],
       promotion,
     },
@@ -131,7 +127,7 @@ export async function cutPromotionRelease(
     version,
     ownerDeadlineAt: null,
     openedAfterRelease: false,
-    verification: probed ? ('probed' as const) : ('deployment' as const),
+    verification: 'unverified' as const,
     changeRequests: [{ number: request.number, label: me, headSha: request.headSha }],
   };
 }
@@ -222,23 +218,25 @@ async function runningPromotion(projectId: string) {
 }
 
 /**
- * The operator's record of the production deploy that closes a promotion release (REQ-63 BC-12):
- * refused before its request merged and for a roster other than the release's; verified by
- * production's probes where it declares them, else by the agent's statement. No host compare: which
- * commit production serves is what the agent says, and the promotion's merge is read off the projection.
+ * The agent's record of the production deploy that closes a promotion release (REQ-63 BC-12): refused
+ * before its request merged, for a roster other than the release's, and under a version other than the
+ * one its cut wears. Forge reads no commit (owner, 2026-11-01): a sha the agent sends is its evidence,
+ * kept and never compared, and the promotion's merge is read off the projection.
  */
 export async function recordPromotionRelease(
   sent: {
     projectId: string;
     userId: string;
     issueIds: string[];
-    commit: string;
+    version: string;
+    commit?: string | undefined;
     account: string;
     providerRef?: string | undefined;
   },
   decl: PromotionDeclaration,
 ) {
-  const { projectId, userId, commit, account } = sent;
+  const { projectId, userId, account } = sent;
+  const commit = sent.commit ?? null;
   const run = await runningPromotion(projectId);
   const p = run ? promotionOf(run.metadata) : null;
   if (!run || !p) {
@@ -271,25 +269,29 @@ export async function recordPromotionRelease(
       '/commit',
     );
   }
-  if (!WHOLE.test(commit))
-    throw notVerifiedRefusal(`\`${commit}\` is not a whole commit sha`, null);
+  if (sent.version !== run.version) {
+    throw refuseRelease(
+      'RELEASE_RECORD_VERSION_MISMATCH',
+      `This promotion was cut as release ${run.version}, and this record names ${sent.version}: record the deploy under ${run.version}.`,
+      '/version',
+    );
+  }
   // owed when the merge was seen; a merge Forge never heard of before this record owes it here
   await oweReleaseTag(run.id, request.mergeCommitSha, 'promotion');
-  const { verify } = releaseProbesOf(decl.production);
-  const read = verify
-    ? await verifyServingNow({ cfg: verify, expected: commit })
-    : { ok: true as const, identity: commit, readings: [`recorded by the operator: ${commit}`] };
-  if (!read.ok) throw notVerifiedRefusal(read.reason, read.live);
-  const how = verify ? ('probed' as const) : ('deployment' as const);
-  const outcome = {
-    identity: read.identity,
-    readings: read.readings,
-    health: verify ? ('up' as const) : null,
-  };
+  const readings = [
+    `recorded by its agent as ${run.version}${commit ? ` at ${commit}` : ''}; Forge read no deploy`,
+  ];
   const providerRef = sent.providerRef ?? null;
-  await writeLedger(run.id, { commit, outcome, account, providerRef, how });
+  await writeLedger(run.id, {
+    commit,
+    outcome: { identity: null, readings, health: null },
+    account,
+    providerRef,
+    how: 'unverified',
+    version: run.version,
+  });
   const issuesOf = await admissibleIssues(projectId, roster);
-  const note = `Deployed to production from ${label(request)}'s merge ${request.mergeCommitSha}, serving \`${commit}\` (${how === 'probed' ? 'read on the live probes' : 'as the operator recorded it'}).\n\n${account}`;
+  const note = `Released as ${run.version}, deployed to production from ${label(request)}'s merge ${request.mergeCommitSha}${commit ? `, at \`${commit}\` as its agent recorded it` : ''}.\n\n${account}`;
   const { closed, failed } = await closeRecorded(issuesOf, {
     projectId,
     userId,
@@ -307,9 +309,9 @@ export async function recordPromotionRelease(
     runId: run.id,
     version: run.version,
     commit,
-    identity: read.identity,
-    readings: read.readings,
-    verification: how,
+    identity: null,
+    readings,
+    verification: 'unverified' as const,
     closed,
     failed,
     issues: issuesOf,

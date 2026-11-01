@@ -293,8 +293,8 @@ function settledNote(projectId: string, destination: IssueStatus): string {
     `This batch recorded a promotion, so the code it carried may be on production, and an operator ` +
     `settled the roster rather than leave it held at its release step — the issue is back at ` +
     `\`${destination}\`. If the release did land, record it with ` +
-    `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
-    `how it was released; that closes it against evidence instead of by hand.`
+    `POST /api/projects/${projectId}/release-records, naming the version it shipped as and how it ` +
+    `was released; that closes it on your record instead of by hand.`
   );
 }
 

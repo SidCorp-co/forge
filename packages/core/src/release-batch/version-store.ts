@@ -17,12 +17,18 @@ import { readProjectDocument, readReleasePath } from '../project-config/index.js
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { LANDED_VERIFICATION } from './landed-build.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
-import { formatReleaseVersion, type PrereleaseLine, parseReleaseVersion } from './version.js';
+import {
+  formatReleaseVersion,
+  isStorableReleaseVersion,
+  type PrereleaseLine,
+  parseReleaseVersion,
+} from './version.js';
 import {
   cutRecordOf,
   decideVersion,
   type LineageRun,
   lineageOf,
+  type VersionCutRecord,
   type VersionDecision,
 } from './version-rule.js';
 
@@ -228,5 +234,51 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   const { version } = decision;
   if (!(await stampReleaseVersion(runId, version, tx))) throw versionConflict(projectId, version);
   await writeRunMetadata(runId, { merge: { versionCut: cutRecordOf(decision) }, touch: false }, tx);
+  return version;
+}
+
+/** `v1.31.1` or `1.31.1`, as an agent names the release it shipped, in the stored shape; null where
+ *  it is no release version. */
+export function givenReleaseVersion(text: string): string | null {
+  const parsed = parseReleaseVersion(text.trim().replace(/^v/i, ''));
+  return parsed && isStorableReleaseVersion(parsed) ? formatReleaseVersion(parsed) : null;
+}
+
+/**
+ * Write the version an agent says it released onto a recorded release (owner, 2026-11-01: a release
+ * is the agent's record under an explicit version). Forge decides nothing here: it refuses a version
+ * another release of this project still wears, by name, and keeps the agent's number otherwise.
+ */
+export async function takeGivenVersion(
+  tx: Tx,
+  args: { runId: string; projectId: string; version: string },
+): Promise<string> {
+  const { runId, projectId, version } = args;
+  await lockProjectVersions(tx, projectId);
+  const worn = await tx.execute<{ id: string }>(sql`
+    SELECT id FROM pipeline_runs
+    WHERE project_id = ${projectId} AND release_version = ${version} AND id <> ${runId}
+      AND (release_released_at IS NOT NULL OR status NOT IN ('cancelled', 'failed'))
+    LIMIT 1
+  `);
+  if (worn[0]) {
+    throw refuseRelease(
+      'RELEASE_RECORD_VERSION_TAKEN',
+      `release ${version} is already on record for this project (run ${worn[0].id}): record this release under the version it shipped as.`,
+      '/version',
+    );
+  }
+  if (!(await stampReleaseVersion(runId, version, tx))) throw versionConflict(projectId, version);
+  const given: VersionCutRecord = {
+    decided: 'given',
+    recutOf: null,
+    from: null,
+    attempt: 1,
+    carriers: [],
+    line: null,
+    takenBy: null,
+    overtakenBy: null,
+  };
+  await writeRunMetadata(runId, { merge: { versionCut: given }, touch: false }, tx);
   return version;
 }
