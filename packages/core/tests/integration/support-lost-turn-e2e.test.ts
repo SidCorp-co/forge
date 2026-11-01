@@ -98,14 +98,16 @@ describe('ISS-850: a turn core lost to its restart', () => {
     answers = true;
     w.box.finishTurns = true;
     await coreStarts();
-    await boxReconnects();
+    // The ended turn's own bridge hands the room on after its commit, unawaited, and may claim the
+    // message first; its socket dropped mid hand-on refuses NO_CLAUDE_CLIENT and backs the room off.
     await expect.poll(() => handed(text), { timeout: 15_000 }).toBe(2);
     await w.untilLines((ls) => ls.some((l) => l.tmid === thread && l.text === `Answered: ${text}`));
     const [row] = await rows<{ redelivered: string | null }>(sql`
       SELECT output->>'redelivered' AS redelivered FROM support_actions
        WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = ${text}`);
     expect(row?.redelivered).toBeTruthy();
-    // core starting again, and the box coming back again, hand it on no more
+    // the box coming back, core starting again, and the box coming back again hand it on no more
+    await boxReconnects();
     await coreStarts();
     await boxReconnects();
     await new Promise((r) => setTimeout(r, 500));
