@@ -39,10 +39,10 @@ import { readIssueGates } from './gates.js';
 import {
   type CheckOwedBy,
   checkRefusal,
-  headMatches,
   missingCheckDetail,
-  passingHeads,
+  passingRanges,
   probeRefusals,
+  rangeCovers,
   recordFields,
 } from './merge-check-rules.js';
 import { catalogPageFields, hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
@@ -156,8 +156,8 @@ async function checkOwedBy(
 }
 
 /**
- * The merge mark's refusal where a merge check is owed and none passed at the commit marked, or
- * null. A check is owed where the project declares `validation.mergeCheck: required`, or where the
+ * The merge mark's refusal where a merge check is owed and no passing one covers the commit marked
+ * (its head, or a commit of its range base..head: REQ-79 BC-5), or null. A check is owed where the project declares `validation.mergeCheck: required`, or where the
  * issue introduces an approved new pattern, whose catalog page the check asks for. A merge the
  * source host's webhook records is not asked: it has already happened, and its CI gated it.
  */
@@ -173,9 +173,9 @@ export async function uncheckedMergeRefusal(args: {
     kinds: ['verification'],
     kernelOnly: true,
   });
-  const heads = passingHeads(records);
-  if (args.commit && headMatches(heads, args.commit)) return null;
+  const ranges = passingRanges(records);
+  if (args.commit && rangeCovers(ranges, args.commit)) return null;
   const issueRef = (await issueDisplayIds([args.issueId])).get(args.issueId) ?? args.issueId;
-  const said = missingCheckDetail({ issueRef, owedBy, commit: args.commit, heads });
+  const said = missingCheckDetail({ issueRef, owedBy, commit: args.commit, ranges });
   return owed.gate ? `${said} ${gateSays(owed.gate)}` : said;
 }

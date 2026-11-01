@@ -373,6 +373,8 @@ export function recordFields(
     { key: 'patch-id', value: report.patchId ?? PATCH_ID_ABSENT },
     { key: 'base', value: `${report.base.branch}@${report.base.sha}` },
     { key: 'head', value: report.head },
+    // the commits the check covered (REQ-79 BC-5): a mark at any of them is this check's
+    ...(report.commits?.length ? [{ key: 'commits', value: report.commits.join(' ') }] : []),
     { key: 'touched', value: `${report.touched.length} file(s)` },
     { key: 'checks', value: namedChecks(report.checks) },
     ...(debts.length ? [{ key: 'debts', value: debtField(debts) }] : []),
@@ -393,10 +395,36 @@ export function passingHeads(
   });
 }
 
-/** Whether `commit` (7 to 64 hex, as a mark takes it) names one of `heads`. */
-export function headMatches(heads: readonly string[], commit: string): boolean {
+/** A passing merge check's range: its base, its head, and the commits it covered (head included). */
+export interface PassingRange {
+  base: string;
+  head: string;
+  commits: string[];
+}
+
+/** The ranges of the passing merge checks among an issue's core-written records. */
+export function passingRanges(
+  records: readonly { fields: readonly { key: string; value: string }[] }[],
+): PassingRange[] {
+  return records.flatMap((r) => {
+    const field = (key: string) => r.fields.find((f) => f.key === key)?.value;
+    if (field('check') !== MERGE_CHECK_RECORD || field('result') !== 'pass') return [];
+    const head = field('head')?.toLowerCase();
+    if (!head) return [];
+    const base = (field('base') ?? '').split('@').at(-1)?.toLowerCase() ?? '';
+    const commits = (field('commits') ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    return [{ base, head, commits: commits.includes(head) ? commits : [...commits, head] }];
+  });
+}
+
+/**
+ * Whether a passing check covers `commit` (7 to 64 hex): its head, or a commit its range
+ * base..head held (REQ-79 BC-5). An issue landed mid-batch is marked on the batch's later passing
+ * check, whose range holds it; a check whose range does not hold it covers nothing.
+ */
+export function rangeCovers(ranges: readonly PassingRange[], commit: string): boolean {
   const c = commit.toLowerCase();
-  return heads.some((h) => h.startsWith(c));
+  return ranges.some((r) => r.commits.some((k) => k.startsWith(c)));
 }
 
 /** What makes a mark owe a merge check: the project's declaration, or the issue's new pattern. */
@@ -407,7 +435,7 @@ export function missingCheckDetail(args: {
   issueRef: string;
   owedBy: CheckOwedBy;
   commit: string | null;
-  heads: readonly string[];
+  ranges: readonly PassingRange[];
 }): string {
   const why = {
     project: 'this project declares `validation.mergeCheck: required`',
@@ -415,10 +443,14 @@ export function missingCheckDetail(args: {
     cleanup: `${args.issueRef} is rated high impact on a project that deploys on land, so landing it is asked the cleanup rule (REQ-79 BC-5) by the merge check`,
   }[args.owedBy];
   const at = args.commit
-    ? `no passing merge check is recorded at ${args.commit}`
+    ? `no passing merge check covers ${args.commit}`
     : 'the mark names no commit and the issue records none, so no merge check can be matched to it';
-  const standing = args.heads.length
-    ? ` (passing checks stand at ${args.heads.map((h) => h.slice(0, 12)).join(', ')})`
+  const standing = args.ranges.length
+    ? ` (passing checks cover ${args.ranges
+        .map(
+          (r) => `${r.base.slice(0, 12)}..${r.head.slice(0, 12)} (${r.commits.length} commit(s))`,
+        )
+        .join(', ')}, none holding it)`
     : '';
   return `${why}, and ${at}${standing}. Run the project's merge check on the change rebased onto its base, record it with \`POST /api/issues/:id/merge-check\`, land that same commit and mark it. Nothing was marked`;
 }

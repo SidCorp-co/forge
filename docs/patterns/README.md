@@ -89,7 +89,8 @@ Naming a pattern on any other project is refused `PATTERN_CATALOG_UNDECLARED`, s
   - the merge mark, over the commit it marks, for the patterns approved then: the paths it sends,
     the pages a merge check passing there recorded, or the repository there. After that, the mark
     of an issue with an approved new pattern is refused `MERGE_CHECK_MISSING` until a passing check
-    is recorded at the commit it marks (`packages/core/src/issues/merge-check.ts`);
+    covers the commit it marks, as its head or within its range base..head
+    (`packages/core/src/issues/merge-check.ts:uncheckedMergeRefusal`);
   - an approval on an issue whose merge is already marked, over the change the mark names;
   - the move to `awaiting_release`, over the change the mark names, for every pattern approved by
     then.

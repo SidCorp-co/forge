@@ -7,13 +7,13 @@
 // from a script that predates patch ids is still taken, recorded with `PATCH_ID_ABSENT`.
 
 import { z } from "zod";
-import { debtItemsSchema, HOLDING_RATING, impactSchema } from "./cleanup.js";
 import {
 	CHECK_RUN_SHAPE,
 	type CheckKind,
 	checkRunsSchema,
 	wholeShaSchema,
 } from "./check-runs.js";
+import { debtItemsSchema, HOLDING_RATING, impactSchema } from "./cleanup.js";
 import { FAST_LANE_MERGE_CHECKS, LANES, type Lane } from "./fast-lane.js";
 import { ARTIFACT_CHANGES } from "./landing-artifacts.js";
 import { PATTERN_ENTRY_MISSING } from "./patterns.js";
@@ -47,13 +47,22 @@ export const MERGE_CHECK_KINDS = {
 export const MERGE_CHECK_MODES = ["pre-merge", "landed"] as const;
 export type MergeCheckMode = (typeof MERGE_CHECK_MODES)[number];
 
-const LIMITS = { checks: 200, touched: 2000, probes: 200 } as const;
+const LIMITS = {
+	checks: 200,
+	touched: 2000,
+	probes: 200,
+	commits: 1000,
+} as const;
 
 /** One probe the merge check ran: the criterion, the kept probe's id, and the `probes` check that ran it. */
 const probeBindingSchema = z.strictObject({
 	criterion: z.number().int().min(1),
-	probe: z.uuid("probe is the kept probe's id, as the criteria read answers it"),
-	check: z.uuid("check is the id of the `probes` check in this report that ran it"),
+	probe: z.uuid(
+		"probe is the kept probe's id, as the criteria read answers it",
+	),
+	check: z.uuid(
+		"check is the id of the `probes` check in this report that ran it",
+	),
 });
 export type MergeProbeBinding = z.infer<typeof probeBindingSchema>;
 
@@ -65,7 +74,9 @@ export type MergeProbeBinding = z.infer<typeof probeBindingSchema>;
  */
 const standingSchema = z.strictObject({
 	criterion: z.number().int().min(1),
-	verdict: z.uuid("verdict is the id of the criterion's latest verdict, as the criteria read answers it"),
+	verdict: z.uuid(
+		"verdict is the id of the criterion's latest verdict, as the criteria read answers it",
+	),
 });
 export type MergeStanding = z.infer<typeof standingSchema>;
 
@@ -78,7 +89,9 @@ export function requiredMergeChecksOf(
 	lane: Lane | undefined,
 	fastDelivery = false,
 ): readonly RequiredMergeCheck[] {
-	return lane === "fast" || fastDelivery ? FAST_LANE_MERGE_CHECKS : REQUIRED_MERGE_CHECKS;
+	return lane === "fast" || fastDelivery
+		? FAST_LANE_MERGE_CHECKS
+		: REQUIRED_MERGE_CHECKS;
 }
 
 export const mergeCheckReportSchema = z
@@ -88,6 +101,15 @@ export const mergeCheckReportSchema = z
 			sha: wholeShaSchema("base.sha"),
 		}),
 		head: wholeShaSchema("head"),
+		/**
+		 * The commits the check covered, `git rev-list base..head`, head included (REQ-79 BC-5): a mark
+		 * at any of them is covered by this check, so an issue landed mid-batch is marked on the
+		 * batch's later passing check. Absent is the head alone, as every report before ISS-845's.
+		 */
+		commits: z
+			.array(wholeShaSchema("commits[]"))
+			.max(LIMITS.commits)
+			.optional(),
 		mode: z.enum(MERGE_CHECK_MODES),
 		touched: z
 			.array(
@@ -139,7 +161,9 @@ export const mergeCheckReportSchema = z
 	})
 	.superRefine((r, ctx) => {
 		for (const [i, s] of (r.standing ?? []).entries()) {
-			if ((r.standing ?? []).findIndex((o) => o.criterion === s.criterion) !== i) {
+			if (
+				(r.standing ?? []).findIndex((o) => o.criterion === s.criterion) !== i
+			) {
 				ctx.addIssue({
 					code: "custom",
 					path: ["standing", i, "criterion"],

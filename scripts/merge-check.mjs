@@ -187,6 +187,10 @@ if (since) {
 }
 
 const touched = touchedBetween(ROOT, baseSha, head);
+// the commits base..head, head included: core marks any of them on this check (REQ-79 BC-5)
+const revList = gitOut(['rev-list', '--max-count=1000', `${baseSha}..${head}`], ROOT);
+if (revList === null) die(`git rev-list ${baseSha.slice(0, 12)}..${head.slice(0, 12)} failed`);
+const commits = revList.split('\n').filter(Boolean);
 const empty = emptyRefusal({ branch, head, touched });
 if (empty) die(empty);
 
@@ -272,6 +276,7 @@ const report = reportOf({
   standing: probeRun.standing,
   lane,
   patchId,
+  commits,
 });
 const path = flagValue('--report') ?? join(tmpdir(), `forge-merge-check-${head.slice(0, 12)}.json`);
 writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);

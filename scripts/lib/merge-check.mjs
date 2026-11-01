@@ -141,10 +141,12 @@ export function reportOf({
   standing = [],
   lane = 'full',
   patchId,
+  commits = [],
 }) {
   return {
     base: { branch, sha: baseSha },
     head,
+    ...(commits.length ? { commits } : {}),
     mode,
     touched,
     checks,

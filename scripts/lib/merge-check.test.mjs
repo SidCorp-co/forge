@@ -182,6 +182,25 @@ describe('what a merge needs', () => {
   });
 });
 
+describe('the commits the check covers (REQ-79 BC-5, ISS-845)', () => {
+  it('sends base..head so a mark of any landed commit in it is covered, and nothing where none', () => {
+    const at = {
+      branch: 'dev',
+      baseSha: TIP,
+      head: HEAD,
+      mode: 'landed',
+      touched: [{ path: 'a.ts', change: 'changed' }],
+      checks: [],
+      patchId: 'c'.repeat(40),
+    };
+    const landed = 'd'.repeat(40);
+    expect(reportOf({ ...at, commits: [HEAD, landed] }).commits).toEqual([HEAD, landed]);
+    expect('commits' in reportOf(at)).toBe(false);
+    expect(CONTRACT).toContain('commits: z.array(wholeShaSchema("commits[]"))');
+    expect(CLI).toContain("gitOut(['rev-list', '--max-count=1000', `${baseSha}..${head}`], ROOT)");
+  });
+});
+
 describe('the fast lane (REQ-39 BC-7)', () => {
   it('names the same checks as the contract core holds a fast report to', () => {
     const listed = /FAST_LANE_MERGE_CHECKS = \[([^\]]*)\]/.exec(FAST_CONTRACT)?.[1] ?? '';
