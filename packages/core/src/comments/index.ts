@@ -1,6 +1,6 @@
 export { type ItemDecision, reasonedDecisionsOnItems } from './decision-answers.js';
 export { listDecisionsAs } from './entity-read.js';
-export { recordRequirementDecisionIn } from './entity-service.js';
+export { recordFeedbackDecisionIn, recordRequirementDecisionIn } from './entity-service.js';
 export { postIssueComment } from './issue-comment.js';
 export { commentsSince, recentCommentBodies } from './memory-reads.js';
 export { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './notices.js';

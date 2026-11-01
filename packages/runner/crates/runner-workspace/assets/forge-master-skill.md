@@ -167,14 +167,17 @@ that writes that issue's mark answers it, and the row comes back by itself. A ma
 stands is refused `QUESTION_MERGE_ALREADY_MARKED`: the condition holds, so take the row. A business
 question raised on a build issue (a rule, who may do what, a contract's shape) names what it is
 about, so its answer lands on the requirement as a decision: ask it with `about` on
-`forge-runner api questions` (POST; `about` is always one of three objects: `{requirement: null}`
-for the requirement the issue delivers, `{requirement: "REQ-n"}` for another by its key or id, or
-`{contract: "<project>/<contract>"}`; a bare `"REQ-n"` or any other shape is refused
-`QUESTION_ABOUT_SHAPE`), then park the row without `needs` and the park waits on that question. An
+`forge-runner api questions` (POST; `about` is always one object: `{requirement: null}` for the
+requirement the issue delivers, `{requirement: "REQ-n"}` for another by its key or id,
+`{feedback: null}` for the feedback item the issue carries, `{feedback: "FB-n"}` for one by its key,
+or `{contract: "<project>/<contract>"}`; a bare `"REQ-n"` or any other shape is refused
+`QUESTION_ABOUT_SHAPE`), then park the row without `needs` and the park waits on that question. On
+an issue that delivers a requirement or carries feedback, a question with no `about` is refused
+`QUESTION_ABOUT_REQUIRED`: it is asked and answered on that item, never on the issue. An
 `about` naming nothing is refused `QUESTION_ABOUT_UNKNOWN` or `QUESTION_ABOUT_NO_REQUIREMENT`; a wait
 on a merge mark is never also `about` anything (`QUESTION_ABOUT_ON_MERGE_WAIT`). A business question
 no issue carries is asked with `projectId` in place of `issueId` and `about: {requirement: "REQ-n"}`,
-or `forge-runner question ask --requirement REQ-n`; it is listed on that requirement and answered from
+or `forge-runner question ask --requirement REQ-n` (`--feedback FB-n` for a feedback item); it is listed on that requirement and answered from
 Needs you (`QUESTION_SUBJECT_REQUIRED` without an `about`).
 
 **A person's question is answered on the issue.** A comment a person marks as a question

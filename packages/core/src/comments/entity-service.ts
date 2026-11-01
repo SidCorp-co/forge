@@ -301,15 +301,32 @@ export async function editEntityComment(input: {
  */
 export async function recordRequirementDecisionIn(
   tx: Tx,
-  input: {
-    projectId: string;
-    requirementId: string;
-    authorId: string;
-    agency: EntityCommentActor['agency'];
-    decision: DecisionFields;
-  },
+  input: RecordedDecision & { requirementId: string },
 ): Promise<string> {
-  await lockCommentTarget(tx, input.requirementId);
+  return recordDecisionIn(tx, { requirementId: input.requirementId }, input);
+}
+
+/** The same, on a feedback item: the answer to a question a delivery run asked about it (REQ-67 BC-5). */
+export async function recordFeedbackDecisionIn(
+  tx: Tx,
+  input: RecordedDecision & { feedbackId: string },
+): Promise<string> {
+  return recordDecisionIn(tx, { feedbackId: input.feedbackId }, input);
+}
+
+interface RecordedDecision {
+  projectId: string;
+  authorId: string;
+  agency: EntityCommentActor['agency'];
+  decision: DecisionFields;
+}
+
+async function recordDecisionIn(
+  tx: Tx,
+  target: { requirementId: string } | { feedbackId: string },
+  input: RecordedDecision,
+): Promise<string> {
+  await lockCommentTarget(tx, 'requirementId' in target ? target.requirementId : target.feedbackId);
   const decision = scrubbedDecision(await dataPolicyOf(input.projectId), input.decision);
   const body = preparedBody(decisionBody(decision), 'markdown');
   if (!body.ok)
@@ -317,7 +334,7 @@ export async function recordRequirementDecisionIn(
   const [row] = await tx
     .insert(comments)
     .values({
-      requirementId: input.requirementId,
+      ...target,
       authorId: input.authorId,
       body: body.prepared.body,
       format: body.prepared.format,

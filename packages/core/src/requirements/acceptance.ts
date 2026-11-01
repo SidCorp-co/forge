@@ -9,6 +9,7 @@ import type { ChecklistEvaluation } from '@forge/contracts/checklists';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import {
+  REQUIREMENT_CHECKED_GUARD,
   REQUIREMENT_CRITERIA_PROVEN_GUARD,
   REQUIREMENT_HAS_LIVE_ISSUE_GUARD,
   REQUIREMENT_MACHINE,
@@ -40,6 +41,7 @@ import {
 } from './acceptance-rules.js';
 import { postWaivedDecisionIn, waivedOf } from './acceptance-waived.js';
 import { acceptanceAnswersOf, uncitedVerdictsIn } from './checklist-record.js';
+import { deliveryCheckIn, deliveryCheckRefusals, stewardOn } from './delivery-check.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 import { deliveryAt, type LiveBuildHolds, type ProofIssue } from './standing.js';
@@ -265,6 +267,7 @@ export async function moveDelivery(input: {
   if (signer) return { ok: false, refusals: [signer] };
   const liveBuild =
     input.to === 'delivered' ? await liveBuildOfRequirement(projectId, row.id) : null;
+  const checkOwed = input.to === 'in_delivery' && (await stewardOn(projectId));
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
@@ -288,6 +291,8 @@ export async function moveDelivery(input: {
       guards: {
         [REQUIREMENT_HAS_LIVE_ISSUE_GUARD]: async ({ tx: moveTx }) =>
           liveIssueRefusal((await deliveryIn(moveTx, projectId, current)).live.length),
+        [REQUIREMENT_CHECKED_GUARD]: async ({ tx: moveTx }) =>
+          deliveryCheckRefusals(await deliveryCheckIn(moveTx, current, checkOwed)),
         [REQUIREMENT_CRITERIA_PROVEN_GUARD]: async ({ tx: moveTx }) =>
           provenRefusal((await deliveryIn(moveTx, projectId, current, liveBuild)).coverage),
       },

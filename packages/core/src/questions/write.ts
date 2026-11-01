@@ -30,7 +30,7 @@ import { refuser } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { emitEvent, emitEvents } from '../outbox/index.js';
 import { holds, type PermissionFacts } from '../permissions/index.js';
-import { feedbackAbout } from './about-feedback.js';
+import { feedbackAbout, feedbackAboutRequest, refuseAboutMissing } from './about-feedback.js';
 import {
   type AwaitedDesign,
   awaitedDesignFault,
@@ -229,6 +229,7 @@ export async function insertAskedQuestion(executor: QuestionExecutor, input: Ask
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
   await refuseFinishedWork(executor, input.issueId);
   refuseAboutOnWait(input);
+  await refuseAboutMissing(executor, input);
   const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
   return insertQuestion(executor, input, about);
 }
@@ -270,6 +271,7 @@ export async function resolveAbout(
   about: QuestionAboutRequest | { feedbackId: string },
 ): Promise<QuestionAbout> {
   if ('feedbackId' in about) return feedbackAbout(executor, input.projectId, about.feedbackId);
+  if ('feedback' in about) return feedbackAboutRequest(executor, input, about.feedback);
   if ('contract' in about) {
     const refusal = await contractAboutRefusal(input.projectId, about.contract);
     if (refusal) throw refuseQuestion('QUESTION_ABOUT_UNKNOWN', refusal, '/about/contract');
@@ -331,6 +333,7 @@ export async function askParkQuestion(
     );
   }
   refuseAboutOnWait(input);
+  await refuseAboutMissing(executor, { ...input, blockerKind: 'human' });
   let needed = input.needed?.trim() ?? '';
   let prompt = input.prompt;
   if (input.awaitsDesign) {

@@ -2,6 +2,7 @@
 // and when it asks instead of acting. A gateway act reads it as its system prompt; a runner act's
 // brief carries it whole, so the runner never branches on the job type.
 
+import { STEWARD_OPEN_ASKS_MAX } from '@forge/contracts/delivery-check';
 import { type ItemStanding, STEWARD_ACT_RUNTIME, type StewardAct } from '@forge/contracts/steward';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { RunRow } from './runs-store.js';
@@ -23,19 +24,33 @@ const GATEWAY = [
 /** What a runner job is told of how it ends: its run's done door (`job.ts:jobDoneStep`) closes the brief. */
 const RUNNER = 'Call each door over HTTP with the token this brief ends with.';
 
+/**
+ * The check a requirement passes before delivery starts (REQ-67 BC-1..BC-4), shared by the intake
+ * check and the breakdown check: the gaps Forge sees come on the requirement's read, the judgement of
+ * each criterion is the steward's, and what it finds goes back as at most three questions.
+ */
+const DELIVERY_CHECK = [
+  'Check it is ready for delivery. Read the requirement (steward_read_requirement): its head revision, criteria, linked workflows, and its deliveryCheck, which lists the questions still open about it and the gaps Forge sees (no workflow named, a linked workflow no criterion traces a step of, a conflict or a repeat its intake draft found that nobody decided).',
+  'Judge each criterion: can a person or a test check it on the running product, by what the product shows or does? One that names no observable result ("works well", "is fast", "is clear") is a gap.',
+  'Look again for a live requirement it repeats or contradicts (steward_list_requirements, then steward_read_requirement).',
+  `Ask about the gaps: at most ${STEWARD_OPEN_ASKS_MAX} questions about the requirement in all (steward_ask with \`about\` the REQ key), each with 2-4 options and the one you recommend, folding related gaps into one. Questions already open count toward them: never ask again what an open question asks.`,
+  'Never move the requirement: its delivery waits on the answers and on each gap closed, and a person moves it.',
+];
+
 const METHODS: Record<StewardAct, string> = {
   note: [
     "Act: note (BC-7). The item's standing moved off its note. Read the standing and rewrite the note so it agrees with it. Write nothing else.",
   ].join('\n'),
   intake_check: [
-    'Act: intake check (BC-2). The requirement was just agreed. Read its head revision, criteria, linked workflows and pins.',
-    'If something a breakdown needs is missing or ambiguous, ask its author up to 3 questions about the requirement (steward_ask with `about` the REQ key), each with options and the one you recommend.',
-    'If it is complete, post the breakdown brief as a note on the requirement (steward_comment_requirement): what each criterion asks, what is out of scope, and what the master should slice first.',
+    'Act: intake check (BC-2). The requirement was just agreed.',
+    ...DELIVERY_CHECK,
+    'If nothing is missing, post the breakdown brief as a note on the requirement (steward_comment_requirement): what each criterion asks, what is out of scope, and what the master should slice first.',
   ].join('\n'),
   breakdown_check: [
-    'Act: breakdown check (BC-3). A breakdown was proposed for the requirement. Read the requirement and its proposed suggestions.',
-    'Check every current business criterion is traced by a slice or listed as uncovered with a reason, and that every slice has its complexity set.',
-    'If anything fails, reject the breakdown (steward_reject_breakdown) naming each gap ("BC-4 untraced; \'Export CSV\' unsized"). If it is clean, only write the note. Ask nothing.',
+    'Act: breakdown check (BC-3). A breakdown was proposed for the requirement; delivery starts from it.',
+    ...DELIVERY_CHECK,
+    'Then check the breakdown itself (steward_read_suggestion): every current business criterion traced by a slice or listed as uncovered with a reason, and every slice with its complexity set.',
+    'If the breakdown fails, reject it (steward_reject_breakdown) naming each gap ("BC-4 untraced; \'Export CSV\' unsized"). A gap in the requirement is asked about, never a reason to reject the breakdown. If both are clean, only write the note.',
   ].join('\n'),
   stuck_diagnosis: [
     'Act: stuck diagnosis (BC-5). The item reads stuck; its standing says the code and why. Read it, the master standing and the carrier issue.',

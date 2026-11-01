@@ -171,7 +171,14 @@ was deferred from, saying why it comes back (\`REQUIREMENT_UNDEFER_REASON_REQUIR
 
 ### Moving the delivery, accepting it, and dropping
 **start-delivery** \`{ reason? }\` moves \`agreed → in_delivery\`, refused \`REQUIREMENT_NO_LIVE_ISSUE\`
-while no live issue links to it. **mark-delivered** \`{ reason? }\` moves \`in_delivery → delivered\`,
+while no live issue links to it, then by its delivery check (REQ-67), every refusal at once:
+\`REQUIREMENT_QUESTION_OPEN\` for each question about it still open, \`REQUIREMENT_CHECK_GAP\` for
+each gap (a project that draws workflows and a requirement naming none; a linked workflow no live
+criterion traces a step of; a conflict or duplicate its intake draft found with a live requirement
+that no decision on it since names), and \`REQUIREMENT_UNCHECKED\` while the project's steward is on
+and has not finished checking it since its head was agreed. The steward checks it on the agree and
+on each proposed breakdown, and asks at most three questions about what it finds; it never moves the
+requirement. The read carries the same check as \`deliveryCheck\` while it is agreed. **mark-delivered** \`{ reason? }\` moves \`in_delivery → delivered\`,
 refused \`REQUIREMENT_CRITERIA_UNPROVEN\` naming each live BC with no pass on the running build;
 \`agreed → delivered\` is no edge (\`TRANSITION_NOT_AN_EDGE\`). Nothing moves either on its own and
 no notice announces one: the standing asks for the move once every issue closed and every BC passes.

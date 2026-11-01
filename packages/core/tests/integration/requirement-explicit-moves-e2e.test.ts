@@ -20,6 +20,7 @@ import {
   verdict,
   world,
 } from '../helpers/landed-world.js';
+import { readyForDelivery } from '../helpers/steward-checked.js';
 
 vi.mock('../../src/release-batch/shipped-earlier.js', async (importOriginal) => {
   const { reader } = await import('../helpers/landed-history.js');
@@ -46,10 +47,12 @@ beforeEach(async () => {
   ).plaintext;
 });
 
-const move = (req: string, act: 'start-delivery' | 'mark-delivered', token = agent) =>
-  api(token, 'POST', `/api/projects/${world.projectId}/requirements/${req}/${act}`, {
+const move = async (req: string, act: 'start-delivery' | 'mark-delivered', token = agent) => {
+  if (act === 'start-delivery') await readyForDelivery(world.projectId, req);
+  return api(token, 'POST', `/api/projects/${world.projectId}/requirements/${req}/${act}`, {
     reason: 'moved by the run that built it',
   });
+};
 
 /** The requirement with ISS-`seq` traced to each of `codes`, criterion n to the nth code. */
 async function withIssue(req: string, seq: number, codes: string[]): Promise<string> {

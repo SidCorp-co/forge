@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { api, type Body } from '../helpers/api.js';
 import { ago, issue, requirement, type World, world } from '../helpers/forecast-world.js';
+import { readyForDelivery } from '../helpers/steward-checked.js';
 
 // REQ-29 BC-5's AGE, read through the list route the Requirements page reads: the time a requirement
 // has stood in its state, from its kernel transitions. Live dev.227 read every row "1m" after area and
@@ -77,6 +78,7 @@ describe('how long a requirement has stood in its state, on the list', () => {
     expect(before.state).toBe('agreed');
     expect(before.stateSince).toBe(agreedThen.toISOString());
 
+    await readyForDelivery(w.projectId, r.key);
     const start = await api(
       w.token,
       'POST',

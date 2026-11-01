@@ -111,12 +111,15 @@ export interface GuardInput<E extends MachineEntity> {
 }
 
 /**
- * A guard answers its refusal, or null to let the move through. It never throws a refusal. It runs
+ * A guard answers its refusal, every refusal at once where it judges several things, or null (or
+ * none) to let the move through. It never throws a refusal. It runs
  * under the row lock and is pure over what it is given: it reads only through `tx`, and a fact from
  * anywhere else (the project document, the actor's permissions, a provider) is read before the move
  * and handed to it, never fetched over a second connection or the network while the lock is held.
  */
-export type Guard<E extends MachineEntity> = (input: GuardInput<E>) => Promise<Refusal | null>;
+export type Guard<E extends MachineEntity> = (
+  input: GuardInput<E>,
+) => Promise<Refusal | readonly Refusal[] | null>;
 
 export interface TransitionArgs<E extends MachineEntity, K extends keyof MachineRow<E>> {
   to: StateOf<E>;
@@ -241,9 +244,11 @@ async function judgeRow<E extends MachineEntity>(
         `transition: ${machine.entity} \`${row.status}\` → \`${args.to}\` names guard \`${name}\`, and ${args.source} supplied no implementation of it`,
       );
     }
-    const refused = await guard({ tx, row, to: args.to, edge });
-    if (refused) {
-      return { refusals: [refused], gate: refusingGate(machine.entity, edge, name, refused.code) };
+    const said = await guard({ tx, row, to: args.to, edge });
+    const refused: Refusal[] = said === null ? [] : Array.isArray(said) ? [...said] : [said];
+    const [first] = refused;
+    if (first) {
+      return { refusals: refused, gate: refusingGate(machine.entity, edge, name, first.code) };
     }
   }
   return { refusals: [], gate: null };
