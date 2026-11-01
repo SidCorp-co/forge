@@ -77,6 +77,7 @@ export const OUTBOX_CONSUMERS = {
 		"steward",
 		"master-wake",
 		"support-results",
+		"support-release-notes",
 	],
 	"release.committed": ["release-tag"],
 	"release.approvalDecided": ["release-approval-wake"],

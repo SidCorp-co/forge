@@ -1,0 +1,1 @@
+**A channel room can hear about each release.** With `announce.releases` on, its bot is handed each production release's user-facing notes, an hour's worth at a time, and tells the room in its own words (ISS-854).

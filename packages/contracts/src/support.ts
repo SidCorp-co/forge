@@ -210,6 +210,11 @@ export const supportRoomConfigSchema = z.strictObject({
 	answers: z.enum(SUPPORT_ANSWERS).optional(),
 	grants: supportGrantsSchema.optional(),
 	limits: supportLimitsSchema.optional(),
+	/**
+	 * What the room's agent is handed to tell the room (ISS-854): `releases`, each release that reaches
+	 * production, as its user-facing notes, for the agent to write in its own words. Off when absent.
+	 */
+	announce: z.strictObject({ releases: z.boolean().optional() }).optional(),
 	/** Scheduled checks: a channel agent's (`agent` block) only (REQ-77 BC-13). */
 	checks: z
 		.array(supportCheckSchema)

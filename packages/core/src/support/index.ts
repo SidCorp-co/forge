@@ -19,6 +19,11 @@ import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { recoverLostTurns } from './lost-turns.js';
+import {
+  deliverReleaseNotes,
+  noteReleaseShipped,
+  registerSupportReleaseNotes,
+} from './release-notes.js';
 import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { tellLinked } from './speaker-link.js';
@@ -28,7 +33,21 @@ import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 export { forgetMemberships } from './health.js';
 export { supportRoutes } from './routes.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
-export { expireSupportFixes, fireDueChecks, recoverLostTurns, tellAllResults, warmColdRooms };
+/** What a recorded item or a release came to, handed on to the sessions owed it (a process timer). */
+export async function followSupportResults(): Promise<void> {
+  await tellAllResults();
+  await deliverReleaseNotes();
+}
+
+export {
+  deliverReleaseNotes,
+  expireSupportFixes,
+  fireDueChecks,
+  noteReleaseShipped,
+  recoverLostTurns,
+  tellAllResults,
+  warmColdRooms,
+};
 
 /**
  * The recovery sweep (a process timer): a message written into a turn the box did not take waits
@@ -67,6 +86,8 @@ export function registerSupportRooms(): void {
  */
 export function registerSupportConsumers(): void {
   registerSupportResults();
+  // a release reaching production, handed to each opted-in room's agent (ISS-854)
+  registerSupportReleaseNotes();
   consume('integration.changed', {
     name: 'support-rooms',
     handle: async (p: { projectId: string }) => {

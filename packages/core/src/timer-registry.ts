@@ -46,9 +46,9 @@ import { sweepSuggestions } from './suggestions/index.js';
 import {
   expireSupportFixes,
   fireDueChecks,
+  followSupportResults,
   recoverLostTurns,
   recoverSupportRooms,
-  tellAllResults,
   warmColdRooms,
 } from './support/index.js';
 import { drainWidgetConversationWindows } from './widget/index.js';
@@ -291,11 +291,11 @@ function conversationDrains(): Timer[] {
       run: expireSupportFixes,
     },
     {
-      // a decline moves a recorded item with no event; read each again (REQ-75 r6 BC-15)
+      // a decline moves a recorded item with no event (REQ-75 r6 BC-15); a release an hour held (ISS-854)
       kind: 'process',
       name: 'support.result-follow',
       everyMs: 60_000,
-      run: tellAllResults,
+      run: followSupportResults,
     },
     {
       kind: 'process',

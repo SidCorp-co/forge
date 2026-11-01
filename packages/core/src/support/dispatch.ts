@@ -40,7 +40,7 @@ import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
-import { isCheckThread } from './rules.js';
+import { isCoreThread } from './rules.js';
 import {
   type ActionRow,
   insertAction,
@@ -430,8 +430,9 @@ export async function tellUnanswered(
   const left = taken.filter((m) => !told.has(m.id));
   const threads = new Map(left.map((m) => [m.thread, m] as const));
   for (const [thread, first] of threads) {
-    // a scheduled check is no member's thread: its failure is recorded, and nothing is posted (BC-13)
-    const posted = isCheckThread(thread)
+    // a scheduled check or a release note is no member's thread: its failure is recorded, and
+    // nothing is posted (BC-13, ISS-854)
+    const posted = isCoreThread(thread)
       ? null
       : await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {
           logger.error(

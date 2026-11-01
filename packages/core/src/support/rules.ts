@@ -96,3 +96,9 @@ const CHECK_THREAD_PREFIX = 'check:';
 export const checkThreadOf = (name: string, day: string) => `${CHECK_THREAD_PREFIX}${name}:${day}`;
 export const isCheckThread = (thread: string) => thread.startsWith(CHECK_THREAD_PREFIX);
 
+/** The thread a room's release notes are handed under (ISS-854): no member's. */
+export const RELEASE_THREAD_PREFIX = 'release:';
+
+/** A thread core opened for its own note, no member's: a failure there is recorded, never posted. */
+export const isCoreThread = (thread: string) =>
+  isCheckThread(thread) || thread.startsWith(RELEASE_THREAD_PREFIX);
