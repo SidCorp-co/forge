@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { createTestProject, createTestUser, makeAgreeReady } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let token = '';
 let projectId = '';
@@ -119,6 +120,8 @@ describe('once the design is approved', () => {
 
 describe('a design whose only linking requirement has traces but no accepted revision', () => {
   it('is refused naming the missing accept and the traced count, and approves once the revision is accepted', async () => {
+    // REQ-79 r6 BC-11: standard advises workflow_approval; a project asking for the check enforces it
+    await enforceGates(projectId, ownerId, ['workflow_approval']);
     const document = JSON.parse(
       readFileSync(
         new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),

@@ -11,7 +11,7 @@
 // @direct-test-of packages/core/src/lib/standing-times.ts
 
 import { sql } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import {
@@ -21,6 +21,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { declareControls, strictChecklist } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 let owner = '';
@@ -150,6 +151,10 @@ describe('a requirement whose live issues are all drafts', () => {
 });
 
 describe('a draft the issue-ready checklist holds back (REQ-34 BC-2, BC-18)', () => {
+  // REQ-79 r6 BC-12: outside strict a draft opens on its minimum, so a held draft is strict's checklist
+  beforeAll(() => strictChecklist(projectId, ownerId));
+  afterAll(() => declareControls(projectId, ownerId, { gates: { profile: 'standard' } }));
+
   /** A draft linked to the requirement with no plan and no criteria: two blocking gaps. */
   async function criterionlessDraft(req: string): Promise<Body> {
     const issue = await ok(

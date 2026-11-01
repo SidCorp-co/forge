@@ -88,7 +88,10 @@ describe('an Agent turn that left no reply reads in its room as what ended it', 
     const { windowId } = await agentTurnEndedAs('agent_killed', 5_000);
     const { messages, turn } = await roomOnceSettled(windowId);
     const said = messages.map((m) => String(m.content));
-    expect(said).toContain('The agent stopped before it answered. Send your message again.');
+    // a red here names what the bridge recorded on the turn: whole-suite run 41335608476 read none
+    expect(said, JSON.stringify(turn)).toContain(
+      'The agent stopped before it answered. Send your message again.',
+    );
     expect(said).not.toContain(FAILED);
     // the cause in full stays on the turn's record
     expect(turn.reason).toBe('the Agent session crashed: it was killed by a signal');
@@ -99,7 +102,7 @@ describe('an Agent turn that left no reply reads in its room as what ended it', 
     const { windowId } = await agentTurnEndedAs('no_client_ack', 4 * 60_000);
     const { messages, turn } = await roomOnceSettled(windowId);
     const said = messages.map((m) => String(m.content));
-    expect(said).toContain(
+    expect(said, JSON.stringify(turn)).toContain(
       'The agent ran out of time before it answered. Send your message again in a few minutes.',
     );
     expect(said.join('\n')).not.toMatch(/forge-runner|paired box/);
