@@ -196,6 +196,10 @@ pub struct Run {
     /// The requirement a judge run judges at the requirement, in place of any
     /// issue (ISS-735). `None` for a run over issues.
     pub requirement: Option<String>,
+    /// The id this run's issue claims were taken under, read off its tree when
+    /// its master closed it (ISS-787): the tree may hold the next run's id by
+    /// the time the close reaches core.
+    pub claim_holder: Option<String>,
 }
 
 /// A run's host ended because this box started a new master pane for its
@@ -523,7 +527,7 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
         host_ended_by, host_pid, host_start, close_refused_at, close_refusal,
-        session_refused_at, session_refusal, session_retry_at, role, requirement
+        session_refused_at, session_refusal, session_retry_at, role, requirement, claim_holder
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -643,6 +647,7 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         session_retry_at: row.get(37)?,
         role: row.get(38)?,
         requirement: row.get(39)?,
+        claim_holder: row.get(40)?,
     })
 }
 

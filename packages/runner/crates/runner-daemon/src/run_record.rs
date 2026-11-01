@@ -293,7 +293,12 @@ pub async fn close_ended_runs(
             run_sessions::MAX_DETAIL_CODE_UNITS,
         );
         let checkpoint = Some(checkpoint::reconstruct_within_budget(&run).await.to_json());
-        let holders = claim_holders(&run).await;
+        let standing = led
+            .open_run_at_tree(&run.worktree_path)
+            .ok()
+            .flatten()
+            .map(|next| next.run_id);
+        let holders = claim_holders(&run, standing.as_deref()).await;
         match closer.close(&session_id, &detail, checkpoint, &holders).await {
             Ok(()) => match led.mark_session_terminal_observed(&run.run_id) {
                 Ok(()) => {
@@ -344,11 +349,26 @@ pub const RUN_ID_FILE: &str = "forge-run-id";
 ///
 /// Only a master's close: a run the box ended (its pane gone, its master lost) may be one whose
 /// work a person has to see. A tree that is gone, or names no id, gives nothing back, and says so.
-pub async fn claim_holders(run: &runner_core::ledger::Run) -> Vec<String> {
+/// `standing` is the run now standing in the tree, if any.
+pub async fn claim_holders(run: &runner_core::ledger::Run, standing: Option<&str>) -> Vec<String> {
     if run.ended_by.as_deref() != Some("master") {
         return Vec::new();
     }
+    // Read when its master closed it (ISS-787); the tree is read now only for a
+    // row an older build closed, and never while another run stands in it, whose
+    // brief has written its own id there.
+    if let Some(held) = &run.claim_holder {
+        return vec![held.clone()];
+    }
     let tree = &run.worktree_path;
+    if let Some(next) = standing {
+        tracing::warn!(
+            "[run-record] run {}: its tree {} now holds run {next}, whose id it names, so this close gives no claim back; the closed run's claim lapses with its lease",
+            run.run_id,
+            tree.display()
+        );
+        return Vec::new();
+    }
     let asked = tokio::process::Command::new("git")
         .arg("-C")
         .arg(tree)
@@ -382,6 +402,30 @@ pub async fn claim_holders(run: &runner_core::ledger::Run) -> Vec<String> {
         return Vec::new();
     }
     vec![id.to_string()]
+}
+
+/// The id a run standing in `tree` holds its claims under, read now and
+/// without a process, for `run close` to keep on the row (ISS-787). A linked
+/// worktree's `.git` is a file naming its git directory; a main checkout's is
+/// that directory.
+pub fn tree_claim_holder(tree: &std::path::Path) -> Option<String> {
+    let dot_git = tree.join(".git");
+    let git_dir = if dot_git.is_dir() {
+        dot_git
+    } else {
+        let text = std::fs::read_to_string(&dot_git).ok()?;
+        let named = text.trim().strip_prefix("gitdir:")?.trim();
+        let path = std::path::PathBuf::from(named);
+        if path.is_absolute() {
+            path
+        } else {
+            tree.join(path)
+        }
+    };
+    let text = std::fs::read_to_string(git_dir.join(RUN_ID_FILE)).ok()?;
+    let id = text.trim();
+    (!id.is_empty() && id.chars().count() <= 120 && !id.chars().any(char::is_whitespace))
+        .then(|| id.to_string())
 }
 
 /// What closing a run needs of core.
@@ -546,6 +590,54 @@ mod close_refusal_tests {
             "a run the box ended gave its claims back as though its master had closed it"
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// ISS-787's plant: a master closes a run, and before the sweep sends the
+    /// close it declares the reopened issue's next run in the same tree, whose
+    /// brief writes its own id there. The close gives back the closed run's
+    /// claim, kept as `run close` ended it, never the new run's.
+    #[tokio::test]
+    async fn a_close_gives_back_the_closed_runs_claim_not_the_next_runs_in_its_tree() {
+        for keep in [false, true] {
+            let (mut led, dir) = ended_in_a_tree("master", "iss-43-a2492724");
+            let l = led.as_mut().unwrap();
+            let tree = l.run("run-1").unwrap().unwrap().worktree_path;
+            if keep {
+                // What `run close` keeps on the row as it ends the run.
+                let kept = tree_claim_holder(&tree).expect("the tree names an id");
+                l.note_claim_holder("run-1", &kept).unwrap();
+            }
+            l.create_run_group(NewRun {
+                run_id: "run-2".into(),
+                project_id: "proj-1".into(),
+                master_session_id: "master-1".into(),
+                worktree_path: tree.clone(),
+                boot_id: "boot-1".into(),
+                issue_keys: vec!["ISS-1".into()],
+                role: None,
+                requirement: None,
+            })
+            .unwrap();
+            std::fs::write(
+                dir.join("repo/.git/worktrees/iss-1").join(RUN_ID_FILE),
+                "iss-43-8da0784a\n",
+            )
+            .unwrap();
+            let c = closer(|| Ok(()));
+            close_ended_runs(&c, &mut led, "boot-1").await;
+            let sent = c.holders.lock().unwrap().clone();
+            assert!(
+                !sent.iter().flatten().any(|h| h == "iss-43-8da0784a"),
+                "the close gave back the claim of the run now standing in the tree: {sent:?}"
+            );
+            let want = if keep {
+                vec!["iss-43-a2492724".to_string()]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(sent, vec![want], "keep={keep}");
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 
     fn ended_run() -> (Option<Ledger>, std::path::PathBuf) {

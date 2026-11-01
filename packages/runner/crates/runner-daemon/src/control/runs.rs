@@ -452,6 +452,14 @@ pub(crate) fn run_close(
                     run.ended_reason.as_deref().unwrap_or("no reason recorded")
                 ));
             }
+            // The id its claims were taken under, read before anything else
+            // can stand in its tree: the next run's brief writes its own
+            // there, and the sweep's close would give back that one (ISS-787).
+            if let Some(holder) = crate::run_record::tree_claim_holder(&run.worktree_path) {
+                if let Err(e) = led.note_claim_holder(run_id, &holder) {
+                    tracing::warn!("[control] run {run_id}: the id its claims were taken under could not be kept ({e}); its close reads its tree instead");
+                }
+            }
             if let Err(e) = led.end_run(run_id, "master", reason.unwrap_or("the master said so")) {
                 return ClaimReply::refused(e.to_string());
             }

@@ -757,6 +757,18 @@ impl Ledger {
     /// master's `run close` finishes the run and leaves who ended it and why,
     /// where it wrote its own over the close (ISS-1312 criterion 74, run
     /// 172f356e).
+    /// Keep the id this run's claims were taken under, as its tree named it
+    /// when its master closed it (ISS-787). Written once.
+    pub fn note_claim_holder(&self, run_id: &str, holder: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET claim_holder = COALESCE(claim_holder, ?2) WHERE run_id = ?1",
+                params![run_id, holder],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     pub fn end_run(&self, run_id: &str, ended_by: &str, reason: &str) -> Result<()> {
         self.conn
             .execute(
