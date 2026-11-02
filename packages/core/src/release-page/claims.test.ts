@@ -270,6 +270,29 @@ describe('the media a highlight may show', () => {
     ]);
     expect(mediaOf(readClaims([elsewhere], BUILD, null, null), files, BUILD)).toEqual([]);
   });
+
+  // ISS-900: a release recorded by version names no build; a pass judged on it shows its media,
+  // naming the release it judged, as one with a build names the commit
+  it('shows what a pass judged on a release cites on a release that names no build, by version', () => {
+    const onRelease = criterion(1, 'BC-1', [
+      verdict('pass', null, '2026-10-09T10:00:00.000Z', {
+        identityKind: 'release',
+        releaseVersion: '0.76.0',
+        evidence: ['clip.webm'],
+      }),
+    ]);
+    const versions = new Set(['0.76.0']);
+    const media = mediaOf(readClaims([onRelease], null, null, null, versions), files, null);
+    expect(media).toMatchObject([
+      { kind: 'clip', attachmentId: 'f-clip', releaseVersion: '0.76.0' },
+    ]);
+    expect(media[0]?.commitSha).toBeUndefined();
+    // a pass naming no release, on a release with no build, still shows nothing
+    const unplaced = criterion(1, 'BC-1', [
+      verdict('pass', BUILD, '2026-10-09T10:00:00.000Z', { evidence: ['clip.webm'] }),
+    ]);
+    expect(mediaOf(readClaims([unplaced], null, null, null, versions), files, null)).toEqual([]);
+  });
 });
 
 describe('proven is the rule a requirement counts by: requirements:unverifiedWhy (BC-5)', () => {

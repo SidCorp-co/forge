@@ -358,6 +358,14 @@ describe("release media", () => {
 			ReleaseMediaRefSchema.safeParse(media({ commitSha: "abc1234" })).success,
 		).toBe(false);
 	});
+	it("names the commit or the release its verdict judged, exactly one (ISS-900)", () => {
+		const onRelease = { ...media(), commitSha: undefined, releaseVersion: "0.76.0" };
+		expect(ReleaseMediaRefSchema.safeParse(onRelease).success).toBe(true);
+		const both = media({ releaseVersion: "0.76.0" });
+		expect(ReleaseMediaRefSchema.safeParse(both).success).toBe(false);
+		const neither = { ...media(), commitSha: undefined };
+		expect(ReleaseMediaRefSchema.safeParse(neither).success).toBe(false);
+	});
 });
 
 describe("What's new opens once per person per environment (BC-10)", () => {

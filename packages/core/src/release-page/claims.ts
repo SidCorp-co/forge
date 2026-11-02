@@ -262,21 +262,33 @@ function posterOf(clip: IssueFile, cited: readonly IssueFile[]): ReleaseMediaRef
     : null;
 }
 
+/** What a claimed pass judged, as its media names it: its release, else the build; null with neither. */
+function judgedOf(
+  v: CarriedVerdict,
+  build: string | null,
+): { releaseVersion: string } | { commitSha: string } | null {
+  if (v.identityKind === 'release' && v.releaseVersion) return { releaseVersion: v.releaseVersion };
+  return build === null ? null : { commitSha: build };
+}
+
 /**
  * The clips and pictures a highlight may show: each file a claimed pass on the build cites in its
  * evidence by its name, its id or its download URL (contracts `citesAttachment`), on that criterion's own issue, of a kind a page shows and within the clip
  * ceiling, a clip with the still it opens on. Clips first, so a highlight that can show one does.
+ * Each names what its pass judged: the build, or the release a pass judged on a release names
+ * (ISS-900), so a release that names no build shows its media by version.
  */
 export function mediaOf(
   claims: readonly ClaimReading[],
   files: readonly IssueFile[],
   build: string | null,
 ): ReleaseMediaRef[] {
-  if (build === null) return [];
   const out: ReleaseMediaRef[] = [];
   const seen = new Set<string>();
   for (const { criterion, claim, onBuild } of claims) {
     if (!claim.claimed || !onBuild || criterion.bc === null) continue;
+    const judged = judgedOf(onBuild, build);
+    if (!judged) continue;
     const ofVerdict = onBuild.evidence.flatMap((cited) => {
       const file = files.find((f) => f.issueId === criterion.issueId && citesAttachment(cited, f));
       return file ? [file] : [];
@@ -296,7 +308,7 @@ export function mediaOf(
         verdictId: onBuild.id,
         issueKey: criterion.issueKey,
         criterion: { n: criterion.n, bc: criterion.bc },
-        commitSha: build,
+        ...judged,
         ...(kind === 'clip' ? { poster: posterOf(file, ofVerdict) } : {}),
       });
     }

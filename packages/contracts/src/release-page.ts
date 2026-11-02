@@ -106,27 +106,40 @@ export type ReleaseMediaPoster = z.infer<typeof ReleaseMediaPosterSchema>;
 
 /**
  * A file a release page shows: an issue attachment that a verdict's `evidence` cites by name. It
- * names the verdict and the build that verdict judged, so a reader can trace the picture to its proof.
+ * names the verdict and what that verdict judged, so a reader can trace the picture to its proof: the
+ * build's commit, or, where it was judged on a release by version (ISS-900: production names no
+ * commit it serves), that release; exactly one.
  */
-export const ReleaseMediaRefSchema = z.strictObject({
-	kind: z.enum(RELEASE_MEDIA_KINDS),
-	attachmentId: z.uuid(),
-	name: z.string().min(1).max(180),
-	mime: z.enum([...RELEASE_CLIP_MIMES, ...RELEASE_PICTURE_MIMES]),
-	bytes: z.number().int().positive().max(RELEASE_CLIP_MAX_BYTES),
-	verdictId: z.uuid(),
-	issueKey: z.string().min(1),
-	/** The issue criterion's number and the requirement criterion it traces to, where it traces. */
-	criterion: z.strictObject({
-		n: z.number().int().positive(),
-		bc: z.string().nullable(),
-	}),
-	commitSha: z.string().regex(COMMIT, "a full 40-hex commit"),
-	/** Where a reader fetches the file: set when the page is served or a share is opened, never stored. */
-	url: z.string().min(1).optional(),
-	/** A clip's opening still, where its verdict cites one; absent on a picture and on media kept before posters. */
-	poster: ReleaseMediaPosterSchema.nullable().optional(),
-});
+export const ReleaseMediaRefSchema = z
+	.strictObject({
+		kind: z.enum(RELEASE_MEDIA_KINDS),
+		attachmentId: z.uuid(),
+		name: z.string().min(1).max(180),
+		mime: z.enum([...RELEASE_CLIP_MIMES, ...RELEASE_PICTURE_MIMES]),
+		bytes: z.number().int().positive().max(RELEASE_CLIP_MAX_BYTES),
+		verdictId: z.uuid(),
+		issueKey: z.string().min(1),
+		/** The issue criterion's number and the requirement criterion it traces to, where it traces. */
+		criterion: z.strictObject({
+			n: z.number().int().positive(),
+			bc: z.string().nullable(),
+		}),
+		commitSha: z.string().regex(COMMIT, "a full 40-hex commit").optional(),
+		/** The release its verdict was judged on, where it names one in place of a commit (ISS-900). */
+		releaseVersion: z.string().min(1).optional(),
+		/** Where a reader fetches the file: set when the page is served or a share is opened, never stored. */
+		url: z.string().min(1).optional(),
+		/** A clip's opening still, where its verdict cites one; absent on a picture and on media kept before posters. */
+		poster: ReleaseMediaPosterSchema.nullable().optional(),
+	})
+	.refine(
+		(m) => (m.commitSha === undefined) !== (m.releaseVersion === undefined),
+		{
+			error:
+				"media names the commit or the release its verdict judged, exactly one",
+			path: ["commitSha"],
+		},
+	);
 export type ReleaseMediaRef = z.infer<typeof ReleaseMediaRefSchema>;
 
 // ---- the truth rule (BC-13, BC-8) ----
