@@ -10,6 +10,7 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery } from '../middleware/zod-validator.js';
+import { requiresSelf } from '../permissions/index.js';
 import { listProjectHeads } from '../projects/index.js';
 import { type BlockerRow, readHealthAggregates } from './project-health.js';
 
@@ -70,81 +71,90 @@ function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blocke
   return byProject;
 }
 
-projectHealthRoutes.get('/health', noQuery, async (c) => {
-  const userId = c.get('userId');
+projectHealthRoutes.get(
+  '/health',
+  requiresSelf(
+    'the health of only the projects the caller can see, selected by loadVisibleProjectIds; it admits nothing more',
+  ),
+  noQuery,
+  async (c) => {
+    const userId = c.get('userId');
 
-  const visibleIds = await loadVisibleProjectIds(userId);
-  if (visibleIds.length === 0) return c.json([]);
+    const visibleIds = await loadVisibleProjectIds(userId);
+    if (visibleIds.length === 0) return c.json([]);
 
-  const visibleProjects = await listProjectHeads(visibleIds);
-  if (visibleProjects.length === 0) return c.json([]);
+    const visibleProjects = await listProjectHeads(visibleIds);
+    if (visibleProjects.length === 0) return c.json([]);
 
-  const projectIds = visibleProjects.map((p) => p.id);
-  const agg = await readHealthAggregates(projectIds);
-  const claimHeldByProject = await countClaimHeldIssuesByProject(projectIds);
+    const projectIds = visibleProjects.map((p) => p.id);
+    const agg = await readHealthAggregates(projectIds);
+    const claimHeldByProject = await countClaimHeldIssuesByProject(projectIds);
 
-  const distByProject = new Map<string, Record<string, number>>();
-  for (const r of agg.statusRows) {
-    const dist = distByProject.get(r.projectId) ?? {};
-    dist[r.status] = Number(r.n);
-    distByProject.set(r.projectId, dist);
-  }
-
-  const blockersByProject = groupBlockers(agg.blockerRowsAll);
-
-  const throughputByProject = new Map(agg.throughputRows.map((r) => [r.projectId, Number(r.n)]));
-  const cycleByProject = new Map(
-    agg.cycleRows.filter((r) => r.avg_days != null).map((r) => [r.project_id, Number(r.avg_days)]),
-  );
-  const liveRunsByProject = new Map(agg.liveRunRows.map((r) => [r.projectId, Number(r.n)]));
-  const runnersByProject = new Map(agg.runnerRows.map((r) => [r.projectId, Number(r.n)]));
-  const spendByProject = new Map(agg.spendRows.map((r) => [r.project_id, Number(r.spend)]));
-
-  // Build the capped avatar list + true count from the ordered member rows.
-  const memberCountByProject = new Map<string, number>();
-  const membersByProject = new Map<string, string[]>();
-  for (const r of agg.memberRows) {
-    memberCountByProject.set(r.projectId, (memberCountByProject.get(r.projectId) ?? 0) + 1);
-    const arr = membersByProject.get(r.projectId) ?? [];
-    if (arr.length < MEMBER_AVATAR_CAP) arr.push(emailInitials(r.email));
-    membersByProject.set(r.projectId, arr);
-  }
-
-  // Merge issue + run activity into a single max-timestamp per project.
-  const lastActivityByProject = new Map<string, string | null>();
-  const noteActivity = (projectId: string, lastAt: string | null) => {
-    if (!lastAt) return;
-    const cur = lastActivityByProject.get(projectId);
-    if (!cur || lastAt > cur) lastActivityByProject.set(projectId, lastAt);
-  };
-  for (const r of agg.issueActivityRows) noteActivity(r.projectId, r.lastAt);
-  for (const r of agg.runActivityRows) noteActivity(r.projectId, r.lastAt);
-
-  const result: ProjectHealthRow[] = visibleProjects.map((p) => {
-    const dist = distByProject.get(p.id) ?? {};
-    let totalActive = 0;
-    for (const [status, n] of Object.entries(dist)) {
-      if (!NON_OPEN_STATUSES.includes(status as IssueStatus)) totalActive += n;
+    const distByProject = new Map<string, Record<string, number>>();
+    for (const r of agg.statusRows) {
+      const dist = distByProject.get(r.projectId) ?? {};
+      dist[r.status] = Number(r.n);
+      distByProject.set(r.projectId, dist);
     }
-    return {
-      id: p.id,
-      projectName: p.name,
-      projectSlug: p.slug,
-      throughput: throughputByProject.get(p.id) ?? 0,
-      totalActive,
-      statusDistribution: dist,
-      blockers: blockersByProject.get(p.id) ?? [],
-      pendingEscalations: dist.needs_info ?? 0,
-      avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
-      liveRuns: liveRunsByProject.get(p.id) ?? 0,
-      runnerCount: runnersByProject.get(p.id) ?? 0,
-      spend24hUsd: spendByProject.get(p.id) ?? 0,
-      memberCount: memberCountByProject.get(p.id) ?? 0,
-      members: membersByProject.get(p.id) ?? [],
-      lastActivityAt: lastActivityByProject.get(p.id) ?? null,
-      loopMonitor: loopMonitorCoverage(claimHeldByProject.get(p.id) ?? 0),
-    };
-  });
 
-  return c.json(result);
-});
+    const blockersByProject = groupBlockers(agg.blockerRowsAll);
+
+    const throughputByProject = new Map(agg.throughputRows.map((r) => [r.projectId, Number(r.n)]));
+    const cycleByProject = new Map(
+      agg.cycleRows
+        .filter((r) => r.avg_days != null)
+        .map((r) => [r.project_id, Number(r.avg_days)]),
+    );
+    const liveRunsByProject = new Map(agg.liveRunRows.map((r) => [r.projectId, Number(r.n)]));
+    const runnersByProject = new Map(agg.runnerRows.map((r) => [r.projectId, Number(r.n)]));
+    const spendByProject = new Map(agg.spendRows.map((r) => [r.project_id, Number(r.spend)]));
+
+    // Build the capped avatar list + true count from the ordered member rows.
+    const memberCountByProject = new Map<string, number>();
+    const membersByProject = new Map<string, string[]>();
+    for (const r of agg.memberRows) {
+      memberCountByProject.set(r.projectId, (memberCountByProject.get(r.projectId) ?? 0) + 1);
+      const arr = membersByProject.get(r.projectId) ?? [];
+      if (arr.length < MEMBER_AVATAR_CAP) arr.push(emailInitials(r.email));
+      membersByProject.set(r.projectId, arr);
+    }
+
+    // Merge issue + run activity into a single max-timestamp per project.
+    const lastActivityByProject = new Map<string, string | null>();
+    const noteActivity = (projectId: string, lastAt: string | null) => {
+      if (!lastAt) return;
+      const cur = lastActivityByProject.get(projectId);
+      if (!cur || lastAt > cur) lastActivityByProject.set(projectId, lastAt);
+    };
+    for (const r of agg.issueActivityRows) noteActivity(r.projectId, r.lastAt);
+    for (const r of agg.runActivityRows) noteActivity(r.projectId, r.lastAt);
+
+    const result: ProjectHealthRow[] = visibleProjects.map((p) => {
+      const dist = distByProject.get(p.id) ?? {};
+      let totalActive = 0;
+      for (const [status, n] of Object.entries(dist)) {
+        if (!NON_OPEN_STATUSES.includes(status as IssueStatus)) totalActive += n;
+      }
+      return {
+        id: p.id,
+        projectName: p.name,
+        projectSlug: p.slug,
+        throughput: throughputByProject.get(p.id) ?? 0,
+        totalActive,
+        statusDistribution: dist,
+        blockers: blockersByProject.get(p.id) ?? [],
+        pendingEscalations: dist.needs_info ?? 0,
+        avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
+        liveRuns: liveRunsByProject.get(p.id) ?? 0,
+        runnerCount: runnersByProject.get(p.id) ?? 0,
+        spend24hUsd: spendByProject.get(p.id) ?? 0,
+        memberCount: memberCountByProject.get(p.id) ?? 0,
+        members: membersByProject.get(p.id) ?? [],
+        lastActivityAt: lastActivityByProject.get(p.id) ?? null,
+        loopMonitor: loopMonitorCoverage(claimHeldByProject.get(p.id) ?? 0),
+      };
+    });
+
+    return c.json(result);
+  },
+);

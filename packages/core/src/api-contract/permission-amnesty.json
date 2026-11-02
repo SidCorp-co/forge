@@ -99,7 +99,6 @@
     "GET /api/projects/:projectId/release-batches/:runId",
     "GET /api/projects/:projectId/release-batches/:runId/range",
     "GET /api/projects/:projectId/release-batches/:runId/state",
-    "GET /api/projects/health",
     "GET /api/questions",
     "GET /api/questions/:id",
     "GET /api/recordings/:id",
