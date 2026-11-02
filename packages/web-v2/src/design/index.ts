@@ -69,6 +69,13 @@ export { RailButton } from "./patterns/rail-button";
 export { fixedHeight } from "./patterns/fixed-height";
 export { BottomTabBar, type BottomTabItem } from "./patterns/bottom-tab-bar";
 export { CommandPalette, type Command } from "./patterns/command-palette";
+export { PageCommandsProvider, usePageCommands, usePageCommandList, usePageCommandsOpener } from "./patterns/page-commands";
+// the disclosure kit (REQ-11 BC-22): a screen's face is a name, a status and one next action; the rest opens on demand
+export { ExpandRows, ExpandRow } from "./patterns/expand-row";
+export { DetailDrawer } from "./patterns/detail-drawer";
+export { StatusChip } from "./patterns/status-chip";
+export { CountSection } from "./patterns/count-section";
+export { NextAction } from "./patterns/next-action";
 export { PinnedTabBar } from "./patterns/pinned-tab-bar";
 export { NotificationsMenu, type NotificationItem, type NotificationAction, type NotificationGroupMember } from "./patterns/notifications-menu";
 export { StreamingText } from "./patterns/streaming-text";

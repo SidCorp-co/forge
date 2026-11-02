@@ -14,10 +14,12 @@ import { Kbd } from "@/design/primitives/kbd";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 
-export type CommandGroup = "recent" | "pinned" | "navigate" | "actions" | "search";
+export type CommandGroup = "page" | "recent" | "pinned" | "navigate" | "actions" | "search";
 
-const GROUP_ORDER: CommandGroup[] = ["recent", "pinned", "navigate", "actions", "search"];
+// a screen's own acts (usePageCommands) lead: they are what the person opened the palette from this page for
+const GROUP_ORDER: CommandGroup[] = ["page", "recent", "pinned", "navigate", "actions", "search"];
 const GROUP_LABEL: Record<CommandGroup, ProductCopyKey> = {
+  page: "shell.palette.page",
   recent: "shell.palette.recent",
   pinned: "shell.palette.pinned",
   navigate: "shell.palette.navigate",

@@ -5,8 +5,10 @@ import { usePathname, useRouter } from "@/lib/navigation/router";
 import {
   BottomTabBar,
   CommandPalette,
+  PageCommandsProvider,
   PinnedTabBar,
   type Command,
+  usePageCommandList,
 } from "@/design";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
@@ -143,6 +145,39 @@ function navigateTo(router: ReturnType<typeof useRouter>, key: string, railSlug:
   if (dest) router.push(dest.href);
 }
 
+/** What every page under the shell reads: its project, language, tour, chat dock, top bar and ⌘K acts. */
+function ShellContext({
+  project,
+  projectRef,
+  tourRelease,
+  dock,
+  openPalette,
+  children,
+}: {
+  project: Parameters<typeof CurrentProjectProvider>[0]["project"];
+  projectRef: Parameters<typeof CurrentProjectProvider>[0]["projectRef"];
+  tourRelease: string | null;
+  dock: ChatDockApi;
+  openPalette: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <CurrentProjectProvider project={project} projectRef={projectRef}>
+      <WorkspaceInterfaceLanguage>
+        <TourReleaseProvider value={tourRelease}>
+          <ChatDockProvider value={dock}>
+            <MockupFeedback>
+              <TopBarSlotProvider>
+                <PageCommandsProvider openPalette={openPalette}>{children}</PageCommandsProvider>
+              </TopBarSlotProvider>
+            </MockupFeedback>
+          </ChatDockProvider>
+        </TourReleaseProvider>
+      </WorkspaceInterfaceLanguage>
+    </CurrentProjectProvider>
+  );
+}
+
 function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
@@ -202,12 +237,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   if (signInStopped) return <SignInStopped />;
 
   return (
-    <CurrentProjectProvider project={railProject} projectRef={railRef}>
-    <WorkspaceInterfaceLanguage>
-    <TourReleaseProvider value={tourRelease}>
-    <ChatDockProvider value={dock}>
-    <MockupFeedback>
-    <TopBarSlotProvider>
+    <ShellContext project={railProject} projectRef={railRef} tourRelease={tourRelease} dock={dock} openPalette={openPalette}>
     <div className="flex h-dvh overflow-hidden bg-shell" data-print="frame" data-shell>
       <div className="hidden h-full md:block" data-testid="desktop-sidebar" data-print="chrome">
         <WorkspaceSidebar
@@ -299,12 +329,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         recents={recents}
       />
     </div>
-    </TopBarSlotProvider>
-    </MockupFeedback>
-    </ChatDockProvider>
-    </TourReleaseProvider>
-    </WorkspaceInterfaceLanguage>
-    </CurrentProjectProvider>
+    </ShellContext>
   );
 }
 
@@ -341,7 +366,8 @@ function WorkspacePalette({
     }
     dock.show({ kind: "draft", projectId: dock.projectId });
   }, [dock, toast, t]);
-  const commands: Command[] = useMemo(
+  const pageCommands = usePageCommandList();
+  const workspaceCommands: Command[] = useMemo(
     () =>
       buildWorkspaceCommands(
         { router, slug, activeProjectName, scopedProjects, pinnedIds, pinnedViews, recents, toast, onNewChat: newChat },
@@ -349,6 +375,7 @@ function WorkspacePalette({
       ),
     [router, slug, activeProjectName, scopedProjects, recents, pinnedViews, pinnedIds, toast, newChat, language],
   );
+  const commands = useMemo(() => [...pageCommands, ...workspaceCommands], [pageCommands, workspaceCommands]);
   return <CommandPalette open={open} onClose={onClose} commands={commands} />;
 }
 

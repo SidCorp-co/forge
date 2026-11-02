@@ -7,10 +7,14 @@ import {
   BoardPage,
   Button,
   ConfirmDialog,
+  CountSection,
+  DetailDrawer,
   DetailPage,
   Dialog,
   EmptyState,
   ErrorState,
+  ExpandRow,
+  ExpandRows,
   Fact,
   FactsGroup,
   FactsRail,
@@ -22,6 +26,7 @@ import {
   ListPage,
   ListSearch,
   LoadingState,
+  NextAction,
   Property,
   PropertyList,
   ReportPage,
@@ -35,6 +40,7 @@ import {
   StatCell,
   StatRow,
   StatusBadge,
+  StatusChip,
   Toggle,
   ToolbarSelect,
 } from "@/design";
@@ -57,6 +63,37 @@ function SampleRows() {
 }
 
 /** The gallery's own demo frame, never a block's look: a label line, then a faint dashed outline. */
+/** The disclosure kit: a face of a name, a status and one act, everything else opened on demand. */
+function DisclosureKitSample() {
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-3">
+        <NextAction label="Approve" onClick={() => undefined} />
+        <DetailDrawer label="Properties" count={2}>
+          <PropertyList>
+            <Property label="Owner">Platform</Property>
+            <Property label="Priority">High</Property>
+          </PropertyList>
+        </DetailDrawer>
+      </div>
+      <ExpandRows label="Runs">
+        <ExpandRow id="build" head={<><span className="flex-1">Build</span><StatusChip tone="err" label="Stuck" reason="12 min past its lease" /></>}>
+          Attempt 2 on tho-1
+        </ExpandRow>
+        <ExpandRow id="test" head={<><span className="flex-1">Test</span><StatusChip family="run" value="running" /></>}>
+          Attempt 1 on may-1
+        </ExpandRow>
+      </ExpandRows>
+      <CountSection label="Activity" count={2}>
+        <p className="text-13">Opened · Assigned</p>
+      </CountSection>
+      <CountSection label="Files" count={0}>
+        {null}
+      </CountSection>
+    </div>
+  );
+}
+
 function Frame({ name, children }: { name: string; children: React.ReactNode }) {
   return (
     <figure className="mb-8">
@@ -76,6 +113,9 @@ export function BlockGallery() {
     <Group title="Blocks">
       <Frame name="RowList · RowItem">
         <SampleRows />
+      </Frame>
+      <Frame name="ExpandRows · StatusChip · CountSection · DetailDrawer · NextAction">
+        <DisclosureKitSample />
       </Frame>
       <Frame name="Section · PropertyList">
         <div>
