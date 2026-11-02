@@ -81,4 +81,13 @@ describe("the Passes list", () => {
 		expect(second).toHaveTextContent(/Refused/);
 		expect(screen.queryByTestId("master-pass-detail")).toBeNull();
 	});
+
+	it("dates each pass by day, month and time, kept to one line, the full date its hover", () => {
+		render(<PassesList items={[recovered]} hasMore={false} slug="forge" />);
+		const when = within(screen.getByTestId("master-pass")).getByTestId("master-pass-when");
+		expect(when.textContent).toMatch(/^\d{1,2} \w{3},? \d{2}:\d{2}$|^\w{3} \d{1,2},? \d{2}:\d{2}$/);
+		expect(when.textContent).not.toContain("2026");
+		expect(when).toHaveAttribute("title", expect.stringContaining("2026"));
+		expect(when.className).toContain("whitespace-nowrap");
+	});
 });

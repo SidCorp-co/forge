@@ -6,7 +6,6 @@
 import { EnumBadge, ErrorState, ExpandRow, ExpandRows, Fact, FactsEmpty, ProjectLoader, StatusChip } from "@/design";
 import { enumLabel } from "@/design/vocabulary";
 import { formatApiError } from "@/lib/api/error";
-import { formatWhen } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { issueHref } from "@/lib/routes/issues";
@@ -57,13 +56,13 @@ function PassSummary({ p }: { p: MasterPassView }) {
   );
 }
 
+/** One line at every width: the date column reads day, month and time, the year on its hover. */
 function PassLine({ p }: { p: MasterPassView }) {
   const time = useTimeFormat();
-  const language = useInterfaceLanguage();
   return (
     <span className="flex min-w-0 flex-1 items-center gap-3">
-      <span className="w-28 flex-none text-13 text-muted" title={time.dateTime(p.startedAt)}>
-        {formatWhen(p.startedAt, language)}
+      <span className="w-24 flex-none whitespace-nowrap text-13 text-muted tabular-nums" title={time.dateTime(p.startedAt)} data-testid="master-pass-when">
+        {time.shortDateTime(p.startedAt)}
       </span>
       <EnumBadge family="masterVerb" value={p.verb} />
       <PassSummary p={p} />

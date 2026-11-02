@@ -1,6 +1,6 @@
 
 import { createContext, type ReactNode, use, useMemo } from "react";
-import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatDuration, formatElapsed, formatNumber, formatRelative, formatUsd, formatWhen } from "./format";
+import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatDuration, formatElapsed, formatNumber, formatRelative, formatShortDateTime, formatUsd, formatWhen } from "./format";
 import { labelCopy } from "./labels";
 import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-copy";
 
@@ -63,6 +63,7 @@ export function useTimeFormat() {
       countdown: (iso: string | null | undefined, now?: number) => formatCountdown(iso, language, now),
       number: (n: number) => formatNumber(n, language),
       dateTime: (at: string | number | Date) => formatDateTime(at, language),
+      shortDateTime: (at: string | number | Date) => formatShortDateTime(at, language),
       date: (at: string | number | Date) => formatDate(at, language),
       clock: (at: string | number | Date) => formatClock(at, language),
       clockSeconds: (at: string | number | Date) => formatClockSeconds(at, language),

@@ -10,6 +10,11 @@ export function formatDateTime(at: string | number | Date, language: string, tim
   return new Intl.DateTimeFormat(copyLocale(language), { ...DATE_TIME, timeZone }).format(new Date(at));
 }
 
+/** `3 Oct, 14:05`: the day, month and time of an instant, for a row's one-line date column. */
+export function formatShortDateTime(at: string | number | Date, language: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat(copyLocale(language), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(new Date(at));
+}
+
 /** `03/10/2026`: the date of an instant. */
 export function formatDate(at: string | number | Date, language: string, timeZone?: string): string {
   return new Intl.DateTimeFormat(copyLocale(language), { year: "numeric", month: "2-digit", day: "2-digit", timeZone }).format(new Date(at));
