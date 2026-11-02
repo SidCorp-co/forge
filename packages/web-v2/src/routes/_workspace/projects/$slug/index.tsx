@@ -1,16 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useParams, useRouter } from "@/lib/navigation/router";
-import {
-  Badge,
-  EmptyState,
-  ErrorState,
-  IconButton,
-  PageContainer,
-  PageTitle,
-  ProjectLoader,
-  ProjectMark,
-  Tooltip,
-} from "@/design";
+import { EmptyState, ErrorState, PageContainer, ProjectLoader } from "@/design";
 import { type FeedbackFigures, feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
 import type { ProjectStatus } from "@forge/contracts/project-status";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
@@ -28,7 +18,7 @@ import { useFeedbackList } from "@/features/feedback";
 import { useReleases } from "@/features/releases";
 import { useRequirements } from "@/features/requirements/hooks";
 import { useNeedsYouDecisions } from "@/features/needs-you";
-import { atRiskCount, ProjectHome } from "@/features/project-home";
+import { atRiskCount, ProjectHome, ProjectHomeHeader } from "@/features/project-home";
 import { useStewardBudget } from "@/features/standing";
 import { useProjectStatus } from "@/features/project-status/hooks";
 import { OnboardingHint } from "@/features/onboarding";
@@ -154,19 +144,12 @@ function ProjectOverviewPage() {
     {/* onboarding is offered, never required: one line above the dashboard, gone once its designs are approved */}
     <OnboardingHint projectId={project.id} projectName={project.name} />
     <PageContainer className="min-h-dvh">
-      <header className="mb-6 flex items-center gap-4">
-        {/* the slug is the URL's, never the face's: it sits in the mark's tooltip (ui-copy-rule 10) */}
-        <Tooltip label={project.slug}>
-          <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(project.name)} size={48} />
-        </Tooltip>
-        <div className="flex-1">
-          <PageTitle className="fg-h2">{project.name}</PageTitle>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{t(project.role === "admin" ? "common.role.admin" : project.role === "member" ? "common.role.member" : project.role === "viewer" ? "common.role.viewer" : "common.role.org")}</Badge>
-          </div>
-        </div>
-        <IconButton icon="settings" aria-label={t("dash.projectSettings")} onClick={() => router.push(`/projects/${slug}/settings`)} />
-      </header>
+      <ProjectHomeHeader
+        project={project}
+        glyph={glyph}
+        initials={projectInitials(project.name)}
+        onSettings={() => router.push(`/projects/${slug}/settings`)}
+      />
 
       <div className="space-y-8">
         <HeadlineFigures {...headlineOf({ slug: project.slug, needsYou: decisionsQ.data ? decisionCount : null, status, feedback, draft: draft ? { version: draft.version, eta: draftEta } : null, clock })} />
