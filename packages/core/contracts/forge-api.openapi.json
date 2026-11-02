@@ -24685,6 +24685,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "member or above on the project the path names writes its channel; no role is refused by the role rule"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -24730,6 +24734,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "member or above on the project the path names writes its channel; no role is refused by the role rule"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -24800,6 +24808,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "member or above on the project the path names writes its channel; no role is refused by the role rule"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -24866,6 +24878,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "member or above on the project the path names writes its channel; no role is refused by the role rule"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -24919,6 +24935,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "any role on the project the path names reads its channel; no role is refused by the role rule"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -24985,6 +25005,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "member or above on the project the path names writes its channel; no role is refused by the role rule"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -25020,6 +25044,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "any role on the project the path names reads its channel; no role is refused by the role rule"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -25056,6 +25084,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "any role on the project the path names reads its channel; no role is refused by the role rule"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -25101,6 +25133,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "any role on the project the path names reads its channel; no role is refused by the role rule"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -25162,6 +25198,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-hold-rules.ts:holdRefusals",
+          "why": "any role reads, then a person with a member role on a side party to the conversation holds or releases it (HOLD_NOT_AUTHORISED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -25222,6 +25262,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-hold-rules.ts:holdRefusals",
+          "why": "any role reads, then a person with a member role on a side party to the conversation holds or releases it (HOLD_NOT_AUTHORISED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -25257,6 +25301,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/channel-author.ts:channelRoleRefusal",
+          "why": "any role on the project the path names reads its channel; no role is refused by the role rule"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -54617,6 +54665,16 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "floor": {
+            "on": {
+              "param": "projectId"
+            },
+            "permission": "project.read"
+          },
+          "rule": "permissions/master-acts.ts:requireMasterAct",
+          "why": "project.admin, which outside strict the project's master holds too (REQ-79 r6 BC-17)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -55059,6 +55117,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "release-batch/approvals.ts:decideApproval",
+          "why": "releases.approve on the project, once its run is found and the decision is read"
+        },
         "x-forge-validated": [
           "json",
           "param"

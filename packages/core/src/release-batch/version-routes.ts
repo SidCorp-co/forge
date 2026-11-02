@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { holds, requiresOnParam } from '../permissions/index.js';
+import { holds, requiresByRule, requiresOnParam } from '../permissions/index.js';
 import {
   approvalRequestSchema,
   decideApproval,
@@ -184,6 +184,11 @@ releaseVersionRoutes.post(
 releaseVersionRoutes.post(
   '/:projectId/release-batches/:runId/approvals/:approvalId/decision',
   approvalParam,
+  // the run's not-found and the decision's shape answer before releases.approve, so no floor
+  requiresByRule(
+    'release-batch/approvals.ts:decideApproval',
+    'releases.approve on the project, once its run is found and the decision is read',
+  ),
   decisionBody,
   async (c) => {
     const { projectId, runId, approvalId } = c.req.valid('param');

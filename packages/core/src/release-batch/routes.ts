@@ -21,6 +21,7 @@ import {
 import { readGateProfile } from '../project-config/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
+import { CUTS_BY_MASTER_ACT } from './declarations.js';
 import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import { resolveReleaseDeclaration } from './gate.js';
@@ -109,6 +110,7 @@ releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 releaseBatchRoutes.post(
   '/:projectId/release-batches',
   zValidator('param', projectParamSchema),
+  CUTS_BY_MASTER_ACT,
   zValidator('json', createBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresByRule } from '../permissions/index.js';
 import { uuid } from '../project-config/index.js';
 import { openGateQuestionsOf } from '../questions/index.js';
 import { forbidden, refusedBy } from './access.js';
@@ -109,6 +110,23 @@ function answer(c: Context, outcome: ChannelOutcome) {
   return c.json(viewOf(outcome.served));
 }
 
+// who may act is decided by the channel's role rule, which both doors share, with no floor: a
+// project.read floor would answer before the rule's own refusal (CHANNEL_NO_ROLE's detail), and the
+// hold rule decides a hold and a release (HOLD_NOT_AUTHORISED) once the read is held
+const ROLE_RULE = 'ecosystem/channel-author.ts:channelRoleRefusal';
+const READS = requiresByRule(
+  ROLE_RULE,
+  'any role on the project the path names reads its channel; no role is refused by the role rule',
+);
+const WRITES = requiresByRule(
+  ROLE_RULE,
+  'member or above on the project the path names writes its channel; no role is refused by the role rule',
+);
+const HOLDS = requiresByRule(
+  'ecosystem/channel-hold-rules.ts:holdRefusals',
+  'any role reads, then a person with a member role on a side party to the conversation holds or releases it (HOLD_NOT_AUTHORISED)',
+);
+
 async function mayAct(c: Context<{ Variables: AuthVars }>, projectId: string, need: ChannelNeed) {
   const refusal = await channelRoleRefusal(c.get('userId'), projectId, need);
   if (!refusal) return;
@@ -120,7 +138,7 @@ async function writer(c: Context<{ Variables: AuthVars }>, projectId: string) {
   return writerOf(c);
 }
 
-channelProjectRoutes.post('/:id/channel/drafts', projectParam, draftBody, async (c) => {
+channelProjectRoutes.post('/:id/channel/drafts', projectParam, WRITES, draftBody, async (c) => {
   const { id } = c.req.valid('param');
   const { ecosystem, ...input } = c.req.valid('json');
   return answer(
@@ -134,7 +152,7 @@ channelProjectRoutes.post('/:id/channel/drafts', projectParam, draftBody, async 
   );
 });
 
-channelProjectRoutes.put('/:id/channel/documents/:doc', docParam, editBody, async (c) => {
+channelProjectRoutes.put('/:id/channel/documents/:doc', docParam, WRITES, editBody, async (c) => {
   const { id, doc } = c.req.valid('param');
   return answer(
     c,
@@ -147,7 +165,7 @@ channelProjectRoutes.put('/:id/channel/documents/:doc', docParam, editBody, asyn
   );
 });
 
-channelProjectRoutes.post('/:id/channel/documents/:doc/submit', docParam, async (c) => {
+channelProjectRoutes.post('/:id/channel/documents/:doc/submit', docParam, WRITES, async (c) => {
   const { id, doc } = c.req.valid('param');
   return answer(c, await submit({ projectId: id, documentId: doc, writer: await writer(c, id) }));
 });
@@ -155,6 +173,7 @@ channelProjectRoutes.post('/:id/channel/documents/:doc/submit', docParam, async 
 channelProjectRoutes.post(
   '/:id/channel/documents/:doc/withdraw',
   docParam,
+  WRITES,
   reasonBody('WITHDRAW_WITHOUT_REASON', 'a withdrawal'),
   async (c) => {
     const { id, doc } = c.req.valid('param');
@@ -173,6 +192,7 @@ channelProjectRoutes.post(
 channelProjectRoutes.post(
   '/:id/channel/documents/:doc/supersede',
   docParam,
+  WRITES,
   supersedeBody,
   async (c) => {
     const { id, doc } = c.req.valid('param');
@@ -184,7 +204,7 @@ channelProjectRoutes.post(
   },
 );
 
-channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, noQuery, async (c) => {
+channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, READS, noQuery, async (c) => {
   const { id, ref } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const view = await readAs(id, ref);
@@ -209,7 +229,7 @@ channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, noQuery, async
   });
 });
 
-channelProjectRoutes.get('/:id/channel/inbox', projectParam, noQuery, async (c) => {
+channelProjectRoutes.get('/:id/channel/inbox', projectParam, READS, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const entries = await inbox(id);
@@ -218,21 +238,21 @@ channelProjectRoutes.get('/:id/channel/inbox', projectParam, noQuery, async (c) 
 
 // What this side owes a reply to, the read its master's verdict counts (`masters/owed.ts`),
 // reachable by a person's session or token holding the channel read.
-channelProjectRoutes.get('/:id/channel/unanswered', projectParam, noQuery, async (c) => {
+channelProjectRoutes.get('/:id/channel/unanswered', projectParam, READS, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const documents = unansweredView(await unanswered(id));
   return c.json({ project: id, documents, returned: documents.length });
 });
 
-channelProjectRoutes.get('/:id/channel/outbox', projectParam, noQuery, async (c) => {
+channelProjectRoutes.get('/:id/channel/outbox', projectParam, READS, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const sent = await outbox(id);
   return c.json({ documents: outboxView(sent), returned: sent.length });
 });
 
-channelProjectRoutes.get('/:id/channel/threads/:number', threadParam, noQuery, async (c) => {
+channelProjectRoutes.get('/:id/channel/threads/:number', threadParam, READS, noQuery, async (c) => {
   const { id, number } = c.req.valid('param');
   await mayAct(c, id, 'read');
   return c.json(threadView(await threadAs(id, number)));
@@ -261,12 +281,24 @@ const holdHandler =
 const hold = holdHandler('hold');
 const release = holdHandler('release');
 
-channelProjectRoutes.post('/:id/channel/threads/:number/hold', threadParam, holdBody, (c) => {
-  const { id, number } = c.req.valid('param');
-  return hold(c, id, number, c.req.valid('json').reason);
-});
+channelProjectRoutes.post(
+  '/:id/channel/threads/:number/hold',
+  threadParam,
+  HOLDS,
+  holdBody,
+  (c) => {
+    const { id, number } = c.req.valid('param');
+    return hold(c, id, number, c.req.valid('json').reason);
+  },
+);
 
-channelProjectRoutes.post('/:id/channel/threads/:number/release', threadParam, holdBody, (c) => {
-  const { id, number } = c.req.valid('param');
-  return release(c, id, number, c.req.valid('json').reason);
-});
+channelProjectRoutes.post(
+  '/:id/channel/threads/:number/release',
+  threadParam,
+  HOLDS,
+  holdBody,
+  (c) => {
+    const { id, number } = c.req.valid('param');
+    return release(c, id, number, c.req.valid('json').reason);
+  },
+);
