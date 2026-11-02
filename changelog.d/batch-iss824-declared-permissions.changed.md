@@ -1,1 +1,1 @@
-**Routes and MCP tool actions declare their permission in the shared contract**, and both doors enforce that one declaration before the handler runs; a route still undeclared sits on an amnesty that only shrinks (ISS-824).
+**MCP tool actions declare their permission as REST routes do**, published per action in the MCP contract; both doors enforce that one declaration before the handler. Route modules and `forge_issues` move their checks into it (ISS-824).
