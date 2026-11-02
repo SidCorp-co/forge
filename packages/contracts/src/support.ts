@@ -982,6 +982,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_NOT_NAMED",
 	/** An owner question's `record` names no issue of this project (REQ-77 BC-12). */
 	"SUPPORT_OWNER_RECORD_UNKNOWN",
+	/** An owner question's `forgeQuestion` names no open question of this project (ISS-871). */
+	"SUPPORT_OWNER_QUESTION_UNKNOWN",
 	/** A git credential asked by a session that is no channel agent in owner mode (ISS-765). */
 	"SUPPORT_GIT_NOT_OWNER_MODE",
 	/** A git credential asked for a repository other than the project's own (ISS-765). */
@@ -1075,6 +1077,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_ONE_RESULT_PER_REQUEST: 409,
 	SUPPORT_OWNER_NOT_NAMED: 409,
 	SUPPORT_OWNER_RECORD_UNKNOWN: 404,
+	SUPPORT_OWNER_QUESTION_UNKNOWN: 404,
 	SUPPORT_GIT_NOT_OWNER_MODE: 403,
 	SUPPORT_GIT_NOT_OWN_REPO: 403,
 	SUPPORT_CHECK_UNKNOWN: 404,

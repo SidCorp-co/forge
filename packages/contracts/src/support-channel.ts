@@ -220,6 +220,16 @@ export const supportAskOwnerRequestSchema = z.strictObject({
 			"an issue key of this project, such as ISS-12: an answer is written on an issue only",
 		)
 		.optional(),
+	/**
+	 * A Forge question of this project a master asked (ISS-871), by its id: the owner's answer is
+	 * recorded as that question's answer, as the owner, which wakes the master who asked.
+	 */
+	forgeQuestion: z
+		.uuid()
+		.optional()
+		.describe(
+			"a master's open Forge question of this project, by id: the owner's answer is recorded on it",
+		),
 });
 
 /** A person's correction of a member (BC-33): written confirmed. */

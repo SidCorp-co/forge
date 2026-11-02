@@ -1,22 +1,29 @@
 // A channel agent's question to the owner, through the channel (REQ-77 BC-12). The agent asks in a
 // thread; the owner's next message in that thread, by the id the chat server signed, is the answer.
 // It reaches the asking session as its next message (marked as the answer to that question), and the
-// issue the question named, where one was named, as a note carrying the owner's own words. Nobody
+// issue the question named, where one was named, as a note carrying the owner's own words; and, where
+// the agent asked on a master's behalf, the Forge question it named (ISS-871): recorded as that
+// question's answer, as the owner's linked Forge account, through the questions door (`answerAs`),
+// whose `question.answered` wakes the master who asked. Nobody
 // else's message answers it, whatever it says: who wrote it is the server's word, never the text's.
 // Both halves are `routed` actions of the thread, so no state lives anywhere the record does not.
 
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import { resolveSpeaker } from '../assistant/index.js';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
+import { answerAs } from '../questions/index.js';
 import { granters, grantsOf, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { threadLink } from './record.js';
 import { screenForThread } from './screen.js';
 import { type ActionRow, insertAction, type RoomRow } from './store.js';
-import { postInThread, scrubbedForRoom } from './thread.js';
+import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
 
 const ASK = 'ask_owner';
 const ANSWER = 'owner_answer';
@@ -26,6 +33,27 @@ interface AskInput {
   /** The issue key the answer is also written on. */
   record: string | null;
   issueId: string | null;
+  /** The master's Forge question the answer is recorded on (ISS-871); absent on an older ask. */
+  questionId?: string | null;
+}
+
+/** Why a Forge question cannot take the owner's answer through this channel, or null. */
+async function questionRefusal(projectId: string, questionId: string): Promise<string | null> {
+  const [q] = await db
+    .select({
+      projectId: agentQuestions.projectId,
+      status: agentQuestions.status,
+      batchId: agentQuestions.batchId,
+    })
+    .from(agentQuestions)
+    .where(eq(agentQuestions.id, questionId))
+    .limit(1);
+  if (!q || q.projectId !== projectId) return `${questionId} names no question of this project`;
+  if (q.status !== 'open')
+    return `question ${questionId} is ${q.status}, and only an open one takes an answer`;
+  if (q.batchId)
+    return `question ${questionId} is an item of a questionnaire, answered with its batch`;
+  return null;
 }
 
 /** The issue of the project a key such as `ISS-12` names, or null. */
@@ -64,8 +92,20 @@ async function ownerUsername(projectId: string, ownerId: string): Promise<string
  */
 export async function askOwner(
   room: RoomRow,
-  input: { thread: string; question: string; record?: string | undefined },
-): Promise<Outcome<{ messageId: string | null; mentioned: boolean; record: string | null }>> {
+  input: {
+    thread: string;
+    question: string;
+    record?: string | undefined;
+    forgeQuestion?: string | undefined;
+  },
+): Promise<
+  Outcome<{
+    messageId: string | null;
+    mentioned: boolean;
+    record: string | null;
+    forgeQuestion: string | null;
+  }>
+> {
   if (room.kind !== 'agent') {
     return no(
       'SUPPORT_OWNER_NOT_NAMED',
@@ -91,6 +131,16 @@ export async function askOwner(
       `${input.record} names no issue of this project, so the answer would be written nowhere; nothing was asked`,
     );
   }
+  const notAnswerable = input.forgeQuestion
+    ? await questionRefusal(room.projectId, input.forgeQuestion)
+    : null;
+  if (notAnswerable) {
+    return no(
+      'SUPPORT_OWNER_QUESTION_UNKNOWN',
+      '/forgeQuestion',
+      `${notAnswerable}, so the owner's answer would be recorded nowhere; nothing was asked`,
+    );
+  }
   const username = await ownerUsername(room.projectId, owner);
   // the question is the agent's own words; the owner's next message in the thread counts as the
   // answer by the kernel rule (`settleOwnerAnswer`), and the agent says so itself if it needs to
@@ -114,6 +164,7 @@ export async function askOwner(
     question: input.question,
     record: input.record ?? null,
     issueId: issue?.id ?? null,
+    questionId: input.forgeQuestion ?? null,
   };
   await insertAction({
     roomId: room.id,
@@ -129,7 +180,12 @@ export async function askOwner(
   });
   return {
     ok: true,
-    value: { messageId: posted.messageId, mentioned: username !== null, record: asked.record },
+    value: {
+      messageId: posted.messageId,
+      mentioned: username !== null,
+      record: asked.record,
+      forgeQuestion: asked.questionId ?? null,
+    },
   };
 }
 
@@ -184,6 +240,9 @@ export async function settleOwnerAnswer(input: {
     });
     if (!marker) continue;
     answered = true;
+    if (asked.questionId) {
+      await answerForgeQuestion(room, thread, ask, asked.questionId, message, author.key);
+    }
     if (!asked.issueId) continue;
     await writeOnIssue(room, thread, asked, message.text).catch(async (err) => {
       logger.error(
@@ -203,6 +262,93 @@ export async function settleOwnerAnswer(input: {
     });
   }
   return answered;
+}
+
+/** What a Forge question's round takes from the owner's words: the text, or the option they name. */
+function answerOfWords(
+  step: QuestionStep,
+  words: string,
+): { kind: 'text'; text: string } | { kind: 'option'; optionId: string } | null {
+  if (!isChoiceStep(step)) return { kind: 'text', text: words };
+  const said = words.trim().toLowerCase();
+  const option = step.options.find(
+    (o) => o.id.toLowerCase() === said || o.label.toLowerCase() === said,
+  );
+  return option ? { kind: 'option', optionId: option.id } : null;
+}
+
+/**
+ * Record the owner's answer on the Forge question the ask named, as the owner's linked Forge account,
+ * through the questions door: its `question.answered` wakes the master who asked. Where it cannot be
+ * recorded, the refusal is kept on the thread and the session is told why, to say in its own words.
+ */
+async function answerForgeQuestion(
+  room: RoomRow,
+  thread: string,
+  ask: ActionRow,
+  questionId: string,
+  message: { id: string; text: string },
+  ownerKey: string,
+): Promise<void> {
+  const why = await (async (): Promise<string | null> => {
+    const { namespace } = await roomAuth(room);
+    const owner = await resolveSpeaker({ source: 'rocketchat', namespace, externalId: ownerKey });
+    if (!owner.linked) {
+      return "the owner's chat account is linked to no Forge account, so nobody can be recorded as answering; ask them to link it (support.link) and answer again";
+    }
+    const [q] = await db
+      .select({ status: agentQuestions.status, steps: agentQuestions.steps })
+      .from(agentQuestions)
+      .where(eq(agentQuestions.id, questionId))
+      .limit(1);
+    const step = q?.steps.at(-1);
+    if (q?.status !== 'open' || !step) return `the question is ${q?.status ?? 'gone'} now`;
+    const answer = answerOfWords(step, message.text);
+    if (!answer) {
+      const options = isChoiceStep(step) ? step.options.map((o) => o.label).join(' | ') : '';
+      return `the question is a choice, and the owner's words name none of its options (${options}); ask them to answer with one`;
+    }
+    try {
+      await answerAs({
+        questionId,
+        answer,
+        round: step.round,
+        userId: owner.userId,
+        via: 'assistant',
+      });
+      return null;
+    } catch (err) {
+      if (isRefusal(err)) return err.refusals.map((r) => r.detail).join('; ');
+      logger.error(
+        { err, roomId: room.id, questionId },
+        'support: the owner answer was not recorded',
+      );
+      return `recording it failed (${err instanceof Error ? err.message : String(err)})`;
+    }
+  })();
+  if (why === null) return;
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: ask.conversationId,
+    thread,
+    kind: 'refused',
+    actorKind: 'core',
+    tool: ANSWER,
+    output: { code: 'question_answer_unrecorded', questionId, why },
+  });
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: ask.conversationId,
+    thread,
+    kind: 'message_in',
+    actorKind: 'core',
+    input: {
+      note: `The owner's answer (message ${message.id}) was not recorded on Forge question ${questionId}: ${why}. The master who asked still waits.`,
+    },
+    externalId: `owner-answer-unrecorded:${ask.id}:${message.id}`,
+  });
 }
 
 async function writeOnIssue(
