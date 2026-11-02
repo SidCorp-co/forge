@@ -16,6 +16,8 @@ export const CORRECTION_SOURCES = [
 	"revision_returned",
 	"verdict_failed",
 	"chat",
+	"feedback_triaged",
+	"feedback_declined",
 ] as const;
 export type CorrectionSource = (typeof CORRECTION_SOURCES)[number];
 
@@ -28,6 +30,7 @@ export const CORRECTION_ITEM_KINDS = [
 	"requirement",
 	"issue",
 	"conversation",
+	"feedback",
 ] as const;
 export type CorrectionItemKind = (typeof CORRECTION_ITEM_KINDS)[number];
 

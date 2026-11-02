@@ -34,6 +34,7 @@ import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readRecording } from '../previews/index.js';
 import { feedbackTriageRecord } from './checklist-record.js';
+import { keepTriageAsCorrection } from './correction.js';
 import { phaseOfRow } from './list-read.js';
 import {
   type FeedbackActor,
@@ -442,6 +443,8 @@ export async function triageIn(
   });
   await closeClarification(tx, row.id, `routed as ${route}`);
   await retireOtherTriageProposals(tx, row, actor, fromSuggestionId);
+  // a first triage onto work keeps the report as its reporter's correction (ISS-867)
+  if (firstTriage) await keepTriageAsCorrection(tx, row, route);
   return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route, carriers } };
 }
 

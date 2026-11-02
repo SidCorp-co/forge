@@ -29,6 +29,7 @@ import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, masterFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
+import { keepDeclineAsCorrection } from './correction.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { phaseOfRow } from './list-read.js';
 import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
@@ -305,6 +306,7 @@ export async function declineIn(
   });
   movedRow(moved);
   await decide(tx, row, actor, { decision: 'declined', reason: reason ?? null });
+  await keepDeclineAsCorrection(tx, row, actor, reason);
   await closeClarification(tx, row.id, 'declined');
   // one notice naming the reason, to every reporter with a bell: the item's own and each merged into it
   const told = withBell(await reportersOf(tx, row)).map((r) => r.id);

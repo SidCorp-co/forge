@@ -28,6 +28,8 @@ retried delivery never doubles it. A return or rejection with no reason is not a
 | `revision_returned` | `requirements/service.ts:returnRevision` | The requirement (`REQ-n`) and its area |
 | `verdict_failed` | `issues/criteria/verdict-record.ts:recordVerdict` on a `fail` with a reason | The issue (`ISS-n`) and the criterion |
 | `chat` | The `lessons-chat` consumer of `chat.replied` (below) | The conversation and the assistant message corrected |
+| `feedback_triaged` | `feedback/triage.ts:triageIn` on a first triage onto work of a bug or change request, never a duplicate (ISS-867), via `feedback/correction.ts`; the reporter's own words, said by the reporter | The feedback item (`FB-n`) and its requirement's area |
+| `feedback_declined` | `feedback/service.ts:declineIn` on a decline with a reason (ISS-867); said by the triager | The feedback item (`FB-n`) |
 
 **Chat.** A person's message is a correction candidate only when it follows an assistant turn in a
 project chat. `assistant/turn-lessons.ts:noteTurnLessons` emits `chat.replied` (ids only) when that turn is stored.
