@@ -1,5 +1,5 @@
 
-// Every entity list draws this one grid: Key · Title (with one secondary facts line) · State ·
+// Every entity list draws this one grid: [Key] · Title (with one secondary facts line) · State ·
 // Waiting on · [ETA] · Owner·age, grouped under sticky headers that read label-first ("Needs you 4") and
 // fold. A row is a link to its full page: a plain click opens the peek, a modified click (Cmd, Ctrl,
 // Shift, middle) goes to the page as the browser would. Folded groups live in session storage, so
@@ -64,6 +64,13 @@ const COLS =
 /** The same grid with the ETA column between Waiting on and Owner·age. */
 const COLS_ETA =
   "grid grid-cols-[104px_minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_164px_112px]";
+
+/** The two grids without the key column, for a list whose rows lead with their title (REQ-11 BC-19). */
+const COLS_TITLE =
+  "grid grid-cols-[minmax(0,1fr)_168px_220px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_180px]";
+const COLS_ETA_TITLE =
+  "grid grid-cols-[minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_164px_112px]";
+const gridOf = (eta: boolean, keyed: boolean) => (keyed ? (eta ? COLS_ETA : COLS) : eta ? COLS_ETA_TITLE : COLS_TITLE);
 
 /** Rows in each group ordered by `value`, lowest first and every row without one last, in their own order. */
 export function sortGroupsBy<R>(groups: readonly ListGroup<R>[], value: (r: R) => number | null): ListGroup<R>[] {
@@ -151,7 +158,7 @@ function GroupHeader<R>({ g, open, onToggle }: { g: ListGroup<R>; open: boolean;
 
 const modified = (e: MouseEvent) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
 
-function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; onPeek: (key: string) => void; eta: boolean }) {
+function Row({ v, selected, onPeek, eta, keyed }: { v: ListRowView; selected: boolean; onPeek: (key: string) => void; eta: boolean; keyed: boolean }) {
   return (
     <a
       href={v.href}
@@ -164,15 +171,18 @@ function Row({ v, selected, onPeek, eta }: { v: ListRowView; selected: boolean; 
       data-testid="list-row"
       data-key={v.key}
       className={cn(
-        eta ? COLS_ETA : COLS,
+        gridOf(eta, keyed),
         "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-subtle py-[7px] text-left text-fg no-underline hover:bg-hover",
         "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-3 max-md:py-2.5",
         selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-sel",
       )}
     >
-      <span className={cn("truncate font-mono text-11-5 font-semibold text-link max-md:order-1", v.dim && "opacity-65")}>{v.keyLabel ?? v.key}</span>
-      <span className="flex min-w-0 flex-col max-md:order-3 max-md:col-span-3">
-        <span className={cn("truncate text-13-5 font-medium max-md:whitespace-normal", v.dim && "opacity-65")}>{v.title}</span>
+      {keyed ? <span className={cn("truncate font-mono text-11-5 font-semibold text-link max-md:order-1", v.dim && "opacity-65")}>{v.keyLabel ?? v.key}</span> : null}
+      <span className={cn("flex min-w-0 flex-col max-md:col-span-3", keyed ? "max-md:order-3" : "max-md:order-1")}>
+        {/* a list that leads with the title keeps the row's key behind it, as its tooltip (REQ-11 BC-19) */}
+        <span className={cn("truncate text-13-5 font-medium max-md:whitespace-normal", v.dim && "opacity-65")} title={keyed ? undefined : v.key}>
+          {v.title}
+        </span>
         {v.facts.length ? (
           // one line that ends in an ellipsis: inline parts never shrink into each other
           <span className="block min-w-0 truncate text-12 text-subtle" data-testid="row-facts">
@@ -226,10 +236,13 @@ interface GroupedListProps<R> {
   columns?: Partial<ListColumnLabels>;
   /** An ETA column: its header, and whether the rows are sorted by it, which its header toggles. */
   eta?: { label: string; sortLabel: string; sorted: boolean; onSort: () => void };
+  /** "title": no key column; each row leads with its title and its key is the title's tooltip (REQ-11 BC-19). */
+  lead?: "key" | "title";
 }
 
-export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns, eta }: GroupedListProps<R>) {
+export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns, eta, lead = "key" }: GroupedListProps<R>) {
   const t = useCopy();
+  const keyed = lead === "key";
   const shown = groups.filter((g) => g.rows.length > 0);
   // each open group's rows, viewed once: drawn below and reported as what the list shows (REQ-41 BC-8)
   const drawn = shown.map((g) => {
@@ -240,10 +253,10 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
   return (
     <section aria-label={ariaLabel} data-testid="grouped-list">
       <div
-        className={cn(eta ? COLS_ETA : COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
+        className={cn(gridOf(eta !== undefined, keyed), "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
         data-testid="list-header"
       >
-        <span aria-hidden>{columns?.key ?? t("list.col.key")}</span>
+        {keyed ? <span aria-hidden>{columns?.key ?? t("list.col.key")}</span> : null}
         <span aria-hidden>{columns?.title ?? t("list.col.title")}</span>
         <span aria-hidden>{columns?.state ?? t("list.col.state")}</span>
         <span aria-hidden>{columns?.waitingOn ?? t("list.col.waitingOn")}</span>
@@ -267,7 +280,7 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
         <div key={g.id}>
           <GroupHeader g={g} open={open} onToggle={() => fold.toggle(g.id, g.collapsed)} />
           {views.map((v) => (
-            <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} eta={eta !== undefined} />
+            <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} eta={eta !== undefined} keyed={keyed} />
           ))}
         </div>
       ))}

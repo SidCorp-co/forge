@@ -1,7 +1,9 @@
 
 // What comes next, on top of Releases: each requirement with work still to land and when it is in
 // people's hands (core's `forecast/scope.ts:readComingNext`), then the draft and the act it waits on
-// (core's release read model). Flush rows on hairlines; the reasons sit in the tooltips.
+// (core's release read model). Flush rows on hairlines; the reasons sit in the tooltips. A row leads
+// with its title, which is its link; the requirement's key or the draft's version is that link's
+// tooltip (REQ-11 BC-19).
 
 import type { ComingNextForecast, ScopeForecast } from "@forge/contracts/forecast";
 import { Link } from "@/lib/navigation/router";
@@ -19,10 +21,10 @@ import type { ReleaseSummary } from "../types";
 
 const LINE = "flex items-center gap-x-3.5 px-5 max-md:flex-wrap max-md:px-3";
 const ROW = `${LINE} min-h-11 border-b border-line-subtle py-1.5`;
-/** The four columns; on a phone the title drops to its own line under the key, progress and landing. */
+/** The three columns; on a phone the title drops to its own line under progress and landing. */
 const COL = {
-  key: "w-26 flex-none font-mono text-13 font-semibold text-link hover:underline max-md:w-auto",
   title: "min-w-0 flex-1 max-md:order-last max-md:basis-full",
+  link: "truncate text-13 text-fg hover:text-link hover:underline",
   progress: "w-75 min-w-0 shrink truncate text-right text-12 text-muted tabular-nums max-md:ml-auto max-md:w-auto",
   eta: "w-32 flex-none",
 };
@@ -64,7 +66,6 @@ export function ComingNext({
         <ViewHeading>{t("releases.comingNext")}</ViewHeading>
       </div>
       <div className={`${LINE} h-8 border-y border-line-subtle bg-sunken text-12 font-semibold text-subtle max-md:hidden`} data-testid="coming-next-header">
-        <span className="w-26 flex-none">{t("list.col.key")}</span>
         <span className="min-w-0 flex-1">{t("list.col.title")}</span>
         <span className="w-75 min-w-0 shrink text-right">{t("releases.colProgress")}</span>
         <span className="w-32 flex-none text-right">{ETA_COPY[clock.lang].header}</span>
@@ -72,10 +73,11 @@ export function ComingNext({
       <ul className="m-0 list-none p-0">
         {requirements.map((s) => (
           <li key={s.key} className={ROW} data-testid="coming-next-requirement" data-key={s.key}>
-            <Link className={COL.key} href={requirementHref(slug, s.key)}>
-              {s.key}
-            </Link>
-            <span className={`${COL.title} truncate text-13 text-fg`}>{s.title}</span>
+            <span className={`${COL.title} flex`}>
+              <Link className={COL.link} href={requirementHref(slug, s.key)} title={s.key}>
+                {s.title}
+              </Link>
+            </span>
             <IssueProgressText progress={s.progress} className={COL.progress} />
             <span className={COL.eta}>
               <EtaCell eta={etaOfScope(s, clock)} clock={clock} />
@@ -84,11 +86,10 @@ export function ComingNext({
         ))}
         {draft ? (
           <li className={ROW} data-testid="coming-next-draft" data-key={draft.key}>
-            <Link className={COL.key} href={releaseHref(slug, draft.version)}>
-              {draft.version}
-            </Link>
-            <span className={`${COL.title} flex flex-col`}>
-              <span className="truncate text-13 text-fg">{t("releases.draftRelease", { n: draft.issueCount })}</span>
+            <span className={`${COL.title} flex flex-col items-start`}>
+              <Link className={COL.link} href={releaseHref(slug, draft.version)} title={draft.version}>
+                {t("releases.draftRelease", { n: draft.issueCount })}
+              </Link>
               {turn ? (
                 <span className="truncate text-13 font-semibold text-fg" title={said(draft.waitingOn.says.rule, language)} data-testid="coming-next-draft-turn">
                   {turn}

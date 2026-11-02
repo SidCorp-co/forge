@@ -45,7 +45,15 @@ const groupsOf = (rows: ReleaseSummary[], label: Label): ListGroup<ReleaseSummar
     ) as typeof RELEASE_ATTENTION_LABELS,
   );
 
-const requirementsOf = (r: ReleaseSummary, t: Copy) => (r.requirements.length > 0 ? r.requirements.join(", ") : t("releases.maintenance"));
+/** How many requirements a release carries; their keys sit in the tooltip, never on the row's face (REQ-11 BC-19). */
+const requirementsOf = (r: ReleaseSummary, t: Copy) =>
+  r.requirements.length > 0 ? (
+    <span title={r.requirements.join(", ")} data-testid="release-requirements">
+      {t("releases.requirementsCount", { n: r.requirements.length })}
+    </span>
+  ) : (
+    t("releases.maintenance")
+  );
 
 const rowOf =
   (slug: string, t: Copy, time: Time) =>
@@ -130,6 +138,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
                 onPeek={list.togglePeek}
                 empty={t("releases.noMatch")}
                 columns={{ meta: list.rows.some((r) => r.owner) ? t("list.col.meta") : t("releases.colAge") }}
+                lead="title"
               />
             </>
           )}

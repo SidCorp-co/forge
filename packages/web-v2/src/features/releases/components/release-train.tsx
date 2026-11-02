@@ -11,6 +11,8 @@ import type { ReleaseContentGroup, ReleaseSummary } from "../types";
 const SHOWN = 6;
 const ROWS = 4;
 const groupKey = (g: ReleaseContentGroup, t: Copy) => g.requirement?.key ?? t("releases.maintenance");
+/** A group reads as its requirement's title, the key in its tooltip (REQ-11 BC-19). */
+const groupName = (g: ReleaseContentGroup, t: Copy) => g.requirement?.title || groupKey(g, t);
 
 function Contents({ groups }: { groups: ReleaseContentGroup[] }) {
   const t = useCopy();
@@ -21,8 +23,8 @@ function Contents({ groups }: { groups: ReleaseContentGroup[] }) {
     <span className="grid gap-0.5" data-testid="train-contents">
       {shown.map((g) => (
         <span key={groupKey(g, t)} className="flex items-center gap-2 text-12">
-          <span className={cn(g.requirement ? "font-mono text-fg" : "text-subtle")} title={g.requirement?.title}>
-            {groupKey(g, t)}
+          <span className={cn("min-w-0 truncate", g.requirement ? "text-fg" : "text-subtle")} title={g.requirement?.key}>
+            {groupName(g, t)}
           </span>
           <MarkStrip
             size="sm"
@@ -35,7 +37,7 @@ function Contents({ groups }: { groups: ReleaseContentGroup[] }) {
         </span>
       ))}
       {rest.length > 0 ? (
-        <span className="text-12 text-subtle" title={rest.map((g) => groupKey(g, t)).join(", ")} data-testid="train-more">
+        <span className="text-12 text-subtle" title={rest.map((g) => groupName(g, t)).join(", ")} data-testid="train-more">
           {t(rest.length === 1 ? "releases.moreGroup" : "releases.moreGroups", { n: rest.length })}
         </span>
       ) : null}
