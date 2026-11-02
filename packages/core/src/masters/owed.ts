@@ -12,6 +12,7 @@ import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
 import { confirmsLine } from './owed-confirms.js';
+import { reviewsLine } from './owed-reviews.js';
 import {
   type AgentConfirmOwed,
   type FilingOwed,
@@ -19,6 +20,7 @@ import {
   type MarkOwed,
   mastersPorts,
   type ReleaseMergeOwed,
+  type ReviewOwed,
   type StewardAsk,
   type WaitingRequest,
 } from './ports.js';
@@ -75,6 +77,7 @@ interface Owed {
   requests: WaitingRequest[];
   /** Drafts a feedback triage routed an item to, whoever filed them: master work under any profile (ISS-840). */
   carriers: { key: string }[];
+  reviews: ReviewOwed[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -270,7 +273,8 @@ export function owedLine(owed: Owed): string {
     recordingsLine(owed.recordings) +
     confirmsLine(owed.confirms) +
     requestsLine(owed.requests) +
-    carriersLine(owed.carriers);
+    carriersLine(owed.carriers) +
+    reviewsLine(owed.reviews);
   const {
     breakdowns,
     triages,
@@ -369,6 +373,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.recordings.map((r) => `filing-record:${r.issueId}|${r.release ?? ''}`),
     ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
     ...owed.carriers.map((c) => `carrier:${c.key}`),
+    ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -421,7 +426,7 @@ export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMod
 /**
  * Everything a project's master on `deviceId` is owed this sweep: the issues it could open a wave
  * over, and the channel, threads, requirements, feedback (a triage, or an agent reporter's confirm), returned
- * designs and release notes that owe it a turn.
+ * designs, release notes and the reviews an independent judge owes that owe it a turn.
  * A read that fails fails the verdict, which the box says and acts on nothing: none is skipped.
  */
 export async function readMasterWork(deviceId: string, projectId: string): Promise<MasterWork> {
@@ -465,6 +470,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const carriers = await ports.draftCarriersWaiting(projectId);
+  const reviews = await ports.reviewsOwed(projectId);
   const carried = new Set(carriers.map((c) => c.key));
   const requests = (
     (await ports.masterGate(projectId)).mode === 'enforce'
@@ -501,6 +507,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       recordings: merges.recordings,
       requests,
       carriers,
+      reviews,
       contentLanguage,
     },
     mode,

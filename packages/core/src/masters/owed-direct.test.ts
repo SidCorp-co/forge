@@ -25,6 +25,7 @@ const none = {
   recordings: [],
   requests: [],
   carriers: [],
+  reviews: [],
   contentLanguage: 'en',
 };
 

@@ -48,6 +48,7 @@ const none = {
   recordings: [] as FilingRecordOwed[],
   requests: [] as WaitingRequest[],
   carriers: [] as { key: string }[],
+  reviews: [],
   contentLanguage: 'en',
 };
 

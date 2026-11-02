@@ -46,6 +46,7 @@ import {
   filingsMarked,
   owedFilings,
   owedMarks,
+  owedReviews,
   recordRunSecretResolve,
   resolveIssueKeyInProject,
   runSecretRefsOfSession,
@@ -77,6 +78,7 @@ import {
   readEffectivePolicy,
   readGateModes,
   readMasterMode,
+  readVerifiedJudge,
   remoteOf,
   requirePolicy,
   withDeclaredSource,
@@ -343,6 +345,7 @@ export function provideExecutionPorts(): void {
     masterGate: (projectId) => gateOf(projectId, 'master_admitted_only'),
     masterMode: readMasterMode,
     draftCarriersWaiting: draftFeedbackCarriers,
+    reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
     requestsWaiting: async (projectId) => [
       ...(await draftIssuesPeopleFiled(projectId)).map((r) => ({
         kind: 'issue' as const,

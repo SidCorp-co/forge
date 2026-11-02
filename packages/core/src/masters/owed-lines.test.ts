@@ -27,6 +27,7 @@ const none: Parameters<typeof owedLine>[0] = {
   recordings: [],
   requests: [],
   carriers: [],
+  reviews: [],
   contentLanguage: 'en',
 };
 

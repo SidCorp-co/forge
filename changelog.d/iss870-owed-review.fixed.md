@@ -1,0 +1,1 @@
+**A review owed to an independent judge now counts as master work.** An outdated master owing only that review is replaced instead of draining with no successor, and its nudge names each issue and criterion the judge owes (ISS-870).

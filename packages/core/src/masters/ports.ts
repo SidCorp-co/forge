@@ -52,6 +52,17 @@ export interface FilingRecordOwed {
   release: string | null;
 }
 
+/**
+ * An issue waiting on the project's independent judge, at `in_progress` on its test step or at
+ * `awaiting_release`, with the criteria the verified rule does not hold proven (`issues/reviews-owed.ts`).
+ */
+export interface ReviewOwed {
+  issueId: string;
+  key: string;
+  status: 'in_progress' | 'awaiting_release';
+  criteria: number[];
+}
+
 /** A request a person left waiting: a draft issue they filed, or a draft requirement proposed from a chat. */
 export interface WaitingRequest {
   kind: 'issue' | 'requirement';
@@ -159,6 +170,11 @@ interface MastersPorts {
    * every profile, since the item names the master as the one to take each on (REQ-68 BC-6).
    */
   draftCarriersWaiting(projectId: string): Promise<{ key: string }[]>;
+  /**
+   * The reviews the project's independent judge owes, which only the master declares (ISS-870): none
+   * where its gate profile declares no independent judge.
+   */
+  reviewsOwed(projectId: string): Promise<ReviewOwed[]>;
 }
 
 const slot = portSlot<MastersPorts>('masters', 'provideMastersPorts');
