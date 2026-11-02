@@ -41,7 +41,7 @@ export function RequirementsList({ groups, slug, now, selected, onPeek, notes }:
         selected={selected}
         onPeek={onPeek}
         empty={t("requirements.noMatch")}
-        lead="title"
+        keyColumn={false}
         columns={{ title: t("requirements.col.name"), state: t("requirements.col.passing"), waitingOn: t("requirements.col.waits"), meta: t("requirements.col.age") }}
         row={(r) => ({
           key: r.key,

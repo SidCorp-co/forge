@@ -236,13 +236,13 @@ interface GroupedListProps<R> {
   columns?: Partial<ListColumnLabels>;
   /** An ETA column: its header, and whether the rows are sorted by it, which its header toggles. */
   eta?: { label: string; sortLabel: string; sorted: boolean; onSort: () => void };
-  /** "title": no key column; each row leads with its title and its key is the title's tooltip (REQ-11 BC-19). */
-  lead?: "key" | "title";
+  /** False: no key column; each row leads with its title and its key is the title's tooltip (REQ-11 BC-19). */
+  keyColumn?: boolean;
 }
 
-export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns, eta, lead = "key" }: GroupedListProps<R>) {
+export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns, eta, keyColumn = true }: GroupedListProps<R>) {
   const t = useCopy();
-  const keyed = lead === "key";
+  const keyed = keyColumn;
   const shown = groups.filter((g) => g.rows.length > 0);
   // each open group's rows, viewed once: drawn below and reported as what the list shows (REQ-41 BC-8)
   const drawn = shown.map((g) => {

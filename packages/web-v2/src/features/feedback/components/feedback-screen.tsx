@@ -262,7 +262,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                 selected={peek.open}
                 onPeek={list.togglePeek}
                 empty={t("feedback.noMatch")}
-                lead="title"
+                keyColumn={false}
               />
             </>
           )}

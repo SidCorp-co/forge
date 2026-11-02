@@ -138,7 +138,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
                 onPeek={list.togglePeek}
                 empty={t("releases.noMatch")}
                 columns={{ meta: list.rows.some((r) => r.owner) ? t("list.col.meta") : t("releases.colAge") }}
-                lead="title"
+                keyColumn={false}
               />
             </>
           )}
