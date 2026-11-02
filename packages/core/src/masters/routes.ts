@@ -1,10 +1,9 @@
 import { MASTER_PASS_PAGE_DEFAULT, MASTER_PASS_PAGE_MAX } from '@forge/contracts/master-standing';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { listMasterPasses, readMasterStanding } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
@@ -26,11 +25,10 @@ masterStandingRoutes.get(
     projectParam,
     invalid('invalid path: /api/projects/<project uuid>/masters/standing'),
   ),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.read');
     return c.json(await readMasterStanding(projectId));
   },
 );
@@ -42,11 +40,10 @@ masterStandingRoutes.get(
     projectParam,
     invalid('invalid path: /api/projects/<project uuid>/masters/passes'),
   ),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', passQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.read');
     const q = c.req.valid('query');
     return c.json(
       await listMasterPasses(projectId, {

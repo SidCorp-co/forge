@@ -6242,6 +6242,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box acts for its own master session, on a project it serves; the service refuses one it does not hold"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -6361,6 +6364,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box acts for its own master session, on a project it serves; the service refuses one it does not hold"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -6615,6 +6621,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box acts for its own master session, on a project it serves; the service refuses one it does not hold"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -7254,6 +7263,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box acts for its own master session, on a project it serves; the service refuses one it does not hold"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -31866,6 +31878,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -31902,6 +31920,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",

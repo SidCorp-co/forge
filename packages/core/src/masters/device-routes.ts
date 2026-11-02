@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import { refused } from '../lib/refusal.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { strictBody } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 import {
   declareMasterSession,
   judgeMaster,
@@ -28,9 +29,16 @@ import {
 
 export const deviceMasterRoutes = new Hono<{ Variables: DeviceVars }>();
 
+// the paired box is the whole credential; the service refuses a project, session or pass the box
+// does not hold, a data rule each read selects by the device
+const BOX_OWN = requiresNoPermission(
+  'a paired box acts for its own master session, on a project it serves; the service refuses one it does not hold',
+);
+
 deviceMasterRoutes.post(
   '/me/master-session',
   requireDevice(),
+  BOX_OWN,
   strictBody(masterSessionRequestSchema, MASTER_SESSION_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
@@ -48,6 +56,7 @@ deviceMasterRoutes.post(
 deviceMasterRoutes.post(
   '/me/master-session/pass',
   requireDevice(),
+  BOX_OWN,
   strictBody(masterPassRequestSchema, MASTER_PASS_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
@@ -77,6 +86,7 @@ deviceMasterRoutes.post(
 deviceMasterRoutes.post(
   '/me/master-session/dialog',
   requireDevice(),
+  BOX_OWN,
   strictBody(masterDialogRequestSchema, MASTER_DIALOG_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
@@ -92,6 +102,7 @@ deviceMasterRoutes.post(
 deviceMasterRoutes.post(
   '/me/master-session/verdict',
   requireDevice(),
+  BOX_OWN,
   strictBody(masterVerdictRequestSchema, MASTER_VERDICT_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
