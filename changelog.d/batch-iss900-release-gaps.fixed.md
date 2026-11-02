@@ -1,0 +1,1 @@
+**A release-version verdict now counts everywhere it should.** Release pages count and verify it, promotion landings weigh it, comment fences carry it, an unrecorded release is asked for by name, and another project's issue is judged on its own release.
