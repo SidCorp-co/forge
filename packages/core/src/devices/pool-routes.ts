@@ -26,6 +26,7 @@ import {
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { fieldShape, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { refuseDevice } from './refusals.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
@@ -89,6 +90,10 @@ import { devicesPorts } from './ports.js';
 import { readRunSessionTerminal, releaseIssueLease } from './run-session.js';
 import { deviceRunSessionRoutes } from './run-session-routes.js';
 
+const DEVICE_OWN = requiresNoPermission(
+  'a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves',
+);
+
 export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 
 // The device's run-session and inbox routes live in their own files and mount here.
@@ -102,6 +107,7 @@ const poolQuerySchema = z.object({
 devicePoolRoutes.get(
   '/me/pool',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('query', poolQuerySchema),
   async (c) => {
     const { limit, projectId } = c.req.valid('query');
@@ -135,6 +141,7 @@ async function leaseKeyOf(rawKey: string, projectId?: string): Promise<ResolvedL
 devicePoolRoutes.get(
   '/me/run-sessions/:sessionId',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('param', sessionParamsSchema),
   noQuery,
   async (c) => {
@@ -148,6 +155,7 @@ devicePoolRoutes.get(
 devicePoolRoutes.get(
   '/me/issue-leases/:issueKey',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('param', leaseParamsSchema),
   zValidator('query', leaseQuerySchema),
   async (c) => {
@@ -172,6 +180,7 @@ devicePoolRoutes.get(
 devicePoolRoutes.delete(
   '/me/issue-leases/:issueKey',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('param', leaseParamsSchema),
   zValidator('query', leaseQuerySchema),
   async (c) => {
@@ -232,6 +241,7 @@ const claimBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/pool/prepare',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', claimBodySchema),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
@@ -244,6 +254,7 @@ devicePoolRoutes.post(
 devicePoolRoutes.post(
   '/me/pool/start',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', claimBodySchema),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
@@ -260,6 +271,7 @@ const releaseBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/pool/release',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', releaseBodySchema),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
@@ -282,6 +294,7 @@ const masterCloseBodySchema = z.object({
 devicePoolRoutes.post(
   '/me/master-session/close',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', masterCloseBodySchema),
   async (c) => {
     const { sessionId, reason } = c.req.valid('json');
@@ -312,6 +325,7 @@ function askAnswerOf(body: AskBody) {
 devicePoolRoutes.post(
   '/me/questions',
   requireDevice(),
+  DEVICE_OWN,
   zValidator(
     'json',
     askBodySchema,
@@ -343,6 +357,7 @@ devicePoolRoutes.post(
 devicePoolRoutes.get(
   '/me/questions/:questionId',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('query', answerQuerySchema),
   async (c) => {
     const questionId = c.req.param('questionId');
@@ -370,6 +385,7 @@ const masterLimitSchema = z.object({
 devicePoolRoutes.post(
   '/me/limit',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', masterLimitSchema),
   async (c) => {
     const body = c.req.valid('json');
@@ -394,6 +410,7 @@ devicePoolRoutes.post(
 devicePoolRoutes.post(
   '/me/limit/record',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', z.strictObject({ record: masterLimitRecordSchema })),
   async (c) => {
     const judged = await judgeMasterLimit(c.get('device').id, c.req.valid('json').record);
@@ -402,7 +419,7 @@ devicePoolRoutes.post(
   },
 );
 
-devicePoolRoutes.delete('/me/limit', requireDevice(), async (c) => {
+devicePoolRoutes.delete('/me/limit', requireDevice(), DEVICE_OWN, async (c) => {
   const cleared = await clearMasterLimit(c.get('device').id);
   if (!cleared) throw notFound('claude-code runner for this device');
   return c.json({ runnerId: cleared.runnerId });

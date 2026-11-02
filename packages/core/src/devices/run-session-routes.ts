@@ -20,6 +20,7 @@ import { isRefusal, RefusalError } from '../lib/refusal.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 import { gateConditionSchema } from './gate-report.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
 import {
@@ -32,6 +33,10 @@ import {
 } from './run-evidence.js';
 import { closeRunSession, openRunSession, preflightRunSession } from './run-session.js';
 import { runVerdict } from './run-verdict.js';
+
+const DEVICE_OWN = requiresNoPermission(
+  'a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves',
+);
 
 export const deviceRunSessionRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -70,6 +75,7 @@ const runSessionBodySchema = z.object({
 deviceRunSessionRoutes.post(
   '/me/run-sessions',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', runSessionBodySchema),
   async (c) => {
     const body = c.req.valid('json');
@@ -114,6 +120,7 @@ const preflightBodySchema = z.object({
 deviceRunSessionRoutes.post(
   '/me/run-sessions/preflight',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('json', preflightBodySchema),
   async (c) => {
     const body = c.req.valid('json');
@@ -139,6 +146,7 @@ const closeBodySchema = z.object({
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/close',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('param', sessionParamsSchema),
   zValidator('json', closeBodySchema),
   async (c) => {
@@ -165,6 +173,7 @@ deviceRunSessionRoutes.post(
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/held-worktree',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('param', sessionParamsSchema),
   zValidator('json', heldWorktreeSchema),
   async (c) => {
@@ -182,6 +191,7 @@ deviceRunSessionRoutes.post(
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/resume-choice',
   requireDevice(),
+  DEVICE_OWN,
   zValidator('param', sessionParamsSchema),
   zValidator('json', resumeChoiceSchema),
   async (c) => {
@@ -204,6 +214,7 @@ deviceRunSessionRoutes.post(
 deviceRunSessionRoutes.post(
   '/me/run-sessions/verdict',
   requireDevice(),
+  DEVICE_OWN,
   strictBody(runVerdictRequestSchema, RUN_VERDICT_SHAPE),
   async (c) => {
     const { projectId, facts } = c.req.valid('json');

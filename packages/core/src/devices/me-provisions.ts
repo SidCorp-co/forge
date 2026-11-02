@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { logger } from '../lib/logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { noQuery } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 import { devicesPorts } from './ports.js';
 import { recordProvisionReports } from './provision-reports.js';
 import {
@@ -14,9 +15,13 @@ import {
 import { queuedProvisionRows } from './read.js';
 import { deviceHolderUserId, issueCheckoutCredential } from './workspace-credential.js';
 
+const DEVICE_OWN = requiresNoPermission(
+  'a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves',
+);
+
 export const deviceProvisionRoutes = new Hono<{ Variables: DeviceVars }>();
 
-deviceProvisionRoutes.get('/me/provisions', requireDevice(), noQuery, async (c) => {
+deviceProvisionRoutes.get('/me/provisions', requireDevice(), DEVICE_OWN, noQuery, async (c) => {
   const device = c.get('device');
 
   const rows = await queuedProvisionRows(device.id);

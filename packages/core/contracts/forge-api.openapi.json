@@ -5510,6 +5510,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -5742,6 +5745,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -5822,6 +5828,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -6046,6 +6055,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -6099,6 +6111,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -6123,6 +6138,9 @@
           "requireDevice"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": []
       },
       "post": {
@@ -6183,6 +6201,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -6309,6 +6330,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -6412,6 +6436,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -7419,6 +7446,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -7560,6 +7590,9 @@
           "requireDevice"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -7605,6 +7638,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -7653,6 +7689,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -7699,6 +7738,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -7746,6 +7788,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -7768,6 +7813,9 @@
           "requireDevice"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -7991,6 +8039,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -8030,6 +8081,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -8275,6 +8329,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -8334,6 +8391,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -8679,6 +8739,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -8712,6 +8775,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -8902,6 +8968,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -8996,6 +9065,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -9066,6 +9138,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -9089,6 +9164,9 @@
           "requireDevice"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -9158,6 +9236,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -9231,6 +9312,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it; each read and write is selected by that device, which the service holds to the projects, sessions and requests it serves"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -9471,6 +9555,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller acts on a device they own; another’s answers not the device owner"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -9527,6 +9614,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller acts on a device they own; another’s answers not the device owner"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -9562,6 +9652,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller acts on a device they own; another’s answers not the device owner"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
