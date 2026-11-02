@@ -6,7 +6,8 @@ import { FEEDBACK_LIST, feedbackListHref } from "@/lib/routes/feedback";
 import { FeedbackPage, FeedbackPrimary, useFeedbackTab } from "./feedback-detail";
 
 // The shell's top bar is the page's sticky header (the shared DetailHeader): "← Feedback" back
-// to the list view it was opened from, the key, title and phase, and the one primary act
+// to the list view it was opened from, the title (its key the title's tooltip, ISS-903), the phase,
+// and the one primary act
 export function FeedbackItemScreen({ projectId, slug, fbKey }: { projectId: string; slug: string; fbKey: string }) {
   const t = useCopy();
   const q = useFeedbackItem(projectId, fbKey);
@@ -21,9 +22,11 @@ export function FeedbackItemScreen({ projectId, slug, fbKey }: { projectId: stri
     <div className="min-h-full bg-app" data-testid="feedback-item-screen">
       <DetailHeader
         back={{ href: back, label: t("feedback.title") }}
-        itemKey={f?.key ?? fbKey}
-        keyTitle={f?.id}
-        title={f?.title ?? fbKey}
+        title={
+          <span title={f?.key ?? fbKey} data-testid="feedback-title">
+            {f?.title ?? fbKey}
+          </span>
+        }
         badge={f ? <StatusBadge family="feedbackPhase" value={f.phase} /> : null}
         action={f ? <FeedbackPrimary f={f} onAct={act} /> : null}
       />

@@ -14,17 +14,15 @@ import { Written, WrittenMark } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
 import {
   Button,
-  DetailLayout,
-  DetailLeadEnd,
+  DetailDrawer,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
   enumLabel,
   FactsRail,
-  type RecordView,
-  RecordViewSwitch,
   StatusBadge,
   useRecordView,
+  useRecordViewCommands,
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -126,15 +124,6 @@ export function FeedbackHistory({ f }: { f: FeedbackView }) {
   );
 }
 
-/** The person / developer switch, at the right above the tabs. */
-function ViewBar({ view, onView }: { view: RecordView; onView: (v: RecordView) => void }) {
-  return (
-    <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="feedback-view-bar">
-      <RecordViewSwitch view={view} onView={onView} />
-    </div>
-  );
-}
-
 export function FeedbackPage({
   projectId,
   slug,
@@ -151,6 +140,7 @@ export function FeedbackPage({
   const t = useCopy();
   const [view, onView] = useRecordView();
   const developer = view === "developer";
+  useRecordViewCommands(view, onView);
   const q = useFeedbackItem(projectId, fbKey);
   const note = useStewardNote(projectId, "feedback", fbKey);
   const forecasts = useFeedbackForecasts(projectId);
@@ -170,24 +160,24 @@ export function FeedbackPage({
         const checklists = <FeedbackChecklists projectId={projectId} fbKey={f.key} canTriage={f.can.triage} developer={developer} />;
         const triageOwed = f.can.triage && (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase);
         return (
-          <DetailLayout
-            testId="feedback-detail"
-            dataKey={f.key}
-            rail={
-              <FactsRail>
-                {/* the forecast is the answer line's, above: the rail does not say when a second time */}
-                <LinkedFeedback f={f} slug={slug} />
-              </FactsRail>
-            }
-          >
-            <DetailMobileTitle itemKey={f.key} title={<Written text={f.title} lang={f.writtenLang} />} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
+          <article className="min-h-full bg-app" data-testid="feedback-detail" data-key={f.key}>
+            <DetailMobileTitle title={<span title={f.key}><Written text={f.title} lang={f.writtenLang} /></span>} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
             <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
             <StewardNoteLines note={note} slug={slug} className="px-8 max-md:px-4" />
             <FeedbackProgress projectId={projectId} slug={slug} fbKey={f.key} className="px-8 pt-3 pb-1 max-md:px-4" />
-            <DetailLeadEnd />
-            <ViewBar view={view} onView={onView} />
-            <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
+            {/* the facts are the Properties drawer's, the person / developer switch the palette's (ISS-903) */}
+            <div className="flex items-end justify-between gap-3 pr-8 pt-3 max-md:pr-4" data-testid="feedback-tabs-bar">
+              <div className="min-w-0 flex-1">
+                <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
+              </div>
+              <DetailDrawer label={t("common.properties")} testId="feedback-properties">
+                <FactsRail>
+                  {/* the forecast is the answer line's, above: the facts do not say when a second time */}
+                  <LinkedFeedback f={f} slug={slug} />
+                </FactsRail>
+              </DetailDrawer>
+            </div>
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("feedback.tab.overview")}>
               {tab === "mockups" ? <MockupList projectId={projectId} slug={slug} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
               {tab === "overview" ? (
@@ -224,7 +214,7 @@ export function FeedbackPage({
                 </section>
               ) : null}
             </DetailPane>
-          </DetailLayout>
+          </article>
         );
       }}
     </QueryBoundary>

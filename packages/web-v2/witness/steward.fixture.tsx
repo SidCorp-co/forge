@@ -247,6 +247,8 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (path.startsWith(`/projects/${PH}/status`)) return json(WITNESS_STATUS);
   if (path === "/projects") return json([{ id: PH, slug: "hop", name: "Hop", orgId: null, orgRole: null }]);
   if (path === "/me/devices") return json([]);
+  // the value check reads the intake assistant's draft of a record; these records have none (REQ-65)
+  if (/^\/projects\/[^/]+\/intake-drafts\/[^/]+$/.test(path)) return json({ draft: null });
   if (path === `/projects/${FP}/issues/search`) return json(listOf(ISSUE_ROWS));
   if (path === `/projects/${FP}/pipeline-runs`) return json(listOf([]));
   if (path === "/me/attention") {

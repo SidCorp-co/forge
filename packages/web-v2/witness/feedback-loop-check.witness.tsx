@@ -130,7 +130,12 @@ window.__witness = {
     { name: "phone", width: 390 },
     { name: "desktop", width: 1440 },
   ],
-  ready: () => Boolean(q("[data-testid=facts-verify-held]") && q("[data-testid=verify-copy]")),
+  // the facts stand in the Properties drawer (ISS-903): open it, as a person does
+  ready: () => {
+    const toggle = q("[data-testid=feedback-properties]");
+    if (toggle && toggle.getAttribute("aria-expanded") !== "true") toggle.click();
+    return Boolean(q("[data-testid=facts-verify-held]") && q("[data-testid=verify-copy]"));
+  },
   stages: [
     { name: "reads", run: reads },
     { name: "questions-light", run: () => questions("light") },

@@ -130,10 +130,13 @@ const theme = (t: "light" | "dark") => {
   document.documentElement.dataset.theme = t;
   document.documentElement.classList.toggle("dark", t === "dark");
 };
-/** Below 1024px the rail stands behind one Facts row: open it so the shot shows the facts. */
-const openFacts = async () => {
-  const toggle = q("[data-testid=rail-facts-toggle]");
+/** The facts stand in the Properties drawer at every width (ISS-903): open it so the shot shows them. */
+const openProperties = () => {
+  const toggle = q("[data-testid=feedback-properties]");
   if (toggle && toggle.getAttribute("aria-expanded") !== "true") toggle.click();
+};
+const openFacts = async () => {
+  openProperties();
   await settle();
 };
 /** A loading placeholder left standing is a section the shot does not show. */
@@ -171,7 +174,10 @@ window.__witness = {
     { name: "phone", width: 390 },
     { name: "desktop", width: 1440 },
   ],
-  ready: () => Boolean(q("[data-testid=feedback-clarification-recommended]")),
+  ready: () => {
+    openProperties();
+    return Boolean(q("[data-testid=feedback-clarification-recommended]"));
+  },
   stages: [
     { name: "1-asked-light", run: async () => (theme("light"), await openFacts(), recommended()) },
     { name: "2-asked-dark", run: async () => (theme("dark"), await settle(), recommended()) },

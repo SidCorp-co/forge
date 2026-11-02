@@ -105,11 +105,16 @@ const buttons = () => [...document.querySelectorAll<HTMLElement>("[data-witness=
 const openActivity = (fold?: string) => () => {
   const tab = buttons().find((b) => b.textContent?.trim() === "Activity");
   if (tab && tab.getAttribute("aria-selected") !== "true") tab.click();
+  // at phone width a requirement's Activity stands behind its tabs' More menu (ISS-903)
+  if (!tab) {
+    document.querySelector<HTMLElement>("[data-testid=requirement-tabs-more]")?.click();
+    setTimeout(() => [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.trim() === "Activity")?.click(), 150);
+  }
   if (!fold) return;
   setTimeout(() => {
     const trigger = buttons().find((b) => b.textContent?.startsWith(fold));
     if (trigger && !trigger.hasAttribute("data-panel-open")) trigger.click();
-  }, 200);
+  }, 400);
 };
 
 const actsDrawn = (): string[] => [

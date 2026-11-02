@@ -32,7 +32,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "requirements-list": { budget: 80, amnesty: waits(93) },
   "requirement-detail": { budget: 100 },
   "feedback-list": { budget: 100, amnesty: waits(130) },
-  "feedback-detail": { budget: 90, amnesty: waits(136) },
+  "feedback-detail": { budget: 90 },
   "releases-list": { budget: 90, amnesty: waits(112) },
   "release-detail": { budget: 80 },
   "workflows-list": { budget: 60, amnesty: waits(71) },
