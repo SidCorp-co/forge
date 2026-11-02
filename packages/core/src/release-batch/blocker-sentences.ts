@@ -305,7 +305,8 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
-    return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
+    const r = typeof details?.release === 'string' ? `${remedy} ${details.release}.` : remedy;
+    return held.length === 0 ? r : heldIssuesSentence(r, held);
   }
   if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
     return unroutedSentence(remedy, details.missing, details);

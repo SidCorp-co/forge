@@ -148,8 +148,8 @@ const clearer = (owes: CriteriaHoldOwer) =>
 
 export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer): ReleaseHold {
   const reasons = reasonsByWhy(report);
-  const live = report.serving.kind !== 'serving' && report.released?.live; // release record, ISS-900
-  const onRelease = live ? releaseHint(report.released, 'issue') : null;
+  const byRecord = report.serving.kind !== 'serving' && report.released; // release record, ISS-900
+  const onRelease = byRecord ? releaseHint(report.released, 'issue') : null;
   const judge = onRelease ?? judgeClause(report.serving, report.runtimes, report.weighedOn);
   // only a person closes by hand; the master clears it by the verdicts or by moving the issue on
   const byHand =
@@ -163,7 +163,7 @@ export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer
       `this one is not — ${reasons}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
       '`awaiting_release` if it is not to ship.',
     owes,
-    waitingFor: `a verdict on each criterion named ${onRelease ? 'on the live release' : 'at the running deployment'}${owes === 'human' ? ', or the issue closed by hand' : ''}`,
+    waitingFor: `${!onRelease ? 'a verdict on each criterion named at the running deployment' : report.released?.live ? 'a verdict on each criterion named on the live release' : 'the release production serves recorded, then a verdict on each criterion named on it'}${owes === 'human' ? ', or the issue closed by hand' : ''}`,
     criteria: report.unearned.map((c) => c.criterion),
   };
 }

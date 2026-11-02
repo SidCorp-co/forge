@@ -1,4 +1,5 @@
 import { gateSays, type ResolvedGate } from '@forge/contracts/gate-profiles';
+import { releaseHint } from '@forge/contracts/released-line';
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import {
   type IssueCriteriaReport,
@@ -116,7 +117,11 @@ export async function criteriaHold(
   );
   if (!reports) return;
   await uncorroboratedWarning(reports, warnings);
-  await heldOrWarned(waiting, reports, out, warnings, serving, gate);
+  // where production declares no source probe the reports weigh on the agent's release record
+  // (ISS-900): a verdict on the release clears them, so the project is no unrouted one
+  const record = reports[0]?.released ?? null;
+  const read = serving.kind === 'undeclared' && record ? null : serving;
+  await heldOrWarned(waiting, reports, out, warnings, read, gate, releaseHint(record, 'issue'));
 }
 
 /**
@@ -130,6 +135,8 @@ async function heldOrWarned(
   warnings: ReleaseWarning[],
   serving: ServingReading | null,
   gate: ResolvedGate,
+  /** On a project weighed on its release record, the release to judge on or the record to make. */
+  release: string | null = null,
 ): Promise<void> {
   const owing = reports.filter((r) => r.unearned.length > 0);
   if (owing.length === 0) return;
@@ -158,7 +165,9 @@ async function heldOrWarned(
       out.push(blocker('RELEASE_RUNTIME_UNROUTED', { missing, route, held }, 'roster'));
       return;
     }
-    out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held }, 'roster'));
+    out.push(
+      blocker('RELEASE_CRITERIA_UNEARNED', { held, ...(release ? { release } : {}) }, 'roster'),
+    );
     return;
   }
   const route =

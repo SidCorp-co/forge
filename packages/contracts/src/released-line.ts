@@ -126,7 +126,7 @@ export function releaseHint(
 ): string | null {
 	if (!line) return null;
 	if (!line.live)
-		return `${line.why}, and none is recorded yet: record the release first`;
+		return `${line.why}, and none is recorded yet: record the release production serves (POST /api/projects/:id/release-records { issueIds, version, account }), then judge each criterion on it`;
 	const at = where === "issue" ? "on the issue" : "at the requirement";
 	return `${line.why}: judge it on release ${line.live.version}, naming \`{ kind: 'release', version: '${line.live.version}' }\` ${at}`;
 }

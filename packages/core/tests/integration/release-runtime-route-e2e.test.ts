@@ -186,7 +186,12 @@ describe('a row held before the route existed is carried by the next sweep', () 
   });
 });
 
-describe('a project nothing can read is told once', () => {
+// ISS-900: a production that declares no source probe is weighed on its agent's release record, so a
+// verdict judged on a recorded release clears a row: such a project is no longer told nothing can earn
+// one, nor to declare a probe, but to record the release production serves, and how, then judge on it.
+const RECORD_ROUTE = 'record the release production serves (POST /api/projects/:id/release-records';
+
+describe('a project nothing can read for a commit, with no release recorded, is told to record one (ISS-900)', () => {
   /** Production deploying through a provider whose adapter reads no deployment history. */
   async function bindUnreporting(): Promise<void> {
     await seedProduction({
@@ -199,7 +204,7 @@ describe('a project nothing can read is told once', () => {
     });
   }
 
-  it('holds every owing row with the one unrouted reason, and a second sweep writes nothing', async () => {
+  it('holds every owing row on its criteria, naming the release record to make, and a second sweep writes nothing', async () => {
     await bindUnreporting();
     const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     const middle = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
@@ -207,14 +212,12 @@ describe('a project nothing can read is told once', () => {
 
     const first = await sweep();
 
-    const reasons = new Set<string>();
     for (const id of [oldest, middle, newest]) {
       const hold = await holdOf(id);
-      expect(hold?.code).toBe('RELEASE_RUNTIME_UNROUTED');
-      expect(hold?.reason).toContain('epodsystem');
-      reasons.add(String(hold?.reason));
+      expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+      expect(hold?.reason).toContain(RECORD_ROUTE);
+      expect(hold?.reason).not.toContain('declare a runtime probe');
     }
-    expect(reasons.size).toBe(1);
     expect(first.holdsWritten).toBe(3);
     expect((await sweep()).holdsWritten).toBe(0);
     expect(await holdHistory(oldest)).toHaveLength(1);
@@ -230,11 +233,11 @@ describe('a project nothing can read is told once', () => {
     await sweep();
 
     expect(await holdOf(oldest)).toBeNull();
-    expect((await holdOf(next))?.code).toBe('RELEASE_RUNTIME_UNROUTED');
+    expect((await holdOf(next))?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(await holdHistory(next)).toHaveLength(1);
   });
 
-  it('answers one project-level blocker naming what is missing, in place of the per-row one', async () => {
+  it('answers one roster blocker naming each owing issue and the release record, never an unrouted one', async () => {
     await bindUnreporting();
     const later = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
     const earlier = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
@@ -242,17 +245,16 @@ describe('a project nothing can read is told once', () => {
     const readiness = await loadReleaseReadiness(projectId);
 
     const codes = readiness?.blockers.map((b) => b.code) ?? [];
-    expect(codes.filter((c) => c === 'RELEASE_RUNTIME_UNROUTED')).toHaveLength(1);
-    expect(codes).not.toContain('RELEASE_CRITERIA_UNEARNED');
-    const unrouted = readiness?.blockers.find((b) => b.code === 'RELEASE_RUNTIME_UNROUTED');
-    expect(unrouted?.message).toContain('epodsystem');
-    expect(unrouted?.message).not.toContain('Held: 2 issue(s)');
-    expect(unrouted?.message.match(/`ISS-\d+` owes criteria 1, 2/g)).toHaveLength(2);
+    expect(codes).not.toContain('RELEASE_RUNTIME_UNROUTED');
+    expect(codes.filter((c) => c === 'RELEASE_CRITERIA_UNEARNED')).toHaveLength(1);
+    const held = readiness?.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
+    expect(held?.message).toContain(RECORD_ROUTE);
     const [first, second] = await fx.displayIds([earlier, later]);
-    expect(unrouted?.message).toContain(`\`${first}\` owes criteria 1, 2; \`${second}\``);
+    expect(held?.message).toContain(String(first));
+    expect(held?.message).toContain(String(second));
   });
 
-  it('names the route, not a judging run, where only some waiting rows owe a criterion', async () => {
+  it('warns that a judging run still owes the held rows, never that none can earn one', async () => {
     await bindUnreporting();
     const owing = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     await fx.insertIssue();
@@ -261,14 +263,12 @@ describe('a project nothing can read is told once', () => {
 
     const said = readiness?.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')?.message;
     expect(said).toContain(`\`${(await fx.displayIds([owing]))[0]}\` owes criteria 1, 2`);
-    expect(said).toContain('What is missing: DEPLOY_HISTORY_UNSUPPORTED');
-    expect(said).toContain('goes through epodsystem');
-    expect(said).toContain('The way to give it one: declare a runtime probe on the production');
-    expect(said).toContain('no judging run can earn one until the project can be read');
-    expect(said).not.toContain('still owes a judging run');
+    expect(said).toContain('still owes a judging run');
+    expect(said).not.toContain('no judging run can earn one');
+    expect(said).not.toContain('declare a runtime probe');
   });
 
-  it('offers a project bound through a provider that reports nothing only a route it can take', async () => {
+  it('offers a project bound through a provider that reports nothing the release record, never a probe', async () => {
     await bindUnreporting();
     const id = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
 
@@ -276,9 +276,10 @@ describe('a project nothing can read is told once', () => {
     const readiness = await loadReleaseReadiness(projectId);
 
     const hold = String((await holdOf(id))?.reason);
-    const card = readiness?.blockers.find((b) => b.code === 'RELEASE_RUNTIME_UNROUTED')?.message;
+    const card = readiness?.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED')?.message;
     for (const said of [hold, String(card)]) {
-      expect(said).toContain('declare a runtime probe on the production environment');
+      expect(said).toContain(RECORD_ROUTE);
+      expect(said).not.toContain('declare a runtime probe');
       expect(said).not.toMatch(/Coolify/);
     }
   });

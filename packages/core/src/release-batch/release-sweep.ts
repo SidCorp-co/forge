@@ -134,9 +134,9 @@ async function holdAlike(write: Omit<HoldWrite, 'holdFor'>, reason: ReleaseHold)
 
 /**
  * Each held row's criteria hold — or, where nothing can read what the project serves, the one
- * project-level reason, recorded alike (ISS-1346). A project whose production names no commit it
- * serves and holds a release recorded live is weighed on that record instead (ISS-900): a verdict on
- * the live release clears it, so each row is held on its own criteria.
+ * project-level reason, recorded alike (ISS-1346). A project whose production declares no source
+ * probe is weighed on its agent's release record instead (ISS-900): each row is held on its own
+ * criteria, naming the live release to judge on, or, with none recorded, the record to make.
  */
 async function holdOnCriteria(
   write: Omit<HoldWrite, 'holdFor'>,
@@ -144,7 +144,7 @@ async function holdOnCriteria(
 ): Promise<void> {
   const first = heldById.values().next().value;
   const serving = first?.serving;
-  if (serving?.kind !== 'undeclared' || first?.released?.live) {
+  if (serving?.kind !== 'undeclared' || first?.released) {
     const owes = await holdOwer(write.projectId);
     await hold({
       ...write,
