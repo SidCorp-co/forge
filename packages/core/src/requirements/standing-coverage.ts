@@ -19,6 +19,7 @@ import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
 import {
+  askedOnRelease,
   atLiveCommit,
   atRecordedLanding,
   atRelease,
@@ -288,7 +289,7 @@ function withReleaseHint(
   live: LiveBuildHolds | null,
   where: 'issue' | 'requirement',
 ): Resolved | null {
-  const hint = atCommit && !live?.landed ? releaseHint(live?.released, where) : null;
+  const hint = atCommit ? releaseHint(askedOnRelease(live), where) : null;
   if (!r || r.notCounted === null || hint === null) return r;
   return { ...r, notCounted: `${r.notCounted}; ${hint}` };
 }

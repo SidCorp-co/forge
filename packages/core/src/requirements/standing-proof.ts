@@ -7,7 +7,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import { verdictExercised } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
-import { holdsFor, type LiveBuildHolds } from './standing-identity.js';
+import { askedOnRelease, holdsFor, type LiveBuildHolds } from './standing-identity.js';
 
 export interface Turn {
   group: RequirementAttentionGroup;
@@ -48,10 +48,10 @@ const failingKeys = (rows: readonly RequirementCoverage[]) =>
 const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code).join(', ');
 
 /**
- * Where a project's production names no commit it serves and its issues are weighed on that live
- * build rather than at their landings (ISS-900), a verdict counts only on a release its agent recorded:
- * the release a judgement at the requirement counts on, or `none` where no release is recorded, so no
- * judgement can count yet. Null on any other project, where the judge judges on the issues.
+ * Where a project's production names no commit it serves (ISS-900), a verdict on a release its agent
+ * recorded counts: the release a judgement counts on, or `none` where no release is recorded, so no
+ * judgement can count yet; on a promotion project, whose landings a commit counts at, only once one
+ * is recorded (`standing-identity.ts:askedOnRelease`). Null on any other project.
  */
 export type ReleaseAsk = { version: string } | 'none' | null;
 
@@ -77,8 +77,8 @@ function versionsIn(links: readonly Asked[]): string {
 }
 
 export function releaseAskOf(live: LiveBuildHolds | null | undefined): ReleaseAsk {
-  const line = live?.released;
-  if (!line || live?.landed) return null;
+  const line = askedOnRelease(live);
+  if (!line) return null;
   return line.live ? { version: line.live.version } : 'none';
 }
 

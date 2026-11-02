@@ -79,11 +79,18 @@ describe('what the standing asks where a verdict counts only on a release', () =
     );
   });
 
-  it('asks as before where production reads its commit, or issues weigh at their landings', () => {
+  it('asks as before where production reads its commit', () => {
     expect(releaseAskOf(live)).toBeNull();
     expect(releaseAskOf(null)).toBeNull();
-    expect(releaseAskOf({ ...live, released: line('0.76.0'), landed: new Map() })).toBeNull();
     expect(releaseHint(undefined, 'issue')).toBeNull();
+  });
+
+  // a promotion project's issues weigh at their landings, where a release verdict counts too
+  // (`release-batch/landed-weighing.ts`): the ask is the release once one is recorded, else a commit
+  it('asks a promotion project for its live release, or for a commit at the landing before any', () => {
+    const promoted = { ...live, landed: new Map(), promoted: true };
+    expect(releaseAskOf({ ...promoted, released: line('0.76.0') })).toEqual({ version: '0.76.0' });
+    expect(releaseAskOf({ ...promoted, released: line(null) })).toBeNull();
   });
 });
 

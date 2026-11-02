@@ -89,6 +89,18 @@ export function holdsFor(live: LiveBuildHolds | null, issueId: string): LiveBuil
   return live?.foreign?.has(key) ? (live.foreign.get(key) ?? null) : live;
 }
 
+/**
+ * The release record a judgement is asked on (ISS-900), one rule for every ask and hint: the project's
+ * where its production names no commit it serves, since a verdict on its live release counts there,
+ * at a promotion's landing too (`release-batch/landed-weighing.ts`); on a promotion project with no
+ * release recorded yet, null, since a commit judged at the landing counts there and a release cannot.
+ */
+export function askedOnRelease(live: LiveBuildHolds | null | undefined): ReleasedLine | null {
+  const line = live?.released;
+  if (!line) return null;
+  return line.live || !live?.landed ? line : null;
+}
+
 /** A landing Forge recorded: the issue whose merge mark names it, its commit, time and target branch. */
 export interface RecordedLanding {
   issueKey: string;

@@ -21,6 +21,7 @@
  * @direct-test-of packages/core/src/requirements/standing-identity.ts
  * @direct-test-of packages/core/src/requirements/standing-facts.ts
  * @direct-test-of packages/core/src/requirements/standing-proof.ts
+ * @direct-test-of packages/core/src/requirements/standing-coverage.ts
  * @direct-test-of packages/core/src/messaging/verdict-identity.ts
  * @direct-test-of packages/core/src/issues/criteria/event-verdicts.ts
  * @direct-test-of packages/core/src/issues/criteria-standing.ts
@@ -349,6 +350,24 @@ describe('a promotion project weighs a criterion judged on a release on its rele
     const w = (await weighed(issue)).get(1);
     expect(w?.earned).toBe(false);
     expect(w?.reason).toContain('judge it again on release 0.75.9');
+    expect(reads.n).toBe(0);
+  });
+
+  it("asks the requirement's judge for a judgement on the live release, not a commit, where it counts at the landing", async () => {
+    await agenfold();
+    const { req, issue } = await shippedAt076();
+    await agenfold(false, true);
+    // passes at a commit that does not hold the landing: the landing weighs them, and none counts
+    await judgedAll(issue, C1);
+    const { standing } = await coverageOf(req);
+    expect(standing.delivery.criteriaCoverage).toMatchObject({ passing: 0 });
+    expect(standing.coverage[0]?.issues[0]?.notCounted).toContain(
+      "{ kind: 'release', version: '0.76.0' }` on the issue",
+    );
+    expect(standing.waitingOn?.says.act).toEqual({
+      key: 'standing.act.judgeOnReleaseOn',
+      vars: { codes: 'BC-1, BC-2, BC-3', keys: 'ISS-1', version: '0.76.0' },
+    });
     expect(reads.n).toBe(0);
   });
 });
