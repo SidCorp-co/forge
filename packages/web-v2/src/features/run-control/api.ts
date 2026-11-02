@@ -17,4 +17,12 @@ export const runControlApi = {
   /** `POST /api/pipeline-runs/:id/cancel`. */
   cancel: (id: string) =>
     apiClient<CancelRunResult>(`/pipeline-runs/${id}/cancel`, { method: "POST" }),
+
+  /** `POST /api/projects/:projectId/release-batches/:runId/abort`: a release run ends by its abort,
+   *  which records who ended it and why; the generic cancel refuses it (ISS-761). */
+  abortRelease: (args: { projectId: string; runId: string; reason: string }) =>
+    apiClient<unknown>(`/projects/${args.projectId}/release-batches/${args.runId}/abort`, {
+      method: "POST",
+      body: JSON.stringify({ reason: args.reason }),
+    }),
 };

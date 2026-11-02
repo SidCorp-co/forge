@@ -51,6 +51,7 @@ export { providePipelinePorts } from './ports.js';
 export { pipelineRunProjectId, stepDurationsForProject } from './read.js';
 export { runReconcilerOnce } from './reconciler.js';
 export { verifyRecovery } from './recovery-verifier.js';
+export { refuseCancellingRelease } from './release-run-cancel.js';
 export {
   type ReleaseRunRow,
   releaseRunsByVersion,

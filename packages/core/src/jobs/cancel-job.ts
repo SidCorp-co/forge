@@ -6,6 +6,7 @@ import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
+import { refuseCancellingRelease } from '../pipeline/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
 import { pushJobCancel, pushJobChanged } from './job-push.js';
@@ -41,6 +42,8 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
     throw refuseJob('NOT_CANCELLABLE', 'job is not cancellable');
   }
 
+  // a release's job is ended by the release's abort, which records who and why (ISS-761)
+  await refuseCancellingRelease(job.pipelineRunId, 'a job cancel');
   const previousStatus = job.status;
 
   if (NO_DEVICE_STATUSES.has(job.status)) {

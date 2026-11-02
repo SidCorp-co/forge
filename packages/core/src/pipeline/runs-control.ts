@@ -19,6 +19,7 @@ import { RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { voidCancelledRunQuestions } from './ports.js';
 import { refusePipeline } from './refuse.js';
+import { refuseCancellingRelease } from './release-run-cancel.js';
 import { pauseRun, resumeRun } from './run-pause.js';
 import { closeRunsInTx, type JobRow, requestKillsForCascade } from './runs-cascade.js';
 
@@ -175,6 +176,7 @@ export async function cancelPipelineRun(
   runId: string,
   opts: CancelPipelineRunOptions,
 ): Promise<CancelPipelineRunResult> {
+  await refuseCancellingRelease(runId, 'a run cancel');
   const cancelNow = new Date();
 
   const result = await db.transaction(async (tx) => {

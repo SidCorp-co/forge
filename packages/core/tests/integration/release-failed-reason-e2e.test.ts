@@ -11,6 +11,10 @@
  * @direct-test-of packages/core/src/release-batch/release-repair.ts
  * @direct-test-of packages/core/src/release-batch/release-cuts.ts
  * @direct-test-of packages/core/src/release-batch/recorded.ts
+ * @direct-test-of packages/core/src/pipeline/release-run-cancel.ts
+ * @direct-test-of packages/core/src/pipeline/runs-control.ts
+ * @direct-test-of packages/core/src/jobs/cancel-job.ts
+ * @direct-test-of packages/core/src/agent-sessions/lifecycle-routes.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -20,6 +24,7 @@ import { closeRunIfOneShot } from '../../src/pipeline/index.js';
 import { api, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
+  createTestDevice,
   createTestProject,
   createTestUser,
   truncateAll,
@@ -218,6 +223,41 @@ describe('a release batch run closed without a ship or an abort', () => {
     expect(state).toBe('failed');
     expect(why).not.toBeNull();
     expect(own.failure).toMatchObject({ code: 'release_cancelled_without_abort' });
+  });
+
+  /** Each generic cancel a person can reach a release run by: refused by name, the run left open. */
+  it('refuses the run, session and job cancels of a live release by name, naming its abort', async () => {
+    const { runId } = await cut();
+    const [job] = (await db.execute(
+      sql`SELECT id FROM jobs WHERE pipeline_run_id = ${runId}`,
+    )) as unknown as Array<{ id: string }>;
+    const device = await createTestDevice(ownerId);
+    const [session] = (await db.execute(sql`
+      INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, kind, status, started_at, created_at)
+      VALUES (${projectId}, ${device}, ${runId}, 'run_session', 'running', now(), now())
+      RETURNING id
+    `)) as unknown as Array<{ id: string }>;
+
+    const cancels = [
+      ['run', await api(token, 'POST', `/api/pipeline-runs/${runId}/cancel`, {})],
+      ['job', await api(token, 'POST', `/api/jobs/${job?.id}/cancel`, {})],
+      ['session', await api(token, 'POST', `/api/agent-sessions/${session?.id}/cancel`)],
+    ] as const;
+    for (const [door, res] of cancels) {
+      const [refusal] = refusalsOf(res.body);
+      expect(refusal?.code, `${door} cancel: ${JSON.stringify(res.body)}`).toBe(
+        'RELEASE_RUN_CANCEL_USE_ABORT',
+      );
+      expect(refusal?.detail).toContain(
+        `/api/projects/${projectId}/release-batches/${runId}/abort`,
+      );
+      expect(refusal?.detail).toContain('"reason"');
+    }
+    expect(await runStatus(runId), 'no generic cancel ended the release').toBe('running');
+    const [row] = (await db.execute(
+      sql`SELECT metadata -> 'failure' AS failure FROM pipeline_runs WHERE id = ${runId}`,
+    )) as unknown as Array<{ failure: unknown }>;
+    expect(row?.failure, 'a refused cancel records no release_cancelled_without_abort').toBeNull();
   });
 
   it('aborted by a person keeps that person and the reason they gave, and no failure', async () => {

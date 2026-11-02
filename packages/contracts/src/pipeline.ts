@@ -7,6 +7,8 @@ export const PIPELINE_REFUSAL_CODES = [
 	"PROJECT_ARCHIVED",
 	"NOT_AT_ENTRY_STATUS",
 	"PIPELINE_RUN_TERMINAL",
+	/** A generic cancel (run, session or job) of a release run that has not shipped: its abort ends it, with who and why (ISS-761). */
+	"RELEASE_RUN_CANCEL_USE_ABORT",
 	"DEPLOY_ENVIRONMENT_LOCKED",
 	"ACTIVE_JOB_CONFLICT",
 	"ARGUMENT_REQUIRED",

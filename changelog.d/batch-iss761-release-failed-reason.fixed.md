@@ -1,1 +1,1 @@
-**A failed release now says why.** Each attempt shows the failure its close recorded; an unshipped release never ends completed or cancelled with nothing on record; an admin repairs a failed release that shipped by a recorded act.
+**A failed release now says why.** Each attempt shows the failure its close recorded; no release ends with nothing on record; a generic cancel of a release is refused for its abort; an admin repairs a failed release that shipped.

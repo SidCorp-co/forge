@@ -49,3 +49,17 @@ export function useCancelRun(alsoInvalidate: readonly QueryKey[] = []) {
 export function parkRefusalText(r: CancelRunResult | undefined): string | null {
   return r?.parkRefused ? `${r.parkRefused.code}: ${r.parkRefused.detail}` : null;
 }
+
+/** A release run's abort with the reason a person gave: the release's own end, never the generic cancel (ISS-761). */
+export function useAbortRelease(alsoInvalidate: readonly QueryKey[] = []) {
+  const t = useCopy();
+  return useToastWrite(
+    (args: { projectId: string; runId: string; reason: string }) => runControlApi.abortRelease(args),
+    {
+      touches: (args) => [["pipeline-runs"], ["pipeline-run", args.runId], ["releases"], ...alsoInvalidate],
+      said: () => t("runs.releaseAborted"),
+      failed: t("pipeline.control.failed"),
+      describe: formatRefusal,
+    },
+  );
+}

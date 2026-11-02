@@ -4,6 +4,7 @@
 // only lay those fields out. The page says each fact once — the header's badge alone says the state —
 // and folds core's own sentences, codes, ids and the lease's clocks behind the developer view
 // (REQ-43 BC-5, BC-7); the peek reads as a person's view.
+import { useState } from "react";
 import { RUN_FINAL_STATES, type RunState } from "@forge/contracts/run-standing";
 import { Link } from "@/lib/navigation/router";
 import {
@@ -12,6 +13,7 @@ import {
   Fact,
   FactsEmpty,
   FactsGroup,
+  Input,
   type ListRowView,
   PeekHead,
   PeekPanel,
@@ -29,7 +31,7 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import { formatAge, formatDateTime, formatWhen } from "@/lib/i18n/format";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said, saidOrNull, saidView } from "@/lib/i18n/said";
-import { parkRefusalText, useCancelRun } from "@/features/run-control";
+import { parkRefusalText, useAbortRelease, useCancelRun } from "@/features/run-control";
 import { RUNS_STANDING_ROOT } from "../hooks";
 import { masterHref } from "@/lib/routes/agents";
 import type { RunStanding } from "../types";
@@ -270,6 +272,41 @@ export function RunProperties({ r, slug, developer = false, onPage = false }: { 
 
 const RUNS_READS = [[RUNS_STANDING_ROOT]] as const;
 
+/** A live release run ends by its abort, with the reason the person gives; the generic cancel refuses it (ISS-761). */
+function AbortRelease({ r }: { r: RunStanding }) {
+  const t = useCopy();
+  const abort = useAbortRelease(RUNS_READS);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  if (!open) {
+    return (
+      <Button type="button" size="sm" onClick={() => setOpen(true)} data-testid="run-abort-release">
+        {t("runs.abortRelease")}
+      </Button>
+    );
+  }
+  const why = reason.trim();
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Input aria-label={t("runs.abortReason")} placeholder={t("runs.abortReason")} value={reason} onChange={(e) => setReason(e.target.value)} data-testid="run-abort-reason" />
+      <Button
+        type="button"
+        size="sm"
+        disabled={!why || abort.isPending}
+        onClick={() => abort.mutate({ projectId: r.projectId, runId: r.id, reason: why })}
+        data-testid="run-abort-confirm"
+      >
+        {t("runs.abortRelease")}
+      </Button>
+      {abort.isError ? (
+        <span className="text-13 text-danger" data-testid="run-abort-refusal">
+          {formatRefusal(abort.error)}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /** The one primary act a run offers, and cancel beside it for a writer while it is live. */
 export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string; canWrite: boolean }) {
   const t = useCopy();
@@ -288,7 +325,8 @@ export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string
           </Button>
         </Link>
       ) : null}
-      {live && canWrite ? (
+      {live && canWrite && r.release?.version ? <AbortRelease r={r} /> : null}
+      {live && canWrite && !r.release?.version ? (
         <Button type="button" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(r.id)} data-testid="run-cancel">
           {t("runs.cancelRun")}
         </Button>

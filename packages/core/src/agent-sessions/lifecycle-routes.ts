@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { closeRunIfOneShot } from '../pipeline/index.js';
+import { closeRunIfOneShot, refuseCancellingRelease } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import { abortBodySchema } from './lifecycle-schemas.js';
 import { pushSession } from './push.js';
@@ -61,6 +61,8 @@ agentSessionLifecycleRoutes.post('/:id/cancel', zValidator('param', idParamSchem
     return c.json(await withTranscript(session));
   }
 
+  // a release's session is ended by the release's abort, which records who and why (ISS-761)
+  await refuseCancellingRelease(session.pipelineRunId, 'a session cancel');
   const updated = await cancelSession(id, restActor(c));
   if (!updated) {
     // CAS lost — return the current row so the client can re-render.
