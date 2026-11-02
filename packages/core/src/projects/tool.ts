@@ -19,7 +19,13 @@ import {
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
 import { findPersonalOrgId } from '../orgs/index.js';
-import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
+import {
+  actorFor,
+  orgResource,
+  permissionless,
+  requireHeld,
+  requireOrgCan,
+} from '../permissions/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';
 import { createProjectSchema } from './request-schemas.js';
@@ -114,6 +120,13 @@ export const forgeProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
         account:
           'a new project is created in an org, inside none of the projects a token is fenced to',
       },
+    },
+  },
+  // list reads only the projects the caller sees; get and create stay on the amnesty: get's missing
+  // projectId is refused by its own argument rule, and create's org depends on the input
+  permission: {
+    byAction: {
+      list: permissionless('self', 'the projects the caller can see, inside its token fence'),
     },
   },
   // a project's record carries what people wrote, so a credential pasted into it never leaves

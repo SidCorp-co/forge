@@ -6,7 +6,7 @@ import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from 
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { onResolved, requireDeclaredOn } from '../permissions/index.js';
 import { loadAttachment, readAttachmentBytes } from './attachment-lookup.js';
 import { createDownloadTicket } from './download-ticket-service.js';
 
@@ -63,6 +63,8 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'onto disk or hand to a service that must fetch the file itself. Treat it as a secret: do not log it ' +
     'or paste it into a comment.',
   inputSchema: zodToMcpSchema(inputSchema),
+  // the attachment names its project, which the handler finds before it checks
+  permission: onResolved('project.read', "the attachment's project, found from the attachment"),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const { principal } = ctx;
@@ -70,7 +72,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { target, attachmentId } = input.data;
     const att = await loadAttachment(target, attachmentId);
     if (!att) throw notFound(`attachment ${attachmentId} not found on that ${target}`);
-    await requireCan(actorFor(principal.userId), 'project.read', projectResource(att.projectId));
+    await requireDeclaredOn(att.projectId, principal.userId, 'project.read');
     if (target === 'feedback') {
       // a feedback file is reporter data: a model reads it on a project that redacts only where a
       // person redacted it, and never at no_egress (REQ-66 BC-7), as the item's own route answers

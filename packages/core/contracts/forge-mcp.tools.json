@@ -860,7 +860,12 @@
         ],
         "type": "object"
       },
-      "name": "forge_projects"
+      "name": "forge_projects",
+      "x-forge-permission": {
+        "list": {
+          "self": "the projects the caller can see, inside its token fence"
+        }
+      }
     },
     {
       "description": "Questions waiting on a person, the person's answer to one, and a person's own question on an issue.\n- action=list { projectId, status?: open | answered | void | expired | needs_info (open by default), issue?, limit?, cursor? }: what is owed an answer, newest first, each with its prompt, its options (locked where you may not choose one) and the recommended one. `issue` narrows to one issue's questions. Read `hasMore` and pass `nextCursor` back as `cursor` for the next page.\n- action=get { projectId, questionId }: one question with every round, and `progress`: the issue it parks, whether work on it is running, and when it is likely done once answered.\n- action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: { round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer). Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, its recommendation or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in, and is refused PERMISSION_FORBIDDEN naming the permission an option takes that they do not hold. A question blocked on another agent is that agent's to answer: QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered. QUESTION_ROUND_STALE: get it again and show them the new round.\n- action=ask { projectId, issue, body, parentId? }: raise your own question on an issue, as a question comment the agent working it owes a reply. To question a requirement or report a problem, use Feedback or the requirement instead: an issue is delivery work, and a question there is about that work.",
@@ -2028,7 +2033,15 @@
         ],
         "type": "object"
       },
-      "name": "forge_uploads"
+      "name": "forge_uploads",
+      "x-forge-permission": {
+        "fetch": {
+          "on": {
+            "resolved": "the attachment's project, found from the attachment"
+          },
+          "permission": "project.read"
+        }
+      }
     },
     {
       "description": "A project's own feedback (FB-n) — what people report or wish about that project's product — for a BA: read it, file it, ask its reporter, and tell them how the work it became is going. Feedback about Forge itself is forge_feedback. Every list row and get answer carries `progress` for the work the item was routed to (its issues, or the requirement it became; a duplicate reads its root’s): `running` (a run works on it right now), `runs` (unfinished runs: issue, state, step), `waitingOn` (who owes what: a triage, a release act, an answer), `work` (issues total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence}, or {estimate:false, done, why} saying why no date can be given (not triaged yet, declined, answered, routed to a revision, no issue yet). `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {phase?: [new|triaged|planned|resolved|reopened|verified|declined], q?, requirement? (REQ-n)}: the items with phase, route, whom each waits on, and progress. get {feedback}: one in full — body, where seen, route and carriers, decisions, the open clarification and its answer, progress. NOT_FOUND when the project holds no such key. progress {feedback}: the progress block alone. similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar. submit { kind: bug | change_request | question | idea | contract_change, title, body?, severity?: low | medium | high | critical, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | mockup | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), writtenLang?: en | vi }: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with forge_requirements). attach {feedback, name, mime, contentBase64, redacted?, label?: approved_design}: attach a file to an existing item, as anyone who may comment on it may; label approved_design marks a mockup a person approved. The bytes are base64; the type and size limits are an issue attachment's. Answers the new attachmentId; get lists every attachment, and forge_uploads fetch {data:{target:\"feedback\", attachmentId}} reads one. clarify {feedback, prompt, needed, recommended}: ask the reporter one question; `needed` says what would settle it, `recommended` is the answer you recommend, which they send by one click. Refused while one is open on the item or to the same reporter, or when the item is past triage. Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
@@ -2250,5 +2263,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "3.10.3"
+  "version": "3.10.4"
 }
