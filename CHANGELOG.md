@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.440] - 2026-11-02
+
+Agents get goals instead of scripted rituals; release-judged requirement verdicts
+
+### Changed
+
+- **Agents get goals instead of step-by-step rituals.** Run, master, steward and channel prompts drop rules like zero narration and why-not reports, keeping what Forge enforces. A connected MCP client can now file an issue.
+
+### Fixed
+
+- **A requirement judged on a release version now counts.** Where production reports only a version, a criterion judged at the requirement on a recorded release counts, and the standing asks for that judgement once instead of again and again.
+
 ## [0.4.0-dev.439] - 2026-11-02
 
 Releases claim every landing they ship; leftover holds name what to record
