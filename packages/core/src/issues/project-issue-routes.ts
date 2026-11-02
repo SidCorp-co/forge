@@ -2,13 +2,12 @@
 
 import { Hono } from 'hono';
 import type { IssueStatus } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { carriageOfIssue } from './carriage.js';
 import { contractWaitHoldOf } from './contract-waits.js';
@@ -82,14 +81,13 @@ issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 issueProjectRoutes.post(
   '/:id/issues',
   zValidator('param', idParamSchema),
+  // forge_issues create declares the same permission on its projectId (product-door/issues-tool.ts)
+  requiresOnParam('project.write', 'id'),
   zValidator('json', issueCreateSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const input = c.req.valid('json');
     const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write');
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
 
@@ -131,6 +129,7 @@ issueProjectRoutes.post(
 issueProjectRoutes.get(
   '/:id/issues',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', issueFiltersSchema, (r) => {
     if (!r.success) {
       refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);
@@ -139,10 +138,6 @@ issueProjectRoutes.get(
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const q = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     const listed = await listIssues(projectId, q, q);
     if (!listed.ok) {

@@ -23,7 +23,15 @@ export function readerOf(ctx: McpContext): EgressReader {
   return { agency: principalAgency(ctx.principal), ...MCP_DOOR };
 }
 
-/** The caller's access to `projectId`, refused without project.read. */
+/**
+ * The caller's access to `projectId`, for an action that declares the permission it needs (the
+ * door checked it before the handler ran); this only reads it, for what the answer shows.
+ */
+export function projectAccess(ctx: McpContext, projectId: string): Promise<ProjectAccess> {
+  return loadProjectAccess(projectId, ctx.principal.userId);
+}
+
+/** The caller's access to `projectId`, refused without project.read: for an action declaring none yet. */
 export async function readAccess(ctx: McpContext, projectId: string): Promise<ProjectAccess> {
   const access = await loadProjectAccess(projectId, ctx.principal.userId);
   requireHeld(access, 'project.read');

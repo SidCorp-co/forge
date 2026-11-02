@@ -764,7 +764,27 @@
         ],
         "type": "object"
       },
-      "name": "forge_issues"
+      "name": "forge_issues",
+      "x-forge-permission": {
+        "create": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "get": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "list": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        }
+      }
     },
     {
       "description": "The projects you can read, one in full, and a new one, as their REST doors answer them.\n- list { archived? }: every project you can read, each with its id, slug, name and your role. Start here to find the project you work in.\n- get { projectId }: one project with your role, its members, labels and base branch.\n- create { slug, name, orgId? }: a new project in your personal org, or in the org named where you hold a role in it, as POST /api/projects creates one; a token fenced to projects is refused, since a new project is in none of them.",
@@ -2202,5 +2222,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "3.10.1"
+  "version": "3.10.2"
 }

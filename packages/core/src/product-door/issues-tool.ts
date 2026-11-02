@@ -14,17 +14,16 @@ import {
   listIssues,
   resolveIssueRouteRef,
 } from '../issues/index.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { egressAs, egressOr } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { argumentRefusal, need, readingArgument } from '../lib/tool-args.js';
-import { requireHeld } from '../permissions/index.js';
+import { onArg } from '../permissions/index.js';
 import { readQuestionsForIssue } from '../questions/index.js';
 import { issueRequirementOf } from '../requirements/index.js';
 import { parseArgs } from './args.js';
-import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
+import { actorOf, forecastViewerOf, projectAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
 
@@ -70,7 +69,7 @@ const DESCRIPTION = `Delivery work as a person following it reads it: each issue
 - action=create { projectId, title, description?, priority?, category?, relations?, admit? }: files an issue as you, the way any other door does: it needs project.write, is born at \`draft\` unless \`admit: true\` asks \`open\` (the project's admission gate decides, and \`admission\` says where it stands), and answers its key. Judge where the record belongs: delivery work someone will build is an issue; a problem or idea a person reported is often Feedback (project_feedback), and new or changed behaviour a Requirement (forge_requirements). Ask the person when it is unclear.`;
 
 async function list(ctx: McpContext, i: Input) {
-  const access = await readAccess(ctx, i.projectId);
+  const access = await projectAccess(ctx, i.projectId);
   const listed = await listIssues(
     i.projectId,
     { status: i.status, statusNot: i.statusNot, search: i.search },
@@ -110,7 +109,7 @@ async function list(ctx: McpContext, i: Input) {
 
 async function get(ctx: McpContext, i: Input) {
   const { issue: ref } = need(i, 'get', 'issue');
-  const access = await readAccess(ctx, i.projectId);
+  const access = await projectAccess(ctx, i.projectId);
   const row = await readingArgument('/issue', () =>
     resolveIssueRouteRef(ref, i.projectId, ctx.principal.userId),
   );
@@ -167,8 +166,6 @@ async function requirementShown(
 
 async function create(ctx: McpContext, i: Input) {
   const { title } = need(i, 'create', 'title');
-  const access = await loadProjectAccess(i.projectId, ctx.principal.userId);
-  requireHeld(access, 'project.write');
   const actor = actorOf(ctx);
   const result = await createIssue(
     {
@@ -213,6 +210,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       list: 'projects:read',
       get: 'issues:read',
       create: 'issues:write',
+    },
+  },
+  // the REST twins declare the same on :id (issues/project-issue-routes.ts)
+  permission: {
+    byAction: {
+      list: onArg('project.read'),
+      get: onArg('project.read'),
+      create: onArg('project.write'),
     },
   },
   handler: async (args) => {

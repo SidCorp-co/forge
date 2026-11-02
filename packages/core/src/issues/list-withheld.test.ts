@@ -24,11 +24,8 @@ vi.mock('../middleware/auth.js', async (importOriginal) => {
 });
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
-  loadProjectAccess: async (projectId: string) => ({ projectId, role: 'owner', grants: [] }),
-}));
-vi.mock('../permissions/index.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../permissions/index.js')>()),
-  requireHeld: () => undefined,
+  // the route's declared project.read is checked before its handler, against a viewer of the project
+  loadProjectAccess: async (projectId: string) => ({ projectId, role: 'viewer', grants: [] }),
 }));
 vi.mock('../lib/data-egress.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/data-egress.js')>()),
