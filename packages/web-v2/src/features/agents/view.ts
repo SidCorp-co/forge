@@ -4,7 +4,7 @@ import { enumLabel } from "@/design/vocabulary";
 import { formatCountdown, formatRelative } from "@/lib/i18n/format";
 import { copyOr, productCopy } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
-import type { RunStanding } from "./types";
+import type { MasterClosedPass, RunStanding } from "./types";
 
 export const GROUP_MODES = ["attention", "lane", "box"] as const;
 export type GroupMode = (typeof GROUP_MODES)[number];
@@ -105,3 +105,9 @@ export function runGroups(rows: readonly RunStanding[], mode: GroupMode, languag
   return RUN_GROUPS.map((g) => ({ id: g, ...attentionGroupText(g, language), tone: RUN_GROUP_LABELS[g].tone, collapsed: RUN_GROUP_LABELS[g].collapsed, rows: rows.filter((r) => r.attentionGroup === g) }));
 }
 
+/** Since when the account refused, and how many passes, said once the master ran again. */
+export function recoveryText(r: NonNullable<MasterClosedPass["recovers"]>, language: string): string {
+  const t = productCopy(language);
+  const passes = t(r.refusedPasses === 1 ? "agents.master.refusedPassOne" : "agents.master.refusedPassMany", { n: r.refusedPasses });
+  return t("agents.master.recovery", { passes, since: formatRelative(r.refusedSince, language) });
+}

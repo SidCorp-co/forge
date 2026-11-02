@@ -38,7 +38,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "workflows-list": { budget: 60, amnesty: waits(71) },
   "workflow-design": { budget: 90 },
   "agents-runs": { budget: 110 },
-  "agents-master": { budget: 90, amnesty: waits(159) },
+  "agents-master": { budget: 90 },
   "run-detail": { budget: 70 },
   "session-detail": { budget: 50 },
   automation: { budget: 60 },
