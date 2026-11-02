@@ -127,6 +127,10 @@ describe('one declaration, enforced the same at both doors before the handler', 
     await expect(runDeclaredTool(tool([], WRITE), { action: 'write' }, 'u1')).rejects.toMatchObject(
       { status: 400 },
     );
+    await expect(
+      runDeclaredTool(tool([], WRITE), { action: 'write', projectId: "x' or 1=1" }, 'u1'),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(access.seen).toEqual([]);
   });
 
   it("holds a resolved declaration for the handler's requireDeclared, at either door", async () => {

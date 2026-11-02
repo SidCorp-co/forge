@@ -41,6 +41,8 @@ export {
   toolPermissionFor,
 } from '../middleware/declared-permission.js';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const isOrg = (p: ProjectPermission | OrgPermission): p is OrgPermission =>
   (ORG_PERMISSIONS as readonly string[]).includes(p);
 
@@ -72,10 +74,15 @@ export async function enforceDeclared<T>(
       'param' in declared.on
         ? `path parameter :${declared.on.param}`
         : `argument ${declared.on.arg}`;
+    const what = isOrg(declared.permission) ? 'organization' : 'project';
     if (typeof id !== 'string' || id === '') {
       throw badRequest(
-        `${call.act} needs ${declared.permission} on the ${isOrg(declared.permission) ? 'organization' : 'project'} its ${where} names, and none was sent`,
+        `${call.act} needs ${declared.permission} on the ${what} its ${where} names, and none was sent`,
       );
+    }
+    // a call argument reaches here before the tool parses it; a route's parameter after its validator
+    if ('arg' in declared.on && !UUID.test(id)) {
+      throw badRequest(`${call.act}: ${declared.on.arg} names the ${what} by its uuid`);
     }
     if (isOrg(declared.permission)) {
       requireOrgHeld(id, await loadOrgRole(id, call.userId), declared.permission);
