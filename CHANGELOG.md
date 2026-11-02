@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.426] - 2026-11-02
+
+Users' chat rooms take no internal posts; owner questions go only to the owner
+
+### Fixed
+
+- **A chat room the product's users read no longer gets a project's questions or internal codes.** A master's post goes to the top level only of a room the team reads, and into a users' room only into the thread of the person who asked. The channel agent asks the owner only in the room the binding names as `agent.ownerRoom`, and it no longer relays a project's or a master's question in any other group. Any post into a users' room that holds an issue key, an MR or PR number, an environment variable name, a commit sha or a credential word is refused by name, and nothing is posted. Order numbers and PO codes still go through.
+
 ## [0.4.0-dev.425] - 2026-11-02
 
 Channel agents read production through declared reads; releases close on the agent's record
