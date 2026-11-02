@@ -14,7 +14,7 @@ import { jobs, personalAccessTokens, runners } from '../db/schema.js';
 import { finalizeJobDone } from '../jobs/index.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
 import { stewardAccountOf } from './account.js';
 import { mintStewardCredential } from './credential.js';
@@ -186,7 +186,7 @@ export async function finishStewardJob(input: {
   refused: readonly string[];
   broken?: readonly string[];
 }): Promise<'done' | 'failed'> {
-  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
+  await requireDeclaredOn(input.projectId, input.userId, 'project.read');
   const stewardId = await stewardAccountOf(input.projectId);
   if (input.userId !== stewardId) {
     throw refuse(

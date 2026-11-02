@@ -8,6 +8,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { undoAct } from './acts-store.js';
 import { askStewardDecision } from './decision-ask.js';
 import { finishStewardJob } from './job.js';
@@ -88,7 +89,12 @@ const actParam = zValidator(
   invalid('invalid path: a project uuid and a steward act uuid'),
 );
 
-stewardRoutes.get('/:id/steward-runs', projectParam, runsQuery, async (c) =>
+// a run's decision and its done are the steward account's own acts: the door checks the project read
+// every caller needs, and each act then refuses anyone but the project's steward by name
+const reads = requiresOnParam('project.read', 'id');
+const writes = requiresOnParam('project.write', 'id');
+
+stewardRoutes.get('/:id/steward-runs', projectParam, reads, runsQuery, async (c) =>
   c.json(
     await readStewardRuns({
       projectId: c.req.valid('param').id,
@@ -98,7 +104,7 @@ stewardRoutes.get('/:id/steward-runs', projectParam, runsQuery, async (c) =>
   ),
 );
 
-stewardRoutes.get('/:id/steward-acts', projectParam, runsQuery, async (c) =>
+stewardRoutes.get('/:id/steward-acts', projectParam, reads, runsQuery, async (c) =>
   c.json(
     await readStewardActs({
       projectId: c.req.valid('param').id,
@@ -108,11 +114,11 @@ stewardRoutes.get('/:id/steward-acts', projectParam, runsQuery, async (c) =>
   ),
 );
 
-stewardRoutes.get('/:id/steward-budget', projectParam, noQuery, async (c) =>
+stewardRoutes.get('/:id/steward-budget', projectParam, reads, noQuery, async (c) =>
   c.json(await readStewardBudget({ projectId: c.req.valid('param').id, userId: c.get('userId') })),
 );
 
-stewardRoutes.post('/:id/steward-acts/:actId/undo', actParam, async (c) => {
+stewardRoutes.post('/:id/steward-acts/:actId/undo', actParam, writes, async (c) => {
   const { id, actId } = c.req.valid('param');
   const outcome = await undoAct({
     projectId: id,
@@ -129,19 +135,25 @@ stewardRoutes.post('/:id/steward-acts/:actId/undo', actParam, async (c) => {
 });
 
 // the one decision question a steward run asks about a stuck item (REQ-48 BC-5)
-stewardRoutes.post('/:id/steward-runs/:runId/decisions', runParam, decisionBody, async (c) => {
-  const { id, runId } = c.req.valid('param');
-  const asked = await askStewardDecision({
-    projectId: id,
-    runId,
-    userId: c.get('userId'),
-    ...c.req.valid('json'),
-  });
-  return c.json(asked, 201);
-});
+stewardRoutes.post(
+  '/:id/steward-runs/:runId/decisions',
+  runParam,
+  reads,
+  decisionBody,
+  async (c) => {
+    const { id, runId } = c.req.valid('param');
+    const asked = await askStewardDecision({
+      projectId: id,
+      runId,
+      userId: c.get('userId'),
+      ...c.req.valid('json'),
+    });
+    return c.json(asked, 201);
+  },
+);
 
 // a steward job's last act: its acts are over, and these writes were refused (REQ-48 BC-1)
-stewardRoutes.post('/:id/steward-runs/:runId/done', runParam, doneBody, async (c) => {
+stewardRoutes.post('/:id/steward-runs/:runId/done', runParam, reads, doneBody, async (c) => {
   const { id, runId } = c.req.valid('param');
   const state = await finishStewardJob({
     projectId: id,

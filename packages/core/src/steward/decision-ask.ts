@@ -17,7 +17,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { refuser } from '../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { askQuestion } from '../questions/index.js';
 import { heldStewardOf } from './account.js';
 import { decisionSubjectOf } from './decision-subject-of.js';
@@ -104,7 +104,7 @@ async function checkMerges(input: DecisionAsk, about: { kind: string; id: string
 
 /** Ask one decision question about `about`; the question's id and the item it stands on or names. */
 export async function askStewardDecision(input: DecisionAsk) {
-  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
+  await requireDeclaredOn(input.projectId, input.userId, 'project.read');
   if (input.userId !== (await heldStewardOf(input.projectId))) {
     throw refuse(
       'STEWARD_DECISION_FORBIDDEN',

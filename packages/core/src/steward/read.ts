@@ -7,7 +7,7 @@ import type {
   StewardBudgetView,
   StewardRunsResponse,
 } from '@forge/contracts/steward-runtime';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { actsOfRuns, actsOfSubject } from './acts-store.js';
 import { budgetDayOf } from './policy.js';
 import { type RunRow, runsOfSubject } from './runs-store.js';
@@ -39,7 +39,7 @@ export async function readStewardRuns(args: {
   userId: string;
   subjectKey: string;
 }): Promise<StewardRunsResponse> {
-  await requireCan(actorFor(args.userId), 'project.read', projectResource(args.projectId));
+  await requireDeclaredOn(args.projectId, args.userId, 'project.read');
   const runs = await runsOfSubject(args.projectId, args.subjectKey);
   const acts = await actsOfRuns(runs.map((r) => r.id));
   return { runs: runs.map((r) => runViewOf(r, acts.get(r.id) ?? [])) };
@@ -51,7 +51,7 @@ export async function readStewardActs(args: {
   userId: string;
   subjectKey: string;
 }): Promise<StewardActsResponse> {
-  await requireCan(actorFor(args.userId), 'project.read', projectResource(args.projectId));
+  await requireDeclaredOn(args.projectId, args.userId, 'project.read');
   return { acts: await actsOfSubject(args.projectId, args.subjectKey) };
 }
 
@@ -61,6 +61,6 @@ export async function readStewardBudget(args: {
   userId: string;
   now?: Date;
 }): Promise<StewardBudgetView> {
-  await requireCan(actorFor(args.userId), 'project.read', projectResource(args.projectId));
+  await requireDeclaredOn(args.projectId, args.userId, 'project.read');
   return budgetDayOf(args.projectId, args.now ?? new Date());
 }

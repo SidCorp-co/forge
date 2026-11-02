@@ -13,7 +13,7 @@ import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type StewardUndo, stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { refuser } from '../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { stewardAccountOf } from './account.js';
 import { actTouchesSql, itemIdOfKey } from './acts-on-item.js';
 import { mintStewardCredential } from './credential.js';
@@ -170,7 +170,7 @@ export async function undoAct(args: {
   actId: string;
   userId: string;
 }): Promise<UndoOutcome> {
-  await requireCan(actorFor(args.userId), 'project.write', projectResource(args.projectId));
+  await requireDeclaredOn(args.projectId, args.userId, 'project.write');
   const [row] = await db
     .select()
     .from(stewardActs)
