@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { answerIntakeQuestion, keepRefusedRequest } from './acts.js';
 import { readIntakeDraft } from './read.js';
 
@@ -28,13 +29,17 @@ const param = zValidator(
   invalid('invalid path: a project uuid and an item key, REQ-n or FB-n'),
 );
 
+// every act reads the project first; answering another's question and keeping a refused requirement
+// then check project.write in their own rules, after the item's own refusals
+const reads = requiresOnParam('project.read', 'id');
+
 function actorOf(c: { get(key: 'userId'): string; get(key: 'agency'): AuthVars['agency'] }) {
   const agency = c.get('agency');
   if (!agency) throw new Error('intake: a request reached its handler without an auth gate');
   return { userId: c.get('userId'), agency };
 }
 
-intakeRoutes.get('/:id/intake-drafts/:ref', param, noQuery, async (c) => {
+intakeRoutes.get('/:id/intake-drafts/:ref', param, reads, noQuery, async (c) => {
   const { id: projectId, ref } = c.req.valid('param');
   const out = await readIntakeDraft({ projectId, ref, viewer: actorOf(c) });
   if (!out.ok) return refused(c, out.refusals, 'INTAKE_REF_INVALID');
@@ -45,6 +50,7 @@ intakeRoutes.get('/:id/intake-drafts/:ref', param, noQuery, async (c) => {
 intakeRoutes.post(
   '/:id/intake-drafts/:ref/answers',
   param,
+  reads,
   strictBody(intakeAnswerRequestSchema, INTAKE_ANSWER_SHAPE),
   async (c) => {
     const { id: projectId, ref } = c.req.valid('param');
@@ -63,6 +69,7 @@ intakeRoutes.post(
 intakeRoutes.post(
   '/:id/intake-drafts/:ref/keep',
   param,
+  reads,
   strictBody(intakeKeepRequestSchema, INTAKE_KEEP_SHAPE),
   async (c) => {
     const { id: projectId, ref } = c.req.valid('param');

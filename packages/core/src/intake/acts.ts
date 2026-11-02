@@ -22,7 +22,7 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { keepRefusedIn } from '../requirements/index.js';
 import { intakeItemIn, mayAnswer, readIntakeDraft } from './read.js';
 import { answersOf, draftRowOf, heldBy, questionsOf } from './value.js';
@@ -72,12 +72,12 @@ export async function answerIntakeQuestion(input: {
   body: IntakeAnswerRequest;
 }): Promise<IntakeActOutcome> {
   const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const found = await intakeItemIn(projectId, input.ref);
   if (!found.ok) return found;
   const { item } = found;
   if (!(await mayAnswer(projectId, item, actor.userId))) {
-    await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+    await requireDeclaredOn(projectId, actor.userId, 'project.write');
   }
   const refused = await db.transaction(async (tx): Promise<IntakeActOutcome | null> => {
     await lockXact(tx, 'intakeDrafts', item.id);
@@ -149,7 +149,7 @@ export async function keepRefusedRequest(input: {
   body: IntakeKeepRequest;
 }): Promise<IntakeActOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const found = await intakeItemIn(projectId, input.ref);
   if (!found.ok) return found;
   const { item } = found;

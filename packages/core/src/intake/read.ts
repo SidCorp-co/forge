@@ -32,7 +32,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, can, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, can, projectResource, requireDeclaredOn } from '../permissions/index.js';
 import { answersOf } from './value.js';
 
 export type IntakeReadOutcome =
@@ -203,7 +203,7 @@ export async function readIntakeDraft(input: {
   viewer: { userId: string; agency: ActorAgency };
 }): Promise<IntakeReadOutcome> {
   const { projectId, ref, viewer } = input;
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const found = await intakeItemIn(projectId, ref);
   if (!found.ok) return found;
   const { item } = found;
