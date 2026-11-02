@@ -14,10 +14,12 @@ const held: { kind: string; form: string; call: unknown; body: Buffer | null; su
   [];
 
 let role = 'member';
-vi.mock('../../permissions/index.js', async () => {
+// the rest of the face stays real: a module this one loads builds its routes from it at import
+vi.mock('../../permissions/index.js', async (importOriginal) => {
   const { refuser } = await import('../../lib/refusal.js');
   const refuse = refuser<'PERMISSION_FORBIDDEN'>('PERMISSION_FORBIDDEN');
   return {
+    ...(await importOriginal<typeof import('../../permissions/index.js')>()),
     actorFor: (userId: string) => ({ userId }),
     projectResource: (projectId: string) => ({ projectId }),
     requireCan: async (_actor: unknown, permission: string) => {
