@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { runReport } from '../reports/index.js';
 import { listReportQueries } from './registry.js';
 
@@ -24,10 +24,9 @@ const listParam = z.strictObject({ id: z.uuid() });
 reportQueryRoutes.get(
   '/projects/:id/report-queries',
   zValidator('param', listParam, invalid('invalid path: /api/projects/<project>/report-queries')),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
-    const access = await loadProjectAccess(c.req.valid('param').id, c.get('userId'));
-    requireHeld(access, 'project.read', 'list the report queries');
     const queries: ReportQueryDescriptorView[] = listReportQueries().map(({ descriptor }) => ({
       id: descriptor.id,
       version: descriptor.version,

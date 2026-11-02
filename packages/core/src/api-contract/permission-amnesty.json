@@ -75,7 +75,6 @@
     "GET /api/projects/:id/executions/:executionId",
     "GET /api/projects/:id/feedback/:fb/recordings",
     "GET /api/projects/:id/links/:link",
-    "GET /api/projects/:id/report-queries",
     "GET /api/projects/:id/report-runs/:runId",
     "GET /api/projects/:id/report-templates",
     "GET /api/projects/:id/rooms",
