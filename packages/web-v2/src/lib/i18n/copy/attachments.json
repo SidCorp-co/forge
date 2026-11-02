@@ -4,6 +4,7 @@
     "attachments.previewFailed": "preview failed",
     "attachments.imageFailed": "Couldn't load {name}",
     "attachments.imageFailedShort": "Couldn't load",
+    "attachments.imageFailedAfter": "couldn't load",
     "attachments.openOriginal": "Open original"
   }
 }

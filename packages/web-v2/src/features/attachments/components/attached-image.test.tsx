@@ -1,5 +1,6 @@
 // An attached image that fails to load says which file it could not load, in the box the image
-// would have filled, and a new source tries again.
+// would have filled, or on a page as one line, its name and "couldn't load" (ISS-903); a new source
+// tries again.
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -24,6 +25,15 @@ describe("AttachedImage", () => {
     rerender(<AttachedImage src="/files/b.png" alt="" name="cart.png" />);
     fireEvent.error(container.querySelector("img") as HTMLImageElement);
     expect(screen.getByTestId("attached-image-failed")).toHaveTextContent(/^Couldn't load$/);
+  });
+
+  it("draws a failed load on a page as one line, the file's name then couldn't load, never the image's box", () => {
+    const { container } = render(<AttachedImage src="/files/a.png" alt="" name="anh.png" inline className="block max-h-90 w-auto" />);
+    fireEvent.error(container.querySelector("img") as HTMLImageElement);
+    const failed = screen.getByRole("img", { name: "Couldn't load anh.png" });
+    expect(failed).toHaveTextContent(/^anh\.pngcouldn't load$/);
+    expect(failed).toHaveAttribute("data-inline");
+    expect(failed.className).not.toMatch(/max-h-90|min-h-40|min-w-60|flex-col/);
   });
 
   it("tries a new source again after the last one failed", () => {
