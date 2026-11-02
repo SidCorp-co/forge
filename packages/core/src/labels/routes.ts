@@ -7,7 +7,7 @@ import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
 import { moduleDetailOf } from './module-detail-read.js';
 import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
 import {
@@ -79,14 +79,11 @@ labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 labelProjectRoutes.post(
   '/:id/labels',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.admin', 'id'),
   zValidator('json', labelCreateSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { name, color, kind, parentId, knowledgeEntryId, description } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.admin');
 
     const isModule = (kind ?? 'label') === 'module';
     if (parentId) {
@@ -114,27 +111,22 @@ labelProjectRoutes.post(
   },
 );
 
-labelProjectRoutes.get('/:id/labels', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id: projectId } = c.req.valid('param');
-  const userId = c.get('userId');
-
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
-
-  return c.json(await listProjectLabels(projectId));
-});
+labelProjectRoutes.get(
+  '/:id/labels',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => c.json(await listProjectLabels(c.req.valid('param').id)),
+);
 
 labelProjectRoutes.get(
   '/:id/modules/rollup',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', rollupQuerySchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { activeWithinDays } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     return c.json(
       await moduleRollupWithStanding(
@@ -149,11 +141,10 @@ labelProjectRoutes.get(
 labelProjectRoutes.get(
   '/:id/modules/:module/detail',
   zValidator('param', moduleDetailParamSchema),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id: projectId, module } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.read');
     return c.json(await moduleDetailOf(projectId, module, viewerOf(c)));
   },
 );
@@ -166,9 +157,12 @@ async function loadLabel(labelId: string) {
   return row;
 }
 
+const LABEL_PROJECT = 'the project of the label `:id` names';
+
 labelRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.admin', LABEL_PROJECT),
   zValidator('json', labelPatchSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -176,8 +170,7 @@ labelRoutes.patch(
     const userId = c.get('userId');
 
     const label = await loadLabel(id);
-    const access = await loadProjectAccess(label.projectId, userId);
-    requireHeld(access, 'project.admin');
+    requireDeclared(await loadProjectAccess(label.projectId, userId));
 
     const nextKind = patch.kind ?? label.kind;
     const nextParentId = patch.parentId !== undefined ? patch.parentId : label.parentId;
@@ -215,21 +208,25 @@ labelRoutes.patch(
   },
 );
 
-labelRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+labelRoutes.delete(
+  '/:id',
+  zValidator('param', idParamSchema),
+  requiresOnResolved('project.admin', LABEL_PROJECT),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const label = await loadLabel(id);
-  const access = await loadProjectAccess(label.projectId, userId);
-  requireHeld(access, 'project.admin');
+    const label = await loadLabel(id);
+    requireDeclared(await loadProjectAccess(label.projectId, userId));
 
-  if ((await labelAttachmentCount(id)) > 0) {
-    throw refuse(
-      'LABEL_IN_USE',
-      'this label is attached to issues; detach it from every issue before deleting it',
-    );
-  }
+    if ((await labelAttachmentCount(id)) > 0) {
+      throw refuse(
+        'LABEL_IN_USE',
+        'this label is attached to issues; detach it from every issue before deleting it',
+      );
+    }
 
-  await deleteLabel(id);
-  return c.body(null, 204);
-});
+    await deleteLabel(id);
+    return c.body(null, 204);
+  },
+);
