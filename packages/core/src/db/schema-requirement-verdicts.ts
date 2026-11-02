@@ -35,6 +35,11 @@ export const requirementCriterionVerdicts = pgTable(
     reason: text('reason'),
     evidence: text('evidence').array().notNull().default(sql`'{}'::text[]`),
     commitSha: text('commit_sha'),
+    /**
+     * The release it was judged on, as its project recorded it shipped (0583, ISS-900): on a project
+     * whose production names no commit it serves, a verdict names the version instead of a commit.
+     */
+    releaseVersion: text('release_version'),
     authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     authorDeviceId: uuid('author_device_id'),
     authorAgency: text('author_agency', { enum: actorAgencies }).notNull(),
@@ -57,9 +62,14 @@ export const requirementCriterionVerdicts = pgTable(
       'requirement_criterion_verdicts_commit_chk',
       sql`${t.commitSha} IS NULL OR ${t.commitSha} ~ '^[0-9a-f]{40}$'`,
     ),
+    releaseChk: check(
+      'requirement_criterion_verdicts_release_chk',
+      sql`${t.releaseVersion} IS NULL OR ${t.releaseVersion} ~ '^[0-9]{1,9}\\.[0-9]{1,9}\\.[0-9]{1,9}(-[a-z][a-z0-9]{0,15}\\.[0-9]{1,9})?$'`,
+    ),
+    // a judgement names exactly one of the commit or the release it was judged on; a skip neither
     judgedChk: check(
       'requirement_criterion_verdicts_judged_chk',
-      sql`${t.verdict} = 'skipped' OR (${t.commitSha} IS NOT NULL AND cardinality(${t.evidence}) > 0)`,
+      sql`(${t.verdict} = 'skipped' AND ${t.commitSha} IS NULL AND ${t.releaseVersion} IS NULL) OR (${t.verdict} <> 'skipped' AND (${t.commitSha} IS NULL) <> (${t.releaseVersion} IS NULL) AND cardinality(${t.evidence}) > 0)`,
     ),
     skippedReasonChk: check(
       'requirement_criterion_verdicts_skipped_reason_chk',

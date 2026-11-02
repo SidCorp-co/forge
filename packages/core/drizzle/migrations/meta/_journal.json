@@ -3697,6 +3697,13 @@
       "when": 1833235200000,
       "tag": "0582_a_thread_is_told_one_last_resort_line",
       "breakpoints": true
+    },
+    {
+      "idx": 583,
+      "version": "7",
+      "when": 1833321600000,
+      "tag": "0583_a_requirement_verdict_names_the_release_it_judged",
+      "breakpoints": true
     }
   ]
 }

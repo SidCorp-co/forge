@@ -453,14 +453,15 @@ export interface CoverageRequirementVerdict {
 	verdict: "pass" | "short" | "fail" | "skipped";
 	/** When it was recorded (ISO). */
 	verdictAt: string;
-	/** What it was judged against, in words (`commit 1a2b…`); null for a skip, which names nothing. */
+	/** What it was judged against, in words (`commit 1a2b…`, `release 0.76.0`); null for a skip, which names nothing. */
 	identity: string | null;
 	/** Its own reason; null where none was written. */
 	note: string | null;
 	/** What it cites: links or repository paths at its commit. */
 	evidence: string[];
 	commit: string | null;
-	/** Whether the live build holds that commit (`CoverageIssue.inLiveBuild`). */
+	/** Whether the live build holds that commit (`CoverageIssue.inLiveBuild`), or, for a verdict on a
+	 *  release (ISS-900), whether the release the record says is live carries it. */
 	inLiveBuild: boolean | null;
 	/** Why it does not count toward the criterion (`CoverageIssue.notCounted`); null where it counts or is a skip. */
 	notCounted: string | null;
@@ -660,18 +661,26 @@ export const ACCEPT_REQUIREMENT_SHAPE =
 /**
  * A business criterion judged on the running build at the requirement itself (ISS-588): a capability
  * that already shipped is proven here, never by an issue whose only work is verifying it (REQ-45 r3
- * BC-8). A pass, short or fail names the whole commit it was judged at and cites what it was taken
- * from; a skip says why.
+ * BC-8). A pass, short or fail names what it was judged at and cites what it was taken from; a skip
+ * says why. What it was judged at is the whole commit, or, on a project whose production names no
+ * commit it serves (no source probe: its releases are its agent's record by version, ISS-900), the
+ * release version the app reported, one the project recorded as shipped.
  */
 export const recordRequirementVerdictRequestSchema = z.strictObject({
 	criterion: z.string().trim().min(1).max(16),
 	verdict: z.string().trim().min(1).max(32),
 	reason: z.string().trim().max(REASON_TEXT_MAX).nullable().optional(),
 	identity: z
-		.strictObject({
-			kind: z.literal("commit"),
-			sha: z.string().trim().min(1).max(64),
-		})
+		.discriminatedUnion("kind", [
+			z.strictObject({
+				kind: z.literal("commit"),
+				sha: z.string().trim().min(1).max(64),
+			}),
+			z.strictObject({
+				kind: z.literal("release"),
+				version: z.string().trim().min(1).max(100),
+			}),
+		])
 		.nullable()
 		.optional(),
 	evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
@@ -685,7 +694,7 @@ export type RecordRequirementVerdictRequest = z.infer<
 	typeof recordRequirementVerdictRequestSchema
 >;
 export const RECORD_REQUIREMENT_VERDICT_SHAPE =
-	"{ criterion: 'BC-n', verdict: pass | short | fail | skipped, reason?, identity?: { kind: 'commit', sha: <40 hex> }, evidence?: [link or repository path], run?: <the run recording it, as on an issue verdict> } — a pass, short or fail names the commit judged and cites evidence; a skip gives its reason";
+	"{ criterion: 'BC-n', verdict: pass | short | fail | skipped, reason?, identity?: { kind: 'commit', sha: <40 hex> } | { kind: 'release', version: <a version the project recorded as shipped, e.g. 0.76.0>, only where production declares no source probe }, evidence?: [link or repository path], run?: <the run recording it, as on an issue verdict> } — a pass, short or fail names what it judged and cites evidence; a skip gives its reason";
 
 /** One requirement-level verdict as its list answers it, the criterion it judged by code. */
 export interface RequirementVerdictRow {
@@ -695,6 +704,8 @@ export interface RequirementVerdictRow {
 	reason: string | null;
 	evidence: string[];
 	commit: string | null;
+	/** The release version it was judged on, where it names one instead of a commit (ISS-900). */
+	release: string | null;
 	/** The run session that recorded it, as the call's `run` named it; null for a call naming none. */
 	run: string | null;
 	/** Who wrote it: a person or an agent account; null where the account is gone. */
@@ -856,6 +867,12 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_VERDICT_NOT_DELIVERING",
 	/** A requirement-level pass, short or fail that cites nothing. */
 	"REQUIREMENT_VERDICT_UNCITED",
+	/** A requirement-level verdict names a release version that is no release version (ISS-900). */
+	"REQUIREMENT_VERDICT_RELEASE_SHAPE",
+	/** It names a release on a project whose production reads the commit it serves, or has none (ISS-900). */
+	"REQUIREMENT_VERDICT_RELEASE_UNUSED",
+	/** It names a release version the project recorded no shipped release under (ISS-900). */
+	"REQUIREMENT_VERDICT_RELEASE_UNKNOWN",
 	// the rules every verdict meets, whichever door writes it (`issues/criteria/verdict-input.ts`)
 	"VERDICT_VALUE_UNKNOWN",
 	"VERDICT_SKIP_REASON_REQUIRED",
@@ -1102,7 +1119,10 @@ export interface RequirementSpecChanges {
 	/** The revision compared against; null where there is none. */
 	against: number | null;
 	goal: { before: string | null; after: string | null } | null;
-	kind: { before: RequirementKind | null; after: RequirementKind | null } | null;
+	kind: {
+		before: RequirementKind | null;
+		after: RequirementKind | null;
+	} | null;
 	personas: RequirementListChange | null;
 	scopeIn: RequirementListChange | null;
 	scopeOut: RequirementListChange | null;
@@ -1117,7 +1137,10 @@ export interface RequirementSpecSide {
 	criteria: readonly { code: string; body: string }[];
 }
 
-function listChangeOf(before: string[] = [], after: string[] = []): RequirementListChange | null {
+function listChangeOf(
+	before: string[] = [],
+	after: string[] = [],
+): RequirementListChange | null {
 	const added = after.filter((x) => !before.includes(x));
 	const removed = before.filter((x) => !after.includes(x));
 	if (added.length === 0 && removed.length === 0) return null;
@@ -1132,9 +1155,12 @@ export function specChangesOf(
 	const a = base?.spec ?? {};
 	const b = next.spec;
 	const beforeCriteria = base?.criteria ?? [];
-	const codes = [...new Set([...beforeCriteria.map((c) => c.code), ...next.criteria.map((c) => c.code)])].sort(
-		(x, y) => Number(x.slice(3)) - Number(y.slice(3)),
-	);
+	const codes = [
+		...new Set([
+			...beforeCriteria.map((c) => c.code),
+			...next.criteria.map((c) => c.code),
+		]),
+	].sort((x, y) => Number(x.slice(3)) - Number(y.slice(3)));
 	const criteria: RequirementCriterionChange[] = [];
 	for (const code of codes) {
 		const was = beforeCriteria.find((c) => c.code === code)?.body ?? null;
@@ -1144,8 +1170,14 @@ export function specChangesOf(
 	}
 	return {
 		against: base?.revision ?? null,
-		goal: a.goal !== b.goal ? { before: a.goal ?? null, after: b.goal ?? null } : null,
-		kind: (base?.kind ?? null) !== next.kind ? { before: base?.kind ?? null, after: next.kind } : null,
+		goal:
+			a.goal !== b.goal
+				? { before: a.goal ?? null, after: b.goal ?? null }
+				: null,
+		kind:
+			(base?.kind ?? null) !== next.kind
+				? { before: base?.kind ?? null, after: next.kind }
+				: null,
 		personas: listChangeOf(a.personas, b.personas),
 		scopeIn: listChangeOf(a.scopeIn, b.scopeIn),
 		scopeOut: listChangeOf(a.scopeOut, b.scopeOut),
@@ -1235,7 +1267,11 @@ export interface RequirementDetail extends RequirementSummary {
 	baselines: RequirementBaseline[];
 	issues: RequirementIssueLink[];
 	/** The releases that shipped its issues, oldest ship first, each once; one of another project names it. */
-	releases: { version: string; at: string; otherProject: OtherProject | null }[];
+	releases: {
+		version: string;
+		at: string;
+		otherProject: OtherProject | null;
+	}[];
 	/** The viewer is a person allowed to accept, return or agree. */
 	canSignOff: boolean;
 	/**
