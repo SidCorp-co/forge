@@ -19681,6 +19681,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own notification deliveries, selected by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19722,6 +19725,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own notification deliveries, selected by the caller"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -19756,6 +19762,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own notification deliveries, selected by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19791,6 +19800,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own notification deliveries, selected by the caller"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -19842,6 +19854,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own notification deliveries, selected by the caller"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -19877,6 +19892,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own notification deliveries, selected by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -31844,6 +31862,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -31933,6 +31957,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -32842,6 +32872,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",

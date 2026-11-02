@@ -6,6 +6,7 @@ import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresSelf } from '../permissions/index.js';
 import { listDeliveries } from './deliveries-read.js';
 import { deliveryMembers, openNotificationCount } from './read.js';
 import { deleteDelivery, markAllDeliveriesRead, setDeliveryRead } from './service.js';
@@ -29,7 +30,13 @@ const patchBodySchema = z.object({ read: z.boolean() }).strict();
 const refuse = refuser<NotificationRefusalCode>('NOTIFICATION_REFUSED');
 
 export const notificationRoutes = new Hono<{ Variables: AuthVars }>();
-notificationRoutes.use('*', requireAuth(), assertEmailVerified());
+notificationRoutes.use(
+  '*',
+  requireAuth(),
+  assertEmailVerified(),
+  // every route reads or writes the caller's own deliveries, each query selecting by the caller
+  requiresSelf('the caller’s own notification deliveries, selected by the caller'),
+);
 
 /**
  * How many things are still true for the caller.

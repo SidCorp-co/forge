@@ -1,10 +1,9 @@
 import { HEALTH_WINDOWS } from '@forge/contracts/project-health';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { projectHealth } from './health.js';
 import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 
@@ -30,14 +29,10 @@ const timeseriesQuerySchema = z.object({
 projectMetricsRoutes.get(
   '/:id/metrics/timeseries',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', timeseriesQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.read');
-
     const { metric, days, bucket, groupBy } = c.req.valid('query');
     const result = await runTimeseries({
       projectId: id,
@@ -64,11 +59,10 @@ const healthQuerySchema = z.object({
 projectMetricsRoutes.get(
   '/:id/metrics/health',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', healthQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const access = await loadProjectAccess(id, c.get('userId'));
-    requireHeld(access, 'project.read');
     return c.json(await projectHealth(id, c.req.valid('query').days));
   },
 );
