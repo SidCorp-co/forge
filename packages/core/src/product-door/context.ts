@@ -7,7 +7,7 @@ import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess, type ProjectAccess } from '../lib/authz.js';
 import { type EgressReader, MCP_DOOR } from '../lib/data-egress.js';
 import type { McpContext } from '../lib/tool.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, requireDeclaredHeld } from '../permissions/index.js';
 
 export interface DoorActor {
   userId: string;
@@ -31,10 +31,13 @@ export function projectAccess(ctx: McpContext, projectId: string): Promise<Proje
   return loadProjectAccess(projectId, ctx.principal.userId);
 }
 
-/** The caller's access to `projectId`, refused without project.read: for an action declaring none yet. */
+/**
+ * The caller's access to `projectId`, refused without project.read (and without what a resolved
+ * declaration names), so an action the door checked and one declaring none yet both hold it.
+ */
 export async function readAccess(ctx: McpContext, projectId: string): Promise<ProjectAccess> {
   const access = await loadProjectAccess(projectId, ctx.principal.userId);
-  requireHeld(access, 'project.read');
+  requireDeclaredHeld(access, 'project.read');
   return access;
 }
 
