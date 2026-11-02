@@ -13,8 +13,8 @@ export const DISPATCH_GUIDE: CoreGuide = {
   audience: 'agent',
   title: "Running a wave: a master's dispatch and fold",
   summary:
-    "The method a project's master follows for one wave: read the order, triage each candidate on the record, group what shares a place, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 4,
+    "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
+  version: 5,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -45,9 +45,7 @@ run out stands; \`GET /api/projects/:id/masters/standing\` how many slots this b
   \`work.nudge\` into the pane, or puts \`work.owedLine\` in a new pane's first brief. That line is
   the order for this pass; there is no route a pane polls for it.
 - \`GET /api/projects/:id/issues?status=open\` lists the open rows, and
-  \`GET /api/issues/:id/dependencies\` says whether a live \`blocks\` edge holds one back. An issue
-  with no \`complexity\` is one nobody has read, not one that is small. Reading those is the wave's
-  work too.
+  \`GET /api/issues/:id/dependencies\` says whether a live \`blocks\` edge holds one back.
 - Take a lower-ranked issue whenever a reason the metadata cannot carry says so — a person's stated
   order, a file a running run holds, a chain being cleared — and the fold names the reason.
 
@@ -57,13 +55,10 @@ intended, obsolete, or a premise the repository disproves. A disposition is post
 its evidence, and the issue moves: \`dropped\` with the reason, or \`needs_info\` with the question
 where a person owes the answer.
 
-A candidate that survives carries:
-- a \`confirmation\` record (\`POST /api/issues/:id/events\`): the head it was judged against, the
-  issue's \`updatedAt\`, its dependency state and the goal it serves — what the run re-triages on;
-- its \`complexity\` and \`priority\`: \`PATCH /api/issues/:id\`, the reasoning in the record. No run is
-  dispatched on an issue holding no \`complexity\`;
-- a split before dispatch where it is more than one run: the other half filed with a \`blocks\` edge
-  in its create.
+A candidate that survives goes into the batch. Write down what the run could not see for itself —
+a priority, a \`complexity\` (\`PATCH /api/issues/:id\`), a reading as a comment — where it helps,
+and split it before dispatch where it is more than one run, the other half filed with a \`blocks\`
+edge in its create.
 
 ### 4. Batch by files
 A wave takes every issue it may, and an issue that arrives while it runs joins it; the records catch

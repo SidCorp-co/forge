@@ -17,8 +17,8 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Taking one issue from open to awaiting_release',
   summary:
-    'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 9,
+    'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
+  version: 10,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -79,8 +79,10 @@ Record where the work is at each push: \`PATCH /api/issues/:id\` \`{ workState: 
 \`step\` one of ${WORK_STEPS.map((step) => `\`${step}\``).join(', ')} (\`null\` ends it) and
 \`headSha\` the whole 40-hex sha.
 
-### 3. Plan and criteria, in the issue's own fields
-\`PATCH /api/issues/:id\` with \`plan\` and \`acceptanceCriteria\` together, before the code. Criteria
+### 3. Criteria, and a plan where the work needs one
+A plan is optional: write one where a reader should see the approach before the code, and skip it
+where the change explains itself. The criteria are what the release judges the work by.
+\`PATCH /api/issues/:id\` writes \`acceptanceCriteria\` (and \`plan\`, where you write one). Criteria
 are numbered lines (\`1. …\`), one outcome a reader can check without opening the diff. A repeated
 number or a number with no statement is refused \`CRITERIA_TEXT_UNPARSEABLE\`; text with no numbered
 line writes no criteria at all, so read the field back.
@@ -115,10 +117,13 @@ To correct one criterion's wording and keep its verdicts, at any status:
 and trace, records the old and new text on its history (\`GET /api/issues/:id/criteria/:n\`), and is
 refused \`CRITERION_REWORD_TRACE\` where the correction changes the lead tag.
 
-The plan names the files it will change and the goal it serves. A file it does not name is a
-\`correction\` record (\`POST /api/issues/:id/events\`) written before the file is. A criterion found
-wrong is corrected the same way and rewritten in the field — never relaxed to match what got built.
-Choices taken under an assumption are \`decision\` records carrying how to reverse them.
+A criterion found wrong is rewritten in the field, with a \`correction\` record
+(\`POST /api/issues/:id/events\`) saying why — never relaxed to match what got built. Choices taken
+under an assumption are \`decision\` records carrying how to reverse them.
+
+Plan approval, pattern approval and the design record are gates a project turns on or off
+(\`GET /api/projects/:id/gates\`); where a gate is off, skip its paragraph below. A gate that is on
+refuses by name, and its refusal says which gate and what relaxes it.
 
 Where the project reads a pattern catalog, name the pattern the change builds to. Read
 \`GET /api/issues/:id/patterns\` first: where its \`catalog.declared\` is false the project reads none,
@@ -136,7 +141,7 @@ approved one's catalog page lands in this change, whichever comes first: the mer
 change, the merge mark reads the commit it marks, and an approval on an issue already marked and the
 move to \`awaiting_release\` read the change the merge mark names. Each refuses \`PATTERN_ENTRY_MISSING\` where the page is not in it; each asks it only where gate \`patterns\` is enforced, which \`yolo\` turns off.
 
-Then record the design, before any code: \`PUT /api/issues/:id/design\`
+Where gate \`design_record\` is on, record the design before the build: \`PUT /api/issues/:id/design\`
 \`{ criteria: [{ criterion, class, pattern, proof }], modules, contracts }\`, one line per criterion.
 \`class\` is \`observable\` (QA judges it on the running build, where a person can see it),
 \`server_side\` (QA judges it on the running build from inside it — a pod, a process, a queue — where
@@ -151,10 +156,9 @@ project with module labels refuses \`[]\` with \`DESIGN_MODULE_REQUIRED\`.
 A module is one whose behaviour the change alters. A line in a shared registry does not make its
 owner one: the route registry, \`modules.json\`, the migration journal and a new migration, a
 module's \`index.ts\` face, a schema file for the module's own table, \`changelog.d\`. Every change
-touches those, and naming their owner would hold every other run. A live run holding an issue whose
-design names one of the same modules (or a label above it) or contracts holds this issue too: its
-run is refused \`ISSUE_SCOPE_HELD\`, naming that run, and so is the move of this work into build
-while that run is already building. It lifts when that run ends.
+touches those. Work that runs at once is split by disjoint files, and issues touching the same files
+ride one branch. Core still refuses a run whose design names a module or contract a live run's
+design holds, \`ISSUE_SCOPE_HELD\` naming that run, until that run ends.
 \`GET /api/issues/:id/design\` reads it with \`check\`, the answer a move into build meets. Moving the
 work step into build, test or release, and moving to \`approved\`, is refused
 \`DESIGN_RECORD_MISSING\` or \`DESIGN_RECORD_INCOMPLETE\` naming each gap until the check passes; a
@@ -275,7 +279,7 @@ the mark or the decision answers it, so the business question is asked on its ow
   A body carrying checks, tests or probes is refused as an unknown key: the record cites what is
   recorded at \`head\` instead.
 
-### 5. Prove it, one criterion at a time
+### 5. Prove it
 Whatever \`qa\` says, the run that builds a change does not judge it. Another run judges once the work
 lands, on the release that carries it: under \`self\` one of this project's runs declared over the
 issue at \`awaiting_release\`, under \`independent\` the project's judge. This run lands and leaves the
@@ -338,6 +342,8 @@ A test is evidence only where it can fail: plant the failure it guards against a
 naming its own rule before the green counts.
 
 ### 6. Land, mark, move
+A batch lands once, and its gate runs once over the batch: each issue in it is marked at that
+landing and moved, its key in its own commit subject so the mark reads the commit as its own.
 1. Land onto the base branch by the project's route — the brief or the project's knowledge says
    which: a fast-forward, a pull request, a merge. A pull or merge request is opened through core,
    which holds the source host's credential and records what it opened:
@@ -420,8 +426,9 @@ body its route accepts, so a guess costs one read of the refusal, not one call p
   closing comment under \`Extra fixes:\`.
 - Something another issue owns: a comment on that issue, and a \`routed\` record on this one naming
   where it went.
-- Out of reach: a \`blocks\` edge onto the issue that would ship without it, a line in the
-  project's proposals, or \`needs_info\` on this one. Never a new issue filed to carry it.
+- Out of reach: give it an owner — a \`blocks\` edge onto the issue that would ship without it, a
+  line in the project's proposals, \`needs_info\` on this one, or an issue of its own where it is
+  separate work someone will pick up.
 - A lesson a different issue would reuse: \`POST /api/memory\`. Another project's issue key is
   written \`<its slug> ISS-n\`, never bare, since a bare key is read as this project's. What a sweep, a
   reconcile or a consolidation did is bookkeeping, not a lesson, and is never written as a \`decision\`.

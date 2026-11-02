@@ -47,3 +47,19 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(DISPATCH_GUIDE.summary).not.toContain('yolo');
   });
 });
+
+// ISS-861 (owner, 2026-11-01): triage writes what helps the run, and no field is a precondition
+// of dispatch that core does not itself hold.
+describe('the dispatch guide asks for no triage ritual', () => {
+  it('holds no run back on a missing complexity and asks no confirmation record', () => {
+    expect(prose).not.toContain('No run is dispatched on an issue holding no `complexity`');
+    expect(prose).not.toContain('a `confirmation` record');
+    expect(prose).toContain('A candidate that survives goes into the batch');
+  });
+
+  it('still names the refusals the box and core hold', () => {
+    for (const kernel of ['ISSUE_SCOPE_HELD', 'ISSUE_AT_REST', 'forge-runner run declare']) {
+      expect(prose).toContain(kernel);
+    }
+  });
+});
