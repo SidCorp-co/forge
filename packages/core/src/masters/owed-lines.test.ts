@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
 import type { AgentConfirmOwed } from './ports.js';
 
-// The owed lines for questions an agent owes and confirms an agent reporter owes (owed-confirms.ts).
+// The owed lines for questions an agent owes, confirms an agent reporter owes (owed-confirms.ts), and
+// the release holds whose act is the master's (ISS-888).
 // @direct-test-of packages/core/src/masters/owed-confirms.ts
+// @direct-test-of packages/core/src/masters/owed.ts
 
 const none: Parameters<typeof owedLine>[0] = {
   designs: [],
@@ -105,5 +107,51 @@ describe('an agent reporter’s confirm on the owed line', () => {
     const line = owedLine({ ...none, confirms: [elsewhere] });
     expect(line).toContain('FB-9 from catalog-fe, which only catalog-fe settles');
     expect(line).not.toContain('projects/q/feedback/FB-9/verify');
+  });
+});
+
+// ISS-888: a hold that names the agent's act and is never read is how six landed issues waited at the
+// release gate for days; the pass names every such hold with the command that settles it
+describe('releaseHoldsLine: the release holds whose act is the master’s', () => {
+  const shippedIn = {
+    issueId: 'i879',
+    key: 'ISS-879',
+    code: 'RELEASE_SHIPPED_IN_OWED',
+    waitingFor: "the issue's agent to record which release shipped it (0.4.0-dev.430)",
+  };
+  const criteria = {
+    issueId: 'i12',
+    key: 'ISS-12',
+    code: 'RELEASE_CRITERIA_UNEARNED',
+    waitingFor: 'a verdict on each criterion named at the running deployment',
+  };
+  const owed = { ...none, releaseHolds: [shippedIn, criteria] };
+
+  it('names a shipped-in hold with the record that settles it', () => {
+    const line = owedLine({ ...none, releaseHolds: [shippedIn] });
+    expect(line).toContain(
+      "1 issue waits at the release gate on the record of the release that shipped it, which you owe (ISS-879 i879: RELEASE_SHIPPED_IN_OWED, waiting for the issue's agent to record which release shipped it (0.4.0-dev.430))",
+    );
+    expect(line).toContain(
+      `\`forge-runner api projects/<projectId>/shipped-in-records -X POST -d '{"issueId":"<id>","version":"<the shipped release holding it>","evidence":"<the git command and its answer>"}'\``,
+    );
+    expect(line).not.toContain('a hold whose act is yours');
+  });
+
+  it('names any other hold the agent owes, with the read that names its act', () => {
+    const line = owedLine({ ...none, releaseHolds: [criteria] });
+    expect(line).toContain(
+      '1 issue waits at the release gate on a hold whose act is yours (ISS-12 i12: RELEASE_CRITERIA_UNEARNED',
+    );
+    expect(line).toContain('`forge-runner api issues/<id>`, its `releaseHold.reason`');
+    expect(line).not.toContain('shipped-in-records');
+  });
+
+  it('counts as owed work, so a pass is nudged for it and its digest moves with the hold', () => {
+    expect(owedLine(none)).not.toContain('release gate');
+    expect(dispatched(owed).owed).toBe(2);
+    expect(workDigest([], owed)).not.toBe(workDigest([], none));
+    const recoded = { ...none, releaseHolds: [{ ...criteria, code: 'NO_RELEASE_GATE' }, shippedIn] };
+    expect(workDigest([], recoded)).not.toBe(workDigest([], owed));
   });
 });
