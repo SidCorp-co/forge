@@ -1,0 +1,1 @@
+**A requirement is retitled by a revision a person accepts.** A revision takes an optional title, applied on accept; until then the title stands. Its changes name the old and new title, and a blank one is refused by name.

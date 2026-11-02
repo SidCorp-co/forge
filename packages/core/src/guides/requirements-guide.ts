@@ -105,6 +105,11 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
 6. **After the agree, a change is a new revision.** Accepting it re-baselines: the requirement stays
    (or goes back to) \`agreed\`, a new baseline is written, and the accept's \`reason\` is that
    re-baseline's sign-off. The agree's design guard and ready checklist apply to it, read from the new head.
+   **A retitle is a revision too**: send \`title\` with it (the same criteria list is enough), and the
+   accept makes it the requirement's title; until then the title stands. Left out, the head's is
+   carried. Its \`specChanges.title\` names \`{ before, after }\`, null where the title is the same.
+   A blank or over-long title is refused on \`/title\`, naming the bound. \`PATCH\` takes only
+   \`{ owner }\`: there is no other rename.
 7. **repin** writes a new baseline of the same text revision once a linked design has been approved
    past what the latest baseline pins, or a linked contract has a current version it does not pin. Only an agreed requirement is re-pinned
    (\`REQUIREMENT_NOT_AGREED\`), and a re-pin with nothing moved is \`REQUIREMENT_PINS_CURRENT\`.
