@@ -100,6 +100,7 @@ import {
   waiterFor,
 } from './questions/index.js';
 import {
+  agentOwedHolds,
   createReleaseBatch,
   heldFromUnattendedCut,
   loadReleaseRoster,
@@ -346,6 +347,7 @@ export function provideExecutionPorts(): void {
     masterMode: readMasterMode,
     draftCarriersWaiting: draftFeedbackCarriers,
     reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
+    releaseHoldsOwed: agentOwedHolds,
     requestsWaiting: async (projectId) => [
       ...(await draftIssuesPeopleFiled(projectId)).map((r) => ({
         kind: 'issue' as const,

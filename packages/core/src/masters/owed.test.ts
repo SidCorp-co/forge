@@ -46,6 +46,7 @@ const none = {
   marks: [] as MarkOwed[],
   filings: [] as FilingOwed[],
   recordings: [] as FilingRecordOwed[],
+  releaseHolds: [],
   requests: [] as WaitingRequest[],
   carriers: [] as { key: string }[],
   reviews: [],

@@ -206,6 +206,18 @@ const abortBodySchema = z
      * attempt take a new version, and its page names this. `[]` says nothing does.
      */
     carried: carriedSchema.optional(),
+    /**
+     * The earlier shipped release that already holds this roster, as the run read it with git: each
+     * roster issue is recorded as shipped there, as `POST /shipped-in-records` records it (ISS-888).
+     * Absent, a roster issue an earlier shipped release may hold waits on its agent's record instead.
+     */
+    shippedIn: z
+      .object({
+        version: z.string().trim().min(1).max(100),
+        evidence: z.string().trim().min(10).max(2_000),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -296,7 +308,7 @@ releaseBatchRoutes.post(
   zValidator('json', abortBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    const { reason, promotedRoster, blocker, pushed, carried } = c.req.valid('json');
+    const { reason, promotedRoster, blocker, pushed, carried, shippedIn } = c.req.valid('json');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
@@ -305,6 +317,7 @@ releaseBatchRoutes.post(
       blocker,
       pushed,
       carried,
+      shippedIn,
     });
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },

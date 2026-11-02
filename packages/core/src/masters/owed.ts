@@ -19,6 +19,7 @@ import {
   type FilingRecordOwed,
   type MarkOwed,
   mastersPorts,
+  type ReleaseHoldOwed,
   type ReleaseMergeOwed,
   type ReviewOwed,
   type StewardAsk,
@@ -78,6 +79,8 @@ interface Owed {
   /** Drafts a feedback triage routed an item to, whoever filed them: master work under any profile (ISS-840). */
   carriers: { key: string }[];
   reviews: ReviewOwed[];
+  /** Release holds on waiting issues whose act is the master's, each named with its command (ISS-888). */
+  releaseHolds: ReleaseHoldOwed[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -236,6 +239,29 @@ function wedgeLandedLine(landed: Owed['landedWork']): string {
   return ` ${landed.length} issue${plural(landed.length, ' sits', 's sit')} at \`in_progress\` with ${plural(landed.length, 'its', 'their')} work landed and nothing holding ${plural(landed.length, 'it', 'them')} (${keys.join('; ')}): the reconciler left each there rather than hand it back. Check that the mark is this work, then move it on (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; a mark that is not this work is cleared (\`forge-runner api issues/<id>/merge -X DELETE\`), and the next reconciler pass hands the issue back.`;
 }
 
+/** The hold whose act is a shipped-in record (`release-batch/shipped-in.ts`). */
+const SHIPPED_IN_OWED = 'RELEASE_SHIPPED_IN_OWED';
+
+/**
+ * ISS-888: a release hold names an act, and the one it names for the agent is the master's to take,
+ * so every such hold is said here with its command; a hold written and never read is the defect.
+ */
+function releaseHoldsLine(holds: ReleaseHoldOwed[]): string {
+  if (holds.length === 0) return '';
+  const named = (list: ReleaseHoldOwed[]) =>
+    list.map((h) => `${h.key} ${h.issueId}: ${h.code}, waiting for ${h.waitingFor}`).join('; ');
+  const shippedIn = holds.filter((h) => h.code === SHIPPED_IN_OWED);
+  const other = holds.filter((h) => h.code !== SHIPPED_IN_OWED);
+  let line = '';
+  if (shippedIn.length > 0) {
+    line += ` ${shippedIn.length} issue${plural(shippedIn.length, ' waits', 's wait')} at the release gate on the record of the release that shipped ${plural(shippedIn.length, 'it', 'them')}, which you owe (${named(shippedIn)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold\` names the releases and the landing), check with git which shipped release contains the landing, and record it (\`forge-runner api projects/<projectId>/shipped-in-records -X POST -d '{"issueId":"<id>","version":"<the shipped release holding it>","evidence":"<the git command and its answer>"}'\`), which closes the issue into it; send \`"version":null\` where none holds it, and the next release takes it.`;
+  }
+  if (other.length > 0) {
+    line += ` ${other.length} issue${plural(other.length, ' waits', 's wait')} at the release gate on a hold whose act is yours (${named(other)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold.reason\` names the act and its door) and take that act, or move the issue out of \`awaiting_release\` if it is not to ship, saying why.`;
+  }
+  return line;
+}
+
 /** The drafts a feedback triage routed an item to (ISS-840): the master takes each on, or drops it. */
 function carriersLine(carriers: { key: string }[]): string {
   if (carriers.length === 0) return '';
@@ -271,6 +297,7 @@ export function owedLine(owed: Owed): string {
     landedWorkLine(owed.landedWork) +
     mergesLine(owed.marks, owed.filings) +
     recordingsLine(owed.recordings) +
+    releaseHoldsLine(owed.releaseHolds) +
     confirmsLine(owed.confirms) +
     requestsLine(owed.requests) +
     carriersLine(owed.carriers) +
@@ -374,6 +401,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
     ...owed.carriers.map((c) => `carrier:${c.key}`),
     ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
+    ...owed.releaseHolds.map((h) => `release-hold:${h.issueId}|${h.code}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -426,7 +454,8 @@ export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMod
 /**
  * Everything a project's master on `deviceId` is owed this sweep: the issues it could open a wave
  * over, and the channel, threads, requirements, feedback (a triage, or an agent reporter's confirm), returned
- * designs, release notes and the reviews an independent judge owes that owe it a turn.
+ * designs, release notes, the release holds whose act is its own, and the reviews an independent
+ * judge owes that owe it a turn.
  * A read that fails fails the verdict, which the box says and acts on nothing: none is skipped.
  */
 export async function readMasterWork(deviceId: string, projectId: string): Promise<MasterWork> {
@@ -471,6 +500,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const carriers = await ports.draftCarriersWaiting(projectId);
   const reviews = await ports.reviewsOwed(projectId);
+  const releaseHolds = await ports.releaseHoldsOwed(projectId);
   const carried = new Set(carriers.map((c) => c.key));
   const requests = (
     (await ports.masterGate(projectId)).mode === 'enforce'
@@ -508,6 +538,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       requests,
       carriers,
       reviews,
+      releaseHolds,
       contentLanguage,
     },
     mode,

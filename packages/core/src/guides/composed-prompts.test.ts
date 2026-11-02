@@ -79,6 +79,7 @@ const none = {
   marks: [] as Parameters<typeof owedLine>[0]['marks'],
   filings: [] as Parameters<typeof owedLine>[0]['filings'],
   recordings: [] as Parameters<typeof owedLine>[0]['recordings'],
+  releaseHolds: [] as Parameters<typeof owedLine>[0]['releaseHolds'],
   requests: [] as Parameters<typeof owedLine>[0]['requests'],
   carriers: [] as Parameters<typeof owedLine>[0]['carriers'],
   reviews: [] as Parameters<typeof owedLine>[0]['reviews'],

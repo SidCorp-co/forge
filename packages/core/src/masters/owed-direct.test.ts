@@ -23,6 +23,7 @@ const none = {
   marks: [],
   filings: [],
   recordings: [],
+  releaseHolds: [],
   requests: [],
   carriers: [],
   reviews: [],

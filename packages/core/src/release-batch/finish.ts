@@ -29,6 +29,11 @@ import { abortBlockedHold, heldFromUnattendedCut, writeReleaseHolds } from './ho
 import { RECORDED_VERIFICATION } from './recorded.js';
 import { refuseRelease } from './refuse.js';
 import {
+  type AbortShippedOutcome,
+  claimMarkedLate,
+  settleAbortedShipped,
+} from './shipped-in.js';
+import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
@@ -169,6 +174,9 @@ export async function finishReleaseBatch(
     fence,
   });
   await holdUnclosed(runId, run?.releaseVersion ?? null, failed);
+  // a landing this release holds whose mark came after its cut, so its roster never named it, is
+  // recorded as shipped in this release by its finish (ISS-888)
+  if (!shipsNone) await claimMarkedLate(runId, actor);
 
   const result = { closed, failed };
   await options.onClosed?.(result);
@@ -223,6 +231,10 @@ async function holdUnclosed(
 interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
   /** Issues back at the gate and held there for the person the blocker names (`RELEASE_ABORT_BLOCKED`). */
   heldForPerson: string[];
+  /** Issues an earlier release already shipped, recorded there on this abort's word (ISS-888). */
+  shippedInRecorded: string[];
+  /** Issues an earlier shipped release may hold, held for their agent's shipped-in record (ISS-888). */
+  shippedInOwed: string[];
   run: {
     status: PipelineRunStatus | null;
     wasAlreadyTerminal: boolean;
@@ -247,6 +259,8 @@ interface AbortReleaseBatchOptions {
   pushed?: boolean | undefined;
   /** What outside Forge carries this release's version (`carried.ts`); absent says nothing. */
   carried?: readonly ReleaseVersionCarrier[] | undefined;
+  /** The earlier shipped release that already holds this roster, as the run read it with git. */
+  shippedIn?: { version: string; evidence: string } | undefined;
 }
 
 export async function abortReleaseBatch(
@@ -284,9 +298,20 @@ export async function abortReleaseBatch(
   const roster = held ? 'held' : 'released';
   const alreadyClosed = await closedBeforeAbort(runId, recovery.alreadyClosed);
   await settleAbortStamp(runId, stampId, { roster, closed: alreadyClosed });
+  // a roster an earlier release already shipped is the agent's shipped-in record, recorded here where
+  // the run named that release, and never a person's hold (ISS-888)
+  const shipped = held
+    ? { recorded: [], heldForAgent: [] }
+    : await settleShipped(runId, recovery.claimsCleared, reason, actorUserId, options.shippedIn);
+  const settled = new Set([...shipped.recorded, ...shipped.heldForAgent]);
   const heldForPerson =
     options.blocker?.owes === 'human' && !held
-      ? await holdForPerson(runId, recovery.claimsCleared, reason, options.blocker)
+      ? await holdForPerson(
+          runId,
+          recovery.claimsCleared.filter((id) => !settled.has(id)),
+          reason,
+          options.blocker,
+        )
       : [];
 
   await closeRunIfOneShot(runId, 'cancelled');
@@ -296,6 +321,8 @@ export async function abortReleaseBatch(
   return {
     ...recovery,
     heldForPerson,
+    shippedInRecorded: shipped.recorded,
+    shippedInOwed: shipped.heldForAgent,
     alreadyClosed,
     run: {
       status: after.cancelled ? 'cancelled' : after.was,
@@ -303,6 +330,30 @@ export async function abortReleaseBatch(
       cancelledFrom: after.cancelled ? after.was : null,
     },
   };
+}
+
+async function settleShipped(
+  runId: string,
+  issueIds: readonly string[],
+  reason: string,
+  userId: string,
+  shippedIn: AbortReleaseBatchOptions['shippedIn'],
+): Promise<AbortShippedOutcome> {
+  const [run] = await db
+    .select({ projectId: pipelineRuns.projectId, version: pipelineRuns.releaseVersion })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!run) return { recorded: [], heldForAgent: [] };
+  return settleAbortedShipped({
+    projectId: run.projectId,
+    runId,
+    version: run.version,
+    reason,
+    issueIds,
+    shippedIn,
+    userId,
+  });
 }
 
 /**

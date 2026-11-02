@@ -65,6 +65,17 @@ export interface ReviewOwed {
   criteria: number[];
 }
 
+/**
+ * A standing release hold on a waiting issue whose act is the master's (ISS-888,
+ * `release-batch/hold.ts:agentOwedHolds`): owed by the agent, and not one the release clears itself.
+ */
+export interface ReleaseHoldOwed {
+  issueId: string;
+  key: string;
+  code: string;
+  waitingFor: string;
+}
+
 /** A request a person left waiting: a draft issue they filed, or a draft requirement proposed from a chat. */
 export interface WaitingRequest {
   kind: 'issue' | 'requirement';
@@ -177,6 +188,8 @@ interface MastersPorts {
    * where its gate profile declares no independent judge.
    */
   reviewsOwed(projectId: string): Promise<ReviewOwed[]>;
+  /** The release holds on waiting issues that name an act the master owes (ISS-888). */
+  releaseHoldsOwed(projectId: string): Promise<ReleaseHoldOwed[]>;
 }
 
 const slot = portSlot<MastersPorts>('masters', 'provideMastersPorts');
