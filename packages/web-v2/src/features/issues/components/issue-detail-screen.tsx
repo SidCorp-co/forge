@@ -172,7 +172,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             />
           }
         >
-          <DetailMobileTitle itemKey={issue.displayId} title={<Written className="break-words" text={issue.title} lang={issue.writtenLang} />} badge={badge} />
+          <DetailMobileTitle title={<span title={issue.displayId}><Written className="break-words" text={issue.title} lang={issue.writtenLang} /></span>} badge={badge} />
           <IssuePageMain
             issue={issue}
             projectId={projectId}
@@ -305,16 +305,18 @@ function IssueRail({
   );
 }
 
-/** The page's header: back to the list, key and title, the status control and the issue's acts. */
+/** The page's header: back to the list, the title (its key the tooltip, REQ-11 BC-19), the status control and the issue's acts. */
 function IssueHeader({ back, badge, ...acts }: ComponentProps<typeof IssueActions> & { back: string; badge: ReactNode }) {
   const t = useCopy();
   const { issue } = acts;
   return (
     <DetailHeader
       back={{ href: back, label: t("issues.screen.title") }}
-      itemKey={issue.displayId}
-      keyTitle={issue.id}
-      title={<Written text={issue.title} lang={issue.writtenLang} />}
+      title={
+        <span title={issue.displayId} data-testid="issue-title">
+          <Written text={issue.title} lang={issue.writtenLang} />
+        </span>
+      }
       badge={badge}
       action={<IssueActions {...acts} />}
     />

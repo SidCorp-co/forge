@@ -52,10 +52,13 @@ const rail = (standing: IssueStandingRow["standing"], issue: Partial<IssueDetail
 describe("the issue rail's requirement traces (REQ-11 BC-3)", () => {
   it("lists only current traces as traced, and names the earlier-wording ones stale", () => {
     rail(row.standing);
+    // the face counts them; the codes are the tooltips (REQ-11 BC-19)
     const traces = screen.getByTestId("rail-traces");
-    expect(traces).toHaveTextContent("BC-1, BC-2");
-    expect(traces).not.toHaveTextContent("BC-1, BC-2, BC-4");
-    expect(within(traces).getByTestId("stale-traces")).toHaveTextContent("BC-4, BC-8 on an earlier wording");
+    expect(traces).toHaveAttribute("title", "BC-1, BC-2");
+    expect(traces).toHaveTextContent("Criteria 2");
+    const stale = within(traces).getByTestId("stale-traces");
+    expect(stale).toHaveTextContent("2 on an earlier wording");
+    expect(stale).toHaveAttribute("title", "BC-4, BC-8 on an earlier wording");
   });
 
   it("flags a plan made on an earlier requirement revision, and says nothing while it is current", () => {
@@ -143,10 +146,11 @@ describe("feedback an issue carries that was dropped", () => {
 
   it("keeps the link and says the item was dropped, and says nothing of one still carried", () => {
     rail(carried(["FB-110"]));
-    const links = screen.getAllByRole("link", { name: /FB-1/ });
-    expect(links.map((l) => l.textContent)).toEqual(["FB-109", "FB-110"]);
+    // each report is labelled by its place, its key the tooltip (REQ-11 BC-19)
+    const links = screen.getAllByRole("link", { name: /^Report \d$/ });
+    expect(links.map((l) => l.getAttribute("title"))).toEqual(["FB-109", "FB-110"]);
     expect(links[1]).toHaveAttribute("href", "/projects/forge/feedback/FB-110");
-    expect(links[1]?.parentElement).toHaveTextContent("FB-110dropped");
+    expect(links[1]?.parentElement).toHaveTextContent("Report 2dropped");
     expect(links[0]?.parentElement).not.toHaveTextContent("dropped");
   });
 });

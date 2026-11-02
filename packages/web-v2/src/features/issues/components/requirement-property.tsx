@@ -11,6 +11,7 @@ import { Button, ConfirmDialog, Select } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
+import { cn } from "@/lib/utils/cn";
 import type { OtherProject } from "@forge/contracts/requirements";
 import { useIssueRequirementLink, useLinkableRequirements } from "../requirement-link";
 
@@ -19,6 +20,7 @@ export function IssueRequirementProperty({
   slug,
   issue,
   current,
+  currentTitle = null,
   requirementProject = null,
   disabled,
 }: {
@@ -27,6 +29,8 @@ export function IssueRequirementProperty({
   issue: { id: string; displayId: string };
   /** The requirement it delivers, by key; null while it delivers none. */
   current: string | null;
+  /** That requirement's title, the link's face; its key is the tooltip (REQ-11 BC-19). */
+  currentTitle?: string | null;
   /** The requirement's project, where it is a sibling project's rather than the issue's own. */
   requirementProject?: OtherProject | null;
   disabled: boolean;
@@ -40,8 +44,12 @@ export function IssueRequirementProperty({
     return (
       <div className="grid justify-items-end gap-1" data-testid="issue-requirement">
         <span className="flex items-center gap-2">
-          <Link href={requirementHref(requirementProject?.slug ?? slug, current)} className="font-mono text-12 font-semibold text-link hover:underline">
-            {requirementProject ? `${requirementProject.slug}/${current}` : current}
+          <Link
+            href={requirementHref(requirementProject?.slug ?? slug, current)}
+            className={cn("min-w-0 truncate text-12 font-semibold text-link hover:underline", !currentTitle && "font-mono")}
+            title={requirementProject ? `${requirementProject.slug}/${current}` : current}
+          >
+            {currentTitle || (requirementProject ? `${requirementProject.slug}/${current}` : current)}
           </Link>
           {disabled ? null : (
             <Button variant="ghost" size="sm" disabled={act.isPending} onClick={() => act.mutate({ req: current, unlink: true })} data-testid="issue-requirement-unlink">

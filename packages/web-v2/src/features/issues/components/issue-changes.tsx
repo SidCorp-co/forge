@@ -35,8 +35,9 @@ export function IssueChanges({ issue, slug, developer }: { issue: Pick<IssueDeta
             {issue.shippedIn.version}
           </Link>
         ) : issue.landedIn ? (
-          <span className="flex-none font-mono text-12 text-muted" data-testid="changes-landed-in">
-            {t("issues.landedIn", { branch: issue.landedIn.branch, sha: issue.landedIn.commit.slice(0, 7) })}
+          // the commit is the tooltip, never the face (REQ-11 BC-19)
+          <span className="flex-none text-12 text-muted" data-testid="changes-landed-in" title={issue.landedIn.commit}>
+            {t("issues.landedOn", { branch: issue.landedIn.branch })}
           </span>
         ) : null}
       </div>

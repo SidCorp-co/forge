@@ -132,9 +132,13 @@ const titled = (seed: [QueryKey, unknown][], family: string, field: string, name
 const FEEDBACK_TITLED = titled(FEEDBACK_SEED, "feedback", "feedback", ["Login loops", "Export is empty", "Totals drift", "Slow board", "Wrong date", "Lost draft", "Stale badge", "Bad link"]);
 const REQUIREMENTS_TITLED = titled(reqQueries(), "requirements", "requirements", ["Sign-in", "Invoice export"]);
 
+const ISSUE_TITLED: [QueryKey, unknown][] = detailQueries().map(([key, value]) =>
+  key[0] === "issue" && key[1] === "i1" && key.length <= 3 && (value as { displayId?: string }).displayId ? [key, { ...(value as object), title: "Totals drift on export" }] : [key, value],
+);
+
 const PAGES = [
   { name: "home", path: "/projects/hop", pattern: "/projects/$slug", render: () => <HomePage /> },
-  { name: "issue", path: "/projects/hop/issues/ISS-1", render: () => <Seeded data={detailQueries()}><IssueDetailScreen projectId="p1" slug="hop" id="i1" /></Seeded> },
+  { name: "issue", path: "/projects/hop/issues/ISS-1", render: () => <Seeded data={ISSUE_TITLED}><IssueDetailScreen projectId="p1" slug="hop" id="i1" /></Seeded> },
   { name: "requirements", path: "/projects/hop/requirements", render: () => <Seeded data={REQUIREMENTS_TITLED}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
   { name: "feedback", path: "/projects/hop/feedback", render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
   { name: "releases", path: "/projects/hop/releases", render: () => <Seeded data={releaseSeed()}><ReleasesScreen projectId={REL_P} slug="hop" /></Seeded> },

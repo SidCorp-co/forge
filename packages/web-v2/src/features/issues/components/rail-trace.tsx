@@ -84,11 +84,12 @@ export function RailTraceRows({
     <>
       {req && (req.criteria.length || req.staleCriteria.length) ? (
         <Row label={t("issues.rail.traces")}>
-          <span className="fg-body-sm font-mono" data-testid="rail-traces">
-            {req.criteria.join(", ")}
+          {/* how many criteria it traces; their codes are the tooltip, never the face (REQ-11 BC-19) */}
+          <span className="fg-body-sm" data-testid="rail-traces" title={req.criteria.join(", ") || undefined}>
+            {req.criteria.length ? t("issues.rail.criteriaCount", { n: req.criteria.length }) : null}
             {req.staleCriteria.length ? (
-              <span className="ml-1.5 font-sans text-12 text-muted" data-testid="stale-traces">
-                {t("issues.facts.staleShort", { codes: req.staleCriteria.join(", ") })}
+              <span className="ml-1.5 text-12 text-muted" data-testid="stale-traces" title={t("issues.facts.staleShort", { codes: req.staleCriteria.join(", ") })}>
+                {t("issues.rail.staleCount", { n: req.staleCriteria.length })}
               </span>
             ) : null}
           </span>
@@ -105,10 +106,10 @@ export function RailTraceRows({
       {standing?.feedback.length ? (
         <Row label={t("issues.facts.feedback")}>
           <span className="flex flex-wrap justify-end gap-x-2 gap-y-1" data-testid="rail-feedback">
-            {standing.feedback.map((k) => (
+            {standing.feedback.map((k, i) => (
               <span key={k} className="inline-flex items-baseline gap-1">
-                <Link href={feedbackHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
-                  {k}
+                <Link href={feedbackHref(slug, k)} className="text-12 font-semibold text-link hover:underline" title={k}>
+                  {t("issues.rail.feedbackItem", { n: i + 1 })}
                 </Link>
                 {standing.feedbackDropped.includes(k) ? <span className="text-12 text-muted">{t("issues.facts.dropped")}</span> : null}
               </span>
@@ -128,10 +129,9 @@ export function RailTraceRows({
       ) : issue.landedIn ? (
         <Row label={t("issues.rail.release")}>
           <span className="inline-flex items-baseline gap-2" data-testid="rail-landed">
-            <span className="text-12">
-              {issue.landedIn.commit
-                ? t("issues.landedIn", { branch: issue.landedIn.branch, sha: issue.landedIn.commit.slice(0, 7) })
-                : t("issues.landedOn", { branch: issue.landedIn.branch })}
+            {/* the commit is the tooltip, never the face (REQ-11 BC-19) */}
+            <span className="text-12" title={issue.landedIn.commit ?? undefined}>
+              {t("issues.landedOn", { branch: issue.landedIn.branch })}
             </span>
             <span className="text-12 text-muted">{time.date(issue.landedIn.at)}</span>
           </span>
