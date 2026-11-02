@@ -1,6 +1,6 @@
 /**
  * REQ-65 BC-3..BC-6 (ISS-690): the value check's questions and holds. The assistant drafts first and
- * asks at most three questions, each with a recommended answer, which the author answers; only a
+ * asks the questions it needs, each with a recommended answer, which the author answers; only a
  * missing problem or value, or a contradicted criterion, holds the check, and every other gap takes its
  * question's recommended answer as an assumption naming that source; a person keeps a refused request
  * with a one-line reason. The doors and outcomes: value-check-e2e.test.ts.
@@ -38,7 +38,7 @@ beforeAll(() => {
   ({ projectId, ownerId, owner, viewer } = world);
 });
 
-describe('the assistant drafts first and asks at most three questions, each with a recommended answer (REQ-65 BC-3)', () => {
+describe('the assistant drafts first and asks the questions it needs, each with a recommended answer (REQ-65 r3 BC-3)', () => {
   it('fills the draft while a question holds the check, and the author answers it to end the check', async () => {
     const key = await create('Held: Match referrals before booking');
     const held = await draftOf(key);

@@ -240,31 +240,21 @@ describe('an intake draft reads the product record and nothing else (BC-11)', ()
   });
 });
 
-describe('an intake draft asks at most three questions, or says it has nothing to ask (BC-14..BC-16)', () => {
-  it('refuses a fourth question by name and drafts from the answer that keeps to three', async () => {
+describe('an intake draft asks the questions it needs, or says it has nothing to ask (BC-14..BC-16)', () => {
+  // ISS-904: four questions are drafted on the first answer; no count sends the model back
+  it('drafts a fourth question on the first answer, each with its recommended option', async () => {
     const { reads } = readsSeen();
     const { complete, sent } = modelSaying(
       answerWith({ questions: [question(1), question(2), question(3), question(4)] }),
-      answerWith({ questions: [question(1), question(2), question(3)] }),
     );
     const out = await draftIntake(item, depsOf(reads, complete));
-    expect(sent).toHaveLength(2);
-    expect(sent[1]?.at(-1)?.content).toMatch(/^That was refused: questions: Too big/);
+    expect(sent).toHaveLength(1);
     expect(out.outcome === 'drafted' && out.draft.questions.map((q) => q.recommended)).toEqual([
       'wait',
       'wait',
       'wait',
+      'wait',
     ]);
-    expect(
-      out.outcome === 'drafted' && out.draft.questions[0]?.options.map((o) => o.effect),
-    ).toEqual(['A clerk matches it by hand', 'The clinic resends it']);
-  });
-
-  it('keeps the miss by name when the second answer is still wrong', async () => {
-    const { reads } = readsSeen();
-    const four = answerWith({ questions: [question(1), question(2), question(3), question(4)] });
-    const out = await draftIntake(item, depsOf(reads, modelSaying(four, four).complete));
-    expect(out.outcome === 'failed' && out.code).toBe('INTAKE_SHAPE');
   });
 
   it('says it has nothing to ask and asks nothing', async () => {
@@ -308,7 +298,7 @@ describe('a draft link rests on what was read, or it is refused (BC-12, FB-111)'
       { code: 'BC-6', text: 'A bug against an existing criterion needs only three answers.' },
       {
         code: 'BC-14',
-        text: 'It asks at most three questions, only ones that change scope or outcome.',
+        text: 'It asks the questions it needs, only ones that change scope or outcome.',
       },
     ],
   });

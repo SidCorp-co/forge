@@ -1,4 +1,4 @@
-// The questions of an item's draft (REQ-65 BC-3, BC-5; REQ-34 BC-14..BC-16): at most three, each a row
+// The questions of an item's draft (REQ-65 BC-3, BC-5; REQ-34 BC-14..BC-16): the ones it needs, each a row
 // of chips with the recommended one marked. A person answers by picking one. A question that holds the
 // check says what it blocks on; any other question has its recommended answer taken until it is answered.
 // Questions answered on an earlier draft stay listed as asked and answered.

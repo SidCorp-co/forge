@@ -3,7 +3,7 @@
 // feedback starts it with no chat. It reads the product record only (requirements, workflows,
 // feedback, releases), never the codebase or an issue; names what the item duplicates, conflicts
 // with, affects and relates to, each linked; fills each gap it can as an assumption naming its
-// source; and asks at most three questions that change scope or outcome, each with a recommended
+// source; and asks the questions it needs that change scope or outcome, each with a recommended
 // answer and what each choice changes, or says it has nothing to ask. Core keeps one draft per item
 // (`core/src/intake/`); the item's page shows it.
 //
@@ -79,8 +79,7 @@ export const INTAKE_FIELDS = {
 } as const satisfies Record<IntakeItemKind, readonly string[]>;
 export type IntakeField = (typeof INTAKE_FIELDS)[IntakeItemKind][number];
 
-/** At most three questions (BC-14), each changing one of these (BC-14). */
-export const INTAKE_QUESTIONS_MAX = 3;
+/** What each question changes (REQ-34 BC-14): it asks the questions it needs, no count holds it. */
 export const INTAKE_QUESTION_CHANGES = ["scope", "outcome"] as const;
 export type IntakeQuestionChange = (typeof INTAKE_QUESTION_CHANGES)[number];
 
@@ -232,7 +231,7 @@ export const intakeAnswerSchema = z.strictObject({
 		)
 		.max(INTAKE_LIMITS.links)
 		.default([]),
-	questions: z.array(intakeQuestionSchema).max(INTAKE_QUESTIONS_MAX),
+	questions: z.array(intakeQuestionSchema),
 	/** Said, in one line, exactly when `questions` is empty (BC-16). */
 	nothingToAsk: z.string().trim().min(1).max(INTAKE_LIMITS.nothingToAsk).nullable(),
 	value: valueCheckAnswerSchema,
@@ -399,11 +398,11 @@ export interface IntakeDraftResponse {
 
 /** `POST /api/projects/:id/intake-drafts/:ref/answers`: one option of one question, by its number. */
 export const intakeAnswerRequestSchema = z.strictObject({
-	question: z.number().int().min(1).max(INTAKE_QUESTIONS_MAX),
+	question: z.number().int().min(1),
 	option: z.string().regex(OPTION_ID, "an option id is 1-32 of a-z, 0-9, _ and -"),
 });
 export type IntakeAnswerRequest = z.infer<typeof intakeAnswerRequestSchema>;
-export const INTAKE_ANSWER_SHAPE = `{ question: 1-${INTAKE_QUESTIONS_MAX}, option: <option id> }`;
+export const INTAKE_ANSWER_SHAPE = "{ question: <its number, from 1>, option: <option id> }";
 
 /** `POST /api/projects/:id/intake-drafts/:ref/keep`: a refused request kept, with a one-line reason. */
 export const intakeKeepRequestSchema = z.strictObject({

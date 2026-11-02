@@ -406,14 +406,10 @@ describe('the value check judged against what it read (REQ-65 BC-2..BC-5)', () =
 });
 
 describe('the answer shape the model is held to', () => {
-  it('takes at most three questions (BC-14)', () => {
-    const four = { ...base, questions: [question, question, question, question] };
-    const parsed = intakeAnswerSchema.safeParse(four);
-    expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.path).toEqual(['questions']);
-    expect(
-      intakeAnswerSchema.safeParse({ ...base, questions: [question, question, question] }).success,
-    ).toBe(true);
+  // REQ-65 r3 BC-3, REQ-34 BC-14 as revised (ISS-904): the draft asks the questions it needs
+  it('takes a fourth question and more: no count holds the draft', () => {
+    const five = { ...base, questions: [question, question, question, question, question] };
+    expect(intakeAnswerSchema.safeParse(five).success).toBe(true);
   });
 
   it('takes a question only when it says whether it changes scope or outcome (BC-14)', () => {

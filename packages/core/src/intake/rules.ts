@@ -5,7 +5,7 @@
  * record's: the criterion a conflict contradicts, the step an affected workflow changes, the words a
  * duplicate or related item shares. A workflow the item's words touch is linked or set aside with
  * why; a proposed decline or duplicate rests only on a link that stands. An assumption names the item
- * itself or such a record as its source and fills a field the item has; at most three questions, each
+ * itself or such a record as its source and fills a field the item has; the questions it needs, each
  * with a recommended option it offers; and a nothing-to-ask line exactly when it asks nothing. Each
  * fault is a sentence the model reads on its one retry.
  *
