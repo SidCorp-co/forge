@@ -31,7 +31,7 @@ import {
 import { refuser } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 
 const refuse = refuser<StorefrontRefusalCode>('STOREFRONT_REFUSED');
@@ -81,10 +81,10 @@ async function resolveInjectionStatus(
 export function registerStorefrontRoutes(routes: Hono<{ Variables: AuthVars }>): void {
   routes.get(
     '/:projectId/integrations/storefront/target',
+    requiresOnParam('project.read', 'projectId'),
     zValidator('query', querySchema),
     async (c) => {
       const projectId = c.req.param('projectId');
-      await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
       return c.json(await storefrontTarget(projectId, c.req.valid('query')));
     },
   );

@@ -12,7 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import {
   deleteOrgKnowledge,
   orgKnowledgeEntryOf,
@@ -47,15 +47,15 @@ export const orgKnowledgeRoutes = new Hono<{ Variables: AuthVars }>();
 orgKnowledgeRoutes.use('/:orgId/knowledge', requireAuth(), assertEmailVerified());
 orgKnowledgeRoutes.use('/:orgId/knowledge/*', requireAuth(), assertEmailVerified());
 
-orgKnowledgeRoutes.get('/:orgId/knowledge', orgParam, noQuery, async (c) => {
+const ORG_ADMIN = requiresOnParam('org.admin', 'orgId');
+
+orgKnowledgeRoutes.get('/:orgId/knowledge', orgParam, ORG_ADMIN, noQuery, async (c) => {
   const { orgId } = c.req.valid('param');
-  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
   return c.json({ entries: await orgKnowledgeOf(orgId) });
 });
 
-orgKnowledgeRoutes.get('/:orgId/knowledge/:slug', entryParam, noQuery, async (c) => {
+orgKnowledgeRoutes.get('/:orgId/knowledge/:slug', entryParam, ORG_ADMIN, noQuery, async (c) => {
   const { orgId, slug } = c.req.valid('param');
-  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
   const entry = await orgKnowledgeEntryOf(orgId, slug);
   if (!entry) throw notFound(orgId, slug);
   return c.json(entry);
@@ -64,18 +64,17 @@ orgKnowledgeRoutes.get('/:orgId/knowledge/:slug', entryParam, noQuery, async (c)
 orgKnowledgeRoutes.put(
   '/:orgId/knowledge/:slug',
   entryParam,
+  ORG_ADMIN,
   strictBody(orgKnowledgeWriteSchema, ORG_KNOWLEDGE_WRITE_SHAPE),
   async (c) => {
     const { orgId, slug } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
     return c.json(await writeOrgKnowledge(orgId, slug, c.req.valid('json'), userId));
   },
 );
 
-orgKnowledgeRoutes.delete('/:orgId/knowledge/:slug', entryParam, noQuery, async (c) => {
+orgKnowledgeRoutes.delete('/:orgId/knowledge/:slug', entryParam, ORG_ADMIN, noQuery, async (c) => {
   const { orgId, slug } = c.req.valid('param');
-  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
   if (!(await deleteOrgKnowledge(orgId, slug))) throw notFound(orgId, slug);
   return c.json({ deleted: slug });
 });

@@ -9,7 +9,7 @@ import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import {
   knowledgeInjectionEnum,
   knowledgeKindEnum,
@@ -72,17 +72,18 @@ const notFound = () => new HTTPException(404, { message: 'knowledge entry not fo
 export const knowledgeRoutes = new Hono<{ Variables: AuthVars }>();
 knowledgeRoutes.use('*', requireAuth(), assertEmailVerified());
 
+const READ = requiresOnParam('project.read', 'id');
+
 knowledgeRoutes.get(
   '/:id/knowledge',
   zValidator('param', idParamSchema, invalid('invalid project id')),
+  READ,
   zValidator('query', listQuerySchema, invalid('invalid query params')),
   async (c) => {
     const { id } = c.req.valid('param');
     const { kind, injection, verb: verbRaw, status: statusRaw } = c.req.valid('query');
     const verb = parseVerbQuery(verbRaw);
     const status = parseStatusQuery(statusRaw);
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     const result = await listKnowledgeEntries({ projectId: id, kind, injection, verb, status });
     return c.json({
@@ -104,12 +105,12 @@ knowledgeRoutes.post(
   '/:id/knowledge/search',
   rateLimit(() => RULES.knowledgeSearch, { name: 'knowledge-search' }),
   zValidator('param', idParamSchema, invalid('invalid project id')),
+  READ,
   zValidator('json', searchBodySchema, invalid('invalid body')),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     return c.json(
       await runUnifiedSearch({ projectId: id, reader: requestReader(userId), ...body }),
@@ -122,11 +123,10 @@ knowledgeRoutes.get(
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
+  READ,
   noQuery,
   async (c) => {
     const { id, slug } = c.req.valid('param');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     const entry = await readKnowledgeEntry(id, slug);
     if (!entry) throw notFound();
@@ -141,12 +141,11 @@ knowledgeRoutes.put(
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
+  requiresOnParam('project.write', 'id'),
   zValidator('json', upsertBodySchema, invalid('invalid body')),
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
     return c.json(await upsertKnowledgeEntry({ projectId: id, slug, ...body }));
   },
@@ -157,10 +156,9 @@ knowledgeRoutes.delete(
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
+  requiresOnParam('project.write', 'id'),
   async (c) => {
     const { id, slug } = c.req.valid('param');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
     const removed = await deleteKnowledgeEntry(id, slug);
     return c.json({ deleted: removed > 0 });

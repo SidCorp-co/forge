@@ -35,7 +35,7 @@ import {
 import { providerRefused } from '../lib/provider-refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan, requiresOnParam } from '../permissions/index.js';
 import { announceIntegrationChanged } from '../project-config/index.js';
 import {
   coolifyDeliveryStatus,
@@ -234,11 +234,15 @@ function registerLogRoutes(routes: Routes): void {
 
 /** What a binding is set up with: its integrations, the applications to pick, the bound targets. */
 function registerSetupRoutes(routes: Routes): void {
-  routes.get('/:projectId/integrations/coolify', noQuery, async (c) => {
-    const projectId = c.req.param('projectId');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
-    return c.json(await listCoolifyIntegrations(projectId));
-  });
+  routes.get(
+    '/:projectId/integrations/coolify',
+    requiresOnParam('project.read', 'projectId'),
+    noQuery,
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      return c.json(await listCoolifyIntegrations(projectId));
+    },
+  );
   routes.get(
     '/:projectId/integrations/coolify/applications',
     projectMember,
@@ -274,29 +278,32 @@ function registerSetupRoutes(routes: Routes): void {
       return answer(c, () => resolveCoolifyTargets({ projectId, ...given({ integrationId }) }));
     },
   );
-  routes.post('/:projectId/integrations/:id/confirm-prod-deploy', async (c) => {
-    const projectId = c.req.param('projectId');
-    const id = c.req.param('id');
-    await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(projectId));
-    const existing = await findBindingWithConnectionById(id);
-    if (!existing || existing.binding.projectId !== projectId) throw notFound();
-    const { bindingReachesProduction, confirmPendingProdDeploy } = await import(
-      '../release-batch/index.js'
-    );
-    if (!(await bindingReachesProduction(projectId, existing.binding))) {
-      throw new HTTPException(400, {
-        message:
-          "confirm-prod-deploy is only valid on a deploy binding that reaches the project document's production environment — this one does not, so there is no production deploy for a human to confirm",
-        cause: { code: 'NOT_LIVE_BINDING' },
+  routes.post(
+    '/:projectId/integrations/:id/confirm-prod-deploy',
+    requiresOnParam('project.admin', 'projectId'),
+    async (c) => {
+      const projectId = c.req.param('projectId');
+      const id = c.req.param('id');
+      const existing = await findBindingWithConnectionById(id);
+      if (!existing || existing.binding.projectId !== projectId) throw notFound();
+      const { bindingReachesProduction, confirmPendingProdDeploy } = await import(
+        '../release-batch/index.js'
+      );
+      if (!(await bindingReachesProduction(projectId, existing.binding))) {
+        throw new HTTPException(400, {
+          message:
+            "confirm-prod-deploy is only valid on a deploy binding that reaches the project document's production environment — this one does not, so there is no production deploy for a human to confirm",
+          cause: { code: 'NOT_LIVE_BINDING' },
+        });
+      }
+      const result = await confirmPendingProdDeploy(id);
+      await announceIntegrationChanged(projectId, {
+        bindingId: id,
+        connectionId: existing.connection.id,
       });
-    }
-    const result = await confirmPendingProdDeploy(id);
-    await announceIntegrationChanged(projectId, {
-      bindingId: id,
-      connectionId: existing.connection.id,
-    });
-    return c.json(result);
-  });
+      return c.json(result);
+    },
+  );
 }
 
 async function boundCredential(projectId: string, integrationId: string) {

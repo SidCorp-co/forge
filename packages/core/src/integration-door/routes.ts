@@ -44,7 +44,13 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
+import {
+  actorFor,
+  projectResource,
+  requireCan,
+  requireOrgHeld,
+  requiresOnParam,
+} from '../permissions/index.js';
 import { announceIntegrationChanged, setBindingInboundSecret } from '../project-config/index.js';
 import { summarizeBindings, summarizeOneBinding } from './binding-standing.js';
 import { loadConnection } from './connection-routes.js';
@@ -87,10 +93,10 @@ async function projectBinding(
   return existing;
 }
 
-integrationsRoutes.get('/:projectId/integrations', noQuery, async (c) => {
+const READ = requiresOnParam('project.read', 'projectId');
+
+integrationsRoutes.get('/:projectId/integrations', READ, noQuery, async (c) => {
   const projectId = c.req.param('projectId');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   const pairs = await listBindingsForProject(projectId);
   return c.json({ items: await summarizeBindings(pairs) });
@@ -213,11 +219,10 @@ const rocketchatRoomsSchema = z
 
 integrationsRoutes.post(
   '/:projectId/integrations/rocketchat/rooms',
+  READ,
   zValidator('json', rocketchatRoomsSchema),
   async (c) => {
     const projectId = c.req.param('projectId');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
     const body = c.req.valid('json');
 
     let auth: { serverUrl: string; authToken: string; userId: string };
@@ -255,11 +260,11 @@ const rocketchatConnectionRoomsSchema = z.strictObject({ connectionId: z.string(
 
 integrationsRoutes.post(
   '/:projectId/integrations/rocketchat/connection-rooms',
+  READ,
   zValidator('json', rocketchatConnectionRoomsSchema),
   async (c) => {
-    const projectId = c.req.param('projectId');
+    const _projectId = c.req.param('projectId');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
     const { connectionId } = c.req.valid('json');
     const connection = await loadConnection(connectionId, userId, 'read');
     if (!isRocketChatConnection(connection)) {
@@ -326,20 +331,16 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', noQuery, async
 
 // ISS-305 — composed read-only integrations status for the web hub; the
 // aggregation lives in status-service.ts.
-integrationsRoutes.get('/:projectId/integrations/status', noQuery, async (c) => {
+integrationsRoutes.get('/:projectId/integrations/status', READ, noQuery, async (c) => {
   const projectId = c.req.param('projectId');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   return c.json({ cards: await buildIntegrationsStatusCards(projectId) });
 });
 
 // MCP preview (ISS-429, ISS-1191) — every server a project-wide agent session receives, composed
 // in mcp-preview-service.ts from resolveSessionMcpServers, so nothing here resolves a second time.
-integrationsRoutes.get('/:projectId/integrations/mcp-preview', noQuery, async (c) => {
+integrationsRoutes.get('/:projectId/integrations/mcp-preview', READ, noQuery, async (c) => {
   const projectId = c.req.param('projectId');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   return c.json(await buildMcpPreview(projectId));
 });
