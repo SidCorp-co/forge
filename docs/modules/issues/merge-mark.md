@@ -404,6 +404,22 @@ version no release of the project shipped (`RELEASE_SHIPPED_IN_UNKNOWN`), a rele
 issue landed, which cannot hold it (`RELEASE_SHIPPED_IN_BEFORE_LANDING`, ISS-759), and an issue not
 waiting unclaimed with a mark (`RELEASE_SHIPPED_IN_NOT_WAITING`).
 
+A record closes its issue at once, so one that named the wrong release is corrected, never recorded
+twice (ISS-846): the same call with `corrects`, the version the issue ships in now, and a `reason`
+(`packages/core/src/release-batch/shipped-in-correct.ts:correctShippedIn`). The new version passes
+every check a first record passes (`shipped-in.ts:shippableRelease`). The issue stays `closed`; the
+release it now ships in lists it under `rosterClosed`, and the one it replaces keeps the record that
+named it, lists the issue under `rosterSuperseded`, which every reader of what a release carries
+subtracts (`release-batch/versions.ts:issueIdsOf`, `pipeline/release-runs.ts:shippedReleasesOf`),
+and both keep the correction with who, when and why under `shippedInCorrections`. The issue's
+activity records `issue.shippedInCorrected` and a notice names both versions. Refused by name:
+`corrects` other than the version it ships in now (`RELEASE_SHIPPED_IN_CORRECTS_MISMATCH`), no
+`reason` (`RELEASE_SHIPPED_IN_REASON_MISSING`), `reason` without `corrects`
+(`RELEASE_SHIPPED_IN_REASON_UNUSED`), the version it already ships in
+(`RELEASE_SHIPPED_IN_CORRECTION_SAME`), `version: null` (`RELEASE_SHIPPED_IN_CORRECTION_NONE`), and
+an issue no shipped-in record closed (`RELEASE_SHIPPED_IN_NOT_CORRECTABLE`), which takes the record
+without `corrects`.
+
 Two release runs make that record as their own (ISS-888, owner ruling `release-is-the-agents-record`),
 by the same rule and through the same close. A release's finish records every issue waiting
 unclaimed whose landing is no later than its cut and whose mark came after it as shipped in the

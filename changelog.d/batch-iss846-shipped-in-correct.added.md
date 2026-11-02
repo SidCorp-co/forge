@@ -1,0 +1,1 @@
+**A wrong shipped-in record can be corrected.** The same record with `corrects` and a `reason` moves a closed issue to the release that truly shipped it; the old record stays on its release, marked superseded.

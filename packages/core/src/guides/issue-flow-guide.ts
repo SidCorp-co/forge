@@ -367,7 +367,9 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    \`draft\` and closes on the shipped release whose commit contains that merge:
    \`POST /api/projects/:projectId/shipped-in-records\` \`{ issueId, version, evidence }\`
    (\`RELEASE_SHIPPED_IN_NOT_CONTAINED\` where it does not, \`RELEASE_SHIPPED_IN_UNVERIFIED\` where
-   the repository cannot answer).
+   the repository cannot answer). A record that named the wrong release is corrected by the same
+   call with \`corrects: "<the version it names now>"\` and a \`reason\`: the issue stays closed, the
+   release it names lists it, and the old record stays on its release, marked superseded.
    Where a merge check is owed, the mark is refused \`MERGE_CHECK_MISSING\` until a passing one is
    recorded at the commit it marks (the commit named, else the one the issue records).
    Where the project declares the merge check, it is then refused \`MERGE_REVIEW_MISSING\` until a
