@@ -24,6 +24,8 @@
  * @direct-test-of packages/core/src/product-door/design-permission.ts
  * @direct-test-of packages/core/src/support/tool.ts
  * @direct-test-of packages/core/src/permissions/declared.ts
+ * @direct-test-of packages/core/src/forge-door/tool.ts
+ * @direct-test-of packages/core/src/projects/tool.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -366,5 +368,31 @@ describe('forge_support (declared permissionless, as its REST twins under suppor
   it("refuses a caller holding no role by the same session rule, the door admitting the credential's call", async () => {
     const refused = await mcp('outsider', 'forge_support', { action: 'channel' });
     expect(refused.text).toContain('SUPPORT_NOT_THE_ROOM_SESSION');
+  });
+});
+
+describe('actions declared by the rule that decides them (part 15): the rule still answers first', () => {
+  it("answers a no-role caller's suggestion_reject with the rule's own refusal, never a floor's", async () => {
+    const refused = await mcp('outsider', 'forge_design', {
+      action: 'suggestion_reject',
+      projectId,
+      suggestionId: randomUUID(),
+      reason: 'not what this project asked for',
+    });
+    expect(refused.isError, refused.text).toBe(true);
+    // rejectSuggestion's own refusal, naming the act and suggestions.approve; a floor would name project.read
+    expect(refused.text).toContain('rejecting a suggestion needs suggestions.approve');
+    expect(refused.text).not.toContain('project.read');
+  });
+
+  it("answers a no-role caller's channel hold with CHANNEL_NO_ROLE, the role rule before the hold rule", async () => {
+    const refused = await mcp('outsider', 'forge_channel', {
+      action: 'hold',
+      projectId,
+      thread: 'FP-CN-1',
+      reason: 'waiting on the provider',
+    });
+    expect(refused.isError, refused.text).toBe(true);
+    expect(refused.text).toContain('CHANNEL_NO_ROLE');
   });
 });

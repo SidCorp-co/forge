@@ -19,7 +19,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
-import { permissionless } from '../permissions/index.js';
+import { byRule, permissionless } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 import {
   type Answer,
@@ -64,6 +64,9 @@ const inputSchema = z.strictObject({
 });
 
 type Input = z.infer<typeof inputSchema>;
+
+const ITEM_ROW =
+  "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found";
 
 // read off the schemas the input takes, so the description never names a value the input refuses
 // or leaves out one it takes
@@ -254,8 +257,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   // the REST twins declare the same (forge-door/routes.ts). get, progress, verify, reopen and reply
-  // stay on the amnesty: who may read or settle an item depends on the row (its reporter, an agent
-  // reporter's master, or a member of the home project)
+  // are declared by the rule that decides them: who may read or settle an item depends on the row
+  // (its reporter, an agent reporter's master, or a member of the home project)
   permission: {
     byAction: {
       submit: permissionless(
@@ -263,6 +266,11 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         "an item about Forge, filed as the caller's own into Forge's home project, which takes no permission there",
       ),
       list: permissionless('self', 'the items the caller reported'),
+      get: byRule('forge-door/service.ts:getForgeFeedback', ITEM_ROW),
+      progress: byRule('forge-door/service.ts:getForgeFeedback', ITEM_ROW),
+      verify: byRule('forge-door/service.ts:settleForgeFeedback', ITEM_ROW),
+      reopen: byRule('forge-door/service.ts:settleForgeFeedback', ITEM_ROW),
+      reply: byRule('forge-door/service.ts:replyForgeFeedback', ITEM_ROW),
     },
   },
   handler: async (args) => {

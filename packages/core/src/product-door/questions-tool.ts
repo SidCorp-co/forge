@@ -11,7 +11,7 @@ import { readIssueForecast } from '../forecast/index.js';
 import { findIssueById, issueDisplayIds, resolveIssueRouteRef } from '../issues/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { need, readingArgument } from '../lib/tool-args.js';
-import { onArg, onResolved } from '../permissions/index.js';
+import { byRule, onArg, onResolved } from '../permissions/index.js';
 import {
   ANSWER_SHAPE,
   answerBody,
@@ -207,8 +207,9 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
   },
   // the REST twins declare the same: POST /api/questions/:id/answer project.write on the question's
   // project (an admin option asks project.admin, a rule of the chosen option), POST
-  // /api/issues/:id/comments project.write. list and get stay on the amnesty: a project the caller
-  // has no role in, and a question it cannot see, are not found, which a declaration would refuse
+  // /api/issues/:id/comments project.write. list and get are declared by the rule that decides
+  // them: a project the caller has no role in, and a question it cannot see, are not found, which a
+  // permission declaration would refuse instead
   permission: {
     byAction: {
       answer: onResolved(
@@ -216,6 +217,14 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
         'the project of the question `questionId` names; an admin option asks project.admin, a rule of the chosen option',
       ),
       ask: onArg('project.write'),
+      list: byRule(
+        'questions/read.ts:accessOn',
+        'the projects the caller has a role in; another answers not found, as does a question it cannot read',
+      ),
+      get: byRule(
+        'questions/read.ts:readQuestionFor',
+        "the question's row decides who reads it; another answers not found",
+      ),
     },
   },
   handler: async (args) => {

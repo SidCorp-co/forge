@@ -21,6 +21,7 @@ import { need } from '../lib/tool-args.js';
 import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
+  byRule,
   orgResource,
   permissionless,
   requireHeld,
@@ -74,7 +75,8 @@ async function list(ctx: McpContext, i: Input) {
   };
 }
 
-async function get(ctx: McpContext, i: Input) {
+/** forge_projects.get: its projectId argument's own refusal, then project.read on that project. */
+export async function getProjectForTool(ctx: McpContext, i: Input) {
   const { projectId } = need(i, 'get', 'projectId');
   const access = await loadProjectAccess(projectId, ctx.principal.userId);
   requireHeld(access, 'project.read');
@@ -90,7 +92,8 @@ async function get(ctx: McpContext, i: Input) {
   };
 }
 
-async function create(ctx: McpContext, i: Input) {
+/** forge_projects.create: an unfenced token, and org.read on the org named, else the caller's own. */
+export async function createProjectForTool(ctx: McpContext, i: Input) {
   assertUnfenced('creating a project');
   const { slug, name } = need(i, 'create', 'slug', 'name');
   const userId = ctx.principal.userId;
@@ -122,18 +125,27 @@ export const forgeProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
       },
     },
   },
-  // list reads only the projects the caller sees; get and create stay on the amnesty: get's missing
-  // projectId is refused by its own argument rule, and create's org depends on the input
+  // list reads only the projects the caller sees; get and create are declared by the rule that
+  // decides them: get's missing projectId is refused by its own argument rule before project.read,
+  // and create's org depends on the input
   permission: {
     byAction: {
       list: permissionless('self', 'the projects the caller can see, inside its token fence'),
+      get: byRule(
+        'projects/tool.ts:getProjectForTool',
+        'project.read on the project projectId names, once its own argument rule has answered',
+      ),
+      create: byRule(
+        'projects/tool.ts:createProjectForTool',
+        "org.read on the org orgId names, else the caller's personal org, from an unfenced token",
+      ),
     },
   },
   // a project's record carries what people wrote, so a credential pasted into it never leaves
   handler: async (args) => {
     const i = parse(args);
     if (i.action === 'list') return scrubSecretsDeep(await list(ctx, i));
-    if (i.action === 'get') return scrubSecretsDeep(await get(ctx, i));
-    return scrubSecretsDeep(await create(ctx, i));
+    if (i.action === 'get') return scrubSecretsDeep(await getProjectForTool(ctx, i));
+    return scrubSecretsDeep(await createProjectForTool(ctx, i));
   },
 });

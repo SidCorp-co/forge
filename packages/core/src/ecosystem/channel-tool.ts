@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from '../lib/tool.js';
-import { onResolved, requireDeclaredOn, toolPermissionFor } from '../permissions/index.js';
+import { byRule, onResolved, requireDeclaredOn, toolPermissionFor } from '../permissions/index.js';
 import { ecosystemReadFence } from './access.js';
 import { readApiPage } from './api-page.js';
 import type { ChannelOutcome } from './channel-act.js';
@@ -255,7 +255,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
   const role = await channelRoleRefusal(principal.userId, side, roleNeeded(call.action));
   if (role) return refusedWith([role]);
   // after the role rule, so its CHANNEL_NO_ROLE stands: what the action declares is held on the side too
-  if (toolPermissionFor(PERMISSION, call.action)) {
+  if (toolPermissionFor(PERMISSION, call.action)?.permission) {
     await requireDeclaredOn(side, principal.userId, 'project.read', `forge_channel.${call.action}`);
   }
   if (isWrite(call.action) && !principal.scopes.includes('write')) {
@@ -298,13 +298,18 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 
 // each action's permission on the side the handler resolves, checked once channelRoleRefusal has
 // answered, so its CHANNEL_NO_ROLE is never replaced: the reads project.read, the writes that
-// channelRoleRefusal holds to project.write the same. The rest stay on the amnesty: contracts reads
-// the API page of the project its input names (counterparty access), hold and release are decided by
-// the hold rule (HOLD_NOT_AUTHORISED), and gate by the gate option's admin check
+// channelRoleRefusal holds to project.write the same. The rest are declared by the rule that decides
+// them, with no floor, since a floor would answer before their named refusals: contracts reads the
+// API page of the project its input names (counterparty access), hold and release are decided by the
+// hold rule (HOLD_NOT_AUTHORISED), and gate by the gate question's option authority
 const THE_SIDE =
   "the projectId argument, else the token's one project or the X-Forge-Project-Slug header";
 const READ = onResolved('project.read', THE_SIDE);
 const WRITE = onResolved('project.write', THE_SIDE);
+const HOLD_RULE = byRule(
+  'ecosystem/channel-hold-rules.ts:holdRefusals',
+  'a person with a member role on a side that is party to the conversation (HOLD_NOT_AUTHORISED)',
+);
 const PERMISSION = {
   byAction: {
     register: READ,
@@ -319,6 +324,16 @@ const PERMISSION = {
     submit: WRITE,
     withdraw: WRITE,
     supersede: WRITE,
+    contracts: byRule(
+      'ecosystem/api-page.ts:readApiPage',
+      'the API page of the project the `project` argument names, read as its counterparty',
+    ),
+    hold: HOLD_RULE,
+    release: HOLD_RULE,
+    gate: byRule(
+      'ecosystem/channel-tool-gate.ts:decideGateAs',
+      "a person answers the gate's question, the option's own authority deciding (PERMISSION_FORBIDDEN)",
+    ),
   } satisfies Partial<Record<ChannelAction, unknown>>,
 } as const;
 

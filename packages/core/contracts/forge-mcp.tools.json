@@ -189,6 +189,10 @@
       },
       "name": "forge_channel",
       "x-forge-permission": {
+        "contracts": {
+          "rule": "ecosystem/api-page.ts:readApiPage",
+          "why": "the API page of the project the `project` argument names, read as its counterparty"
+        },
         "draft": {
           "on": {
             "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
@@ -200,6 +204,14 @@
             "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
           },
           "permission": "project.write"
+        },
+        "gate": {
+          "rule": "ecosystem/channel-tool-gate.ts:decideGateAs",
+          "why": "a person answers the gate's question, the option's own authority deciding (PERMISSION_FORBIDDEN)"
+        },
+        "hold": {
+          "rule": "ecosystem/channel-hold-rules.ts:holdRefusals",
+          "why": "a person with a member role on a side that is party to the conversation (HOLD_NOT_AUTHORISED)"
         },
         "inbox": {
           "on": {
@@ -224,6 +236,10 @@
             "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
           },
           "permission": "project.read"
+        },
+        "release": {
+          "rule": "ecosystem/channel-hold-rules.ts:holdRefusals",
+          "why": "a person with a member role on a side that is party to the conversation (HOLD_NOT_AUTHORISED)"
         },
         "reply": {
           "on": {
@@ -457,6 +473,10 @@
           },
           "permission": "workflow-designs.write"
         },
+        "design_decide": {
+          "rule": "workflows/design-service.ts:approverRefusalFor",
+          "why": "the design's approver rule decides who approves or returns a proposed revision"
+        },
         "design_get": {
           "on": {
             "arg": "projectId"
@@ -535,6 +555,10 @@
           },
           "permission": "project.write"
         },
+        "suggestion_accept": {
+          "rule": "suggestions/accept-gate.ts:acceptGateOf",
+          "why": "the suggestion's kind decides: suggestions.approve, or the person a breakdown waits on"
+        },
         "suggestion_create": {
           "on": {
             "arg": "projectId"
@@ -546,6 +570,14 @@
             "arg": "projectId"
           },
           "permission": "project.read"
+        },
+        "suggestion_reject": {
+          "rule": "suggestions/service.ts:rejectSuggestion",
+          "why": "suggestions.approve, refused by name in the SUGGESTION_REFUSED envelope"
+        },
+        "suggestion_revise": {
+          "rule": "suggestions/propose.ts:reviseSuggestion",
+          "why": "the suggestion's producer (project.write), or a holder of suggestions.approve"
         },
         "suggestion_withdraw": {
           "on": {
@@ -677,11 +709,27 @@
           },
           "permission": "project.read"
         },
+        "builder_run_create": {
+          "rule": "ecosystem/link-service.ts:createBuilderRun",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row"
+        },
+        "builder_run_supersede": {
+          "rule": "ecosystem/builder-supersede.ts:supersedeBuilderRun",
+          "why": "the project's own agent, or an org admin of the steward or of the project's org"
+        },
+        "builder_run_update": {
+          "rule": "ecosystem/link-service.ts:updateBuilderRun",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row"
+        },
         "builder_runs": {
           "on": {
             "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
           },
           "permission": "project.read"
+        },
+        "bus": {
+          "rule": "ecosystem/membership-service.ts:readableEcosystem",
+          "why": "the ecosystem's steward or one of its members; it names no project"
         },
         "context": {
           "on": {
@@ -689,11 +737,35 @@
           },
           "permission": "project.read"
         },
+        "contract_version_decide": {
+          "rule": "ecosystem/contract/decide.ts:decideContractVersion",
+          "why": "a holder of contracts.approve on the publishing project, person or agent"
+        },
+        "contract_version_publish": {
+          "rule": "ecosystem/contract/publish.ts:publishContractVersion",
+          "why": "the provider writer rule of interface_write, on the project that publishes"
+        },
         "interface": {
           "on": {
             "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
           },
           "permission": "project.read"
+        },
+        "interface_write": {
+          "rule": "ecosystem/provider-writer-rules.ts:providerWriterRefusal",
+          "why": "a holder of contracts.write, and commitments.write to change windows already set"
+        },
+        "link": {
+          "rule": "ecosystem/link-read.ts:readLinkAs",
+          "why": "the link's row decides: its provider or consumer side, or a member of its ecosystem"
+        },
+        "link_create": {
+          "rule": "ecosystem/link-service.ts:createLink",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row"
+        },
+        "link_update": {
+          "rule": "ecosystem/link-service.ts:updateLink",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row"
         },
         "links": {
           "on": {
@@ -834,11 +906,31 @@
       },
       "name": "forge_feedback",
       "x-forge-permission": {
+        "get": {
+          "rule": "forge-door/service.ts:getForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
         "list": {
           "self": "the items the caller reported"
         },
+        "progress": {
+          "rule": "forge-door/service.ts:getForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
+        "reopen": {
+          "rule": "forge-door/service.ts:settleForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
+        "reply": {
+          "rule": "forge-door/service.ts:replyForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
         "submit": {
           "self": "an item about Forge, filed as the caller's own into Forge's home project, which takes no permission there"
+        },
+        "verify": {
+          "rule": "forge-door/service.ts:settleForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
         }
       }
     },
@@ -1080,6 +1172,14 @@
       },
       "name": "forge_projects",
       "x-forge-permission": {
+        "create": {
+          "rule": "projects/tool.ts:createProjectForTool",
+          "why": "org.read on the org orgId names, else the caller's personal org, from an unfenced token"
+        },
+        "get": {
+          "rule": "projects/tool.ts:getProjectForTool",
+          "why": "project.read on the project projectId names, once its own argument rule has answered"
+        },
         "list": {
           "self": "the projects the caller can see, inside its token fence"
         }
@@ -1182,6 +1282,14 @@
             "arg": "projectId"
           },
           "permission": "project.write"
+        },
+        "get": {
+          "rule": "questions/read.ts:readQuestionFor",
+          "why": "the question's row decides who reads it; another answers not found"
+        },
+        "list": {
+          "rule": "questions/read.ts:accessOn",
+          "why": "the projects the caller has a role in; another answers not found, as does a question it cannot read"
         }
       }
     },
@@ -1263,6 +1371,10 @@
       },
       "name": "forge_releases",
       "x-forge-permission": {
+        "decide": {
+          "rule": "release-batch/approvals.ts:decideApprovalOfVersion",
+          "why": "releases.approve on the version's project, once the version and its pending approval are found"
+        },
         "get": {
           "on": {
             "arg": "projectId"
@@ -1919,6 +2031,10 @@
       },
       "name": "forge_requirements",
       "x-forge-permission": {
+        "answer": {
+          "rule": "requirements/read.ts:readRequirementAs",
+          "why": "the requirement is read as the caller and the question found on it, each not found otherwise, before project.write"
+        },
         "create": {
           "on": {
             "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"
@@ -2671,6 +2787,10 @@
       },
       "name": "project_feedback",
       "x-forge-permission": {
+        "attach": {
+          "rule": "feedback/attachments.ts:addAttachment",
+          "why": "the item is found (NOT_FOUND), then project.write refused by name (FEEDBACK_REFUSED)"
+        },
         "clarify": {
           "on": {
             "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"

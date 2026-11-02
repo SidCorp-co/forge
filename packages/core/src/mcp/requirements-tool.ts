@@ -21,7 +21,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { argumentRefusal, need } from '../lib/tool-args.js';
-import { onResolved, requireDeclaredOn } from '../permissions/index.js';
+import { byRule, onResolved, requireDeclaredOn } from '../permissions/index.js';
 import { issuesOfRequirements, liveRunsByIssue, runsOn } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import {
@@ -155,6 +155,10 @@ const PERMISSION = {
     revise: onResolved('project.write', THE_PROJECT),
     propose: onResolved('project.write', THE_PROJECT),
     withdraw: onResolved('project.write', THE_PROJECT),
+    answer: byRule(
+      'requirements/read.ts:readRequirementAs',
+      'the requirement is read as the caller and the question found on it, each not found otherwise, before project.write',
+    ),
   },
 } as const;
 

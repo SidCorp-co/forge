@@ -190,36 +190,5 @@
     "PUT /api/projects/:id/links/:link",
     "PUT /api/skills/:id"
   ],
-  "actions": [
-    "forge_channel.contracts",
-    "forge_channel.gate",
-    "forge_channel.hold",
-    "forge_channel.release",
-    "forge_design.design_decide",
-    "forge_design.suggestion_accept",
-    "forge_design.suggestion_reject",
-    "forge_design.suggestion_revise",
-    "forge_ecosystem.builder_run_create",
-    "forge_ecosystem.builder_run_supersede",
-    "forge_ecosystem.builder_run_update",
-    "forge_ecosystem.bus",
-    "forge_ecosystem.contract_version_decide",
-    "forge_ecosystem.contract_version_publish",
-    "forge_ecosystem.interface_write",
-    "forge_ecosystem.link",
-    "forge_ecosystem.link_create",
-    "forge_ecosystem.link_update",
-    "forge_feedback.get",
-    "forge_feedback.progress",
-    "forge_feedback.reopen",
-    "forge_feedback.reply",
-    "forge_feedback.verify",
-    "forge_projects.create",
-    "forge_projects.get",
-    "forge_questions.get",
-    "forge_questions.list",
-    "forge_releases.decide",
-    "forge_requirements.answer",
-    "project_feedback.attach"
-  ]
+  "actions": []
 }

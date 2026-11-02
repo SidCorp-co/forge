@@ -10,7 +10,7 @@ import { egressAs } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
-import { holds, onArg } from '../permissions/index.js';
+import { byRule, holds, onArg } from '../permissions/index.js';
 import {
   decideApprovalOfVersion,
   draftReleaseIssueIds,
@@ -196,15 +196,19 @@ export const forgeReleasesProductTool: ContextScopedMcpToolFactory = (ctx) => ({
     },
   },
   // the REST twins declare the same on :projectId (release-batch/version-routes.ts,
-  // release-page/routes.ts). decide stays on the amnesty: RELEASE_VERSION_UNKNOWN and
-  // RELEASE_APPROVAL_NOT_PENDING are refused before releases.approve is checked, which a
-  // declaration would reorder
+  // release-page/routes.ts). decide is declared by its rule: RELEASE_VERSION_UNKNOWN and
+  // RELEASE_APPROVAL_NOT_PENDING are refused before releases.approve is checked, which a floor
+  // would reorder
   permission: {
     byAction: {
       list: onArg('project.read'),
       get: onArg('project.read'),
       page: onArg('project.read'),
       name: onArg('project.admin'),
+      decide: byRule(
+        'release-batch/approvals.ts:decideApprovalOfVersion',
+        "releases.approve on the version's project, once the version and its pending approval are found",
+      ),
     },
   },
   handler: async (args) => {

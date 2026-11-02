@@ -32,7 +32,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { ArgumentRefusal, keyArgument, need, zodArgumentRefusal } from '../lib/tool-args.js';
-import { onResolved } from '../permissions/index.js';
+import { byRule, onResolved } from '../permissions/index.js';
 import {
   type FeedbackReads,
   feedbackDetail,
@@ -116,6 +116,10 @@ const PERMISSION = {
     similar: onResolved('project.read', THE_PROJECT),
     submit: onResolved('project.write', THE_PROJECT),
     clarify: onResolved('project.write', THE_PROJECT),
+    attach: byRule(
+      'feedback/attachments.ts:addAttachment',
+      'the item is found (NOT_FOUND), then project.write refused by name (FEEDBACK_REFUSED)',
+    ),
   },
 } as const;
 

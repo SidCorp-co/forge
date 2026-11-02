@@ -1,6 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import type { ContextScopedMcpToolFactory, McpContext } from '../lib/tool.js';
-import { onResolved } from '../permissions/index.js';
+import { byRule, onResolved } from '../permissions/index.js';
 import { readBus } from './link-read.js';
 import {
   ACTIONS,
@@ -81,11 +81,15 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 
 // the reads whose REST twins declare project.read on :id (project-routes.ts, link-routes.ts), on the
 // side the handler resolves (projectId, a token bound to one project, or the slug header), each
-// checked with requireDeclaredOn. The rest stay on the amnesty: link reads by the row
-// (assertLinkReadable), the writes by permissionFactsOf rules on the input or the row (the provider
-// writer, the commitments setter), and bus by the ecosystem's steward or member
+// checked with requireDeclaredOn. The rest are declared by the rule that decides them, with no floor,
+// since a floor would answer before their named refusals: link by the row (its provider, the
+// ecosystem's members), the writes by permissionFactsOf rules on the input or the row (the provider
+// writer, the commitments setter, the consuming project's own agent), and bus by the ecosystem's
+// steward or member
 const THE_SIDE =
   "the projectId argument, else the token's one project or the X-Forge-Project-Slug header";
+const OWN_AGENT =
+  "the consuming project's own agent writes its record, decided on the input and the row";
 const PERMISSION = {
   byAction: {
     interface: onResolved('project.read', THE_SIDE),
@@ -93,6 +97,34 @@ const PERMISSION = {
     builder_runs: onResolved('project.read', THE_SIDE),
     builder_run: onResolved('project.read', THE_SIDE),
     context: onResolved('project.read', THE_SIDE),
+    link: byRule(
+      'ecosystem/link-read.ts:readLinkAs',
+      "the link's row decides: its provider or consumer side, or a member of its ecosystem",
+    ),
+    interface_write: byRule(
+      'ecosystem/provider-writer-rules.ts:providerWriterRefusal',
+      'a holder of contracts.write, and commitments.write to change windows already set',
+    ),
+    link_create: byRule('ecosystem/link-service.ts:createLink', OWN_AGENT),
+    link_update: byRule('ecosystem/link-service.ts:updateLink', OWN_AGENT),
+    builder_run_create: byRule('ecosystem/link-service.ts:createBuilderRun', OWN_AGENT),
+    builder_run_update: byRule('ecosystem/link-service.ts:updateBuilderRun', OWN_AGENT),
+    builder_run_supersede: byRule(
+      'ecosystem/builder-supersede.ts:supersedeBuilderRun',
+      "the project's own agent, or an org admin of the steward or of the project's org",
+    ),
+    contract_version_publish: byRule(
+      'ecosystem/contract/publish.ts:publishContractVersion',
+      'the provider writer rule of interface_write, on the project that publishes',
+    ),
+    contract_version_decide: byRule(
+      'ecosystem/contract/decide.ts:decideContractVersion',
+      'a holder of contracts.approve on the publishing project, person or agent',
+    ),
+    bus: byRule(
+      'ecosystem/membership-service.ts:readableEcosystem',
+      "the ecosystem's steward or one of its members; it names no project",
+    ),
   },
 } as const;
 

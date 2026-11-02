@@ -2,13 +2,14 @@
 // the door before the tool's handler runs.
 
 import type { DESIGN_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
-import { onArg } from '../permissions/index.js';
+import { byRule, onArg } from '../permissions/index.js';
 
 // each action takes what its REST twin under /api/projects/:id/{workflows,suggestions,mockups}
 // declares, on the projectId every call sends (the input requires it), so the door checks it before
-// the handler as the route's requiresOnParam does. The rest stay on the amnesty, as their twins do:
-// design_decide (the approver rule), suggestion_accept (the gate per kind), suggestion_reject (its
-// SUGGESTION_REFUSED permission refusal), suggestion_revise (its producer or suggestions.approve)
+// the handler as the route's requiresOnParam does. The rest are declared by the rule that decides
+// them, with no floor, since a floor would answer before their named refusals: design_decide (the
+// approver rule), suggestion_accept (the gate per kind), suggestion_reject (its SUGGESTION_REFUSED
+// permission refusal), suggestion_revise (its producer or suggestions.approve)
 const READ = onArg('project.read');
 const WRITE = onArg('project.write');
 const DESIGN = onArg('workflow-designs.write');
@@ -31,5 +32,21 @@ export const DESIGN_PERMISSION = {
     mockup_accept: WRITE,
     mockup_return: WRITE,
     mockup_withdraw: WRITE,
+    design_decide: byRule(
+      'workflows/design-service.ts:approverRefusalFor',
+      "the design's approver rule decides who approves or returns a proposed revision",
+    ),
+    suggestion_accept: byRule(
+      'suggestions/accept-gate.ts:acceptGateOf',
+      "the suggestion's kind decides: suggestions.approve, or the person a breakdown waits on",
+    ),
+    suggestion_reject: byRule(
+      'suggestions/service.ts:rejectSuggestion',
+      'suggestions.approve, refused by name in the SUGGESTION_REFUSED envelope',
+    ),
+    suggestion_revise: byRule(
+      'suggestions/propose.ts:reviseSuggestion',
+      "the suggestion's producer (project.write), or a holder of suggestions.approve",
+    ),
   } satisfies Partial<Record<(typeof DESIGN_TOOL_ACTIONS)[number], unknown>>,
 } as const;
