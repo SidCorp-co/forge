@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { env } from '../lib/env.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresPublic } from '../permissions/index.js';
 import { consumeVerificationToken } from './verification-token.js';
 
 export const verifyRoutes = new Hono();
@@ -27,6 +28,9 @@ function loginRedirect(c: Context, query: string): Response {
 // because a browser-rendered `{"verified":true}` is bad UX even on success.
 verifyRoutes.get(
   '/verify',
+  requiresPublic(
+    'the emailed verification token in the query is the whole key, opened from a mail client with no session',
+  ),
   zValidator('query', tokenQuery, (result, c) => {
     if (!result.success) return loginRedirect(c, '?verify_error=invalid');
   }),

@@ -5,6 +5,7 @@ import type { ProviderId } from '../../integrations/identity/index.js';
 import { env } from '../../lib/env.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { noQuery, zValidator } from '../../middleware/zod-validator.js';
+import { requiresPublic, requiresSelf } from '../../permissions/index.js';
 import { hasOauthLink } from '../read.js';
 import {
   callbackQuery,
@@ -40,11 +41,16 @@ function gate() {
  * button per row. The flag also gates this — when off, the endpoint 404s
  * so a probe can't enumerate which providers are configured.
  */
-oauthRoutes.get('/oauth/providers', noQuery, (c) => {
-  gate();
-  const enabled = getEnabledProviders().map(toPublic);
-  return c.json({ providers: enabled });
-});
+oauthRoutes.get(
+  '/oauth/providers',
+  requiresPublic('the sign-in page lists the enabled providers before anyone is signed in'),
+  noQuery,
+  (c) => {
+    gate();
+    const enabled = getEnabledProviders().map(toPublic);
+    return c.json({ providers: enabled });
+  },
+);
 
 const knownProvider: MiddlewareHandler = async (c, next) => {
   gate();
@@ -56,6 +62,9 @@ const knownProvider: MiddlewareHandler = async (c, next) => {
 
 oauthRoutes.get(
   '/oauth/:provider/start',
+  requiresPublic(
+    'a caller with no session starts a provider sign-in; the provider’s answer is the credential',
+  ),
   knownProvider,
   zValidator('query', startQuery, refuseStartQuery),
   (c) => handleStart(c, c.req.param('provider') as ProviderId, c.req.valid('query')),
@@ -63,6 +72,9 @@ oauthRoutes.get(
 
 oauthRoutes.get(
   '/oauth/:provider/callback',
+  requiresPublic(
+    'the provider sends the browser back with its code and the state this core issued, which are the key',
+  ),
   knownProvider,
   zValidator('query', callbackQuery, refuseCallbackQuery),
   (c) => handleCallback(c, c.req.param('provider') as ProviderId, c.req.valid('query')),
@@ -71,6 +83,7 @@ oauthRoutes.get(
 oauthRoutes.get(
   '/oauth/:provider/reauth-start',
   requireAuth(),
+  requiresSelf('the signed-in caller proves their own provider link again'),
   knownProvider,
   zValidator('query', startQuery, refuseStartQuery),
   async (c) => {

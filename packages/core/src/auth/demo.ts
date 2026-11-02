@@ -4,6 +4,7 @@ import { signUserToken } from '../credentials/jwt.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
 import { noQuery } from '../middleware/zod-validator.js';
+import { requiresPublic } from '../permissions/index.js';
 import { DEMO_MEMBER_EMAIL } from './demo-member.js';
 import { userByEmail } from './read.js';
 import { openRefreshToken } from './service.js';
@@ -19,23 +20,30 @@ export const demoRoutes = new Hono();
  * DEMO_MODE_OFF and sets nothing. A demo core also signs in every request that carries no
  * credential (web-host/demo-credential.ts), so a browser needs no call here to be signed in.
  */
-demoRoutes.get('/demo', noQuery, async (c) => {
-  if (!env.FORGE_DEMO_MODE) {
-    throw refuse(
-      'DEMO_MODE_OFF',
-      'this core is not in demo mode (FORGE_DEMO_MODE=1), so there is no demo session',
-    );
-  }
-  const member = await userByEmail(DEMO_MEMBER_EMAIL);
-  if (!member) {
-    throw refuse(
-      'DEMO_MEMBER_MISSING',
-      `demo mode is on but ${DEMO_MEMBER_EMAIL} was never seeded; run the demo seed (tests/helpers/demo-world.ts) before serving`,
-    );
-  }
-  setAuthCookie(c, await signUserToken(member.id));
-  const { raw } = await openRefreshToken(member.id);
-  setRefreshCookie(c, raw);
-  c.header('Cache-Control', 'no-store');
-  return c.redirect('/', 302);
-});
+demoRoutes.get(
+  '/demo',
+  requiresPublic(
+    'a visitor with no account signs in as the demo member, only where the instance runs in demo mode',
+  ),
+  noQuery,
+  async (c) => {
+    if (!env.FORGE_DEMO_MODE) {
+      throw refuse(
+        'DEMO_MODE_OFF',
+        'this core is not in demo mode (FORGE_DEMO_MODE=1), so there is no demo session',
+      );
+    }
+    const member = await userByEmail(DEMO_MEMBER_EMAIL);
+    if (!member) {
+      throw refuse(
+        'DEMO_MEMBER_MISSING',
+        `demo mode is on but ${DEMO_MEMBER_EMAIL} was never seeded; run the demo seed (tests/helpers/demo-world.ts) before serving`,
+      );
+    }
+    setAuthCookie(c, await signUserToken(member.id));
+    const { raw } = await openRefreshToken(member.id);
+    setRefreshCookie(c, raw);
+    c.header('Cache-Control', 'no-store');
+    return c.redirect('/', 302);
+  },
+);

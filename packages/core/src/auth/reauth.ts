@@ -5,6 +5,7 @@ import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { requiresSelf } from '../permissions/index.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { passwordHashOf } from './read.js';
 import { markFreshAuth } from './service.js';
@@ -25,6 +26,7 @@ reauthRoutes.use('/reauth', requireAuth());
 
 reauthRoutes.post(
   '/reauth',
+  requiresSelf('the signed-in caller proves their own password again, against their own account'),
   zValidator('json', reauthSchema, invalid('Invalid reauth input')),
   async (c) => {
     const userId = c.get('userId');

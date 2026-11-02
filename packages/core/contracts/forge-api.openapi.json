@@ -2251,6 +2251,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a visitor with no account signs in as the demo member, only where the instance runs in demo mode"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2295,6 +2298,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a caller with no session signs in; the email and password in the body are the whole key"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -2317,6 +2323,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the signed-in caller ends their own sessions"
+        },
         "x-forge-validated": []
       }
     },
@@ -2337,6 +2346,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the signed-in caller’s own profile, selected by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2385,6 +2397,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller’s own profile, selected by the caller"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -2503,6 +2518,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "the sign-in page lists the enabled providers before anyone is signed in"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2557,6 +2575,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the provider sends the browser back with its code and the state this core issued, which are the key"
+        },
         "x-forge-query-open": "the OAuth provider redirects here and chooses the keys it appends (scope, authuser, prompt, hd, …) beside code, state and error",
         "x-forge-validated": [
           "query"
@@ -2597,6 +2618,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller proves their own provider link again"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2635,6 +2659,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a caller with no session starts a provider sign-in; the provider’s answer is the credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2823,6 +2850,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller proves their own password again, against their own account"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -2843,6 +2873,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "the refresh cookie is the whole key, sent by a browser whose access token has lapsed"
+        },
         "x-forge-validated": []
       }
     },
@@ -2884,6 +2917,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a person with no account yet creates one; rate limited per address"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -2913,6 +2949,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the emailed verification token in the query is the whole key, opened from a mail client with no session"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"

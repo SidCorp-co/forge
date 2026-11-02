@@ -6,6 +6,7 @@ import { signUserToken } from '../credentials/jwt.js';
 import { RULES } from '../lib/rate-limits.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { requiresPublic } from '../permissions/index.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { userByEmail } from './read.js';
 import { loginSchema } from './request-schemas.js';
@@ -20,6 +21,9 @@ loginRoutes.use(
 
 loginRoutes.post(
   '/local',
+  requiresPublic(
+    'a caller with no session signs in; the email and password in the body are the whole key',
+  ),
   zValidator('json', loginSchema, invalid('Invalid login input')),
   async (c) => {
     const { email, password } = c.req.valid('json');

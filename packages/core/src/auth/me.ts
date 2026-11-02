@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, requireAuth, sessionEnded } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresSelf } from '../permissions/index.js';
 import { profileOf } from './read.js';
 import { setOwnDisplayName } from './service.js';
 
@@ -10,7 +11,9 @@ export const meRoutes = new Hono<{ Variables: AuthVars }>();
 
 meRoutes.use('/me', requireAuth());
 
-meRoutes.get('/me', noQuery, async (c) => {
+const OWN_PROFILE = requiresSelf('the signed-in caller’s own profile, selected by the caller');
+
+meRoutes.get('/me', OWN_PROFILE, noQuery, async (c) => {
   const userId = c.get('userId');
   const profile = await profileOf(userId);
   if (!profile) {
@@ -44,7 +47,7 @@ const profileSchema = z
   .object({ displayName: z.string().trim().min(1).max(200).nullable() })
   .strict();
 
-meRoutes.patch('/me', zValidator('json', profileSchema), async (c) => {
+meRoutes.patch('/me', OWN_PROFILE, zValidator('json', profileSchema), async (c) => {
   const row = await setOwnDisplayName(c.get('userId'), c.req.valid('json').displayName);
   if (!row) {
     throw new HTTPException(401, {
