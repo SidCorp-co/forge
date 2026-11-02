@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { ActorRef } from '../issues/index.js';
 import {
+  ISSUE_PROJECT,
   issueRouteIdParamSchema,
   mirroredEventsFor,
   projectScopeQuerySchema,
@@ -27,9 +28,14 @@ import {
   declares,
   RECORD_ROUTE_CAPABILITY,
 } from '../middleware/client-capabilities.js';
-import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import {
+  requireDeclared,
+  requireHeld,
+  requiresOnResolved,
+  requiresSelf,
+} from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
 import { commentCreateSchema, commentEditSchema } from './body-input.js';
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
@@ -101,6 +107,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   router.post(
     '/:id/comments',
     zValidator('param', idParamSchema),
+    requiresOnResolved('project.write', 'the project of the issue `:id` names'),
     zValidator('json', commentCreateSchema),
     holdChatWrite('comment'),
     async (c) => {
@@ -131,6 +138,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   router.get(
     '/:id/comments',
     zValidator('param', issueRouteIdParamSchema),
+    requiresOnResolved('project.read', ISSUE_PROJECT),
     zValidator('query', threadQuerySchema),
     async (c) => {
       const { id: rawId } = c.req.valid('param');
@@ -155,6 +163,8 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   );
 }
 
+const COMMENT_PROJECT = 'the project of the comment `:id` names';
+
 export const commentRoutes = new Hono<{ Variables: AuthVars }>();
 
 commentRoutes.get(
@@ -162,6 +172,7 @@ commentRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.read', COMMENT_PROJECT),
   zValidator('query', paginationSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -169,8 +180,7 @@ commentRoutes.get(
     const userId = c.get('userId');
 
     const parent = await loadComment(id);
-    const access = await loadProjectAccess(parent.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireDeclared(await loadProjectAccess(parent.projectId, userId));
 
     const page = await listReplies(id, limit, offset);
     const rows = await commentsShown(
@@ -189,6 +199,9 @@ commentRoutes.patch(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema),
+  requiresSelf(
+    'the comment’s author; another person’s comment needs project.admin on its project, a per-row rule the handler reads',
+  ),
   zValidator('json', commentEditSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -197,6 +210,7 @@ commentRoutes.patch(
     const intent = sentIntent === undefined ? undefined : checkedIntent(sentIntent);
 
     const comment = await loadComment(id);
+    // a per-row rule the route's `self` declaration names: another person's comment needs admin
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
       requireHeld(access, 'project.admin', "changing another person's comment");
@@ -241,11 +255,15 @@ commentRoutes.delete(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema),
+  requiresSelf(
+    'the comment’s author; another person’s comment needs project.admin on its project, a per-row rule the handler reads',
+  ),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
     const comment = await loadComment(id);
+    // a per-row rule the route's `self` declaration names: another person's comment needs admin
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
       requireHeld(access, 'project.admin', "deleting another person's comment");

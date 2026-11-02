@@ -8,7 +8,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclaredOr } from '../permissions/index.js';
 import { issueProjectOf, parentCommentOf } from './read.js';
 import { decisionBody, insertComment, type NewComment } from './service.js';
 
@@ -92,8 +92,8 @@ export async function postIssueComment(input: {
   const { issueId, parentId } = input;
   const body = issueCommentBody(input.body, input.intent, input.decision);
   const issue = await loadIssue(issueId);
-  const access = await loadProjectAccess(issue.projectId, input.authorId);
-  requireHeld(access, 'project.write');
+  // what the posting door declares on the issue's project (write where it declares none yet)
+  requireDeclaredOr(await loadProjectAccess(issue.projectId, input.authorId), 'project.write');
   if (parentId) await assertParentOnIssue(parentId, issueId);
   return insertComment({
     issueId,

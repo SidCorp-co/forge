@@ -17,7 +17,7 @@ import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { persistCommentAttachment } from './attachment-service.js';
 import { commentAttachmentFile, issueCommentForAttachment } from './read.js';
 
@@ -43,6 +43,7 @@ commentAttachmentRoutes.post(
     throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', commentIdParamSchema, invalid('invalid commentId')),
+  requiresOnResolved('project.write', 'the project of the comment `:commentId` names'),
   rawBody(
     'multipart/form-data',
     'One file in the `file` field, attached to the comment; its name and media type come from the part.',
@@ -54,8 +55,7 @@ commentAttachmentRoutes.post(
     const comment = await issueCommentForAttachment(commentId);
     if (!comment) throw notFound('comment not found');
 
-    const access = await loadProjectAccess(comment.projectId, userId);
-    requireHeld(access, 'project.write');
+    requireDeclared(await loadProjectAccess(comment.projectId, userId));
 
     const body = await c.req.parseBody();
     const file = body.file;
@@ -80,6 +80,7 @@ commentAttachmentRoutes.get(
   '/attachments/:id',
   requireAuth(),
   zValidator('param', idParamSchema, invalid('invalid id')),
+  requiresOnResolved('project.read', 'the project of the attachment `:id` names'),
   noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
@@ -88,8 +89,7 @@ commentAttachmentRoutes.get(
     const row = await commentAttachmentFile(id);
     if (!row) throw notFound('attachment not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(row.projectId, userId));
 
     return sendStoredAttachment(c, row, (path) => getStorage().get(path));
   },
