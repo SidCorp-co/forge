@@ -401,6 +401,20 @@ export const supportRoomConfigSchema = z.strictObject({
 		.max(SUPPORT_AGENT_PROJECTS_MAX)
 		.refine((p) => new Set(p).size === p.length, "a project is named once")
 		.optional(),
+	/**
+	 * Per group, who reads it and which messages reach the agent (`agent` block only, ISS-874), by
+	 * rid, each one of the binding's `rids`: one agent hears every message of a users' group and only
+	 * mentions in a team group. A group named nowhere here takes `readers` and `answers` above.
+	 */
+	rooms: z
+		.record(
+			z.string().min(1).max(200),
+			z.strictObject({
+				readers: z.enum(SUPPORT_READERS).optional(),
+				answers: z.enum(SUPPORT_ANSWERS).optional(),
+			}),
+		)
+		.optional(),
 	/** Scheduled checks: a channel agent's (`agent` block) only (REQ-77 BC-13). */
 	checks: z
 		.array(supportCheckSchema)

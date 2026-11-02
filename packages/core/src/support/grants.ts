@@ -6,6 +6,7 @@
 import {
   SUPPORT_ABILITY_MEANING,
   type SupportAbility,
+  type SupportAnswers,
   type SupportGrants,
   type SupportReaders,
   type SupportRoomConfig,
@@ -29,7 +30,8 @@ export async function supportConfigOf(room: RoomRow): Promise<SupportRoomConfig 
 
 /**
  * Who reads a room (ISS-872): an operations room's team; a channel agent's owner room, its owner,
- * read here as the team; otherwise the binding's `readers`, the product's users when it names none.
+ * read here as the team; otherwise the group's own `rooms` entry (ISS-874), then the binding's
+ * `readers`, the product's users when it names none.
  */
 export function readersOfConfig(
   room: Pick<RoomRow, 'kind' | 'rid'>,
@@ -37,7 +39,18 @@ export function readersOfConfig(
 ): SupportReaders {
   if (room.kind === 'operations') return 'team';
   if (room.kind === 'agent' && config?.ownerRoom === room.rid) return 'team';
-  return config?.readers ?? 'users';
+  return config?.rooms?.[room.rid]?.readers ?? config?.readers ?? 'users';
+}
+
+/**
+ * Which messages of a group reach its session: the group's own `rooms` entry (ISS-874), then the
+ * binding's `answers`, every message when it names none.
+ */
+export function answersOfConfig(
+  room: Pick<RoomRow, 'rid'>,
+  config: SupportRoomConfig | null,
+): SupportAnswers {
+  return config?.rooms?.[room.rid]?.answers ?? config?.answers ?? 'every-message';
 }
 
 /** Who reads a room, by its binding as it holds it now. */

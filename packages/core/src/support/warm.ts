@@ -23,11 +23,11 @@ import {
   toldTools,
   toolsKey,
 } from './dispatch.js';
-import { grantsOf, supportConfigOf } from './grants.js';
+import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
-import { followedLine, grantsLine, toolsLine } from './prompt.js';
+import { followedLine, grantsLine, roomsLine, toolsLine } from './prompt.js';
 import { declareSupportRooms, roomIsBound } from './rooms.js';
 import { type RoomRow, roomById, roomsOfSession } from './store.js';
 
@@ -130,6 +130,17 @@ async function retellOf(room: RoomRow, deviceId: string): Promise<string | null>
     'This room was changed; from now on:',
     ...(config?.persona ? [config.persona] : []),
     ...(followed.length ? [followedLine(followed)] : []),
+    ...(config?.rooms
+      ? [
+          roomsLine(
+            told.map((r) => ({
+              rid: r.rid,
+              readers: readersOfConfig(r, config),
+              answers: answersOfConfig(r, config),
+            })),
+          ),
+        ]
+      : []),
     toolsLine(tools),
     grantsLine(grantsOf(config)),
   ].join('\n\n');

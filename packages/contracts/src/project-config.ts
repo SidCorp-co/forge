@@ -101,6 +101,8 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_AGENT_PROJECTS_NOT_AGENT",
 	/** A group another active binding already answers: two sessions would answer it (ISS-874). */
 	"SUPPORT_ROOM_ANSWERED_TWICE",
+	/** A channel agent's `rooms` names a group the binding does not answer, sits on another block, or makes the owner's room a users' room (ISS-874). */
+	"SUPPORT_ROOM_OVERRIDE_UNKNOWN",
 ] as const;
 
 /** Every code a project-config document write answers with. */

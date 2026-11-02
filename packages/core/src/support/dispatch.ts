@@ -35,7 +35,7 @@ import {
   unansweredOfLastTurn,
   unclaim,
 } from './delivery.js';
-import { grantsOf, supportConfigOf } from './grants.js';
+import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { injectWaiting, settleInjects } from './inject.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
@@ -89,6 +89,7 @@ export const toolsKey = (tools: readonly SupportTool[], config: SupportRoomConfi
     config?.answers ?? null,
     config?.grants ?? null,
     config?.projects ?? null,
+    config?.rooms ?? null,
   ]);
 export function toldTools(roomId: string): string | undefined {
   return briefedTools.get(roomId);
@@ -207,6 +208,14 @@ async function agentBriefOf(
       ownerMode: Boolean(config?.grants?.abilities.includes('owner_mode')),
       ownerRoom: config?.ownerRoom ?? null,
       followed,
+      // each group's own readers and answers, where the binding sets them per group (ISS-874)
+      rooms: config?.rooms
+        ? rooms.map((r) => ({
+            rid: r.rid,
+            readers: readersOfConfig(r, config),
+            answers: answersOfConfig(r, config),
+          }))
+        : [],
     }),
   });
 }

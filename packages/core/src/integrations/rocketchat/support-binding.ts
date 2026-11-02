@@ -82,6 +82,8 @@ export async function settleSupportRoom(args: {
       ],
     };
   }
+  const roomsRefused = roomOverrideRefusals(args.config, { support, answered });
+  if (roomsRefused.length > 0) return { ok: false, refusals: roomsRefused };
   const checksRefused = checkRefusals(args.config, { support, agent, answered });
   if (checksRefused.length > 0) return { ok: false, refusals: checksRefused };
   const ownerRoomRefused = ownerRoomRefusals(args.config, { support, answered });
@@ -102,6 +104,50 @@ export async function settleSupportRoom(args: {
     };
   }
   return { ok: true, config: args.config };
+}
+
+/**
+ * A channel agent's per-group `rooms` (ISS-874): each names a group the binding answers, and none
+ * makes the owner's room a users' room, which is read by the owner alone. A support group's block
+ * names one group, whose readers and answers are the block's own.
+ */
+function roomOverrideRefusals(
+  config: Record<string, unknown>,
+  held: { support: boolean; answered: readonly unknown[] },
+): BindingTargetRefusal[] {
+  type Block = { rooms?: Record<string, { readers?: string }>; ownerRoom?: string } | null;
+  if (held.support && (config.support as Block)?.rooms !== undefined) {
+    return [
+      {
+        code: 'SUPPORT_ROOM_OVERRIDE_UNKNOWN',
+        path: '/support/rooms',
+        detail:
+          "per-group readers and answers are a channel agent's: a support group's block names its one group's in readers and answers",
+      },
+    ];
+  }
+  const block = config.agent as Block | undefined;
+  return Object.entries(block?.rooms ?? {}).flatMap(([rid, entry]) => {
+    if (!held.answered.includes(rid)) {
+      return [
+        {
+          code: 'SUPPORT_ROOM_OVERRIDE_UNKNOWN' as const,
+          path: `/agent/rooms/${rid}`,
+          detail: `group ${rid} is no group this binding's agent answers, so its readers and answers would apply nowhere; name one of ${held.answered.join(', ') || 'the groups in `rids`'}`,
+        },
+      ];
+    }
+    if (rid === block?.ownerRoom && entry.readers === 'users') {
+      return [
+        {
+          code: 'SUPPORT_ROOM_OVERRIDE_UNKNOWN' as const,
+          path: `/agent/rooms/${rid}/readers`,
+          detail: `group ${rid} is the owner's room, which the owner reads; it cannot be a users' room: drop its readers, or name another owner's room`,
+        },
+      ];
+    }
+    return [];
+  });
 }
 
 /**

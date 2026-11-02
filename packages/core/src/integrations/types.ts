@@ -402,7 +402,8 @@ export interface BindingTargetRefusal {
     | 'SUPPORT_AGENT_PROJECT_UNKNOWN'
     | 'SUPPORT_AGENT_PROJECT_NOT_ADMIN'
     | 'SUPPORT_AGENT_PROJECTS_NOT_AGENT'
-    | 'SUPPORT_ROOM_ANSWERED_TWICE';
+    | 'SUPPORT_ROOM_ANSWERED_TWICE'
+    | 'SUPPORT_ROOM_OVERRIDE_UNKNOWN';
   path: string;
   detail: string;
 }

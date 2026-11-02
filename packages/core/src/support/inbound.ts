@@ -18,6 +18,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
+import { answersOfConfig } from './grants.js';
 import { settleOwnerAnswer } from './owner-ask.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
@@ -92,8 +93,13 @@ export async function handleSupportMessage(input: {
     author,
   });
 
-  // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5)
-  if (config.answers === 'mentions' && !m.mentions.includes(input.ac.botUserId) && !ownerAnswer) {
+  // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5);
+  // a channel agent's group may say so for itself (ISS-874)
+  if (
+    answersOfConfig(m, config) === 'mentions' &&
+    !m.mentions.includes(input.ac.botUserId) &&
+    !ownerAnswer
+  ) {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }
