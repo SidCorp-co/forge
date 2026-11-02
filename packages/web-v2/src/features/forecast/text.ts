@@ -1,4 +1,4 @@
-import type { DeliveryForecast, FeedbackForecast, Forecast, ForecastPaused, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
+import type { DeliveryForecast, Forecast, ForecastPaused, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
 import { formatClock, formatDateTime, formatNumber } from "@/lib/i18n/format";
 import { labelCopy } from "@/lib/i18n/labels";
 import { type Copy, productCopy } from "@/lib/i18n/product-copy";
@@ -186,8 +186,3 @@ export function deliveryText(d: DeliveryForecast, c: EtaClock, opts: TextOpts = 
   return { line: t("fc.landsUnknown", { lands }), detail };
 }
 
-/** A feedback item's line: untriaged, who triages it; else its linked work's delivery; null where nothing ships. */
-export function feedbackForecastText(f: FeedbackForecast, c: EtaClock): Said | null {
-  if (f.triage) return { line: productCopy(c.lang)("fc.waitingTriage", { who: said(f.triage.says.who, c.lang), act: said(f.triage.says.act, c.lang) }), detail: said(f.triage.says.reason, c.lang) };
-  return f.delivery ? deliveryText(f.delivery, c) : null;
-}

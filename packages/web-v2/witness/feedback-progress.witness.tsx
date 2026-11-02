@@ -1,8 +1,8 @@
 // A feedback item's progress, its similar items and the reporter's clarification, witnessed as drawn at
-// phone and desktop width, in the light theme and the dark: every work state and every reason an item
-// has no date says its line whole, inside the window, and the draft's likely duplicates and the
-// clarification form fit beside them. jsdom lays nothing out, so a reason cut off at 390 px goes red
-// here.
+// phone and desktop width, in the light theme and the dark: every work state says its line whole,
+// inside the window, an estimate row stands only where there is an estimate (ISS-903), and the draft's
+// likely duplicates and the clarification form fit beside them. jsdom lays nothing out, so a line cut
+// off at 390 px goes red here.
 //
 //   pnpm --filter web-v2 witness witness/feedback-progress.witness.tsx --out <dir>
 
@@ -75,11 +75,12 @@ function drawn(): string[] {
   for (const block of all("[data-testid=feedback-progress]")) {
     const key = block.closest("[data-witness=case]")?.querySelector("p")?.textContent ?? "?";
     const estimate = block.querySelector<HTMLElement>("[data-testid=feedback-progress-estimate]");
-    if (!estimate || !(estimate.textContent ?? "").trim()) wrong.push(`${key} draws no estimate and no reason`);
-    const why = block.querySelector<HTMLElement>("[data-testid=feedback-progress-no-date]");
-    if (why) {
-      const r = why.getBoundingClientRect();
-      if (r.width === 0 || r.right > width) wrong.push(`${key}'s reason "${why.textContent}" is cut off at ${Math.round(r.right)} px in ${width}`);
+    const has = block.dataset.estimate === "dated" || block.dataset.estimate === "shipped";
+    if (has && !(estimate?.textContent ?? "").trim()) wrong.push(`${key} has an estimate and draws none`);
+    if (!has && estimate) wrong.push(`${key} has no estimate and still draws its row: "${estimate.textContent}"`);
+    if (estimate) {
+      const r = estimate.getBoundingClientRect();
+      if (r.width === 0 || r.right > width) wrong.push(`${key}'s estimate "${estimate.textContent}" is cut off at ${Math.round(r.right)} px in ${width}`);
     }
     for (const badge of block.querySelectorAll<HTMLElement>("[data-testid=feedback-progress-work] *")) {
       if (badge.getBoundingClientRect().right > width) wrong.push(`${key}'s work state runs past the window`);
@@ -110,8 +111,8 @@ async function dark(): Promise<string[]> {
   document.documentElement.dataset.theme = "dark";
   await pause(150);
   const wrong = drawn();
-  const line = all("[data-testid=feedback-progress-no-date]")[0];
-  if (line && getComputedStyle(line).color === getComputedStyle(document.body).backgroundColor) wrong.push("a reason's words are the page's own background colour");
+  const line = all("[data-testid=feedback-progress-estimate]")[0];
+  if (line && getComputedStyle(line).color === getComputedStyle(document.body).backgroundColor) wrong.push("an estimate's words are the page's own background colour");
   return wrong;
 }
 

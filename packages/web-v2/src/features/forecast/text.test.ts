@@ -1,7 +1,7 @@
 import type { DeliveryForecast, Forecast, ForecastBasis, ScopeForecast } from "@forge/contracts/forecast";
 import { describe, expect, it } from "vitest";
 import { forecastWait, RULE, say } from "@/test/said";
-import { deliveryText, feedbackForecastText, forecastText, scopeText, spanText } from "./text";
+import { deliveryText, forecastText, scopeText, spanText } from "./text";
 
 // the lines read clock times in the viewer's timezone; this file reads them in UTC
 process.env.TZ = "UTC";
@@ -110,15 +110,6 @@ describe("delivery text: in people's hands, not merged", () => {
 });
 
 describe("feedback and requirement lines", () => {
-  it("says an untriaged item waits on triage and who, with no date", () => {
-    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "feedback.approve" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null }, CLOCK)?.line;
-    expect(line).toBe("Waiting on triage — Feedback triager to triage it");
-  });
-
-  it("draws nothing for an item that carries no work that ships", () => {
-    expect(feedbackForecastText({ key: "FB-2", triage: null, delivery: null }, CLOCK)).toBeNull();
-  });
-
   it("adds the release lag to a draft that has landed where nobody cuts it", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-60) };
     const draft: ScopeForecast = { ...stamp, scope: "release", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null, key: "draft", title: null, progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery: delivery({ landing: landed, inHands: span(20, 80) }) };

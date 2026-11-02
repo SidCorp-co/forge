@@ -1,18 +1,18 @@
 // One feedback item's progress, as its reader asks it (the owner's rule for feedback): is work on it
-// running, which issues carry it and how far each has got, and when it is done, or plainly why no
-// date can be given. Every part is core's (`GET …/forecast/feedback/:fb`, `core
-// forecast/feedback-progress.ts`): the state, the issues and the estimate's reason are decided there,
-// and this only says them. Whose turn it is stays the banner's, said once (REQ-43 BC-5).
+// running, which issues carry it and how far each has got, and when it is done. Every part is core's
+// (`GET …/forecast/feedback/:fb`, `core forecast/feedback-progress.ts`) and this only says it. The
+// Estimate row stands only where there is one, a date or the release that shipped it: why core gives
+// no date is its own working, not the reader's, and the row is dropped rather than say it (ISS-903).
+// Whose turn it is stays the banner's, said once (REQ-43 BC-5).
 
-import type { FeedbackEstimate, FeedbackProgress as Progress, FeedbackWork, FeedbackWorkState } from "@forge/contracts/forecast";
+import type { FeedbackProgress as Progress, FeedbackWork, FeedbackWorkState } from "@forge/contracts/forecast";
 import { Link } from "@/lib/navigation/router";
 import { type LegendTone, Property, PropertyList, Skeleton, StatusBadge, ToneBadge } from "@/design";
-import { EtaInline, type EtaClock, etaOfFeedback, feedbackForecastText, ReleaseLine, useFeedbackProgress } from "@/features/forecast";
+import { EtaInline, type EtaClock, etaOfFeedback, useFeedbackProgress } from "@/features/forecast";
 import { formatApiError } from "@/lib/api/error";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { said } from "@/lib/i18n/said";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
@@ -29,18 +29,6 @@ const STATE: Record<FeedbackWorkState, { key: ProductCopyKey; tone: LegendTone }
   landed: { key: "feedback.progress.state.landed", tone: "ready" },
   shipped: { key: "feedback.progress.state.shipped", tone: "done" },
   ended: { key: "feedback.progress.state.ended", tone: "done" },
-};
-
-const WHY: Record<Extract<FeedbackEstimate, { kind: "none" }>["reason"], ProductCopyKey> = {
-  untriaged: "feedback.progress.why.untriaged",
-  snoozed: "feedback.progress.why.snoozed",
-  no_work: "feedback.progress.why.answered",
-  no_issues: "feedback.progress.why.unissued",
-  waits: "feedback.progress.why.waits",
-  history: "feedback.progress.why.history",
-  ended: "feedback.progress.why.ended",
-  release_waits: "feedback.progress.why.releaseWaits",
-  release_history: "feedback.progress.why.releaseHistory",
 };
 
 /** The work's state as one pill, pulsing while it runs, with how many issues are in progress. */
@@ -93,8 +81,10 @@ function Carriers({ work, slug }: { work: FeedbackWork; slug: string }) {
   );
 }
 
-/** The reasons a wait holds the date: the forecast's own line names who owes the act, and the release it cuts. */
-const NAMES_WHO: readonly string[] = ["untriaged", "waits", "release_waits"];
+/** Whether the item has an estimate to show: a date core forecast, or the release that shipped it. */
+function hasEstimate(p: Progress, clock: EtaClock): boolean {
+  return p.estimate.kind === "shipped" || (p.estimate.kind === "dated" && etaOfFeedback(p.forecast, clock) !== null);
+}
 
 function Estimate({ p, slug, clock }: { p: Progress; slug: string; clock: EtaClock }) {
   const t = useCopy();
@@ -121,18 +111,10 @@ function Estimate({ p, slug, clock }: { p: Progress; slug: string; clock: EtaClo
       </span>
     );
   }
-  const who = e.waits ? said(e.waits.who, clock.lang) : "";
-  const line = t(WHY[e.reason], { who, n: e.history?.n ?? 0, floor: e.history?.floor ?? 0, until: e.until ? time.date(e.until) : "" });
-  const next = NAMES_WHO.includes(e.reason) ? feedbackForecastText(p.forecast, clock) : null;
-  return (
-    <span className="grid gap-0.5" data-testid="feedback-progress-no-date" data-reason={e.reason}>
-      <span className="fg-body-sm text-fg">{line}</span>
-      {next ? <ReleaseLine said={next} slug={slug} className="text-13 text-muted" testId="feedback-forecast-line" /> : null}
-    </span>
-  );
+  return null;
 }
 
-/** The item's progress block: work, what carries it, and its estimate or why it has none. */
+/** The item's progress block: work, what carries it, and its estimate where it has one. */
 export function FeedbackProgress({ projectId, slug, fbKey, className }: { projectId: string; slug: string; fbKey: string; className?: string }) {
   const t = useCopy();
   const clock = useEtaClock();
@@ -151,9 +133,11 @@ export function FeedbackProgress({ projectId, slug, fbKey, className }: { projec
             <WorkState work={q.data.work} />
           </Property>
           <Carriers work={q.data.work} slug={slug} />
-          <Property label={t("feedback.progress.estimate")} testId="feedback-progress-estimate">
-            <Estimate p={q.data} slug={slug} clock={clock} />
-          </Property>
+          {hasEstimate(q.data, clock) ? (
+            <Property label={t("feedback.progress.estimate")} testId="feedback-progress-estimate">
+              <Estimate p={q.data} slug={slug} clock={clock} />
+            </Property>
+          ) : null}
         </PropertyList>
       )}
     </section>
