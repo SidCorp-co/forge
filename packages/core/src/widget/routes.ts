@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { getClientIp } from '../middleware/rate-limit.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresNoPermission, requiresPublic } from '../permissions/index.js';
 import { confirmDraft, discardDraft } from './drafts.js';
 import {
   assertOrigin,
@@ -35,6 +36,15 @@ const MESSAGE_SHAPE =
 
 export const widgetRoutes = new Hono();
 
+// a client site's visitor is never a Forge user: what admits each call is the site key, the session
+// token or the status link token, each read and matched by the handler
+const SITE_IS_PUBLIC = requiresPublic(
+  'the site key is printed on the client’s own pages, and the binding answers only an Origin it lists; anyone visiting that site may read its widget and open a session',
+);
+const SESSION_TOKEN_ADMITS = requiresNoPermission(
+  'the visitor session token in Authorization admits the call, and sessionOf answers only that session and its binding',
+);
+
 // every answer, a refusal and the stream included, is sealed after it is made
 widgetRoutes.use('*', async (c, next) => {
   await next();
@@ -45,6 +55,9 @@ widgetRoutes.use('*', async (c, next) => {
 
 widgetRoutes.get(
   '/status/:token',
+  requiresNoPermission(
+    'the status link’s token is its credential: it names one filed item, and the answer is that item’s status alone',
+  ),
   zValidator('param', statusParam, invalid('invalid path: /api/widget/status/<status token>')),
   noQuery,
   async (c) => {
@@ -54,6 +67,7 @@ widgetRoutes.get(
 
 widgetRoutes.get(
   '/:siteKey/config',
+  SITE_IS_PUBLIC,
   zValidator('param', siteParam, invalid('invalid path: /api/widget/<site key>/config')),
   noQuery,
   async (c) => {
@@ -65,6 +79,7 @@ widgetRoutes.get(
 
 widgetRoutes.post(
   '/:siteKey/sessions',
+  SITE_IS_PUBLIC,
   zValidator('param', siteParam, invalid('invalid path: /api/widget/<site key>/sessions')),
   zValidator('json', widgetSessionRequestSchema, invalid(SESSION_SHAPE)),
   async (c) => {
@@ -80,6 +95,7 @@ widgetRoutes.post(
 
 widgetRoutes.post(
   '/session/messages',
+  SESSION_TOKEN_ADMITS,
   zValidator('json', widgetMessageRequestSchema, invalid(MESSAGE_SHAPE)),
   async (c) => {
     const { session, binding } = await sessionOf(c.req.header('authorization'));
@@ -88,18 +104,19 @@ widgetRoutes.post(
   },
 );
 
-widgetRoutes.get('/session/messages', noQuery, async (c) => {
+widgetRoutes.get('/session/messages', SESSION_TOKEN_ADMITS, noQuery, async (c) => {
   const { session, binding } = await sessionOf(c.req.header('authorization'));
   return c.json(await historyOf(session, binding));
 });
 
-widgetRoutes.get('/session/stream', noQuery, async (c) => {
+widgetRoutes.get('/session/stream', SESSION_TOKEN_ADMITS, noQuery, async (c) => {
   const { session } = await sessionOf(c.req.header('authorization'));
   return widgetStream(c, session);
 });
 
 widgetRoutes.post(
   '/session/drafts/:draftId/confirm',
+  SESSION_TOKEN_ADMITS,
   zValidator(
     'param',
     draftParam,
@@ -114,6 +131,7 @@ widgetRoutes.post(
 
 widgetRoutes.post(
   '/session/drafts/:draftId/discard',
+  SESSION_TOKEN_ADMITS,
   zValidator(
     'param',
     draftParam,
