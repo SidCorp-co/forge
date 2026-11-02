@@ -11,13 +11,18 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { releaseRunClaims } from '../issues/index.js';
-import { closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
 import { label, type ReleaseMergeStep } from './change-request-roster.js';
 import { assertDeclaredGate } from './declared-gate.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
-import { admissibleIssues, closeRecorded, RECORDED_VERIFICATION, writeLedger } from './recorded.js';
+import {
+  admissibleIssues,
+  closeRecorded,
+  endRecordRun,
+  RECORDED_VERIFICATION,
+  writeLedger,
+} from './recorded.js';
 import { refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
 
@@ -297,11 +302,7 @@ export async function recordPromotionRelease(
     runId: run.id,
   });
   await releaseRunClaims(run.id);
-  await closeRunIfOneShot(run.id, failed.length > 0 ? 'failed' : 'completed', {
-    code: 'release_record_incomplete',
-    detail: `${failed.length} of the recorded issues would not close: ${failed.map((f) => `${f.id} (${f.reason})`).join('; ')}`,
-  });
-  if (failed.length === 0) await stampReleaseShipped(run.id);
+  await endRecordRun(run.id, failed);
   return {
     runId: run.id,
     version: run.version,

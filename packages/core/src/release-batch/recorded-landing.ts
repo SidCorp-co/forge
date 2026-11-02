@@ -14,7 +14,7 @@ import { db } from '../db/client.js';
 import { issueDisplayIds, releaseRunClaims } from '../issues/index.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { closeRunIfOneShot, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
+import { insertOneShotRun } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -25,6 +25,7 @@ import { carryNaming } from './naming.js';
 import {
   admissibleIssues,
   closeRecorded,
+  endRecordRun,
   type RecordPerformedReleaseArgs,
   type RecordPerformedReleaseResult,
   writeLedger,
@@ -198,14 +199,8 @@ export async function recordLanding(
   });
   // As the record of a release production serves: the claim is the lock, never the index.
   await releaseRunClaims(run.id);
-  await closeRunIfOneShot(run.id, failed.length > 0 ? 'failed' : 'completed', {
-    code: 'release_record_incomplete',
-    detail: `${failed.length} of the recorded issues would not close: ${failed
-      .map((f) => `${f.id} (${f.reason})`)
-      .join('; ')}`,
-  });
   // the landing is the delivery: a record that closed what it claimed shipped, as a finished release
-  if (failed.length === 0) await stampReleaseShipped(run.id);
+  await endRecordRun(run.id, failed);
 
   return {
     runId: run.id,

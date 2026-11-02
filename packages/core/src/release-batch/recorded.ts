@@ -18,7 +18,7 @@ import { accountActor, releaseRunClaims, transitionIssueStatus } from '../issues
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { closeRunIfOneShot, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
+import { closeRunIfOneShotInTx, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
 import type { RecordedVerification } from './channel.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
@@ -231,14 +231,8 @@ export async function recordPerformedRelease(
   // clears it the same way and for the same reason.
   await releaseRunClaims(run.id);
 
-  await closeRunIfOneShot(run.id, failed.length > 0 ? 'failed' : 'completed', {
-    code: 'release_record_incomplete',
-    detail: `${failed.length} of the recorded issues would not close: ${failed
-      .map((f) => `${f.id} (${f.reason})`)
-      .join('; ')}`,
-  });
   // the agent recorded the release as shipped: a record that closed what it claimed shipped
-  if (failed.length === 0) await stampReleaseShipped(run.id);
+  await endRecordRun(run.id, failed);
 
   return {
     runId: run.id,
@@ -251,6 +245,30 @@ export async function recordPerformedRelease(
     failed,
     issues: roster,
   };
+}
+
+/**
+ * A record's run, ended as its roster did: shipped where every issue it named closed, else `failed`
+ * naming each that would not. The ship is stamped before the close, in one unit, so no record's
+ * run reads `completed` with no ship and no reason (ISS-761).
+ */
+export async function endRecordRun(
+  runId: string,
+  failed: ReadonlyArray<{ id: string; reason: string }>,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    if (failed.length === 0) {
+      await stampReleaseShipped(runId, tx);
+      await closeRunIfOneShotInTx(tx, runId, 'completed');
+      return;
+    }
+    await closeRunIfOneShotInTx(tx, runId, 'failed', {
+      code: 'release_record_incomplete',
+      detail: `${failed.length} of the recorded issues would not close: ${failed
+        .map((f) => `${f.id} (${f.reason})`)
+        .join('; ')}`,
+    });
+  });
 }
 
 /** The ledger row: the intent, the account, and what was read — on an agent's record, nothing. */

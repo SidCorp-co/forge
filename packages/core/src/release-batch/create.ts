@@ -33,7 +33,7 @@ import { cutPromotionRelease } from './promotion-release.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
 import { RECORDED_VERIFICATION } from './recorded.js';
-import { blockerRefusal, refuseRelease } from './refuse.js';
+import { blockerRefusal, reasonOf, refuseRelease } from './refuse.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { cutReleaseVersion } from './version-store.js';
@@ -126,8 +126,10 @@ async function enqueueReleaseJob(args: {
         reason: 'another batch was already in flight, so this one never started',
         actorUserId: userId,
       });
-      await closeRunIfOneShot(runId, 'cancelled');
-      throw blockerRefusal('BATCH_IN_FLIGHT');
+      const refused = blockerRefusal('BATCH_IN_FLIGHT');
+      // the cut already wears its version: it ends `failed` naming the refusal (ISS-761)
+      await closeRunIfOneShot(runId, 'failed', { code: 'BATCH_IN_FLIGHT', detail: reasonOf(refused) });
+      throw refused;
     }
     throw err;
   }

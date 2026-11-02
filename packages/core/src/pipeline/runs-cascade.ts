@@ -155,9 +155,60 @@ function failureMetadata(close: RunClose, at: Date): TransitionArgs<'run', never
       `closeRunsInTx: ${close.source} closes runs \`failed\` without naming why; pass \`cause\` so the run records what failed it`,
     );
   }
-  const failure = JSON.stringify({ failure: { ...close.cause, source: close.source, at } });
+  const failure = JSON.stringify({ ...close.cause, source: close.source, at });
   const base = close.set?.metadata ?? sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb)`;
-  return { metadata: sql`${base} || ${failure}::jsonb` };
+  // the step the run stood at when it failed, read off the row the close moves (ISS-761)
+  return {
+    metadata: sql`${base} || jsonb_build_object('failure', ${failure}::jsonb || jsonb_strip_nulls(jsonb_build_object('step', ${pipelineRuns.currentStep})))`,
+  };
+}
+
+/** How the actor that closed a run reads in a sentence. */
+function actorWords(actor: KernelActor): string {
+  if (actor.type === 'user') return actor.id ? ` (${actor.agency} ${actor.id})` : ` (${actor.agency})`;
+  return actor.id ? ` (${actor.type} ${actor.id})` : ` (${actor.type})`;
+}
+
+/**
+ * Why a release run that did not ship ends `failed` when its writer asked to close it otherwise:
+ * a release ends shipped (its ship stamped), aborted (by a person, with a reason, `abort-stamp.ts`)
+ * or failed naming why. `completed` with no ship and `cancelled` with no abort each read `failed`
+ * on the release (`versions.ts:versionStatus`) and would name nothing (ISS-761).
+ */
+function unshippedReleaseCause(close: RunClose, version: string): RunFailureCause {
+  const by = actorWords(close.actor);
+  return close.to === 'completed'
+    ? {
+        code: 'release_not_shipped',
+        detail: `${close.source}${by} closed release ${version} \`completed\`, but nothing recorded it shipped: no finish, landing or record stamped its ship`,
+      }
+    : {
+        code: 'release_cancelled_without_abort',
+        detail: `${close.source}${by} cancelled release ${version}, and no abort recorded who ended it or why (POST /release-batches/:runId/abort records both)`,
+      };
+}
+
+/**
+ * The release runs among `ids` this close would leave reading `failed` with nothing on record: each
+ * still unshipped, closing `completed`, or closing `cancelled` with no abort stamped on it.
+ */
+async function unshippedReleases(
+  tx: Tx | Db,
+  close: RunClose,
+  ids: string[],
+): Promise<Array<{ id: string; version: string }>> {
+  if (close.to === 'failed' || ids.length === 0) return [];
+  const rows = await tx
+    .select({ id: pipelineRuns.id, version: pipelineRuns.releaseVersion })
+    .from(pipelineRuns)
+    .where(
+      and(
+        inArray(pipelineRuns.id, ids),
+        sql`${pipelineRuns.releaseVersion} IS NOT NULL AND ${pipelineRuns.releaseReleasedAt} IS NULL`,
+        close.to === 'cancelled' ? sql`${pipelineRuns.metadata} -> 'abort' IS NULL` : undefined,
+      ),
+    );
+  return rows.map((r) => ({ id: r.id, version: r.version ?? '' }));
 }
 
 /**
@@ -179,6 +230,12 @@ export async function closeRunsInTx(
     tx,
     locked.map((r) => r.id),
   );
+  const silent = await unshippedReleases(
+    tx,
+    close,
+    locked.map((r) => r.id),
+  );
+  if (silent.length > 0) return closeNamingWhy(tx, close, silent);
   const now = new Date();
   const failure = failureMetadata(close, now);
   const rows = settled(
@@ -205,6 +262,50 @@ export async function closeRunsInTx(
     });
   }
   return { rows, cascades };
+}
+
+/**
+ * Each unshipped release run `failed` naming why, one by one, then the rest of the close as asked:
+ * logged, because the writer asked for another outcome than the one recorded.
+ */
+async function closeNamingWhy(
+  tx: Tx | Db,
+  close: RunClose,
+  silent: Array<{ id: string; version: string }>,
+): Promise<{ rows: RunRow[]; cascades: Array<{ runId: string; result: CascadeResult }> }> {
+  const out: { rows: RunRow[]; cascades: Array<{ runId: string; result: CascadeResult }> } = {
+    rows: [],
+    cascades: [],
+  };
+  for (const run of silent) {
+    const cause = unshippedReleaseCause(close, run.version);
+    logger.warn(
+      { runId: run.id, asked: close.to, source: close.source, code: cause.code },
+      'run close: an unshipped release closes `failed` naming why, not as asked',
+    );
+    const one = await closeRunsInTx(tx, {
+      ...close,
+      to: 'failed',
+      reason: 'pipeline_failed',
+      cause,
+      where: and(eq(pipelineRuns.id, run.id), close.where),
+    });
+    out.rows.push(...one.rows);
+    out.cascades.push(...one.cascades);
+  }
+  const rest = await closeRunsInTx(tx, {
+    ...close,
+    where: and(
+      close.where,
+      sql`${pipelineRuns.id} NOT IN (${sql.join(
+        silent.map((r) => sql`${r.id}::uuid`),
+        sql`, `,
+      )})`,
+    ),
+  });
+  out.rows.push(...rest.rows);
+  out.cascades.push(...rest.cascades);
+  return out;
 }
 
 // release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one

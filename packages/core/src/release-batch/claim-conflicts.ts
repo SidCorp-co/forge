@@ -10,7 +10,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { agrees, counted } from '../lib/plural.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import { blockerRefusal, refuseRelease } from './refuse.js';
+import { blockerRefusal, reasonOf, refuseRelease } from './refuse.js';
 import { RELEASE_RECORD_SOURCE } from './version-rule.js';
 
 /**
@@ -222,15 +222,17 @@ export async function claimRoster(
   const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId });
   if (claimed.length === issueIds.length) return claimed;
   await releaseRunClaims(runId);
-  await closeRunIfOneShot(runId, 'cancelled');
   const lost = issueIds.filter((id) => !claimed.some((r) => r.id === id));
   const conflicts = await readClaimConflicts(projectId, gateStatus, lost);
-  throw blockerRefusal(
+  const refused = blockerRefusal(
     'CLAIM_CONFLICT',
     conflicts.length > 0
       ? claimConflictDetails(projectId, gateStatus, conflicts)
       : { issueIds: lost },
   );
+  // the cut already wears its version: it ends `failed` naming the refusal, never a bare cancel (ISS-761)
+  await closeRunIfOneShot(runId, 'failed', { code: 'CLAIM_CONFLICT', detail: reasonOf(refused) });
+  throw refused;
 }
 
 interface ClaimConflictDetails {
