@@ -12,7 +12,9 @@ import { criteriaHold } from './hold.js';
 const line: ReleasedLine = {
   why: "its production `production` declares no source probe, so no commit is read for what it serves: its releases are its agent's record by version",
   live: { version: '0.76.0', at: new Date('2026-11-02T00:00:00Z') },
-  shipped: new Map([['0.76.0', { at: new Date('2026-11-02T00:00:00Z'), carried: true }]]),
+  shipped: new Map([
+    ['0.76.0', { at: new Date('2026-11-02T00:00:00Z'), carried: true, carries: [] }],
+  ]),
 };
 
 const report = (released: ReleasedLine | null): IssueCriteriaReport => ({

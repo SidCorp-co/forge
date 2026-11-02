@@ -36,6 +36,7 @@ import {
   type ReleaseMergeStep,
 } from './change-request-roster.js';
 import type { RecordedVerification } from './channel.js';
+import { judgedOnReleaseAt } from './judged-on-release.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import { criteriaAt, type IssueFact, type ReleaseFacts } from './release-facts.js';
 import {
@@ -278,7 +279,9 @@ function splitOf(p: Part, s: Shared): ReleaseSplit | null {
 
 export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
-  const criteria = sumTotals(facts.map((i) => totalsOf(criteriaOf(p, s, i))));
+  const elsewhere = judgedOnReleaseAt(s.facts, p.issueIds, p.version).map((j) => j.criteria);
+  const judged = [...facts.map((i) => criteriaOf(p, s, i)), ...elsewhere];
+  const criteria = sumTotals(judged.map(totalsOf));
   const turn = turnFor(p, s, criteria);
   const { owner, act } = ownerOf(p, s);
   const split = splitOf(p, s);
@@ -485,11 +488,10 @@ export function detailOf(
           Number(b.completes) - Number(a.completes) ||
           a.key.localeCompare(b.key, 'en', { numeric: true }),
       ),
-    issueCriteria: facts.map((i) => ({
-      key: i.key,
-      title: i.title,
-      criteria: criteriaOf(p, s, i),
-    })),
+    issueCriteria: [
+      ...facts.map((i) => ({ key: i.key, title: i.title, criteria: criteriaOf(p, s, i) })),
+      ...judgedOnReleaseAt(s.facts, p.issueIds, p.version), // judged on a release it carries
+    ],
     notes: noteSections(p, s, landings),
     gates: p.gates,
     approval: latest ? strip(latest) : null,

@@ -6,6 +6,7 @@ import {
   notJudgedOnWhy,
   type ReleaseVerdictReading,
 } from '@forge/contracts/release-page';
+import { type ReleasedLine, versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
 import { requirementKey } from '@forge/contracts/requirements';
@@ -35,6 +36,7 @@ import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { issueNamingOf, namedIssue, standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
+import { releasedLineOf } from './released-line.js';
 
 export interface IssueFact {
   id: string;
@@ -73,10 +75,19 @@ export interface ReleaseFacts {
    * BC-18), or null where a commit verdict at the release's build proves it (BC-20).
    */
   judgedOn: string | null;
+  /**
+   * Where production names no commit it serves, what its agent's release record says shipped and
+   * what each release carries (`released-line.ts:releasedLineOf`, ISS-900); null on any other project.
+   */
+  released: ReleasedLine | null;
+  /** The issues of the project holding a verdict judged on a release, loaded beside the rosters'. */
+  judgedOnRelease: readonly string[];
 }
 
-/** What a release reads its criteria's proof by: the project's judge and its testing environment. */
-export type ReleaseProof = Pick<ReleaseFacts, 'judge' | 'judgedOn'>;
+/** What a release reads its criteria's proof by: the project's judge, its testing environment, and
+ *  where its releases are its agent's record, what each carries (ISS-900). */
+export type ReleaseProof = Pick<ReleaseFacts, 'judge' | 'judgedOn'> &
+  Partial<Pick<ReleaseFacts, 'released'>>;
 
 /** One verdict a carried criterion earned, as a release reads it. */
 export interface CarriedVerdict extends ReleaseVerdictReading {
@@ -154,17 +165,19 @@ export async function carriedVerdictsOf(
  * (`judgedOnReleaseBuild`: on a project naming a testing environment, a runtime verdict at it and
  * never a commit one, REQ-36 BC-18), so a verdict on an earlier build never counts, and none on it
  * reads not judged — "Not judged on <environment>" where the project names one (BC-19). A verdict
- * judged on a release counts on the release of the `version` it names alone (ISS-900).
+ * judged on a release counts on release `version` and on every release its record says carries
+ * that one (`versionsCountedOn`, ISS-900).
  */
 export function criteriaAt(
   issue: IssueFact,
   build: string | null,
-  { judge, judgedOn }: ReleaseProof,
+  { judge, judgedOn, released }: ReleaseProof,
   version: string | null = null,
 ): ReleaseCriterionView[] {
+  const versions = versionsCountedOn(released, version);
   return issue.criteria.map((c) => {
     const newestFirst = [...(issue.verdicts.get(c.n) ?? [])].reverse();
-    const counted = newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, version));
+    const counted = newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, versions));
     const read = verifiedOf(counted, judge);
     const stands = read.stands;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
@@ -286,7 +299,11 @@ export async function loadReleaseFacts(
   issueIds: readonly string[],
   runIds: readonly string[],
 ): Promise<ReleaseFacts> {
-  const ids = [...new Set(issueIds)];
+  const [released, judgedOnRelease] = await Promise.all([
+    releasedLineOf(projectId),
+    issuesJudgedOnRelease(projectId),
+  ]);
+  const ids = [...new Set([...issueIds, ...judgedOnRelease])];
   const [rows, prefix, cutters, judge, held] = await Promise.all([
     ids.length === 0
       ? Promise.resolve([])
@@ -382,5 +399,17 @@ export async function loadReleaseFacts(
     cutters,
     judge,
     judgedOn: judgedOnOf(held?.document.delivery),
+    released,
+    judgedOnRelease,
   };
+}
+
+/** The issues of `projectId` holding a verdict judged on a release (ISS-900). */
+async function issuesJudgedOnRelease(projectId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ id: criterionVerdicts.issueId })
+    .from(criterionVerdicts)
+    .innerJoin(issues, eq(issues.id, criterionVerdicts.issueId))
+    .where(and(eq(issues.projectId, projectId), eq(criterionVerdicts.identityKind, 'release')));
+  return rows.map((r) => r.id);
 }

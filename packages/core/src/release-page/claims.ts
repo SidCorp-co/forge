@@ -82,31 +82,32 @@ function readAt(
   verdicts: readonly CarriedVerdict[],
   build: string | null,
   judgedOn: string | null,
-  version: string | null,
+  versions: ReadonlySet<string>,
 ): CarriedVerdict[] {
   const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
-  return newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, version));
+  return newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, versions));
 }
 
 /**
  * `judgedOn` is the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18), or null;
- * `version` the release's, on which a verdict judged on a release counts (ISS-900).
+ * `versions` the release versions a verdict judged on a release counts on here: this release and
+ * those its record says it carries (`versionsCountedOn`, ISS-900).
  */
 export function readClaims(
   criteria: readonly CarriedCriterion[],
   build: string | null,
   judge: VerifiedJudge | null,
   judgedOn: string | null,
-  version: string | null = null,
+  versions: ReadonlySet<string> = new Set(),
 ): ClaimReading[] {
   return criteria.map((criterion) => {
-    const read = verifiedOf(readAt(criterion.verdicts, build, judgedOn, version), judge);
+    const read = verifiedOf(readAt(criterion.verdicts, build, judgedOn, versions), judge);
     const { stands, why } = read;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
     // a release with no build still stands on a verdict judged on its own version
     const onBuild = build === null && stands?.identityKind !== 'release' ? null : stands;
     let claim: ReleaseClaim;
-    if (onBuild === null) claim = releaseClaimOf(criterion.verdicts, build, judgedOn, version);
+    if (onBuild === null) claim = releaseClaimOf(criterion.verdicts, build, judgedOn, versions);
     else if (proven) claim = { claimed: true, at: onBuild.at };
     else if (onBuild.verdict === 'pass')
       claim = { claimed: false, standing: 'not_judged', elsewhere: null };

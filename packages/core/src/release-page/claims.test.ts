@@ -403,17 +403,17 @@ describe('a release recorded by version alone claims a pass judged on that versi
 
   it('claims a pass judged on its own version, with no build', () => {
     const own = criterion(1, 'BC-1', [onRelease('0.76.0', '2026-11-02T10:00:00.000Z')]);
-    const [read] = readClaims([own], null, 'independent', null, '0.76.0');
+    const [read] = readClaims([own], null, 'independent', null, new Set(['0.76.0']));
     expect(read?.claim).toEqual({ claimed: true, at: '2026-11-02T10:00:00.000Z' });
     expect(read?.proven).toBe(true);
   });
 
   it('claims nothing on another release, and nothing from a release verdict on a build', () => {
     const other = criterion(1, 'BC-1', [onRelease('0.75.0', '2026-11-02T10:00:00.000Z')]);
-    const [unbuilt] = readClaims([other], null, 'independent', null, '0.76.0');
+    const [unbuilt] = readClaims([other], null, 'independent', null, new Set(['0.76.0']));
     expect(unbuilt?.claim.claimed).toBe(false);
     expect(unbuilt?.proven).toBe(false);
-    const [built] = readClaims([other], BUILD, 'independent', null, '0.76.0');
+    const [built] = readClaims([other], BUILD, 'independent', null, new Set(['0.76.0']));
     expect(built?.claim.claimed).toBe(false);
   });
 });

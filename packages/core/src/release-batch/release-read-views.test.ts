@@ -55,7 +55,15 @@ function facts(n: number): ReleaseFacts {
       },
     });
   }
-  return { issues, requirements: new Map(), cutters: new Map(), judge: null, judgedOn: null };
+  return {
+    issues,
+    requirements: new Map(),
+    cutters: new Map(),
+    judge: null,
+    judgedOn: null,
+    released: null,
+    judgedOnRelease: [],
+  };
 }
 
 const gate = (code: string): ReleaseGateView => ({

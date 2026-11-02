@@ -21,7 +21,9 @@ const line = (
 ): ReleasedLine => ({
   why: WHY,
   live: live ? { version: live, at: at(2) } : null,
-  shipped: new Map(Object.entries(shipped).map(([v, carried]) => [v, { at: at(1), carried }])),
+  shipped: new Map(
+    Object.entries(shipped).map(([v, carried]) => [v, { at: at(1), carried, carries: [] }]),
+  ),
 });
 
 describe('a verdict judged on a release', () => {

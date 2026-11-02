@@ -19,6 +19,8 @@ interface ShippedOnLine {
   at: Date;
   /** Whether the live release carries it: shipped no later, at no higher a version. */
   carried: boolean;
+  /** Every other shipped version it carries itself, by the same rule. */
+  carries: readonly string[];
 }
 
 /** What the requirement coverage reads of the line (`requirements/standing-identity.ts:ReleasedLine`). */
@@ -65,18 +67,27 @@ export async function releasedLineOf(projectId: string): Promise<ReleasedLineRea
       ? [{ version: r.version, at: r.at, parsed: parseReleaseVersion(r.version) }]
       : [],
   );
+  type Shipped = (typeof shipped)[number];
   const newest = shipped[shipped.length - 1];
   if (!newest) return { why, live: null, shipped: new Map() };
-  const carries = (v: (typeof shipped)[number]) =>
-    v === newest ||
-    (v.at.getTime() <= newest.at.getTime() &&
+  // one rule for what any release carries, the live one included: shipped no later, no higher
+  const carries = (v: Shipped, holder: Shipped) =>
+    v === holder ||
+    (v.at.getTime() <= holder.at.getTime() &&
       v.parsed !== null &&
-      newest.parsed !== null &&
-      compareReleaseVersions(v.parsed, newest.parsed) <= 0);
+      holder.parsed !== null &&
+      compareReleaseVersions(v.parsed, holder.parsed) <= 0);
+  const carriedBy = (holder: Shipped) =>
+    shipped.filter((v) => v !== holder && carries(v, holder)).map((v) => v.version);
   return {
     why,
     live: { version: newest.version, at: newest.at },
-    shipped: new Map(shipped.map((v) => [v.version, { at: v.at, carried: carries(v) }])),
+    shipped: new Map(
+      shipped.map((v) => [
+        v.version,
+        { at: v.at, carried: carries(v, newest), carries: carriedBy(v) },
+      ]),
+    ),
   };
 }
 

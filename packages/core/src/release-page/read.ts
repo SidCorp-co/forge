@@ -13,6 +13,7 @@ import {
   type ReleasePageViewKind,
   releaseEnded,
 } from '@forge/contracts/release-page';
+import { versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
 import { refuser } from '../lib/refusal.js';
@@ -21,6 +22,7 @@ import {
   readRange,
   readRelease,
   readSurfaceMap,
+  releasedLineReads,
   type ViewerFacts,
 } from '../release-batch/index.js';
 import {
@@ -73,11 +75,12 @@ export interface PageFacts {
 /** Everything the page and its highlights read beyond the release record, under the truth rule at the release's build. */
 export async function pageFacts(projectId: string, detail: ReleaseDetail): Promise<PageFacts> {
   const build = buildOf(detail);
-  const [criteria, requirements, files, judge] = await Promise.all([
+  const [criteria, requirements, files, judge, line] = await Promise.all([
     carriedCriteria(detail),
     carriedRequirements(projectId, detail),
     issueFiles(detail.issues.map((i) => i.id)),
     readVerifiedJudge(projectId),
+    releasedLineReads.releasedLine(projectId),
   ]);
   // the judge a requirement's coverage counts by, so the page proves what the requirement does
   // and the testing environment the release record proves it on (REQ-36 BC-18)
@@ -86,7 +89,7 @@ export async function pageFacts(projectId: string, detail: ReleaseDetail): Promi
     build,
     judge,
     detail.verified.judgedOn ?? null,
-    detail.version,
+    versionsCountedOn(line, detail.version),
   );
   const facts = highlightFacts(detail.version, requirements, claims, mediaOf(claims, files, build));
   return { build, claims, requirements, facts, digest: digestOf(facts) };

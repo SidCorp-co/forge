@@ -14,7 +14,14 @@
 export interface ReleasedLine {
 	why: string;
 	live: { version: string; at: Date } | null;
-	shipped: ReadonlyMap<string, { at: Date; carried: boolean }>;
+	/**
+	 * Per shipped version: when it shipped, whether the live release carries it, and every earlier
+	 * version it carries itself (shipped no later, at no higher a version), one rule for both.
+	 */
+	shipped: ReadonlyMap<
+		string,
+		{ at: Date; carried: boolean; carries: readonly string[] }
+	>;
 }
 
 /** Whether a verdict judged on a release counts, and if not why; `countedAs` where a later release carries it. */
@@ -68,6 +75,19 @@ export function readOnRelease(
 		notCounted: null,
 		countedAs: `release ${version}, carried by live release ${line.live.version}`,
 	};
+}
+
+/**
+ * The release versions a verdict may name and count on release `version`: that release, and every one
+ * the record says it carries (`ReleasedLine.shipped[].carries`). Empty with no version; the release
+ * alone where no line is read.
+ */
+export function versionsCountedOn(
+	line: ReleasedLine | null | undefined,
+	version: string | null,
+): ReadonlySet<string> {
+	if (version === null) return new Set();
+	return new Set([version, ...(line?.shipped.get(version)?.carries ?? [])]);
 }
 
 /** Why a release a verdict names is refused: no version, no place for one, or none recorded. */

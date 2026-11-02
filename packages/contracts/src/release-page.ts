@@ -152,14 +152,17 @@ export interface ReleaseVerdictReading {
 	at: string;
 }
 
+const NO_VERSIONS: ReadonlySet<string> = new Set();
+
 /**
  * Whether a verdict was judged on a release's `build`, the one place every count of a release's proof
  * reads it (REQ-36 BC-18..BC-20): where the project names no testing environment (`judgedOn` null),
  * a verdict whose identity is that commit; where it names one, only a verdict judged on the running
  * build at that commit (`runtime`, whatever corroborated it), and never a commit verdict, which gates
  * the merge and proves no release criterion. A verdict judged on a release (ISS-900: where production
- * names no commit it serves, a release is its agent's record by version) counts on the release whose
- * `version` it names and on no other, whether or not that release names a build.
+ * names no commit it serves, a release is its agent's record by version) counts on a release whose
+ * `versions` hold the one it names: that release and those its record says it carries
+ * (`released-line.ts:versionsCountedOn`), whether or not the release names a build.
  */
 export function judgedOnReleaseBuild(
 	v: Pick<
@@ -168,10 +171,10 @@ export function judgedOnReleaseBuild(
 	>,
 	build: string | null,
 	judgedOn: string | null,
-	version: string | null = null,
+	versions: ReadonlySet<string> = NO_VERSIONS,
 ): boolean {
 	if (v.identityKind === "release")
-		return version !== null && v.releaseVersion === version;
+		return v.releaseVersion != null && versions.has(v.releaseVersion);
 	if (build === null) return false;
 	if (judgedOn === null) {
 		return v.identityKind === "commit" && v.commitSha === build;
@@ -191,10 +194,10 @@ export function countedOnRelease(
 	>,
 	build: string | null,
 	judgedOn: string | null,
-	version: string | null = null,
+	versions: ReadonlySet<string> = NO_VERSIONS,
 ): boolean {
 	if (build === null && v.identityKind !== "release") return true;
-	return judgedOnReleaseBuild(v, build, judgedOn, version);
+	return judgedOnReleaseBuild(v, build, judgedOn, versions);
 }
 
 /** Why a release criterion with no verdict on the running build is not proven, naming the environment (REQ-36 BC-19). */
@@ -223,12 +226,12 @@ export function releaseClaimOf(
 	verdicts: readonly ReleaseVerdictReading[],
 	build: string | null,
 	judgedOn: string | null = null,
-	/** The release's version: a verdict judged on a release counts on its own (ISS-900). */
-	version: string | null = null,
+	/** The versions a verdict judged on a release counts on here (ISS-900, `judgedOnReleaseBuild`). */
+	versions: ReadonlySet<string> = NO_VERSIONS,
 ): ReleaseClaim {
 	const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
 	const onBuild = newestFirst.find((v) =>
-		judgedOnReleaseBuild(v, build, judgedOn, version),
+		judgedOnReleaseBuild(v, build, judgedOn, versions),
 	);
 	if (onBuild?.verdict === "pass") return { claimed: true, at: onBuild.at };
 	if (onBuild)
