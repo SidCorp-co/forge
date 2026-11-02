@@ -361,17 +361,16 @@ describe('a requirement written in one sentence is drafted on create, with no ch
     expect(draft?.nothingToAsk).toBe('The record settles every answer.');
   });
 
-  it('keeps a draft that asks four questions as a named miss and leaves the requirement as written (BC-14)', async () => {
+  // REQ-65 r3 BC-3, REQ-34 BC-14 as revised (ISS-904): no count sends a fourth question back
+  it('drafts a draft that asks four questions on its first answer (BC-14)', async () => {
     mode = 'four';
     const before = seen.length;
     const key = await createRequirement('Remind the clinic of unmatched referrals');
     await settleOutbox();
-    expect(seen.length - before).toBe(2);
-    expect(seen.at(-1)?.user).toContain('That was refused: questions: Too big');
+    expect(seen.length - before).toBe(1);
     const draft = await draftOf(key);
-    expect([draft?.outcome, draft?.code]).toEqual(['failed', 'INTAKE_SHAPE']);
-    const r1 = (await requirementOf(key)).revisions.find((r) => r.revision === 1);
-    expect(r1?.tldr ?? null).toBeNull();
+    expect(draft?.outcome).toBe('drafted');
+    expect(draft?.questions).toHaveLength(4);
   });
 });
 
