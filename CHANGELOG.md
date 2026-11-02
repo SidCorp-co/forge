@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.438] - 2026-11-02
+
+The steward stops re-asking a dependent while a dated decision stands
+
+### Fixed
+
+- **A dated decision on a waiting issue now holds until its date.** The steward stops re-asking when a blocker starts, pauses or resumes; it asks again once the date passes, a blocker finishes, or a new one appears.
+
 ## [0.4.0-dev.437] - 2026-11-02
 
 The chat assistant tells the owner which question a paused issue waits on

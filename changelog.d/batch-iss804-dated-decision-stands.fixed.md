@@ -1,1 +1,0 @@
-**A dated decision on a waiting issue now holds until its date.** The steward stops re-asking when a blocker starts, pauses or resumes; it asks again once the date passes, a blocker finishes, or a new one appears.
