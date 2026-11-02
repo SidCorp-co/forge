@@ -12,7 +12,7 @@ import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresNoPermission, requiresOnParam, requiresPublic } from '../permissions/index.js';
 import {
   createShare,
   listShares,
@@ -45,12 +45,9 @@ projectShareRoutes.use('/:id/shares/*', requireAuth(), assertEmailVerified());
 projectShareRoutes.get(
   '/:id/shares',
   zValidator('param', projectParam, invalid('invalid path: /api/projects/<project>/shares')),
+  requiresOnParam('project.read', 'id'),
   noQuery,
-  async (c) => {
-    const { id: projectId } = c.req.valid('param');
-    requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
-    return c.json({ shares: await listShares(projectId) });
-  },
+  async (c) => c.json({ shares: await listShares(c.req.valid('param').id) }),
 );
 
 projectShareRoutes.get(
@@ -60,6 +57,7 @@ projectShareRoutes.get(
     projectParam,
     invalid('invalid path: /api/projects/<project>/shares/audiences'),
   ),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -71,6 +69,8 @@ projectShareRoutes.get(
 projectShareRoutes.post(
   '/:id/shares',
   zValidator('param', projectParam, invalid('invalid path: /api/projects/<project>/shares')),
+  // a link share needs shares.public too, which the body's audience decides (service.ts:admitAudience)
+  requiresOnParam('shares.write', 'id'),
   zValidator('json', ShareCreateSchema, invalid(CREATE_SHAPE)),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -94,6 +94,8 @@ projectShareRoutes.post(
     shareParam,
     invalid('invalid path: /api/projects/<project>/shares/<share id>/revoke'),
   ),
+  // its creator, or a project admin, is a per-share rule the service reads (service.ts:revokeShare)
+  requiresOnParam('project.read', 'id'),
   async (c) => {
     const { id: projectId, shareId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -126,6 +128,9 @@ shareOpenRoutes.use(
 
 shareOpenRoutes.post(
   '/open',
+  requiresPublic(
+    'the share token in the body is the whole key, and only a share open to anyone holding its link answers here',
+  ),
   zValidator('json', ShareOpenSchema, invalid(OPEN_SHAPE)),
   async (c) => {
     sealed(c);
@@ -136,6 +141,9 @@ shareOpenRoutes.post(
 shareOpenRoutes.post(
   '/open/member',
   requireAuth(),
+  requiresNoPermission(
+    'the share token in the body is the key; a members share answers only a reader of its project, a per-share rule the service reads',
+  ),
   zValidator('json', ShareOpenSchema, invalid(OPEN_SHAPE)),
   async (c) => {
     sealed(c);

@@ -7,7 +7,9 @@
 
 import { raiseConfusionRequestSchema } from '@forge/contracts/lessons';
 import { z } from 'zod';
+import { loadProjectAccess } from '../lib/authz.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
+import { onResolved, requireDeclared } from '../permissions/index.js';
 import { raiseConfusion } from './confusions.js';
 
 const input = raiseConfusionRequestSchema.extend({
@@ -32,6 +34,7 @@ export const lessonConfusionTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
+  permission: onResolved('project.write', 'the project the chat turn is bound to'),
   description: DESCRIPTION,
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,
   handler: async (raw: Record<string, unknown>) => {
@@ -42,6 +45,7 @@ export const lessonConfusionTool: ContextScopedMcpToolFactory = (ctx) => ({
         'forge_lesson_confusion reports a confusion on a bound project, and this turn names none',
       );
     }
+    requireDeclared(await loadProjectAccess(projectId, ctx.principal.userId));
     const moved = await raiseConfusion({
       projectId,
       ref: String(lesson),

@@ -4,6 +4,7 @@ import { scheduleKinds } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import {
   createSchedule,
   deleteSchedule,
@@ -122,25 +123,41 @@ const updateSchema = z
 export const scheduleRoutes = new Hono<{ Variables: AuthVars }>();
 scheduleRoutes.use('*', requireAuth(), assertEmailVerified());
 
-scheduleRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
-  const { projectId, enabled } = c.req.valid('query');
-  const rows = await listSchedules(
-    projectId,
-    c.get('userId'),
-    enabled === 'true' ? true : enabled === 'false' ? false : undefined,
-  );
-  return c.json(rows);
-});
+const QUERY_PROJECT = 'the project `?projectId=` names';
+const BODY_PROJECT = 'the project the body’s `projectId` names';
+const SCHEDULE_PROJECT = 'the project of the schedule `:id` names';
 
-scheduleRoutes.post('/', zValidator('json', createSchema), async (c) => {
-  const input = c.req.valid('json');
-  const inserted = await createSchedule(input, c.get('userId'));
-  return c.json(inserted, 201);
-});
+scheduleRoutes.get(
+  '/',
+  zValidator('query', listQuerySchema),
+  requiresOnResolved('project.read', QUERY_PROJECT),
+  async (c) => {
+    const { projectId, enabled } = c.req.valid('query');
+    const rows = await listSchedules(
+      projectId,
+      c.get('userId'),
+      enabled === 'true' ? true : enabled === 'false' ? false : undefined,
+    );
+    return c.json(rows);
+  },
+);
+
+scheduleRoutes.post(
+  '/',
+  requiresOnResolved('project.admin', BODY_PROJECT),
+  zValidator('json', createSchema),
+  async (c) => {
+    const input = c.req.valid('json');
+    const inserted = await createSchedule(input, c.get('userId'));
+    return c.json(inserted, 201);
+  },
+);
 
 scheduleRoutes.put(
   '/:id',
   zValidator('param', idParamSchema),
+  // an owner's own schedule; one owned by another needs project.admin, a per-row rule in the service
+  requiresOnResolved('project.write', SCHEDULE_PROJECT),
   zValidator('json', updateSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -150,17 +167,27 @@ scheduleRoutes.put(
   },
 );
 
-scheduleRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  await deleteSchedule(id, c.get('userId'));
-  return c.body(null, 204);
-});
+scheduleRoutes.delete(
+  '/:id',
+  zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', SCHEDULE_PROJECT),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await deleteSchedule(id, c.get('userId'));
+    return c.body(null, 204);
+  },
+);
 
-scheduleRoutes.post('/:id/run', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const result = await runScheduleNow(id, {
-    userId: c.get('userId'),
-    viaTokenId: c.get('patTokenId') ?? null,
-  });
-  return c.json(result, 202);
-});
+scheduleRoutes.post(
+  '/:id/run',
+  zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', SCHEDULE_PROJECT),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const result = await runScheduleNow(id, {
+      userId: c.get('userId'),
+      viaTokenId: c.get('patTokenId') ?? null,
+    });
+    return c.json(result, 202);
+  },
+);

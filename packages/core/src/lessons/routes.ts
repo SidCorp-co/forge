@@ -74,6 +74,7 @@ lessonRoutes.get(
 lessonRoutes.post(
   '/:id/lessons/applied',
   projectParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(recordAppliedRequestSchema, RECORD_APPLIED_SHAPE),
   async (c) =>
     c.json(
@@ -88,6 +89,7 @@ lessonRoutes.post(
 lessonRoutes.post(
   '/:id/lessons/:n/confusions',
   lessonParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(raiseConfusionRequestSchema, RAISE_CONFUSION_SHAPE),
   async (c) => {
     const { id, n } = c.req.valid('param');

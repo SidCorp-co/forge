@@ -31193,6 +31193,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -31385,6 +31391,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -40313,6 +40325,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -40391,6 +40409,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "shares.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -40426,6 +40450,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -40472,6 +40502,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -54937,6 +54973,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `?projectId=` names"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -55057,6 +55099,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the body’s `projectId` names"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -55091,6 +55139,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the schedule `:id` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -55213,6 +55267,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the schedule `:id` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -55248,6 +55308,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the schedule `:id` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -55318,6 +55384,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the share token in the body is the whole key, and only a share open to anyone holding its link answers here"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -55360,6 +55429,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "none": "the share token in the body is the key; a members share answers only a reader of its project, a per-share rule the service reads"
+        },
         "x-forge-validated": [
           "json"
         ]

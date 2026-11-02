@@ -93,7 +93,9 @@ async function rowOf(projectId: string, shareId: string): Promise<Row> {
 
 /**
  * What creating a share for `audience` asks of its creator and project, before any subject is read:
- * `shares.write`, and for a link share `shares.public` and a data policy that lets data leave.
+ * `shares.write`, and for a link share `shares.public` and a data policy that lets data leave. The
+ * create route declares shares.write and is checked by it before this runs; the audience rule here
+ * is the one the options read reports per audience, so it names shares.write for that report too.
  */
 function admitAudience(
   access: ProjectAccess,
@@ -116,7 +118,6 @@ export async function shareAudienceOptions(
   projectId: string,
   access: ProjectAccess,
 ): Promise<ShareAudienceOption[]> {
-  requireHeld(access, 'project.read');
   const level = await dataPolicyOf(projectId);
   return SHARE_AUDIENCES.map((audience) => {
     try {
@@ -184,7 +185,6 @@ export async function revokeShare(args: {
   userId: string;
   access: ProjectAccess;
 }): Promise<ShareLinkView> {
-  requireHeld(args.access, 'project.read', 'revoking a share');
   const row = await rowOf(args.projectId, args.shareId);
   if (row.createdBy !== args.userId && !holds(args.access, 'project.admin')) {
     throw refuse(

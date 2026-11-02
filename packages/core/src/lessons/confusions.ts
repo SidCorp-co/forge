@@ -137,7 +137,6 @@ export async function raiseConfusion(input: {
   body: RaiseConfusionRequest;
 }): Promise<LessonMoved> {
   const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   return db.transaction(async (tx) => {
     await lockLessons(tx, projectId);
     const row = await lessonIn(tx, projectId, input.ref);

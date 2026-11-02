@@ -17,7 +17,6 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { lessonApplications, lessons } from '../db/schema-lessons.js';
 import { logger } from '../lib/logger.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { refuse } from './refuse.js';
 
 interface Output {
@@ -89,7 +88,6 @@ export async function recordApplied(input: {
   body: RecordAppliedRequest;
 }): Promise<{ recorded: number }> {
   const { projectId, userId, body } = input;
-  await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
   const numbers = [...new Set(body.lessons)];
   return db.transaction(async (tx) => {
     const found = await approvedOf(tx, projectId, numbers);

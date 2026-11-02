@@ -8,7 +8,7 @@ import { projects, type ScheduleKind, schedules } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requireHeld } from '../permissions/index.js';
 import { isTimeZone, nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { type LastFire, lastFires } from './fires.js';
@@ -54,9 +54,25 @@ async function assertTargetProjectAccess(
       cause: { code: 'INVALID_TARGET_PROJECT' },
     });
   }
+  // a data rule, not the action's permission: the body names a second project, which the caller
+  // must also be able to write, and no declaration can name a project the body chooses
   const access = await loadProjectAccess(target.id, userId);
   requireHeld(access, 'project.write');
   return target;
+}
+
+/**
+ * A per-row rule the route's declared project.write cannot carry: a schedule its caller does not
+ * own needs project.admin too, and the save takes it over (`scheduleWritePermission`).
+ */
+function ownersScheduleOrAdmin(
+  access: Awaited<ReturnType<typeof loadProjectAccess>>,
+  ownerId: string | null,
+  actorUserId: string,
+  act: string,
+): void {
+  const needed = scheduleWritePermission(ownerId, actorUserId);
+  if (needed !== 'project.write') requireHeld(access, needed, act);
 }
 
 /** A schedule's last status, run and session, read from its newest fire. */
@@ -75,8 +91,7 @@ async function withLastFires<T extends { id: string }>(projectId: string, rows: 
 }
 
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
-  const access = await loadProjectAccess(projectId, actorUserId);
-  requireHeld(access, 'project.read');
+  requireDeclared(await loadProjectAccess(projectId, actorUserId));
 
   const conditions = [eq(schedules.projectId, projectId)];
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
@@ -102,8 +117,7 @@ interface CreateScheduleInput {
 }
 
 export async function createSchedule(input: CreateScheduleInput, actorUserId: string) {
-  const access = await loadProjectAccess(input.projectId, actorUserId);
-  requireHeld(access, 'project.admin');
+  requireDeclared(await loadProjectAccess(input.projectId, actorUserId));
 
   assertTimeZone(input.timeZone);
   const validation = validateCron(input.cron, input.timeZone);
@@ -188,7 +202,8 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  requireHeld(access, scheduleWritePermission(row.ownerId, actorUserId), 'changing a schedule');
+  requireDeclared(access, 'changing a schedule');
+  ownersScheduleOrAdmin(access, row.ownerId, actorUserId, 'changing a schedule');
 
   if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
     await assertTargetProjectAccess(patch.targetProjectSlug, actorUserId);
@@ -269,7 +284,8 @@ export async function deleteSchedule(id: string, actorUserId: string): Promise<v
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  requireHeld(access, scheduleWritePermission(row.ownerId, actorUserId), 'deleting a schedule');
+  requireDeclared(access, 'deleting a schedule');
+  ownersScheduleOrAdmin(access, row.ownerId, actorUserId, 'deleting a schedule');
 
   await db.delete(schedules).where(eq(schedules.id, id));
 }
@@ -290,8 +306,7 @@ export async function runScheduleNow(
   const [schedule] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
   if (!schedule) throw notFound('schedule not found');
 
-  const access = await loadProjectAccess(schedule.projectId, actorUserId);
-  requireHeld(access, 'project.write');
+  requireDeclared(await loadProjectAccess(schedule.projectId, actorUserId));
 
   // Defensive re-check: rows persisted before the create/update gate landed
   // could carry a `targetProjectSlug` the actor has no business triggering.
