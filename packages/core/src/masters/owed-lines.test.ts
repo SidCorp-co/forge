@@ -115,6 +115,9 @@ describe('an agent reporter’s confirm on the owed line', () => {
       'FB-470 from agenfold-chat, its wait ended: its date passed, `forge-runner api forge/feedback/FB-470/verify -X POST`',
     );
     expect(line).toContain('FB-472 from agenfold-chat, its wait ended: the room message came');
+    expect(owedLine({ ...none, confirms: [{ ...base, waitEnded: 'withdrawn' }] })).toContain(
+      'FB-470 from agenfold-chat, its wait ended: the fix was reopened',
+    );
     expect(line).toContain('`/confirm-wait`');
     expect(line).toContain('"reason":"<why it waits>"');
   });

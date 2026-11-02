@@ -3,24 +3,20 @@
  * confirm on every pass (REQ-66 BC-8, `owed-verify.ts`), and some fixes are tested only by an event it
  * cannot cause, such as the owner's next message in a room. The wait records why the item waits and
  * until when: the owed line leaves it out until its date passes or the event it names happens
- * (`meetRoomConfirmWaits`), then names it again; the item's reads show it, so a person sees why it is
- * not settled. The agent that reported it sets it, or the master that acts for that agent
+ * (`meetRoomConfirmWaits`) or the fix it stands on is reopened (`confirm-wait-read.ts:withdrawnSql`),
+ * then names it again; the item's reads show it, so a person sees why it is not settled. The agent that reported it sets it, or the master that acts for that agent
  * (`reporter-master.ts`); the verify or reopen it waits for clears it (`service.ts:personalActIn`).
  */
 
-import type { FeedbackConfirmWaitView } from '@forge/contracts/feedback';
 import { feedbackKey } from '@forge/contracts/feedback';
-import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import {
-  type ConfirmWaitRequest,
-  confirmWaitOf,
-  confirmWaitRefusal,
-} from './confirm-wait-facts.js';
+import { type ConfirmWaitRequest, confirmWaitRefusal } from './confirm-wait-facts.js';
+import { withdrawnSql } from './confirm-wait-read.js';
 import { phaseOfRow } from './list-read.js';
 import { reportedFromSql } from './owed-verify.js';
 import { type FeedbackActor, rowIn } from './read.js';
@@ -119,32 +115,11 @@ export async function meetRoomConfirmWaits(tx: Tx, projectId: string, at: Date):
         isNull(feedback.confirmWaitMetAt),
         gt(feedback.confirmWaitUntil, at),
         lt(feedback.confirmWaitSetAt, at),
+        sql`NOT ${withdrawnSql}`,
         eq(feedback.reporterAgency, 'agent'),
         sql`${reportedFromSql} = ${projectId}`,
       ),
     )
     .returning({ id: feedback.id });
   return met.length;
-}
-
-/** The wait still holding on each of `ids`, for a door that reads items by summary (the Forge door). */
-export async function confirmWaitsOf(
-  ids: readonly string[],
-  withhold: boolean,
-  now: Date = new Date(),
-): Promise<Map<string, FeedbackConfirmWaitView | null>> {
-  if (ids.length === 0) return new Map();
-  const rows = await db
-    .select({
-      id: feedback.id,
-      confirmWaitUntil: feedback.confirmWaitUntil,
-      confirmWaitOn: feedback.confirmWaitOn,
-      confirmWaitReason: feedback.confirmWaitReason,
-      confirmWaitSetAt: feedback.confirmWaitSetAt,
-      confirmWaitSetBy: feedback.confirmWaitSetBy,
-      confirmWaitMetAt: feedback.confirmWaitMetAt,
-    })
-    .from(feedback)
-    .where(inArray(feedback.id, [...ids]));
-  return new Map(rows.map((r) => [r.id, confirmWaitOf(r, now, withhold)]));
 }

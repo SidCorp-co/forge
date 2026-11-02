@@ -76,6 +76,10 @@ beforeAll(async () => {
 
 /** FB-470: an item about Forge the channel agent filed from its own project, shipped. */
 async function shippedForgeItem(): Promise<string> {
+  return (await shippedForgeItemWithCarrier()).key;
+}
+
+async function shippedForgeItemWithCarrier(): Promise<{ key: string; carrier: string }> {
   const carrier = await issue(home, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
   const key = await feedback(home, [carrier.id]);
   const [row] = (await db.execute(sql`
@@ -87,7 +91,7 @@ async function shippedForgeItem(): Promise<string> {
     INSERT INTO feedback_occurrences (feedback_id, reported_by, reporter_agency, source_project_id)
     VALUES (${String(row?.id)}, ${channel}, 'agent', ${own.projectId})
   `);
-  return key;
+  return { key, carrier: carrier.id };
 }
 
 /** The project-door twin: an item the channel agent filed in its own project, shipped. */
@@ -218,6 +222,40 @@ describe('the Forge door: a wait keeps a shipped item off the master’s line un
        WHERE project_id = ${home.projectId} AND fb_seq = ${Number(key.slice(3))}
     `)) as unknown as { confirm_wait_until: Date | null }[];
     expect(row?.confirm_wait_until).toBeNull();
+  });
+});
+
+// the master, 2026-11-02: a wait stands on a shipped fix; once that fix is reopened its premise is gone,
+// so hiding the item until the date would be a silence
+describe('a reopened fix ends the wait at once', () => {
+  it('shows no wait once the carrier reopens, and the re-shipped item returns to the line saying why', async () => {
+    const { key, carrier } = await shippedForgeItemWithCarrier();
+    const set = await forgeWait(tokens.master, key, {
+      until: inDays(14),
+      reason: 'needs the owner’s next message in the room',
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    expect(owedKeys(await owedLine())).not.toContain(key);
+
+    const reopened = await api(home.token, 'POST', `/api/issues/${carrier}/transition`, {
+      toStatus: 'reopen',
+      reason: 'The fix does not hold on the shipped build.',
+    });
+    expect(reopened.status, JSON.stringify(reopened.body)).toBe(200);
+    const read = await api(tokens.master, 'GET', `/api/forge/feedback/${key}`);
+    expect(read.body.phase).toBe('planned');
+    expect(read.body.confirmWait, 'a wait on a reopened fix no longer holds').toBeNull();
+
+    // the fix ships again inside the wait's dates: the item is owed at once, not at the wait's date.
+    // A release closing it is a world of its own; the row is moved as the kernel would, under its marker
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);
+      await tx.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${carrier}`);
+    });
+    const back = owedItems(await owedLine()).find((i) => i.startsWith(`${key} `));
+    expect(back ?? 'not listed', 'the re-shipped item returns, naming why').toContain(
+      'its wait ended: the fix was reopened',
+    );
   });
 });
 

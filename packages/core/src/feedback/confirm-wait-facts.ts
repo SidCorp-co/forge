@@ -69,13 +69,20 @@ export function confirmWaitRefusal(
   return null;
 }
 
-/** The wait still holding: set, its date not passed and its event not happened; null otherwise. */
+/** How a wait ended: its event happened, the fix it stood on was reopened, or its date passed. */
+export type ConfirmWaitEnd = 'met' | 'withdrawn' | 'lapsed';
+
+/**
+ * The wait still holding: set, its date not passed, its event not happened, and the fix it stands on
+ * not reopened since it was set (`withdrawn`, `confirm-wait-read.ts:withdrawnSql`); null otherwise.
+ */
 export function confirmWaitOf(
   r: WaitFacts,
   now: Date,
-  withhold = false,
+  withhold: boolean,
+  withdrawn: boolean,
 ): FeedbackConfirmWaitView | null {
-  if (!r.confirmWaitUntil || !r.confirmWaitSetAt || r.confirmWaitMetAt) return null;
+  if (!r.confirmWaitUntil || !r.confirmWaitSetAt || r.confirmWaitMetAt || withdrawn) return null;
   if (r.confirmWaitUntil.getTime() <= now.getTime()) return null;
   return {
     until: r.confirmWaitUntil.toISOString(),
@@ -87,8 +94,13 @@ export function confirmWaitOf(
 }
 
 /** How a wait set on the item ended, which the owed line names it again with; null while it holds or none was set. */
-export function confirmWaitEnded(r: WaitFacts, now: Date): 'met' | 'lapsed' | null {
+export function confirmWaitEnded(
+  r: WaitFacts,
+  now: Date,
+  withdrawn: boolean,
+): ConfirmWaitEnd | null {
   if (!r.confirmWaitUntil) return null;
   if (r.confirmWaitMetAt) return 'met';
+  if (withdrawn) return 'withdrawn';
   return r.confirmWaitUntil.getTime() <= now.getTime() ? 'lapsed' : null;
 }

@@ -193,7 +193,8 @@ route, declining included, closes the open question.
   event can test the fix: the agent reporter or its master sets it on a shipped item an agent reported
   (\`FEEDBACK_CONFIRM_WAIT_NOT_OWED\` otherwise). The pass leaves the item out until \`until\` (within
   30 days, \`FEEDBACK_CONFIRM_WAIT_PAST\`/\`_TOO_FAR\`) or, with \`on: room_message\`, a member's next
-  message in a support room of the project it was reported from, then names it again; the item reads
+  message in a support room of the project it was reported from, or at once when an issue carrying
+  the fix is reopened, then names it again saying which; the item reads
   \`confirmWait\` meanwhile. No reason is \`FEEDBACK_CONFIRM_WAIT_REASON_REQUIRED\`; the verify or reopen
   clears it.
 - \`verify-ask\` sends a resolved item to its reporter's bell again, where it stays until the item is

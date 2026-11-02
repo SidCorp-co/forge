@@ -24,7 +24,7 @@ export interface AgentConfirmOwed {
   /** The project its agent reported it from: the master owed the confirm is this one's. */
   reportedFrom: string;
   /** A wait set on its confirm that ended, and how (ISS-902): named again with it. */
-  waitEnded: 'met' | 'lapsed' | null;
+  waitEnded: 'met' | 'withdrawn' | 'lapsed' | null;
 }
 
 /** A merged change request delivering an issue that holds no merged mark (`issues/owed-merges.ts`). */

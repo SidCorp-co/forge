@@ -20,6 +20,7 @@ const confirmDoor = (c: AgentConfirmOwed): string | null => {
 /** ISS-902: an item whose wait ended is named again once it ends, saying how, so the master knows why it is back. */
 const WAIT_ENDED = {
   met: ', its wait ended: the room message came',
+  withdrawn: ', its wait ended: the fix was reopened',
   lapsed: ', its wait ended: its date passed',
 } as const;
 

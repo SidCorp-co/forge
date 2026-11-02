@@ -73,30 +73,38 @@ describe('confirmWaitOf and confirmWaitEnded', () => {
   };
 
   it('reads a wait that holds, with its reason unless withheld', () => {
-    expect(confirmWaitOf(set, now)).toEqual({
+    expect(confirmWaitOf(set, now, false, false)).toEqual({
       until: days(3).toISOString(),
       on: 'room_message',
       reason: 'needs the owner’s next message',
       setAt: now.toISOString(),
       setBy: 'u1',
     });
-    expect(confirmWaitOf(set, now, true)?.reason).toBeNull();
-    expect(confirmWaitEnded(set, now)).toBeNull();
+    expect(confirmWaitOf(set, now, true, false)?.reason).toBeNull();
+    expect(confirmWaitEnded(set, now, false)).toBeNull();
   });
 
   it('reads none once its date passed, and says it lapsed', () => {
-    expect(confirmWaitOf(set, days(3))).toBeNull();
-    expect(confirmWaitEnded(set, days(3))).toBe('lapsed');
+    expect(confirmWaitOf(set, days(3), false, false)).toBeNull();
+    expect(confirmWaitEnded(set, days(3), false)).toBe('lapsed');
   });
 
   it('reads none once its event happened, and says it was met', () => {
     const met = { ...set, confirmWaitMetAt: days(1) };
-    expect(confirmWaitOf(met, days(1))).toBeNull();
-    expect(confirmWaitEnded(met, days(1))).toBe('met');
+    expect(confirmWaitOf(met, days(1), false, false)).toBeNull();
+    expect(confirmWaitEnded(met, days(1), true)).toBe('met');
+  });
+
+  it('reads none once the fix it stands on was reopened, before its date, and says so', () => {
+    expect(confirmWaitOf(set, now, false, true)).toBeNull();
+    expect(confirmWaitEnded(set, now, true)).toBe('withdrawn');
+    expect(confirmWaitEnded(set, days(3), true), 'the reopen, not the date, ended it').toBe(
+      'withdrawn',
+    );
   });
 
   it('reads nothing on an item no wait was set on', () => {
-    expect(confirmWaitOf(none, now)).toBeNull();
-    expect(confirmWaitEnded(none, now)).toBeNull();
+    expect(confirmWaitOf(none, now, false, false)).toBeNull();
+    expect(confirmWaitEnded(none, now, false)).toBeNull();
   });
 });

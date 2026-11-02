@@ -31,7 +31,7 @@ import {
   requireCan,
 } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
-import { confirmWaitOf } from './confirm-wait-facts.js';
+import { confirmWaitsOf } from './confirm-wait-read.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { shipEvidenceOfShipped } from './loop-close.js';
@@ -314,7 +314,7 @@ export async function detailAs(
     {
       ...summary,
       verified: verifiedViewOf(row, decisions, deciders, withhold),
-      confirmWait: confirmWaitOf(row, new Date(), withhold),
+      confirmWait: (await confirmWaitsOf([row.id], withhold)).get(row.id) ?? null,
       recordCheck: (() => {
         const at = recordCheckOf(row, phase, linked.verifyWindowDays);
         return at ? { at: at.toISOString(), windowDays: linked.verifyWindowDays } : null;

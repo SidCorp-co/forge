@@ -14,7 +14,8 @@ import { db } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import { userNames } from '../lib/people.js';
-import { confirmWaitEnded } from './confirm-wait-facts.js';
+import { type ConfirmWaitEnd, confirmWaitEnded } from './confirm-wait-facts.js';
+import { withdrawnSql } from './confirm-wait-read.js';
 import { linkedOf, phaseIn } from './list-read.js';
 import type { Row } from './read.js';
 
@@ -30,7 +31,7 @@ export interface OwedAgentConfirm {
   /** The project its agent reported it from, whose master is owed the confirm (`agentReportedFrom`). */
   reportedFrom: string;
   /** A wait set on its confirm that ended, and how (ISS-902): the line names the item again with it. */
-  waitEnded: 'met' | 'lapsed' | null;
+  waitEnded: ConfirmWaitEnd | null;
 }
 
 /**
@@ -59,10 +60,12 @@ export async function agentReportedFrom(feedbackId: string): Promise<string | nu
 }
 
 /** Agent-reported items the reporter may still settle, matching `where`; whether each reads resolved is derived after. */
-async function candidates(where: SQL | undefined): Promise<(Row & { from: string })[]> {
+type Candidate = Row & { from: string; withdrawn: boolean };
+
+async function candidates(where: SQL | undefined): Promise<Candidate[]> {
   const now = new Date();
   const rows = await db
-    .select({ row: feedback, from: reportedFromSql })
+    .select({ row: feedback, from: reportedFromSql, withdrawn: withdrawnSql })
     .from(feedback)
     .where(
       and(
@@ -76,17 +79,19 @@ async function candidates(where: SQL | undefined): Promise<(Row & { from: string
           isNull(feedback.confirmWaitUntil),
           lte(feedback.confirmWaitUntil, now),
           isNotNull(feedback.confirmWaitMetAt),
+          // nor past a wait whose fix was reopened since: its premise, a shipped fix, is gone
+          withdrawnSql,
         ),
         where,
       ),
     )
     .orderBy(feedback.fbSeq);
-  return rows.map((r) => ({ ...r.row, from: r.from }));
+  return rows.map((r) => ({ ...r.row, from: r.from, withdrawn: r.withdrawn }));
 }
 
-async function resolvedAmong(rows: (Row & { from: string })[]): Promise<OwedAgentConfirm[]> {
+async function resolvedAmong(rows: Candidate[]): Promise<OwedAgentConfirm[]> {
   if (rows.length === 0) return [];
-  const byProject = new Map<string, (Row & { from: string })[]>();
+  const byProject = new Map<string, Candidate[]>();
   for (const r of rows) byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r]);
   const [home, names] = await Promise.all([
     forgeHomeProject(),
@@ -104,7 +109,7 @@ async function resolvedAmong(rows: (Row & { from: string })[]): Promise<OwedAgen
         itemProjectId: projectId,
         home: projectId === home?.id,
         reportedFrom: r.from,
-        waitEnded: confirmWaitEnded(r, new Date()),
+        waitEnded: confirmWaitEnded(r, new Date(), r.withdrawn),
       });
     }
   }
