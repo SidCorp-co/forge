@@ -34,7 +34,7 @@ import {
 import { emitEvent } from '../outbox/index.js';
 import { blocker } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
-import { closeRoster } from './finish.js';
+import { closeRoster } from './close-roster.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { clearReleaseHolds, type ReleaseHold } from './hold.js';
 import { refuseRelease } from './refuse.js';

@@ -23,7 +23,7 @@ import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
 import type { IssueStatus } from '../../src/db/schema.js';
 import { accountActor } from '../../src/issues/index.js';
-import { closeRoster } from '../../src/release-batch/finish.js';
+import { closeRoster } from '../../src/release-batch/close-roster.js';
 import { releaseClaims } from '../../src/release-batch/releasing-recovery.js';
 import { api, type Body } from '../helpers/api.js';
 import {
@@ -140,7 +140,7 @@ async function reported(seq: number, carriers: string[]): Promise<string> {
 
 /**
  * Release `version` shipped at `at`, cut as a live release leaves its roster: the run names the
- * claimed issues, the finish closes them (`finish.ts:closeRoster`) and lets each claim go
+ * claimed issues, the finish closes them (`close-roster.ts:closeRoster`) and lets each claim go
  * (`releasing-recovery.ts:releaseClaims`), so no issue keeps `release_batch_run_id`.
  */
 async function cut(version: string, carriers: string[], at: Date): Promise<void> {

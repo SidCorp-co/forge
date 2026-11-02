@@ -14,7 +14,7 @@ import type { TransitionActor } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { closeRunIfOneShot, stampReleaseShipped, writeRunMetadata } from '../pipeline/index.js';
 import { mergeStepsOf } from './change-request-roster.js';
-import { closeRoster } from './finish.js';
+import { closeRoster } from './close-roster.js';
 import { oweReleaseTag } from './release-tag.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 

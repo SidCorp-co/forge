@@ -7,11 +7,8 @@
 import type { ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
-import { transitionIssueStatus } from '../issues/index.js';
-import { logger } from '../lib/logger.js';
-import { isRefusal } from '../lib/refusal.js';
 import {
   cancelConcludedRun,
   closeRunIfOneShot,
@@ -27,10 +24,10 @@ import {
   stampAbort,
 } from './abort-stamp.js';
 import { recordCarried, refuseContradiction } from './carried.js';
-import { refuseLostReleaseClaim } from './claim-conflicts.js';
+import { type ClaimedRow, closeRoster, type RosterCloseResult } from './close-roster.js';
 import { abortBlockedHold, heldFromUnattendedCut, writeReleaseHolds } from './hold.js';
 import { RECORDED_VERIFICATION } from './recorded.js';
-import { FENCE_LOST, reasonOf, refuseRelease } from './refuse.js';
+import { refuseRelease } from './refuse.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
@@ -38,10 +35,7 @@ import {
 import { openQuestionIdsOf, unclosedHold } from './unclosed-hold.js';
 import { lockRunVersions } from './version-store.js';
 
-interface FinishReleaseBatchResult {
-  closed: string[];
-  failed: Array<{ id: string; reason: string }>;
-}
+type FinishReleaseBatchResult = RosterCloseResult;
 
 interface FinishReleaseBatchOptions {
   /** Called once the release is recorded on the agent's finish, before the first issue closes. */
@@ -96,13 +90,6 @@ export async function assertFinishable(runId: string, run: ReleaseRunRow): Promi
   }
 }
 
-interface ClaimedRow {
-  id: string;
-  status: IssueStatus;
-  reopenCount: number;
-  projectId: string;
-}
-
 /**
  * The agent's finish is the release's record under the version the batch was cut with (owner
  * 2026-11-01): the run is stamped `recorded` before any issue closes. Nothing is read to prove it.
@@ -115,48 +102,6 @@ async function recordBeforeClose(
   await assertFinishable(runId, run);
   await options.onRecorded?.();
   await writeRunMetadata(runId, { merge: { verification: RECORDED_VERIFICATION }, touch: false });
-}
-
-/** Each claimed issue closed under the fence; one that will not close is named with its reason. */
-export async function closeRoster(
-  claimed: ClaimedRow[],
-  runId: string,
-  actor: TransitionActor,
-  fence: FinishReleaseBatchOptions['fence'],
-): Promise<FinishReleaseBatchResult> {
-  const closed: string[] = [];
-  const failed: Array<{ id: string; reason: string }> = [];
-
-  for (const issue of claimed) {
-    try {
-      await transitionIssueStatus(
-        {
-          id: issue.id,
-          projectId: issue.projectId,
-          status: issue.status,
-          reopenCount: issue.reopenCount,
-        },
-        'closed',
-        actor,
-        {
-          beforeStatusWrite: async (tx) => {
-            await fence?.(tx);
-            await refuseLostReleaseClaim(tx, issue.id, runId);
-          },
-        },
-      );
-      closed.push(issue.id);
-    } catch (err) {
-      if (isRefusal(err, FENCE_LOST)) throw err;
-      if (isRefusal(err, 'NO_OP')) {
-        closed.push(issue.id);
-      } else {
-        logger.warn({ err, issueId: issue.id, runId }, 'release-batch: failed to close issue');
-        failed.push({ id: issue.id, reason: reasonOf(err) });
-      }
-    }
-  }
-  return { closed, failed };
 }
 
 export async function finishReleaseBatch(
