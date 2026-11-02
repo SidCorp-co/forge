@@ -12,6 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { stampReleaseVersion, writeRunMetadata } from '../pipeline/index.js';
 import { readProjectDocument, readReleasePath } from '../project-config/index.js';
@@ -149,27 +150,33 @@ export interface StampedRelease {
   metadata: Record<string, unknown>;
 }
 
-/** Every release of the project whose ship stamp is set, in stamp order (oldest first). */
-export async function readStampedReleases(projectId: string): Promise<StampedRelease[]> {
-  const rows = await db.execute<{
-    id: string;
-    release_version: string;
-    release_released_at: Date | string;
-    metadata: Record<string, unknown> | null;
-  }>(sql`
-    SELECT r.id, r.release_version, r.release_released_at, r.metadata
-    FROM pipeline_runs r
-    WHERE r.project_id = ${projectId}
-      AND r.release_version IS NOT NULL
-      AND r.release_released_at IS NOT NULL
-    ORDER BY r.release_released_at ASC, r.id ASC
-  `);
-  return rows.map((r) => ({
-    runId: r.id,
-    version: r.release_version,
-    at: new Date(r.release_released_at),
-    metadata: r.metadata ?? {},
-  }));
+/**
+ * Every release of the project whose ship stamp is set, in stamp order (oldest first). Read once per
+ * read request (`db/read-memo.ts:memoizedRead`): the serving release and the released line both ask
+ * it, and a cross-project read asks both for every project.
+ */
+export function readStampedReleases(projectId: string): Promise<StampedRelease[]> {
+  return memoizedRead(`stampedReleases:${projectId}`, async () => {
+    const rows = await db.execute<{
+      id: string;
+      release_version: string;
+      release_released_at: Date | string;
+      metadata: Record<string, unknown> | null;
+    }>(sql`
+      SELECT r.id, r.release_version, r.release_released_at, r.metadata
+      FROM pipeline_runs r
+      WHERE r.project_id = ${projectId}
+        AND r.release_version IS NOT NULL
+        AND r.release_released_at IS NOT NULL
+      ORDER BY r.release_released_at ASC, r.id ASC
+    `);
+    return rows.map((r) => ({
+      runId: r.id,
+      version: r.release_version,
+      at: new Date(r.release_released_at),
+      metadata: r.metadata ?? {},
+    }));
+  });
 }
 
 /**

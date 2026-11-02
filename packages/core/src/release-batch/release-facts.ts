@@ -311,10 +311,10 @@ export async function loadReleaseFacts(
   issueIds: readonly string[],
   runIds: readonly string[],
 ): Promise<ReleaseFacts> {
-  const [released, judgedOnRelease] = await Promise.all([
-    releasedLineOf(projectId),
-    issuesJudgedOnRelease(projectId),
-  ]);
+  const released = await releasedLineOf(projectId);
+  // a verdict names a release only where the line is the agent's record (`VERDICT_RELEASE_UNUSED`
+  // refuses one anywhere else), so a project with no line holds none, and its reads ask nothing more
+  const judgedOnRelease = released ? await issuesJudgedOnRelease(projectId) : [];
   const ids = [...new Set([...issueIds, ...judgedOnRelease])];
   const [rows, prefix, cutters, judge, held] = await Promise.all([
     ids.length === 0
