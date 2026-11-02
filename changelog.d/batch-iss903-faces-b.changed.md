@@ -1,1 +1,1 @@
-**Six more screens now show only what you act on.** Master, the status report, the ecosystem map, feedback and releases lead with a name, a status and one next action; detail opens on demand, and the project home fits its budget.
+**Six more screens now show only what you act on.** Master, the status report, the ecosystem map, feedback and releases lead with a name, a status and one next action; detail opens on demand.
