@@ -98,7 +98,7 @@
   "info": {
     "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-query-closed` marks a read whose query refuses a key it does not take; every GET carries it, or carries `x-forge-query-open` naming why a third party chooses its keys. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
-    "version": "7.17.0",
+    "version": "7.18.0",
     "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
@@ -5611,6 +5611,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a box with no credential yet asks for a pairing code; the code is inert until a signed-in person approves it"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -5640,6 +5643,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the pairing code the box holds is its credential: approved by a signed-in person, it is consumed once for the device credential that person minted"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -5884,6 +5890,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it, and the grant is computed from that device’s own runners and their project’s binding"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -9357,6 +9366,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it, and assertDeviceBoundToProject answers only for a project that box serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -9401,6 +9413,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "a paired box’s device credential admits it, and assertDeviceBoundToProject answers only for a project that box serves"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -11490,6 +11505,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the invitations addressed to the caller’s own email, selected by it"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -11522,6 +11540,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -11551,6 +11572,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -11578,6 +11602,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the invitation token, sent only to the invitee, is the credential; the answer names that invitation alone"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -11610,6 +11637,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -11639,6 +11669,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -18442,6 +18475,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller reads the consent screen for a grant that would be their own; it names the client and the menu, never another’s row"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -18626,6 +18662,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "an MCP client with no token registers itself, or trades the code a signed-in person granted, or its refresh token; the registered client, its redirect and the PKCE verifier are the checks"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -18685,6 +18724,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "an MCP client with no token registers itself, or trades the code a signed-in person granted, or its refresh token; the registered client, its redirect and the PKCE verifier are the checks"
+        },
         "x-forge-validated": [
           "form"
         ]
@@ -18723,6 +18765,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the relay ticket core minted into the run’s MCP config for this binding admits the call; a missing, expired or other binding’s ticket is refused INTEGRATION_RELAY_FORBIDDEN"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -18760,6 +18805,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the relay ticket core minted into the run’s MCP config for this binding admits the call; a missing, expired or other binding’s ticket is refused INTEGRATION_RELAY_FORBIDDEN"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -18797,6 +18845,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the relay ticket core minted into the run’s MCP config for this binding admits the call; a missing, expired or other binding’s ticket is refused INTEGRATION_RELAY_FORBIDDEN"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -20558,6 +20609,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an organization invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -20587,6 +20641,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an organization invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -20614,6 +20671,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the invitation token, sent only to the invitee, is the credential; the answer names that invitation alone"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -20646,6 +20706,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an organization invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -20675,6 +20738,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the signed-in caller answers an organization invitation sent to their own email; one sent to another address is refused INVITATION_EMAIL_MISMATCH or answers not found"
+        },
         "x-forge-validated": []
       }
     },
@@ -23424,6 +23490,9 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the health of only the projects the caller can see, selected by loadVisibleProjectIds; it admits nothing more"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -33262,6 +33331,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -33466,6 +33541,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -33511,6 +33592,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -33574,6 +33661,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -33619,6 +33712,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -33718,6 +33817,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -33763,6 +33868,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -33826,6 +33937,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -33883,6 +34000,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -34159,6 +34282,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -34195,6 +34324,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -34249,6 +34384,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -34296,6 +34437,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -34462,6 +34609,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -34514,6 +34667,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -34567,6 +34726,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -34703,6 +34868,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -43358,6 +43529,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -43478,6 +43655,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -43736,6 +43919,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -54397,6 +54586,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -54540,6 +54735,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -54787,6 +54988,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -54849,6 +55056,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -54923,6 +55136,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -54968,6 +55187,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -55098,6 +55323,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -55186,6 +55417,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -55231,6 +55468,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project `:projectId` names, once the release batch `:runId` is found in it"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -55648,6 +55891,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "projectId"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -58365,6 +58614,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the download ticket in the path is the credential: short-lived and minted for a caller who could read the attachment it names, and it answers that attachment alone"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -58407,6 +58659,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the upload ticket in the path is the credential: unguessable, single-use and short-lived, minted for a caller who could attach, and it fixes the target, name and uploader"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -58534,6 +58789,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the visitor session token in Authorization admits the call, and sessionOf answers only that session and its binding"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -58565,6 +58823,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the visitor session token in Authorization admits the call, and sessionOf answers only that session and its binding"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -58585,6 +58846,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "none": "the visitor session token in Authorization admits the call, and sessionOf answers only that session and its binding"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58669,6 +58933,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the visitor session token in Authorization admits the call, and sessionOf answers only that session and its binding"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -58689,6 +58956,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "none": "the visitor session token in Authorization admits the call, and sessionOf answers only that session and its binding"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58721,6 +58991,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "none": "the status link’s token is its credential: it names one filed item, and the answer is that item’s status alone"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -58754,6 +59027,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the site key is printed on the client’s own pages, and the binding answers only an Origin it lists; anyone visiting that site may read its widget and open a session"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -58908,6 +59184,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the site key is printed on the client’s own pages, and the binding answers only an Origin it lists; anyone visiting that site may read its widget and open a session"
+        },
         "x-forge-validated": [
           "json",
           "param"
