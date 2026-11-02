@@ -166,7 +166,7 @@ describe('a project whose production names no commit counts verdicts on the rele
     expect(reads.n).toBe(0);
   });
 
-  it('asks once for the release judgement, never for issue judgements that cannot count', async () => {
+  it('asks once for the release judgement on the issue that can carry it, never for one that cannot count', async () => {
     await agenfold();
     const req = await shippedAt076();
     // what agenfold could send before: a commit, which nothing on this project places
@@ -177,9 +177,10 @@ describe('a project whose production names no commit counts verdicts on the rele
     expect(read.standing.delivery.criteriaCoverage).toEqual({ criteria: 3, passing: 0, judged: 0 });
     const [bc1] = read.standing.coverage;
     expect(bc1?.verdicts[0]?.notCounted).toContain('judge it on release 0.76.0');
+    // ISS-1 traces every BC and carries a verdict on a release (ISS-900 part 2): the judge judges there
     expect(read.standing.waitingOn?.says.act).toEqual({
-      key: 'standing.act.judgeOnRelease',
-      vars: { codes: 'BC-1, BC-2, BC-3', version: '0.76.0' },
+      key: 'standing.act.judgeOnReleaseOn',
+      vars: { codes: 'BC-1, BC-2, BC-3', keys: 'ISS-1', version: '0.76.0' },
     });
     expect(JSON.stringify(read.standing)).not.toContain('standing.act.judgeOn"');
     expect(reads.n).toBe(0);
