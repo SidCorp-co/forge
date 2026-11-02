@@ -17,13 +17,13 @@ export function ProjectHomeHeader({
   initials,
   onSettings,
 }: {
-  project: { name: string; slug: string; role: string };
+  project: { name: string; slug: string; role: string | null };
   glyph: { tint: string; ink: string };
   initials: string;
   onSettings: () => void;
 }) {
   const t = useCopy();
-  const role = t(ROLE_COPY[project.role] ?? "common.role.org");
+  const role = t((project.role && ROLE_COPY[project.role]) || "common.role.org");
   return (
     <header className="mb-6 flex items-center gap-4" data-testid="project-home-header">
       <Tooltip label={`${project.slug} · ${role}`}>
