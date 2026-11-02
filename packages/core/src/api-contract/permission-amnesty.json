@@ -263,7 +263,6 @@
     "POST /api/issues/:id/criteria/traces",
     "POST /api/issues/:id/events",
     "POST /api/issues/:id/events/:eventId/withdraw",
-    "POST /api/issues/:id/merge-pull-request",
     "POST /api/issues/:id/verdicts",
     "POST /api/jobs/:id/ack",
     "POST /api/jobs/:id/cancel",

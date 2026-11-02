@@ -28,7 +28,10 @@ vi.mock('../release-batch/index.js', () => ({
   settleChangeRequestRelease: async () => ({ settled: false }),
 }));
 vi.mock('../lib/authz.js', () => ({ loadProjectAccess: async () => ({}) }));
-vi.mock('../permissions/index.js', () => ({ requireHeld: () => {} }));
+vi.mock('../permissions/index.js', () => ({
+  requireDeclared: () => {},
+  requiresOnResolved: () => async (_c: unknown, next: () => Promise<void>) => next(),
+}));
 vi.mock('../middleware/auth.js', () => ({
   requireAuth:
     () => async (c: { set: (k: string, v: string) => void }, next: () => Promise<void>) => {

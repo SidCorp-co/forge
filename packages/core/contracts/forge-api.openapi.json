@@ -15750,6 +15750,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue the path names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"

@@ -30,7 +30,7 @@ import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import {
   admitChangeRequestMerge,
   promotionPinnedFor,
@@ -157,6 +157,7 @@ issueMergePullRequestRoutes.post(
   '/:id/merge-pull-request',
   zValidator('param', idParamSchema),
   zValidator('json', kernelMergeBodySchema),
+  requiresOnResolved('project.write', 'the project of the issue the path names'),
   async (c) => {
     const { id: issueId } = c.req.valid('param' as never) as { id: string };
     const body = c.req.valid('json' as never) as z.infer<typeof kernelMergeBodySchema>;
@@ -165,8 +166,7 @@ issueMergePullRequestRoutes.post(
     const issue = await issueScopeOf(issueId);
     if (!issue) throw notFound('issue not found');
 
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.write');
+    requireDeclared(await loadProjectAccess(issue.projectId, userId));
 
     const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {
