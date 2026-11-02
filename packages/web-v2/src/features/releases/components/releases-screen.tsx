@@ -4,13 +4,14 @@ import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-fil
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
 import {
   ActorChip,
+  Disclosure,
   EmptyState,
   GroupedList,
   type ListGroup,
   standingGroups,
   type ListRowView,
   PageTitle,
-  StatusBadge,
+  StatusChip,
   useListPage,
   WaitingOn,
   ListPage,
@@ -45,15 +46,19 @@ const groupsOf = (rows: ReleaseSummary[], label: Label): ListGroup<ReleaseSummar
     ) as typeof RELEASE_ATTENTION_LABELS,
   );
 
-/** How many requirements a release carries; their keys sit in the tooltip, never on the row's face (REQ-11 BC-19). */
+/** How many requirements a release carries, its keys after them; never on the row's face (REQ-11 BC-19). */
 const requirementsOf = (r: ReleaseSummary, t: Copy) =>
-  r.requirements.length > 0 ? (
-    <span title={r.requirements.join(", ")} data-testid="release-requirements">
-      {t("releases.requirementsCount", { n: r.requirements.length })}
-    </span>
-  ) : (
-    t("releases.maintenance")
-  );
+  r.requirements.length > 0 ? `${t("releases.requirementsCount", { n: r.requirements.length })} (${r.requirements.join(", ")})` : t("releases.maintenance");
+
+/** What a release holds, said on its state chip's hover and focus (ISS-903): issues, requirements, criteria, attempts. */
+const holdsOf = (r: ReleaseSummary, t: Copy) =>
+  [
+    t("releases.issuesCount", { n: r.issueCount }),
+    requirementsOf(r, t),
+    r.criteria.total === 0 ? t("releases.noCriteria") : t("releases.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total }),
+    ...(r.cutCount > 1 ? [t("releases.attemptsCount", { n: r.cutCount })] : []),
+    ...(r.landedOn ? [t("releases.landedNotProduction", { branch: r.landedOn })] : []),
+  ].join(" · ");
 
 const rowOf =
   (slug: string, t: Copy, time: Time) =>
@@ -61,16 +66,12 @@ const rowOf =
     key: r.version,
     href: releaseHref(slug, r.version),
     title: releaseTitle(r, t),
+    // only what changes what a person does stands on the face: it serves production, or shipped failing
     facts: [
-      t("releases.issuesCount", { n: r.issueCount }),
-      requirementsOf(r, t),
-      r.criteria.total === 0 ? t("releases.noCriteria") : t("releases.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total }),
-      ...(r.cutCount > 1 ? [t("releases.attemptsCount", { n: r.cutCount })] : []),
       ...(r.current ? [t("releases.servingProduction")] : []),
-      ...(r.landedOn ? [t("releases.landedNotProduction", { branch: r.landedOn })] : []),
       ...(r.shippedFailing ? [t("releases.shippedFailingFact", { n: r.shippedFailing.count })] : []),
     ],
-    state: <StatusBadge family="releaseState" value={r.state} />,
+    state: <StatusChip family="releaseState" value={r.state} reason={holdsOf(r, t)} testId="release-row-state" />,
     waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: r.owner ? <ActorChip name={r.owner.name} kind={r.owner.kind} size={20} /> : null,
     age: { text: time.relative(r.at), title: t("releases.lastChanged", { at: time.dateTime(r.at) }) },
@@ -128,7 +129,12 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
             )
           ) : (
             <>
-              <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />
+              {/* the train is the releases in order, the list below them by whose turn: one line shut (ISS-903) */}
+              <div className="border-b border-line-subtle px-5 max-md:px-3">
+                <Disclosure title={t("releases.train")} testId="release-train-fold">
+                  <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} headed={false} />
+                </Disclosure>
+              </div>
               <GroupedList
                 ariaLabel={t("releases.title")}
                 groups={list.groups}

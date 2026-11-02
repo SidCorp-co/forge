@@ -29,11 +29,13 @@ describe("Releases leads with names, never keys (REQ-11 BC-19)", () => {
     expect(row.querySelector("[title='0.1.0']")?.textContent).toBe("Release 0.1.0");
   });
 
-  it("keeps a release's requirement keys in the tooltip of its count", () => {
-    releases();
-    const count = screen.getByTestId("release-requirements");
-    expect(count.textContent).toBe("Requirements 1");
-    expect(count.getAttribute("title")).toBe("REQ-1");
+  it("says what a release holds, its requirement keys among it, on its state chip's hover, never on the face (ISS-903)", () => {
+    const { container } = releases();
+    const chips = screen.getAllByTestId("release-row-state");
+    const holds = chips.map((c) => c.dataset.reason ?? "").find((r) => r.includes("REQ-1"));
+    expect(holds).toMatch(/^Issues \d+ · Requirements 1 \(REQ-1\) · /);
+    for (const facts of screen.queryAllByTestId("row-facts")) expect(facts.textContent).not.toMatch(/Issues|Requirements|REQ-1/);
+    expect(container.querySelector("[data-testid=release-requirements]")).toBeNull();
   });
 
   it("leads coming next's rows with the requirement's title, its link, the key its tooltip", () => {

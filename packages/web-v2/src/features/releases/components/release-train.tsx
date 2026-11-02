@@ -117,15 +117,16 @@ const Arrow = () => (
   </span>
 );
 
-export function ReleaseTrain({ releases, slug, selected }: { releases: ReleaseSummary[]; slug: string; selected?: string }) {
+/** `headed`: false where a fold above it already names it. */
+export function ReleaseTrain({ releases, slug, selected, headed = true }: { releases: ReleaseSummary[]; slug: string; selected?: string; headed?: boolean }) {
   const t = useCopy();
   const draft = releases.find((r) => r.state === "draft");
   const cut = releases.filter((r) => r.state !== "draft").reverse();
   const shown = cut.slice(-SHOWN);
   const earlier = cut.length - shown.length;
   return (
-    <section aria-label={t("releases.train")} className="px-5 pb-4 pt-4 max-md:px-3" data-testid="release-train">
-      <ViewHeading>{t("releases.train")}</ViewHeading>
+    <section aria-label={t("releases.train")} className={headed ? "px-5 pb-4 pt-4 max-md:px-3" : "pb-2"} data-testid="release-train">
+      {headed ? <ViewHeading>{t("releases.train")}</ViewHeading> : null}
       <ol className="m-0 flex list-none items-stretch gap-1 overflow-x-auto p-0">
         {earlier > 0 ? (
           <li className="grid flex-none content-center px-2 text-12 text-subtle" data-testid="train-earlier">
