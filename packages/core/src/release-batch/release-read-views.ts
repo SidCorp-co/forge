@@ -214,7 +214,9 @@ function headOf(p: Part): string | null {
  *  release that merges change requests is the head of the request delivering it. */
 function criteriaOf(p: Part, s: Shared, issue: IssueFact) {
   const head = p.mergeSteps?.find((step) => step.issueIds.includes(issue.id))?.headSha;
-  return criteriaAt(issue, releaseBuildOf(p.state, head ?? headOf(p)), s.facts, p.version);
+  const build = releaseBuildOf(p.state, head ?? headOf(p));
+  // when it shipped: a reopen's void holds from the release that ships the fix (`judged-before-reopen.ts`)
+  return criteriaAt(issue, build, s.facts, p.version, p.releasedAt);
 }
 
 /** The change request shown beside each issue this release carries. */

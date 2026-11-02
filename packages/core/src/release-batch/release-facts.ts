@@ -35,7 +35,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { issueNamingOf, namedIssue, standingsOf } from '../requirements/index.js';
-import { voidedOnRelease } from './judged-before-reopen.js';
+import { voidedStillRead } from './judged-before-reopen.js';
 import type { CompletionFacts } from './release-view.js';
 import { releasedLineOf } from './released-line.js';
 
@@ -177,10 +177,13 @@ export function criteriaAt(
   build: string | null,
   { judge, judgedOn, released }: ReleaseProof,
   version: string | null = null,
+  /** When the release shipped; absent, as its record says (ISS-900), null where it has not. */
+  shippedAt: Date | null = version === null ? null : (released?.shipped.get(version)?.at ?? null),
 ): ReleaseCriterionView[] {
   const versions = versionsCountedOn(released, version);
+  const reader = { shippedAt, build, judgedOn, versions };
   return issue.criteria.map((c) => {
-    const before = voidedOnRelease(issue, c.n, versions, released, version);
+    const before = voidedStillRead(issue, c.n, reader);
     const newestFirst = [...(issue.verdicts.get(c.n) ?? []), ...before].sort((a, b) =>
       b.at.localeCompare(a.at),
     );
