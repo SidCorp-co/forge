@@ -1,1 +1,1 @@
-Chat rooms hear Forge speak for the assistant only when it cannot answer: offline, a failed reply, or too many messages. Each notice is plain Vietnamese with no codes, said once per thread.
+**Forge speaks for the chat assistant only when it cannot answer.** That is when it is offline, a reply failed, or there were too many messages; each notice is plain Vietnamese with no codes, said once per thread.
