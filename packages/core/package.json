@@ -73,7 +73,7 @@
     "hono": "^4.13.13",
     "jose": "^6.2.12",
     "mammoth": "^1.13.0",
-    "nodemailer": "^10.0.15",
+    "nodemailer": "^10.3.1",
     "openid-client": "^6.8.8",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.0",
