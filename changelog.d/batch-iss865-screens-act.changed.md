@@ -1,0 +1,1 @@
+**Screens lead with names, not codes.** Releases, feedback, requirements, the issue page, the project home and ops show titles and words; keys, codes and commits move into tooltips, and a run opens from the keyboard.
