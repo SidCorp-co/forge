@@ -41,7 +41,9 @@ export const SAID = {
 	"standing.gate.title.checkUnread": { en: "Gate check unread" },
 	"standing.act.fixGateCheck": { en: "fix the red check, then cut again" },
 	"standing.act.waitGateCheck": { en: "wait for the check to finish" },
-	"standing.act.reviveGateCheck": { en: "get the check to report, or declare no gate" },
+	"standing.act.reviveGateCheck": {
+		en: "get the check to report, or declare no gate",
+	},
 	"standing.act.restoreHostRead": { en: "restore the source host read" },
 	"standing.gate.changeRequestCarries": {
 		en: "A change request also delivers an issue this release does not carry.",
@@ -53,7 +55,9 @@ export const SAID = {
 	"standing.gate.throughChangeRequests": {
 		en: "This project releases by merging its change requests after approval.",
 	},
-	"standing.gate.title.changeRequestCarries": { en: "Request carries other work" },
+	"standing.gate.title.changeRequestCarries": {
+		en: "Request carries other work",
+	},
 	"standing.gate.title.changeRequestMissing": { en: "Request missing" },
 	"standing.gate.title.throughChangeRequests": { en: "Released by merge" },
 	"standing.gate.deployedOutside": {
@@ -459,87 +463,205 @@ export const SAID = {
 		en: "{code}: {reason}",
 		vars: { code: "code", reason: "text" },
 	},
-	"issues.releaseHold.cause.releaseCriteriaUnearned": { en: "Some acceptance criteria have no passing verdict" },
-	"issues.releaseHold.act.releaseCriteriaUnearned": { en: "judge its open criteria" },
-	"issues.releaseHold.cause.releaseCriteriaHeldBack": { en: "Some acceptance criteria are held back" },
-	"issues.releaseHold.act.releaseCriteriaHeldBack": { en: "judge its held-back criteria" },
-	"issues.releaseHold.cause.releaseCriteriaUncorroborated": { en: "A passing verdict has no evidence behind it" },
-	"issues.releaseHold.act.releaseCriteriaUncorroborated": { en: "back its verdicts with evidence" },
-	"issues.releaseHold.cause.releaseCriteriaUnreadable": { en: "Its verdicts could not be read" },
-	"issues.releaseHold.act.releaseCriteriaUnreadable": { en: "make its verdicts readable" },
-	"issues.releaseHold.cause.releaseRuntimeUnrouted": { en: "Forge cannot read what this project serves" },
-	"issues.releaseHold.act.releaseRuntimeUnrouted": { en: "route the project's runtime" },
-	"issues.releaseHold.cause.releaseTargetUndeclared": { en: "The project has no production environment to release to" },
-	"issues.releaseHold.act.releaseTargetUndeclared": { en: "declare a production environment" },
-	"issues.releaseHold.cause.releaseGateUnreadable": { en: "The release gate could not be read" },
-	"issues.releaseHold.act.releaseGateUnreadable": { en: "make the release gate readable" },
-	"issues.releaseHold.cause.releaseProbesUnreadable": { en: "The live probes could not be read" },
-	"issues.releaseHold.act.releaseProbesUnreadable": { en: "fix the live probes" },
-	"issues.releaseHold.cause.releaseQueuedBehind": { en: "It is queued for a later automatic release" },
+	"issues.releaseHold.cause.releaseCriteriaUnearned": {
+		en: "Some acceptance criteria have no passing verdict",
+	},
+	"issues.releaseHold.act.releaseCriteriaUnearned": {
+		en: "judge its open criteria",
+	},
+	"issues.releaseHold.cause.releaseCriteriaHeldBack": {
+		en: "Some acceptance criteria are held back",
+	},
+	"issues.releaseHold.act.releaseCriteriaHeldBack": {
+		en: "judge its held-back criteria",
+	},
+	"issues.releaseHold.cause.releaseCriteriaUncorroborated": {
+		en: "A passing verdict has no evidence behind it",
+	},
+	"issues.releaseHold.act.releaseCriteriaUncorroborated": {
+		en: "back its verdicts with evidence",
+	},
+	"issues.releaseHold.cause.releaseCriteriaUnreadable": {
+		en: "Its verdicts could not be read",
+	},
+	"issues.releaseHold.act.releaseCriteriaUnreadable": {
+		en: "make its verdicts readable",
+	},
+	"issues.releaseHold.cause.releaseRuntimeUnrouted": {
+		en: "Forge cannot read what this project serves",
+	},
+	"issues.releaseHold.act.releaseRuntimeUnrouted": {
+		en: "route the project's runtime",
+	},
+	"issues.releaseHold.cause.releaseTargetUndeclared": {
+		en: "The project has no production environment to release to",
+	},
+	"issues.releaseHold.act.releaseTargetUndeclared": {
+		en: "declare a production environment",
+	},
+	"issues.releaseHold.cause.releaseGateUnreadable": {
+		en: "The release gate could not be read",
+	},
+	"issues.releaseHold.act.releaseGateUnreadable": {
+		en: "make the release gate readable",
+	},
+	"issues.releaseHold.cause.releaseProbesUnreadable": {
+		en: "The live probes could not be read",
+	},
+	"issues.releaseHold.act.releaseProbesUnreadable": {
+		en: "fix the live probes",
+	},
+	"issues.releaseHold.cause.releaseQueuedBehind": {
+		en: "It is queued for a later automatic release",
+	},
 	"issues.releaseHold.cause.releaseShippedInOwed": {
 		en: "Marked merged after a release that may hold it was cut",
 	},
 	"issues.releaseHold.act.releaseShippedInOwed": {
 		en: "record which release holds its landing, read with git",
 	},
-	"issues.releaseHold.act.releaseQueuedBehind": { en: "take it in a later release" },
+	"issues.releaseHold.act.releaseQueuedBehind": {
+		en: "take it in a later release",
+	},
 	"issues.releaseHold.cause.releaseCleanupPending": {
 		en: "Rated high impact, so it waits for a green cleanup before production",
 	},
 	"issues.releaseHold.act.releaseCleanupPending": {
 		en: "run the cleanup window and report it green, covering this issue",
 	},
-	"issues.releaseHold.cause.releaseGateCheckRed": { en: "The declared gate check is red on the commit to deploy" },
-	"issues.releaseHold.act.releaseGateCheckRed": { en: "fix the check, and it is cut again" },
-	"issues.releaseHold.cause.releaseGateCheckPending": { en: "The declared gate check has not finished" },
-	"issues.releaseHold.act.releaseGateCheckPending": { en: "release it once the check passes" },
-	"issues.releaseHold.cause.releaseGateCheckSilent": { en: "The declared gate check has not reported" },
-	"issues.releaseHold.act.releaseGateCheckSilent": { en: "run the check on this commit, or declare no gate" },
-	"issues.releaseHold.cause.releaseGateCheckUnread": { en: "The declared gate check could not be read" },
-	"issues.releaseHold.act.releaseGateCheckUnread": { en: "fix the source host read" },
-	"issues.releaseHold.cause.noReleaseGate": { en: "This project has no release gate set" },
+	"issues.releaseHold.cause.releaseGateCheckRed": {
+		en: "The declared gate check is red on the commit to deploy",
+	},
+	"issues.releaseHold.act.releaseGateCheckRed": {
+		en: "fix the check, and it is cut again",
+	},
+	"issues.releaseHold.cause.releaseGateCheckPending": {
+		en: "The declared gate check has not finished",
+	},
+	"issues.releaseHold.act.releaseGateCheckPending": {
+		en: "release it once the check passes",
+	},
+	"issues.releaseHold.cause.releaseGateCheckSilent": {
+		en: "The declared gate check has not reported",
+	},
+	"issues.releaseHold.act.releaseGateCheckSilent": {
+		en: "run the check on this commit, or declare no gate",
+	},
+	"issues.releaseHold.cause.releaseGateCheckUnread": {
+		en: "The declared gate check could not be read",
+	},
+	"issues.releaseHold.act.releaseGateCheckUnread": {
+		en: "fix the source host read",
+	},
+	"issues.releaseHold.cause.noReleaseGate": {
+		en: "This project has no release gate set",
+	},
 	"issues.releaseHold.act.noReleaseGate": { en: "record the landing" },
-	"issues.releaseHold.cause.releaseNoActor": { en: "Nobody owns the project, so nobody can release it" },
+	"issues.releaseHold.cause.releaseNoActor": {
+		en: "Nobody owns the project, so nobody can release it",
+	},
 	"issues.releaseHold.act.releaseNoActor": { en: "name a project owner" },
-	"issues.releaseHold.cause.releaseCutFailed": { en: "The automatic release attempt failed" },
+	"issues.releaseHold.cause.releaseCutFailed": {
+		en: "The automatic release attempt failed",
+	},
 	"issues.releaseHold.act.releaseCutFailed": { en: "fix the failed release" },
-	"issues.releaseHold.cause.releaseCutRefused": { en: "The automatic release was refused" },
+	"issues.releaseHold.cause.releaseCutRefused": {
+		en: "The automatic release was refused",
+	},
 	"issues.releaseHold.act.releaseCutRefused": { en: "clear the refusal" },
-	"issues.releaseHold.cause.releaseAbortBlocked": { en: "An aborted release blocks it" },
-	"issues.releaseHold.act.releaseAbortBlocked": { en: "clear the blocked abort" },
-	"issues.releaseHold.cause.releaseUnclosedQuestion": { en: "An open question stopped its release closing it" },
-	"issues.releaseHold.act.releaseUnclosedQuestion": { en: "answer or void the question" },
-	"issues.releaseHold.cause.releaseUnclosedRefused": { en: "Its release could not close it" },
-	"issues.releaseHold.act.releaseUnclosedRefused": { en: "clear the refusal, then cut by hand" },
-	"issues.releaseHold.cause.batchInFlight": { en: "Another release is already in flight" },
-	"issues.releaseHold.act.batchInFlight": { en: "finish the release in flight" },
-	"issues.releaseHold.cause.claimConflict": { en: "Another writer claimed the release first" },
+	"issues.releaseHold.cause.releaseAbortBlocked": {
+		en: "An aborted release blocks it",
+	},
+	"issues.releaseHold.act.releaseAbortBlocked": {
+		en: "clear the blocked abort",
+	},
+	"issues.releaseHold.cause.releaseUnclosedQuestion": {
+		en: "An open question stopped its release closing it",
+	},
+	"issues.releaseHold.act.releaseUnclosedQuestion": {
+		en: "answer or void the question",
+	},
+	"issues.releaseHold.cause.releaseUnclosedRefused": {
+		en: "Its release could not close it",
+	},
+	"issues.releaseHold.act.releaseUnclosedRefused": {
+		en: "clear the refusal, then cut by hand",
+	},
+	"issues.releaseHold.cause.batchInFlight": {
+		en: "Another release is already in flight",
+	},
+	"issues.releaseHold.act.batchInFlight": {
+		en: "finish the release in flight",
+	},
+	"issues.releaseHold.cause.claimConflict": {
+		en: "Another writer claimed the release first",
+	},
 	"issues.releaseHold.act.claimConflict": { en: "try again on the next sweep" },
-	"issues.releaseHold.cause.noRunnerOnline": { en: "Every runner serving this project is offline" },
+	"issues.releaseHold.cause.noRunnerOnline": {
+		en: "Every runner serving this project is offline",
+	},
 	"issues.releaseHold.act.noRunnerOnline": { en: "bring a runner online" },
-	"issues.releaseHold.cause.releasePoolEmpty": { en: "The project has no runner bound for releases" },
-	"issues.releaseHold.act.releasePoolEmpty": { en: "bind a runner to the project" },
-	"issues.releaseHold.cause.releaseRunnerPreferenceUnmet": { en: "The labelled release runner is offline" },
-	"issues.releaseHold.act.releaseRunnerPreferenceUnmet": { en: "bring a labelled runner online" },
-	"issues.releaseHold.cause.releaseChangeRequestCarriesUnreleased": { en: "A change request carries unreleased work" },
-	"issues.releaseHold.act.releaseChangeRequestCarriesUnreleased": { en: "settle the change request" },
-	"issues.releaseHold.cause.releaseThroughChangeRequests": { en: "This project releases through change requests" },
-	"issues.releaseHold.act.releaseThroughChangeRequests": { en: "file a change request" },
-	"issues.releaseHold.cause.releaseDeployedOutside": { en: "Production is deployed outside Forge" },
-	"issues.releaseHold.act.releaseDeployedOutside": { en: "record the release once it is deployed" },
-	"issues.releaseHold.cause.releaseRecordMissing": { en: "The release record is missing" },
-	"issues.releaseHold.act.releaseRecordMissing": { en: "write the release record" },
-	"issues.releaseHold.cause.releaseRosterEmpty": { en: "The release has nothing ready in it" },
+	"issues.releaseHold.cause.releasePoolEmpty": {
+		en: "The project has no runner bound for releases",
+	},
+	"issues.releaseHold.act.releasePoolEmpty": {
+		en: "bind a runner to the project",
+	},
+	"issues.releaseHold.cause.releaseRunnerPreferenceUnmet": {
+		en: "The labelled release runner is offline",
+	},
+	"issues.releaseHold.act.releaseRunnerPreferenceUnmet": {
+		en: "bring a labelled runner online",
+	},
+	"issues.releaseHold.cause.releaseChangeRequestCarriesUnreleased": {
+		en: "A change request carries unreleased work",
+	},
+	"issues.releaseHold.act.releaseChangeRequestCarriesUnreleased": {
+		en: "settle the change request",
+	},
+	"issues.releaseHold.cause.releaseThroughChangeRequests": {
+		en: "This project releases through change requests",
+	},
+	"issues.releaseHold.act.releaseThroughChangeRequests": {
+		en: "file a change request",
+	},
+	"issues.releaseHold.cause.releaseDeployedOutside": {
+		en: "Production is deployed outside Forge",
+	},
+	"issues.releaseHold.act.releaseDeployedOutside": {
+		en: "record the release once it is deployed",
+	},
+	"issues.releaseHold.cause.releaseRecordMissing": {
+		en: "The release record is missing",
+	},
+	"issues.releaseHold.act.releaseRecordMissing": {
+		en: "write the release record",
+	},
+	"issues.releaseHold.cause.releaseRosterEmpty": {
+		en: "The release has nothing ready in it",
+	},
 	"issues.releaseHold.act.releaseRosterEmpty": { en: "land work to release" },
-	"issues.releaseHold.cause.releaseRosterOversize": { en: "Too many issues for one release" },
+	"issues.releaseHold.cause.releaseRosterOversize": {
+		en: "Too many issues for one release",
+	},
 	"issues.releaseHold.act.releaseRosterOversize": { en: "split the release" },
-	"issues.releaseHold.cause.releaseVersionUndecided": { en: "The release version is not decided" },
-	"issues.releaseHold.act.releaseVersionUndecided": { en: "decide the version" },
-	"issues.releaseHold.cause.releaseWorkUnmerged": { en: "Its work is not merged yet" },
+	"issues.releaseHold.cause.releaseVersionUndecided": {
+		en: "The release version is not decided",
+	},
+	"issues.releaseHold.act.releaseVersionUndecided": {
+		en: "decide the version",
+	},
+	"issues.releaseHold.cause.releaseWorkUnmerged": {
+		en: "Its work is not merged yet",
+	},
 	"issues.releaseHold.act.releaseWorkUnmerged": { en: "merge its work" },
-	"issues.releaseHold.cause.humanFallback": { en: "The automatic release was refused" },
+	"issues.releaseHold.cause.humanFallback": {
+		en: "The automatic release was refused",
+	},
 	"issues.releaseHold.act.humanFallback": { en: "clear the refusal" },
-	"issues.releaseHold.cause.agentFallback": { en: "The automatic release is waiting" },
+	"issues.releaseHold.cause.agentFallback": {
+		en: "The automatic release is waiting",
+	},
 	"issues.releaseHold.act.agentFallback": { en: "release it on a later sweep" },
 	"issues.rule.releaseRunning": { en: "a release run holds it" },
 	"issues.rule.reopen": {
@@ -847,6 +969,7 @@ export const SAID = {
 	},
 	"standing.act.declareTarget": { en: "declare where releases land" },
 	"standing.act.recordLanding": { en: "record the landing" },
+	"standing.act.recordRelease": { en: "record the release production serves" },
 	"standing.act.deploying": { en: "deploying" },
 	"standing.act.finishDraft": { en: "finish draft" },
 	"standing.act.fixFailing": {
@@ -858,6 +981,10 @@ export const SAID = {
 	"standing.act.judgeOn": {
 		en: "judge {codes} on {keys}",
 		vars: { codes: "key", keys: "key" },
+	},
+	"standing.act.judgeOnRelease": {
+		en: "judge {codes} at the requirement on release {version}",
+		vars: { codes: "key", version: "version" },
 	},
 	"standing.act.labelRunner": { en: "label a runner for releases" },
 	"standing.act.markMerge": { en: "mark the merge{on}", vars: { on: "said?" } },
@@ -1295,7 +1422,9 @@ export const SAID = {
 	"runs.rule.heldIssuesOver": {
 		en: "held: every issue it holds is over; its master closes it",
 	},
-	"runs.act.closeRunWhenReported": { en: "close the run once its agent reports" },
+	"runs.act.closeRunWhenReported": {
+		en: "close the run once its agent reports",
+	},
 	"runs.rule.lockHeld": {
 		en: "DEPLOY_ENVIRONMENT_LOCKED: refused at {at}: run {run} holds {environment}, deploying {subject}{since}; refused {until}",
 		vars: {
@@ -1610,6 +1739,9 @@ export const SAID = {
 	},
 	"requirements.rule.noJudge": {
 		en: "; no policy names a judge, so the master judges",
+	},
+	"requirements.rule.noReleaseRecorded": {
+		en: "its production names no commit it serves, so a verdict counts only on a release its agent recorded, and none is recorded yet",
 	},
 	"requirements.rule.designsFirstR": {
 		en: "linked designs are approved first (REQUIREMENT_DESIGN_UNAPPROVED), then a signer agrees r{r}",
@@ -2258,7 +2390,9 @@ export const SAID = {
 	"overview.hold.who.blockerPeer": { en: "The master or a peer run" },
 	"overview.hold.who.blockerOther": { en: "Whoever the run named" },
 	"overview.hold.act.resumesAt": { en: "resume it when the wait ends" },
-	"overview.hold.act.resumesWhenClear": { en: "resume it once the gate clears" },
+	"overview.hold.act.resumesWhenClear": {
+		en: "resume it once the gate clears",
+	},
 	"overview.hold.act.failsAt": { en: "fail it if nothing moves by then" },
 	"overview.hold.act.nextPass": { en: "decide what follows on its next pass" },
 	"overview.hold.act.reviveRunner": { en: "bring a runner online" },
@@ -2266,72 +2400,182 @@ export const SAID = {
 	"overview.hold.act.grantToken": { en: "let its token reach this project" },
 	"overview.hold.act.settleContract": { en: "settle the contract" },
 	"overview.hold.act.reviewPattern": { en: "review the new pattern" },
-	"overview.hold.act.clearBlocker": { en: "clear the blocker so the run goes on" },
-	"overview.hold.cause.failure.providerSpendCap": { en: "Hit the model provider's spend cap" },
-	"overview.hold.cause.failure.providerUsageLimit": { en: "Hit the model provider's usage limit" },
-	"overview.hold.cause.failure.providerSubscriptionDisabled": { en: "The model provider subscription is disabled" },
-	"overview.hold.cause.failure.providerAuthExpired": { en: "The sign-in to the model provider expired" },
-	"overview.hold.cause.failure.providerOverloaded": { en: "The model provider was overloaded" },
-	"overview.hold.cause.failure.providerRefusedRequest": { en: "The model provider refused the request" },
-	"overview.hold.cause.failure.agentStartupFailed": { en: "The agent failed to start" },
-	"overview.hold.cause.failure.agentSkillMissing": { en: "The agent lacked a skill it needed" },
-	"overview.hold.cause.failure.agentExitedWithoutResult": { en: "The agent exited without a result" },
+	"overview.hold.act.clearBlocker": {
+		en: "clear the blocker so the run goes on",
+	},
+	"overview.hold.cause.failure.providerSpendCap": {
+		en: "Hit the model provider's spend cap",
+	},
+	"overview.hold.cause.failure.providerUsageLimit": {
+		en: "Hit the model provider's usage limit",
+	},
+	"overview.hold.cause.failure.providerSubscriptionDisabled": {
+		en: "The model provider subscription is disabled",
+	},
+	"overview.hold.cause.failure.providerAuthExpired": {
+		en: "The sign-in to the model provider expired",
+	},
+	"overview.hold.cause.failure.providerOverloaded": {
+		en: "The model provider was overloaded",
+	},
+	"overview.hold.cause.failure.providerRefusedRequest": {
+		en: "The model provider refused the request",
+	},
+	"overview.hold.cause.failure.agentStartupFailed": {
+		en: "The agent failed to start",
+	},
+	"overview.hold.cause.failure.agentSkillMissing": {
+		en: "The agent lacked a skill it needed",
+	},
+	"overview.hold.cause.failure.agentExitedWithoutResult": {
+		en: "The agent exited without a result",
+	},
 	"overview.hold.cause.failure.agentKilled": { en: "The agent was killed" },
-	"overview.hold.cause.failure.agentStoppedOnQuestion": { en: "The agent stopped on a question" },
-	"overview.hold.cause.failure.skillNotSynced": { en: "A skill was not synced to the runner" },
-	"overview.hold.cause.failure.workspacePreflightFailed": { en: "The workspace failed its preflight check" },
-	"overview.hold.cause.failure.workspaceDiskFull": { en: "The runner's disk was full" },
-	"overview.hold.cause.failure.repoRootContention": { en: "Another run held the repository checkout" },
-	"overview.hold.cause.failure.boxSessionSaturated": { en: "The runner had no free session" },
-	"overview.hold.cause.failure.runnerUnreachable": { en: "The runner could not be reached" },
-	"overview.hold.cause.failure.duplexChannelFailed": { en: "The link to the runner broke" },
+	"overview.hold.cause.failure.agentStoppedOnQuestion": {
+		en: "The agent stopped on a question",
+	},
+	"overview.hold.cause.failure.skillNotSynced": {
+		en: "A skill was not synced to the runner",
+	},
+	"overview.hold.cause.failure.workspacePreflightFailed": {
+		en: "The workspace failed its preflight check",
+	},
+	"overview.hold.cause.failure.workspaceDiskFull": {
+		en: "The runner's disk was full",
+	},
+	"overview.hold.cause.failure.repoRootContention": {
+		en: "Another run held the repository checkout",
+	},
+	"overview.hold.cause.failure.boxSessionSaturated": {
+		en: "The runner had no free session",
+	},
+	"overview.hold.cause.failure.runnerUnreachable": {
+		en: "The runner could not be reached",
+	},
+	"overview.hold.cause.failure.duplexChannelFailed": {
+		en: "The link to the runner broke",
+	},
 	"overview.hold.cause.failure.sessionLost": { en: "The session was lost" },
-	"overview.hold.cause.failure.heartbeatTimeout": { en: "The run stopped sending heartbeats" },
-	"overview.hold.cause.failure.queueTimeout": { en: "It waited in the queue too long" },
-	"overview.hold.cause.failure.turnNeverReported": { en: "A turn never reported back" },
-	"overview.hold.cause.failure.noClientAck": { en: "The runner never acknowledged the job" },
-	"overview.hold.cause.failure.checkoutUnbound": { en: "The runner has no checkout bound" },
-	"overview.hold.cause.failure.credentialMintFailed": { en: "A credential could not be issued" },
-	"overview.hold.cause.failure.credentialRefused": { en: "The runner's credential cannot reach this project" },
-	"overview.hold.cause.failure.attachmentUnreadable": { en: "An attachment could not be read" },
-	"overview.hold.cause.failure.boxCannotConfineChat": { en: "The runner cannot confine a chat session" },
-	"overview.hold.cause.failure.dispatchFailed": { en: "It could not be dispatched" },
-	"overview.hold.cause.failure.forgeBudgetExhausted": { en: "The Forge budget ran out" },
-	"overview.hold.cause.failure.runnerUnsupportedType": { en: "The runner cannot run this kind of job" },
+	"overview.hold.cause.failure.heartbeatTimeout": {
+		en: "The run stopped sending heartbeats",
+	},
+	"overview.hold.cause.failure.queueTimeout": {
+		en: "It waited in the queue too long",
+	},
+	"overview.hold.cause.failure.turnNeverReported": {
+		en: "A turn never reported back",
+	},
+	"overview.hold.cause.failure.noClientAck": {
+		en: "The runner never acknowledged the job",
+	},
+	"overview.hold.cause.failure.checkoutUnbound": {
+		en: "The runner has no checkout bound",
+	},
+	"overview.hold.cause.failure.credentialMintFailed": {
+		en: "A credential could not be issued",
+	},
+	"overview.hold.cause.failure.credentialRefused": {
+		en: "The runner's credential cannot reach this project",
+	},
+	"overview.hold.cause.failure.attachmentUnreadable": {
+		en: "An attachment could not be read",
+	},
+	"overview.hold.cause.failure.boxCannotConfineChat": {
+		en: "The runner cannot confine a chat session",
+	},
+	"overview.hold.cause.failure.dispatchFailed": {
+		en: "It could not be dispatched",
+	},
+	"overview.hold.cause.failure.forgeBudgetExhausted": {
+		en: "The Forge budget ran out",
+	},
+	"overview.hold.cause.failure.runnerUnsupportedType": {
+		en: "The runner cannot run this kind of job",
+	},
 	"overview.hold.cause.failure.resumeFailed": { en: "It could not be resumed" },
-	"overview.hold.cause.failure.residencyExpired": { en: "Its time on the runner ran out" },
-	"overview.hold.cause.failure.parkUnanswered": { en: "A parked question went unanswered" },
-	"overview.hold.cause.failure.auditRanBlind": { en: "The audit ran without its inputs" },
-	"overview.hold.cause.failure.sessionAuthorityRefused": { en: "The session was refused its authority" },
-	"overview.hold.cause.failure.orphanUnderTerminalRun": { en: "Its run had already ended" },
-	"overview.hold.cause.failure.pipelineCancelled": { en: "The pipeline was cancelled" },
-	"overview.hold.cause.failure.pipelineCompleted": { en: "The pipeline had already completed" },
+	"overview.hold.cause.failure.residencyExpired": {
+		en: "Its time on the runner ran out",
+	},
+	"overview.hold.cause.failure.parkUnanswered": {
+		en: "A parked question went unanswered",
+	},
+	"overview.hold.cause.failure.auditRanBlind": {
+		en: "The audit ran without its inputs",
+	},
+	"overview.hold.cause.failure.sessionAuthorityRefused": {
+		en: "The session was refused its authority",
+	},
+	"overview.hold.cause.failure.orphanUnderTerminalRun": {
+		en: "Its run had already ended",
+	},
+	"overview.hold.cause.failure.pipelineCancelled": {
+		en: "The pipeline was cancelled",
+	},
+	"overview.hold.cause.failure.pipelineCompleted": {
+		en: "The pipeline had already completed",
+	},
 	"overview.hold.cause.failure.pipelineFailed": { en: "The pipeline failed" },
-	"overview.hold.cause.failure.migrationZombieCleanup": { en: "A cleanup closed it after a migration" },
-	"overview.hold.cause.failure.manualOpsStaleChatSchedule": { en: "An operator closed a stale chat schedule" },
+	"overview.hold.cause.failure.migrationZombieCleanup": {
+		en: "A cleanup closed it after a migration",
+	},
+	"overview.hold.cause.failure.manualOpsStaleChatSchedule": {
+		en: "An operator closed a stale chat schedule",
+	},
 	"overview.hold.cause.failure.userCancelled": { en: "A person cancelled it" },
-	"overview.hold.cause.failure.unclassified": { en: "It failed for a reason Forge could not name" },
-	"overview.hold.cause.gate.allDevicesExhausted": { en: "Every runner was busy; it retries by itself" },
-	"overview.hold.cause.gate.verifyUnavailable": { en: "A verifier was not available" },
-	"overview.hold.cause.gate.retryCooldown": { en: "Cooling down before its next retry" },
-	"overview.hold.cause.gate.retryRoundsExhausted": { en: "Retried too many times; it will not resume itself" },
-	"overview.hold.cause.gate.nonRetryableTerminal": { en: "Failed in a way a retry cannot fix" },
-	"overview.hold.cause.gate.deployLocked": { en: "Another run holds the deploy lock" },
-	"overview.hold.cause.gate.issueBusy": { en: "Another run is working this issue" },
-	"overview.hold.cause.gate.contractWaitUnsettled": { en: "Waiting on a contract version to settle" },
-	"overview.hold.cause.gate.patternReviewPending": { en: "A new pattern waits for review" },
+	"overview.hold.cause.failure.unclassified": {
+		en: "It failed for a reason Forge could not name",
+	},
+	"overview.hold.cause.gate.allDevicesExhausted": {
+		en: "Every runner was busy; it retries by itself",
+	},
+	"overview.hold.cause.gate.verifyUnavailable": {
+		en: "A verifier was not available",
+	},
+	"overview.hold.cause.gate.retryCooldown": {
+		en: "Cooling down before its next retry",
+	},
+	"overview.hold.cause.gate.retryRoundsExhausted": {
+		en: "Retried too many times; it will not resume itself",
+	},
+	"overview.hold.cause.gate.nonRetryableTerminal": {
+		en: "Failed in a way a retry cannot fix",
+	},
+	"overview.hold.cause.gate.deployLocked": {
+		en: "Another run holds the deploy lock",
+	},
+	"overview.hold.cause.gate.issueBusy": {
+		en: "Another run is working this issue",
+	},
+	"overview.hold.cause.gate.contractWaitUnsettled": {
+		en: "Waiting on a contract version to settle",
+	},
+	"overview.hold.cause.gate.patternReviewPending": {
+		en: "A new pattern waits for review",
+	},
 	"overview.hold.cause.gate.scopeHeld": { en: "Another run holds its scope" },
-	"overview.hold.cause.gate.runnerStale": { en: "The runners have not checked in recently" },
-	"overview.hold.cause.gate.runnerTooOld": { en: "The runner is too old for this job" },
-	"overview.hold.cause.gate.blocked": { en: "The run reported that it is blocked" },
+	"overview.hold.cause.gate.runnerStale": {
+		en: "The runners have not checked in recently",
+	},
+	"overview.hold.cause.gate.runnerTooOld": {
+		en: "The runner is too old for this job",
+	},
+	"overview.hold.cause.gate.blocked": {
+		en: "The run reported that it is blocked",
+	},
 	"overview.hold.cause.gate.paused": { en: "The run is paused" },
 	"overview.hold.cause.gate.other": { en: "Waiting behind a gate" },
 	"overview.hold.cause.gate.person": { en: "Waiting on a person" },
 	"overview.hold.cause.stuck.silent": { en: "The run went silent" },
 	"overview.hold.cause.stuck.leaseExpired": { en: "Its lease ran out" },
-	"overview.hold.cause.stuck.leaseAbandoned": { en: "Its holder left the lease behind" },
-	"overview.hold.cause.stuck.disagreement": { en: "The runner and Forge disagree on its state" },
-	"overview.hold.cause.stuck.stranded": { en: "It has nothing set to move it on" },
+	"overview.hold.cause.stuck.leaseAbandoned": {
+		en: "Its holder left the lease behind",
+	},
+	"overview.hold.cause.stuck.disagreement": {
+		en: "The runner and Forge disagree on its state",
+	},
+	"overview.hold.cause.stuck.stranded": {
+		en: "It has nothing set to move it on",
+	},
 	"overview.hold.cause.stuck.overdue": { en: "It is past its due time" },
 	"overview.hold.cause.stuck.other": { en: "It stopped moving" },
 	"overview.signal.ciNote": {
@@ -2797,7 +3041,9 @@ export const SAID = {
 		vars: { title: "said", revision: "count" },
 	},
 	"needsYou.title.question": { en: "A question a run asked" },
-	"needsYou.act.decideProposal": { en: "approve or decline what an agent proposed" },
+	"needsYou.act.decideProposal": {
+		en: "approve or decline what an agent proposed",
+	},
 	"needsYou.rule.proposed": {
 		en: "an agent proposed it, and only a person decides it",
 	},

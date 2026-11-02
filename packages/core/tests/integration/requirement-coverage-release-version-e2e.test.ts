@@ -24,6 +24,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../helpers/api.js';
+import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
 import {
   BRANCH,
@@ -220,6 +221,8 @@ describe('a project whose production names no commit counts verdicts on the rele
 
   it('with no release recorded, stops asking for a judgement and says why once', async () => {
     await agenfold();
+    // a runner is bound, so the wait on the master reads as the master's (FB-77)
+    await bindTestRunner(world.projectId, await createTestDevice(world.ownerId));
     // a capability that shipped before Forge recorded any release: no issue, nothing recorded
     const req = await agreedRequirement(BCS.slice(0, 1));
     const refused = await judge(req, 'BC-1', { kind: 'release', version: '0.76.0' });
@@ -230,6 +233,9 @@ describe('a project whose production names no commit counts verdicts on the rele
     expect(read.standing.coverage[0]?.verdict).toBe('not_judged');
     expect(read.standing.waitingOn?.says.who.key).toBe('standing.who.master');
     expect(read.standing.waitingOn?.says.act.key).toBe('standing.act.recordRelease');
+    expect(JSON.stringify(read.standing.waitingOn?.says.rule)).toContain(
+      'requirements.rule.noReleaseRecorded',
+    );
     expect(JSON.stringify(read.standing)).not.toContain('standing.act.judge');
   });
 });
@@ -249,6 +255,9 @@ describe('a project whose production reads the commit it serves keeps weighing b
     await ok(judge(req, 'BC-1', { kind: 'commit', sha: F4 }));
     const [bc1] = (await readOf(req)).standing.coverage;
     expect(bc1?.verdict).toBe('passing');
-    expect(bc1?.verdicts[0]).toMatchObject({ identity: `commit ${F4.slice(0, 12)}`, notCounted: null });
+    expect(bc1?.verdicts[0]).toMatchObject({
+      identity: `commit ${F4.slice(0, 12)}`,
+      notCounted: null,
+    });
   });
 });

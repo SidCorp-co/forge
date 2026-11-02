@@ -49,7 +49,7 @@ import {
   signerInsteadOfMaster,
   signerWait,
 } from './standing-gates.js';
-import { proofTurn } from './standing-proof.js';
+import { proofTurn, releaseAskOf } from './standing-proof.js';
 import { restsOnShipped, shippedTurn } from './standing-shipped.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
@@ -350,7 +350,7 @@ function turnOf(
     });
     return actWait(input, 'accept', act, rule, { dueAt: check.dueAt, holder: BA });
   }
-  const proof = proofTurn(input.judge, live, coverage);
+  const proof = proofTurn(input.judge, live, coverage, releaseAskOf(input.liveBuild));
   if (proof) return proof;
   if (input.openSuggestionKinds.includes('breakdown')) {
     return actWait(

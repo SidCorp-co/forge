@@ -11,7 +11,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import type { StandingInput } from './standing.js';
 import { actWait } from './standing-gates.js';
-import { JUDGE_WHO } from './standing-proof.js';
+import { JUDGE_WHO, releaseAskOf, releaseTurn } from './standing-proof.js';
 
 const MASTER = say('standing.who.master');
 
@@ -38,12 +38,15 @@ const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code
 // no counted pass (not judged, judged on another build, judged on an earlier wording) → the
 // project's judge judges it there, an act that needs no new work and so goes first; a criterion
 // failing → the master breaks it down, new work, with the breakdown's due date. The rule names every
-// criterion without a pass, so the cause reads beside whom it waits on.
+// criterion without a pass, so the cause reads beside whom it waits on. Where a verdict counts only on
+// a release (ISS-900), the judge is named that release, and with none recorded nobody is asked to
+// judge: the master owes the record (`standing-proof.ts:releaseTurn`).
 export function shippedTurn(
   input: StandingInput,
   coverage: readonly RequirementCoverage[],
   breakdownDue: string | null,
 ) {
+  const release = releaseAskOf(input.liveBuild);
   const unproven = coverage.filter((c) => c.verdict !== 'passing');
   if (unproven.length === 0) {
     return actWait(
@@ -57,12 +60,16 @@ export function shippedTurn(
   const unjudged = unproven.filter((c) => c.verdict !== 'failing');
   const parts = [
     unjudged.length > 0 ? say('requirements.rule.unjudged', { codes: codesOf(unjudged) }) : null,
+    unjudged.length > 0 && release === 'none' ? say('requirements.rule.noReleaseRecorded') : null,
     failing.length > 0 ? say('requirements.rule.failed', { codes: codesOf(failing) }) : null,
   ].filter((p): p is Said => p !== null);
   const rule = say('requirements.rule.shippedNotProven', {
     parts,
     undeclared: input.judge === null ? say('requirements.rule.noJudge') : null,
   });
+  if (release && unjudged.length > 0) {
+    return releaseTurn(input.judge, release, codesOf(unjudged), rule);
+  }
   if (unjudged.length > 0) {
     return {
       group: 'waiting' as const,
