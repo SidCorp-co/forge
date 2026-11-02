@@ -73,7 +73,10 @@ export function openRevisionRefusal(
  * blank and at most REQUIREMENT_TITLE_MAX characters, as a requirement's title is at creation. The
  * doors' schemas refuse the same shape first; this holds it for every caller of the write.
  */
-export function titleRefusal(title: string | undefined, path = '/title'): RequirementRefusal | null {
+export function titleRefusal(
+  title: string | undefined,
+  path = '/title',
+): RequirementRefusal | null {
   if (title === undefined) return null;
   const text = title.trim();
   if (text.length > 0 && text.length <= REQUIREMENT_TITLE_MAX) return null;

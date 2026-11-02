@@ -120,9 +120,7 @@ describe('a revision retitles a requirement once a person accepts it (ISS-829)',
     ok(await as('POST', `/requirements/${key}/revisions/2/propose`, {}));
     expect((await read(key)).title).toBe('Bounces are kept for a week');
 
-    ok(
-      await as('POST', `/requirements/${key}/revisions/2/return`, { reason: 'not this wording' }),
-    );
+    ok(await as('POST', `/requirements/${key}/revisions/2/return`, { reason: 'not this wording' }));
     const returned = await read(key);
     expect(returned.title).toBe('Bounces are kept for a week');
     expect(returned.currentRevision).toBe(1);
