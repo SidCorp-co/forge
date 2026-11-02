@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.427] - 2026-11-02
+
+Room questions are answered from the record first, asked only in a thread
+
+### Fixed
+
+- **A parked run's question no longer appears unasked at the top of a chat room, in English and full of codes.** The room's agent now tries to answer it from the record first (the issue, its requirement, the feedback linked to it with its decisions and attached files, the answers already given) and posts nothing when the record settles it. Only when a person is truly needed does it ask, once, in the room's language and plain words, inside the thread the question came from or the room's one thread for the day's questions, which every question that day shares. In a project answered by a channel agent, the question goes to that agent as a task and, if the owner is needed, into the owner's room's thread for the day, never into another room. No room's post may carry an issue key, an MR or PR number, an environment variable name, a commit sha or a credential word, except a reply inside the thread of a team member who asked for the detail.
+
 ## [0.4.0-dev.426] - 2026-11-02
 
 Users' chat rooms take no internal posts; owner questions go only to the owner
