@@ -4,13 +4,12 @@
 import { ISSUE_STANDING_SCOPES } from '@forge/contracts/issue-standing';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { listIssueStanding, readIssueStanding } from './standing-read.js';
 
@@ -27,13 +26,12 @@ issueStandingRoutes.use('*', requireAuth(), assertEmailVerified());
 issueStandingRoutes.get(
   '/:id/issues/standing',
   zValidator('param', projectParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', scopeQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { scope } = c.req.valid('query');
     const userId = c.get('userId');
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
     const listed = await listIssueStanding(projectId, scope, userId ? { userId } : null);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', listed, 'the issue list'),
@@ -44,12 +42,11 @@ issueStandingRoutes.get(
 issueStandingRoutes.get(
   '/:id/issues/standing/:key',
   zValidator('param', keyParam),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id: projectId, key } = c.req.valid('param');
     const userId = c.get('userId');
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
     const parsed = parseIssueRef(
       key,
       issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],

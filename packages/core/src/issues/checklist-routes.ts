@@ -8,8 +8,9 @@ import { gatedMovesOf } from '../lifecycle/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { issueChecklistRecord } from './checklist-record.js';
-import { heldIssue, projectScopeQuery } from './issue-route-ref.js';
+import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from './issue-route-ref.js';
 
 export const issueChecklistRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -24,6 +25,7 @@ issueChecklistRoutes.use('*', requireAuth(), assertEmailVerified());
 issueChecklistRoutes.get(
   '/:id/checklist',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   projectScopeQuery,
   async (c) => {
     const { id } = c.req.valid('param');

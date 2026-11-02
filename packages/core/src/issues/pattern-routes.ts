@@ -20,8 +20,8 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { resolveIssueRouteRef } from './issue-route-ref.js';
+import { requiresOnResolved } from '../permissions/index.js';
+import { ISSUE_PROJECT, resolveIssueRouteRef } from './issue-route-ref.js';
 import {
   decidePattern,
   issuePatternsOf,
@@ -56,6 +56,7 @@ issuePatternRoutes.use('/:id/patterns/*', requireAuth(), assertEmailVerified());
 issuePatternRoutes.get(
   '/:id/patterns',
   zValidator('param', issueParam),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   async (c) => {
     const issue = await resolveIssueRouteRef(
@@ -71,6 +72,7 @@ issuePatternRoutes.get(
 issuePatternRoutes.post(
   '/:id/patterns',
   zValidator('param', issueParam),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   strictBody(namePatternRequestSchema, NAME_PATTERN_SHAPE),
   async (c) => {
@@ -80,7 +82,6 @@ issuePatternRoutes.post(
       c.req.valid('query').projectId,
       userId,
     );
-    await requireCan(actorFor(userId), 'project.write', projectResource(issue.projectId));
     const body = c.req.valid('json');
     const out = await namePattern({
       issue: { id: issue.id, projectId: issue.projectId, status: issue.status },
@@ -98,13 +99,13 @@ issuePatternRoutes.post(
 issuePatternRoutes.post(
   '/:id/patterns/:patternId/decision',
   zValidator('param', patternParam),
+  requiresOnResolved('patterns.approve', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   strictBody(decidePatternRequestSchema, DECIDE_PATTERN_SHAPE),
   async (c) => {
     const userId = c.get('userId');
     const { id, patternId } = c.req.valid('param');
     const issue = await resolveIssueRouteRef(id, c.req.valid('query').projectId, userId);
-    await requireCan(actorFor(userId), 'patterns.approve', projectResource(issue.projectId));
     const body = c.req.valid('json');
     const out = await decidePattern({
       issueId: issue.id,
@@ -125,13 +126,13 @@ issuePatternRoutes.post(
 issuePatternRoutes.post(
   '/:id/patterns/:patternId/retract',
   zValidator('param', patternParam),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   strictBody(retractPatternRequestSchema, RETRACT_PATTERN_SHAPE),
   async (c) => {
     const userId = c.get('userId');
     const { id, patternId } = c.req.valid('param');
     const issue = await resolveIssueRouteRef(id, c.req.valid('query').projectId, userId);
-    await requireCan(actorFor(userId), 'project.write', projectResource(issue.projectId));
     const out = await retractPattern({
       issueId: issue.id,
       patternId,

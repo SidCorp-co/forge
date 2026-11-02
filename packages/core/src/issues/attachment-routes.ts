@@ -8,10 +8,11 @@ import { type AuthVars, requireAuth, restActor } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
 import {
   heldIssue,
+  ISSUE_PROJECT,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
@@ -45,6 +46,7 @@ issueAttachmentRoutes.post(
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', 'the project of the issue `:id` names'),
   rawBody(
     'multipart/form-data',
     'One file in the `file` field, attached to the issue; its name and media type come from the part.',
@@ -75,6 +77,7 @@ issueAttachmentRoutes.post(
 issueAttachmentRoutes.get(
   '/:id/attachments',
   zValidator('param', issueRouteIdParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -95,12 +98,15 @@ issueAttachmentRoutes.get(
  * Same combined-auth as the upload router so automation scripts can pull
  * down attachments they've uploaded (handy for diagnostics).
  */
+const ATTACHMENT_PROJECT = 'the project of the attachment `:id` names';
+
 export const attachmentRoutes = new Hono<{ Variables: AuthVars }>();
 attachmentRoutes.use('*', requireAuth());
 
 attachmentRoutes.get(
   '/:id/download',
   zValidator('param', attachmentIdParamSchema),
+  requiresOnResolved('project.read', ATTACHMENT_PROJECT),
   noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
@@ -109,29 +115,34 @@ attachmentRoutes.get(
     const row = await attachmentWithProject(id);
     if (!row) throw notFound('attachment not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(row.projectId, userId));
 
     return sendStoredAttachment(c, row, (path) => getStorage().get(path));
   },
 );
 
-attachmentRoutes.delete('/:id', zValidator('param', attachmentIdParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+attachmentRoutes.delete(
+  '/:id',
+  requiresOnResolved('project.write', ATTACHMENT_PROJECT),
+  zValidator('param', attachmentIdParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const row = await attachmentWithProject(id);
-  if (!row) throw notFound('attachment not found');
+    const row = await attachmentWithProject(id);
+    if (!row) throw notFound('attachment not found');
 
-  const access = await loadProjectAccess(row.projectId, userId);
-  requireHeld(access, 'project.write');
+    const access = await loadProjectAccess(row.projectId, userId);
+    requireDeclared(access);
 
-  const isUploader = row.uploaderId === userId;
-  const isAdmin = holds(access, 'project.admin');
-  if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
+    // its uploader, or a project admin: a per-row rule no declaration carries
+    const isUploader = row.uploaderId === userId;
+    const isAdmin = holds(access, 'project.admin');
+    if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
 
-  await getStorage().delete(row.path);
-  await deleteIssueAttachment(row, restActor(c));
+    await getStorage().delete(row.path);
+    await deleteIssueAttachment(row, restActor(c));
 
-  return c.body(null, 204);
-});
+    return c.body(null, 204);
+  },
+);

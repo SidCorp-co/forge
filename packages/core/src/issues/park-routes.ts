@@ -3,7 +3,8 @@ import { Hono } from 'hono';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { heldIssue, projectScopeQuery } from './issue-route-ref.js';
+import { requiresOnResolved } from '../permissions/index.js';
+import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from './issue-route-ref.js';
 import { loadIssuePark } from './park-view.js';
 
 export const issueParkRoutes = new Hono<{ Variables: AuthVars }>();
@@ -14,6 +15,7 @@ issueParkRoutes.use('*', requireAuth(), assertEmailVerified());
 issueParkRoutes.get(
   '/:id/park',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   projectScopeQuery,
   async (c) => {
     const { id } = c.req.valid('param');

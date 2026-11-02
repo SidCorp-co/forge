@@ -1,14 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam, requiresOnResolved } from '../permissions/index.js';
 import { type ActivityRow, listIssueActivity, listProjectActivity } from './activity-read.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
 import {
+  ISSUE_PROJECT,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
@@ -65,6 +65,7 @@ issueActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 issueActivityRoutes.get(
   '/:id/activity',
   zValidator('param', issueRouteIdParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', perIssueQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -87,14 +88,11 @@ projectActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 projectActivityRoutes.get(
   '/:id/activity',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', activityQuerySchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { limit, before, type } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     const rows = await listProjectActivity(projectId, limit, before, type);
     const withActors = await attachActors(rows);

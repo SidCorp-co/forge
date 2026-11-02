@@ -1,12 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { IssueStatus } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
@@ -44,6 +43,7 @@ searchRoutes.use('*', requireAuth(), assertEmailVerified());
 searchRoutes.get(
   '/:id/issues/search',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', searchQuerySchema, (r) => {
     if (!r.success) {
       refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);
@@ -52,10 +52,6 @@ searchRoutes.get(
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const q = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     const listed = await listIssues(projectId, { ...q, search: q.q, assigneeId: q.assignee }, q);
     if (!listed.ok) throw badRequest({ [listed.field]: listed.message });

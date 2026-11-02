@@ -13,9 +13,9 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { issueDesignOf, recordDesign } from './design-record.js';
-import { resolveIssueRouteRef } from './issue-route-ref.js';
+import { ISSUE_PROJECT, resolveIssueRouteRef } from './issue-route-ref.js';
 
 const issueParam = z.object({ id: z.string().min(1) });
 const scopeQuery = z.object({ projectId: z.uuid().optional() });
@@ -27,6 +27,7 @@ issueDesignRoutes.use('/:id/design', requireAuth(), assertEmailVerified());
 issueDesignRoutes.get(
   '/:id/design',
   zValidator('param', issueParam),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   async (c) => {
     const issue = await resolveIssueRouteRef(
@@ -42,6 +43,7 @@ issueDesignRoutes.get(
 issueDesignRoutes.put(
   '/:id/design',
   zValidator('param', issueParam),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   strictBody(recordDesignRequestSchema, RECORD_DESIGN_SHAPE),
   async (c) => {
@@ -51,7 +53,6 @@ issueDesignRoutes.put(
       c.req.valid('query').projectId,
       userId,
     );
-    await requireCan(actorFor(userId), 'project.write', projectResource(issue.projectId));
     const out = await recordDesign({
       issue: { id: issue.id, projectId: issue.projectId, status: issue.status },
       body: c.req.valid('json'),

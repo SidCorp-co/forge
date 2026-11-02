@@ -29,7 +29,8 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { heldIssue, projectScopeQuery } from './issue-route-ref.js';
+import { requiresOnResolved } from '../permissions/index.js';
+import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from './issue-route-ref.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
@@ -110,6 +111,7 @@ async function runMergeMarker(
 
 const mergeMarkerValidators = [
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('json', mergeMarkerBodySchema),
 ] as const;
 
@@ -121,6 +123,7 @@ issueMergeRoutes.delete('/:id/merge', ...mergeMarkerValidators, (c) => runMergeM
 issueMergeRoutes.post(
   '/:id/merge-check',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   strictBody(mergeCheckReportSchema, MERGE_CHECK_SHAPE),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -145,6 +148,7 @@ issueMergeRoutes.post(
 issueMergeRoutes.get(
   '/:id/review',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   projectScopeQuery,
   async (c) => {
     const { id } = c.req.valid('param');
@@ -156,6 +160,7 @@ issueMergeRoutes.get(
 issueMergeRoutes.post(
   '/:id/review',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   strictBody(recordReviewRequestSchema, RECORD_REVIEW_SHAPE),
   async (c) => {
     const { id } = c.req.valid('param');

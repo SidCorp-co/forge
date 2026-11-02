@@ -122,6 +122,24 @@ export function requireDeclared(access: PermissionFacts, act?: string): void {
   requireHeld(access, permission, act);
 }
 
+/**
+ * What a shared lookup checks on the project it resolves (an issue key, a row's id): the permission
+ * the running action declares, or `fallback` for a caller that declares none yet. The fallback is
+ * ISS-824's amnesty at a shared helper: it goes with the last undeclared caller.
+ */
+export function requireDeclaredOr(
+  access: PermissionFacts,
+  fallback: ProjectPermission,
+  act?: string,
+): void {
+  const declared = inEffect.getStore();
+  if (declared && declared.permission !== null && 'resolved' in declared.on) {
+    requireDeclared(access, act);
+    return;
+  }
+  requireHeld(access, fallback, act);
+}
+
 /** The action's declared organization permission, held on the org the handler found. */
 export function requireDeclaredOrg(orgId: string, role: OrgMemberRole | null): void {
   const permission = resolvedInEffect();

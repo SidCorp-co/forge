@@ -17,7 +17,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { dependencyEdgeById, loadIssueDependencyEdges } from './dependency-read.js';
 import {
   deleteIssueDependency,
@@ -26,6 +26,7 @@ import {
 } from './dependency-service.js';
 import {
   heldIssue,
+  ISSUE_PROJECT,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
@@ -56,6 +57,7 @@ issueDependencyRoutes.use('*', requireAuth(), assertEmailVerified());
 issueDependencyRoutes.get(
   '/:id/dependencies',
   zValidator('param', issueRouteIdParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -78,6 +80,7 @@ issueDependencyRoutes.get(
 issueDependencyRoutes.post(
   '/:id/dependencies',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', 'the project of the issue `:id` names'),
   zValidator('json', createBodySchema),
   holdChatWrite('issue_change'),
   async (c) => {
@@ -112,6 +115,7 @@ issueDependencyRoutes.post(
 issueDependencyRoutes.delete(
   '/:id/dependencies/:edgeId',
   zValidator('param', edgeParamSchema),
+  requiresOnResolved('project.write', 'the project of the edge `:edgeId` names'),
   holdChatWrite('issue_change'),
   async (c) => {
     const { id: issueId, edgeId } = c.req.valid('param');
@@ -123,8 +127,7 @@ issueDependencyRoutes.delete(
     // Membership check BEFORE the EDGE_MISMATCH check — otherwise a non-member
     // who pairs an arbitrary `:edgeId` with their own `:id` learns whether the
     // edge exists (404 vs 400 vs 403 leaks state).
-    const access = await loadProjectAccess(edge.projectId, userId);
-    requireHeld(access, 'project.write');
+    requireDeclared(await loadProjectAccess(edge.projectId, userId));
 
     if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
       throw refuse('EDGE_MISMATCH', 'the edge does not involve this issue', '/edgeId');

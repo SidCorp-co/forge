@@ -12,7 +12,7 @@ import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { refuseFieldShape, zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { type StatusTransitionResult, transitionIssueStatus } from './apply-transition.js';
 import { refuseAwaitsDesignShape } from './awaits-design-input.js';
 import { issueChecklistRoutes } from './checklist-routes.js';
@@ -163,6 +163,7 @@ transitionRoutes.route('/', recordEventRoutes);
 transitionRoutes.post(
   '/:id/transition',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', 'the project of the issue `:id` names'),
   zValidator('json', transitionBodySchema, (result) => {
     if (!result.success) {
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
@@ -200,8 +201,7 @@ transitionRoutes.post(
 
     const fromStatus = issue.status as IssueStatus;
 
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.write');
+    requireDeclared(await loadProjectAccess(issue.projectId, userId));
     let result: StatusTransitionResult;
     try {
       result = await transitionIssueStatus(

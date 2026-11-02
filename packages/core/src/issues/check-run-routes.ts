@@ -11,8 +11,9 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { issueChecksOf, recordChecks } from './check-runs.js';
-import { heldIssue, resolveIssueRouteRef } from './issue-route-ref.js';
+import { heldIssue, ISSUE_PROJECT, resolveIssueRouteRef } from './issue-route-ref.js';
 
 const issueParam = z.object({ id: z.string().trim().min(1).max(200) });
 const scopeQuery = z.object({ projectId: z.uuid().optional() });
@@ -24,6 +25,7 @@ issueCheckRunRoutes.use('/:id/checks', requireAuth(), assertEmailVerified());
 issueCheckRunRoutes.get(
   '/:id/checks',
   zValidator('param', issueParam),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   async (c) => {
     const issue = await resolveIssueRouteRef(
@@ -39,6 +41,7 @@ issueCheckRunRoutes.get(
 issueCheckRunRoutes.post(
   '/:id/checks',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   strictBody(recordChecksRequestSchema, RECORD_CHECKS_SHAPE),
   async (c) => {
     const issue = await heldIssue(c.req.valid('param').id, c.get('userId'), 'project.write');

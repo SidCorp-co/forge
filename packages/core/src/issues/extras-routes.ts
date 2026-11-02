@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import {
   heldIssue,
+  ISSUE_PROJECT,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
@@ -19,6 +21,7 @@ issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('json', runPipelineStepBodySchema),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -40,6 +43,7 @@ issueExtrasRoutes.post(
 issueExtrasRoutes.get(
   '/:id/cost-summary',
   zValidator('param', issueRouteIdParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');

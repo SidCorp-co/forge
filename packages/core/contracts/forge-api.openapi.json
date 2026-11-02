@@ -2163,6 +2163,12 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the attachment `:id` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -2196,6 +2202,12 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the attachment `:id` names"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -12182,6 +12194,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -12224,6 +12242,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -12615,6 +12639,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -12680,6 +12710,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -12725,6 +12761,12 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -12767,6 +12809,12 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -12811,6 +12859,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -12857,6 +12911,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -13002,6 +13062,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -13591,6 +13657,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -13970,6 +14042,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -14046,6 +14124,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -14091,6 +14175,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the edge `:edgeId` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -14134,6 +14224,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -14259,6 +14355,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
@@ -14889,6 +14991,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -15064,6 +15172,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -15452,6 +15566,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -15567,6 +15687,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -15612,6 +15738,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -15685,6 +15817,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
@@ -15775,6 +15913,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "patterns.approve"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
@@ -15852,6 +15996,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
@@ -16021,6 +16171,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -16173,6 +16329,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -16220,6 +16382,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names (a display key with `?projectId=`)"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -16450,6 +16618,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue `:id` names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -22876,6 +23050,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -30330,6 +30510,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -30380,6 +30566,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -30425,6 +30617,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -33840,6 +34038,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",

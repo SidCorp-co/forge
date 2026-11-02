@@ -8,7 +8,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclaredOr, requireHeld } from '../permissions/index.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   findIssueByDisplaySeq,
@@ -40,6 +40,10 @@ const malformedRefMessage = (parsed: { code: string; message: string }): string 
 
 export const issueRouteIdParamSchema = z.object({ id: z.string().trim().min(1).max(200) });
 
+/** Where a route on an issue finds the project its declared permission is held on. */
+export const ISSUE_PROJECT =
+  'the project of the issue `:id` names (a display key with `?projectId=`)';
+
 export const projectScopeQuerySchema = z.object({ projectId: z.uuid().optional() });
 
 /**
@@ -48,7 +52,10 @@ export const projectScopeQuerySchema = z.object({ projectId: z.uuid().optional()
  */
 export const projectScopeQuery = zValidator('query', projectScopeQuerySchema);
 
-/** The issue an id names, once the caller is shown to hold `permission` on its project. */
+/**
+ * The issue an id names, once the caller is shown to hold, on its project, what its route declares
+ * (`permission` for a caller that declares none yet).
+ */
 export async function heldIssue(
   issueId: string,
   userId: string,
@@ -57,7 +64,7 @@ export async function heldIssue(
 ) {
   const issue = await issueScopeOf(issueId);
   if (!issue) throw notFound('issue not found');
-  requireHeld(await loadProjectAccess(issue.projectId, userId), permission, act);
+  requireDeclaredOr(await loadProjectAccess(issue.projectId, userId), permission, act);
   return issue;
 }
 
@@ -69,8 +76,8 @@ export async function resolveIssueRouteRef(
   if (isUuid(rawId)) {
     const issue = await findIssueById(rawId);
     if (!issue) throw notFound('issue not found');
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.read');
+    // the issue's project, at what the route declares on it (read where it declares none yet)
+    requireDeclaredOr(await loadProjectAccess(issue.projectId, userId), 'project.read');
     return issue;
   }
 
@@ -86,8 +93,7 @@ export async function resolveIssueRouteRef(
     throw badRequest('`projectId` must be a uuid');
   }
 
-  const access = await loadProjectAccess(projectIdQuery, userId);
-  requireHeld(access, 'project.read');
+  requireDeclaredOr(await loadProjectAccess(projectIdQuery, userId), 'project.read');
 
   const parsed = parseIssueRef(
     rawId,
