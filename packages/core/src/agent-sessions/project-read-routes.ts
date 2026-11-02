@@ -16,7 +16,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, requiresOnParam } from '../permissions/index.js';
 import { listAgentSessionsForMcp, readAgentSession } from './read.js';
 import { assertAgentChatOwner } from './session-access.js';
 
@@ -37,21 +37,17 @@ agentSessionProjectReadRoutes.use(
   assertEmailVerified(),
 );
 
-async function assertMember(projectId: string, userId: string) {
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
-  return access;
-}
-
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions',
   zValidator('param', paramSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', listQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { issueId, status, limit } = c.req.valid('query');
     const userId = c.get('userId');
-    const access = await assertMember(id, userId);
+    // the declaration checked project.read; the access still decides whose private chats show
+    const access = await loadProjectAccess(id, userId);
 
     const rows = await listAgentSessionsForMcp({
       projectId: id,
@@ -76,11 +72,13 @@ agentSessionProjectReadRoutes.get(
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions/:sessionId',
   zValidator('param', sessionParamSchema),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id, sessionId } = c.req.valid('param');
     const userId = c.get('userId');
-    const access = await assertMember(id, userId);
+    // the declaration checked project.read; the access still decides whose private chats show
+    const access = await loadProjectAccess(id, userId);
 
     const row = await readAgentSession(sessionId);
     if (!row || row.projectId !== id) {

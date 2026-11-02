@@ -108,8 +108,6 @@
     "GET /api/pipeline/step-durations",
     "GET /api/pipeline/throughput",
     "GET /api/projects",
-    "GET /api/projects/:id/agent-sessions",
-    "GET /api/projects/:id/agent-sessions/:sessionId",
     "GET /api/projects/:id/api-page",
     "GET /api/projects/:id/automation/fires/:fireId",
     "GET /api/projects/:id/automation/schedules/:scheduleId",
