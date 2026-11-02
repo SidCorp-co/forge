@@ -122,11 +122,21 @@ const OPS_SEED: [QueryKey, unknown][] = [
   [pipelineKeys.throughput({ days: 30 }), [{ projectId: "p1", date: day(1), count: 4 }]],
 ];
 
+/** A fixture list with titles of its own words: the vi fixtures' titles carry their keys ("Muc FB-1"), which would read as a key on the face. */
+const titled = (seed: [QueryKey, unknown][], family: string, field: string, names: string[]): [QueryKey, unknown][] =>
+  seed.map(([key, value]) => {
+    if (key[0] !== family || key.length !== 2) return [key, value];
+    const list = value as Record<string, { title: string }[]>;
+    return [key, { ...list, [field]: list[field].map((r, i) => ({ ...r, title: names[i % names.length] })) }];
+  });
+const FEEDBACK_TITLED = titled(FEEDBACK_SEED, "feedback", "feedback", ["Login loops", "Export is empty", "Totals drift", "Slow board", "Wrong date", "Lost draft", "Stale badge", "Bad link"]);
+const REQUIREMENTS_TITLED = titled(reqQueries(), "requirements", "requirements", ["Sign-in", "Invoice export"]);
+
 const PAGES = [
   { name: "home", path: "/projects/hop", pattern: "/projects/$slug", render: () => <HomePage /> },
   { name: "issue", path: "/projects/hop/issues/ISS-1", render: () => <Seeded data={detailQueries()}><IssueDetailScreen projectId="p1" slug="hop" id="i1" /></Seeded> },
-  { name: "requirements", path: "/projects/hop/requirements", render: () => <Seeded data={reqQueries()}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
-  { name: "feedback", path: "/projects/hop/feedback", render: () => <Seeded data={FEEDBACK_SEED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
+  { name: "requirements", path: "/projects/hop/requirements", render: () => <Seeded data={REQUIREMENTS_TITLED}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
+  { name: "feedback", path: "/projects/hop/feedback", render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
   { name: "releases", path: "/projects/hop/releases", render: () => <Seeded data={releaseSeed()}><ReleasesScreen projectId={REL_P} slug="hop" /></Seeded> },
   { name: "ops", path: "/ops", pattern: "/ops", render: () => <Seeded data={OPS_SEED}><OpsMonitor /></Seeded> },
 ] as const;

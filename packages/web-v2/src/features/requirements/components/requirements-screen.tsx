@@ -19,6 +19,7 @@ import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCreateRequirement, useRequirementAreas, useRequirements } from "../hooks";
 import { AreasEditor, PlacementBanner } from "./requirement-placement";
+import { nameOf } from "./requirement-line";
 import { listGroupsOf, NotedRequirementsList, useAttentionLabel } from "./requirements-list";
 import { RequirementsMap } from "./requirements-map";
 import { useChatDock } from "@/features/chat-dock";
@@ -93,7 +94,13 @@ function AssistantStrip({
   if (open.length === 0) return null;
   if (!shown) {
     return (
-      <button type="button" onClick={() => setShown(true)} className="flex w-full items-center gap-2.5 border-b border-line-subtle px-5 py-2.5 text-left text-13 text-muted max-md:px-3" data-testid="assistant-strip-collapsed">
+      <button
+        type="button"
+        onClick={() => setShown(true)}
+        title={t("requirements.assistant.never")}
+        className="flex w-full items-center gap-2.5 border-b border-line-subtle px-5 py-2.5 text-left text-13 text-muted max-md:px-3"
+        data-testid="assistant-strip-collapsed"
+      >
         <span className="size-1.5 rounded-pill bg-accent" />
         {t("requirements.assistant.count", { n: open.length })}
         <span className="font-medium text-accent-text">{t("requirements.assistant.show")}</span>
@@ -110,7 +117,9 @@ function AssistantStrip({
         <span className="font-semibold text-ai">
           {t("requirements.assistant.name")}
         </span>
-        <span className="text-subtle">{t("requirements.assistant.count", { n: open.length })}</span>
+        <span className="text-subtle" title={t("requirements.assistant.never")}>
+          {t("requirements.assistant.count", { n: open.length })}
+        </span>
       </div>
       {open.map((s) => {
         const r = byId.get(s.target.id) as RequirementSummary;
@@ -125,7 +134,9 @@ function WaitingSuggestion({ s, r, projectId, onPeek }: { s: Suggestion; r: Requ
   const lang = useInterfaceLanguage();
   return (
     <div className="flex flex-wrap items-center gap-2 py-0.75" data-testid="assistant-strip-row">
-      <span className="font-mono text-12 font-semibold text-link">{r.key}</span>
+      <span className="min-w-0 truncate font-medium text-fg" title={r.key}>
+        {nameOf(r)}
+      </span>
       <StatusBadge family="requirement" value={r.standing.state} />
       <span className="min-w-0 truncate">{summaryOf(s, lang)}</span>
       <span className="flex-1" />

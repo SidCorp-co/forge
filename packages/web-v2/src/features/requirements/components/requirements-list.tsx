@@ -1,7 +1,8 @@
 
 // The list (REQ-29 BC-4, BC-5): one line per requirement, in groups by attention or by area, the
 // finished group folded, drawn by the shared GroupedList every entity list uses. Its columns are a
-// requirement's: Passing where an issue has State, Waits on, and the age of its current state.
+// requirement's: Passing where an issue has State, Waits on, and the age of its current state. A row
+// leads with the requirement's name; its key is the name's tooltip (REQ-11 BC-19).
 
 import { REQUIREMENT_ATTENTION_GROUPS, type RequirementSummary } from "@forge/contracts/requirements";
 import { GroupedList, type ListGroup, useGroupFold } from "@/design";
@@ -40,12 +41,13 @@ export function RequirementsList({ groups, slug, now, selected, onPeek, notes }:
         selected={selected}
         onPeek={onPeek}
         empty={t("requirements.noMatch")}
-        columns={{ key: t("requirements.col.key"), title: t("requirements.col.name"), state: t("requirements.col.passing"), waitingOn: t("requirements.col.waits"), meta: t("requirements.col.age") }}
+        lead="title"
+        columns={{ title: t("requirements.col.name"), state: t("requirements.col.passing"), waitingOn: t("requirements.col.waits"), meta: t("requirements.col.age") }}
         row={(r) => ({
           key: r.key,
           href: requirementHref(slug, r.key),
           title: (
-            <span className="flex min-w-0 items-center gap-2.5" title={r.title}>
+            <span className="flex min-w-0 items-center gap-2.5" title={r.shortName ? `${r.key} · ${r.title}` : undefined}>
               <span className="truncate">{nameOf(r)}</span>
               <RowState r={r} />
             </span>
