@@ -1,1 +1,1 @@
-An agent may ask a person for an act its project's own rule names, on any profile. A release on a project with no production is approved as a draft by the people listed, by its version; the agent is not listed.
+**A project's own rule can ask its owner.** An agent may ask a person for an act the rule names. A release with no production is approved as a draft, by version; the agent is not listed.
