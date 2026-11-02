@@ -3,8 +3,12 @@
 // asks for that judgement, or for the record, never for one that cannot count (`releaseAskOf`).
 // @direct-test-of packages/core/src/requirements/standing-identity.ts
 // @direct-test-of packages/core/src/requirements/standing-proof.ts
+// @direct-test-of packages/core/src/lib/standing-act-class.ts
 import { releaseHint } from '@forge/contracts/released-line';
+import { say } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
+import { actClassOf } from '../lib/standing-act-class.js';
 import { atRelease, type ReleasedLine } from './standing-identity.js';
 import { releaseAskOf } from './standing-proof.js';
 
@@ -76,5 +80,17 @@ describe('what the standing asks where a verdict counts only on a release', () =
     expect(releaseAskOf(null)).toBeNull();
     expect(releaseAskOf({ ...live, released: line('0.76.0'), landed: new Map() })).toBeNull();
     expect(releaseHint(undefined, 'issue')).toBeNull();
+  });
+});
+
+describe('the judgement on a release, on the issues that carry it', () => {
+  it("is the judge's act", () => {
+    const act = say('standing.act.judgeOnReleaseOn', {
+      codes: 'BC-1',
+      keys: 'ISS-1',
+      version: '0.76.0',
+    });
+    const w = waitingOn('agent', { who: say('standing.who.master'), act, rule: act });
+    expect(actClassOf(w)).toBe('judge');
   });
 });
