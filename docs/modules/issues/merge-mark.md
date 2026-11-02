@@ -407,10 +407,11 @@ waiting unclaimed with a mark (`RELEASE_SHIPPED_IN_NOT_WAITING`).
 A record closes its issue at once, so one that named the wrong release is corrected, never recorded
 twice (ISS-846): the same call with `corrects`, the version the issue ships in now, and a `reason`
 (`packages/core/src/release-batch/shipped-in-correct.ts:correctShippedIn`). The new version passes
-every check a first record passes (`shipped-in.ts:shippableRelease`). The issue stays `closed`; the
+every check a first record passes (`packages/core/src/release-batch/shipped-in.ts:shippableRelease`). The issue stays `closed`; the
 release it now ships in lists it under `rosterClosed`, and the one it replaces keeps the record that
 named it, lists the issue under `rosterSuperseded`, which every reader of what a release carries
-subtracts (`release-batch/versions.ts:issueIdsOf`, `pipeline/release-runs.ts:shippedReleasesOf`),
+subtracts (`packages/core/src/release-batch/versions.ts:issueIdsOf`,
+`packages/core/src/pipeline/release-runs.ts:shippedReleasesOf`),
 and both keep the correction with who, when and why under `shippedInCorrections`. The issue's
 activity records `issue.shippedInCorrected` and a notice names both versions. Refused by name:
 `corrects` other than the version it ships in now (`RELEASE_SHIPPED_IN_CORRECTS_MISMATCH`), no
@@ -426,7 +427,7 @@ unclaimed whose landing is no later than its cut and whose mark came after it as
 version it ships (`packages/core/src/release-batch/shipped-in-runs.ts:claimMarkedLate`), and lists what it
 claimed and what it left out under `lateMarks` on the run; one it cannot close is held
 `RELEASE_SHIPPED_IN_OWED` for its agent, naming why. An abort over a roster an earlier shipped release
-may already hold (`shipped-in-runs.ts:settleAbortedShipped`) records each issue on the release its
+may already hold (`packages/core/src/release-batch/shipped-in-runs.ts:settleAbortedShipped`) records each issue on the release its
 `shippedIn` names; without one, or where that record is refused, the issue is held
 `RELEASE_SHIPPED_IN_OWED` for its agent, never for a person, and no unattended cut takes it while the
 hold stands. Every standing hold whose act is the agent's is on the master's owed work with its

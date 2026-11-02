@@ -193,6 +193,7 @@
       "owns": [
         "conversationAttachments",
         "conversationIndexState",
+        "conversationLastResorts",
         "conversationMessages",
         "conversationParticipants",
         "conversationPassages",
