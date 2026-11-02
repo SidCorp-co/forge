@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn, requiresOnParam } from '../permissions/index.js';
 import { agentRolesOf, declareOutsideAgent } from './agent-roles.js';
 import { privateRefusal } from './channel.js';
 import { channelsOf, channelViewOf } from './channel-read.js';
@@ -72,12 +72,16 @@ const dutyParam = zValidator(
   invalid('invalid path: a project uuid, a Rocket.Chat room id and a duty key'),
 );
 
+const READ = requiresOnParam('project.read', 'id');
+const WRITE = requiresOnParam('project.write', 'id');
+const ADMIN = requiresOnParam('project.admin', 'id');
+
 const unknownChannel = <T>(rid: string): Outcome<T> =>
   no('SUPPORT_CHANNEL_UNKNOWN', '/rid', `no binding of this project attaches the group ${rid}`);
 
 /** The channel a person writes to: one a binding of the project attaches, whoever answers it. */
 async function writableChannel(viewer: string, projectId: string, rid: string) {
-  await requireCan(actorFor(viewer), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.write');
   if (!(await channelIsBound(projectId, rid))) return null;
   return ensureChannel(projectId, rid);
 }
@@ -115,7 +119,7 @@ const rolesQuery = zValidator(
 
 export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void {
   // the project's agent sessions by role, each with where it is reached now (REQ-75 r7 BC-43, BC-44)
-  routes.get('/:id/agent-roles', projectParam, rolesQuery, async (c) => {
+  routes.get('/:id/agent-roles', projectParam, READ, rolesQuery, async (c) => {
     const { id } = c.req.valid('param');
     const sessions = await agentRolesOf(c.get('userId'), id, c.req.valid('query').role);
     return c.json({ sessions });
@@ -125,6 +129,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.put(
     '/:id/support/channels/:rid/agent',
     channelParam,
+    WRITE,
     strictBody(channelAgentWriteSchema, '{ role, box, address }'),
     async (c) => {
       const { id, rid } = c.req.valid('param');
@@ -135,7 +140,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   );
 
   // a group's switch from its outside bot to the channel agent (REQ-77 BC-16..BC-19)
-  routes.get('/:id/support/channels/:rid/switch', channelParam, noQuery, async (c) => {
+  routes.get('/:id/support/channels/:rid/switch', channelParam, READ, noQuery, async (c) => {
     const { id, rid } = c.req.valid('param');
     const out = await readSwitch(c.get('userId'), id, rid);
     if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
@@ -145,6 +150,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.put(
     '/:id/support/channels/:rid/switch',
     channelParam,
+    ADMIN,
     strictBody(
       channelSwitchPlanSchema,
       '{ outsideBot: { userId, username? }, duties: { key, text }[], after?: <switch uuid>, ownerWord?: boolean }',
@@ -160,6 +166,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.post(
     '/:id/support/channels/:rid/switch/duties/:key/pass',
     dutyParam,
+    WRITE,
     strictBody(channelSwitchPassSchema, '{ evidence }'),
     async (c) => {
       const { id, rid, key } = c.req.valid('param');
@@ -172,6 +179,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.post(
     '/:id/support/channels/:rid/switch/owner-word',
     channelParam,
+    ADMIN,
     strictBody(channelSwitchOwnerWordSchema, '{ words }'),
     async (c) => {
       const { id, rid } = c.req.valid('param');
@@ -181,7 +189,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
     },
   );
 
-  routes.post('/:id/support/channels/:rid/switch/apply', channelParam, async (c) => {
+  routes.post('/:id/support/channels/:rid/switch/apply', channelParam, ADMIN, async (c) => {
     const { id, rid } = c.req.valid('param');
     const out = await applySwitch(c.get('userId'), id, rid);
     if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
@@ -191,6 +199,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.post(
     '/:id/support/channels/:rid/switch/proven',
     channelParam,
+    WRITE,
     strictBody(channelSwitchProvenSchema, '{ note }'),
     async (c) => {
       const { id, rid } = c.req.valid('param');
@@ -204,6 +213,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.post(
     '/:id/support/channels/:rid/switch/outside-stopped',
     channelParam,
+    ADMIN,
     strictBody(channelSwitchOutsideStoppedSchema, '{ note }'),
     async (c) => {
       const { id, rid } = c.req.valid('param');
@@ -213,12 +223,12 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
     },
   );
 
-  routes.get('/:id/support/channels', projectParam, noQuery, async (c) => {
+  routes.get('/:id/support/channels', projectParam, READ, noQuery, async (c) => {
     const channels = await channelsOf(c.get('userId'), c.req.valid('param').id);
     return c.json({ channels });
   });
 
-  routes.get('/:id/support/channels/:rid', channelParam, noQuery, async (c) => {
+  routes.get('/:id/support/channels/:rid', channelParam, READ, noQuery, async (c) => {
     const { id, rid } = c.req.valid('param');
     const channel = await channelViewOf(c.get('userId'), id, rid);
     if (!channel) {
@@ -231,6 +241,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.put(
     '/:id/support/channels/:rid/members/:username',
     memberParam,
+    WRITE,
     strictBody(
       channelMemberWriteSchema,
       '{ roles: (user | product | technical | maintenance | bot)[], askFor?: string | null }',
@@ -247,6 +258,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
   routes.post(
     '/:id/support/channels/:rid/rules',
     channelParam,
+    WRITE,
     strictBody(channelRuleWriteSchema, '{ text }'),
     async (c) => {
       const { id, rid } = c.req.valid('param');
@@ -265,7 +277,7 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
     },
   );
 
-  routes.delete('/:id/support/channels/:rid/rules/:ruleId', ruleParam, async (c) => {
+  routes.delete('/:id/support/channels/:rid/rules/:ruleId', ruleParam, WRITE, async (c) => {
     const { id, rid, ruleId } = c.req.valid('param');
     const channel = await writableChannel(c.get('userId'), id, rid);
     if (!channel || !(await removeRule(channel.id, ruleId))) {

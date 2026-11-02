@@ -409,31 +409,39 @@ supportRoutes.post(
 
 mountChannelRoutes(supportRoutes);
 
-supportRoutes.get('/:id/support/rooms', projectParam, noQuery, async (c) => {
+const SUPPORT_READ = requiresOnParam('project.read', 'id');
+
+supportRoutes.get('/:id/support/rooms', projectParam, SUPPORT_READ, noQuery, async (c) => {
   const rooms = await supportRoomsOf(c.get('userId'), c.req.valid('param').id);
   return c.json({ rooms });
 });
 
 // each room's turn, for the bar that says what runs on the project now (REQ-15 BC-10)
-supportRoutes.get('/:id/support/turns', projectParam, noQuery, async (c) =>
+supportRoutes.get('/:id/support/turns', projectParam, SUPPORT_READ, noQuery, async (c) =>
   c.json(await supportTurnsOf(c.get('userId'), c.req.valid('param').id)),
 );
 
-supportRoutes.get('/:id/support/rooms/:roomId/actions', roomParam, noQuery, async (c) => {
-  const { id, roomId } = c.req.valid('param');
-  const actions = await supportActionsOf(c.get('userId'), id, roomId);
-  if (!actions) {
-    return refused(
-      c,
-      [
-        {
-          code: 'SUPPORT_ROOM_UNKNOWN',
-          path: '/roomId',
-          detail: `this project holds no support room ${roomId}`,
-        },
-      ],
-      'SUPPORT_REFUSED',
-    );
-  }
-  return c.json({ actions });
-});
+supportRoutes.get(
+  '/:id/support/rooms/:roomId/actions',
+  roomParam,
+  SUPPORT_READ,
+  noQuery,
+  async (c) => {
+    const { id, roomId } = c.req.valid('param');
+    const actions = await supportActionsOf(c.get('userId'), id, roomId);
+    if (!actions) {
+      return refused(
+        c,
+        [
+          {
+            code: 'SUPPORT_ROOM_UNKNOWN',
+            path: '/roomId',
+            detail: `this project holds no support room ${roomId}`,
+          },
+        ],
+        'SUPPORT_REFUSED',
+      );
+    }
+    return c.json({ actions });
+  },
+);

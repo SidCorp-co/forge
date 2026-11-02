@@ -13,7 +13,7 @@ import { inArray, sql } from 'drizzle-orm';
 import { sessionStatusesByIds } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { roomsOfProject } from './store.js';
 
 interface RoomFacts {
@@ -58,7 +58,7 @@ export function turnStateOf(sessionStatus: string | null, waiting: number): Supp
 
 /** Every support room of the project with its turn, oldest room first. */
 export async function supportTurnsOf(viewer: string, projectId: string): Promise<SupportTurnsView> {
-  await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.read');
   const rooms = await roomsOfProject(projectId);
   const [statusOf, factsOf] = await Promise.all([
     sessionStatusesByIds(rooms.flatMap((r) => (r.sessionId ? [r.sessionId] : []))),

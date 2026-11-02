@@ -14,7 +14,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { liveMasterSessions } from '../masters/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { privateRefusal } from './channel.js';
 import {
   answeredOutside,
@@ -103,7 +103,7 @@ export async function agentRolesOf(
   projectId: string,
   role?: string,
 ): Promise<AgentRoleView[]> {
-  await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.read');
   const masters: AgentRoleView[] = (await liveMasterSessions(projectId)).map((m) => ({
     kind: 'master',
     role: 'master',
@@ -135,7 +135,7 @@ export async function declareOutsideAgent(
   rid: string,
   write: ChannelAgentWrite,
 ): Promise<Outcome<AgentRoleView>> {
-  await requireCan(actorFor(viewer), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.write');
   for (const [field, text] of Object.entries(write)) {
     const refused = privateRefusal<AgentRoleView>(`/${field}`, text);
     if (refused) return refused;

@@ -11,7 +11,7 @@ import {
 import { sessionStatusesByIds } from '../agent-sessions/index.js';
 import { externalItemPhases } from '../feedback/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
 import { answersOfConfig, readersOfConfig, supportConfigOf } from './grants.js';
 import { roomHealth } from './health.js';
@@ -25,7 +25,7 @@ export async function supportRoomsOf(
   viewer: string,
   projectId: string,
 ): Promise<SupportRoomView[]> {
-  await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.read');
   const rooms = await roomsOfProject(projectId);
   if (rooms.length === 0) return [];
   const statusOf = await sessionStatusesByIds(
@@ -106,7 +106,7 @@ export async function supportActionsOf(
   projectId: string,
   roomId: string,
 ): Promise<SupportActionView[] | null> {
-  await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.read');
   const room = await roomById(roomId);
   if (!room || room.projectId !== projectId) return null;
   const rows = await actionsOfRoom(room.id, ACTIONS_SHOWN);

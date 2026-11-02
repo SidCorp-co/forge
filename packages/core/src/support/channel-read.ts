@@ -16,7 +16,7 @@ import {
 import { externalItemPhases } from '../feedback/index.js';
 import { userNames } from '../lib/people.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { channelAgentOf } from './agent-roles.js';
 import {
   boundRidsOf,
@@ -51,7 +51,7 @@ const routesOf = (members: readonly MemberRow[]): ChannelRouteView[] =>
 
 /** The project's bound channels, oldest binding first. */
 export async function channelsOf(viewer: string, projectId: string): Promise<ChannelSummaryView[]> {
-  await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.read');
   const out: ChannelSummaryView[] = [];
   for (const rid of await boundRidsOf(projectId)) {
     const channel = await channelOf(projectId, rid);
@@ -78,7 +78,7 @@ export async function channelViewOf(
   projectId: string,
   rid: string,
 ): Promise<ChannelView | null> {
-  await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.read');
   if (!(await channelIsBound(projectId, rid))) return null;
   const channel = await channelOf(projectId, rid);
   const record = channel ? await recordOf(projectId, channel) : EMPTY;

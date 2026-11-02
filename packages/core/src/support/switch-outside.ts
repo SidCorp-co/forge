@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import { supportChannelSwitches } from '../db/schema-support.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import { resolveRoomPostAuth } from '../integrations/rocketchat/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { privateRefusal } from './channel.js';
 import { no, type Outcome } from './outcome.js';
 import { done, switchOf, unknownSwitch, viewOf } from './switch-view.js';
@@ -25,7 +25,7 @@ export async function recordOutsideStopped(
   rid: string,
   note: string,
 ): Promise<Outcome<ChannelSwitchView>> {
-  await requireCan(actorFor(viewer), 'project.admin', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.admin');
   const refused = privateRefusal<ChannelSwitchView>('/note', note);
   if (refused) return refused;
   const row = await switchOf(projectId, rid);

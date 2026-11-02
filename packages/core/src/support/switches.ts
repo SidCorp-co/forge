@@ -22,7 +22,7 @@ import {
   kickFromGroup,
   resolveRoomPostAuth,
 } from '../integrations/rocketchat/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan, requireDeclaredOn } from '../permissions/index.js';
 import type { ApiRefusal } from '../project-config/index.js';
 import { planBinding, readBinding, writeBinding } from '../project-config/index.js';
 import { privateRefusal } from './channel.js';
@@ -51,7 +51,7 @@ export async function readSwitch(
   projectId: string,
   rid: string,
 ): Promise<Outcome<ChannelSwitchView>> {
-  await requireCan(actorFor(viewer), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.read');
   const row = await switchOf(projectId, rid);
   return row ? { ok: true, value: await viewOf(row) } : unknownSwitch(rid);
 }
@@ -67,7 +67,7 @@ export async function planSwitch(
   rid: string,
   plan: ChannelSwitchPlan,
 ): Promise<Outcome<ChannelSwitchView>> {
-  await requireCan(actorFor(viewer), 'project.admin', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.admin');
   for (const [i, d] of plan.duties.entries()) {
     const refused = privateRefusal<ChannelSwitchView>(`/duties/${i}/text`, d.text);
     if (refused) return refused;
@@ -144,7 +144,7 @@ export async function passDuty(
   key: string,
   evidence: string,
 ): Promise<Outcome<ChannelSwitchView>> {
-  await requireCan(actorFor(viewer), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.write');
   const refused = privateRefusal<ChannelSwitchView>('/evidence', evidence);
   if (refused) return refused;
   const row = await switchOf(projectId, rid);
@@ -179,7 +179,7 @@ export async function giveOwnerWord(
   rid: string,
   words: string,
 ): Promise<Outcome<ChannelSwitchView>> {
-  await requireCan(actorFor(viewer), 'project.admin', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.admin');
   const row = await switchOf(projectId, rid);
   if (!row) return unknownSwitch(rid);
   if (row.switchedAt) return done(row);
@@ -206,7 +206,7 @@ export async function markProven(
   rid: string,
   note: string,
 ): Promise<Outcome<ChannelSwitchView>> {
-  await requireCan(actorFor(viewer), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.write');
   const row = await switchOf(projectId, rid);
   if (!row) return unknownSwitch(rid);
   if (!row.switchedAt) {
@@ -262,7 +262,7 @@ export async function applySwitch(
   projectId: string,
   rid: string,
 ): Promise<ApplyOutcome> {
-  await requireCan(actorFor(viewer), 'project.admin', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer, 'project.admin');
   const held = await switchOf(projectId, rid);
   if (!held) return unknownSwitch(rid);
   if (held.switchedAt) return done(held);
