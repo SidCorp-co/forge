@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.433] - 2026-11-02
+
+A project rule can ask its owner; no-production drafts are approved by version
+
+### Added
+
+- **A project's own rule can ask its owner.** An agent may ask a person for an act the rule names. A release with no production is approved as a draft, by version; the agent is not listed.
+
 ## [0.4.0-dev.432] - 2026-11-02
 
 Requirement coverage counts criteria a shipped issue earned at its landing
