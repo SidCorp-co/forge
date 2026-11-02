@@ -1,7 +1,7 @@
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
+import { holds, requireDeclaredOn } from '../permissions/index.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { stepsStale } from './builder-run-rules.js';
 import { type LinkImpact, linkImpact } from './contract/impact.js';
@@ -86,13 +86,13 @@ export async function readLinkAs(userId: string, projectId: string, linkId: stri
 }
 
 export async function listLinksAs(userId: string, projectId: string) {
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, userId, 'project.read');
   const rows = await linksWhere(db, { consumerId: projectId });
   return rows.map((row) => recordView({ row, document: storedLink(row) }));
 }
 
 export async function readBuilderRunAs(userId: string, projectId: string, runId: string) {
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, userId, 'project.read');
   const row = await readBuilderRun(db, runId);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no builder run ${runId}`);
@@ -101,7 +101,7 @@ export async function readBuilderRunAs(userId: string, projectId: string, runId:
 }
 
 export async function listBuilderRunsAs(userId: string, projectId: string) {
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, userId, 'project.read');
   const rows = await builderRunsOf(db, projectId);
   return rows.map((row) => recordView({ row, document: storedBuilderRun(row) }));
 }

@@ -4,6 +4,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
 import {
   listBuilderRunsAs,
@@ -53,6 +54,8 @@ const runParam = zValidator(
 
 const envelope = zValidator('json', z.unknown());
 
+const READ = requiresOnParam('project.read', 'id');
+
 function writerOf(c: Context<{ Variables: AuthVars }>): RecordWriter {
   const agency = c.get('agency');
   if (!agency) throw new Error('ecosystem: a link write reached its handler without an auth gate');
@@ -73,7 +76,7 @@ linkProjectRoutes.post('/:id/links', idParam, envelope, async (c) => {
   );
 });
 
-linkProjectRoutes.get('/:id/links', idParam, noQuery, async (c) => {
+linkProjectRoutes.get('/:id/links', idParam, READ, noQuery, async (c) => {
   const links = await listLinksAs(c.get('userId'), c.req.valid('param').id);
   return c.json({ links, returned: links.length });
 });
@@ -108,12 +111,12 @@ linkProjectRoutes.post('/:id/builder-runs', idParam, envelope, async (c) => {
   );
 });
 
-linkProjectRoutes.get('/:id/builder-runs', idParam, noQuery, async (c) => {
+linkProjectRoutes.get('/:id/builder-runs', idParam, READ, noQuery, async (c) => {
   const runs = await listBuilderRunsAs(c.get('userId'), c.req.valid('param').id);
   return c.json({ runs, returned: runs.length });
 });
 
-linkProjectRoutes.get('/:id/builder-runs/:run', runParam, noQuery, async (c) => {
+linkProjectRoutes.get('/:id/builder-runs/:run', runParam, READ, noQuery, async (c) => {
   const { id, run } = c.req.valid('param');
   return c.json(await readBuilderRunAs(c.get('userId'), id, run));
 });
