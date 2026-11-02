@@ -143,10 +143,14 @@ releaseVersionRoutes.post(
   async (c) => {
     const { projectId, version } = c.req.valid('param');
     const { reason, evidence } = c.req.valid('json');
-    return c.json(
-      await repairRelease({ projectId, version, userId: c.get('userId'), reason, evidence }),
-      201,
-    );
+    const done = await repairRelease({
+      projectId,
+      version,
+      userId: c.get('userId'),
+      reason,
+      evidence,
+    });
+    return c.json(done, done.repeated ? 200 : 201);
   },
 );
 

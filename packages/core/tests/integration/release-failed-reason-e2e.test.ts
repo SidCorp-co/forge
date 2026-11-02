@@ -9,6 +9,7 @@
  *
  * @direct-test-of packages/core/src/pipeline/runs-cascade.ts
  * @direct-test-of packages/core/src/release-batch/release-repair.ts
+ * @direct-test-of packages/core/src/release-batch/repaired-roster.ts
  * @direct-test-of packages/core/src/release-batch/release-cuts.ts
  * @direct-test-of packages/core/src/release-batch/recorded.ts
  * @direct-test-of packages/core/src/pipeline/release-run-cancel.ts
@@ -52,6 +53,7 @@ type Cut = {
   abortReason: string | null;
   failure: { code: string; detail: string; step: string | null } | null;
   repair: {
+    at?: string;
     outcome: string;
     by: { id: string } | null;
     reason: string;
@@ -175,8 +177,76 @@ describe('a recorded release one of whose issues will not close (catalog-api 0.4
     );
     expect(await runStatus(runId)).toBe('failed');
 
+    // asked again, a repaired release writes no second repair: it settles what its roster owes
     const again = await repair(sent);
-    expect(refusalsOf(again.body)[0]?.code).toBe('RELEASE_REPAIR_NOT_FAILED');
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(again.body).toMatchObject({ repeated: true, repair: { at: cut.repair?.at } });
+  });
+
+  // catalog-api ISS-34 (2026-11-02, on 5a9717d69): 0.4.0 repaired to shipped read landed, while its
+  // roster issue stayed at awaiting_release reading shippedIn 0.4.0, a close refused
+  // CLOSE_ONLY_BY_RELEASE. The repair settles its roster as its finish would have.
+  const SENT = {
+    outcome: 'shipped',
+    reason: 'It landed on release/production and the deploy was healthy.',
+    evidence: 'release_attempts verify ok on run; deploy healthy',
+  };
+  const repaired = () =>
+    api(world.token, 'POST', `/api/projects/${world.projectId}/releases/0.4.0/repair`, SENT);
+  const issueRead = async (id: string) =>
+    (await api(world.token, 'GET', `/api/issues/${id}`)).body as {
+      status: string;
+      shippedIn: { version: string } | null;
+    };
+  const closeByHand = (id: string) =>
+    api(world.token, 'POST', `/api/issues/${id}/transition`, {
+      toStatus: 'closed',
+      reason: 'it shipped in 0.4.0',
+    });
+
+  it('closes its roster issue into the repaired release, as the finish would have', async () => {
+    const { stuck } = await failedRecord();
+    // what would not close is cleared, as catalog-api's was by the time it was repaired
+    await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${PLANTED} ON issues`));
+    expect((await issueRead(stuck)).status).toBe('awaiting_release');
+    const closed = await closeByHand(stuck);
+    expect(refusalsOf(closed.body)[0]?.code).toBe('CLOSE_ONLY_BY_RELEASE');
+
+    const done = await repaired();
+    expect(done.status, JSON.stringify(done.body)).toBe(201);
+    expect(done.body.roster).toEqual({ closed: [stuck], heldForAgent: [] });
+    expect(await issueRead(stuck)).toMatchObject({
+      status: 'closed',
+      shippedIn: { version: '0.4.0' },
+    });
+  });
+
+  it('holds what it cannot close for its agent, named, and the same repair asked again closes it', async () => {
+    const { stuck } = await failedRecord();
+    const done = await repaired();
+    expect(done.status, JSON.stringify(done.body)).toBe(201);
+    const roster = done.body.roster as {
+      closed: string[];
+      heldForAgent: Array<{ issueId: string }>;
+    };
+    expect(roster.closed).toEqual([]);
+    expect(roster.heldForAgent).toEqual([expect.objectContaining({ issueId: stuck })]);
+    expect((await issueRead(stuck)).status).toBe('awaiting_release');
+
+    // ISS-34's shape: the release reads shipped, the issue waits. The same repair, asked again,
+    // settles what the roster still owes and writes no second repair nor a second release record
+    await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${PLANTED} ON issues`));
+    const again = await repaired();
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(again.body).toMatchObject({
+      repeated: true,
+      roster: { closed: [stuck], heldForAgent: [] },
+    });
+    expect((again.body.repair as { at: string }).at).toBe((done.body.repair as { at: string }).at);
+    expect(await issueRead(stuck)).toMatchObject({
+      status: 'closed',
+      shippedIn: { version: '0.4.0' },
+    });
   });
 });
 

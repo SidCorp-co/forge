@@ -176,7 +176,7 @@ function checkClause(releases: readonly NamedRelease[], commit: MarkedCommit | n
     : `which release holds its landing (${named} may)`;
 }
 
-const RECORD_IT =
+export const RECORD_IT =
   'record it: POST /api/projects/:id/shipped-in-records { issueId, version, evidence }, with ' +
   '`version: null` where none holds it.';
 

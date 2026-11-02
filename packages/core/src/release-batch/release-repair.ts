@@ -11,6 +11,7 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { releaseRunsByVersion, stampReleaseShipped, writeRunMetadata } from '../pipeline/index.js';
 import { refuseRelease } from './refuse.js';
+import { type RepairedRoster, settleRepairedRoster } from './repaired-roster.js';
 import { versionStatus } from './versions.js';
 
 /** The repair a run keeps (`metadata.repair`), as written. */
@@ -76,11 +77,18 @@ export interface RepairReleaseArgs {
 /**
  * Record that a release which reads `failed` shipped: its ship stamped, and the repair written beside
  * the failure it settles, in one unit. Refused by name for a version no release wears, and for one
- * that does not read `failed` — shipped already, aborted by a person, or still open.
+ * that does not read `failed` — shipped already, aborted by a person, or still open. Shipped, it
+ * settles its roster (`repaired-roster.ts`); a release repaired before, asked again, only settles
+ * what its roster still owes (ISS-900, catalog-api ISS-34).
  */
-export async function repairRelease(
-  args: RepairReleaseArgs,
-): Promise<{ runId: string; version: string; repair: ReleaseRepairRecord }> {
+export async function repairRelease(args: RepairReleaseArgs): Promise<{
+  runId: string;
+  version: string;
+  repair: ReleaseRepairRecord;
+  roster: RepairedRoster;
+  /** True where the release was repaired before: this call only settled its roster again. */
+  repeated: boolean;
+}> {
   const { projectId, version, userId, reason, evidence } = args;
   const [run] = await releaseRunsByVersion(projectId, version);
   if (!run) {
@@ -91,6 +99,18 @@ export async function repairRelease(
     );
   }
   const state = versionStatus(run, null);
+  const rosterOf = () => {
+    const ids = ((run.metadata ?? {}) as { issueIds?: unknown }).issueIds;
+    const roster = (Array.isArray(ids) ? ids : []).filter(
+      (id): id is string => typeof id === 'string',
+    );
+    return settleRepairedRoster({ projectId, runId: run.id, roster, userId, evidence });
+  };
+  // a repaired release asked again settles what its roster still owes, writing no second repair
+  const prior = readReleaseRepair(run.metadata);
+  if (state === 'shipped' && prior) {
+    return { runId: run.id, version, repair: prior, roster: await rosterOf(), repeated: true };
+  }
   if (state !== 'failed') {
     throw refuseRelease(
       'RELEASE_REPAIR_NOT_FAILED',
@@ -130,5 +150,6 @@ export async function repairRelease(
       '/version',
     );
   }
-  return { runId: run.id, version, repair: record };
+  // shipped now, it settles its roster as its finish would have (`repaired-roster.ts`)
+  return { runId: run.id, version, repair: record, roster: await rosterOf(), repeated: false };
 }
