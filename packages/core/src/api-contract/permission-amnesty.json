@@ -79,8 +79,6 @@
     "GET /api/projects/:id/report-runs/:runId",
     "GET /api/projects/:id/report-templates",
     "GET /api/projects/:id/rooms",
-    "GET /api/projects/:id/runs/standing",
-    "GET /api/projects/:id/runs/standing/:runId",
     "GET /api/projects/:id/workflow-templates/:templateId/:version",
     "GET /api/questions",
     "GET /api/questions/:id",
