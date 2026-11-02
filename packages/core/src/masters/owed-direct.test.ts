@@ -60,22 +60,33 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     expect(direct.nudge).not.toContain('land it on the base branch');
     for (const said of [
       'Dispatch no runner role',
-      'general-purpose subagent',
-      "land it through the project's own landing route once it builds and its own tests pass",
+      'general-purpose subagents on disjoint files',
+      'build the batch yourself',
+      "Land through the project's own landing route once the batch builds and its own tests pass",
       'an MR where the project lands by change request',
       'a push to the base branch only where it lands by push',
-      'mark it merged at the landing sha',
-      'move it to `awaiting_release`',
-      'comment what shipped',
+      '`awaiting_release` without a recorded merge (`forge-runner api issues/<id>/merge -X POST` at the landing sha)',
       'only once you have checked it live, after landing',
-      'a legal edge or without its reason',
-      '`awaiting_release` without a recorded merge',
+      'a move off a legal edge or without its reason',
       "anyone but the issue's holder",
       'a close by anything but a release',
       '1 feedback item owes a triage (FB-1)',
     ]) {
       expect(direct.nudge).toContain(said);
     }
+  });
+
+  // ISS-861 (owner, 2026-11-01): a pass is told its goal and the kernel, never asked to account
+  // for every row it did not take, nor walked through a per-issue claim-land-mark-move recipe.
+  it('asks no why-not report and carries no per-issue recipe, in either mode', () => {
+    for (const nudge of [direct.nudge, dispatch.nudge]) {
+      expect(nudge).not.toContain('why you did not');
+      expect(nudge).not.toContain('did not dispatch the rest');
+      expect(nudge).not.toContain('did not take the rest');
+    }
+    expect(direct.nudge).not.toContain('build each issue you take yourself');
+    expect(direct.nudge).not.toContain('record in one go');
+    expect(direct.nudge).not.toContain('comment what shipped');
   });
 
   it('briefs a new pane the same, and leaves every other project as it was', () => {
