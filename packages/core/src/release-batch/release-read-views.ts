@@ -47,7 +47,6 @@ import {
   turnOf,
   type ViewerFacts,
 } from './release-view.js';
-import type { CorrectionEntry } from './shipped-in-correct.js';
 
 const NOBODY = nobodyWaits(say('releases.rule.issueShipped'));
 const CHANGELOG_SECTIONS = releaseNotesSections.filter((s) => s !== 'Skip');
@@ -84,8 +83,6 @@ export interface Part {
   tag: ReleaseTag | null;
   /** A listed approver's standing decision on the draft, by its version (`draft-approval.ts`); null elsewhere. */
   draftApproval: ReleaseDraftApprovalView | null;
-  /** The shipped-in corrections it keeps (`shipped-in-correct.ts`, ISS-846); none on a draft. */
-  corrections: CorrectionEntry[];
 }
 
 export interface Shared {

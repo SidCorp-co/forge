@@ -48,7 +48,7 @@ import {
 } from './release-read-views.js';
 import { releaseTagOf } from './release-tag-record.js';
 import type { ViewerFacts } from './release-view.js';
-import { correctionsIn, correctionViews } from './shipped-in-correct.js';
+import { type CorrectionEntry, correctionsIn, correctionViews } from './shipped-in-correct.js';
 import { parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
 import type { LineageRun } from './version-rule.js';
 import { currentReleaseVersion, decideRosterVersion, readLineage } from './version-store.js';
@@ -102,7 +102,6 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       unapproved: null,
       tag: null,
       draftApproval,
-      corrections: [],
     },
   };
 }
@@ -150,13 +149,16 @@ function finishedCommit(metadata: unknown): string | null {
   return finish?.state === 'finished' ? finish.commit : null;
 }
 
+/** A cut release's part, with the shipped-in corrections its run keeps (ISS-846). */
+type RunPart = Part & { corrections: CorrectionEntry[] };
+
 function runPart(
   run: ReleaseRunRow,
   attempts: ReleaseAttemptRow[],
   approvals: ApprovalView[],
   required: boolean,
   deploysFrom: string | null,
-): Part {
+): RunPart {
   return {
     version: run.version,
     runId: run.id,
@@ -403,7 +405,8 @@ export async function readRelease(
     part.state === 'draft'
       ? await draftPromotionViewOf(projectId, part.issueIds, keyOf)
       : await promotionViewOf(part.runId, keyOf);
-  const corrections = await correctionViews(projectId, part.corrections);
+  // a draft keeps none; a cut release the corrections its own run keeps
+  const corrections = await correctionViews(projectId, part === run ? run.corrections : []);
   return {
     ...detailOf(
       part,
