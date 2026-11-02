@@ -140,42 +140,53 @@ const SHAPES = {
   gitCredential: '{ host, path }',
 } as const;
 
+/** What every session act declares: its door admits the room's own session, never a permission. */
+const SESSION_ONLY = requiresNoPermission(
+  "only the room's own session, under its current turn's token, is admitted (support/access.ts)",
+);
+
 supportRoutes.post(
   '/:id/support/session/search',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportSearchRequestSchema, SHAPES.search),
   (c) => act(c, c.req.valid('param').id, { action: 'search', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/thread',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportThreadRequestSchema, SHAPES.thread),
   (c) => act(c, c.req.valid('param').id, { action: 'thread', ...c.req.valid('json') }),
 );
-supportRoutes.get('/:id/support/session/tools', projectParam, noQuery, (c) =>
+supportRoutes.get('/:id/support/session/tools', projectParam, SESSION_ONLY, noQuery, (c) =>
   act(c, c.req.valid('param').id, { action: 'tools' }),
 );
 supportRoutes.post(
   '/:id/support/session/replies',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportReplyRequestSchema, SHAPES.reply),
   (c) => act(c, c.req.valid('param').id, { action: 'reply', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/checks',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportRunRequestSchema, SHAPES.run),
   (c) => act(c, c.req.valid('param').id, { action: 'run', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/fixes',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportProposeFixRequestSchema, SHAPES.fix),
   (c) => act(c, c.req.valid('param').id, { action: 'propose_fix', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/records',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportRecordRequestSchema, SHAPES.record),
   (c) => act(c, c.req.valid('param').id, { action: 'record', ...c.req.valid('json') }),
 );
@@ -183,6 +194,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/agreements',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportAgreeRequestSchema, SHAPES.agree),
   (c) => act(c, c.req.valid('param').id, { action: 'agree', ...c.req.valid('json') }),
 );
@@ -190,6 +202,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/links',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportLinkRequestSchema, SHAPES.link),
   (c) => act(c, c.req.valid('param').id, { action: 'link', ...c.req.valid('json') }),
 );
@@ -198,18 +211,21 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/issue-moves',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportMoveIssueRequestSchema, SHAPES.moveIssue),
   (c) => act(c, c.req.valid('param').id, { action: 'move_issue', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/builds',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportBuildRequestSchema, SHAPES.build),
   (c) => act(c, c.req.valid('param').id, { action: 'build', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/deploys',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportDeployRequestSchema, SHAPES.deploy),
   (c) => act(c, c.req.valid('param').id, { action: 'deploy', ...c.req.valid('json') }),
 );
@@ -217,6 +233,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/deployments',
   projectParam,
+  SESSION_ONLY,
   ridQuery,
   strictBody(supportDeploymentRequestSchema, SHAPES.deployment),
   (c) =>
@@ -230,6 +247,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/commands',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportCommandRequestSchema, SHAPES.command),
   (c) => act(c, c.req.valid('param').id, { action: 'command', ...c.req.valid('json') }),
 );
@@ -254,88 +272,106 @@ supportRoutes.post(
 // an operations room's acts (REQ-75 BC-20..BC-24): read the scope, move delivery, draft direction, research;
 // a channel agent reads its own project through the same reads (ISS-844)
 // the project document, read by a channel agent (ISS-775)
-supportRoutes.get('/:id/support/session/project', projectParam, ridProjectQuery, (c) => {
-  const { rid, project } = c.req.valid('query');
-  return act(c, c.req.valid('param').id, { action: 'project', project }, rid);
-});
-supportRoutes.get('/:id/support/session/projects', projectParam, noQuery, (c) =>
+supportRoutes.get(
+  '/:id/support/session/project',
+  projectParam,
+  SESSION_ONLY,
+  ridProjectQuery,
+  (c) => {
+    const { rid, project } = c.req.valid('query');
+    return act(c, c.req.valid('param').id, { action: 'project', project }, rid);
+  },
+);
+supportRoutes.get('/:id/support/session/projects', projectParam, SESSION_ONLY, noQuery, (c) =>
   act(c, c.req.valid('param').id, { action: 'projects' }),
 );
 supportRoutes.post(
   '/:id/support/session/issues',
   projectParam,
+  SESSION_ONLY,
   strictBody(operationsIssuesRequestSchema, SHAPES.issues),
   (c) => act(c, c.req.valid('param').id, { action: 'issues', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/releases',
   projectParam,
+  SESSION_ONLY,
   strictBody(operationsReleasesRequestSchema, SHAPES.releases),
   (c) => act(c, c.req.valid('param').id, { action: 'releases', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/requirements',
   projectParam,
+  SESSION_ONLY,
   strictBody(operationsRequirementsRequestSchema, SHAPES.requirements),
   (c) => act(c, c.req.valid('param').id, { action: 'requirements', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/moves',
   projectParam,
+  SESSION_ONLY,
   strictBody(operationsMoveRequestSchema, SHAPES.move),
   (c) => act(c, c.req.valid('param').id, { action: 'move', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/requirement-drafts',
   projectParam,
+  SESSION_ONLY,
   strictBody(operationsDraftRequirementRequestSchema, SHAPES.requirementDraft),
   (c) => act(c, c.req.valid('param').id, { action: 'draft_requirement', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/feedback-drafts',
   projectParam,
+  SESSION_ONLY,
   strictBody(operationsDraftFeedbackRequestSchema, SHAPES.feedbackDraft),
   (c) => act(c, c.req.valid('param').id, { action: 'draft_feedback', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/research',
   projectParam,
+  SESSION_ONLY,
   strictBody(operationsResearchRequestSchema, SHAPES.research),
   (c) => act(c, c.req.valid('param').id, { action: 'research', ...c.req.valid('json') }),
 );
 
 // a bound channel's record (REQ-75 r6 BC-30..BC-41), as the session writes it
-supportRoutes.get('/:id/support/session/channel', projectParam, ridQuery, (c) => {
+supportRoutes.get('/:id/support/session/channel', projectParam, SESSION_ONLY, ridQuery, (c) => {
   const query = c.req.valid('query');
   return act(c, c.req.valid('param').id, { action: 'channel' }, query.rid);
 });
 supportRoutes.post(
   '/:id/support/session/members',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportMemberRequestSchema, SHAPES.member),
   (c) => act(c, c.req.valid('param').id, { action: 'member', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/rules',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportRuleRequestSchema, SHAPES.rule),
   (c) => act(c, c.req.valid('param').id, { action: 'rule', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/common-issues',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportCommonIssueRequestSchema, SHAPES.commonIssue),
   (c) => act(c, c.req.valid('param').id, { action: 'common_issue', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/routes',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportRouteRequestSchema, SHAPES.route),
   (c) => act(c, c.req.valid('param').id, { action: 'route', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/announcements',
   projectParam,
+  SESSION_ONLY,
   ridQuery,
   strictBody(supportAnnounceRequestSchema, SHAPES.announce),
   (c) => {
@@ -352,6 +388,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/owner-questions',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportAskOwnerRequestSchema, SHAPES.askOwner),
   (c) => act(c, c.req.valid('param').id, { action: 'ask_owner', ...c.req.valid('json') }),
 );
@@ -370,6 +407,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/check-results',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportCheckResultRequestSchema, SHAPES.checkResult),
   (c) => act(c, c.req.valid('param').id, { action: 'check_result', ...c.req.valid('json') }),
 );
@@ -378,6 +416,7 @@ supportRoutes.post(
 supportRoutes.post(
   '/:id/support/session/git-credential',
   projectParam,
+  SESSION_ONLY,
   strictBody(supportGitCredentialRequestSchema, SHAPES.gitCredential),
   async (c) => {
     const projectId = c.req.valid('param').id;
