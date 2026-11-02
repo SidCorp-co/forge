@@ -3,17 +3,18 @@ import { clarificationRefusal } from './rules.js';
 import { reproductionRefusal } from './triage-checklist.js';
 import { agentEvidenceRefusal } from './verb-rules.js';
 
-// REQ-66 BC-4: one question at a time to a reporter, whichever of their items it is about
-describe('a clarification is one at a time per reporter', () => {
-  it('refuses while another of the reporter’s items holds an open question, naming it', () => {
-    const refused = clarificationRefusal('new', null, { question: 'q-7', item: 'FB-12' });
-    expect(refused).toMatchObject({ code: 'FEEDBACK_CLARIFICATION_ALREADY_OPEN' });
-    expect(refused?.detail).toContain('q-7 on FB-12');
+// REQ-66 r3 BC-4 (ISS-904): the agent asks the reporter the questions it needs; only a routed item
+// is past asking
+describe('a clarification is refused by the item’s phase, never by a count', () => {
+  it('asks on an untriaged item, whatever is already open', () => {
+    expect(clarificationRefusal('new')).toBeNull();
+    expect(clarificationRefusal('reopened')).toBeNull();
   });
 
-  it('asks where nothing is open to the reporter', () => {
-    expect(clarificationRefusal('new', null, null)).toBeNull();
-    expect(clarificationRefusal('reopened', null)).toBeNull();
+  it('refuses once the item is routed, naming why', () => {
+    expect(clarificationRefusal('triaged')).toMatchObject({
+      code: 'FEEDBACK_CLARIFICATION_CLOSED',
+    });
   });
 });
 

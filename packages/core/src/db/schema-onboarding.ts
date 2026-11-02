@@ -1,4 +1,4 @@
-import { QUESTIONNAIRE_MAX_ROUNDS, QUESTIONNAIRE_STATUSES } from '@forge/contracts/onboarding';
+import { QUESTIONNAIRE_STATUSES } from '@forge/contracts/onboarding';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -59,10 +59,7 @@ export const onboardings = pgTable(
   (t) => ({
     projectUq: uniqueIndex('onboardings_project_uq').on(t.projectId),
     conversationUq: uniqueIndex('onboardings_conversation_uq').on(t.conversationId),
-    roundsChk: check(
-      'onboardings_rounds_chk',
-      sql`${t.roundsSent} BETWEEN 0 AND ${sql.raw(String(QUESTIONNAIRE_MAX_ROUNDS))}`,
-    ),
+    roundsChk: check('onboardings_rounds_chk', sql`${t.roundsSent} >= 0`),
     doneChk: check('onboardings_done_chk', sql`(${t.doneAt} IS NULL) = (${t.doneBy} IS NULL)`),
     doneAgencyChk: check(
       'onboardings_done_agency_chk',
@@ -128,10 +125,7 @@ export const questionnaireBatches = pgTable(
       'questionnaire_batches_status_chk',
       sql`${t.status} IN (${inList(QUESTIONNAIRE_STATUSES)})`,
     ),
-    roundChk: check(
-      'questionnaire_batches_round_chk',
-      sql`${t.round} BETWEEN 1 AND ${sql.raw(String(QUESTIONNAIRE_MAX_ROUNDS))}`,
-    ),
+    roundChk: check('questionnaire_batches_round_chk', sql`${t.round} >= 1`),
     postedAgencyChk: check(
       'questionnaire_batches_posted_agency_chk',
       sql`${t.postedAgency} IN (${inList(actorAgencies)})`,

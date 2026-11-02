@@ -34,13 +34,6 @@ const item = (fb: string, act = '') => at(`/feedback/${fb}${act ? `/${act}` : ''
 const progress = async (fb: string): Promise<Doc> =>
   ok(await say('member', 'GET', at(`/forecast/feedback/${fb}`)));
 
-function refusal(r: Reply): Doc {
-  expect(r.status, JSON.stringify(r.json)).toBeGreaterThanOrEqual(400);
-  const [first] = r.json.error?.refusals ?? [];
-  expect(first, JSON.stringify(r.json)).toBeDefined();
-  return first;
-}
-
 async function file(title: string, by: Who = 'member'): Promise<string> {
   const made = ok(
     await say(by, 'POST', at('/feedback'), { kind: 'bug', title, screen: 'The board' }),
@@ -160,7 +153,7 @@ describe('a feedback item always says whether work runs and when it is done', ()
 });
 
 describe('a clarification is asked where the route takes one', () => {
-  it('offers it on a new item, takes one, and then refuses a second while it is open', async () => {
+  it('offers it on a new item, takes one, and takes a second beside it (ISS-904)', async () => {
     const fb = await file('The board scrolls by itself');
     expect(ok(await say('member', 'GET', item(fb))).feedback.can.clarify).toBe(true);
     const asked = ok(
@@ -174,19 +167,21 @@ describe('a clarification is asked where the route takes one', () => {
       status: 'open',
       prompt: 'Which browser shows it?',
     });
-    expect(asked.feedback.can.clarify).toBe(false);
-    const again = refusal(
+    expect(asked.feedback.can.clarify).toBe(true);
+    const again = ok(
       await say('member', 'POST', item(fb, 'clarification'), {
         prompt: 'And which device?',
         needed: 'The device',
         recommended: 'The default answer',
       }),
     );
-    expect(again.code).toBe('FEEDBACK_CLARIFICATION_ALREADY_OPEN');
+    expect(again.feedback.clarification).toMatchObject({
+      status: 'open',
+      prompt: 'And which device?',
+    });
   });
 
   it('reads every question about the item on the item, open and then answered, and no other item’s', async () => {
-    // one question at a time per reporter (REQ-66 BC-4): each item is a reporter's with none open
     const fb = await file('The board loses its filter', 'owner');
     const other = await file('The board forgets its sort', 'reporter');
     const asked = ok(

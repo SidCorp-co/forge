@@ -121,8 +121,6 @@ export function canOf(i: {
   phase: FeedbackPhase;
   userId: string;
   canSeeNotes: boolean;
-  /** A clarification on the item is still open: at most one is (`rules.ts:clarificationRefusal`). */
-  clarificationOpen: boolean;
 }): Omit<FeedbackView['can'], 'tellShipped'> {
   const { facts, row, phase } = i;
   const approver = holds(facts, 'feedback.approve');
@@ -145,7 +143,7 @@ export function canOf(i: {
     clarify:
       holds(facts, 'project.write') &&
       redactedRefusal(row.redactedAt) === null &&
-      clarificationRefusal(phase, i.clarificationOpen ? 'open' : null) === null,
+      clarificationRefusal(phase) === null,
   };
 }
 
@@ -378,7 +376,6 @@ export async function detailAs(
           phase,
           userId: viewer.userId,
           canSeeNotes,
-          clarificationOpen: q?.status === 'open',
         }),
         tellShipped:
           approver &&

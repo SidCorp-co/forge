@@ -292,6 +292,7 @@ describe('project_feedback over /mcp', () => {
     ).feedback as Body;
     expect(asked.clarification).toMatchObject({ status: 'open' });
 
+    // REQ-66 r3 BC-4 (ISS-904): a second question beside the open one is asked, not refused
     const again = await call(token, 'project_feedback', {
       action: 'clarify',
       projectId: w.projectId,
@@ -300,8 +301,8 @@ describe('project_feedback over /mcp', () => {
       needed: 'the page',
       recommended: 'Chrome 130',
     });
-    expect(again.isError).toBe(true);
-    expect(again.text).toMatch(/FEEDBACK_CLARIFICATION_ALREADY_OPEN/);
+    expect(again.isError, again.text).toBe(false);
+    expect(again.text).not.toMatch(/FEEDBACK_CLARIFICATION_ALREADY_OPEN/);
   });
 
   it('refuses a submit naming no target, saying the shape', async () => {

@@ -264,10 +264,6 @@ export const agentQuestions = pgTable(
       'agent_questions_suggestion_shape_chk',
       sql`${t.suggestion} IS NULL OR (jsonb_typeof(${t.suggestion}) = 'object' AND ${t.suggestion} ->> 'outcome' IN ('suggested', 'failed') AND jsonb_typeof(${t.suggestion} -> 'round') = 'number')`,
     ),
-    // the BA assistant asks the reporter of a feedback item one clarification at a time
-    uniqueIndex('agent_questions_feedback_open_uq')
-      .on(t.feedbackId)
-      .where(sql`${t.status} = 'open' and ${t.feedbackId} is not null`),
     // a channel document waits at its gate on one open question, so two approvers cannot each publish a copy
     uniqueIndex('agent_questions_channel_gate_open_uq')
       .on(sql`(${t.origin} ->> 'documentId')`)

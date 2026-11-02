@@ -1,6 +1,6 @@
 /**
- * REQ-66 BC-4 and BC-8 (ISS-695): the agent asks a reporter one question at a time, with the answer it
- * recommends; and when the fix ships, a reporter that is an agent is asked to confirm it as a person
+ * REQ-66 BC-4 and BC-8 (ISS-695): the agent asks a reporter the questions it needs (no count since r3,
+ * ISS-904), each with the answer it recommends; and when the fix ships, a reporter that is an agent is asked to confirm it as a person
  * is, through its own read of the item, and confirms or reopens it with its evidence.
  *
  * Planted from forge-dev on 2026-10-25: FB-169, FB-175, FB-230, FB-264, FB-276 and FB-277, each filed
@@ -132,54 +132,26 @@ describe('a clarification carries the answer recommended, one at a time to each 
     );
   });
 
-  it('refuses a second question to the same reporter while one is open on another of their items', async () => {
+  // REQ-66 r3 BC-4 (ISS-904): no count holds the questions to one reporter
+  it('asks one reporter on two items, and twice on one, each open beside the others', async () => {
     const reporter = (await createTestUser({ verified: true })).id;
     await addProjectMember(w.projectId, reporter, 'member');
     const first = await filed(reporter);
     const second = await filed(reporter);
-    const asked = await ask(first, {
-      prompt: 'Which page were you on?',
-      needed: 'The page',
-      recommended: 'The board',
-    });
-    expect(asked.status, JSON.stringify(asked.body)).toBe(200);
-    const open = (asked.body.feedback as Body).clarification as Body;
-    const again = await ask(second, {
-      prompt: 'Which card was it?',
-      needed: 'The card',
-      recommended: 'The first card',
-    });
-    expect(again.status, JSON.stringify(again.body)).toBeGreaterThanOrEqual(400);
-    const refusal = refusalOf(again.body);
-    expect(refusal?.code).toBe('FEEDBACK_CLARIFICATION_ALREADY_OPEN');
-    expect(refusal?.detail).toContain(String(open.id));
-    expect(refusal?.detail).toContain(first);
-    expect((await detail(second)).clarification).toBeNull();
-
-    // another reporter is asked at once
-    const theirs = await filed(w.userId);
-    const other = await ask(theirs, {
-      prompt: 'Which card was it?',
-      needed: 'The card',
-      recommended: 'The first card',
-    });
-    expect(other.status, JSON.stringify(other.body)).toBe(200);
-
-    // answered, the reporter may be asked again
-    expect(
-      (
-        await api(await userToken(reporter), 'POST', `/api/questions/${String(open.id)}/answer`, {
-          round: 1,
-          text: 'The board',
-        })
-      ).status,
-    ).toBe(200);
-    const after = await ask(second, {
-      prompt: 'Which card was it?',
-      needed: 'The card',
-      recommended: 'The first card',
-    });
-    expect(after.status, JSON.stringify(after.body)).toBe(200);
+    for (const [ref, prompt] of [
+      [first, 'Which page were you on?'],
+      [second, 'Which card was it?'],
+      [first, 'And which browser?'],
+    ] as const) {
+      const asked = await ask(ref, { prompt, needed: 'The answer', recommended: 'The board' });
+      expect(asked.status, JSON.stringify(asked.body)).toBe(200);
+      expect((asked.body.feedback as Body).clarification).toMatchObject({ status: 'open', prompt });
+    }
+    const [open] = (await db.execute(sql`
+      SELECT count(*)::int AS n FROM agent_questions q JOIN feedback f ON f.id = q.feedback_id
+       WHERE f.project_id = ${w.projectId} AND f.reported_by = ${reporter} AND q.status = 'open'
+    `)) as unknown as { n: number }[];
+    expect(open?.n).toBe(3);
   });
 });
 

@@ -15,14 +15,13 @@ const row = {
 } as Row;
 const roles = ['admin', 'member', 'viewer'] as const;
 
-const can = (phase: FeedbackPhase, role: (typeof roles)[number], open = false) =>
+const can = (phase: FeedbackPhase, role: (typeof roles)[number]) =>
   canOf({
     facts: { projectId, role, grants: [] },
     row,
     phase,
     userId: VIEWER,
     canSeeNotes: false,
-    clarificationOpen: open,
   });
 
 describe('a feedback item offers triage or the loop close, never both', () => {
@@ -47,13 +46,9 @@ describe('a feedback item offers triage or the loop close, never both', () => {
 
 // the clarification form is offered exactly where `POST …/clarification` takes a send
 describe('a clarification is offered where the route takes one', () => {
-  it('offers a writer the clarification on an untriaged item with none open', () => {
+  it('offers a writer the clarification on an untriaged item, one open or not (ISS-904)', () => {
     expect(can('new', 'member').clarify).toBe(true);
     expect(can('reopened', 'member').clarify).toBe(true);
-  });
-
-  it('refuses it once one is open, at the one-open boundary', () => {
-    expect(can('new', 'member', true).clarify).toBe(false);
   });
 
   it('refuses it once the item is routed, and to a reader who may not write', () => {

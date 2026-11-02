@@ -7,7 +7,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
   title: 'Feedback: filing, triage, resolution and verification',
   summary:
     'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, how an agent proposes a route a holder of feedback.approve accepts, the one clarification question, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
-  version: 1,
+  version: 2,
   body: `## Feedback: filing, triage, resolution and verification
 
 A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
@@ -158,11 +158,10 @@ that is stored and read back but never sent as a notice and has no preview. A me
 a note \`project.write\`; a message reaching no reporter with a bell is \`FEEDBACK_MESSAGE_NO_RECIPIENT\`.
 
 ### Asking the reporter
-\`clarification\` \`{ prompt, needed, recommended }\` asks the reporter one question with the answer you
+\`clarification\` \`{ prompt, needed, recommended }\` asks the reporter a question with the answer you
 recommend, which they send by one click or write over, before the item is routed
-(\`FEEDBACK_CLARIFICATION_CLOSED\` once it is past \`new\` or \`reopened\`). At most one is open per item and
-per reporter, whichever of their items it is about (\`FEEDBACK_CLARIFICATION_ALREADY_OPEN\`, naming the open
-one): wait for its answer. The answer never edits the item. Picking a
+(\`FEEDBACK_CLARIFICATION_CLOSED\` once it is past \`new\` or \`reopened\`). Ask the questions you need,
+each its own call. The answer never edits the item. Picking a
 route, declining included, closes the open question.
 
 ### After it ships

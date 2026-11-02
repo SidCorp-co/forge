@@ -214,32 +214,14 @@ export function reopenRefusal(
   return null;
 }
 
-// the BA assistant asks one clarification per item, before it is routed (Q5)
-export function clarificationRefusal(
-  phase: FeedbackPhase,
-  openQuestionId: string | null,
-  openForReporter: { question: string; item: string } | null = null,
-): FeedbackRefusal | null {
+// the agent asks the reporter what it needs before the item is routed (Q5); no count holds it
+// (REQ-66 r3 BC-4), so a question still open is no reason to refuse another
+export function clarificationRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
   if (phase !== 'new' && phase !== 'reopened') {
     return refusal(
       'FEEDBACK_CLARIFICATION_CLOSED',
       '/status',
       `the item reads ${phase}; a clarification is asked before it is routed.`,
-    );
-  }
-  if (openQuestionId) {
-    return refusal(
-      'FEEDBACK_CLARIFICATION_ALREADY_OPEN',
-      '',
-      `question ${openQuestionId} is still open on this item; at most one is open per item. Wait for its answer.`,
-    );
-  }
-  // REQ-66 BC-4: one question at a time to a reporter, whichever of their items it is about
-  if (openForReporter) {
-    return refusal(
-      'FEEDBACK_CLARIFICATION_ALREADY_OPEN',
-      '',
-      `question ${openForReporter.question} on ${openForReporter.item} is still open to this reporter; at most one is open per reporter. Wait for its answer.`,
     );
   }
   return null;

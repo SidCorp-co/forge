@@ -132,7 +132,7 @@ export const intakeAnswers = pgTable(
     answeredAt: timestamp('answered_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    questionChk: check('intake_answers_question_chk', sql`${t.question} BETWEEN 1 AND 3`),
+    questionChk: check('intake_answers_question_chk', sql`${t.question} >= 1`),
     questionUq: uniqueIndex('intake_answers_question_uq').on(t.draftId, t.askedAt, t.question),
   }),
 );

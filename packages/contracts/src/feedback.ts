@@ -313,7 +313,6 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_ALREADY_REDACTED",
 	/** A redaction would delete a mockup another item is filed about (REQ-49 BC-4): retarget that item first. */
 	"FEEDBACK_REDACT_MOCKUP_TARGETED",
-	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
 	/** The item already holds the most attachments it keeps. */
 	"FEEDBACK_ATTACHMENTS_FULL",
@@ -581,7 +580,7 @@ export const FEEDBACK_CLARIFICATION_LIMITS = {
 } as const;
 const L = FEEDBACK_CLARIFICATION_LIMITS;
 /**
- * `POST …/feedback/:fb/clarification`: one open question to the reporter (Q5), with the answer the asker
+ * `POST …/feedback/:fb/clarification`: an open question to the reporter (Q5), with the answer the asker
  * recommends, which the reporter sends by one click or writes over (REQ-66 BC-4).
  */
 export const feedbackClarificationRequestSchema = z.strictObject({
