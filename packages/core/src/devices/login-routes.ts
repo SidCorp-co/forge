@@ -31,7 +31,13 @@ import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import {
+  actorFor,
+  orgResource,
+  requireOrgCan,
+  requiresNoPermission,
+  requiresPublic,
+} from '../permissions/index.js';
 import { issueDeviceCredential } from './credential.js';
 import { pushDevice } from './push.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
@@ -150,6 +156,9 @@ const refuseLoginInput = (result: Parsed) => {
 
 deviceLoginRoutes.post(
   '/login/init',
+  requiresPublic(
+    'a box with no credential yet asks for a pairing code; the code is inert until a signed-in person approves it',
+  ),
   rateLimit(() => RULES.deviceLoginInit, { name: 'deviceLoginInit' }),
   zValidator('json', initBody, refuseLoginInput),
   async (c) => {
@@ -305,6 +314,9 @@ deviceLoginRoutes.post(
 
 deviceLoginRoutes.get(
   '/login/poll',
+  requiresNoPermission(
+    'the pairing code the box holds is its credential: approved by a signed-in person, it is consumed once for the device credential that person minted',
+  ),
   zValidator('query', pollQuery, refuseLoginInput),
   async (c) => {
     const canonical = normalizeCode(c.req.valid('query').pairing_code);
