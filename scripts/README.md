@@ -499,7 +499,7 @@ A route declares it where it is mounted (`packages/core/src/permissions/declared
 and its siblings), a tool per action (`McpTool.permission`); the generator reads it into
 `x-forge-permission` on the operation and on each action in `forge-mcp.tools.json`, and refuses, by
 `METHOD /path` or `<tool>.<action>`, one that declares none. Both doors enforce that same declaration
-before the handler (`declared.ts:enforceDeclared`). The routes and actions still checking in handler
+before the handler (`packages/core/src/permissions/declared.ts:enforceDeclared`). The routes and actions still checking in handler
 code are a priced amnesty, `packages/core/src/api-contract/permission-amnesty.json`, which only
 shrinks: an entry naming one that now declares, or is no longer served, is refused too.
 
