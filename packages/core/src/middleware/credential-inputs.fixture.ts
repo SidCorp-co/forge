@@ -392,9 +392,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     requirements/route-kit.ts HonoRequest.param() in draftPictureFits
     workflows/template-routes.ts HonoRequest.param() in module code
     questions/routes.ts HonoRequest.param(…) handed to questionId as { param: (k: string) => string; } in module code
-    permissions/declared.ts HonoRequest.param(param) in requiresOnParam`,
-  'a value core’s own middleware set on the context earlier in the same request': lines`
-    permissions/declared.ts Context.get(HELD) in requireDeclared`,
+    permissions/declared.ts HonoRequest.param(on.param) in mounted`,
   'a request or socket used only as a key of a WeakMap': lines`
     middleware/route-refs.ts Request handed to lib:get in routeRefMs
     middleware/route-refs.ts Request handed to lib:set in resolveRouteRefs

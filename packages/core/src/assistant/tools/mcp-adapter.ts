@@ -20,6 +20,7 @@ import {
 import { toolCallRefusal } from '../../lib/tool-call-guard.js';
 import { assertToolDeclaresAccess, toolGrantFor } from '../../lib/tool-grant.js';
 import { type CallToolResult, toToolCallContent } from '../../lib/tool-result.js';
+import { runDeclaredTool } from '../../permissions/index.js';
 
 /** One entry in the chat tool allowlist. */
 export interface ChatToolSpec {
@@ -221,7 +222,7 @@ async function callTool(
   if (hasProjectId && boundProjectId) args.projectId = boundProjectId;
 
   try {
-    return toToolCallContent(await tool.handler(args));
+    return toToolCallContent(await runDeclaredTool(tool, args, ctx.principal.userId));
   } catch (err) {
     if (err instanceof RefusalError) {
       return toToolCallContent(refusedAnswer(err.refusals, err.fallbackCode));

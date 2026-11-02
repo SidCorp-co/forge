@@ -15,6 +15,7 @@ import type { CallToolResult, Tool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { RefusalError } from '../lib/refusal.js';
 import { type McpContext, refusedAnswer } from '../lib/tool.js';
+import { renderedPermission } from '../middleware/declared-permission.js';
 import { type ActionEntry, doorOf, findActions } from './action-catalog.js';
 import { argumentRefusals, shapeOf } from './input-gate.js';
 import { listedSchema } from './listed-schema.js';
@@ -137,6 +138,7 @@ export async function callSurface(
       action: entry.id,
       summary: entry.summary,
       input: entry.input,
+      ...(entry.permission ? { permission: renderedPermission(entry.permission) } : {}),
       guide: entry.guide,
       ...(entry.guideOf === 'door'
         ? { guideOf: 'door: this door names no action its own guide' }

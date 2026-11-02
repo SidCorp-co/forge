@@ -29,11 +29,22 @@ export {
 export {
   type DeclaredPermission,
   declaredPermissions,
+  enforceDeclared,
+  onArg,
+  onResolved,
+  type PermissionlessAccess,
   type PermissionOn,
+  permissionless,
   requireDeclared,
+  requireDeclaredOrg,
   requiresNoPermission,
   requiresOnParam,
   requiresOnResolved,
+  requiresPublic,
+  requiresSelf,
+  runDeclaredTool,
+  type ToolPermission,
+  toolPermissionFor,
 } from './declared.js';
 export { holderNames, type NamedHolder, namedHolders } from './holders-named.js';
 export {

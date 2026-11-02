@@ -16,6 +16,7 @@
  */
 
 import type { McpTool } from '../lib/tool.js';
+import { type DeclaredPermission, toolPermissionFor } from '../middleware/declared-permission.js';
 import { listedSchema } from './listed-schema.js';
 
 type Schema = Record<string, unknown>;
@@ -32,6 +33,8 @@ export interface ActionEntry {
   guideOf: 'action' | 'door';
   /** The action's input as a JSON Schema object, without `action`. */
   input: Schema;
+  /** What the action needs its caller to hold, as the tool declares it (REQ-12 BC-20); absent while amnestied. */
+  permission?: DeclaredPermission;
 }
 
 const SUMMARY_MAX = 140;
@@ -241,8 +244,23 @@ function narrowedInput(
 }
 
 function entriesOf(tool: McpTool): ActionEntry[] {
+  return entriesWithoutPermission(tool).map((entry) => {
+    const permission = toolPermissionFor(tool.permission, entry.action);
+    return permission ? { ...entry, permission } : entry;
+  });
+}
+
+function entriesWithoutPermission(tool: McpTool): ActionEntry[] {
   const door = doorOf(tool.name);
   const actions = actionsOf(tool);
+  if (tool.permission && 'byAction' in tool.permission) {
+    const extra = Object.keys(tool.permission.byAction).filter((a) => !actions.includes(a));
+    if (extra.length > 0) {
+      throw new Error(
+        `mcp registry: ${tool.name} declares a permission for ${extra.join(', ')}, which it does not take (mcp/action-catalog.ts)`,
+      );
+    }
+  }
   const listed = listedSchema(tool.name, tool.inputSchema);
   if (tool.actionInputs) {
     return actions.map((action) => {

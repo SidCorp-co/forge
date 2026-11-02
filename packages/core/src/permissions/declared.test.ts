@@ -1,0 +1,167 @@
+import { Hono } from 'hono';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { RefusalError, thrownEnvelope } from '../lib/refusal.js';
+import type { McpTool } from '../lib/tool.js';
+import { onArg, onResolved, permissionless } from '../middleware/declared-permission.js';
+
+// REQ-12 BC-20 (ISS-824): a REST route and an MCP tool action are refused by the same declaration,
+// through the one enforcer both doors run before the handler, never by a check in the handler.
+
+const PROJECT = '00000000-0000-4000-8000-000000000001';
+const ORG = '00000000-0000-4000-8000-0000000000aa';
+
+const access = vi.hoisted(() => ({
+  role: 'viewer' as 'viewer' | 'member' | 'admin' | null,
+  orgRole: 'member' as 'member' | 'admin' | 'owner' | null,
+  seen: [] as string[],
+}));
+
+vi.mock('../lib/authz.js', () => ({
+  loadProjectAccess: async (projectId: string, userId: string | null) => {
+    access.seen.push(`project ${projectId} as ${userId}`);
+    return { projectId, role: access.role, grants: [] };
+  },
+  loadOrgRole: async (orgId: string, userId: string | null) => {
+    access.seen.push(`org ${orgId} as ${userId}`);
+    return access.orgRole;
+  },
+  effectiveProjectRole: async () => null,
+}));
+
+const { enforceDeclared, requireDeclared, requiresOnParam, requiresOnResolved, runDeclaredTool } =
+  await import('./declared.js');
+
+const WRITE = onArg('project.write');
+
+function restApp(ran: string[]) {
+  return new Hono<{ Variables: { userId: string } }>()
+    .use('*', async (c, next) => {
+      c.set('userId', 'u1');
+      await next();
+    })
+    .post('/p/:projectId/thing', requiresOnParam('project.write'), (c) => {
+      ran.push('rest');
+      return c.text('ok');
+    })
+    .post('/o/:orgId/thing', requiresOnParam('org.admin', 'orgId'), (c) => {
+      ran.push('org');
+      return c.text('ok');
+    })
+    .post('/i/:id/thing', requiresOnResolved('project.write', "the issue's project"), (c) => {
+      requireDeclared({ projectId: PROJECT, role: access.role, grants: [] });
+      ran.push('resolved');
+      return c.text('ok');
+    })
+    .onError((err, c) => {
+      const status =
+        err instanceof RefusalError
+          ? thrownEnvelope(err).status
+          : ((err as { status?: number }).status ?? 500);
+      const text = err instanceof RefusalError ? JSON.stringify(thrownEnvelope(err)) : err.message;
+      return c.text(text, status as 403);
+    });
+}
+
+function tool(ran: string[], permission: McpTool['permission']): McpTool {
+  return {
+    name: 'forge_probe',
+    description: 'probe',
+    inputSchema: { type: 'object' },
+    grant: { none: 'probe' },
+    reach: 'project',
+    ...(permission ? { permission } : {}),
+    handler: async (args) => {
+      if (args.action === 'resolve')
+        requireDeclared({ projectId: PROJECT, role: access.role, grants: [] });
+      ran.push('mcp');
+      return { ok: true };
+    },
+  };
+}
+
+beforeEach(() => {
+  access.role = 'viewer';
+  access.orgRole = 'member';
+  access.seen = [];
+});
+
+describe('one declaration, enforced the same at both doors before the handler', () => {
+  it('refuses a viewer project.write over REST and over MCP, and runs neither handler', async () => {
+    const ran: string[] = [];
+    const rest = await restApp(ran).request(`/p/${PROJECT}/thing`, { method: 'POST' });
+    expect(rest.status).toBe(403);
+    expect(await rest.text()).toContain('project.write');
+    const mcp = runDeclaredTool(
+      tool(ran, { byAction: { write: WRITE } }),
+      { action: 'write', projectId: PROJECT },
+      'u1',
+    );
+    await expect(mcp).rejects.toThrow(/project\.write/);
+    expect(ran).toEqual([]);
+    expect(access.seen).toEqual([`project ${PROJECT} as u1`, `project ${PROJECT} as u1`]);
+  });
+
+  it('runs both handlers for a member holding the permission', async () => {
+    access.role = 'member';
+    const ran: string[] = [];
+    expect((await restApp(ran).request(`/p/${PROJECT}/thing`, { method: 'POST' })).status).toBe(
+      200,
+    );
+    await runDeclaredTool(tool(ran, WRITE), { action: 'write', projectId: PROJECT }, 'u1');
+    expect(ran).toEqual(['rest', 'mcp']);
+  });
+
+  it('checks an org.* permission on the organization the path or argument names', async () => {
+    const ran: string[] = [];
+    const rest = await restApp(ran).request(`/o/${ORG}/thing`, { method: 'POST' });
+    expect(rest.status).toBe(403);
+    await expect(
+      runDeclaredTool(tool(ran, onArg('org.admin', 'orgId')), { action: 'x', orgId: ORG }, 'u1'),
+    ).rejects.toThrow(/org\.admin/);
+    access.orgRole = 'admin';
+    expect((await restApp(ran).request(`/o/${ORG}/thing`, { method: 'POST' })).status).toBe(200);
+    expect(ran).toEqual(['org']);
+  });
+
+  it('refuses by name a call that does not send the argument its declaration reads', async () => {
+    await expect(runDeclaredTool(tool([], WRITE), { action: 'write' }, 'u1')).rejects.toMatchObject(
+      { status: 400 },
+    );
+  });
+
+  it("holds a resolved declaration for the handler's requireDeclared, at either door", async () => {
+    const ran: string[] = [];
+    expect((await restApp(ran).request('/i/ISS-1/thing', { method: 'POST' })).status).toBe(403);
+    await expect(
+      runDeclaredTool(
+        tool(ran, { byAction: { resolve: onResolved('project.write', 'the issue') } }),
+        { action: 'resolve' },
+        'u1',
+      ),
+    ).rejects.toThrow(/project\.write/);
+    access.role = 'member';
+    expect((await restApp(ran).request('/i/ISS-1/thing', { method: 'POST' })).status).toBe(200);
+    expect(ran).toEqual(['resolved']);
+    expect(access.seen).toEqual([]);
+  });
+
+  it('throws a wiring defect where a handler checks a declaration its action never made', async () => {
+    await expect(
+      runDeclaredTool(tool([], { byAction: { other: WRITE } }), { action: 'resolve' }, 'u1'),
+    ).rejects.toThrow(/declares no permission for its handler to check/);
+    await expect(
+      enforceDeclared(
+        permissionless('self', 'own rows'),
+        { userId: 'u1', named: () => undefined, act: 'x' },
+        async () => requireDeclared({ projectId: PROJECT, role: 'admin', grants: [] }),
+      ),
+    ).rejects.toThrow(/declares no permission/);
+  });
+
+  it('runs an action that declares none, which the amnesty names, as its own handler checks it', async () => {
+    const ran: string[] = [];
+    await runDeclaredTool(tool(ran, undefined), { action: 'write', projectId: PROJECT }, 'u1');
+    expect(ran).toEqual(['mcp']);
+    expect(access.seen).toEqual([]);
+  });
+});

@@ -155,8 +155,12 @@ describe('every route declares its permission where it is mounted (REQ-12 BC-20,
       new Set(['POST /bare', 'GET /health', 'GET /gone']),
     );
     expect(refusals).toEqual([
-      expect.stringMatching(/^GET \/health: listed in .* declares a permission or is not mounted/),
-      expect.stringMatching(/^GET \/gone: listed in .* declares a permission or is not mounted/),
+      expect.stringMatching(
+        /^GET \/health: listed under routes in .* declares a permission or is not mounted/,
+      ),
+      expect.stringMatching(
+        /^GET \/gone: listed under routes in .* declares a permission or is not mounted/,
+      ),
     ]);
   });
 
@@ -164,11 +168,11 @@ describe('every route declares its permission where it is mounted (REQ-12 BC-20,
     const access = { projectId: 'p1', role: 'viewer' as const, grants: [] };
     const checked = new Hono()
       .post('/declared', requiresOnResolved('project.write', 'the body'), (c) => {
-        requireDeclared(c, access as never);
+        requireDeclared(access as never);
         return c.text('ok');
       })
       .post('/undeclared', (c) => {
-        requireDeclared(c, access as never);
+        requireDeclared(access as never);
         return c.text('ok');
       })
       .onError((err, c) => c.text(err.message, 500));

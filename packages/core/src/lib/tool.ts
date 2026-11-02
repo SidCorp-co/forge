@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import type { PatPermission, PatRoute } from '../credentials/pat-permissions.js';
 import { type TokenFence, tokenFence } from '../credentials/token-fence.js';
+import type { ToolPermission } from '../middleware/declared-permission.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { loadVisibleProjectIds, type ProjectReader } from './authz.js';
 import { type Refusal, type RefusalEnvelope, refusalEnvelope } from './refusal.js';
@@ -45,6 +46,11 @@ export interface McpTool {
   grant: ToolGrant;
   reach: ToolReach;
   route?: ToolRoute;
+  /**
+   * What each action needs its caller to hold (REQ-12 BC-20, `middleware/declared-permission.ts`);
+   * absent, or silent on an action, only while ISS-824's amnesty names that action.
+   */
+  permission?: ToolPermission;
   /**
    * The input each action takes, as a JSON Schema object without `action`, for a tool that judges
    * each action's arguments under its own strict input (`mcp/input-gate.ts:JUDGES_OWN_ARGUMENTS`).

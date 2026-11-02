@@ -88,7 +88,9 @@ const api = buildApiContract(app.routes, {
 });
 
 const ctx = { principal: { userId: 'api-contract' } };
-const mcp = buildMcpContract(toolListing(mcpTools(ctx as never)), {
+const served = mcpTools(ctx as never);
+const listing = toolListing(served).map((t, i) => ({ ...t, permission: served[i]?.permission }));
+const mcp = buildMcpContract(listing, {
   contract: 'forge-mcp',
   version: UNNUMBERED,
   description: 'The MCP tools POST /mcp serves, as tools/list answers them, sorted by name.',

@@ -17,6 +17,7 @@ import { toolCallRefusal } from '../lib/tool-call-guard.js';
 import { assertToolDeclaresAccess, toolGrantFor } from '../lib/tool-grant.js';
 import { toToolCallContent } from '../lib/tool-result.js';
 import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
+import { runDeclaredTool } from '../permissions/index.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { actionCatalog } from './action-catalog.js';
@@ -216,7 +217,8 @@ export function createMcpServer(ctx: McpContext): Server {
       }
 
       try {
-        const result = await tool.handler(args);
+        // what the action declares is checked here, before its handler (REQ-12 BC-20)
+        const result = await runDeclaredTool(tool, args, principal.userId);
         const refused = (result as { _mcpIsError?: unknown } | null)?._mcpIsError === true;
         writeMcpAudit({ ...auditBase, resultCode: 'ok' });
         return refused ? refusalAnswer(result) : toToolCallContent(result);

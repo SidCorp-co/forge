@@ -48,7 +48,7 @@ cleanupIssueRoutes.post(
       projectId: c.req.valid('query').projectId,
       request: c.req.valid('json'),
       userId: c.get('userId'),
-      held: (access) => requireDeclared(c, access),
+      held: (access) => requireDeclared(access),
     });
     return c.json(out, 201);
   },
@@ -65,7 +65,7 @@ cleanupIssueRoutes.get(
         issueRef: c.req.valid('param').id,
         projectId: c.req.valid('query').projectId,
         userId: c.get('userId'),
-        held: (access) => requireDeclared(c, access),
+        held: (access) => requireDeclared(access),
       }),
     ),
 );
