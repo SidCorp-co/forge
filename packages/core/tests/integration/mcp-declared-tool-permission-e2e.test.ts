@@ -22,6 +22,7 @@
  * @direct-test-of packages/core/src/ecosystem/channel-tool.ts
  * @direct-test-of packages/core/src/product-door/design-tool.ts
  * @direct-test-of packages/core/src/product-door/design-permission.ts
+ * @direct-test-of packages/core/src/support/tool.ts
  * @direct-test-of packages/core/src/permissions/declared.ts
  */
 
@@ -351,5 +352,19 @@ describe('forge_design (declared on projectId, which every call sends)', () => {
   it('lists the designs for a viewer', async () => {
     const read = ok(await mcp('viewer', 'forge_design', { action: 'design_list', projectId }));
     expect(read).toHaveProperty('workflows');
+  });
+});
+
+describe('forge_support (declared permissionless, as its REST twins under support/session are)', () => {
+  it("refuses a project owner who is not the room's session, by the session rule, not a permission", async () => {
+    const refused = await mcp('owner', 'forge_support', { action: 'tools' });
+    expect(refused.isError, refused.text).toBe(true);
+    expect(refused.text).toContain('SUPPORT_NOT_THE_ROOM_SESSION');
+    expect(refused.text).not.toContain('PERMISSION_FORBIDDEN');
+  });
+
+  it("refuses a caller holding no role by the same session rule, the door admitting the credential's call", async () => {
+    const refused = await mcp('outsider', 'forge_support', { action: 'channel' });
+    expect(refused.text).toContain('SUPPORT_NOT_THE_ROOM_SESSION');
   });
 });

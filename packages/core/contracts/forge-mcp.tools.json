@@ -2296,7 +2296,108 @@
         ],
         "type": "object"
       },
-      "name": "forge_support"
+      "name": "forge_support",
+      "x-forge-permission": {
+        "agree": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "announce": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "answer_question": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts), and only a question handed to that room is answered"
+        },
+        "ask_owner": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "build": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "channel": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "check_result": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "command": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "common_issue": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "deploy": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "deployment": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "draft_feedback": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "draft_requirement": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "issues": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "link": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "member": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "move": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "move_issue": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "project": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "projects": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "propose_fix": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "read": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts), and the room's grant gates the read"
+        },
+        "record": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "releases": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "reply": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "requirements": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "research": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "route": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "rule": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "run": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "search": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "thread": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "tools": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        }
+      }
     },
     {
       "description": "fetch { data: { target: issue | comment | session | feedback, attachmentId } }: READ an issue, comment, session or feedback-item attachment so you can analyze it: the one Forge read no shell command can do, because an image comes back as a viewable image block. Uploading is `POST /api/issues/:id/attachments` (multipart) or `forge attach`. data={target:\"issue\"|\"comment\"|\"session\"|\"feedback\", attachmentId:<uuid from any attachments[].id>}; a feedback item lists its attachments in project_feedback get, and one is attached with project_feedback attach. Images (png/jpeg/gif/webp) return as a viewable image block; the structured answer carries no bytes, so it says `inlined: false` with `reason: image_block_in_content` and names the block as `image: { contentIndex, mimeType }`. Text/markdown return inline, framed as data, with `inlined: true`. PDFs/video and oversized files (> inline cap) return metadata only. EVERY fetch also returns `downloadUrl` (+ `downloadExpiresAt`): a short-lived, self-authenticating URL to `curl` the raw bytes onto disk or hand to a service that must fetch the file itself. Treat it as a secret: do not log it or paste it into a comment.",

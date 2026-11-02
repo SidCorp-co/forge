@@ -59,6 +59,7 @@ const channelRidSchema = z
 
 import type { Refusal } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
+import { permissionless } from '../permissions/index.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import { refusalOf } from './refusals.js';
 
@@ -205,6 +206,27 @@ const DESCRIPTION = [
   `A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: ${SHAPE}.`,
 ].join(' ');
 
+// what each action's REST twin under /api/projects/:id/support/session declares: no permission, its
+// door admitting only the room's own session under its current turn's token (support/access.ts
+// sessionCaller), which every act runs before it reads or writes anything
+const SESSION_ONLY = permissionless(
+  'credential',
+  "only the room's own session, under its current turn's token, is admitted (support/access.ts)",
+);
+const PERMISSION = {
+  byAction: {
+    ...Object.fromEntries(ACTIONS.map((a) => [a, SESSION_ONLY])),
+    read: permissionless(
+      'credential',
+      "only the room's own session, under its current turn's token, is admitted (support/access.ts), and the room's grant gates the read",
+    ),
+    answer_question: permissionless(
+      'credential',
+      "only the room's own session, under its current turn's token, is admitted (support/access.ts), and only a question handed to that room is answered",
+    ),
+  },
+} as const;
+
 /** The one project a support session's token is fenced to. */
 function projectOf(principal: {
   projectIds: readonly string[] | null;
@@ -221,6 +243,7 @@ export const forgeSupportTool: ContextScopedMcpToolFactory = (ctx) => ({
   grant: 'projects:write',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
+  permission: PERMISSION,
   handler: async (args) => {
     const parsed = inputSchema.safeParse(args);
     const action = parsed.success ? parsed.data.action : null;
