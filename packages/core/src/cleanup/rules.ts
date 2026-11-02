@@ -274,9 +274,9 @@ function windowWords(w: WindowSaid | null): string {
   if (!w) return 'The project has no cleanup window saved yet: rating a change high saves one.';
   const at = `${w.cron}${w.timeZone ? ` ${w.timeZone}` : ' UTC'}`;
   if (!w.enabled) {
-    return `The cleanup window (schedule ${w.scheduleId}, ${at}) is disabled: a person enables it, or runs the cleanup by hand (POST /api/projects/:id/schedules/${w.scheduleId}/run).`;
+    return `The cleanup window (schedule ${w.scheduleId}, ${at}) is disabled: a person enables it, or runs the cleanup by hand (POST /api/schedules/${w.scheduleId}/run).`;
   }
-  return `The cleanup window is schedule ${w.scheduleId} (${at}), next run ${w.nextRunAt ?? 'not scheduled'}; it can be run now with POST /api/projects/:id/schedules/${w.scheduleId}/run.`;
+  return `The cleanup window is schedule ${w.scheduleId} (${at}), next run ${w.nextRunAt ?? 'not scheduled'}; it can be run now with POST /api/schedules/${w.scheduleId}/run.`;
 }
 
 /** A landing the cleanup holds, refused by name. */

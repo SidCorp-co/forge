@@ -281,6 +281,11 @@ describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
     expect(refused?.detail).not.toContain(D2);
     expect(refused?.detail).toContain('sched-1');
     expect(refused?.detail).toContain('2026-10-30T18:00:00.000Z');
+    // the served run route, never a project-scoped one that answers 404
+    expect(refused?.detail).toContain('POST /api/schedules/sched-1/run');
+    expect(refused?.detail).not.toContain('/api/projects/:id/schedules');
+    const disabled = landingRefusal({ ...base, window: { ...window, enabled: false } });
+    expect(disabled?.detail).toContain('POST /api/schedules/sched-1/run');
     expect(landingRefusal({ ...base, open: [open[1] as (typeof open)[number]] })).toBeNull();
   });
 
