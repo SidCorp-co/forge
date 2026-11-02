@@ -134,7 +134,9 @@ async function decisionsOn(
   }));
 }
 
-const runAt = sql<Date | string | null>`coalesce(${stewardRuns.startedAt}, ${stewardRuns.queuedAt})`;
+const runAt = sql<
+  Date | string | null
+>`coalesce(${stewardRuns.startedAt}, ${stewardRuns.queuedAt})`;
 
 /** One reading of a basis: the basis itself, or the question it puts (`standing-question.ts`). */
 type BasisReading = (basis: string) => string;
