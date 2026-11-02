@@ -1,6 +1,7 @@
 export { claimAnswersTold, type UntoldAnswer, untoldAnswersOf } from './answers-told.js';
 export { addAttachment, askClarification, feedbackAttachmentOf } from './attachments.js';
 export { feedbackTriageRecord } from './checklist-record.js';
+export { confirmWaitsOf, meetRoomConfirmWaits, setConfirmWait } from './confirm-wait.js';
 export { fileContractChangeIn } from './contract-change.js';
 export { provideFeedbackDependents } from './dependents.js';
 export { feedbackEgress, type ReadDoor } from './egress.js';
@@ -31,7 +32,6 @@ export {
   reportedForge,
   withDuplicateRoots,
 } from './forge-reads.js';
-export { confirmWaitsOf, meetRoomConfirmWaits, setConfirmWait } from './confirm-wait.js';
 export { settleOwnForgeFeedback } from './forge-settle.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
 export { feedbackStandingsOf, listFeedbackAs, listFeedbackIn } from './list-page-read.js';

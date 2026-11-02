@@ -107,7 +107,10 @@ describe('an agent reporter’s confirm on the owed line', () => {
       reportedFrom: 'p',
       waitEnded: 'lapsed',
     };
-    const line = owedLine({ ...none, confirms: [base, { ...base, key: 'FB-472', waitEnded: 'met' }] });
+    const line = owedLine({
+      ...none,
+      confirms: [base, { ...base, key: 'FB-472', waitEnded: 'met' }],
+    });
     expect(line).toContain(
       'FB-470 from agenfold-chat, its wait ended: its date passed, `forge-runner api forge/feedback/FB-470/verify -X POST`',
     );

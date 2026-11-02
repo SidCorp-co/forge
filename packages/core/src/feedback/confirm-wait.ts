@@ -8,17 +8,21 @@
  * (`reporter-master.ts`); the verify or reopen it waits for clears it (`service.ts:personalActIn`).
  */
 
-import { feedbackKey } from '@forge/contracts/feedback';
 import type { FeedbackConfirmWaitView } from '@forge/contracts/feedback';
+import { feedbackKey } from '@forge/contracts/feedback';
 import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import {
+  type ConfirmWaitRequest,
+  confirmWaitOf,
+  confirmWaitRefusal,
+} from './confirm-wait-facts.js';
 import { phaseOfRow } from './list-read.js';
 import { reportedFromSql } from './owed-verify.js';
-import { type ConfirmWaitRequest, confirmWaitOf, confirmWaitRefusal } from './confirm-wait-facts.js';
 import { type FeedbackActor, rowIn } from './read.js';
 import { reporterMasterProject } from './reporter-master.js';
 import { refusal } from './rules.js';

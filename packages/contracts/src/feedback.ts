@@ -674,7 +674,8 @@ export const SIMILAR_FEEDBACK_DRAFT_SHAPE = "{ title, body? }";
 
 /** What an attachment may be marked as: `approved_design` is a mockup a person approved (ISS-879). */
 export const FEEDBACK_ATTACHMENT_LABELS = ["approved_design"] as const;
-export type FeedbackAttachmentLabel = (typeof FEEDBACK_ATTACHMENT_LABELS)[number];
+export type FeedbackAttachmentLabel =
+	(typeof FEEDBACK_ATTACHMENT_LABELS)[number];
 
 /** `POST …/feedback/:fb/attachments`: bytes as base64, flagged on a sensitive project. */
 export const feedbackAttachmentRequestSchema = z.strictObject({

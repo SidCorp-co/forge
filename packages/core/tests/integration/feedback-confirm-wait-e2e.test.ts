@@ -169,18 +169,17 @@ describe('the Forge door: a wait keeps a shipped item off the master’s line un
     expect(owedKeys(await owedLine()), 'a waiting item leaves the line').not.toContain(key);
     const read = await api(tokens.master, 'GET', `/api/forge/feedback/${key}`);
     expect(read.body.confirmWait).toMatchObject({ reason });
-    const page = await api(
-      home.token,
-      'GET',
-      `/api/projects/${home.projectId}/feedback/${key}`,
-    );
-    expect((page.body.feedback as Body).confirmWait, 'the item’s page shows the wait').toMatchObject(
-      { reason },
-    );
+    const page = await api(home.token, 'GET', `/api/projects/${home.projectId}/feedback/${key}`);
+    expect(
+      (page.body.feedback as Body).confirmWait,
+      'the item’s page shows the wait',
+    ).toMatchObject({ reason });
 
     await lapse(home.projectId, key);
     const back = owedItems(await owedLine()).find((i) => i.startsWith(`${key} `));
-    expect(back ?? 'not listed', 'the item returns once the date passed').toContain('its wait ended: its date passed');
+    expect(back ?? 'not listed', 'the item returns once the date passed').toContain(
+      'its wait ended: its date passed',
+    );
     const after = await api(tokens.master, 'GET', `/api/forge/feedback/${key}`);
     expect(after.body.confirmWait, 'a lapsed wait no longer shows').toBeNull();
   });
