@@ -3,7 +3,7 @@ import { useState } from "react";
 import { StatusBadge, ToneBadge, ViewHeading } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import type { ReleaseApprovalView, ReleaseAttemptView, ReleaseDetail } from "../types";
+import type { ReleaseApprovalView, ReleaseAttemptView, ReleaseDetail, ReleaseDraftApprovalView } from "../types";
 import { ReleaseAttempts } from "./release-attempts";
 import { DisclosureToggle, shortSha } from "./release-bits";
 
@@ -94,13 +94,38 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
   );
 }
 
+/** A listed approver's decision on a draft, keyed on its version (ISS-869): no request and no commit. */
+function DraftApproval({ a }: { a: ReleaseDraftApprovalView }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  return (
+    <li className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13" data-testid="release-draft-approval">
+      <span className="flex flex-wrap items-center gap-2">
+        <StatusBadge family="release" value={a.decision} />
+        <span className="text-muted">
+          {t("releases.decidedBy", { who: a.decidedBy.name })} <span title={time.dateTime(a.decidedAt)}>{time.relative(a.decidedAt)}</span>
+        </span>
+      </span>
+      {a.reason ? <span className="text-13 text-muted">{t("releases.reason")} {a.reason}</span> : null}
+    </li>
+  );
+}
+
 /** The release's cuts, its approvals and its batch runs; nothing where it has none of them. */
 export function ReleaseHistory({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const t = useCopy();
-  if (r.attempts.length === 0 && r.approvals.length === 0 && r.cuts.length === 0) return null;
+  if (r.attempts.length === 0 && r.approvals.length === 0 && r.cuts.length === 0 && !r.draftApproval) return null;
   return (
     <div className="grid gap-8" data-testid="release-history">
       <ReleaseAttempts r={r} slug={slug} />
+      {r.draftApproval ? (
+        <section aria-label={t("releases.approvals")}>
+          <ViewHeading>{t("releases.approval")}</ViewHeading>
+          <ul className="border-t border-line-subtle">
+            <DraftApproval a={r.draftApproval} />
+          </ul>
+        </section>
+      ) : null}
       {r.approvals.length > 0 ? (
         <section aria-label={t("releases.approvals")}>
           <ViewHeading>{t("releases.approval")}</ViewHeading>

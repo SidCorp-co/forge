@@ -6,6 +6,7 @@ export type {
   ReleaseContinuation,
   ReleaseCutView,
   ReleaseDetail,
+  ReleaseDraftApprovalView,
   ReleaseFeedbackView,
   ReleaseGateView,
   ReleaseIssueView,

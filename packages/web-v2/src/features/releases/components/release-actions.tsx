@@ -3,8 +3,8 @@ import { useRef, useState } from "react";
 import { Button, Field, Popover, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey as CopyKey } from "@/lib/i18n/product-copy";
-import { useCutRelease, useReleaseDecision } from "../hooks";
-import type { ReleaseDetail } from "../types";
+import { useCutRelease, useDraftDecision, useReleaseDecision } from "../hooks";
+import type { ReleaseDecisionBody, ReleaseDetail } from "../types";
 import { RefusalText } from "./release-bits";
 
 type Decided = "approve" | "return";
@@ -14,10 +14,24 @@ const DECIDE_WITH_REASON: Record<Decided, { opens: CopyKey; why: CopyKey; placeh
   return: { opens: "releases.returnWithReason", why: "releases.whyBack", placeholder: "releases.whyBackPlaceholder", submit: "releases.returnWithReason", testid: "release-return", primary: false },
 };
 
+/** What a decision is taken on: a run's pending request, or a draft by its version (ISS-869). */
+type Target = { runId: string; approvalId: string } | { version: string };
+
+function useDecide(projectId: string, target: Target) {
+  const onRun = useReleaseDecision(projectId);
+  const onDraft = useDraftDecision(projectId);
+  if ("version" in target) {
+    const { version } = target;
+    return { ...onDraft, send: (body: ReleaseDecisionBody, done: () => void) => onDraft.mutate({ version, body }, { onSuccess: done }) };
+  }
+  const { runId, approvalId } = target;
+  return { ...onRun, send: (body: ReleaseDecisionBody, done: () => void) => onRun.mutate({ runId, approvalId, body }, { onSuccess: done }) };
+}
+
 // both decisions carry a reason: a return says what the master answers, an approval why it may ship (Requirement lifecycle r15 release_check)
-function DecideWithReason({ projectId, runId, approvalId, decision }: { projectId: string; runId: string; approvalId: string; decision: Decided }) {
+function DecideWithReason({ projectId, target, decision }: { projectId: string; target: Target; decision: Decided }) {
   const t = useCopy();
-  const decide = useReleaseDecision(projectId);
+  const decide = useDecide(projectId, target);
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -34,15 +48,10 @@ function DecideWithReason({ projectId, runId, approvalId, decision }: { projectI
           className="grid gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            decide.mutate(
-              { runId, approvalId, body: { decision, reason: reason.trim() } },
-              {
-                onSuccess: () => {
-                  setOpen(false);
-                  setReason("");
-                },
-              },
-            );
+            decide.send({ decision, reason: reason.trim() }, () => {
+              setOpen(false);
+              setReason("");
+            });
           }}
         >
           <Field label={t(c.why)}>
@@ -72,7 +81,13 @@ function DecideWithReason({ projectId, runId, approvalId, decision }: { projectI
 export function ReleaseActions({ projectId, r }: { projectId: string; r: ReleaseDetail }) {
   const t = useCopy();
   const cut = useCutRelease(projectId);
-  const decision = r.can.decide && r.approval && r.runId ? { runId: r.runId, approvalId: r.approval.id } : null;
+  const decision: Target | null = !r.can.decide
+    ? null
+    : r.state === "draft"
+      ? { version: r.version }
+      : r.approval && r.runId
+        ? { runId: r.runId, approvalId: r.approval.id }
+        : null;
   // the act RELEASE_ROSTER_OVERSIZE names: core chose the oldest merged issues one release carries
   const split = r.can.split && r.split ? r.split : null;
   if (!decision && !r.can.cut && !split) return null;
@@ -80,8 +95,8 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
     <span className="flex flex-wrap items-center gap-2" data-testid="release-actions">
       {decision ? (
         <>
-          <DecideWithReason projectId={projectId} {...decision} decision="return" />
-          <DecideWithReason projectId={projectId} {...decision} decision="approve" />
+          <DecideWithReason projectId={projectId} target={decision} decision="return" />
+          <DecideWithReason projectId={projectId} target={decision} decision="approve" />
         </>
       ) : split ? (
         <>

@@ -60,6 +60,7 @@ const summary = (over: Record<string, unknown>) => ({
   at: AT,
   cutCount: 0,
   continuedAs: null,
+  draftApproval: null,
   attentionGroup: "needs_you",
   waitingOn: you(CUT),
   ...over,

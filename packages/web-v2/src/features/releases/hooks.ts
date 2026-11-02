@@ -25,4 +25,7 @@ const touched = (projectId: string) => [["releases", projectId], ["release", pro
 export const useReleaseDecision = (projectId: string) =>
   useWrite((v: { runId: string; approvalId: string; body: ReleaseDecisionBody }) => releasesApi.decide(projectId, v.runId, v.approvalId, v.body), { touches: touched(projectId) });
 
+export const useDraftDecision = (projectId: string) =>
+  useWrite((v: { version: string; body: ReleaseDecisionBody }) => releasesApi.decideDraft(projectId, v.version, v.body), { touches: touched(projectId) });
+
 export const useCutRelease = (projectId: string) => useWrite((issueIds: string[]) => releasesApi.cut(projectId, issueIds), { touches: touched(projectId) });

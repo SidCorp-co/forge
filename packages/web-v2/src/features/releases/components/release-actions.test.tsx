@@ -69,3 +69,30 @@ describe("approving a release", () => {
     );
   });
 });
+
+// ISS-869: a project declaring no production cuts no run, so its draft is what its approver decides,
+// keyed on the version; the page sends the decision there, never to a run that does not exist.
+describe("deciding a draft of a project with no production", () => {
+  const decidable = draft({
+    state: "draft",
+    can: { cut: false, decide: true, split: false },
+    split: null,
+  });
+
+  it("sends the approval and its reason to the draft's version", async () => {
+    const calls = fakeCore((c) => (c.method === "POST" ? { status: 201, body: {} } : undefined));
+    renderWithQuery(<ReleaseActions projectId="p1" r={decidable} />);
+    fireEvent.click(screen.getByTestId("release-approve"));
+    fireEvent.change(screen.getByTestId("release-approve-reason"), { target: { value: "notes read; open the upstream MR" } });
+    fireEvent.click(screen.getByTestId("release-approve-submit"));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "POST")).toEqual([
+        {
+          method: "POST",
+          path: "/projects/p1/releases/0.1.0/approval",
+          body: { decision: "approve", reason: "notes read; open the upstream MR" },
+        },
+      ]),
+    );
+  });
+});
