@@ -199,7 +199,11 @@ function OwedDecision({
             <Button
               key={a.id}
               size="sm"
-              variant={a.recommended ? "primary" : "secondary"}
+              // a row's answers are never the page's primary, the recommended one included: the page has one
+              // primary and it is the page's own next act (ISS-903); the recommendation is the star and the line
+              variant="secondary"
+              icon={a.recommended ? "star" : undefined}
+              data-recommended={a.recommended || undefined}
               title={a.effect ?? undefined}
               loading={press.isPending && press.variables?.answer.id === a.id}
               data-testid="needs-you-decision-answer"

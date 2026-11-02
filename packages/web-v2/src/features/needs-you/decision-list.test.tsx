@@ -83,6 +83,7 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     expect(within(first).getByTestId("needs-you-decision-question")).toHaveTextContent("Keep the old export format or move to the new one?");
     expect(within(first).getByTestId("needs-you-decision-recommended")).toHaveTextContent('Recommended: Move to the new one. Whoever asked recommends "Move to the new one".');
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["Move to the new one", "Keep the old format"]);
+    expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.hasAttribute("data-recommended"))).toEqual([true, false]);
     // the item's title leads its link; its key sits behind it (ISS-865)
     expect(within(first).getByRole("link", { name: "Export" })).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
     expect(screen.getByTestId("needs-you-left-out")).toHaveTextContent(
@@ -250,5 +251,13 @@ describe("a dense list", () => {
     renderWithQuery(<DecisionList read={READ} slug="hop" dense cap={1} moreHref="/projects/hop/approvals" />);
     expect(screen.queryByTestId("needs-you-left-out")).toBeNull();
     expect(screen.getByTestId("needs-you-more")).toHaveAttribute("title", expect.stringContaining("37 drafts nobody has proposed merging or dropping yet"));
+  });
+
+  // ISS-903: the page has one primary, its own next act; a row's recommended answer is marked, never coloured as one
+  it("draws every answer as a secondary button, the recommended one included", () => {
+    renderWithQuery(<DecisionList read={READ} slug="hop" />);
+    const answers = screen.getAllByTestId("needs-you-decision-answer");
+    expect(answers.filter((b) => b.hasAttribute("data-recommended")).length).toBeGreaterThan(0);
+    for (const b of answers) expect(b.className, `${b.textContent} is drawn as a primary`).not.toContain("bg-primary");
   });
 });
