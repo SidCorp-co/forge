@@ -11,6 +11,25 @@ import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../middleware/error.js';
 
+// what other modules declare at load (project-config's tool, forge-door's admin routes): data
+// constructors as they are, and pass-through middleware for the forms no case here is about
+const { declarationData } = vi.hoisted(() => ({
+  declarationData: async () => {
+    const d = await import('../middleware/declared-permission.js');
+    const pass = () => async (_c: unknown, next: () => Promise<void>) => next();
+    return {
+      onArg: d.onArg,
+      onResolved: d.onResolved,
+      permissionless: d.permissionless,
+      byRule: d.byRule,
+      requiresByRule: pass,
+      requiresInstanceAdmin: pass,
+      requiresSelf: pass,
+      requiresPublic: pass,
+    };
+  },
+}));
+
 const state = vi.hoisted(() => ({
   held: new Set<string>(['project.read', 'project.write']),
   host: null as unknown,
@@ -22,13 +41,15 @@ const state = vi.hoisted(() => ({
   coolifyRows: [] as unknown[],
 }));
 
-vi.mock('../permissions/index.js', () => {
+vi.mock('../permissions/index.js', async () => {
+  const data = await declarationData();
   const held = (action: string) => {
     if (!state.held.has(action)) {
       throw new HTTPException(403, { message: `needs ${action}`, cause: { code: 'FORBIDDEN' } });
     }
   };
   return {
+    ...data,
     actorFor: (id: string) => ({ id }),
     projectResource: (id: string) => ({ id }),
     requireCan: async (_actor: unknown, action: string) => held(action),

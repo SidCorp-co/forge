@@ -2,6 +2,25 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../middleware/error.js';
 
+// what other modules declare at load (project-config's tool, forge-door's admin routes): data
+// constructors as they are, and pass-through middleware for the forms no case here is about
+const { declarationData } = vi.hoisted(() => ({
+  declarationData: async () => {
+    const d = await import('../middleware/declared-permission.js');
+    const pass = () => async (_c: unknown, next: () => Promise<void>) => next();
+    return {
+      onArg: d.onArg,
+      onResolved: d.onResolved,
+      permissionless: d.permissionless,
+      byRule: d.byRule,
+      requiresByRule: pass,
+      requiresInstanceAdmin: pass,
+      requiresSelf: pass,
+      requiresPublic: pass,
+    };
+  },
+}));
+
 const P = '00000000-0000-4000-8000-000000000001';
 const B = '00000000-0000-4000-8000-000000000002';
 
@@ -17,7 +36,8 @@ vi.mock('../middleware/auth.js', async (importOriginal) => {
     assertEmailVerified: () => async (_c: unknown, next: () => Promise<void>) => next(),
   };
 });
-vi.mock('../permissions/index.js', () => ({
+vi.mock('../permissions/index.js', async () => ({
+  ...(await declarationData()),
   actorFor: (id: string) => ({ id }),
   projectResource: (id: string) => ({ id }),
   requireDeclaredOn: async () => {},
