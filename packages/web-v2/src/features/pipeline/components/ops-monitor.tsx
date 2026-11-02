@@ -8,8 +8,8 @@
 import {
   Badge,
   EmptyState,
+  enumLabel,
   HealthDot,
-  MonoTag,
   PageContainer,
   PageTitle,
   ProgressBar,
@@ -29,7 +29,7 @@ import {
 } from "@/design";
 import { deriveHealth, type ProjectHealthRow, useOrgScopedProjects, useProjectHealth } from "@/features/projects";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useStepDurations, useThroughput } from "../hooks";
@@ -161,6 +161,7 @@ function ProgressTab({ throughput, durations }: { throughput: ThroughputRow[]; d
   const aggs = aggregateByStep(durations);
   const maxAvg = Math.max(1, ...aggs.map((a) => a.avgSec));
   const t = useCopy();
+  const language = useInterfaceLanguage();
   return (
     <div className="flex flex-col gap-5">
       <StatRow>
@@ -175,7 +176,10 @@ function ProgressTab({ throughput, durations }: { throughput: ThroughputRow[]; d
           <div className="flex flex-col gap-2.5">
             {aggs.map((a) => (
               <div key={a.step} className="flex items-center gap-2.5">
-                <span className="w-16 flex-none font-mono text-12 text-muted">{a.step}</span>
+                {/* the stage by its word; its key is the tooltip (REQ-11 BC-19) */}
+                <span className="w-20 flex-none truncate text-12 text-muted" title={a.step}>
+                  {enumLabel("jobType", a.step, language)}
+                </span>
                 <ProgressBar className="flex-1" value={(a.avgSec / maxAvg) * 100} />
                 <span className="w-20 flex-none text-right font-mono text-12 text-fg">{formatDurationSec(a.avgSec)}</span>
                 <span className="hidden w-14 flex-none text-right font-mono text-12 text-subtle sm:block">{formatUsd(a.cost)}</span>
@@ -211,6 +215,7 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
 
 function RunsTab({ durations, nameById, onOpen }: { durations: StepDurationRow[]; nameById: Map<string, string>; onOpen: (runId: string) => void }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   if (durations.length === 0) return <EmptyState message={t("pipeline.ops.noRuns")} />;
   return (
     <Table>
@@ -223,16 +228,36 @@ function RunsTab({ durations, nameById, onOpen }: { durations: StepDurationRow[]
         </TR>
       </THead>
       <TBody>
-        {durations.map((r) => (
+        {durations.map((r) => {
+          // a project outside the reader's list is named as one, never by its id (REQ-11 BC-19)
+          const project = nameById.get(r.projectId) ?? t("pipeline.ops.otherProject");
+          const step = enumLabel("jobType", r.step, language);
+          return (
           <TR key={`${r.runId}-${r.step}-${r.startedAt}`} className="cursor-pointer" onClick={() => onOpen(r.runId)}>
-            <TD className="truncate">{nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}</TD>
+            <TD className="truncate">
+              {/* the row opens from the keyboard too: its project is a button (REQ-11 BC-20) */}
+              <button
+                type="button"
+                className="max-w-full truncate text-left hover:underline focus-visible:shadow-focus focus-visible:outline-none"
+                title={nameById.has(r.projectId) ? undefined : r.projectId}
+                aria-label={t("pipeline.ops.openRun", { project, step })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpen(r.runId);
+                }}
+                data-testid="ops-run-open"
+              >
+                {project}
+              </button>
+            </TD>
             <TD>
-              <MonoTag>{r.step}</MonoTag>
+              <span title={r.step}>{step}</span>
             </TD>
             <TD className="text-right font-mono">{formatDurationSec(r.durationSeconds)}</TD>
             <TD className="text-right font-mono">{formatUsd(r.costUsd)}</TD>
           </TR>
-        ))}
+          );
+        })}
       </TBody>
     </Table>
   );

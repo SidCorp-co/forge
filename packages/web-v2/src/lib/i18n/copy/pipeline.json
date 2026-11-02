@@ -27,6 +27,8 @@
     "pipeline.ops.colCost": "Cost",
     "pipeline.ops.colDuration": "Duration",
     "pipeline.ops.colProject": "Project",
+    "pipeline.ops.otherProject": "Another project",
+    "pipeline.ops.openRun": "Open run: {project}, {step}",
     "pipeline.ops.colStep": "Step",
     "pipeline.ops.escalations": "Escalations",
     "pipeline.ops.liveCount": "{n} live",

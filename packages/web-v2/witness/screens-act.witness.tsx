@@ -142,7 +142,7 @@ const PAGES = [
   { name: "requirements", path: "/projects/hop/requirements", render: () => <Seeded data={REQUIREMENTS_TITLED}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
   { name: "feedback", path: "/projects/hop/feedback", render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
   { name: "releases", path: "/projects/hop/releases", render: () => <Seeded data={releaseSeed()}><ReleasesScreen projectId={REL_P} slug="hop" /></Seeded> },
-  { name: "ops", path: "/ops", pattern: "/ops", render: () => <Seeded data={OPS_SEED}><OpsMonitor /></Seeded> },
+  { name: "ops", path: "/ops?tab=runs", pattern: "/ops", render: () => <Seeded data={OPS_SEED}><OpsMonitor /></Seeded> },
 ] as const;
 
 const Home = HomeRoute.options.component as () => ReactNode;
