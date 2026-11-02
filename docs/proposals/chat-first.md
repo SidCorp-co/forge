@@ -68,8 +68,9 @@ the recommendation and its buttons drawn from the tool result (the `offer_act` c
 
 ## A held reply still shows its checked part (BC-3)
 
-Today an Assistant-mode reply that no rewrite fixes is replaced whole by
-`conversations/fallback-replies.ts:heldFallbackReply`, and its staged blocks are dropped.
+Today an Assistant-mode reply that no rewrite fixes is withheld whole, nothing goes out in its
+place (ISS-875: core never stands in for an answer the agent could give), and its staged blocks are
+dropped.
 
 - **Cut, do not mark.** Each refused claim's clause is cut from the draft. The clause span is
   `messaging/reply-marks.ts:cutClauses`. Where a clause joins two statements of a few words each

@@ -9,7 +9,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { IssueStatus } from '../db/schema.js';
 import { provideMessageReads } from '../messaging/reads.js';
 
-const { screenedTurnReply } = await import('./screened-reply.js');
+const { screenedTurnReply: screenedTurn } = await import('./screened-reply.js');
+/** What the screen lets out, or null where nothing goes out. */
+const screenedTurnReply = async (a: Parameters<typeof screenedTurn>[0]) =>
+  (await screenedTurn(a)).said;
 
 beforeAll(() => {
   provideMessageReads({
@@ -54,8 +57,6 @@ async function screen(first: string, retries: string[], question: string) {
   const message = await screenedTurnReply({
     door: 'web-chat-reply',
     projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
-    handleName: 'hop',
-    language: 'en',
     askedIn: 'en',
     question,
     first: attempt(first),
@@ -69,7 +70,6 @@ async function screen(first: string, retries: string[], question: string) {
     offeredTools: OFFERED,
     toolResults: () => [STATUS],
     namedResults: () => [{ name: 'forge_project_status', text: STATUS }],
-    fallback: 'code-authored',
   });
   return { text: message?.text ?? null, asked };
 }
@@ -90,14 +90,11 @@ describe('an honest refusal', () => {
   });
 });
 
-describe('the line a held answer goes out as', () => {
-  it('says what the check held, not that a check could not run', async () => {
+describe('a held answer no rewrite fixed', () => {
+  it('goes out as nothing: core never stands in for an answer the agent could give (ISS-875)', async () => {
     const saved = 'I saved the progress report to the project report history.';
     const out = await screen(saved, [saved, saved], 'save it to the report history');
-    expect(out.text).toContain(
-      'hop wrote an answer, but the reply check held it: it said it had done something, such as a save or a share, that it had not done.',
-    );
-    expect(out.text).toContain('Nothing failed');
-    expect(out.text).not.toMatch(/could not check|in a few minutes/);
+    expect(out.asked).toHaveLength(1);
+    expect(out.text).toBeNull();
   });
 });

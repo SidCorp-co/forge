@@ -14,13 +14,14 @@ import { runWidgetTurn, type WidgetTurnLine } from '../assistant/index.js';
 import {
   type ClaimedWindow,
   claimDueWindows,
+  claimLastResort,
   claimOf,
   closeWindow,
   codeAuthored,
-  errorFallbackReply,
   languageOfTag,
   readMessages,
   recordDeliveredReply,
+  releaseLastResort,
   replyLanguageOf,
   reserveDelivery,
   type ScreenedMessage,
@@ -97,7 +98,6 @@ export async function routeWidgetWindow(
       replyLanguageOf([...lines].reverse().find((l) => l.role === 'visitor')?.text) ??
       languageOfTag(page?.locale);
     let message: ScreenedMessage | null;
-    let decision: ConversationWindowDecision = 'answered';
     let failure: string | null = null;
     try {
       const pending = await pendingDraftOf(session.id);
@@ -121,18 +121,21 @@ export async function routeWidgetWindow(
         language,
       });
       message = turn.message;
-      if (turn.terminal === 'error') failure = turn.error;
+      if (turn.failed) failure = turn.error ?? 'the turn broke off before it wrote anything';
+      else if (turn.terminal === 'error') failure = turn.error;
     } catch (err) {
-      // the visitor typed and is waiting: a turn that could not run says so, in their language
       logger.error({ err, windowId: window.id }, 'widget: the turn did not run');
       failure = err instanceof Error ? err.message : String(err);
-      message = codeAuthored(errorFallbackReply(title, language));
-      decision = 'unreachable';
+      message = null;
+    }
+    if (!message && failure) {
+      // the visitor typed and is waiting, and the agent could not speak: core's one line for it
+      return close('unreachable', { ...(await tellTurnFailed(session, window, claim)), failure });
     }
     if (!message || message.text.trim() === '') {
       return close('nothing-to-say', { reason: 'the turn wrote nothing', failure });
     }
-    return close(decision, {
+    return close('answered', {
       ...(await deliver(session, window, claim, message)),
       ...(failure ? { failure } : {}),
     });
@@ -161,6 +164,30 @@ async function deliver(
     deliveryKey,
   });
   return { deliveryKey, messageId: receipt.messageId };
+}
+
+/**
+ * Tell the visitor their turn failed, in core's one last-resort line for the conversation, where it
+ * was told none yet (ISS-875); a delivery that does not go out gives the claim back.
+ */
+async function tellTurnFailed(
+  session: SessionRow,
+  window: ClaimedWindow,
+  claim: NonNullable<ReturnType<typeof claimOf>>,
+): Promise<Record<string, unknown>> {
+  const place = { adapter: 'widget', venue: widgetVenueOf(session).externalId };
+  const line = await claimLastResort(place, 'turn_failed');
+  if (!line)
+    return { told: false, reason: 'the conversation was told its one last-resort line already' };
+  try {
+    const out = await deliver(session, window, claim, codeAuthored(line));
+    // the claim moved on before the line went out: the thread was told nothing
+    if ('superseded' in out) await releaseLastResort(place);
+    return { told: !('superseded' in out), ...out };
+  } catch (err) {
+    await releaseLastResort(place);
+    throw err;
+  }
 }
 
 /** How many stranded windows one drain tick takes. */

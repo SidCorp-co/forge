@@ -15,13 +15,11 @@ import {
   getConversation,
   groupHearing,
   handleForProject,
-  languageOfTag,
   linkedSpeakerOf,
   messageAuthorTokenId,
   personCount,
   type RequestTrack,
   readMessagesInRange,
-  replyLanguageOf,
   replyTargetsOf,
   reserveDelivery,
   roomHandles,
@@ -40,7 +38,6 @@ import {
 } from '../onboarding/index.js';
 import { readSelvesFor } from '../orgs/index.js';
 import { resolveTurnAuthority } from '../permissions/index.js';
-import { readContentLanguage } from '../project-config/index.js';
 import { refuseAuthority } from './authority-refusal.js';
 import type { RoutedWindow, RouteWindowArgs, WindowCut } from './route-window.js';
 import { handoffPersonSpoke, handoffVenueRefusal } from './turn-origin.js';
@@ -394,10 +391,6 @@ async function takeTurn(
   const anchor = explicitAnchor(venue, messages, room.names, room.sent);
   track.anchor = anchor;
   track.venue = venue;
-  track.handleName = inputs.handleName;
-  track.language =
-    replyLanguageOf(anchor?.text ?? speaker?.content) ??
-    languageOfTag((await readContentLanguage(venue.projectId)).contentLanguage);
   const group = venue.shape === 'group';
   const addressee =
     anchor && group && (await personCount(window.conversationId)) > 1 ? anchor.authorLabel : null;
@@ -428,7 +421,6 @@ async function takeTurn(
       fallbacks: group ? 'silence' : 'post',
       addressee,
       deliveryKey,
-      replyLanguage: track.language,
       onBeforeDeliver: () => reserveDelivery(window.id, claim),
     });
   } finally {
@@ -439,6 +431,5 @@ async function takeTurn(
     deliveryKey,
     claim,
     track,
-    ...(outcome.kind === 'failed' ? { report: outcome.report } : {}),
   });
 }

@@ -10,7 +10,7 @@ const dispatched: { replies?: Record<string, unknown> }[] = [];
 let outcome: Record<string, unknown> = { started: false, reason: 'no-device' };
 
 vi.mock('../conversations/index.js', async (importOriginal) => {
-  const replies = await import('../conversations/fallback-replies.js');
+  const replies = await import('../conversations/text-language.js');
   return {
     ...(await importOriginal<object>()),
     codeAuthored: (text: string) => ({ text, proof: null }),

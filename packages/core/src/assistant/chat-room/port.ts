@@ -286,6 +286,14 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     return text === message.text ? receipt : { ...receipt, deliveredText: text };
   },
 
+  // a reply to a room's top level hangs under the message it answers (`deliver`), so that message
+  // opens its thread; in a thread, the thread is the venue
+  threadVenueOf(venue: ConversationVenue, anchor: string | null): string {
+    const parts = parseRocketChatVenueId(venue.externalId);
+    if (!parts || parts.tmid || !anchor) return venue.externalId;
+    return rocketChatVenueId(parts.namespace, parts.rid, anchor);
+  },
+
   async acknowledge(venue: ConversationVenue, ack: RequestAck): Promise<void> {
     const parts = parseRocketChatVenueId(venue.externalId);
     if (!parts) return;

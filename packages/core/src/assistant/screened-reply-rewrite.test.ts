@@ -65,11 +65,9 @@ async function screen(
   more: { offeredTools?: readonly string[]; results?: readonly string[] } = {},
 ) {
   const asked: string[] = [];
-  const message = await screenedTurnReply({
+  const turn = await screenedTurnReply({
     door: 'web-chat-reply',
     projectId: 'p-1',
-    handleName: 'forge',
-    language: 'vi',
     askedIn: 'vi',
     first: attempt(first),
     retry: async (instruction) => {
@@ -81,10 +79,10 @@ async function screen(
     setPhase: () => undefined,
     toolResults: () => [...RESULTS, ...(more.results ?? [])],
     ...(more.offeredTools ? { offeredTools: more.offeredTools } : {}),
-    fallback: 'code-authored',
-    brokenReport: () => 'BROKEN-REPORT',
   });
-  return { text: message?.text ?? null, proof: message?.proof ?? null, asked };
+  const message = turn.said;
+  const failed = turn.said ? null : turn.failed;
+  return { text: message?.text ?? null, proof: message?.proof ?? null, failed, asked };
 }
 
 describe('a true answer is never rewritten into a false one', () => {
@@ -102,15 +100,9 @@ describe('a true answer is never rewritten into a false one', () => {
       attempt('Issue cũ nhất là ISS-299, được tạo lúc 2026-10-06.'), // i18n-allow: the case under test
     ]);
     expect(out.asked).toHaveLength(1);
-    expect(out.text).not.toContain('ISS-299');
-    expect(out.text).not.toContain('2026-10-01');
-    expect(out.text).toContain(
-      'forge wrote an answer, but the reply check held it: it stated a date',
-    );
-    expect(
-      out.proof,
-      'with no clause left and no block, the held line is code-authored',
-    ).toBeNull();
+    // with no clause left and no block, nothing goes out: core never stands in for it (ISS-875)
+    expect(out.text).toBeNull();
+    expect(out.failed).toBeNull();
   });
 
   it('a rewrite that corrects only the refused date from what the turn read goes out', async () => {
@@ -126,14 +118,13 @@ describe('a true answer is never rewritten into a false one', () => {
       // i18n-allow: the case under test
       attempt('Issue cũ nhất là ISS-261, được tạo lúc 2026-09-20.'), // i18n-allow: the case under test
     ]);
-    expect(out.text).not.toContain('2026-10-01');
-    expect(out.text).not.toContain('2026-09-20');
-    expect(out.text).toContain('the reply check held it');
+    expect(out.text).toBeNull();
   });
 
-  it('a rewrite the provider broke off, over an answer nothing can mark, is reported as the failure it is', async () => {
+  it('a rewrite the provider broke off, over an answer nothing can mark, is the failure it is', async () => {
     const out = await screen('Mình sẽ kiểm tra ISS-261 rồi báo lại nhé.', [attempt('', 'error')]); // i18n-allow: the case under test
-    expect(out.text).toBe('BROKEN-REPORT');
+    expect(out.text).toBeNull();
+    expect(out.failed?.terminal).toBe('error');
   });
 });
 
@@ -164,10 +155,7 @@ describe('a rewrite answers to both the status-claims rule and the rewrite rule'
       [attempt('ISS-300 đã phát hành.', 'done', [...CALLS, STATUS_READ])], // i18n-allow: the case under test
       { offeredTools: OFFERED, results: ['{"shipped":[]}'] },
     );
-    expect(out.text).not.toContain('ISS-300');
-    expect(out.text, 'the original is still unread, so marking it cannot pass either').toContain(
-      'the reply check held it: it said where the work stands without a read that shows it',
-    );
+    expect(out.text, 'the original is still unread, so marking it cannot pass either').toBeNull();
   });
 
   it('a rewrite that keeps the claim and still reads nothing fails the status-claims rule', async () => {
@@ -175,6 +163,6 @@ describe('a rewrite answers to both the status-claims rule and the rewrite rule'
       // i18n-allow: the case under test
       offeredTools: OFFERED,
     });
-    expect(out.text).not.toContain('đã phát hành rồi'); // i18n-allow: the case under test
+    expect(out.text).toBeNull();
   });
 });

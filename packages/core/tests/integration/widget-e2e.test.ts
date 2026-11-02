@@ -5,10 +5,13 @@
  * every cap a binding sets holds. What a conversation files is `widget-filing-e2e.test.ts`.
  */
 
+// @direct-test-of packages/core/src/widget/turn.ts
+
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LAST_RESORT_LINES } from '../../src/conversations/last-resort.js';
 import { app } from '../../src/index.js';
 import { widgetFrameAncestors } from '../../src/widget/index.js';
 import { api, userToken } from '../helpers/api.js';
@@ -366,5 +369,38 @@ describe('the caps on what a visitor sends', () => {
     const over = await say(second.body.sessionToken as string, 'Again');
     expect(over.status).toBe(409);
     expect(refusalOf(over.body)).toBe('WIDGET_LIMIT_REACHED');
+  });
+});
+
+// ISS-875: a visitor whose turn failed is told core's one plain Vietnamese line, once in the
+// conversation, and a turn that wrote nothing is the agent's silence, never a line in its place.
+describe('a turn that cannot answer', () => {
+  const history = async (live: string) =>
+    (
+      (await api(live, 'GET', '/api/widget/session/messages')).body.messages as {
+        role: string;
+        text: string;
+      }[]
+    ).filter((m) => m.role === 'assistant');
+
+  it('tells the visitor its turn failed once, in plain Vietnamese with no code', async () => {
+    const widget = await bindWidget(owner);
+    const live = await session(widget);
+    script.steps = Array.from({ length: 8 }, () => ({ text: '', breaks: 'overloaded_error' }));
+    expect((await say(live, 'Hello')).status).toBe(201);
+    await expect.poll(() => history(live), { timeout: 10_000 }).toHaveLength(1);
+    expect((await history(live))[0]?.text).toBe(LAST_RESORT_LINES.turn_failed);
+    expect((await say(live, 'Are you there?')).status).toBe(201);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await history(live)).toHaveLength(1);
+  });
+
+  it('says nothing for a turn that wrote nothing', async () => {
+    const widget = await bindWidget(owner);
+    const live = await session(widget);
+    script.steps = Array.from({ length: 4 }, () => ({ text: '' }));
+    expect((await say(live, 'Hello')).status).toBe(201);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await history(live)).toEqual([]);
   });
 });

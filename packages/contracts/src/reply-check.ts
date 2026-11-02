@@ -1,7 +1,7 @@
 // What a reply the reply check held still shows (REQ-41 BC-3; Chat turn `check` and `held`): the part
 // it could check, never nothing. A held Assistant-mode reply goes out as the clauses the check passed,
 // the blocks the turn's own reads drew, and one notice naming what was left out and why. Core writes
-// it (`messaging/reply-screen.ts`, `conversations/fallback-replies.ts`); the thread renders it.
+// it (`messaging/reply-screen.ts`, `assistant/screened-reply.ts`); the thread renders it.
 
 import { z } from "zod";
 

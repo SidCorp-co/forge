@@ -5,7 +5,8 @@
 // turn of its own when none runs, or written into the running turn (`inject.ts`), which Claude Code
 // takes at its next tool call or answers straight after it. The drain timer only recovers what a
 // crash left undelivered. A turn that ends without completing tells each thread it left unanswered
-// so, and those messages are not handed to a turn again. A turn whose end core never heard, as one
+// so, in core's one last-resort line for the thread (`last-resort.ts`), and those messages are not
+// handed to a turn again. A turn whose end core never heard, as one
 // cut off by a core restart, is read lost once it goes silent (`lost-turns.ts`, ISS-850).
 
 import type { SupportDeliveryPath, SupportRoomConfig, SupportTool } from '@forge/contracts/support';
@@ -29,38 +30,28 @@ import { buildBaseOf, buildKeyOf } from './build.js';
 import { briefChannel, channelNews } from './channel-read.js';
 import {
   claimUndelivered,
-  oldestUndelivered,
   roomsWithUndelivered,
   toldFailed,
   unansweredOfLastTurn,
   unclaim,
+  undeliveredThreads,
 } from './delivery.js';
 import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { injectWaiting, settleInjects } from './inject.js';
+import { tellLastResort } from './last-resort.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
-import { isCoreThread } from './rules.js';
-import {
-  type ActionRow,
-  insertAction,
-  offlineToldSince,
-  type RoomRow,
-  roomById,
-  roomsOfSession,
-} from './store.js';
-import { postInThread } from './thread.js';
+import { type ActionRow, insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
 const SUPPORT_SESSION_GRANT = ['projects:write'] as const;
 
 /** How long a room whose dispatch failed waits before the drain tries it again. */
 const RETRY_AFTER_MS = 30_000;
-/** How often a room is told its assistant is offline, at most. */
-const OFFLINE_NOTICE_EVERY_MS = 10 * 60_000;
 
 const lastFailure = new Map<string, number>();
 
@@ -351,8 +342,8 @@ export type DeliverOutcome =
 /**
  * Hand every message waiting in a room to its session at once: written into the running turn when
  * one runs, else as a turn of its own. A turn that could not be handed to a box gives its messages
- * back. Finding no box online is not a failed dispatch and arms no back-off: the room is told once
- * in a while (`tellOffline`), and the messages go the moment a box can take them.
+ * back. Finding no box online is not a failed dispatch and arms no back-off: each waiting thread is
+ * told once (`tellOffline`), and the messages go the moment a box can take them.
  */
 export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   const room = await roomWithSession(roomId);
@@ -408,28 +399,23 @@ async function handOn(room: RoomRow): Promise<DeliverOutcome> {
   }
 }
 
-/** Tell the room once in a while that its assistant has no box to run on; the messages wait. */
+/** Tell each thread with a message waiting that its assistant has no box to run on, once; the messages wait. */
 async function tellOffline(room: RoomRow): Promise<void> {
-  if (await offlineToldSince(room.id, new Date(Date.now() - OFFLINE_NOTICE_EVERY_MS))) return;
-  const waiting = await oldestUndelivered(room.id);
-  if (!waiting) return;
-  const line =
-    'The support assistant is offline right now. Your message is recorded and will be answered as soon as it is back.';
-  const posted = await postInThread({ room, thread: waiting.thread, text: line }).catch((err) => {
-    logger.error({ err, roomId: room.id }, 'support: the offline notice could not be posted');
-    return null;
-  });
-  await insertAction({
-    roomId: room.id,
-    projectId: room.projectId,
-    conversationId: posted?.conversationId ?? waiting.conversationId,
-    thread: waiting.thread,
-    kind: 'refused',
-    actorKind: 'core',
-    tool: 'offline',
-    output: { reason: 'no paired box of the project can run the session', posted: Boolean(posted) },
-    externalId: posted?.messageId ?? null,
-  });
+  for (const waiting of await undeliveredThreads(room.id)) {
+    const told = await tellLastResort(room, waiting.thread, 'offline');
+    if (!told.posted && told.why !== 'post-failed') continue;
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId: told.posted ? told.conversationId : waiting.conversationId,
+      thread: waiting.thread,
+      kind: 'refused',
+      actorKind: 'core',
+      tool: 'offline',
+      output: { reason: 'no paired box of the project can run the session', posted: told.posted },
+      externalId: told.posted ? told.messageId : null,
+    });
+  }
 }
 
 /**
@@ -469,9 +455,6 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
 /** The ends of a turn that finished it; every other end left its messages unanswered. */
 const COMPLETED = new Set<string>(['completed', 'completed_via_recovery']);
 
-const TURN_FAILED_LINE =
-  'I could not finish answering this message, so it has no answer from me. Please send it again; it is recorded in Forge for the team.';
-
 /**
  * A turn that failed or was cancelled tells each thread it left unanswered, once, and records why:
  * the messages stay delivered, so a box that fails every turn is never handed them again. A message
@@ -487,8 +470,9 @@ async function tellTurnFailed(roomId: string, status: string, endedAt: Date): Pr
 }
 
 /**
- * Tell each thread of `taken` that its messages have no answer, once, and record it with `reason`:
- * a message some turn was already reported for is not reported again.
+ * Record each thread of `taken` as left without an answer, with `reason`, and tell it so in core's
+ * one last-resort line where it was told none yet: a message some turn was already reported for is
+ * not reported again.
  */
 export async function tellUnanswered(
   room: RoomRow,
@@ -503,16 +487,9 @@ export async function tellUnanswered(
   const threads = new Map(left.map((m) => [m.thread, m] as const));
   for (const [thread, first] of threads) {
     // a scheduled check or a release note is no member's thread: its failure is recorded, and
-    // nothing is posted (BC-13, ISS-854)
-    const posted = isCoreThread(thread)
-      ? null
-      : await postInThread({ room, thread, text: TURN_FAILED_LINE }).catch((err) => {
-          logger.error(
-            { err, roomId: room.id, thread },
-            'support: the failed-turn notice could not be posted',
-          );
-          return null;
-        });
+    // nothing is posted (BC-13, ISS-854); a thread told a last-resort line already is not told again
+    const told = await tellLastResort(room, thread, 'turn_failed');
+    const posted = told.posted ? told : null;
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,

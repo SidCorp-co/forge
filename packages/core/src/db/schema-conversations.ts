@@ -132,6 +132,26 @@ export const conversationPins = pgTable(
   }),
 );
 
+// the one line core said in a thread on its own, where the agent could not speak (ISS-875): a row
+// per thread, keyed by its adapter and that adapter's venue id for the thread itself, written before
+// the line is posted, so a thread is told once across restarts and across the doors into it
+export const conversationLastResorts = pgTable(
+  'conversation_last_resorts',
+  {
+    adapter: text('adapter').notNull(),
+    venue: text('venue').notNull(),
+    kind: text('kind', { enum: ['offline', 'turn_failed', 'rate_limited'] }).notNull(),
+    postedAt: timestamp('posted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.adapter, t.venue] }),
+    kindChk: check(
+      'conversation_last_resorts_kind_chk',
+      sql`${t.kind} IN ('offline', 'turn_failed', 'rate_limited')`,
+    ),
+  }),
+);
+
 export const conversationParticipants = pgTable(
   'conversation_participants',
   {

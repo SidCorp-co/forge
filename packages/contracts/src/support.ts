@@ -17,7 +17,7 @@ import type { OperationsScope, SupportRoomKind } from "./support-operations.js";
 
 /** The limits a support group runs under unless its binding names its own. */
 export const SUPPORT_LIMIT_DEFAULTS = {
-	/** Messages one account may have answered in an hour; past it, one notice and silence. */
+	/** Messages one account may have answered in an hour; past it, one notice in each thread and silence. */
 	messagesPerUserPerHour: 30,
 	/** Longest message handed to the session; a longer one is cut and says so. */
 	messageMaxChars: 4000,

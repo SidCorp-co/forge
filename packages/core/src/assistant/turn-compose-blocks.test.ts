@@ -27,7 +27,7 @@ const judged: unknown[][] = [];
 let drawOn: BlockStage | null = null;
 
 vi.mock('../conversations/index.js', async () => {
-  const replies = await import('../conversations/fallback-replies.js');
+  const replies = await import('../conversations/text-language.js');
   return {
     ...replies,
     screened: (text: string) => ({ text, proof: { door: 'web-chat-reply' } }),
@@ -163,15 +163,14 @@ describe('the blocks a chat turn draws wait on its reply', () => {
     ]);
   });
 
-  it('releases nothing when no answer passes and a code-authored line goes out instead', async () => {
+  it('releases nothing when no answer passes, and nothing goes out in its place (ISS-875)', async () => {
     script = [
       { draws: [first], passes: false },
       { draws: [redrawn], passes: false },
     ];
     const stage = new TurnBlockStage();
     const reply = await composeReply(ctx(stage));
-    expect(reply).toMatchObject({ send: true, message: { proof: null } });
-    expect((reply as { blocks?: unknown }).blocks).toBeUndefined();
+    expect(reply).toMatchObject({ send: false, reason: 'screen-refused', ended: 'declined' });
     expect(stage.dropped().map((d) => d.why)).toEqual([
       'the turn sent none of its own words (a code-authored line, or nothing), so nothing it drew is shown',
       'the turn sent none of its own words (a code-authored line, or nothing), so nothing it drew is shown',

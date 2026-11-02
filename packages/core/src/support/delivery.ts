@@ -270,10 +270,15 @@ export async function roomsOfProjects(projectIds: readonly string[]): Promise<st
   return rows.map((r) => r.id);
 }
 
-/** The oldest inbound message of a room no turn has taken. */
-export async function oldestUndelivered(roomId: string): Promise<ActionRow | null> {
-  const [row] = await db
-    .select()
+/**
+ * The threads of a room holding a message no turn took, each with its thread's conversation, the
+ * thread whose message waited longest first.
+ */
+export async function undeliveredThreads(
+  roomId: string,
+): Promise<{ thread: string; conversationId: string | null }[]> {
+  const rows = await db
+    .select({ thread: supportActions.thread, conversationId: supportActions.conversationId })
     .from(supportActions)
     .where(
       and(
@@ -282,9 +287,10 @@ export async function oldestUndelivered(roomId: string): Promise<ActionRow | nul
         isNull(supportActions.deliveredAt),
       ),
     )
-    .orderBy(asc(supportActions.createdAt))
-    .limit(1);
-  return row ?? null;
+    .orderBy(asc(supportActions.createdAt));
+  const seen = new Map<string, string | null>();
+  for (const r of rows) if (!seen.has(r.thread)) seen.set(r.thread, r.conversationId);
+  return [...seen].map(([thread, conversationId]) => ({ thread, conversationId }));
 }
 
 export async function hasUndelivered(roomId: string): Promise<boolean> {

@@ -7,7 +7,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { IssueStatus } from '../db/schema.js';
 import { provideMessageReads } from '../messaging/reads.js';
 
-const { screenedTurnReply } = await import('./screened-reply.js');
+const { screenedTurnReply: screenedTurn } = await import('./screened-reply.js');
+/** What the screen lets out, or null where nothing goes out. */
+const screenedTurnReply = async (a: Parameters<typeof screenedTurn>[0]) =>
+  (await screenedTurn(a)).said;
 
 beforeAll(() => {
   provideMessageReads({
@@ -49,8 +52,6 @@ async function screen(first: string, retries: string[]) {
   const message = await screenedTurnReply({
     door: 'web-chat-reply',
     projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
-    handleName: 'forge',
-    language: 'en',
     askedIn: 'en',
     question: 'where does the login work stand?',
     first: attempt(first),
@@ -63,22 +64,16 @@ async function screen(first: string, retries: string[]) {
     setPhase: () => undefined,
     offeredTools: ['forge_issues'],
     toolResults: () => ['{"issues":[]}'],
-    fallback: 'code-authored',
   });
   return { text: message?.text ?? null, asked };
 }
 
 describe('a reply naming issues the screen could not read', () => {
-  it('is held, and the line names the check that could not run and why', async () => {
+  it('is held whole, and core says nothing in its place (ISS-875)', async () => {
     const draft = 'ISS-9999 is merged and closed.';
     const out = await screen(draft, [draft]);
-    expect(out.text).not.toBe(draft);
     expect(out.asked).toHaveLength(1);
-    expect(out.text).toContain('a reply check it needed could not run');
-    expect(out.text).toContain(
-      'the status-matches-the-row and issue-keys-exist checks, because the issues it names could not be read from the tracker this turn',
-    );
-    expect(out.text).not.toContain('Nothing failed');
+    expect(out.text).toBeNull();
   });
 
   it('goes out once the rewrite names no issue', async () => {

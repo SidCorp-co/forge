@@ -107,6 +107,21 @@ export interface ConversationTransport {
   notifySettled?(venue: ConversationVenue): Promise<void>;
   shapeFollowsMembership?: boolean;
   venueScope?(externalId: string): string | null;
+  /**
+   * The venue id of the thread a delivery anchored on `anchor` lands in, where it lands in a thread
+   * of its own (a Rocket.Chat reply hangs under the message it answers); absent, the venue is the
+   * thread. Core's one last-resort line per thread is keyed by it (ISS-875).
+   */
+  threadVenueOf?(venue: ConversationVenue, anchor: string | null): string;
+}
+
+/** The venue id of the thread a delivery to `venue` anchored on `anchor` lands in. */
+export function threadVenueOf(
+  transport: ConversationTransport,
+  venue: ConversationVenue,
+  anchor: string | null,
+): string {
+  return transport.threadVenueOf?.(venue, anchor) ?? venue.externalId;
 }
 
 /** The inbound half: typed to the transport's own frame, so it is called where that frame exists. */

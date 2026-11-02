@@ -8,7 +8,7 @@ vi.mock('../messaging/gather.js', async () => {
   return { gatherFacts: async () => NO_FACTS };
 });
 
-import { confidentLanguageOf } from '../conversations/fallback-replies.js';
+import { confidentLanguageOf } from '../conversations/text-language.js';
 import { admitted } from '../messaging/screen.js';
 import { withReplyLanguage } from './screened-reply.js';
 
@@ -52,7 +52,9 @@ describe('the reply is held to the language the person wrote in', () => {
 
 describe('the screen asks for the reply again in the person’s language', () => {
   it('retries a Vietnamese reply to an English ask, and sends the English rewrite', async () => {
-    const { screenedTurnReply } = await import('./screened-reply.js');
+    const { screenedTurnReply: screenedTurn } = await import('./screened-reply.js');
+    const screenedTurnReply = async (a: Parameters<typeof screenedTurn>[0]) =>
+      (await screenedTurn(a)).said;
     const asked: string[] = [];
     const turn = (reply: string) => ({
       conversationId: 'c-1',
@@ -66,8 +68,6 @@ describe('the screen asks for the reply again in the person’s language', () =>
     const sent = await screenedTurnReply({
       door: 'web-chat-reply',
       projectId: 'p-1',
-      handleName: 'forge',
-      language: 'en',
       askedIn: confidentLanguageOf('Continue the ISS-748'),
       first: turn('Mình đã tiếp tục việc này, chia thành ba bước nhỏ để dễ theo dõi nhé.'), // i18n-allow: a production ask or reply replayed as the test case
       retry: async (instruction) => {

@@ -9,7 +9,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { IssueStatus } from '../db/schema.js';
 import { provideMessageReads } from '../messaging/reads.js';
 
-const { screenedTurnReply } = await import('./screened-reply.js');
+const { screenedTurnReply: screenedTurn } = await import('./screened-reply.js');
+/** What the screen lets out, or null where nothing goes out. */
+const screenedTurnReply = async (a: Parameters<typeof screenedTurn>[0]) =>
+  (await screenedTurn(a)).said;
 
 beforeAll(() => {
   provideMessageReads({
@@ -74,8 +77,6 @@ async function screen(
   const message = await screenedTurnReply({
     door: 'web-chat-reply',
     projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
-    handleName: 'forge',
-    language: 'en',
     askedIn: 'en',
     question: QUESTION,
     first: attempt(first),
@@ -90,7 +91,6 @@ async function screen(
     toolResults: () => [READ, SIMILAR, SUGGESTED],
     namedResults: () =>
       toolCalls.map((c, i) => ({ name: c.name, text: [READ, SIMILAR, SUGGESTED][i] as string })),
-    fallback: 'code-authored',
   });
   return { text: message?.text ?? null, asked };
 }
@@ -113,18 +113,15 @@ describe('a BA turn that proposed the revision through ba_suggest', () => {
     const out = await screen(draft, [draft], { suggest: { isError: true } });
     expect(out.asked).toHaveLength(1);
     expect(out.asked[0]).toContain('ba_suggest');
-    expect(out.text).toContain('it said it had done something');
+    expect(out.text).toBeNull();
   });
 });
 
 describe('a check that cannot run', () => {
-  it('is named, with why, and never read as "nothing failed"', async () => {
+  it('holds the reply whole, and core says nothing in its place (ISS-875)', async () => {
     const draft = 'Suggested r2 of REQ-32. The project has 12 issues done and 40 remaining.';
     const out = await screen(draft, [draft], { progress: null });
-    expect(out.text).toContain('could not run');
-    expect(out.text).toContain("the project's progress snapshot could not be computed this turn");
-    expect(out.text).not.toContain('Nothing failed');
-    expect(out.text).not.toMatch(/could not check the project's figures/);
+    expect(out.text).toBeNull();
   });
 
   it('that held nothing leaves the answer alone', async () => {

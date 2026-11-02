@@ -12,7 +12,6 @@ vi.mock('../conversations/index.js', () => ({
       throw new Error(OUTBOX_REFUSAL);
     },
   }),
-  errorFallbackReply: () => 'fallback',
   openConversation: async () => ({ id: 'c-1' }),
   recordDeliveredReply: async (row: unknown) => {
     recorded.push(row);

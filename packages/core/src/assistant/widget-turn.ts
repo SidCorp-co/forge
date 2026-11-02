@@ -12,7 +12,6 @@
  */
 
 import type { ReplyLanguage, ScreenedMessage } from '../conversations/index.js';
-import { CORRECTIVE_PREFIX } from '../conversations/index.js';
 import { type ChatMessage, type ChatStreamEvent, openChat } from '../integrations/llm/index.js';
 import { dataPolicyOf, egressAt, egressRefused } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
@@ -20,7 +19,7 @@ import { markUntrusted } from '../lib/untrusted-text.js';
 import { widgetDoorPersona } from './door-persona.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 import { runTurnEvents } from './run-turn-core.js';
-import { screenedTurnReply } from './screened-reply.js';
+import { CORRECTIVE_PREFIX, screenedTurnReply } from './screened-reply.js';
 import {
   buildWidgetDraftToolset,
   WIDGET_DRAFT_TOOL,
@@ -58,8 +57,10 @@ export interface WidgetTurnArgs {
 }
 
 export interface WidgetTurnResult {
-  /** The reply as the screen admitted it, or the code-authored line standing in for it. */
+  /** The reply as the screen admitted it, or null where nothing it wrote may go out. */
   message: ScreenedMessage | null;
+  /** The turn broke off before it wrote anything: the agent could not speak (ISS-875). */
+  failed: boolean;
   /** The tools the model was offered: the widget's one, and nothing else. */
   offered: readonly string[];
   /** What the model was sent, system prompt first, for the record of what it could read. */
@@ -140,12 +141,10 @@ export async function runWidgetTurn(args: WidgetTurnArgs): Promise<WidgetTurnRes
 
   const first = await attempt([]);
   const lastSaid = [...args.lines].reverse().find((l) => l.role === 'visitor')?.text;
-  const message = await screenedTurnReply({
+  const screened = await screenedTurnReply({
     door: 'widget-chat-reply',
     projectId: args.projectId,
     conversationId: args.conversationId,
-    handleName: args.site.title,
-    language: args.language,
     first,
     offeredTools: offered,
     // a rewrite reads its first attempt's rounds, so the draft it proposed is not proposed again
@@ -155,12 +154,18 @@ export async function runWidgetTurn(args: WidgetTurnArgs): Promise<WidgetTurnRes
         { role: 'user', content: `${CORRECTIVE_PREFIX} ${instruction}` },
       ]),
     setPhase: () => undefined,
-    fallback: 'code-authored',
     askedIn: args.language,
     ...(lastSaid !== undefined ? { question: lastSaid } : {}),
     log: { door: 'widget-chat-reply', conversationId: args.conversationId },
   });
-  return { message, offered, sent: messages, terminal: first.terminal, error: first.error };
+  return {
+    message: screened.said,
+    failed: !screened.said && screened.failed !== null,
+    offered,
+    sent: messages,
+    terminal: first.terminal,
+    error: first.error,
+  };
 }
 
 export { WIDGET_DRAFT_TOOL };

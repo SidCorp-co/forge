@@ -1,16 +1,12 @@
 // A reply in a question's thread, read by the room's agent (ISS-857). A registered thread is
 // consumed here and never falls through to the conversation handler, so every reply is either read
 // by the agent, which answers it in its own words — recording the answer it gives, or asking back —
-// or met with one of the room's last-resort lines where no agent can speak: the speaker is linked
-// to nobody, or the agent's turn failed, wrote nothing, or was held by the reply check.
+// or met with a last resort where no agent can speak: the speaker is linked to nobody, or the
+// agent's turn failed, which tells the thread core's one turn-failed line (ISS-875). A turn that
+// wrote nothing, or whose answer the reply check held, is the agent's silence, and nothing goes out.
 
 import { and, eq } from 'drizzle-orm';
-import {
-  emptyFallbackReply,
-  errorFallbackReply,
-  heldFallbackReply,
-  replyLanguageOf,
-} from '../../conversations/index.js';
+import { claimLastResort, releaseLastResort, replyLanguageOf } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
@@ -21,13 +17,13 @@ import type {
 import {
   FIXED_REPLY_CONSTANT,
   namespaceFromServerUrl,
-  type ReplySendProof,
   type ReplyTransport,
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
 import { issueDisplayIds } from '../../issues/index.js';
 import { logger } from '../../lib/logger.js';
 import { resolveSpeaker } from '../identity/speaker-link.js';
+import { rocketChatVenueId } from './port.js';
 import { type AnswerTool, answerQuestionTool } from './question-answer-tool.js';
 import { agentReadsReply, type Spoken } from './question-voice.js';
 
@@ -70,33 +66,36 @@ async function post(
   transport: ReplyTransport,
   text: string,
   proof: Parameters<typeof sendFixedReply>[2],
-) {
+): Promise<boolean> {
   try {
     await sendFixedReply(transport, text, proof);
+    return true;
   } catch (err) {
     logger.error(
       { err, rid: transport.rid },
       'chat-room.question-inbound: posting the reply failed',
     );
+    return false;
   }
 }
 
-/** What goes out for a turn: the agent's own words, or the room's last-resort line where it had none. */
-function said(
-  spoken: Spoken,
-  name: string,
-  language: 'en' | 'vi',
-): { text: string; proof: ReplySendProof } {
-  switch (spoken.kind) {
-    case 'spoken':
-      return { text: spoken.message.text, proof: spoken.message };
-    case 'error':
-      return { text: errorFallbackReply(name, language), proof: FIXED_REPLY_CONSTANT };
-    case 'empty':
-      return { text: emptyFallbackReply(name, language), proof: FIXED_REPLY_CONSTANT };
-    default:
-      return { text: heldFallbackReply(name), proof: FIXED_REPLY_CONSTANT };
-  }
+/**
+ * Tell the thread its reply could not be read, in core's one last-resort line for it, where it was
+ * told none yet; a post that fails gives the claim back.
+ */
+async function tellTurnFailed(
+  transport: ReplyTransport,
+  namespace: string | null,
+  m: RocketChatIncomingMessage,
+): Promise<void> {
+  if (!namespace) return;
+  const place = {
+    adapter: 'rocketchat',
+    venue: rocketChatVenueId(namespace, m.rid, m.tmid ?? m.id),
+  };
+  const line = await claimLastResort(place, 'turn_failed');
+  if (!line) return;
+  if (!(await post(transport, line, FIXED_REPLY_CONSTANT))) await releaseLastResort(place);
 }
 
 /**
@@ -176,11 +175,13 @@ export async function handleQuestionThreadReply(args: ReplyArgs): Promise<void> 
         reason: 'reason' in spoken ? spoken.reason : null,
         recorded: tool?.recorded() ?? false,
       },
-      'chat-room.question-inbound: the room agent could not speak; its last-resort line goes out',
+      spoken.kind === 'error'
+        ? 'chat-room.question-inbound: the room agent could not speak; core tells the thread once'
+        : 'chat-room.question-inbound: the room agent said nothing; nothing goes out',
     );
   }
-  const out = said(spoken, args.botName ?? 'The assistant', language ?? 'en');
-  await post(args.transport, out.text, out.proof);
+  if (spoken.kind === 'spoken') await post(args.transport, spoken.message.text, spoken.message);
+  else if (spoken.kind === 'error') await tellTurnFailed(args.transport, namespace, m);
 }
 
 /** What the connection hands over with a thread reply: the socket it arrived on. */

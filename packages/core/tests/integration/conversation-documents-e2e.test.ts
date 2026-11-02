@@ -287,7 +287,6 @@ describe('the assistant reads an attached spec and drafts its criteria line for 
       speakerKey: owner,
       message: ask,
       questionAlreadyRecorded: true,
-      replyLanguage: 'en',
       mayDecline: true,
       deliveryKey: `window:${randomUUID()}`,
     });

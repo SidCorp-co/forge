@@ -6,7 +6,7 @@ import type {
   SupportActorKind,
   SupportFixState,
 } from '@forge/contracts/support';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   supportActions,
@@ -157,28 +157,6 @@ export async function memberMessagesSince(
       ),
     );
   return row?.n ?? 0;
-}
-
-/** Whether the room was told of a member's limit since a time, so it is told once. */
-export async function limitToldSince(
-  roomId: string,
-  actorKey: string,
-  since: Date,
-): Promise<boolean> {
-  const [row] = await db
-    .select({ id: supportActions.id })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, roomId),
-        eq(supportActions.kind, 'refused'),
-        eq(supportActions.actorKey, actorKey),
-        eq(supportActions.tool, 'limit'),
-        gte(supportActions.createdAt, since),
-      ),
-    )
-    .limit(1);
-  return Boolean(row);
 }
 
 /** The accounts that wrote in a thread, with the name they wrote under, first writer first. */
@@ -394,23 +372,6 @@ export async function advanceLink(
     )
     .returning({ id: supportFeedbackLinks.feedbackId });
   return rows.length > 0;
-}
-
-/** Whether a room was told its session is offline since a time, so it is told once. */
-export async function offlineToldSince(roomId: string, since: Date): Promise<boolean> {
-  const [row] = await db
-    .select({ id: supportActions.id })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, roomId),
-        eq(supportActions.kind, 'refused'),
-        eq(supportActions.tool, 'offline'),
-        gt(supportActions.createdAt, since),
-      ),
-    )
-    .limit(1);
-  return Boolean(row);
 }
 
 /** The change request a room's earlier build of `branch` opened, if one did. */

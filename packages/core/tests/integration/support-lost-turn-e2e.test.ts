@@ -6,6 +6,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { LAST_RESORT_LINES } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
 import { coreTimers } from '../../src/timer-registry.js';
 import { rows } from '../helpers/factories.js';
@@ -83,7 +84,7 @@ async function boxReconnects(): Promise<void> {
   await w.box.connect();
 }
 
-const failedLine = (l: { text: string }) => l.text.startsWith('I could not finish answering');
+const failedLine = (l: { text: string }) => l.text === LAST_RESORT_LINES.turn_failed;
 
 async function toldFailed(thread: string): Promise<number> {
   return (await w.chat.botLines()).filter((l) => l.tmid === thread && failedLine(l)).length;

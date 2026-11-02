@@ -1,10 +1,12 @@
 /**
- * A chat turn that ends without its answer still hands the person what it did and found, with a
- * failure line in their language (dev QA 2026-10-07, conversation 3d24ec07: a Vietnamese long-spec
- * ask read the project, streamed an English draft for ~45 s, its stream broke, and the window closed
- * ASSISTANT_TURN_FAILED with "forge could not reach its model, so nothing was sent"). The ask is the
- * production one; the model is the one thing scripted: it reads, streams, and its stream breaks.
+ * A chat turn whose model stream breaks partway (dev QA 2026-10-07, conversation 3d24ec07: a
+ * Vietnamese long-spec ask read the project, streamed an English draft for ~45 s, and its stream
+ * broke). It is asked again; a second break ends it failed, and the turn itself posts nothing: the
+ * person is told only core's one plain Vietnamese turn-failed line for the thread, by the window's
+ * status (ISS-875). The ask is the production one; the model is the one thing scripted.
  */
+
+// @direct-test-of packages/core/src/assistant/turn-failure.ts
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -66,8 +68,6 @@ const SPEC_ASK =
 
 const VI_DRAFT =
   'Spec: Xuất báo cáo tiến độ hằng tuần ra PDF. 1. Bối cảnh: người quản lý dự án cần gửi một bản tóm tắt tiến độ mỗi tuần mà không phải chép tay từ nhiều màn hình. 2. Mục tiêu: '; // i18n-allow: the draft a Vietnamese turn streams
-const EN_DRAFT =
-  '[Feature] Export weekly project progress report to PDF. 1. Context: Project stakeholders need a consistent, shareable weekly view of project progress without manually collecting data from multiple Forge screens. Today, project information is available through the project overview and the issue workflows, but it is made for viewing in the app. 2. Goal: ';
 
 function knowledgeTools() {
   return {
@@ -144,7 +144,6 @@ async function turn(message: string) {
     speakerUserId: owner,
     speakerKey: owner,
     message,
-    replyLanguage: 'vi',
     mayDecline: true,
     deliveryKey: `window:${randomUUID()}`,
   });
@@ -168,7 +167,7 @@ describe('a turn whose model stream breaks partway', () => {
     expect(outcome).toMatchObject({ kind: 'delivered' });
   });
 
-  it('that breaks again ends failed, and its report says why in Vietnamese with what it read and drafted', async () => {
+  it('that breaks again ends failed, carrying no report of what it read or drafted (ISS-875)', async () => {
     script.asked = [];
     script.requests = [
       { tool: { name: 'forge_knowledge', args: { action: 'list' } } },
@@ -181,28 +180,7 @@ describe('a turn whose model stream breaks partway', () => {
       code: 'ASSISTANT_TURN_FAILED',
       cause: 'provider',
     });
-    const report = outcome.kind === 'failed' ? outcome.report.text : '';
-    expect(report).toContain(
-      'forge chưa trả lời xong: mô hình ngừng trả lời giữa chừng. (ASSISTANT_TURN_FAILED)', // i18n-allow: the Vietnamese report under test
-    );
-    expect(report).toContain('Đã đọc: đọc tri thức dự án.'); // i18n-allow: the Vietnamese report under test
-    expect(report).toContain('Phần đã viết được, chưa xong'); // i18n-allow: the Vietnamese report under test
-    expect(report).toContain('1. Bối cảnh: người quản lý dự án'); // i18n-allow: the Vietnamese report under test
-    expect(report).not.toContain('chưa gửi gì'); // i18n-allow: the line that must not stand
-  });
-
-  it('an English draft to a Vietnamese ask is not shown as found: it fails the reply check, and the report says so', async () => {
-    script.asked = [];
-    script.requests = [
-      { tool: { name: 'forge_knowledge', args: { action: 'list' } } },
-      { text: EN_DRAFT, breaks: 'stream disconnected' },
-      { text: EN_DRAFT, breaks: 'stream disconnected' },
-    ];
-    const outcome = await turn(SPEC_ASK);
-    const report = outcome.kind === 'failed' ? outcome.report.text : '';
-    expect(report).toContain('Đã đọc: đọc tri thức dự án.'); // i18n-allow: the Vietnamese report under test
-    expect(report).not.toContain('Export weekly project progress');
-    expect(report).toContain('bản nháp chưa qua bước kiểm tra'); // i18n-allow: the Vietnamese report under test
+    expect(outcome).not.toHaveProperty('report');
   });
 });
 

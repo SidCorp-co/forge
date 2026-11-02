@@ -6,10 +6,11 @@
 // outcome is composed here. The person answers in plain words ("the second one",
 // "cái thứ hai"), and the agent records it through `answer_question` (`question-answer-tool.ts`). // i18n-allow: the plain answer the owner's ruling names
 // A turn that cannot speak posts nothing of core's: the asking side is retried by the ledger, and
-// the reading side falls back to the room's last-resort lines (`conversations/fallback-replies.ts`).
+// the reading side tells the thread core's one turn-failed line where the turn failed, and nothing
+// otherwise (`conversations/last-resort.ts`, ISS-875).
 
 import { eq } from 'drizzle-orm';
-import { CORRECTIVE_PREFIX, type ReplyLanguage } from '../../conversations/index.js';
+import type { ReplyLanguage } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/schema-questions.js';
@@ -20,6 +21,7 @@ import { type ProvenMessage, proven, wholeAgentText } from '../../messaging/prov
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
 import { runExternalChatTurn } from '../external-chat.js';
+import { CORRECTIVE_PREFIX } from '../screened-reply.js';
 import type { ChatToolset } from '../tools/mcp-adapter.js';
 import { rocketChatPersona } from './persona.js';
 import { ANSWER_QUESTION_TOOL } from './question-answer-tool.js';

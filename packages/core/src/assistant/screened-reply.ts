@@ -1,21 +1,16 @@
 import {
   type HeldClaimCount,
+  type HeldClaimKind,
   type HeldPart,
   heldPartNotice,
   heldPartSchema,
 } from '@forge/contracts/reply-check';
 import {
-  CORRECTIVE_PREFIX,
   codeAuthored,
   confidentLanguageOf,
-  emptyFallbackReply,
-  errorFallbackReply,
-  type HeldClaim,
-  heldFallbackReply,
   type ReplyLanguage,
   type ScreenedMessage,
   screened,
-  type UncheckedRule,
 } from '../conversations/index.js';
 import { logger } from '../lib/logger.js';
 import {
@@ -40,6 +35,9 @@ import { NO_EMPTY_PROMISE } from '../messaging/text-rules.js';
 import { UI_ACTS_GROUNDED } from '../messaging/ui-claims-rule.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 import type { TurnBlockStage } from './turn-stage.js';
+
+/** The head of the door's corrective retry, the retry turn's query: history reads a screen repair by it (ISS-1053). */
+export const CORRECTIVE_PREFIX = '[SYSTEM CHECK — not from the user]';
 
 /**
  * What a turn says when it has nothing to add.
@@ -188,7 +186,7 @@ export function withRewriteKept(
 }
 
 /** What one refused claim was about, or null where the refusal is about no claim. */
-function heldClaimOf(r: MessageRefusal): HeldClaim | null {
+function heldClaimOf(r: MessageRefusal): HeldClaimKind | null {
   if (
     r.rule === FIGURES_GROUNDED.id ||
     r.rule === PROGRESS_FIGURES_MATCH.id ||
@@ -204,15 +202,9 @@ function heldClaimOf(r: MessageRefusal): HeldClaim | null {
   return kind === 'date' || kind === 'issue' ? kind : null;
 }
 
-/** What each refused claim was about, as the fallback names it; a refusal about no claim names nothing. */
-export function heldClaimsOf(refused: readonly MessageRefusal[]): HeldClaim[] {
-  return refused.flatMap((r) => heldClaimOf(r) ?? []);
-}
-
-/** The checks a refusal says could not run, each with why (`RuleBreak.unchecked`). */
-export function uncheckedRulesOf(refused: readonly MessageRefusal[]): UncheckedRule[] {
-  return refused.flatMap((r) => (r.unchecked ? [{ rule: r.rule, why: r.unchecked }] : []));
-}
+/** Whether a refusal says a check the reply needed could not run (`RuleBreak.unchecked`). */
+const anyUnchecked = (refused: readonly MessageRefusal[]): boolean =>
+  refused.some((r) => Boolean(r.unchecked));
 
 /** How many clauses the check holds a reply to cutting before it is withheld instead. */
 const CUT_ROUNDS = 3;
@@ -229,7 +221,7 @@ export async function checkedPart(
   refused: readonly MessageRefusal[],
   screen: (text: string) => Promise<MessageVerdict>,
 ): Promise<{ shown: string; held: HeldClaimCount[] } | null> {
-  const counts = new Map<HeldClaim, number>();
+  const counts = new Map<HeldClaimKind, number>();
   const tally = () => [...counts].map(([claim, count]) => ({ claim, count }));
   let text = original;
   let left = refused;
@@ -251,7 +243,7 @@ export async function checkedPart(
             claims.map((r) => r.quote as string),
           );
     if (cut === null) return null;
-    for (const kind of kinds as HeldClaim[]) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    for (const kind of kinds as HeldClaimKind[]) counts.set(kind, (counts.get(kind) ?? 0) + 1);
     if (!cut.trim()) return { shown: '', held: tally() };
     const verdict = await screen(cut);
     if (verdict.ok) return { shown: cut, held: tally() };
@@ -267,10 +259,6 @@ export interface ScreenedTurnArgs {
   projectId: string;
   /** The conversation the reply is posted in: a record the person agreed to in it grounds a claim to it. */
   conversationId?: string;
-  /** The answering handle's own name — the fallbacks speak as it. */
-  handleName: string;
-  /** The language the fallbacks answer in. */
-  language: ReplyLanguage;
   /** The first attempt, already run. */
   first: ExternalChatTurnResult;
   /** The tools the turn was offered, by the names it calls them: a status claim is held to a read only where one was offered. */
@@ -278,8 +266,6 @@ export interface ScreenedTurnArgs {
   /** Ask the model again with a corrective instruction, and hand back what it wrote. */
   retry: (instruction: string) => Promise<ExternalChatTurnResult>;
   setPhase: (phase: string) => void;
-  /** What stands when the screen is exhausted or the model wrote nothing: a code-authored line, or nothing at all. */
-  fallback?: 'code-authored' | 'none';
   /** What this turn's tools returned so far; a tracker date or status the reply states is held to it. */
   toolResults?: () => readonly string[];
   /** The same results by the tool that returned each: a declared read's result grounds a figure. */
@@ -288,11 +274,6 @@ export interface ScreenedTurnArgs {
   askedIn?: ReplyLanguage | null;
   /** What the person asked: a figure the reply states is held to the turn's report runs, and a number they typed may be said back. */
   question?: string;
-  /**
-   * The code-authored report of an attempt the provider broke off: what the turn did and found, in
-   * the asker's language. Absent, the generic error line stands.
-   */
-  brokenReport?: (attempt: ExternalChatTurnResult) => string;
   /**
    * The blocks the turn drew, held until this screen settles: each attempt is judged with the blocks
    * it drew, and the stage is told whose words went out, which decides the blocks released with them.
@@ -312,15 +293,25 @@ export function assertAnswerableDoor(door: DoorId): void {
 }
 
 /**
+ * What a screened turn comes to: the text that may be sent, or nothing, where `failed` is the
+ * attempt whose provider broke off before it wrote anything (the turn failed, and its window says
+ * so) and null is the agent's own silence (it wrote nothing, or nothing it wrote passed).
+ */
+export type ScreenedTurn =
+  | { said: ScreenedMessage }
+  | { said: null; failed: ExternalChatTurnResult | null };
+
+/**
  * Screen a model turn's reply, and return the text that may be sent.
  *
  * An issue link written as a hash route is pointed at the path the web serves before anything is
  * judged. A refused answer is rewritten within the door's budget, and the rewrite is held to the
  * same screen and to the answer it rewrites. Where no rewrite passes, the first answer goes out as
  * the part the check passed, each refused clause cut and a notice naming what was left out, with the
- * blocks its reads drew (REQ-41 BC-3); never a claim nothing checked, and never nothing.
+ * blocks its reads drew (REQ-41 BC-3). Where nothing passes, or the model wrote nothing, nothing goes
+ * out: core never stands in for an answer the agent could give (ISS-875).
  */
-export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedMessage | null> {
+export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedTurn> {
   assertAnswerableDoor(args.door);
   let result = args.first;
   let attempt = 0;
@@ -393,44 +384,29 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
         { ...args.log, refusals: firstRefused, held: partial.held },
         'conversations: no rewrite passed; the part of the first answer the check passed goes out',
       );
-      return partial;
+      return { said: partial };
     }
     logger.error(
       { ...args.log, refusals: refusalsOf(outcome.verdict) },
-      'conversations: reply still failing its door screen; sending honest fallback',
+      'conversations: reply still failing its door screen; nothing goes out',
     );
     args.stage?.settle(null);
-    if (args.fallback === 'none') return null;
-    if (broken && args.brokenReport) return codeAuthored(args.brokenReport(broken));
-    const refused = [...firstRefused, ...refusalsOf(outcome.verdict)];
-    return codeAuthored(
-      heldFallbackReply(args.handleName, heldClaimsOf(refused), uncheckedRulesOf(refused)),
-    );
+    return { said: null, failed: broken };
   }
 
   const trimmed = repairIssueLinks(result.reply).trim();
   args.stage?.settle(trimmed ? attempt : null);
-  if (!trimmed) {
-    if (args.fallback === 'none') return null;
-    if (result.terminal === 'error' && args.brokenReport) {
-      return codeAuthored(args.brokenReport(result));
-    }
-    return codeAuthored(
-      result.terminal === 'error'
-        ? errorFallbackReply(args.handleName, args.language)
-        : emptyFallbackReply(args.handleName, args.language),
-    );
-  }
+  if (!trimmed) return { said: null, failed: result.terminal === 'error' ? result : null };
   const passed = screened(trimmed, args.door, outcome.verdict);
   if (!passed) throw new Error('conversations: a passing verdict yielded no screened message');
-  return passed;
+  return { said: passed };
 }
 
 /**
  * A held reply as the part the check passed (REQ-41 BC-3): the clauses left once each refused one is
  * cut, the blocks the first answer's reads drew, and the one notice naming what was left out. With
- * neither text nor a block it is null, and the reply is withheld as the held line. A check that
- * could not run cuts nothing: that failure is Forge's, and the held line says so.
+ * neither text nor a block it is null, and the reply is withheld. A check that could not run cuts
+ * nothing: that failure is Forge's, and the reply is withheld whole.
  */
 async function partialReply(
   args: ScreenedTurnArgs,
@@ -438,7 +414,7 @@ async function partialReply(
   refused: readonly MessageRefusal[],
   screen: (text: string) => Promise<MessageVerdict>,
 ): Promise<ScreenedMessage | null> {
-  if (uncheckedRulesOf(refused).length > 0) return null;
+  if (anyUnchecked(refused)) return null;
   const part = await checkedPart(original, refused, screen);
   if (!part) return null;
   if (part.held.length === 0) {

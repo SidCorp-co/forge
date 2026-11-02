@@ -35,27 +35,15 @@ export {
 } from './conversation-agent-read.js';
 export { agentTurnOfSession, stageAgentTurnBlock } from './conversation-agent-stage.js';
 export { type RoomDocument, readRoomDocumentByName, readRoomDocumentByRef } from './documents.js';
-export {
-  askerLanguageOf,
-  CORRECTIVE_PREFIX,
-  causeOfCode,
-  confidentLanguageOf,
-  emptyFallbackReply,
-  errorFallbackReply,
-  failedTurnReport,
-  findingsWords,
-  type HeldClaim,
-  heldFallbackReply,
-  isTurnFailureCode,
-  type ReplyLanguage,
-  replyLanguageOf,
-  type TurnFailureCause,
-  type TurnFailureCode,
-  turnFailureReason,
-  type UncheckedRule,
-} from './fallback-replies.js';
 export { existingProjectHandle, type ProjectHandle, resolveProjectHandle } from './handles.js';
 export { runHeartbeatTick } from './heartbeat.js';
+export {
+  claimLastResort,
+  LAST_RESORT_LINES,
+  type LastResortKind,
+  type LastResortPlace,
+  releaseLastResort,
+} from './last-resort.js';
 export {
   addableHandles,
   addablePeople,
@@ -87,6 +75,7 @@ export {
   type SpeakerRefusal,
   type SpeakerResolution,
   screened,
+  threadVenueOf,
 } from './ports.js';
 export {
   applyRoomPresence,
@@ -132,6 +121,12 @@ export {
   setRoomQuiet,
   settleConversationMode,
 } from './store.js';
+export {
+  askerLanguageOf,
+  confidentLanguageOf,
+  type ReplyLanguage,
+  replyLanguageOf,
+} from './text-language.js';
 export { askerOfReply, toolContentFor } from './tool-content.js';
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';
 export { conversationsNeedingIndex, indexConversationOnce } from './transcript-index.js';

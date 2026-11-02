@@ -75,6 +75,7 @@ vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
 
 const { db } = await import('../../src/db/client.js');
 const { conversationMessages } = await import('../../src/db/schema-conversations.js');
+const { LAST_RESORT_LINES } = await import('../../src/conversations/last-resort.js');
 const { runConversationTurn } = await import('../../src/assistant/turn-runner.js');
 const { webConversationTurn } = await import('../../src/assistant/web-turn-inputs.js');
 const { ConversationProgress } = await import('../../src/assistant/conversation-progress.js');
@@ -208,7 +209,6 @@ async function turn(args: {
     speakerUserId: owner,
     speakerKey: owner,
     message: args.message,
-    replyLanguage: 'vi',
     deliveryKey: `window:${randomUUID()}`,
     ...(args.budget ? { budget: args.budget } : {}),
     ...(args.fallbacks ? { fallbacks: args.fallbacks } : {}),
@@ -240,7 +240,7 @@ describe('a turn past its first ceiling posts nothing at the ceiling, and its an
       async (signal) => {
         await sleep(900, signal);
         return {
-          // read in neither language (`fallback-replies.ts:confidentLanguageOf`), so the reply-language
+          // read in neither language (`text-language.ts:confidentLanguageOf`), so the reply-language
           // check passes it as written to a person who asked in Vietnamese, and no record verb in it
           text: FINISHED,
         };
@@ -298,13 +298,11 @@ describe('a turn past its first ceiling posts nothing at the ceiling, and its an
     const continuation = outcome.kind === 'delivered' ? outcome.continuation?.rest : undefined;
     expect(continuation).toBeDefined();
     await continuation;
+    // the thread is told core's one plain Vietnamese turn-failed line, no code (ISS-875)
+    expect(await continuation).toMatchObject({ kind: 'failed', code: 'ASSISTANT_TURN_TIMED_OUT' });
     const one = await said(room.id);
     expect(one).toHaveLength(1);
-    expect(one[0]?.content).toContain(
-      'forge chưa trả lời xong trong thời gian cho phép của một lượt. (ASSISTANT_TURN_TIMED_OUT)', // i18n-allow: the Vietnamese report under test
-    );
-    expect(one[0]?.content).toContain('Đã đọc: tra cứu tracker.'); // i18n-allow: the Vietnamese report under test
-    expect(one[0]?.content).not.toContain('forge ["issue","ISS-61"]');
+    expect(one[0]?.content).toBe(LAST_RESORT_LINES.turn_failed);
   });
 
   it('a room that may stay silent hears no partial from a turn that only read', async () => {

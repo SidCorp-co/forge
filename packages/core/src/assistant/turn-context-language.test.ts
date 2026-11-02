@@ -4,7 +4,7 @@
 // ~63 s; a two-word Vietnamese "run ISS-365" was answered in English).
 
 import { describe, expect, it } from 'vitest';
-import { askerLanguageOf } from '../conversations/fallback-replies.js';
+import { askerLanguageOf } from '../conversations/text-language.js';
 import { applyTurnContext } from './turn-context.js';
 
 const SPEC_ASK =

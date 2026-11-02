@@ -109,7 +109,7 @@ export interface HeldReply {
 /**
  * Why the screen held a reply, as one plain sentence per rule it broke, and one per check that could
  * not run: a check that never ran is a failure on Forge's side, never read as a rule the reply broke
- * (REQ-30 BC-9, as `fallback-replies.ts:uncheckedLine` words it in Assistant mode).
+ * (REQ-30 BC-9).
  */
 export function heldBecause(refusals: readonly HeldRefusal[]): string {
   const rules = [...new Map(refusals.map((r) => [r.rule, r])).values()];

@@ -425,11 +425,11 @@ ruling and is not registered.
   saved, read as the act in any phrasing ("its results are saved in the report history", "Saved the
   report…", and the Vietnamese forms; ISS-422), where the turn made no share (`POST /api/projects/:id/shares`)
   or save (`forge_template_save`, or the status-report POST), and no unverified mark exempts a claim
-  to have written a record. A reply the screen holds with no rewrite passing goes out as a line that
-  names what it stated that nothing backed (`conversations/fallback-replies.ts:heldFallbackReply`),
-  never as a check that could not run (ISS-420); where a check the reply needed truly could not run
-  (the progress snapshot was not computed), the line names that check and why, and never says
-  nothing failed (`RuleBreak.unchecked` in `packages/core/src/messaging/contract.ts`).
+  to have written a record. A reply the screen holds with no rewrite passing goes out as the part
+  the check passed, or as nothing where no part passed: core writes no line in its place (ISS-875,
+  `packages/core/src/assistant/screened-reply.ts:screenedTurnReply`); where a check the reply needed
+  could not run (`RuleBreak.unchecked` in `packages/core/src/messaging/contract.ts`), nothing is cut
+  and the reply is withheld whole.
 - **A block waits on its reply.** A block is never written into the room when it is drawn: it is
   staged outside `conversation_messages`, so neither the room's REST read nor its socket can show
   it, and is posted just above the reply only once that reply passes the reply check. A chat turn
@@ -463,10 +463,10 @@ ruling and is not registered.
   and its reasoning text to that person alone, and to anyone else the tools by name and time
   (`packages/core/src/conversations/tool-content.ts:toolContentFor`). A reply stored before the
   asker was recorded shows its tool content to nobody.
-- **A partial reply says what the turn read, in words.** The message a turn posts at its first
-  ceiling counts its reads by tool ("ran 3 reports, drew 2 tables") and names its writes with the
-  keys they returned; it never quotes a call's arguments or result
-  (`packages/core/src/assistant/turn-partial.ts:partialReplyText`).
+- **A turn that ends without its answer posts no report of its own.** A turn past its first ceiling
+  posts nothing until it settles; one that fails tells the thread only core's one plain Vietnamese
+  turn-failed line (`packages/core/src/conversations/last-resort.ts`, ISS-875), and its window's
+  record keeps the code and the reason.
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
   is labelled as computed in the block (and in its text, `reports/blocks.ts:attachVisualBlock`), and
   never drives a write without the person's confirmation (REQ-30 BC-4).

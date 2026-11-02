@@ -1,3 +1,6 @@
+// @direct-test-of packages/core/src/support/delivery.ts
+// @direct-test-of packages/core/src/support/last-resort.ts
+
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +9,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { LAST_RESORT_LINES } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
 import { rows } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
@@ -117,9 +121,7 @@ describe('REQ-75 r5: a room that cannot answer says why (BC-26)', () => {
     };
     await boxIs('offline');
     await w.chat.say(w.chat.bob, 'is the export stuck?');
-    await w.untilLines((ls) =>
-      ls.some((l) => l.text.startsWith('The support assistant is offline')),
-    );
+    await w.untilLines((ls) => ls.some((l) => l.text === LAST_RESORT_LINES.offline));
     expect(seen).toEqual([]);
     await boxIs('online');
     // what the box coming online runs (`support/index.ts:registerSupportConsumers`)

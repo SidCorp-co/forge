@@ -25,7 +25,7 @@ const readBack: string[] = [];
 const screenSaw: { name: string }[][] = [];
 
 vi.mock('../conversations/index.js', async () => {
-  const replies = await import('../conversations/fallback-replies.js');
+  const replies = await import('../conversations/text-language.js');
   return {
     ...replies,
     screened: (text: string) => ({ text, proof: null }),
@@ -89,7 +89,7 @@ vi.mock('./screened-reply.js', () => ({
       '[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: reply promises a future action but there is no follow-up turn — do the work now and report the result. Rewrite it now, actually CALL the tools if work is needed.',
     );
     screenSaw.push(again.toolCalls);
-    return { text: again.reply, proof: { door: 'rocketchat-reply' } };
+    return { said: { text: again.reply, proof: { door: 'rocketchat-reply' } } };
   },
 }));
 

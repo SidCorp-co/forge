@@ -3690,6 +3690,13 @@
       "when": 1833148800000,
       "tag": "0581_a_rule_names_a_persons_act",
       "breakpoints": true
+    },
+    {
+      "idx": 582,
+      "version": "7",
+      "when": 1833235200000,
+      "tag": "0582_a_thread_is_told_one_last_resort_line",
+      "breakpoints": true
     }
   ]
 }

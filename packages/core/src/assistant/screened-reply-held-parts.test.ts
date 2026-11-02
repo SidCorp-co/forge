@@ -8,7 +8,10 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { provideMessageReads } from '../messaging/reads.js';
 
-const { screenedTurnReply } = await import('./screened-reply.js');
+const { screenedTurnReply: screenedTurn } = await import('./screened-reply.js');
+/** What the screen lets out, or null where nothing goes out. */
+const screenedTurnReply = async (a: Parameters<typeof screenedTurn>[0]) =>
+  (await screenedTurn(a)).said;
 
 beforeAll(() => {
   provideMessageReads({
@@ -48,8 +51,6 @@ async function ask(question: string, reply: string, calls: { name: string; argum
   return screenedTurnReply({
     door: 'web-chat-reply',
     projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
-    handleName: 'forge',
-    language: 'en',
     askedIn: 'en',
     question,
     first: attempt,
@@ -58,7 +59,6 @@ async function ask(question: string, reply: string, calls: { name: string; argum
     offeredTools: ['forge_requirement', 'ui_open', 'ui_highlight'],
     toolResults: () => [REQ],
     namedResults: () => [{ name: 'forge_requirement', text: REQ }],
-    fallback: 'code-authored',
   });
 }
 

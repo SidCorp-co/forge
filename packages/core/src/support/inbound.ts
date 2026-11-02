@@ -1,6 +1,6 @@
 // A message in a support group or an operations room (REQ-75 BC-11, BC-13, BC-18, BC-20): recorded on its thread's conversation
 // and as a `message_in` action, marked received, and handed to the group's session — unless the
-// writer is past the hourly limit. A person's answer to a proposal ("ok", "confirm …") is an ordinary
+// writer is past the hourly limit, who is told so once in the thread. A person's answer to a proposal ("ok", "confirm …") is an ordinary
 // message: the session cites it to `agree` (ISS-845).
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
@@ -19,11 +19,12 @@ import { logger } from '../lib/logger.js';
 import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
 import { answersOfConfig } from './grants.js';
+import { tellLastResort } from './last-resort.js';
 import { settleOwnerAnswer } from './owner-ask.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
-import { insertAction, limitToldSince, memberMessagesSince, type RoomRow } from './store.js';
-import { postInThread, roomAuth, threadConversationOf } from './thread.js';
+import { insertAction, memberMessagesSince, type RoomRow } from './store.js';
+import { roomAuth, threadConversationOf } from './thread.js';
 
 const RECEIVED_EMOJI = 'eyes';
 
@@ -108,12 +109,9 @@ export async function handleSupportMessage(input: {
   const hourAgo = new Date(Date.now() - 60 * 60_000);
   if ((await memberMessagesSince(room.id, author.key, hourAgo)) >= limits.messagesPerUserPerHour) {
     await recordAndFlag(m, author, { deliver: false });
-    if (!(await limitToldSince(room.id, author.key, hourAgo))) {
-      const posted = await postInThread({
-        room,
-        thread,
-        text: `@${author.label ?? 'there'} you have sent ${limits.messagesPerUserPerHour} messages this hour, the limit in this group. Please wait a little; your messages are recorded.`,
-      });
+    // the member is told once in this thread, in core's last-resort line (ISS-875)
+    const told = await tellLastResort(room, thread, 'rate_limited');
+    if (told.posted) {
       await insertAction({
         roomId: room.id,
         projectId: room.projectId,
@@ -125,7 +123,7 @@ export async function handleSupportMessage(input: {
         actorLabel: author.label,
         tool: 'limit',
         output: { messagesPerUserPerHour: limits.messagesPerUserPerHour },
-        externalId: posted.messageId,
+        externalId: told.messageId,
       });
     }
     return;

@@ -16,7 +16,7 @@ const script: { attempts: Attempt[]; screen: 'pass' | 'fallback' | 'retry-pass' 
 const offered: string[][] = [];
 
 vi.mock('../conversations/index.js', async () => {
-  const replies = await import('../conversations/fallback-replies.js');
+  const replies = await import('../conversations/text-language.js');
   return {
     ...replies,
     screened: (text: string) => ({ text, proof: null }),
@@ -56,12 +56,14 @@ vi.mock('./screened-reply.js', () => ({
     first: { reply: string };
     retry: (instruction: string) => Promise<{ reply: string }>;
   }) => {
-    if (script.screen === 'fallback') return { text: 'I could not check that reply.', proof: null };
+    if (script.screen === 'fallback') {
+      return { said: { text: 'The reply check left out a figure.', proof: null } };
+    }
     if (script.screen === 'retry-pass') {
       const again = await args.retry('rewrite it');
-      return { text: again.reply, proof: { door: 'web-chat-reply' } };
+      return { said: { text: again.reply, proof: { door: 'web-chat-reply' } } };
     }
-    return { text: args.first.reply, proof: { door: 'web-chat-reply' } };
+    return { said: { text: args.first.reply, proof: { door: 'web-chat-reply' } } };
   },
 }));
 
@@ -112,7 +114,7 @@ describe('a reply is recorded as awaiting an answer only on the record of its ow
     expect(await composeReply(ctx(true))).toMatchObject({ send: true, awaitsReply: false });
   });
 
-  it('does not await when the screen replaced the reply with a code-authored line', async () => {
+  it("does not await when what goes out is the reply check's code-authored notice", async () => {
     script.attempts = [{ reply: 'Shall I file REQ-1?', ask: true }];
     script.screen = 'fallback';
     expect(await composeReply(ctx(true))).toMatchObject({ send: true, awaitsReply: false });

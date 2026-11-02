@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto';
 export interface ScriptStep {
   tool?: { name: string; args: unknown };
   text?: string;
+  /** The stream breaks with this provider error after the text, as a provider that stops partway. */
+  breaks?: string;
 }
 
 export const script: {
@@ -46,6 +48,10 @@ export const scriptedOpenChat = async () => ({
         };
       } else {
         yield { type: 'chunk', text: next.text ?? '' };
+      }
+      if (next.breaks) {
+        yield { type: 'error', message: next.breaks };
+        return;
       }
       yield { type: 'done' };
     },

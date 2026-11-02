@@ -4,7 +4,7 @@
 import { and, desc, eq, inArray, like, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversationMessages, conversations } from '../db/schema-conversations.js';
-import { type ReplyLanguage, replyLanguageOf } from './fallback-replies.js';
+import { type ReplyLanguage, replyLanguageOf } from './text-language.js';
 
 /** How many of the room's latest messages from people are read. */
 const READ_LAST = 20;

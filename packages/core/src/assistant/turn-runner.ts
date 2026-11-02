@@ -8,11 +8,13 @@
  */
 
 import {
+  claimLastResort,
   codeAuthored,
   conversationTransport,
   openConversation,
   recordDeliveredReply,
-  turnFailureReason,
+  releaseLastResort,
+  threadVenueOf,
 } from '../conversations/index.js';
 import {
   CHAT_TURN_MENU,
@@ -25,7 +27,8 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { registerTurnStop, STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
-import { composeReply, reportOfFailure, type TurnContext } from './turn-compose.js';
+import { composeReply, type TurnContext } from './turn-compose.js';
+import { turnFailureReason } from './turn-failure.js';
 import {
   type ContinuedEntry,
   type ConversationTurnRequest,
@@ -152,13 +155,7 @@ async function settledOutcome(
   if ('kind' in reply) return reply;
   if (!reply.send) {
     if (reply.ended === 'failed') {
-      return {
-        kind: 'failed',
-        code: reply.code,
-        reason: reply.reason,
-        cause: reply.cause,
-        report: reply.report,
-      };
+      return { kind: 'failed', code: reply.code, reason: reply.reason, cause: reply.cause };
     }
     return { kind: reply.ended ?? 'diverted', reason: reply.reason };
   }
@@ -289,8 +286,9 @@ function settledWithin<T>(work: Promise<T>, ms: number): Promise<T | typeof OUTR
 }
 
 /**
- * How a turn that threw ends: the coded failure its window records with the report the person is
- * owed, or the refusal an unconfigured model earns.
+ * How a turn that threw ends: the coded failure its window records, the person told only core's
+ * turn-failed line for it. A model nobody configured is such a failure too: its refusal is the
+ * record's reason, never a line in the room (ISS-875).
  */
 async function failedTurn(
   ctx: TurnContext,
@@ -307,23 +305,15 @@ async function failedTurn(
   const unconfigured = isRefusal(err)
     ? err.refusals.find((r) => r.code === 'ASSISTANT_MODEL_NOT_CONFIGURED')
     : undefined;
-  if (unconfigured && req.sendMode !== 'tool' && req.fallbacks !== 'silence') {
-    const text = `${unconfigured.code}: ${unconfigured.detail}`;
-    return { send: true, message: codeAuthored(text), screenReplaced: true };
-  }
   const code = timedOut ? 'ASSISTANT_TURN_TIMED_OUT' : 'ASSISTANT_TURN_FAILED';
-  const cause = timedOut ? 'timeout' : 'crash';
   return {
     send: false,
     ended: 'failed',
     code,
-    cause,
-    reason: turnFailureReason(code, req.handleName),
-    report: await reportOfFailure(
-      ctx,
-      { code, cause },
-      { draft: ctx.draft.text || null, progress: null },
-    ),
+    cause: timedOut ? 'timeout' : 'crash',
+    reason: unconfigured
+      ? `${unconfigured.code}: ${unconfigured.detail}`
+      : turnFailureReason(code, req.handleName),
   };
 }
 
@@ -364,7 +354,8 @@ async function continueQuietly(
 
 /**
  * The rest of a turn that worked past its window, delivered into the same thread as its own message:
- * the agent's answer, the report of a failure, or nothing where it chose to say nothing.
+ * the agent's answer, core's one turn-failed line where it failed and the thread was told none yet,
+ * or nothing where it chose to say nothing.
  */
 async function continueInThread(
   req: ConversationTurnRequest,
@@ -384,13 +375,17 @@ async function continueInThread(
     if (!rest.send && rest.ended !== 'failed') {
       return { kind: rest.ended ?? 'diverted', reason: rest.reason };
     }
-    const message = rest.send ? rest.message : rest.report;
+    if (!rest.send) {
+      await tellTurnFailed(req, transport, conversationId, entry);
+      return { kind: 'failed', code: rest.code, reason: rest.reason, cause: rest.cause };
+    }
+    const message = rest.message;
     entry?.onSettled?.({
       text: message.text,
-      screenReplaced: rest.send && rest.screenReplaced,
+      screenReplaced: rest.screenReplaced,
       ...(message.held ? { heldPart: true } : {}),
     });
-    const blocks = rest.send ? (rest.blocks ?? []) : [];
+    const blocks = rest.blocks ?? [];
     const receipt = await transport.deliver(req.venue, message, {
       addressee: req.addressee ?? null,
       ...(blocks.length > 0 ? { blocks } : {}),
@@ -404,7 +399,7 @@ async function continueInThread(
       receipt,
       ...(req.deliveryKey ? { deliveryKey: req.deliveryKey } : {}),
       askedBy: req.authority.userId,
-      awaitsReplyFrom: awaitsReplyFrom(req, rest.send && rest.awaitsReply === true),
+      awaitsReplyFrom: awaitsReplyFrom(req, rest.awaitsReply === true),
       ...(row ? { messageId: row.id, blocks: row.blocks } : {}),
     });
     await transport.notifySettled?.(req.venue).catch(() => undefined);
@@ -425,6 +420,36 @@ async function continueInThread(
     stop.signal.removeEventListener('abort', onStop);
     stop.release();
     await entry?.close();
+  }
+}
+
+/**
+ * Tell the thread a continued turn failed in, in core's one last-resort line for it, where it was
+ * told none yet; a delivery that throws gives the claim back.
+ */
+async function tellTurnFailed(
+  req: ConversationTurnRequest,
+  transport: Transport,
+  conversationId: string,
+  entry: ContinuedEntry | null,
+): Promise<void> {
+  const place = { adapter: req.venue.adapter, venue: threadVenueOf(transport, req.venue, null) };
+  const line = await claimLastResort(place, 'turn_failed');
+  if (!line) return;
+  try {
+    const message = codeAuthored(line);
+    entry?.onSettled?.({ text: line, screenReplaced: false });
+    const receipt = await transport.deliver(req.venue, message);
+    await recordDeliveredReply({
+      conversationId,
+      projectId: req.venue.projectId,
+      text: receipt.deliveredText ?? line,
+      receipt,
+      ...(req.deliveryKey ? { deliveryKey: req.deliveryKey } : {}),
+    });
+  } catch (err) {
+    await releaseLastResort(place);
+    throw err;
   }
 }
 

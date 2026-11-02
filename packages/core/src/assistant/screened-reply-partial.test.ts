@@ -11,7 +11,10 @@ import type { StagedBlock } from '../lib/staged-block.js';
 import { provideMessageReads } from '../messaging/reads.js';
 import { TurnBlockStage } from './turn-stage.js';
 
-const { screenedTurnReply } = await import('./screened-reply.js');
+const { screenedTurnReply: screenedTurn } = await import('./screened-reply.js');
+/** What the screen lets out, or null where nothing goes out. */
+const screenedTurnReply = async (a: Parameters<typeof screenedTurn>[0]) =>
+  (await screenedTurn(a)).said;
 
 beforeAll(() => {
   provideMessageReads({
@@ -69,8 +72,6 @@ async function screen(first: string, opts: { blocks?: number } = {}) {
   const message = await screenedTurnReply({
     door: 'web-chat-reply',
     projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
-    handleName: 'forge',
-    language: 'en',
     askedIn: 'en',
     question: 'what is waiting on me?',
     first: attempt(first),
@@ -80,7 +81,6 @@ async function screen(first: string, opts: { blocks?: number } = {}) {
     offeredTools: OFFERED,
     toolResults: () => [STATUS],
     namedResults: () => [{ name: 'forge_project_status', text: STATUS }],
-    fallback: 'code-authored',
     stage,
   });
   return { message, kept: stage.kept() };
@@ -114,12 +114,9 @@ describe('a reply the check holds shows the part it could check (REQ-41 BC-3)', 
     expect(kept, 'the block the first answer drew is released with the notice').toHaveLength(1);
   });
 
-  it('is withheld as the held line only where no clause and no block is left', async () => {
+  it('is withheld, with nothing said in its place, only where no clause and no block is left', async () => {
     const { message, kept } = await screen(UNBACKED);
-    expect(message?.held).toBeUndefined();
-    expect(message?.text).toContain(
-      'forge wrote an answer, but the reply check held it: it stated a figure that nothing it read backs.',
-    );
+    expect(message).toBeNull();
     expect(kept).toHaveLength(0);
   });
 });

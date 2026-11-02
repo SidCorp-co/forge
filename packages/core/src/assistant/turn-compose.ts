@@ -3,19 +3,13 @@
 import {
   askerLanguageOf,
   codeAuthored,
-  failedTurnReport,
   type ReplyLanguage,
   recordSilence,
-  type ScreenedMessage,
-  type TurnFailureCause,
-  type TurnFailureCode,
-  turnFailureReason,
 } from '../conversations/index.js';
 import { type TurnCredential, turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
-import type { ProgressFacts } from '../messaging/facts.js';
 import { repairIssueLinks } from '../messaging/reply-marks.js';
 import { type AgreementGate, agreementGate } from './agreement/turn-gate.js';
 import { correctFalseClaims } from './confab.js';
@@ -30,8 +24,7 @@ import { type AwaitReplyCapture, awaitReplyCapture } from './tools/await-reply-t
 import { type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
 import { cachedReads } from './tools/read-cache.js';
 import { type RoomSendCapture, roomSendCapture } from './tools/room-send-tool.js';
-import { failureReport } from './turn-findings.js';
-import { ledgerLines } from './turn-partial.js';
+import { type TurnFailureCause, turnFailureReason } from './turn-failure.js';
 import type {
   ConversationTurnRequest,
   TurnHookContext,
@@ -69,33 +62,6 @@ export async function silence(ctx: TurnContext, reason: string): Promise<TurnRep
 export const askedInOf = (ctx: TurnContext): ReplyLanguage | null =>
   askerLanguageOf(ctx.req.message);
 
-/** The report a failed turn owes the person: why, and what it did and found, from its ledger and draft. */
-export function reportOfFailure(
-  ctx: TurnContext,
-  failure: { code: TurnFailureCode; cause: TurnFailureCause },
-  found: { draft: string | null; progress: ProgressFacts | null },
-): Promise<ScreenedMessage> {
-  const { req } = ctx;
-  return failureReport({
-    door: req.door,
-    projectId: req.venue.projectId,
-    conversationId: ctx.conversationId,
-    name: req.handleName,
-    language: req.replyLanguage ?? 'en',
-    askedIn: askedInOf(ctx),
-    question: req.message,
-    ...failure,
-    calls: ctx.writes?.calls() ?? [],
-    held: ctx.writes?.held() ?? [],
-    draft: found.draft,
-    toolResults: ctx.writes?.resultTexts() ?? [],
-    namedResults: ctx.writes?.results() ?? [],
-    offeredTools: (ctx.writes?.tools?.tools ?? []).map((t) => t.function.name),
-    progress: found.progress,
-    ...(req.log ? { log: req.log } : {}),
-  });
-}
-
 /** A turn that ended in an error: a coded failure the window records, never a silence it chose. */
 async function failed(ctx: TurnContext, result: ExternalChatTurnResult): Promise<TurnReply> {
   const timedOut = ctx.abort.signal.reason === TURN_TIMED_OUT;
@@ -109,14 +75,12 @@ async function failed(ctx: TurnContext, result: ExternalChatTurnResult): Promise
     { ...ctx.req.log, code, cause, error: result.error },
     'conversations: the turn ended in an error before it answered',
   );
-  const draft = result.partial || ctx.draft.text || null;
   return {
     send: false,
     ended: 'failed',
     code,
     cause,
     reason: turnFailureReason(code, ctx.req.handleName),
-    report: await reportOfFailure(ctx, { code, cause }, { draft, progress: result.progress }),
   };
 }
 
@@ -344,20 +308,15 @@ async function screenReply(
     door: req.door,
     projectId: req.venue.projectId,
     conversationId: ctx.conversationId,
-    handleName: req.handleName,
-    language: req.replyLanguage ?? 'en',
     askedIn: askedInOf(ctx),
     question: req.message,
     toolResults: () => ctx.writes?.resultTexts() ?? [],
     namedResults: () => ctx.writes?.results() ?? [],
     first: result,
-    brokenReport: (attempt) =>
-      failedReportText(ctx, attempt.errorSource === 'loop' ? 'crash' : 'provider'),
     offeredTools,
     setPhase: ctx.setPhase,
     stage: ctx.stage,
     ...(req.log ? { log: req.log } : {}),
-    fallback: req.sendMode === 'tool' || req.fallbacks === 'silence' ? 'none' : 'code-authored',
     retry: async (instruction) => {
       const { again, asks, run } = retry(instruction);
       const retried = await run;
@@ -373,30 +332,19 @@ async function screenReply(
     },
   });
   if (declinedInRetry) return silence(ctx, 'nothing-to-say');
-  if (!screened) return silence(ctx, 'screen-refused');
+  // the agent could not speak: its turn failed, and the person is told so once in core's line
+  if (!screened.said && screened.failed) return await failed(ctx, screened.failed);
+  // the agent wrote nothing, or nothing it wrote passed: its own silence, which core never fills
+  if (!screened.said) {
+    return silence(ctx, repairIssueLinks(result.reply).trim() ? 'screen-refused' : 'empty-reply');
+  }
+  const message = screened.said;
   const blocks = ctx.stage.kept();
   return {
     send: true,
-    message: screened,
-    screenReplaced: screened.text.trim() !== repairIssueLinks(result.reply).trim(),
-    awaitsReply: (asked || held()) && screened.proof !== null,
+    message,
+    screenReplaced: message.text.trim() !== repairIssueLinks(result.reply).trim(),
+    awaitsReply: (asked || held()) && message.proof !== null,
     ...(blocks.length > 0 ? { blocks } : {}),
   };
-}
-
-/**
- * The report of a rewrite the provider broke off: the ledger only, because the draft it would show
- * is the one the screen refused.
- */
-function failedReportText(ctx: TurnContext, cause: TurnFailureCause): string {
-  const { req } = ctx;
-  const language = req.replyLanguage ?? 'en';
-  const ledger = ledgerLines(ctx.writes?.calls() ?? [], language, ctx.writes?.held() ?? []);
-  return failedTurnReport({
-    name: req.handleName,
-    language,
-    code: 'ASSISTANT_TURN_FAILED',
-    cause,
-    findings: ledger.length > 0 ? ledger.join('\n') : null,
-  });
 }

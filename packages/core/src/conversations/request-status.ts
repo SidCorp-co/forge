@@ -1,28 +1,25 @@
 /**
  * What an explicit request is owed beside its answer: the anchor it hangs on,
- * and the one terminal status a person is told when the answer did not land.
+ * and the one line a person is told where the agent could not answer at all.
  *
  * `route-window.ts` decides the window; this module decides whether that
- * window was somebody asking, and what — if anything — they are told when the
- * decision is not an answer (ISS-1088).
+ * window was somebody asking, and whether they are told anything when the
+ * decision is not an answer (ISS-1088). Only a turn that failed tells them, in
+ * core's plain Vietnamese last-resort line, once per thread (ISS-875): a turn
+ * that wrote nothing, or whose answer the reply check held, or whose delivery
+ * is uncertain, is the agent's silence, and core never stands in for it.
  */
 
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
-import {
-  isTurnFailureCode,
-  nothingPostedStatus,
-  type ReplyLanguage,
-  type TurnFailureCode,
-  uncertainStatus,
-} from './fallback-replies.js';
+import { claimLastResort, releaseLastResort } from './last-resort.js';
 import {
   type ConversationTransport,
   type ConversationVenue,
   codeAuthored,
   conversationTransport,
-  type ScreenedMessage,
+  threadVenueOf,
 } from './ports.js';
 import { namesHandle } from './presence.js';
 import type { StoredConversationMessage } from './store.js';
@@ -37,7 +34,7 @@ interface ExplicitAnchor {
   receivedAt: Date;
   /** The label the transport shows for whoever asked. */
   authorLabel: string | null;
-  /** What they asked with: the status answers in its language. */
+  /** What they asked with. */
   text: string;
 }
 
@@ -70,37 +67,16 @@ export function explicitAnchor(
   };
 }
 
-type TerminalStatus = 'nothing-posted' | 'uncertain';
+type TerminalStatus = 'turn-failed';
 
 /**
- * The silences a turn CHOSE, which owe the asker nothing.
- */
-const DELIBERATE_SILENCES: ReadonlySet<string> = new Set([
-  'nothing-to-say',
-  'not-mentioned',
-  'tool-not-called',
-]);
-
-/**
- * Which status, if any, a routed decision owes the person who asked.
+ * Which line, if any, a routed decision owes the person who asked: the turn-failed line where the
+ * turn could not answer (`unreachable`: it failed, timed out, or never ran), and nothing otherwise.
  */
 function terminalStatusFor(routed: {
   decision: ConversationWindowDecision;
-  detail?: unknown;
 }): TerminalStatus | null {
-  const detail = (routed.detail ?? {}) as { reason?: unknown; superseded?: unknown };
-  switch (routed.decision) {
-    case 'nothing-to-say':
-      return typeof detail.reason === 'string' && DELIBERATE_SILENCES.has(detail.reason)
-        ? null
-        : 'nothing-posted';
-    case 'unreachable':
-      return 'nothing-posted';
-    case 'undetermined':
-      return detail.superseded === true ? null : 'uncertain';
-    default:
-      return null;
-  }
+  return routed.decision === 'unreachable' ? 'turn-failed' : null;
 }
 
 /** What the window's close records about the status it posted, or failed to. */
@@ -122,20 +98,14 @@ interface PostStatusArgs {
   deliveryKey: string;
   /** The decision the window closes under, carried on the row so a re-claim reads the truth back. */
   decision: ConversationWindowDecision;
-  /** The handle the status speaks as. */
-  handleName: string;
-  language: ReplyLanguage;
-  /** The code of the failure the status reports, so the reader is told what failed. */
-  failure: TurnFailureCode | null;
   /** The window's own reservation; a false means the claim moved on and nothing is posted. */
   reserve: () => Promise<boolean>;
-  /** What a failed turn composed for the person — why, and what it did and found — posted in place of the bare line. */
-  report?: ScreenedMessage | undefined;
   log?: Record<string, unknown>;
 }
 
 /**
- * Post the one status an explicit request is owed, and record it under the window's key.
+ * Post the one line a failed request is owed, where its thread was told none yet, and record it
+ * under the window's key.
  */
 async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
   const base = { status: args.status, anchor: args.anchor.messageId };
@@ -145,17 +115,20 @@ async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
   if (!(await args.reserve())) {
     return { ...base, delivered: false, reason: 'the claim moved on before the status was posted' };
   }
-  const message =
-    args.status === 'nothing-posted' && args.report
-      ? args.report
-      : codeAuthored(
-          args.status === 'nothing-posted'
-            ? nothingPostedStatus(args.handleName, args.language, args.failure)
-            : uncertainStatus(args.handleName, args.language),
-        );
-  const text = message.text;
+  const place = {
+    adapter: args.venue.adapter,
+    venue: threadVenueOf(args.transport, args.venue, args.anchor.messageId),
+  };
+  const text = await claimLastResort(place, 'turn_failed');
+  if (!text) {
+    return {
+      ...base,
+      delivered: false,
+      reason: 'the thread was told its one last-resort line already',
+    };
+  }
   try {
-    const receipt = await args.transport.deliver(args.venue, message, {
+    const receipt = await args.transport.deliver(args.venue, codeAuthored(text), {
       anchor: args.anchor.messageId,
     });
     await recordDeliveredReply({
@@ -176,6 +149,7 @@ async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
       tags: { area: 'conversations', phase: 'status' },
       extra: { adapter: args.venue.adapter, externalId: args.venue.externalId, ...args.log },
     });
+    await releaseLastResort(place);
     return { ...base, delivered: false, reason: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -186,9 +160,6 @@ async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
 export interface RequestTrack {
   anchor: ExplicitAnchor | null;
   venue: ConversationVenue | null;
-  handleName: string | null;
-  /** The language the asker wrote in, else the project's content language. */
-  language: ReplyLanguage;
   /** Whether a status went out for this window already — one per window, whichever path posts it. */
   posted: boolean;
   /**
@@ -201,8 +172,6 @@ export function newRequestTrack(): RequestTrack {
   return {
     anchor: null,
     venue: null,
-    handleName: null,
-    language: 'en',
     posted: false,
     outcomeKnown: false,
   };
@@ -214,20 +183,20 @@ interface WindowRef {
   projectId: string;
 }
 
-/** The nothing-posted status for a route that threw after it knew who was asking, once. */
+/** The turn-failed line for a route that threw after it knew who was asking, once. */
 export async function statusAfterThrow(
   window: WindowRef,
   deliveryKey: string,
   claim: WindowClaim,
   track: RequestTrack,
 ): Promise<PostedStatus | null> {
-  if (!track.anchor || !track.venue || !track.handleName || track.posted || track.outcomeKnown) {
+  if (!track.anchor || !track.venue || track.posted || track.outcomeKnown) {
     return null;
   }
   track.posted = true;
   try {
     return await postStatus({
-      status: 'nothing-posted',
+      status: 'turn-failed',
       anchor: track.anchor,
       venue: track.venue,
       transport: conversationTransport(track.venue.adapter),
@@ -235,9 +204,6 @@ export async function statusAfterThrow(
       projectId: window.projectId,
       deliveryKey,
       decision: 'unreachable',
-      handleName: track.handleName,
-      language: track.language,
-      failure: null,
       reserve: () => reserveDelivery(window.id, claim),
       log: { windowId: window.id },
     });
@@ -248,11 +214,6 @@ export async function statusAfterThrow(
     );
     return null;
   }
-}
-
-function failureOf(detail: unknown): TurnFailureCode | null {
-  const code = (detail as { code?: unknown } | null | undefined)?.code;
-  return isTurnFailureCode(code) ? code : null;
 }
 
 /**
@@ -267,13 +228,11 @@ export async function withTerminalStatus<
     deliveryKey: string;
     claim: WindowClaim;
     track: RequestTrack;
-    /** A failed turn's report, posted as its status. */
-    report?: ScreenedMessage | undefined;
   },
 ): Promise<T> {
   const { track } = args;
   track.outcomeKnown = true;
-  if (!track.anchor || !track.venue || !track.handleName || track.posted) return routed;
+  if (!track.anchor || !track.venue || track.posted) return routed;
   const status = terminalStatusFor(routed);
   if (!status) return routed;
   track.posted = true;
@@ -286,11 +245,7 @@ export async function withTerminalStatus<
     projectId: args.window.projectId,
     deliveryKey: args.deliveryKey,
     decision: routed.decision,
-    handleName: track.handleName,
-    language: track.language,
-    failure: failureOf(routed.detail),
     reserve: () => reserveDelivery(args.window.id, args.claim),
-    report: args.report,
     log: { windowId: args.window.id },
   });
   const detail = routed.detail && typeof routed.detail === 'object' ? routed.detail : {};

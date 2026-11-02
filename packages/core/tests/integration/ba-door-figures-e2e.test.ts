@@ -129,7 +129,6 @@ async function baTurn(key: string, message: string) {
     speakerUserId: owner,
     speakerKey: owner,
     message,
-    replyLanguage: 'en',
     deliveryKey: `window:${randomUUID()}`,
   });
   return { outcome, settled: settled.at(-1) };
@@ -153,18 +152,15 @@ describe('the BA door holds a figure its turn did not read (REQ-32 BC-6)', () =>
     // the turn ran at the BA door: its tool set, no report tool
     expect(script.offered[0]).toContain('ba_read_requirement');
     expect(script.offered[0]).not.toContain('forge_report');
-    expect(outcome).toMatchObject({ kind: 'delivered' });
-    expect(settled?.text).not.toBe(STATED);
-    expect(settled?.screenReplaced).toBe(true);
+    // with nothing of the draft passing, nothing goes out and nothing stands in for it (ISS-875)
+    expect(outcome).toMatchObject({ kind: 'declined', reason: 'screen-refused' });
+    expect(settled).toBeUndefined();
     // the screen refused the draft naming the figure, and asked once for a rewrite
     expect(script.asked).toHaveLength(2);
     expect(script.asked[1]).toContain('the reply states the figure 4,812');
     expect(script.asked[1]).toContain('this door runs no report');
     // no rewrite passed and its one clause held the figure, so it is cut, never sent marked, and
-    // with no clause and no block left the reply is withheld as the held line (REQ-41 BC-3)
-    expect(settled?.text).not.toContain('4,812');
-    expect(settled?.text).toContain('the reply check held it: it stated a figure');
-    expect(settled?.heldPart).toBeUndefined();
+    // with no clause and no block left the reply is withheld (REQ-41 BC-3)
   });
 
   it('a reply the check holds still shows the part it could check, with the notice (REQ-41 BC-3)', async () => {
