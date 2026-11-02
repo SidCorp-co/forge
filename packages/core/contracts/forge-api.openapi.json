@@ -1080,6 +1080,12 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -1213,6 +1219,12 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { onlineRunnerCount, sessionQueueDepth, sessionsWaiting } from './read.js';
 
 /** Operator reads and triggers over a project's sessions; mounted under `agentSessionRoutes`, which authenticates. */
@@ -17,38 +17,42 @@ const queueStatsQuerySchema = z
   })
   .strict();
 
-agentSessionOpsRoutes.get('/queue-stats', zValidator('query', queueStatsQuerySchema), async (c) => {
-  const { projectId } = c.req.valid('query');
-  const userId = c.get('userId');
+agentSessionOpsRoutes.get(
+  '/queue-stats',
+  zValidator('query', queueStatsQuerySchema),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(projectId, userId));
 
-  // Group counts by deviceId × status. Devices without any active session
-  // simply don't appear; the UI lists those via the standard devices API.
-  const [rows, waiting, onlineRunners] = await Promise.all([
-    sessionQueueDepth(projectId),
-    sessionsWaiting(projectId),
-    onlineRunnerCount(projectId),
-  ]);
+    // Group counts by deviceId × status. Devices without any active session
+    // simply don't appear; the UI lists those via the standard devices API.
+    const [rows, waiting, onlineRunners] = await Promise.all([
+      sessionQueueDepth(projectId),
+      sessionsWaiting(projectId),
+      onlineRunnerCount(projectId),
+    ]);
 
-  type Bucket = { deviceId: string | null; queued: number; running: number };
-  const buckets = new Map<string, Bucket>();
-  for (const r of rows) {
-    const key = r.deviceId ?? '__null__';
-    const b = buckets.get(key) ?? { deviceId: r.deviceId, queued: 0, running: 0 };
-    if (r.status === 'queued') b.queued = Number(r.count);
-    if (r.status === 'running') b.running = Number(r.count);
-    buckets.set(key, b);
-  }
-  const stats: QueueStats = {
-    devices: Array.from(buckets.values()),
-    waiting,
-    onlineRunners,
-    dispatchStalled: isDispatchStalled(waiting, onlineRunners),
-  };
-  return c.json(stats);
-});
+    type Bucket = { deviceId: string | null; queued: number; running: number };
+    const buckets = new Map<string, Bucket>();
+    for (const r of rows) {
+      const key = r.deviceId ?? '__null__';
+      const b = buckets.get(key) ?? { deviceId: r.deviceId, queued: 0, running: 0 };
+      if (r.status === 'queued') b.queued = Number(r.count);
+      if (r.status === 'running') b.running = Number(r.count);
+      buckets.set(key, b);
+    }
+    const stats: QueueStats = {
+      devices: Array.from(buckets.values()),
+      waiting,
+      onlineRunners,
+      dispatchStalled: isDispatchStalled(waiting, onlineRunners),
+    };
+    return c.json(stats);
+  },
+);
 
 // Manual sweep trigger — flush zombies without waiting for the cron tick.
 const sweepQuerySchema = z
@@ -57,16 +61,20 @@ const sweepQuerySchema = z
   })
   .strict();
 
-agentSessionOpsRoutes.post('/sweep-zombies', zValidator('query', sweepQuerySchema), async (c) => {
-  const { projectId } = c.req.valid('query');
-  const userId = c.get('userId');
+agentSessionOpsRoutes.post(
+  '/sweep-zombies',
+  zValidator('query', sweepQuerySchema),
+  requiresOnResolved('project.admin', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.admin');
+    requireDeclared(await loadProjectAccess(projectId, userId));
 
-  // ISS-449 — the loop monitor owns session reaps now; the sweeper's
-  // sweepZombieSessions was demoted to an alarm pass.
-  const { reapZombieSessions } = await import('../jobs/index.js');
-  const result = await reapZombieSessions(new Date(), { projectId });
-  return c.json(result);
-});
+    // ISS-449 — the loop monitor owns session reaps now; the sweeper's
+    // sweepZombieSessions was demoted to an alarm pass.
+    const { reapZombieSessions } = await import('../jobs/index.js');
+    const result = await reapZombieSessions(new Date(), { projectId });
+    return c.json(result);
+  },
+);
