@@ -986,6 +986,10 @@ export const SAID = {
 		en: "judge {codes} at the requirement on release {version}",
 		vars: { codes: "key", version: "version" },
 	},
+	"standing.act.judgeOnReleaseOn": {
+		en: "judge {codes} on {keys} on release {version}",
+		vars: { codes: "key", keys: "key", version: "version" },
+	},
 	"standing.act.labelRunner": { en: "label a runner for releases" },
 	"standing.act.markMerge": { en: "mark the merge{on}", vars: { on: "said?" } },
 	"standing.act.noHolder": {

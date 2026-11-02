@@ -20,6 +20,8 @@ export function identityPhrase(v: VerdictReading, t: Copy = productCopy()): stri
       return t("agents.identity.design", { flow: v.designFlow ?? v.designWorkflowId ?? "—", rev: v.designRevision ?? "—" });
     case "contract":
       return t("agents.identity.contract", { ref: v.contractRef ?? "—", version: v.contractVersion ?? "—" });
+    case "release":
+      return t("agents.identity.release", { version: v.releaseVersion ?? "—" });
     case "storefront_draft": {
       const status = v.corroboration ?? "uncorroborated";
       const note =

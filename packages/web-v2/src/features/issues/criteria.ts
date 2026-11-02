@@ -13,7 +13,7 @@ import { issueDetailApi } from "./detail-api";
 export interface CriterionVerdict extends StorefrontDraftVerdictView {
   verdict: "pass" | "short" | "fail" | "skipped";
   reason: string | null;
-  identityKind: "commit" | "runtime" | "design" | "contract" | "storefront_draft" | "commit_unresolved" | null;
+  identityKind: "commit" | "runtime" | "design" | "contract" | "storefront_draft" | "commit_unresolved" | "release" | null;
   commitSha: string | null;
   runtimeRef: string | null;
   designFlow: string | null;
@@ -21,6 +21,8 @@ export interface CriterionVerdict extends StorefrontDraftVerdictView {
   designRevision: number | null;
   contractRef: string | null;
   contractVersion: string | null;
+  /** The release a `release` verdict was judged on, where production names no commit it serves (ISS-900). */
+  releaseVersion?: string | null;
   evidence: string[];
   authorAgency: "human" | "agent";
   backfilled: boolean;

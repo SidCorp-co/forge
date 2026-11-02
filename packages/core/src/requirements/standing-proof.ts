@@ -97,7 +97,9 @@ export function releaseTurn(
 // failing one on the master to fix it, naming the issue whose fail is the newest; one no criterion
 // traces to on the master to trace it. The judge's acts go first, since they need no new work; the
 // rule names every unproven BC. Where a verdict counts only on a release (`releaseAskOf`, ISS-900),
-// the judge judges at the requirement on that release instead (`releaseTurn`).
+// the judge judges on that release: on the issues tracing the current wording, which carry a release
+// verdict as the requirement does, and at the requirement only for what no such issue traces
+// (`releaseTurn`); with no release recorded, the master owes the record.
 export function proofTurn(
   judge: VerifiedJudge | null,
   live: readonly { status: string }[],
@@ -125,6 +127,20 @@ export function proofTurn(
     parts,
     undeclared: judge === null ? say('requirements.rule.noJudge') : null,
   });
+  if (release && release !== 'none' && judgeable.length > 0) {
+    return {
+      group: 'waiting',
+      waitingOn: wait(
+        JUDGE_WHO[judge ?? 'self'],
+        say('standing.act.judgeOnReleaseOn', {
+          codes: codesOf(judgeable),
+          keys: unjudgedKeys(judgeable),
+          version: release.version,
+        }),
+        rule,
+      ),
+    };
+  }
   if (release && unjudged.length > 0) return releaseTurn(judge, release, codesOf(unjudged), rule);
   if (judgeable.length > 0) {
     return {

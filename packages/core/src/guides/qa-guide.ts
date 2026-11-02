@@ -117,6 +117,13 @@ review's, and a verdict recorded on it as QA's is refused (\`VERDICT_JUDGED_BY_R
 environment nothing runs that Forge observes: the build is the commit \`judged-build\` names, its
 identity is \`{ kind: 'commit', sha }\` at that commit, and a \`runtime\` identity there is refused
 \`VERDICT_RUNTIME_UNOBSERVED\`.
+On a project whose production declares no source probe, its releases are its agent's record by
+version and no commit is matched: name the release the app reported,
+\`identity: { kind: 'release', version: '0.76.0' }\`, one the project recorded as shipped. It counts on
+the issue and for its requirement while that release, or a later one at no lower a version, is the
+newest the record holds. Refused by name: \`VERDICT_RELEASE_SHAPE\` (no release version),
+\`VERDICT_RELEASE_UNUSED\` (production reads its commit, or there is none) and
+\`VERDICT_RELEASE_UNKNOWN\` (no release recorded as shipped under it).
 
 ### A design issue
 A criterion judged against a design is written with
