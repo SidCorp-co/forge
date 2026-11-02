@@ -172,7 +172,7 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 	title: "Requirement ready",
 	gates: { machine: "requirement", from: ["draft"], to: "agreed" },
 	design: { flow: "requirement-lifecycle", revision: 15, step: "ready_check" },
-	shapes: ["3d9941e4"],
+	shapes: ["3d9941e4", "2b100895"],
 	questions: [
 		{
 			id: "problem",
@@ -251,6 +251,21 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 				by: "record",
 				field: "requirement.workflows",
 				label: "linked workflow designs",
+			},
+			need: required,
+		},
+		{
+			// ISS-691 (REQ-65 BC-7): the picture lights the steps each criterion touches, for every kind,
+			// so a criterion resting on no step of its linked designs is a gap. With no design linked the
+			// `workflows` question carries the gap alone: this one asks only over what is linked.
+			id: "traced",
+			prompt: "Does each criterion trace the workflow steps it touches?",
+			fix: "Trace each criterion to the steps or links of a linked workflow design it rests on.",
+			answer: text(2000),
+			answeredBy: {
+				by: "record",
+				field: "requirement.criterionTraces",
+				label: "criterion traces",
 			},
 			need: required,
 		},

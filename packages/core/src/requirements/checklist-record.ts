@@ -10,15 +10,16 @@
  */
 
 import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
-import { GOAL_LABELS, type GoalLabel, goalLabelWords } from '@forge/contracts/requirement-goal';
+import { type GoalLabel, goalAnswers, goalLabelWords } from '@forge/contracts/requirement-goal';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import { EARNING_VERDICTS } from '@forge/contracts/verdict-identity';
-import { CRITERION_STEPS_ROUTE } from '@forge/contracts/workflow-health';
+import { CRITERION_STEPS_ROUTE, criterionStepsCall } from '@forge/contracts/workflow-health';
 import { type WrittenLang, writtenLangOfText } from '@forge/contracts/written-lang';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import {
   requirementCriteria,
+  requirementCriterionSteps,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
@@ -33,80 +34,6 @@ const ANSWER_MAX = 300;
 
 const clipped = (text: string) =>
   text.length <= ANSWER_MAX ? text : `${text.slice(0, ANSWER_MAX - 1).trimEnd()}…`;
-
-const escaped = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** The patterns a line of a goal written in `lang` opens with, per label: its own language's and English. */
-function labelPatterns(lang: WrittenLang | null): [GoalLabel, RegExp][] {
-  return GOAL_LABELS.map((label) => [
-    label,
-    new RegExp(`^(?:${goalLabelWords(lang, label).map(escaped).join('|')})\\s*:\\s*`, 'iu'),
-  ]);
-}
-
-/**
- * The goal's labelled lines (`Problem:`, `Value:`, `Measured by:`, `Roadmap:`), read under the labels
- * of the language the requirement is written in and the English ones. A label's text is what follows
- * it on its line, and an indented line directly under it, with no blank line between, continues that
- * text. A label with nothing after its colon takes the non-empty lines below it, indented or not,
- * as written (list markers kept), up to a blank line or the next label (ISS-770); one followed
- * directly by a label, a blank line or the end states nothing. Where no `Problem:` line states it, every other line (unlabelled and not such a continuation)
- * states the problem, wherever it stands, so a goal that labels nothing answers the problem alone and
- * adding a `Value:` line above, between or below never takes that answer away (forge-dev REQ-5 r5,
- * 2026-10-28; ISS-732 c1). A line directly under a label that has text of its own, and is not
- * indented, is the problem, not more of that label.
- */
-export function goalAnswers(
-  goal: string | null | undefined,
-  lang: WrittenLang | null = null,
-): Partial<Record<GoalLabel, string>> {
-  const text = goal?.normalize('NFC').trim() ?? '';
-  if (text === '') return {};
-  const patterns = labelPatterns(lang ?? writtenLangOfText(text));
-  const said: Partial<Record<GoalLabel, string[]>> = {};
-  const unlabelled: string[] = [];
-  // The lines the label just read keeps, which an indented line directly below continues. A label
-  // with nothing after its colon (`bare`) is continued by every non-empty line below it.
-  let open: string[] | null = null;
-  let bare = false;
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (line === '') {
-      open = null;
-      bare = false;
-      continue;
-    }
-    const hits = patterns.filter(([, pattern]) => pattern.test(line));
-    if (hits.length === 0) {
-      if (open !== null && (bare || /^\s/.test(raw))) open.push(line);
-      else {
-        unlabelled.push(line);
-        open = null;
-        bare = false;
-      }
-      continue;
-    }
-    open = null;
-    bare = false;
-    for (const [label, pattern] of hits) {
-      if ((said[label]?.length ?? 0) > 0) {
-        open = []; // a repeated label states nothing, and neither does its continuation
-        continue;
-      }
-      const own = line.replace(pattern, '').trim();
-      open = own === '' ? [] : [own];
-      bare = own === '';
-      said[label] = open;
-    }
-  }
-  const found: Partial<Record<GoalLabel, string>> = {};
-  for (const label of GOAL_LABELS) {
-    const lines = said[label];
-    if (lines !== undefined && lines.length > 0) found[label] = lines.join('\n');
-  }
-  if (found.problem === undefined && unlabelled.length > 0) found.problem = unlabelled.join('\n');
-  return found;
-}
 
 /** How a gap names a label: the requirement's own word first, then the English one. */
 const labelled = (lang: WrittenLang | null, label: GoalLabel) =>
@@ -129,6 +56,8 @@ export interface ReadyFacts {
   /** Blocking open questions still open, by their words and who answers them. */
   openBlocking: { question: string; whoAnswers: string }[];
   designs: { flow: string; approvedRevision: number | null }[];
+  /** The live criteria (as `criteria`) tracing no step or link of any linked design. */
+  untraced: string[];
   /** The language the head revision was written in; null where it was written before that was stored. */
   writtenLang: WrittenLang | null;
 }
@@ -140,6 +69,26 @@ const goalGap = (
   gap: `Its goal does not state ${what}.`,
   fix,
 });
+
+/**
+ * Whether each live criterion traces a step or link of a linked design (ISS-691, REQ-65 BC-7): the
+ * page's picture lights what the criteria touch, for every kind. It asks only over what is linked:
+ * with no design or no criterion, the workflows or criteria question carries that gap, and this one
+ * does not refuse a second time for it, nor ask for a trace nothing could hold.
+ */
+function tracedAnswer(f: ReadyFacts): RecordAnswer {
+  const [design] = f.designs;
+  if (!design) return { value: 'No linked workflow design to trace onto yet.' };
+  if (f.criteria.length === 0) return { value: 'No business criterion to trace yet.' };
+  if (f.untraced.length === 0) {
+    return { value: clipped(`Each criterion traces its steps: ${f.criteria.join(', ')}.`) };
+  }
+  const n = f.untraced.length;
+  return {
+    gap: `${f.untraced.join(', ')} ${n === 1 ? 'traces' : 'trace'} no step or link of a linked workflow design.`,
+    fix: `Trace ${n === 1 ? 'it' : 'each'} to the steps it touches on the requirement page, or with ${criterionStepsCall(f.key, design.flow)} per criterion; a trace with at least one step or link passes.`,
+  };
+}
 
 /** The record answers of the ready checklist, from what the head revision holds. */
 export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
@@ -158,6 +107,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
         'criteria',
         'questions',
         'workflows',
+        'traced',
         'outOfScope',
         'roadmap',
       ].map((q) => [q, none]),
@@ -228,6 +178,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
                 .join('; '),
             ),
           },
+    traced: tracedAnswer(f),
     outOfScope: scopeOut.length
       ? { value: clipped(scopeOut.join('; ')) }
       : {
@@ -268,6 +219,7 @@ export async function readyFactsIn(tx: Tx, requirementId: string): Promise<Ready
       criteria: [],
       openBlocking: [],
       designs: [],
+      untraced: [],
       writtenLang: null,
     };
   }
@@ -318,8 +270,35 @@ export async function readyFactsAt(
       ...held.map((question) => ({ question, whoAnswers: 'its author' })),
     ],
     designs: designs.map((d) => ({ flow: d.flow, approvedRevision: d.approvedRevision })),
+    untraced: await untracedAmong(
+      tx,
+      requirementId,
+      criteria,
+      designs.map((d) => d.workflowId),
+    ),
     writtenLang: rev.writtenLang ?? null,
   };
+}
+
+/** Which of `codes` trace no step or link of the designs `workflowIds`, the ones linked now. */
+async function untracedAmong(
+  exec: Pick<Tx, 'selectDistinct'>,
+  requirementId: string,
+  codes: readonly string[],
+  workflowIds: readonly string[],
+): Promise<string[]> {
+  if (codes.length === 0 || workflowIds.length === 0) return [];
+  const rows = await exec
+    .selectDistinct({ code: requirementCriterionSteps.code })
+    .from(requirementCriterionSteps)
+    .where(
+      and(
+        eq(requirementCriterionSteps.requirementId, requirementId),
+        inArray(requirementCriterionSteps.workflowId, [...workflowIds]),
+      ),
+    );
+  const traced = new Set(rows.map((r) => r.code));
+  return codes.filter((c) => !traced.has(c));
 }
 
 async function liveCodesAt(

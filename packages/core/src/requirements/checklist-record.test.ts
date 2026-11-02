@@ -1,16 +1,17 @@
 // The ready and acceptance checklists as a requirement's record answers them (REQ-34 r2 BC-1,
 // BC-18, BC-24; Requirement lifecycle r15 ready_check, acceptance_check): only a blocking gap stops
 // the move, named on its question in plain words; a non-blocking one takes its recommended answer.
+// @direct-test-of packages/contracts/src/requirement-goal.ts
 
 import {
   REQUIREMENT_ACCEPTANCE_CHECKLIST,
   REQUIREMENT_READY_CHECKLIST,
 } from '@forge/contracts/checklist-registry';
 import { checklistRefusals, evaluateChecklist } from '@forge/contracts/checklists';
+import { goalAnswers } from '@forge/contracts/requirement-goal';
 import { describe, expect, it } from 'vitest';
 import {
   acceptanceAnswersOf,
-  goalAnswers,
   type ReadyFacts,
   readyAnswersOf,
 } from './checklist-record.js';
@@ -28,6 +29,7 @@ const ready: ReadyFacts = {
   criteria: ['BC-1', 'BC-2'],
   openBlocking: [],
   designs: [{ flow: 'referral-intake', approvedRevision: 3 }],
+  untraced: [],
   writtenLang: 'en',
 };
 
@@ -84,6 +86,32 @@ describe('the ready checklist, read from the head revision', () => {
       'POST /api/projects/:id/requirements/REQ-7/workflows { "workflowId": <design uuid> }',
     );
     expect(gap?.detail).toContain('PUT /api/projects/:id/requirements/:req/criteria/:code/steps');
+  });
+
+  // ISS-691 (REQ-65 BC-7): the picture lights the steps each criterion touches, for every kind
+  it('refuses a head whose criteria trace no step, naming each untraced code and the trace that passes', () => {
+    const e = judge({ ...ready, untraced: ['BC-2'] });
+    const refusals = checklistRefusals(e);
+    expect(refusals.map((r) => [r.code, r.question, r.path])).toEqual([
+      ['CHECKLIST_INCOMPLETE', 'traced', '/answers/traced'],
+    ]);
+    expect(refusals[0]?.detail).toContain('BC-2 traces no step or link of a linked workflow design.');
+    expect(refusals[0]?.detail).toContain(
+      'PUT /api/projects/:id/requirements/REQ-7/criteria/BC-n/steps { "workflow": "referral-intake", "steps": [<step id>] }',
+    );
+    expect(refusals[0]?.detail).not.toContain('BC-1');
+    const both = checklistRefusals(judge({ ...ready, untraced: ['BC-1', 'BC-2'] }));
+    expect(both[0]?.detail).toContain('BC-1, BC-2 trace no step');
+    expect(judge({ ...ready, kind: 'screen', untraced: ['BC-1'] }).complete).toBe(false);
+    expect(judge({ ...ready, kind: 'report', untraced: [] }).complete).toBe(true);
+  });
+
+  it('asks no trace where nothing is linked to hold one: the workflows question carries that gap alone', () => {
+    const e = judge({ ...ready, designs: [], untraced: [] });
+    expect(e.gaps.map((g) => g.question)).toEqual(['workflows']);
+    expect(e.answers.find((a) => a.question === 'traced')?.value).toBe(
+      'No linked workflow design to trace onto yet.',
+    );
   });
 
   it('takes the recommended answer for kind, out of scope and roadmap, recorded as assumed', () => {
