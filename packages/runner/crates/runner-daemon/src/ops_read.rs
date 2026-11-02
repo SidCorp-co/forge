@@ -120,8 +120,6 @@ fn body(ran: &Ran, project_id: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_command::STREAM_CAP;
-    use std::time::Instant;
 
     fn argv(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_string()).collect()
@@ -179,7 +177,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_read_past_its_time_is_killed_and_said_timed_out() {
-        let started = Instant::now();
+        let started = std::time::Instant::now();
         let ran = read(&argv(&["/bin/sleep", "30"]), Some(1_000))
             .await
             .unwrap();
@@ -200,7 +198,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(ran.stdout.len(), STREAM_CAP);
+        assert_eq!(ran.stdout.len(), crate::host_command::STREAM_CAP);
         assert!(ran.truncated);
         assert_eq!(ran.exit_code, Some(0));
     }
