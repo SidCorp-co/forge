@@ -16,6 +16,7 @@ import {
 } from '@forge/contracts/room-delivery-machine';
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   index,
   integer,
@@ -68,10 +69,37 @@ export const rocketchatThreads = pgTable(
       .references(() => integrationConnections.id, { onDelete: 'cascade' }),
     rid: text('rid').notNull(),
     tmid: text('tmid').notNull(),
+    /** The room's thread for the day's questions, which several questions share (ISS-873). */
+    shared: boolean('shared').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex('rcq_threads_room_idx').on(t.connectionId, t.rid, t.tmid),
+    // one decision, one thread: only the day's shared thread holds several questions
+    uniqueIndex('rcq_threads_room_idx').on(t.connectionId, t.rid, t.tmid).where(sql`NOT shared`),
+    index('rcq_threads_room_lookup_idx').on(t.connectionId, t.rid, t.tmid),
     uniqueIndex('rcq_threads_question_idx').on(t.questionId).where(sql`question_id IS NOT NULL`),
+  ],
+);
+
+/**
+ * A room's one thread for the day's parked questions (ISS-873), per UTC day: a question with no
+ * thread of its own is asked inside it, never at the room's top level.
+ */
+export const rocketchatDailyThreads = pgTable(
+  'rocketchat_daily_threads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => integrationConnections.id, { onDelete: 'cascade' }),
+    rid: text('rid').notNull(),
+    /** The UTC day, YYYY-MM-DD. */
+    day: text('day').notNull(),
+    tmid: text('tmid').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('rc_daily_threads_room_day_idx').on(t.connectionId, t.rid, t.day),
+    check('rc_daily_threads_day_chk', sql`${t.day} ~ '^\\d{4}-\\d{2}-\\d{2}$'`),
   ],
 );

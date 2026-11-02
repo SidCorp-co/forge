@@ -3,7 +3,8 @@
 // @direct-test-of packages/core/src/assistant/chat-room/question-voice.ts
 // @direct-test-of packages/core/src/assistant/chat-room/question-answer-tool.ts
 // ISS-857 (owner ruling agent-is-the-voice, 2026-11-01): a parked run's question reaches a chat
-// room through the room's own agent, which asks it in its own words; core posts no round, no
+// room through the room's own agent, which asks it in its own words, inside a thread (ISS-873,
+// `question-room-resolves-first-e2e.test.ts`); core posts no round, no
 // option code and no outcome line. A plain answer ("cái thứ hai") is recorded when the agent cites
 // the person's message to `answer_question`, and core answers as the linked person through the
 // real `answerAs`. The model and the chat server are the only stand-ins: the question, its
@@ -222,19 +223,30 @@ beforeEach(() => {
 });
 
 describe("a parked run's question is asked by the room's agent", () => {
-  it('posts the agent words and nothing core composed, and threads the round under them', async () => {
+  it('posts the agent words and nothing core composed, inside the day thread the agent opened', async () => {
     const id = await parkedChoice();
-    model.act = async () => ({ reply: 'Mọi người ơi, mình giữ bản xuất cũ hay bỏ nó đi?' });
+    model.act = async (t) =>
+      t.tools
+        ? { reply: 'Mọi người ơi, mình giữ bản xuất cũ hay bỏ nó đi?' }
+        : { reply: 'Các câu hỏi hôm nay' };
     await drain(new Date());
     const asked = model.turns.filter((t) => t.projectId === projectId);
-    expect(asked).toHaveLength(1);
-    // the agent is handed the run's words and the options as facts, and no tool to record anything
+    // the agent is handed the run's words and the options as facts, with the record to read first (ISS-873)
     expect(asked[0]?.message).toContain('Keep the legacy export or drop it?');
     expect(asked[0]?.message).toContain('Drop it');
-    expect(asked[0]?.tools).toBeUndefined();
-    expect(posted.map((p) => p.text)).toEqual(['Mọi người ơi, mình giữ bản xuất cũ hay bỏ nó đi?']);
+    expect(asked[0]?.tools?.tools.map((x) => x.function.name)).toEqual([
+      'read_record',
+      'answer_from_record',
+    ]);
+    // the day's thread is opened by the agent's own line, and the question goes inside it
+    expect(posted.map((p) => p.text)).toEqual([
+      'Các câu hỏi hôm nay',
+      'Mọi người ơi, mình giữ bản xuất cũ hay bỏ nó đi?',
+    ]);
+    expect(posted[0]?.tmid).toBeUndefined();
+    expect(posted[1]?.tmid).toBe(`POST-${postIds.next - 1}`);
     expectNoCoreLine();
-    expect(await threadOf(id)).toBe(`POST-${postIds.next}`);
+    expect(await threadOf(id)).toBe(`POST-${postIds.next - 1}`);
     const [row] = await rows<{ status: string }>(
       sql`SELECT status FROM rocketchat_question_deliveries WHERE question_id = ${id}::uuid`,
     );

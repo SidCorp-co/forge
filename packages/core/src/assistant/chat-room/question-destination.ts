@@ -36,10 +36,15 @@ export type QuestionDestination =
       kind: 'room';
       connectionId: string;
       rid: string;
-      /** The thread to post into, where one is already fixed; null opens one. */
+      /**
+       * The thread to post into, where one is already fixed; null asks it in the room's thread for
+       * the day's questions, or, in the asker's direct room, at its top level (ISS-873).
+       */
       tmid: string | null;
       /** True where `tmid` is an anchor this round must TAKE before it posts. */
       takeAnchor: boolean;
+      /** The direct room of the person whose conversation raised it, which holds no day's thread. */
+      direct: boolean;
     }
   | { kind: 'unresolvable'; reason: string };
 
@@ -122,12 +127,13 @@ type ConversationOrigin = Extract<QuestionOrigin, { kind: 'conversation' }>;
 export const NO_ROOM_REASON = 'no Rocket.Chat room is bound to this project';
 
 const unresolvable = (reason: string): QuestionDestination => ({ kind: 'unresolvable', reason });
-const openRoom = (connectionId: string, rid: string): QuestionDestination => ({
+const openRoom = (connectionId: string, rid: string, direct = false): QuestionDestination => ({
   kind: 'room',
   connectionId,
   rid,
   tmid: null,
   takeAnchor: false,
+  direct,
 });
 
 /**
@@ -152,6 +158,7 @@ export async function resolveQuestionDestination(
       rid: existing.rid,
       tmid: existing.tmid,
       takeAnchor: false,
+      direct: false,
     };
   }
   if (!input.origin) {
@@ -203,6 +210,7 @@ async function conversationDestination(
     rid: venue.rid,
     tmid: origin.anchorId,
     takeAnchor: origin.anchorId !== null,
+    direct: false,
   };
 }
 
@@ -230,7 +238,7 @@ async function directDestination(
       `this round is private to whoever asked, and their direct room (${direct.rid}) is not among the rooms bound to this project — a reply typed there would reach nothing, so the round is not posted. Bind that room to this project, or ask this round in the open.`,
     );
   }
-  return openRoom(directBinding, direct.rid);
+  return openRoom(directBinding, direct.rid, true);
 }
 
 /** Is this room the direct room of the person who asked? */

@@ -3648,6 +3648,13 @@
       "when": 1832630400000,
       "tag": "0575_a_release_the_agent_recorded_reads_recorded",
       "breakpoints": true
+    },
+    {
+      "idx": 576,
+      "version": "7",
+      "when": 1832716800000,
+      "tag": "0576_a_room_asks_its_questions_in_one_thread_a_day",
+      "breakpoints": true
     }
   ]
 }

@@ -51,5 +51,12 @@ export {
 } from './room-handlers.js';
 export type { Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
-export { questionThread, registerThread, releaseQuestionThread } from './thread-registry.js';
+export {
+  dailyThread,
+  keepDailyThread,
+  questionThread,
+  registerThread,
+  releaseQuestionThread,
+  utcDayOf,
+} from './thread-registry.js';
 export type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';

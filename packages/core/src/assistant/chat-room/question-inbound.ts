@@ -170,7 +170,12 @@ export async function handleQuestionThreadReply(args: ReplyArgs): Promise<void> 
   }
   if (spoken.kind !== 'spoken') {
     logger.warn(
-      { ...at, kind: spoken.kind, reason: spoken.reason, recorded: tool?.recorded() ?? false },
+      {
+        ...at,
+        kind: spoken.kind,
+        reason: 'reason' in spoken ? spoken.reason : null,
+        recorded: tool?.recorded() ?? false,
+      },
       'chat-room.question-inbound: the room agent could not speak; its last-resort line goes out',
     );
   }

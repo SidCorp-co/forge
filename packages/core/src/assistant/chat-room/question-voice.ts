@@ -1,7 +1,9 @@
-// A parked run's question, asked and answered in a chat room by the room's own agent (ISS-857;
-// owner ruling agent-is-the-voice, 2026-11-01). Core hands the agent the round as facts and posts
-// only what the agent wrote, screened at the room's reply door: no line of the round, no option
-// code and no outcome is composed here. The person answers in plain words ("the second one",
+// A parked run's question, handed to a chat room's own agent (ISS-857; owner ruling
+// agent-is-the-voice, 2026-11-01). The agent first answers it from the record where the record
+// settles it, and nothing is posted (ISS-873); only where a person is truly needed does it write
+// the one question, in the room's language and plain words, which core posts inside a thread after
+// the room's reply door and the internal-code screen: no line of the round, no option code and no
+// outcome is composed here. The person answers in plain words ("the second one",
 // "cái thứ hai"), and the agent records it through `answer_question` (`question-answer-tool.ts`). // i18n-allow: the plain answer the owner's ruling names
 // A turn that cannot speak posts nothing of core's: the asking side is retried by the ledger, and
 // the reading side falls back to the room's last-resort lines (`conversations/fallback-replies.ts`).
@@ -13,6 +15,7 @@ import { projects } from '../../db/schema.js';
 import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/schema-questions.js';
 import { webBaseUrl } from '../../lib/web-base-url.js';
 import { type MessageVerdict, refusalsOf } from '../../messaging/contract.js';
+import { internalCodeRefusals } from '../../messaging/internal-codes.js';
 import { type ProvenMessage, proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
@@ -20,6 +23,7 @@ import { runExternalChatTurn } from '../external-chat.js';
 import type { ChatToolset } from '../tools/mcp-adapter.js';
 import { rocketChatPersona } from './persona.js';
 import { ANSWER_QUESTION_TOOL } from './question-answer-tool.js';
+import { ANSWER_FROM_RECORD_TOOL, READ_RECORD_TOOL, recordTools } from './question-record.js';
 
 /** The round as the agent is told it: the run agent's own words, and what the record holds. */
 export interface RoundAsked {
@@ -33,6 +37,8 @@ export interface RoundAsked {
 /** What one turn of the room's agent came to. */
 export type Spoken =
   | { kind: 'spoken'; message: ProvenMessage }
+  /** The record settled it: answered, and nothing is to be posted. */
+  | { kind: 'answered' }
   | { kind: 'error' | 'empty'; reason: string }
   | { kind: 'held'; reason: string };
 
@@ -70,8 +76,10 @@ export function roundFacts(r: RoundAsked): string {
   return lines.join('\n');
 }
 
-const ASK_BRIEF =
-  'Put the question below to this room yourself, as one message in your own words and in the language the room speaks. Say plainly what is being decided and what each choice means, so a person can answer in plain words (for example "the second one"). Never ask anyone to type a code, a number format or a keyword. Do not answer it yourself, and do not say anything was decided.';
+const ASK_BRIEF = `A run is parked on the question below. First look for the answer in the record with ${READ_RECORD_TOOL}. If the record settles it (an approval, an attached file, an earlier answer), call ${ANSWER_FROM_RECORD_TOOL} citing where, and write nothing at all. Only if a person is truly needed, write the one question to ask them: in the room's language, in plain words, with no issue key, option id, sha or status word, and never ask anyone to type a code. Do not say anything was decided.`;
+
+const OPEN_DAY_BRIEF =
+  "Write one short line, in the room's language and plain words, that opens today's thread where you will put the team's open questions. Ask nothing in it and name no code.";
 
 const READ_BRIEF = `A person replied in the thread where this question was asked. Read their reply. If it clearly answers the question, call ${ANSWER_QUESTION_TOOL} once, citing their message id and, for a choice, the id of the option their words pick; then tell them in your own words what was recorded. If it is unclear, picks no option, or is about something else, record nothing and ask them back in your own words. If ${ANSWER_QUESTION_TOOL} refuses, tell them why in plain words.`;
 
@@ -95,6 +103,8 @@ interface Turn {
   botName?: string | undefined;
   message: string;
   tools?: ChatToolset | undefined;
+  /** True where the record answered it in this turn: nothing is posted. */
+  answered?: () => boolean;
   /** The linked person the turn acts as, where one wrote; none for the asking turn. */
   userId?: string | undefined;
   asker?: string | undefined;
@@ -126,17 +136,24 @@ async function speak(t: Turn): Promise<Spoken> {
       ...(prior ? { priorRounds: prior.rounds ?? [] } : { tools: t.tools }),
     });
   let result = await run(t.message);
+  if (t.answered?.()) return { kind: 'answered' };
   if (result.terminal === 'error') return { kind: 'error', reason: result.error ?? 'turn failed' };
   const calls = [...result.toolCalls];
   if (!result.reply.trim()) return { kind: 'empty', reason: 'the agent wrote nothing' };
   const outcome = await withRepairs('chat-sync', [result.reply.trim()], {
-    screen: (segments) =>
-      screenReplyAtDoor('chat-sync', {
+    screen: async (segments) => {
+      // no room shows an internal code in a question's thread (ISS-873): the same list the support screen refuses
+      const codes = segments.flatMap((s) =>
+        internalCodeRefusals(s, "a question's thread is read by everyone in the room"),
+      );
+      if (codes.length > 0) return { ok: false, refusals: codes };
+      return screenReplyAtDoor('chat-sync', {
         projectId: t.projectId,
         segments,
         toolCalls: calls,
         progress: result.progress,
-      }),
+      });
+    },
     rewrite: async (verdict) => {
       result = await run(
         `${CORRECTIVE_PREFIX} Your message cannot be sent as it is: ${why(verdict)}. Write it again, keeping only what you know.`,
@@ -155,17 +172,44 @@ async function speak(t: Turn): Promise<Spoken> {
     : { kind: 'held', reason: 'the screened text could not be admitted' };
 }
 
-/** The room's agent asks the round in its own words. */
+/**
+ * The room's agent is handed the round: it answers it from the record, and nothing is posted, or
+ * writes the one question to ask, in its own words and the room's language.
+ */
 export function agentAsks(args: {
   projectId: string;
   botName?: string | undefined;
+  questionId: string;
   round: RoundAsked;
+  replyLanguage: ReplyLanguage | null;
 }): Promise<Spoken> {
+  const record = recordTools({
+    questionId: args.questionId,
+    projectId: args.projectId,
+    round: args.round.step.round,
+  });
   return speak({
     projectId: args.projectId,
     botName: args.botName,
     message: `${ASK_BRIEF}\n\n${roundFacts(args.round)}`,
+    tools: record.toolset,
+    answered: record.answered,
     asker: args.round.askedBy ?? undefined,
+    replyLanguage: args.replyLanguage,
+  });
+}
+
+/** The room's agent writes the one line that opens the room's thread for the day's questions. */
+export function agentOpensDay(args: {
+  projectId: string;
+  botName?: string | undefined;
+  replyLanguage: ReplyLanguage | null;
+}): Promise<Spoken> {
+  return speak({
+    projectId: args.projectId,
+    botName: args.botName,
+    message: OPEN_DAY_BRIEF,
+    replyLanguage: args.replyLanguage,
   });
 }
 

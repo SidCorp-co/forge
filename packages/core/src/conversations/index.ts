@@ -105,6 +105,7 @@ export {
   statusAfterThrow,
   withTerminalStatus,
 } from './request-status.js';
+export { roomLanguageOf } from './room-language.js';
 export { assertConversationReadable, derivedScope } from './scope.js';
 export { linkedSpeakerOf } from './speaker.js';
 export {

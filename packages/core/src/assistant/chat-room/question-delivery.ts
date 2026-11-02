@@ -1,17 +1,26 @@
-// Carrying a parked run's question to a room, and remembering which thread it went to. The room's
-// agent asks it in its own words (`question-voice.ts`); a round it could not ask is retried, and
-// the ledger of owed rounds and its operator alerts are `question-ledger.ts`.
+// Handing a parked run's question to a room's agent, and remembering which thread it went to. Core
+// posts nothing of its own (ISS-873): the agent first answers it from the record, and nothing is
+// posted; only where a person is needed does it write the question (`question-voice.ts`), which goes
+// inside a thread — the one it was raised in, or the room's one thread for the day's questions,
+// opened by the agent's own line — never at the room's top level, and never twice. A round it could
+// not settle is retried; the ledger of owed rounds and its operator alerts are `question-ledger.ts`.
 
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
+import { roomLanguageOf } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { agentQuestions } from '../../db/schema-questions.js';
-import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
+import { rocketchatQuestionDeliveries, rocketchatThreads } from '../../db/schema-rocketchat.js';
 import {
+  dailyThread,
+  keepDailyThread,
   liveConnectionFor,
+  namespaceFromServerUrl,
+  type RocketChatRestAuth,
   registerThread,
   releaseQuestionThread,
   resolveRoomPostAuth,
   sendFixedReply,
+  utcDayOf,
 } from '../../integrations/rocketchat/index.js';
 import { issueDisplayIds } from '../../issues/index.js';
 import { logger } from '../../lib/logger.js';
@@ -32,7 +41,7 @@ import {
   roundOf,
   settle,
 } from './question-ledger.js';
-import { agentAsks, type Spoken } from './question-voice.js';
+import { agentAsks, agentOpensDay, type Spoken } from './question-voice.js';
 
 async function noteFailure(
   owed: OwedRound,
@@ -60,6 +69,8 @@ type Prepared = {
   attempt: number;
   destination: RoomDestination;
   proven: ProvenMessage;
+  auth: RocketChatRestAuth;
+  botName: string | undefined;
 };
 
 const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -72,7 +83,42 @@ async function deliverOwedRound(owed: OwedRound, now: Date = new Date()): Promis
   return typeof prepared === 'string' ? prepared : postRound(owed, prepared, now);
 }
 
-/** Claim the round, find where it goes and have the room's agent ask it; an outcome where it stops. */
+/**
+ * The thread an open question on the same issue, with the same words, was already asked in: the
+ * room is not asked twice (ISS-873).
+ */
+async function sameQuestionThread(
+  questionId: string,
+  projectId: string,
+  issueId: string | null,
+  prompt: string,
+): Promise<{ connectionId: string; rid: string; tmid: string } | null> {
+  if (!issueId) return null;
+  const asked = await db
+    .select({
+      connectionId: rocketchatThreads.connectionId,
+      rid: rocketchatThreads.rid,
+      tmid: rocketchatThreads.tmid,
+      steps: agentQuestions.steps,
+    })
+    .from(agentQuestions)
+    .innerJoin(rocketchatThreads, eq(rocketchatThreads.questionId, agentQuestions.id))
+    .where(
+      and(
+        eq(agentQuestions.projectId, projectId),
+        eq(agentQuestions.issueId, issueId),
+        eq(agentQuestions.status, 'open'),
+        ne(agentQuestions.id, questionId),
+      ),
+    );
+  const same = asked.find((a) => a.steps.at(-1)?.prompt.trim() === prompt.trim());
+  return same ? { connectionId: same.connectionId, rid: same.rid, tmid: same.tmid } : null;
+}
+
+/**
+ * Claim the round, find where it goes and hand it to the room's agent, which answers it from the
+ * record or writes the one question to ask; an outcome where it stops.
+ */
 async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outcome> {
   const [question] = await db
     .select()
@@ -85,6 +131,22 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
   const attempt = await claimRound(owed, now);
   if (attempt === null) return 'held';
 
+  // the same question, still open on the same issue, was already asked: it waits in that thread
+  const asked = await sameQuestionThread(
+    owed.questionId,
+    owed.projectId,
+    owed.issueId,
+    step.prompt,
+  );
+  if (
+    asked &&
+    (await registerThread({ questionId: owed.questionId }, asked, db, { shared: true }))
+  ) {
+    await settle(owed, { status: 'delivered' }, now);
+    await resolveUndeliverableAlert(owed.questionId);
+    return 'delivered';
+  }
+
   const destination = await resolveQuestionDestination({
     questionId: owed.questionId,
     projectId: owed.projectId,
@@ -93,13 +155,26 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
   });
   if (destination.kind === 'unresolvable') return refuse(owed, destination.reason, now);
 
+  const auth = await resolveRoomPostAuth(destination.connectionId, {
+    source: 'rocketchat.question-delivery',
+    questionId: owed.questionId,
+  });
+  if (!auth) return noteFailure(owed, attempt, 'the connection carries no usable credentials', now);
+  const namespace = namespaceFromServerUrl(auth.serverUrl);
+  const replyLanguage = namespace
+    ? await roomLanguageOf('rocketchat', `${namespace} ${destination.rid}`)
+    : null;
+
   const issueKey = owed.issueId
     ? ((await issueDisplayIds([owed.issueId])).get(owed.issueId) ?? null)
     : null;
-  // the room's agent asks it in its own words; core composes no line of the round (ISS-857)
+  const botName = liveConnectionFor(destination.connectionId)?.username ?? undefined;
+  // the room's agent answers it from the record or asks it in its own words; core composes no line (ISS-857, ISS-873)
   const spoken = await agentAsks({
     projectId: owed.projectId,
-    botName: liveConnectionFor(destination.connectionId)?.username ?? undefined,
+    botName,
+    questionId: owed.questionId,
+    replyLanguage,
     round: {
       issueKey,
       step,
@@ -107,7 +182,14 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
       askedBy: question.origin?.kind === 'conversation' ? question.origin.askedByLabel : null,
     },
   }).catch((err: unknown): Spoken => ({ kind: 'error', reason: messageOf(err) }));
-  if (spoken.kind === 'spoken') return { attempt, destination, proven: spoken.message };
+  if (spoken.kind === 'answered') {
+    await settle(owed, { status: 'delivered' }, now);
+    await resolveUndeliverableAlert(owed.questionId);
+    return 'delivered';
+  }
+  if (spoken.kind === 'spoken') {
+    return { attempt, destination, proven: spoken.message, auth, botName };
+  }
   logger.error(
     { questionId: owed.questionId, round: owed.round, kind: spoken.kind, reason: spoken.reason },
     'rocketchat.question-delivery: the room agent did not ask the round; nothing posted',
@@ -120,19 +202,58 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
   );
 }
 
-/** Post the agent's ask into its room and record the thread it now lives in. */
-async function postRound(
+/**
+ * The room's thread for today's questions: the one standing, or one opened now under the agent's
+ * own opening line. Null, with why, where the agent wrote none.
+ */
+async function threadOfTheDay(
   owed: OwedRound,
-  { attempt, destination, proven }: Prepared,
+  { destination, auth, botName }: Prepared,
   now: Date,
-): Promise<Outcome> {
-  const auth = await resolveRoomPostAuth(destination.connectionId, {
-    source: 'rocketchat.question-delivery',
-    questionId: owed.questionId,
-  });
-  if (!auth) return noteFailure(owed, attempt, 'the connection carries no usable credentials', now);
+): Promise<{ tmid: string } | { failed: string }> {
+  const room = { connectionId: destination.connectionId, rid: destination.rid };
+  const day = utcDayOf(now);
+  const standing = await dailyThread(room, day);
+  if (standing) return { tmid: standing };
+  const namespace = namespaceFromServerUrl(auth.serverUrl);
+  const opener = await agentOpensDay({
+    projectId: owed.projectId,
+    botName,
+    replyLanguage: namespace
+      ? await roomLanguageOf('rocketchat', `${namespace} ${room.rid}`)
+      : null,
+  }).catch((err: unknown): Spoken => ({ kind: 'error', reason: messageOf(err) }));
+  if (opener.kind !== 'spoken') {
+    return {
+      failed: `the room's agent wrote no line to open today's thread for questions (${opener.kind}${'reason' in opener ? `: ${opener.reason}` : ''}), and a question is never asked at the room's top level`,
+    };
+  }
+  const root = await sendFixedReply(
+    { kind: 'rest', auth, rid: room.rid },
+    opener.message.text,
+    opener.message,
+  );
+  if (!root.messageId) {
+    return { failed: "the post opening today's thread named no message id" };
+  }
+  return { tmid: await keepDailyThread(room, day, root.messageId) };
+}
 
-  const { connectionId, rid, tmid } = destination;
+/** Post the agent's ask into its room and record the thread it now lives in. */
+async function postRound(owed: OwedRound, prepared: Prepared, now: Date): Promise<Outcome> {
+  const { attempt, destination, proven, auth } = prepared;
+  const { connectionId, rid } = destination;
+  // never at the room's top level: the thread it was raised in, or the room's thread of the day
+  let tmid = destination.tmid;
+  let shared = false;
+  if (!tmid && !destination.direct) {
+    const day = await threadOfTheDay(owed, prepared, now).catch(
+      (err: unknown) => ({ failed: messageOf(err) }) as const,
+    );
+    if ('failed' in day) return noteFailure(owed, attempt, day.failed, now);
+    tmid = day.tmid;
+    shared = true;
+  }
   if (destination.takeAnchor && tmid) {
     const took = await registerThread({ questionId: owed.questionId }, { connectionId, rid, tmid });
     if (!took) {
@@ -177,7 +298,9 @@ async function postRound(
     );
   }
   try {
-    await registerThread({ questionId: owed.questionId }, { connectionId, rid, tmid: thread });
+    await registerThread({ questionId: owed.questionId }, { connectionId, rid, tmid: thread }, db, {
+      shared,
+    });
     await settle(owed, { status: 'delivered' }, now);
     await resolveUndeliverableAlert(owed.questionId);
     return 'delivered';
