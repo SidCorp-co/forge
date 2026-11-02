@@ -56,7 +56,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "forge-feedback": { budget: 50, amnesty: waits(64) },
   "ecosystems-home": { budget: 20 },
   "ecosystem-detail": { budget: 100, amnesty: waits(168) },
-  docs: { budget: 100, amnesty: waits(275) },
+  docs: { budget: 100 },
   "sign-in": { budget: 11 },
   register: { budget: 15 },
   "not-found": { budget: 8, amnesty: waits(12) },

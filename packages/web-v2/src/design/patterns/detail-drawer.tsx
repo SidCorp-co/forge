@@ -18,13 +18,26 @@ interface DetailDrawerProps {
   icon?: IconName;
   children: ReactNode;
   width?: number;
-  /** Controlled: the screen opens it itself (a row's "open"). */
+  /** Controlled: the screen opens it itself (a row's "open", a `?path=` link). */
   open?: boolean;
+  /** `false` draws no trigger: the screen's own rows open it, controlled. */
+  trigger?: boolean;
   onOpenChange?: (open: boolean) => void;
   testId?: string;
 }
 
-export function DetailDrawer({ label, title, count, icon = "panelRightOpen", children, width = 440, open, onOpenChange, testId }: DetailDrawerProps) {
+export function DetailDrawer({
+  label,
+  title,
+  count,
+  icon = "panelRightOpen",
+  children,
+  width = 440,
+  open,
+  onOpenChange,
+  trigger = true,
+  testId,
+}: DetailDrawerProps) {
   const [own, setOwn] = useState(false);
   const shown = open ?? own;
   const set = (next: boolean) => {
@@ -33,20 +46,29 @@ export function DetailDrawer({ label, title, count, icon = "panelRightOpen", chi
   };
   return (
     <>
-      <Button
-        variant="ghost"
-        size="sm"
-        icon={icon}
-        aria-haspopup="dialog"
-        aria-expanded={shown}
-        onClick={() => set(true)}
-        data-detail-drawer=""
-        data-testid={testId}
+      {trigger ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={icon}
+          aria-haspopup="dialog"
+          aria-expanded={shown}
+          onClick={() => set(true)}
+          data-detail-drawer=""
+          data-testid={testId}
+        >
+          {label}
+          {count !== undefined ? (
+            <span className="text-12 font-medium text-muted">{count}</span>
+          ) : null}
+        </Button>
+      ) : null}
+      <SlideOver
+        open={shown}
+        onClose={() => set(false)}
+        title={title ?? label}
+        width={width}
       >
-        {label}
-        {count !== undefined ? <span className="text-12 font-medium text-muted">{count}</span> : null}
-      </Button>
-      <SlideOver open={shown} onClose={() => set(false)} title={title ?? label} width={width}>
         {children}
       </SlideOver>
     </>
