@@ -26859,6 +26859,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "assistant.exec"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -35876,6 +35882,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",

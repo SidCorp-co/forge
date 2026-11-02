@@ -31,7 +31,7 @@ import type { ReportFrame } from '@forge/contracts/report-queries';
 import { scrubLogText, scrubSecretsDeep } from '@forge/observability';
 import { dataPolicyOf, egressAt } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclaredHeld } from '../permissions/index.js';
 import { recordExecution, turnSpend } from './executions.js';
 import {
   type ComputePolicy,
@@ -274,7 +274,7 @@ export async function computeExecution(args: {
 }): Promise<ComputeAnswer> {
   const adapters = registeredExecutors();
   const { projectId, request, asker, door } = args;
-  requireHeld(asker.access, 'assistant.exec', 'running a computation in a sandbox');
+  requireDeclaredHeld(asker.access, 'assistant.exec', 'running a computation in a sandbox');
   let conversationId: string | null = null;
   if (door.kind === 'chat') {
     const room = await reportsPorts().roomOf(door.conversationId, asker.userId);

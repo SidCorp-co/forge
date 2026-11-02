@@ -5,6 +5,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { attachVisualBlock } from './blocks.js';
 import { computeExecution } from './compute.js';
 import { readExecution } from './executions.js';
@@ -100,12 +101,9 @@ reportRoutes.post(
 reportRoutes.get(
   '/projects/:id/report-templates',
   zValidator('param', listParam, invalid('invalid path: /api/projects/<project>/report-templates')),
+  requiresOnParam('project.read', 'id'),
   noQuery,
-  async (c) => {
-    // a member's list: the project is read through its access, so a token fenced off it is refused
-    await loadProjectAccess(c.req.valid('param').id, c.get('userId'));
-    return c.json({ templates: listReportTemplates() });
-  },
+  (c) => c.json({ templates: listReportTemplates() }),
 );
 
 /**
@@ -178,6 +176,7 @@ reportRoutes.post(
 reportRoutes.post(
   '/projects/:id/executions',
   zValidator('param', listParam, invalid('invalid path: /api/projects/<project>/executions')),
+  requiresOnParam('assistant.exec', 'id'),
   zValidator('json', ComputeRequestSchema, invalid(`invalid body: ${COMPUTE_REQUEST_SHAPE}`)),
   async (c) => {
     const projectId = c.req.valid('param').id;
