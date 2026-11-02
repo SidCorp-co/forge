@@ -494,6 +494,15 @@ credential, at `GET /api/openapi.json` and `GET /api/mcp-tools.json`
 (`packages/core/src/api-contract/routes.ts:publishedContractRoutes`). Exit `0` equal · `1` drift or a refusal ·
 `2` could not run.
 
+**Every route and every MCP tool action names the permission it needs** (REQ-12 BC-20, ISS-824).
+A route declares it where it is mounted (`packages/core/src/permissions/declared.ts:requiresOnParam`
+and its siblings), a tool per action (`McpTool.permission`); the generator reads it into
+`x-forge-permission` on the operation and on each action in `forge-mcp.tools.json`, and refuses, by
+`METHOD /path` or `<tool>.<action>`, one that declares none. Both doors enforce that same declaration
+before the handler (`declared.ts:enforceDeclared`). The routes and actions still checking in handler
+code are a priced amnesty, `packages/core/src/api-contract/permission-amnesty.json`, which only
+shrinks: an entry naming one that now declares, or is no longer served, is refused too.
+
 **Generated from the running app, not from a second description.** The generator imports `app`
 from `packages/core/src/index.ts` and walks `app.routes`, which is what Hono itself dispatches on,
 so a route is in the contract exactly when it is mounted — including the `/` and `/api` twins and
