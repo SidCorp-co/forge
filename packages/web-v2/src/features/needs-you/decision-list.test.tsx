@@ -231,6 +231,21 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
 
 // the home's first view (ISS-903): what the read left out is the "more" line's hover, never a sentence under it
 describe("a dense list", () => {
+  it("draws each decision as its question opening its item, the item's title its tooltip, never a line of its own", async () => {
+    renderWithQuery(<DecisionList read={READ} slug="hop" dense />);
+    const first = screen.getAllByTestId("needs-you-decision")[0];
+    if (!first) throw new Error("no decision drawn");
+    const question = within(first).getByTestId("needs-you-decision-question");
+    expect(question).toHaveAttribute("data-item", "Export · ISS-1");
+    // the title is no visible text: only the screen reader's, after the question
+    expect([...first.querySelectorAll("*")].filter((e) => !e.closest(".sr-only") && e.childElementCount === 0 && e.textContent === "Export")).toHaveLength(0);
+    const open = within(question).getByRole("link");
+    expect(open).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
+    expect(open).toHaveAccessibleName(/move to the new one\?\s*· Export · ISS-1$/);
+    open.focus();
+    expect(await screen.findByText("Export · ISS-1", { selector: ":not(.sr-only)" })).toBeInTheDocument();
+  });
+
   it("says on its more line, as its hover, what the read left out", () => {
     renderWithQuery(<DecisionList read={READ} slug="hop" dense cap={1} moreHref="/projects/hop/approvals" />);
     expect(screen.queryByTestId("needs-you-left-out")).toBeNull();

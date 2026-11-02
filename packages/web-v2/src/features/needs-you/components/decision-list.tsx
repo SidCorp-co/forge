@@ -5,8 +5,8 @@
 // posts its own body to the route the record's page calls, as the person who presses it (BC-9);
 // nothing is decided here. Flat rows under hairlines, one heading per group; the project home and
 // the chat draw the same list. `dense` (the project home) draws each as its question and its buttons
-// only: what it changes, its impact and the recommendation's why sit behind the question, and each
-// answer's effect behind its button, a hover away, and what the read left out is its "more" line's hover.
+// only: the item's title is the question's tooltip, what it changes, its impact and the recommendation's
+// why sit behind the question, and each answer's effect behind its button, a hover away, and what the read left out is its "more" line's hover.
 
 import {
   capDecisions,
@@ -73,6 +73,54 @@ function Stakes({ d }: { d: NeedsYouDecision }) {
   );
 }
 
+/** The item's title leads; its key sits behind the link and in the tooltip (ui-copy-rule 10). */
+function ItemTitle({ d, href }: { d: NeedsYouDecision; href: string | null }) {
+  const name = d.title || (d.opens?.key ?? d.key);
+  return (
+    <p className="fg-caption text-muted">
+      <Tooltip label={d.opens?.key ?? d.key} className="min-w-0 max-w-full">
+        {href ? (
+          <Link href={href} className="truncate text-fg underline-offset-2 hover:underline">
+            {name}
+          </Link>
+        ) : (
+          <span className="truncate text-fg">{name}</span>
+        )}
+      </Tooltip>
+    </p>
+  );
+}
+
+/**
+ * A dense decision is its question, opening its item (REQ-41 BC-13): the item's title and key are the
+ * question's tooltip, on hover or keyboard focus, and what a screen reader hears after the question
+ * (ISS-903); what it changes, its impact and the why stay the question's own hover.
+ */
+function DenseQuestion({ d, href }: { d: NeedsYouDecision; href: string | null }) {
+  const t = useCopy();
+  const key = d.opens?.key ?? d.key;
+  const name = d.title ? `${d.title} · ${key}` : key;
+  const said = (
+    <>
+      {d.question}
+      <span className="sr-only"> · {name}</span>
+    </>
+  );
+  return (
+    <p className="fg-body-sm flex min-w-0 text-fg" title={hoverOf(d, t)} data-testid="needs-you-decision-question" data-item={name}>
+      <Tooltip label={name} focusable={!href} className="min-w-0 max-w-full">
+        {href ? (
+          <Link href={href} className="truncate underline-offset-2 hover:underline" data-testid="needs-you-decision-open">
+            {said}
+          </Link>
+        ) : (
+          <span className="truncate">{said}</span>
+        )}
+      </Tooltip>
+    </p>
+  );
+}
+
 function OwedDecision({
   d,
   slug,
@@ -102,25 +150,16 @@ function OwedDecision({
   const sent = press.isSuccess ? press.variables?.answer : undefined;
   return (
     <li className={dense ? "flex flex-col gap-1 py-2.5" : "flex flex-col gap-1.5 py-3"} data-testid="needs-you-decision" data-group={d.group} data-key={d.key}>
-      <p className={dense ? "fg-caption truncate text-muted" : "fg-caption text-muted"}>
-        {/* the item's title leads; its key sits behind the link and in the tooltip (ui-copy-rule 10) */}
-        <Tooltip label={d.opens?.key ?? d.key} className="min-w-0 max-w-full">
-          {href ? (
-            <Link href={href} className="truncate text-fg underline-offset-2 hover:underline">
-              {d.title || (d.opens?.key ?? d.key)}
-            </Link>
-          ) : (
-            <span className="truncate text-fg">{d.title || (d.opens?.key ?? d.key)}</span>
-          )}
-        </Tooltip>
-      </p>
-      <p
-        className={dense ? "fg-body-sm truncate text-fg" : "fg-body-sm whitespace-pre-wrap text-fg"}
-        title={dense ? hoverOf(d, t) : undefined}
-        data-testid="needs-you-decision-question"
-      >
-        {d.question}
-      </p>
+      {dense ? (
+        <DenseQuestion d={d} href={href} />
+      ) : (
+        <>
+          <ItemTitle d={d} href={href} />
+          <p className="fg-body-sm whitespace-pre-wrap text-fg" data-testid="needs-you-decision-question">
+            {d.question}
+          </p>
+        </>
+      )}
       {dense ? null : <Stakes d={d} />}
       {sent ? (
         <p className="fg-caption flex items-center gap-1 text-fg" role="status">

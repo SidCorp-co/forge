@@ -13,14 +13,16 @@ interface TooltipProps {
   multiline?: boolean;
   /** The trigger's own layout, where the default inline box would cut a truncating child. */
   className?: string;
+  /** A keyboard reaches the trigger itself, where nothing focusable sits inside it. */
+  focusable?: boolean;
 }
 
-export function Tooltip({ label, children, side = "top", multiline = false, className }: TooltipProps) {
+export function Tooltip({ label, children, side = "top", multiline = false, className, focusable = false }: TooltipProps) {
   return (
     <TooltipRoot>
       <TooltipTrigger
         render={<span className={cn("relative inline-flex", className)} />}
-        tabIndex={-1}
+        tabIndex={focusable ? 0 : -1}
       >
         {children}
       </TooltipTrigger>
