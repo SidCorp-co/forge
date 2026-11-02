@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { env } from '../lib/env.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { noQuery } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
+import { requiresOnParam, requiresPublic } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/index.js';
 import { resolveGuide } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
@@ -23,6 +23,10 @@ import { getGuide, listGuides } from './registry.js';
  * project's org shadows it, so it is authenticated and needs `project.read`.
  */
 export const guideRoutes = new Hono();
+
+const GUIDE_CORPUS = requiresPublic(
+  'the guide corpus is the code’s own, with no tenant data, read by any client with no credential',
+);
 /** A project member reads a guide as its org shadows it: an org's integration guide over the code default. */
 const projectGuideRoutes = new Hono<{ Variables: AuthVars }>();
 projectGuideRoutes.use('*', requireAuth());
@@ -63,12 +67,12 @@ function validSlugsMessage(): string {
   return `guide not found. Valid slugs: ${slugs}. Readable pages: ${humanGuidesUrl()}`;
 }
 
-guideRoutes.get('/guides', noQuery, (c) => {
+guideRoutes.get('/guides', GUIDE_CORPUS, noQuery, (c) => {
   c.header('Cache-Control', 'public, max-age=300');
   return c.json({ guides: listGuides() });
 });
 
-guideRoutes.get('/llms.txt', noQuery, (c) => {
+guideRoutes.get('/llms.txt', GUIDE_CORPUS, noQuery, (c) => {
   const url = new URL(c.req.url);
   const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
   if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
@@ -107,7 +111,7 @@ guideRoutes.get('/llms.txt', noQuery, (c) => {
 // Hono routes `:slug` as a literal path segment — it will NOT split
 // `deploy-safety.md` into a separate `.md` route. Strip the suffix inside
 // this one handler instead and switch the response shape/content-type.
-guideRoutes.get('/guides/:slug', noQuery, (c) => {
+guideRoutes.get('/guides/:slug', GUIDE_CORPUS, noQuery, (c) => {
   const raw = c.req.param('slug');
   const isMarkdown = raw.endsWith('.md');
   const slug = isMarkdown ? raw.slice(0, -3) : raw;

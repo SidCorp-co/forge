@@ -126,6 +126,7 @@ import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
 import { outboxAdminRoutes } from './outbox/routes.js';
+import { requiresNoPermission, requiresPublic } from './permissions/index.js';
 import {
   phaseRoutes,
   pipelineAnalyticsRoutes,
@@ -209,6 +210,11 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountRemainingRoutes(app);
 }
 
+// declared where the install routes are mounted, for the reason their validator is
+const INSTALL_IS_PUBLIC = requiresPublic(
+  'a box with no credential yet fetches the installer and the published runner build; nothing a project owns',
+);
+
 /** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
@@ -216,14 +222,29 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   // an MCP client that reaches /mcp with no token is pointed here to sign in through the browser
   app.route('/', mcpOauthMetadataRoutes);
   app.use('/mcp', mcpRequestClass(), requirePat());
-  app.post('/mcp', mcpMessageBody, mcpHandler);
-  app.on(['GET', 'DELETE'], '/mcp', mcpNoBody, mcpMethodNotAllowed);
+  app.post(
+    '/mcp',
+    requiresNoPermission(
+      'the PAT admits the caller to the door; each tool action declares its own permission, which enforceDeclared checks before it runs',
+    ),
+    mcpMessageBody,
+    mcpHandler,
+  );
+  app.on(
+    ['GET', 'DELETE'],
+    '/mcp',
+    requiresNoPermission(
+      'the PAT admits the caller, and the answer is a 405 naming POST; it reads and writes nothing',
+    ),
+    mcpNoBody,
+    mcpMethodNotAllowed,
+  );
 
   // the install routes reach nothing outside themselves (.arch.json install-is-pure), so the
   // validator closing their query is held where they are mounted
   for (const at of ['', '/api']) {
     for (const path of ['/install.sh', '/install/latest.json', '/install/bin/:target']) {
-      app.use(`${at}${path}`, noQuery);
+      app.use(`${at}${path}`, INSTALL_IS_PUBLIC, noQuery);
     }
   }
   for (const at of ['/', '/api']) app.route(at, installRoutes);

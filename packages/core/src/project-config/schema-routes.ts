@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { noQuery } from '../middleware/zod-validator.js';
+import { requiresPublic } from '../permissions/index.js';
 import { gateCatalog } from './gates.js';
 import { type ProjectConfigSchemaName, projectConfigJsonSchemas, schemaId } from './json-schema.js';
 
@@ -17,13 +18,16 @@ export function projectConfigSchemaRoutes(...others: Readonly<Record<string, obj
     ),
     ...others.flatMap((schemas) => Object.entries(schemas)),
   ]);
+  const published = requiresPublic(
+    'a schema or the gate catalogue describes shapes and defaults the code holds, never a row, read with no credential',
+  );
   return new Hono()
-    .get('/gates', noQuery, (c) => {
+    .get('/gates', published, noQuery, (c) => {
       // every policy gate, what it refuses and its default per profile, and the kernel no profile relaxes (REQ-76 BC-1)
       c.header('Cache-Control', 'public, max-age=300');
       return c.json(gateCatalog());
     })
-    .get('/schemas/:file', noQuery, (c) => {
+    .get('/schemas/:file', published, noQuery, (c) => {
       const file = c.req.param('file');
       const schema = served.get(file);
       if (!schema) {

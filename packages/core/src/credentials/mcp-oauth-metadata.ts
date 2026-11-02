@@ -3,6 +3,7 @@ import { type Context, Hono } from 'hono';
 import { env } from '../lib/env.js';
 import { reachedOrigin } from '../lib/reached-origin.js';
 import { noQuery } from '../middleware/zod-validator.js';
+import { requiresPublic } from '../permissions/index.js';
 
 /**
  * What an MCP client reads to find where to sign in. A 401 from `/mcp` names the protected-resource
@@ -58,8 +59,13 @@ function authorizationServer(c: Context) {
 
 export const mcpOauthMetadataRoutes = new Hono();
 
+// an MCP client with no token reads these to learn where to sign in (RFC 9728, RFC 8414)
+const DISCOVERY = requiresPublic(
+  'an MCP client with no token reads where to sign in; the documents name endpoints, never a row',
+);
+
 // RFC 9728 §3.1 inserts the resource's path after the well-known name; a client that does not
 // knows only the bare name, so both answer
-mcpOauthMetadataRoutes.get(PROTECTED_RESOURCE_PATH, noQuery, protectedResource);
-mcpOauthMetadataRoutes.get(`${PROTECTED_RESOURCE_PATH}/mcp`, noQuery, protectedResource);
-mcpOauthMetadataRoutes.get(AUTHORIZATION_SERVER_PATH, noQuery, authorizationServer);
+mcpOauthMetadataRoutes.get(PROTECTED_RESOURCE_PATH, DISCOVERY, noQuery, protectedResource);
+mcpOauthMetadataRoutes.get(`${PROTECTED_RESOURCE_PATH}/mcp`, DISCOVERY, noQuery, protectedResource);
+mcpOauthMetadataRoutes.get(AUTHORIZATION_SERVER_PATH, DISCOVERY, noQuery, authorizationServer);

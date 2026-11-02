@@ -118,6 +118,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "an MCP client with no token reads where to sign in; the documents name endpoints, never a row"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -139,6 +142,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "an MCP client with no token reads where to sign in; the documents name endpoints, never a row"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -160,6 +166,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "an MCP client with no token reads where to sign in; the documents name endpoints, never a row"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10396,6 +10405,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a schema or the gate catalogue describes shapes and defaults the code holds, never a row, read with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10529,6 +10541,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "the guide corpus is the code’s own, with no tenant data, read by any client with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10559,6 +10574,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the guide corpus is the code’s own, with no tenant data, read by any client with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10590,6 +10608,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a deploy probe reads liveness with no credential; it answers flags and a count, never a row"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10611,6 +10632,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10641,6 +10665,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10662,6 +10689,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -18178,6 +18208,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "the guide corpus is the code’s own, with no tenant data, read by any client with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -18653,6 +18686,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a published contract describes shapes and gates, never a row or a secret, and is read with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -20343,6 +20379,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a published contract describes shapes and gates, never a row or a secret, and is read with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -57656,6 +57695,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a schema or the gate catalogue describes shapes and defaults the code holds, never a row, read with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58245,6 +58287,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a deploy probe reads the served build with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58802,6 +58847,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "the guide corpus is the code’s own, with no tenant data, read by any client with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58832,6 +58880,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the guide corpus is the code’s own, with no tenant data, read by any client with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58863,6 +58914,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a deploy probe reads liveness with no credential; it answers flags and a count, never a row"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58884,6 +58938,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58914,6 +58971,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58935,6 +58995,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58956,6 +59019,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "the guide corpus is the code’s own, with no tenant data, read by any client with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58987,6 +59053,9 @@
         "x-forge-auth": [
           "requirePat"
         ],
+        "x-forge-permission": {
+          "none": "the PAT admits the caller, and the answer is a 405 naming POST; it reads and writes nothing"
+        },
         "x-forge-validated": []
       },
       "get": {
@@ -59013,6 +59082,9 @@
         "x-forge-auth": [
           "requirePat"
         ],
+        "x-forge-permission": {
+          "none": "the PAT admits the caller, and the answer is a 405 naming POST; it reads and writes nothing"
+        },
         "x-forge-query-open": "the MCP transport answers 405 to every GET, telling an MCP client this server opens no stream; a client's configured server URL may carry a query, and a 400 there reads as a broken server rather than as no stream",
         "x-forge-validated": []
       },
@@ -59040,6 +59112,9 @@
         "x-forge-auth": [
           "requirePat"
         ],
+        "x-forge-permission": {
+          "none": "the PAT admits the caller to the door; each tool action declares its own permission, which enforceDeclared checks before it runs"
+        },
         "x-forge-validated": []
       }
     },
@@ -59067,6 +59142,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a box’s pairing link sends the browser on to the web’s pair page; it reads nothing"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -59144,6 +59222,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a deploy probe reads the served build with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"

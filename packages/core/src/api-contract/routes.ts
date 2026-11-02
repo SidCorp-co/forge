@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Context, Hono } from 'hono';
 import { noQuery } from '../middleware/zod-validator.js';
+import { requiresPublic } from '../permissions/index.js';
 
 /**
  * The directory the generator writes and the image ships: `packages/core/contracts` from `src/`,
@@ -58,7 +59,15 @@ export function publishedContractRoutes(dir: string = CONTRACTS_DIR): Hono {
     if (matches(c.req.header('if-none-match'), etag)) return c.body(null, 304, headers);
     return c.body(new Uint8Array(bytes), 200, { ...headers, 'content-type': type });
   };
+  const published = requiresPublic(
+    'a published contract describes shapes and gates, never a row or a secret, and is read with no credential',
+  );
   return new Hono()
-    .get('/openapi.json', noQuery, answer(openapi, OPENAPI_MEDIA_TYPE))
-    .get('/mcp-tools.json', noQuery, answer(mcpTools, 'application/json; charset=utf-8'));
+    .get('/openapi.json', published, noQuery, answer(openapi, OPENAPI_MEDIA_TYPE))
+    .get(
+      '/mcp-tools.json',
+      published,
+      noQuery,
+      answer(mcpTools, 'application/json; charset=utf-8'),
+    );
 }

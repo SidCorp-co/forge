@@ -12,6 +12,7 @@ import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
 import { sourceCommit } from '../lib/source-commit.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresPublic } from '../permissions/index.js';
 import { bossErrorTally } from '../queue/boss-errors.js';
 import { readLiveness } from './service.js';
 export const publicHealthRoutes = new Hono();
@@ -20,29 +21,40 @@ export const publicHealthRoutes = new Hono();
 // integrations/deploy/coolify/health-probe.ts), so it is the one key they take
 const probeQuery = zValidator('query', z.object({ _forge_cb: z.string().max(64).optional() }));
 
-publicHealthRoutes.get('/health', probeQuery, async (c) => {
-  const live = await readLiveness();
-  return c.json(
-    {
-      ok: live.ok,
-      db: { ok: live.dbOk },
-      // a count, never a message: this route is public, and the line itself is in the log
-      queue: { ok: live.queueOk, errorsSinceBoot: bossErrorTally().count },
-      ws: { ok: live.wsOk },
-    },
-    live.ok ? 200 : 503,
-  );
-});
+publicHealthRoutes.get(
+  '/health',
+  requiresPublic(
+    'a deploy probe reads liveness with no credential; it answers flags and a count, never a row',
+  ),
+  probeQuery,
+  async (c) => {
+    const live = await readLiveness();
+    return c.json(
+      {
+        ok: live.ok,
+        db: { ok: live.dbOk },
+        // a count, never a message: this route is public, and the line itself is in the log
+        queue: { ok: live.queueOk, errorsSinceBoot: bossErrorTally().count },
+        ws: { ok: live.wsOk },
+      },
+      live.ok ? 200 : 503,
+    );
+  },
+);
 
 // Mounted at `/` and at `/api` both. Only the second carries CORS — `app.use('/api/*',
 // corsMiddleware)` covers that prefix and nothing else — and only the second is where the
 // web app's client points, so the root copy alone left the page unable to read this.
-publicHealthRoutes.get('/version', probeQuery, (c) =>
-  c.json({
-    version: pkg.version,
-    sourceCommit,
-    uptimeSeconds: Math.floor(process.uptime()),
-  }),
+publicHealthRoutes.get(
+  '/version',
+  requiresPublic('a deploy probe reads the served build with no credential'),
+  probeQuery,
+  (c) =>
+    c.json({
+      version: pkg.version,
+      sourceCommit,
+      uptimeSeconds: Math.floor(process.uptime()),
+    }),
 );
 
 export { projectHealthRoutes } from './project-health-routes.js';
