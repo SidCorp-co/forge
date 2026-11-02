@@ -1,1 +1,0 @@
-**The steward's lessons pass groups real corrections again.** It reads the newest corrections, keeps a partial answer instead of dropping it, and tells the model the answer's shape, so corrections become lessons.

@@ -1,1 +1,0 @@
-**Chat members can read how to link their chat account to Forge.** A served guide, link-chat-account, names who can link, the steps, how to check it and the failures; the channel agent's brief points to it.

@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.429] - 2026-11-02
+
+One channel bot follows a product's several projects and hears each room its own way
+
+### Added
+
+- **A channel bot can follow every project of one product, and hear each of its rooms its own way.** Any channel agent binding may name sibling projects of its organization in `agent.projects`. The bot then reads each one's issues, releases, requirements, knowledge and project document by naming it, reads its code from that project's checkout on the box (read-only), runs its scheduled checks across all of them, and files a record to the project it names, so the request reaches that project's own master. A project outside the set is refused by name. Only someone who administers a project may add it to a bot's set. `agent.rooms` sets, per room, who reads it and whether the bot hears every message or only mentions, so one bot can serve a users' room and a team room at once. A room another active binding already answers is refused, so a room always has one answerer.
+- **Chat members can read how to link their chat account to Forge.** A served guide, link-chat-account, names who can link, the steps, how to check it and the failures; the channel agent's brief points to it.
+
+### Fixed
+
+- **The steward's lessons pass groups real corrections again.** It reads the newest corrections, keeps a partial answer instead of dropping it, and tells the model the answer's shape, so corrections become lessons.
+- **Lessons are looked up, not pasted into every prompt.** A prompt carries a short map of lesson names; feedback triage now teaches lessons, and the daily review lists what the day taught.
+
 ## [0.4.0-dev.428] - 2026-11-02
 
 An outdated master owing only an independent review now gets a successor
