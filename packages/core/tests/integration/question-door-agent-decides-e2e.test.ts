@@ -3,6 +3,7 @@
 // @direct-test-of packages/core/src/questions/owed.ts
 // @direct-test-of packages/core/src/questions/owed-to-agents.ts
 // @direct-test-of packages/core/src/questions/ask.ts
+// @direct-test-of packages/core/src/knowledge/service.ts
 // @direct-test-of packages/core/src/requirements/clarity.ts
 /**
  * REQ-79 BC-14 (owner, 2026-10-31): a question owed to a person in a class the agent may decide is
@@ -279,5 +280,100 @@ describe('REQ-79 BC-13: a requirement’s open business question is owed by the 
       serious: true,
     });
     expect((await questionsOwedToAgents(projectId)).map((q) => q.id)).not.toContain(id);
+  });
+});
+
+/** A knowledge entry of this project, by slug, of the kind and injection given. */
+async function knowledge(
+  slug: string,
+  opts: { kind?: string; injection?: string; archived?: boolean } = {},
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO knowledge_entries (project_id, slug, title, body, kind, injection, archived_at)
+    VALUES (${projectId}, ${slug}, ${slug}, 'The owner approves each release before the upstream MR.',
+            ${opts.kind ?? 'rule'}, ${opts.injection ?? 'on_demand'},
+            ${opts.archived ? sql`now()` : sql`NULL`})`);
+}
+
+describe('ISS-869: a project rule naming a person’s act admits an agent’s ask of that person', () => {
+  it('outside strict, takes an agent’s ask naming a rule of the project, and keeps the rule on it', async () => {
+    await knowledge('rule-owner-approves-release');
+    await knowledge('release-procedure', { kind: 'workflow', injection: 'always' });
+    for (const rule of ['rule-owner-approves-release', 'release-procedure']) {
+      const res = await askOn(tok.agent, { rule });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      const [row] = await rows<{ blocker_kind: string; rule: string | null }>(
+        sql`SELECT blocker_kind, rule FROM agent_questions WHERE id = ${res.body.id as string}`,
+      );
+      expect(row).toEqual({ blocker_kind: 'human', rule });
+    }
+  });
+
+  it('refuses a rule the project does not hold as a rule, by name, and asks nothing', async () => {
+    await knowledge('stack-overview', { kind: 'overview' });
+    await knowledge('old-release-rule', { archived: true });
+    await knowledge('a-lesson', { kind: 'lesson', injection: 'always' });
+    for (const [rule, says] of [
+      ['no-such-rule', 'holds no knowledge entry'],
+      ['stack-overview', 'not a rule'],
+      ['old-release-rule', 'archived'],
+      ['a-lesson', 'not a rule'],
+    ] as const) {
+      const res = await askOn(tok.agent, { rule });
+      expect(res.status, rule).toBe(422);
+      expect(res.body.code, rule).toBe('QUESTION_RULE_UNKNOWN');
+      expect(JSON.stringify(res.body), rule).toContain(says);
+    }
+    // a person naming a rule the project lacks is refused as well: the rule is checked for anyone
+    expect((await askOn(tok.owner, { rule: 'no-such-rule' })).body.code).toBe(
+      'QUESTION_RULE_UNKNOWN',
+    );
+    const [{ n }] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM agent_questions WHERE project_id = ${projectId}`,
+    );
+    expect(n).toBe(0);
+  });
+
+  it('refuses a rule on a question asked of the master, by name', async () => {
+    await knowledge('rule-owner-approves-release');
+    const res = await askOn(tok.agent, {
+      blockerKind: 'master_or_peer',
+      rule: 'rule-owner-approves-release',
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('QUESTION_SHAPE_INVALID');
+    expect(JSON.stringify(res.body)).toContain('/rule');
+  });
+
+  it('names the rule way in QUESTION_AGENT_DECIDES', async () => {
+    const res = await askOn(tok.agent, {});
+    expect(res.body.code).toBe('QUESTION_AGENT_DECIDES');
+    expect(JSON.stringify(res.body)).toContain('rule: \\"<its knowledge slug>\\"');
+  });
+
+  it('leaves a rule’s question to the person: an agent’s answer and void are refused, naming the rule', async () => {
+    await knowledge('rule-owner-approves-release');
+    const asked = await askOn(tok.agent, { rule: 'rule-owner-approves-release' });
+    const id = asked.body.id as string;
+    // the master's token answering what it asked the owner is refused, at REST and at /mcp
+    const res = await answer(tok.agent, id, { optionId: 'ship', note: 'my call' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('QUESTION_OWED_BY_PERSON');
+    expect(JSON.stringify(res.body)).toContain('rule-owner-approves-release');
+    const mcp = await answerMcp(tok.agent, id, { optionId: 'ship', note: 'my call' });
+    expect(mcp.isError).toBe(true);
+    expect(mcp.text).toContain('QUESTION_OWED_BY_PERSON');
+    // another agent's void is refused; the asker may still withdraw its own ask
+    const other = (await createTestUser({ kind: 'agent' })).id;
+    await addProjectMember(projectId, other, 'admin');
+    const otherTok = (
+      await mintPat({ userId: other, name: 'other', projectIds: [projectId], permissions: ['*'] })
+    ).plaintext;
+    const voided = await api(otherTok, 'POST', `/api/questions/${id}/void`, { reason: 'mine' });
+    expect(voided.status).toBe(403);
+    expect(voided.body.code).toBe('QUESTION_OWED_BY_PERSON');
+    expect((await stored(id)).status).toBe('open');
+    const byOwner = await answer(tok.owner, id, { optionId: 'ship' });
+    expect(byOwner.status, JSON.stringify(byOwner.body)).toBe(200);
   });
 });
