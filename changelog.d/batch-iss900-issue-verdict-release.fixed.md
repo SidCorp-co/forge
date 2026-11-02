@@ -1,1 +1,0 @@
-**An issue criterion judged on a release version now counts.** Where production reports only a version, a pass on a recorded release counts on the issue and for its requirement, and the judge is asked on the issue.

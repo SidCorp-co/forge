@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.442] - 2026-11-02
+
+Agents ask the questions they need: steward, intake and support drop question caps
+
+### Changed
+
+- **Agents ask the questions they need.** The steward, onboarding, the intake assistant and the feedback agent no longer stop at three questions or one at a time; each question still comes with a recommended answer.
+
+### Fixed
+
+- **An issue criterion judged on a release version now counts.** Where production reports only a version, a pass on a recorded release counts on the issue and for its requirement, and the judge is asked on the issue.
+
 ## [0.4.0-dev.441] - 2026-11-02
 
 A requirement page opens on its picture, goal and one line per criterion
