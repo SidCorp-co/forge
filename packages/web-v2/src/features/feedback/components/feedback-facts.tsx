@@ -336,6 +336,13 @@ export function LinkedFeedback({
             </span>
           </Fact>
         ) : null}
+        {f.confirmWait ? (
+          <Fact label={tr("feedback.fact.confirmWait")} testId="facts-confirm-wait">
+            <span className="fg-body-sm" title={f.confirmWait.reason ?? undefined} data-testid="confirm-wait-until">
+              {tr(f.confirmWait.on ? "feedback.row.confirmWaitOrRoom" : "feedback.row.confirmWaitUntil", { date: time.dateTime(f.confirmWait.until) })}
+            </span>
+          </Fact>
+        ) : null}
         <Fact label={tr("feedback.fact.severity")}>
           <StatusBadge family="severity" value={f.severity} />
         </Fact>

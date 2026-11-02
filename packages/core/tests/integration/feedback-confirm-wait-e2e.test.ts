@@ -180,7 +180,7 @@ describe('the Forge door: a wait keeps a shipped item off the master’s line un
 
     await lapse(home.projectId, key);
     const back = owedItems(await owedLine()).find((i) => i.startsWith(`${key} `));
-    expect(back, 'the item returns once the date passed').toContain('its wait ended: its date passed');
+    expect(back ?? 'not listed', 'the item returns once the date passed').toContain('its wait ended: its date passed');
     const after = await api(tokens.master, 'GET', `/api/forge/feedback/${key}`);
     expect(after.body.confirmWait, 'a lapsed wait no longer shows').toBeNull();
   });
@@ -245,7 +245,9 @@ describe('the project door: a wait on the next room message (FB-476)', () => {
       1,
     );
     const back = ownListed(await owedLine(), key);
-    expect(back).toContain('its wait ended: the room message came');
+    expect(back ?? 'not listed', 'the item returns once the message came').toContain(
+      'its wait ended: the room message came',
+    );
   });
 
   it('refuses a wait with no reason, a date past the limit, and a person’s item, by name', async () => {

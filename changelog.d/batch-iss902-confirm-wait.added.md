@@ -1,0 +1,1 @@
+**A shipped item's confirm can wait, with its reason.** A master sets a dated or room-message wait on an agent-reported item through either feedback door; its pass leaves the item out until then, and the item shows why. (ISS-902)

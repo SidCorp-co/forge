@@ -990,11 +990,8 @@ export interface FeedbackShipEvidence {
 export interface FeedbackView extends FeedbackSummary {
 	/** Set once the item is verified. */
 	verified: FeedbackVerifiedView | null;
-	/**
-	 * While a shipped agent-reported item's confirm waits (ISS-902): why, and until when; null when none
-	 * holds. Optional only until the web fixtures ISS-903 rewrites carry it; core always sends it.
-	 */
-	confirmWait?: FeedbackConfirmWaitView | null;
+	/** While a shipped agent-reported item's confirm waits (ISS-902): why, and until when; null when none holds. */
+	confirmWait: FeedbackConfirmWaitView | null;
 	/**
 	 * While it reads resolved and names a violated criterion: when the record is read on "is the
 	 * problem gone?" if nobody has answered, and the window that dates it. Null where no criterion is

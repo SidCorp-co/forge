@@ -355,6 +355,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/confirm-wait',
   itemParam,
+  requiresOnParam('project.read', 'id'),
   strictBody(feedbackConfirmWaitRequestSchema, FEEDBACK_CONFIRM_WAIT_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');

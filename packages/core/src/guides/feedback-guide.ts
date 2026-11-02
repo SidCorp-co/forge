@@ -14,7 +14,7 @@ A feedback item (FB-n) is what a reporter says is wrong or wanted in the product
 \`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
 \`GET …/feedback/:fb\` reads one, \`GET …/feedback/endpoints\` lists the routes, tools and commands the
 project serves, \`GET …/feedback/:fb/checklist\` reads the triage checklist (the form, the \`answers\` input and
-where the item stands), and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`, \`snooze\`, \`messages\`, \`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`clarification\`). It is not an agent report,
+where the item stands), and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`, \`snooze\`, \`messages\`, \`retarget\`, \`verify\`, \`verify-ask\`, \`reopen\`, \`confirm-wait\`, \`clarification\`). It is not an agent report,
 an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
 into FB-n when it is product feedback after all.
 
@@ -188,6 +188,14 @@ route, declining included, closes the open question.
   reported from is owed that confirm: its pass names each such item with the door to settle it through,
   the release that ships one wakes it, and that door admits it, an agent writing that project, to read,
   verify and reopen the item for its reporter.
+- \`confirm-wait\` \`{ until, on?, reason }\` (\`POST …/feedback/:fb/confirm-wait\` or
+  \`POST /api/forge/feedback/:key/confirm-wait\`) records why such a confirm waits, where only a later
+  event can test the fix: the agent reporter or its master sets it on a shipped item an agent reported
+  (\`FEEDBACK_CONFIRM_WAIT_NOT_OWED\` otherwise). The pass leaves the item out until \`until\` (within
+  30 days, \`FEEDBACK_CONFIRM_WAIT_PAST\`/\`_TOO_FAR\`) or, with \`on: room_message\`, a member's next
+  message in a support room of the project it was reported from, then names it again; the item reads
+  \`confirmWait\` meanwhile. No reason is \`FEEDBACK_CONFIRM_WAIT_REASON_REQUIRED\`; the verify or reopen
+  clears it.
 - \`verify-ask\` sends a resolved item to its reporter's bell again, where it stays until the item is
   verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.

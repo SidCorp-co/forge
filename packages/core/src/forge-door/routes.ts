@@ -15,6 +15,7 @@ import { carryAgentReports } from '../feedback/index.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
+import { requiresNoPermission } from '../permissions/index.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import {
   type Answer,
@@ -123,6 +124,11 @@ forgeFeedbackRoutes.post(
 forgeFeedbackRoutes.post(
   '/:key/confirm-wait',
   zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/confirm-wait')),
+  // the item is the check: its reporter, or the master owed its agent reporter's confirm (ISS-880),
+  // neither of which need be a member of the home project (REQ-47 BC-3)
+  requiresNoPermission(
+    "the item's own reporter, or the master of the project its agent reporter reported from",
+  ),
   strictBody(feedbackConfirmWaitRequestSchema, FEEDBACK_CONFIRM_WAIT_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
