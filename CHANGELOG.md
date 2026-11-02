@@ -9,6 +9,31 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.425] - 2026-11-02
+
+Channel agents read production through declared reads; releases close on the agent's record
+
+### Digest
+
+- <!-- digest: 2026-W44 --> **A live project bar, a page per chat channel, and a choice of how tightly agents are gated.** Every project page shows a live bar saying plainly what runs there, and each bound chat channel has a page under Product. Each project picks strict, standard or yolo; outside strict the agent acts first and no work waits on a person's sign-off. Chat rooms hear the agent in its own words, take a plain "ok" as consent and can announce releases. A daily review reports each project's day, bells ring only when you must act, and feedback to Forge shows the release that fixed it. Fixes cover deleting secrets, ChatGPT connections, dashboard names and a faster Releases list.
+
+### Added
+
+- **A channel agent reads production through the reads its grant declares (ISS-871).** A room granted `ops_reads` declares named reads, each a fixed program on the box with typed parameters; the agent calls `read` by name, every argument is checked against its pattern or values before anything runs, the box runs it with no shell, and the answer is scrubbed before the agent sees it. A scheduled check is told the room's reads. A master can post its result in the asker's own thread (`master-posts` takes `thread`), and the agent can ask the owner a master's Forge question, the owner's answer recorded on it.
+
+### Changed
+
+- **Every release closes on the agent's record.** A batch's finish reads no probe, deployment record or provider report; a landing with no production takes the agent's words or a version, its commit optional; releases read `recorded`, never unverified.
+- **A release is the agent's record under its version.** `POST /api/projects/:id/release-records` takes `{ issueIds, version, account }` and closes the roster with no probe or commit; a production deployed outside Forge declares only its `deployment.target`.
+
+### Fixed
+
+- **A retried onboarding job ends when its phase is done.** Marking onboarding done now settles the attempt that is running, so a retried analysis no longer fails 15 minutes after finishing and runs again.
+
+### Security
+
+- **A run receives only the testing secret it names.** `GET /api/jobs/:id/testing-profiles/:profile/secrets` takes `actor`, `service` or `ref` and answers that one secret; a read naming none, or a name the profile lacks, is refused listing names, never values.
+
 ## [0.4.0-dev.424] - 2026-11-01
 
 Box questions name their issue by key; routes declare permissions; master room review

@@ -1,1 +1,0 @@
-**Every release closes on the agent's record.** A batch's finish reads no probe, deployment record or provider report; a landing with no production takes the agent's words or a version, its commit optional; releases read `recorded`, never unverified.

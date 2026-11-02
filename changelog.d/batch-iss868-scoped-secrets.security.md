@@ -1,1 +1,0 @@
-**A run receives only the testing secret it names.** `GET /api/jobs/:id/testing-profiles/:profile/secrets` takes `actor`, `service` or `ref` and answers that one secret; a read naming none, or a name the profile lacks, is refused listing names, never values.
