@@ -1,4 +1,8 @@
-import { SUPPORT_CONFIRM_CODE_PATTERN, supportToolSchema } from '@forge/contracts/support';
+import {
+  SUPPORT_CONFIRM_CODE_PATTERN,
+  supportRoomConfigSchema,
+  supportToolSchema,
+} from '@forge/contracts/support';
 import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
 import {
@@ -21,10 +25,29 @@ describe('a proposal waits under a handle the session cites (BC-13, ISS-845)', (
 describe('a group runs under limits and threads (BC-11, BC-16)', () => {
   it('reads limits over their defaults', () => {
     expect(limitsOf(null).messagesPerUserPerHour).toBe(30);
-    expect(limitsOf({ limits: { fixesPerUserPerDay: 2 } })).toMatchObject({
-      fixesPerUserPerDay: 2,
+    expect(limitsOf({ limits: { messageMaxChars: 500 } })).toEqual({
       messagesPerUserPerHour: 30,
+      messageMaxChars: 500,
+      responseMaxBytes: 16_000,
     });
+  });
+
+  // ISS-876, owner 2026-11-02: no daily cap on handing work, so no limit counts a member's changes
+  it('holds no limit on how many changes a member confirms, and refuses the old knob by name', () => {
+    expect(Object.keys(limitsOf(null)).sort()).toEqual([
+      'messageMaxChars',
+      'messagesPerUserPerHour',
+      'responseMaxBytes',
+    ]);
+    const refused = supportRoomConfigSchema.safeParse({ limits: { fixesPerUserPerDay: 1000 } });
+    expect(refused.success).toBe(false);
+    expect(refused.error?.issues).toEqual([
+      expect.objectContaining({
+        code: 'unrecognized_keys',
+        keys: ['fixesPerUserPerDay'],
+        path: ['limits'],
+      }),
+    ]);
   });
 
   it('cuts a long message and says where', () => {

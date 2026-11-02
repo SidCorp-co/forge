@@ -342,26 +342,6 @@ export async function settleFixResult(
   await db.update(supportProposals).set({ state, result }).where(eq(supportProposals.id, fixId));
 }
 
-/** Fixes a member confirmed since a time, for the daily limit. */
-export async function fixesConfirmedSince(
-  roomId: string,
-  askerKey: string,
-  since: Date,
-): Promise<number> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(supportProposals)
-    .where(
-      and(
-        eq(supportProposals.roomId, roomId),
-        eq(supportProposals.askerKey, askerKey),
-        inArray(supportProposals.state, ['ran', 'failed']),
-        gte(supportProposals.decidedAt, since),
-      ),
-    );
-  return row?.n ?? 0;
-}
-
 /** Pending fixes past their expiry. */
 export async function expiredPendingFixes(now: Date): Promise<ProposalRow[]> {
   return db

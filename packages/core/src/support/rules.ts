@@ -26,7 +26,6 @@ export function limitsOf(config: SupportRoomConfig | null | undefined): SupportL
   return {
     messagesPerUserPerHour:
       set.messagesPerUserPerHour ?? SUPPORT_LIMIT_DEFAULTS.messagesPerUserPerHour,
-    fixesPerUserPerDay: set.fixesPerUserPerDay ?? SUPPORT_LIMIT_DEFAULTS.fixesPerUserPerDay,
     messageMaxChars: set.messageMaxChars ?? SUPPORT_LIMIT_DEFAULTS.messageMaxChars,
     responseMaxBytes: set.responseMaxBytes ?? SUPPORT_LIMIT_DEFAULTS.responseMaxBytes,
   };

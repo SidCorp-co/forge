@@ -594,8 +594,8 @@ holds the bot; one connection may carry the bindings of several projects, one gr
    ```
 
    A support binding names exactly one group (`SUPPORT_ROOM_NOT_ONE_GROUP` otherwise). Optional
-   `support.limits`: `messagesPerUserPerHour` (30), `fixesPerUserPerDay` (10), `messageMaxChars`
-   (4000), `responseMaxBytes` (16000).
+   `support.limits`: `messagesPerUserPerHour` (30), `messageMaxChars` (4000), `responseMaxBytes`
+   (16000). No limit counts the changes a member confirms (ISS-876).
 
 2. The product API the session may check and fix through:
 

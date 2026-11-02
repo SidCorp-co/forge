@@ -24,7 +24,6 @@ import { limitsOf } from './rules.js';
 import {
   decideFix,
   expiredPendingFixes,
-  fixesConfirmedSince,
   insertAction,
   type ProposalRow,
   pendingFixByCode,
@@ -132,7 +131,8 @@ export async function agreeTo(
   }
   // the grant as the binding holds it now: a confirmer taken off the room since the proposal agrees to nothing
   const gated = waitsOnConfirmer(room, fix);
-  const grants = grantsOf(await supportConfigOf(room));
+  const config = await supportConfigOf(room);
+  const grants = grantsOf(config);
   const allowed = gated
     ? (await mayConfirmChange(room, grants, writer)) ||
       (decision === 'decline' && writer.key === fix.askerKey)
@@ -169,20 +169,6 @@ export async function agreeTo(
       value: { declined: true, what: `${changeName(fix)} was declined. ${nothingDone(fix)}` },
     };
   }
-  const config = await supportConfigOf(room);
-  const limits = limitsOf(config);
-  const today = new Date(now.getTime() - 24 * 60 * 60_000);
-  if ((await fixesConfirmedSince(room.id, writer.key, today)) >= limits.fixesPerUserPerDay) {
-    await audit('refused', fix, writer, {
-      reason: 'limit',
-      fixesPerUserPerDay: limits.fixesPerUserPerDay,
-    });
-    return no(
-      'SUPPORT_LIMIT_REACHED',
-      '/message',
-      `@${writer.label ?? writer.key} has reached today's limit of ${limits.fixesPerUserPerDay} changes in this group. ${nothingDone(fix)}`,
-    );
-  }
   // the claim: of two agreements racing, one moves the row and runs it
   if (!(await decideFix(fix.id, 'ran', now))) return gone(input.proposal);
   await audit('fix_confirmed', fix, writer, null);
@@ -191,7 +177,7 @@ export async function agreeTo(
     const out = await runConfirmed(room, fix, conversationId, writer);
     return { ok: true, value: { ran: out.state === 'ran', what: out.what, result: out.result } };
   }
-  return runFix(room, fix, limits.responseMaxBytes, conversationId);
+  return runFix(room, fix, limitsOf(config).responseMaxBytes, conversationId);
 }
 
 const gone = (proposal: string): Outcome<never> =>

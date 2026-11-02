@@ -19,8 +19,6 @@ import type { OperationsScope, SupportRoomKind } from "./support-operations.js";
 export const SUPPORT_LIMIT_DEFAULTS = {
 	/** Messages one account may have answered in an hour; past it, one notice and silence. */
 	messagesPerUserPerHour: 30,
-	/** Fixes one account may confirm in a day. */
-	fixesPerUserPerDay: 10,
 	/** Longest message handed to the session; a longer one is cut and says so. */
 	messageMaxChars: 4000,
 	/** Bytes of a tool's answer handed back to the session. */
@@ -29,7 +27,6 @@ export const SUPPORT_LIMIT_DEFAULTS = {
 
 export const supportLimitsSchema = z.strictObject({
 	messagesPerUserPerHour: z.number().int().min(1).max(1000).optional(),
-	fixesPerUserPerDay: z.number().int().min(0).max(1000).optional(),
 	messageMaxChars: z.number().int().min(200).max(8000).optional(),
 	responseMaxBytes: z.number().int().min(1000).max(200_000).optional(),
 });
@@ -999,7 +996,6 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_HOST_NOT_GRANTED",
 	"SUPPORT_TOOLS_UNBOUND",
 	"SUPPORT_REPLY_REFUSED",
-	"SUPPORT_LIMIT_REACHED",
 	"SUPPORT_NOT_A_SUPPORT_ROOM",
 	/** No proposal waits under the handle an agreement names: it ran, was declined, expired or never was (ISS-845). */
 	"SUPPORT_PROPOSAL_UNKNOWN",
@@ -1123,7 +1119,6 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_TOOL_KIND: 409,
 	SUPPORT_HOST_NOT_GRANTED: 403,
 	SUPPORT_TOOLS_UNBOUND: 409,
-	SUPPORT_LIMIT_REACHED: 409,
 	SUPPORT_NOT_A_SUPPORT_ROOM: 409,
 	OPS_NOT_AN_OPERATIONS_ROOM: 409,
 	OPS_NO_ROLE: 409,
