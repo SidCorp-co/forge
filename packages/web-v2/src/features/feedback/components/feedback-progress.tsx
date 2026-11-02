@@ -2,13 +2,15 @@
 // running, which issues carry it and how far each has got, and when it is done. Every part is core's
 // (`GET …/forecast/feedback/:fb`, `core forecast/feedback-progress.ts`) and this only says it. The
 // Estimate row stands only where there is one, a date or the release that shipped it: why core gives
-// no date is its own working, not the reader's, and the row is dropped rather than say it (ISS-903).
+// no date is its own working, not the reader's, and the row is dropped rather than say it (ISS-903);
+// the two that are state — snoozed until when, and fixed work waiting on a release cut — are the Work
+// row's one status line.
 // Whose turn it is stays the banner's, said once (REQ-43 BC-5).
 
 import type { FeedbackProgress as Progress, FeedbackWork, FeedbackWorkState } from "@forge/contracts/forecast";
 import { Link } from "@/lib/navigation/router";
 import { type LegendTone, Property, PropertyList, Skeleton, StatusBadge, ToneBadge } from "@/design";
-import { EtaInline, type EtaClock, etaOfFeedback, useFeedbackProgress } from "@/features/forecast";
+import { deliveryText, EtaInline, type EtaClock, etaOfFeedback, ReleaseLine, useFeedbackProgress } from "@/features/forecast";
 import { formatApiError } from "@/lib/api/error";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -37,6 +39,29 @@ function WorkState({ work }: { work: FeedbackWork }) {
   const s = STATE[work.state];
   const label = t(s.key, { n: work.running, total: work.total });
   return <ToneBadge tone={s.tone} label={label} title={label} value={work.state} pulse={work.state === "running"} size="md" family="feedbackWork" />;
+}
+
+/**
+ * The one status line beside the work's state, only where it applies (VISION: state-never-lies): a
+ * snoozed item says until when, and fixed work no release carries yet says who cuts which release,
+ * linked. Every other reason core gives for no date is its working, and draws nothing (ISS-903).
+ */
+function WorkLine({ p, slug, clock }: { p: Progress; slug: string; clock: EtaClock }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const e = p.estimate;
+  if (e.kind !== "none") return null;
+  if (e.reason === "snoozed" && e.until) {
+    return (
+      <span className="text-13 text-muted" data-testid="feedback-work-line" data-line="snoozed">
+        {t("feedback.progress.snoozedUntil", { until: time.date(e.until) })}
+      </span>
+    );
+  }
+  if (e.reason === "release_waits" && p.forecast.delivery) {
+    return <ReleaseLine said={deliveryText(p.forecast.delivery, clock)} slug={slug} className="text-13 text-muted" testId="feedback-work-line" />;
+  }
+  return null;
 }
 
 /** What carries the work: the requirement it opened or the original it duplicates, then each issue with its status. */
@@ -130,7 +155,10 @@ export function FeedbackProgress({ projectId, slug, fbKey, className }: { projec
       ) : (
         <PropertyList>
           <Property label={t("feedback.progress.work")} testId="feedback-progress-work">
-            <WorkState work={q.data.work} />
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <WorkState work={q.data.work} />
+              <WorkLine p={q.data} slug={slug} clock={clock} />
+            </span>
           </Property>
           <Carriers work={q.data.work} slug={slug} />
           {hasEstimate(q.data, clock) ? (

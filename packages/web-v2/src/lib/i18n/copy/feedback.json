@@ -222,6 +222,7 @@
     "feedback.evidence.download": "Download {name}",
     "feedback.tab.activity": "Activity",
     "feedback.progress.title": "Progress",
+    "feedback.progress.snoozedUntil": "Snoozed until {until}",
     "feedback.progress.work": "Work",
     "feedback.progress.carriedBy": "Carried by",
     "feedback.progress.follows": "Follows its original",

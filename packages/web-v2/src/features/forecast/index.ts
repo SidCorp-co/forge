@@ -6,4 +6,5 @@ export { type Eta, type EtaClock, etaInline, etaOfDelivery, etaOfFeedback, etaOf
 export { honestyLine } from "./honesty";
 export { feedbackForecastKey, useComingNext, useDraftReleaseForecast, useEtaSort, useFeedbackForecasts, useFeedbackProgress, useIssueForecast, useProjectForecast, useRequirementForecast, useRequirementForecasts } from "./hooks";
 export { progressText } from "./progress";
-export { spanText } from "./text";
+export { ReleaseLine } from "./components/release-line";
+export { deliveryText, spanText } from "./text";

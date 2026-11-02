@@ -1,7 +1,8 @@
 // An item's progress, as its reader asks it: is work running and on which issues, and when it is done.
 // The Estimate row stands only where there is an estimate, a date or the release that shipped it; with
-// none it is dropped, never an empty ETA and never core's working of why (ISS-903). Whose turn it is
-// is the banner's.
+// none it is dropped, never an empty ETA and never core's working of why (ISS-903). Two reasons are
+// state, not working, and are the Work row's one status line where they apply: snoozed until when,
+// and fixed work waiting on whoever cuts the release, linked. Whose turn it is is the banner's.
 
 import type { FeedbackProgress as Progress } from "@forge/contracts/forecast";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -61,6 +62,26 @@ describe("the feedback item's progress block", () => {
     expect(screen.queryByTestId("feedback-progress-estimate")).toBeNull();
     expect(screen.queryByText(/Estimate|Too few landed issues|No estimate/)).toBeNull();
     expect(screen.getByTestId("feedback-progress-work")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["FB-18", "snoozed", /^Snoozed until \S/],
+    ["FB-13", "release_waits", /^Fixed · waits on Dana Lee to cut 0\.4\.0$/],
+    ["FB-11", "untriaged", null],
+    ["FB-20", "history", null],
+    ["FB-17", "waits", null],
+    ["FB-12", "dated", null],
+  ])("%s (%s): the Work row says its one status line only where it applies", async (key, estimate, line) => {
+    await shown(CASE(key));
+    expect(screen.getByTestId("feedback-progress").dataset.estimate).toBe(estimate);
+    const work = screen.getByTestId("feedback-progress-work");
+    if (line === null) {
+      expect(within(work).queryByTestId("feedback-work-line")).toBeNull();
+      return;
+    }
+    expect(within(work).getByTestId("feedback-work-line").textContent).toMatch(line);
+    expect(screen.queryByTestId("feedback-progress-estimate"), "the line is the Work row's, not an Estimate row").toBeNull();
+    if (estimate === "release_waits") expect(within(work).getByRole("link", { name: "0.4.0" }).getAttribute("href")).toBe("/projects/hop/releases/0.4.0");
   });
 
   it("shipped work names its release instead of an estimate", async () => {
