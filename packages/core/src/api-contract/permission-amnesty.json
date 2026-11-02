@@ -206,8 +206,6 @@
     "PUT /api/skills/:id"
   ],
   "actions": [
-    "forge_bindings.get",
-    "forge_bindings.write",
     "forge_channel.contracts",
     "forge_channel.draft",
     "forge_channel.edit",
@@ -224,8 +222,6 @@
     "forge_channel.thread",
     "forge_channel.unanswered",
     "forge_channel.withdraw",
-    "forge_config.get",
-    "forge_config.write",
     "forge_design.design_create",
     "forge_design.design_decide",
     "forge_design.design_get",

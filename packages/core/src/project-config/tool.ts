@@ -12,7 +12,7 @@ import { RefusalError, requestRefusals } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
 import { envelopeOf } from '../lib/write-envelope.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { onArg, requireDeclaredOn } from '../permissions/index.js';
 import { listBindings, readBinding, writeBinding } from './bindings.js';
 import { type Held, readProjectConfig, writeProjectConfig } from './service.js';
 
@@ -97,9 +97,12 @@ const serialise = <T>(held: Held<T>) => ({
 });
 
 const admin = (ctx: McpContext, projectId: string) =>
-  requireCan(actorFor(ctx.principal.userId), 'project.admin', projectResource(projectId));
+  requireDeclaredOn(projectId, ctx.principal.userId, 'project.admin');
 const reader = (ctx: McpContext, projectId: string) =>
-  requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
+  requireDeclaredOn(projectId, ctx.principal.userId, 'project.read');
+
+// the REST twins declare the same on :id (project-config/routes.ts)
+const permission = { byAction: { get: onArg('project.read'), write: onArg('project.admin') } };
 
 const parseConfig = parser(configInput, CONFIG_SHAPE);
 const parseBindings = parser(bindingsInput, BINDINGS_SHAPE);
@@ -173,6 +176,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   route: '/api/projects',
   grant: { byAction: { get: 'projects:read', write: 'projects:write' } },
   reach: 'project',
+  permission,
   handler: async (args) => scrubSecretsDeep(await config(ctx, args)),
 });
 
@@ -183,5 +187,6 @@ export const forgeBindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
   route: '/api/projects',
   grant: { byAction: { get: 'projects:read', write: 'projects:write' } },
   reach: 'project',
+  permission,
   handler: async (args) => scrubSecretsDeep(await bindings(ctx, args)),
 });
