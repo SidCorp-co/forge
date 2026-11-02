@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.443] - 2026-11-02
+
+A failed release always says why, and an admin can repair one that shipped
+
+### Fixed
+
+- **A failed release now says why.** Each attempt shows the failure its close recorded; no release ends with nothing on record; a generic cancel of a release is refused for its abort; an admin repairs a failed release that shipped.
+- **A release-version verdict now counts everywhere it should.** Release pages count and verify it, promotion landings weigh it, comment fences carry it, an unrecorded release is asked for by name, and another project's issue is judged on its own release.
+
 ## [0.4.0-dev.442] - 2026-11-02
 
 Agents ask the questions they need: steward, intake and support drop question caps
