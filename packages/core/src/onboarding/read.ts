@@ -25,7 +25,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { linkItems, type SeriesItem } from './design-items.js';
 import { batchDue, hintOf, type SystemContextState } from './hint.js';
 import { runWaitingOf } from './ports.js';
@@ -398,7 +398,7 @@ export async function readOnboardingState(
   projectId: string,
   reader: { userId: string; agency: ActorAgency },
 ): Promise<Omit<OnboardingStateResponse, 'firstRequirements'>> {
-  await requireCan(actorFor(reader.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, reader.userId, 'project.read');
   const row = await onboardingOf(db, projectId);
   const view = row ? await onboardingView(db, row) : null;
   const facts = await permissionFactsOf(reader.userId, projectId);

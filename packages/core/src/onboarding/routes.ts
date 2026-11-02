@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import type { OnboardingActor, OnboardingOutcome } from './act.js';
 import {
   markOnboardingDone,
@@ -40,6 +41,10 @@ const projectParam = zValidator(
   invalid('invalid path: the project id is a uuid'),
 );
 
+// every act reads the project first, then holds its actor to the act's own rule (rules.ts), which
+// names its refusal; the services check again with requireDeclaredOn for the MCP door and the jobs
+const READ = requiresOnParam('project.read', 'id');
+
 function actorOf(c: Context<{ Variables: AuthVars }>): OnboardingActor {
   const agency = c.get('agency');
   if (!agency) throw new Error('onboarding: a request reached its handler without an auth gate');
@@ -59,7 +64,7 @@ function answer(c: Context, outcome: OnboardingOutcome) {
 
 const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty object');
 
-onboardingRoutes.get('/:id/onboarding', projectParam, noQuery, async (c) => {
+onboardingRoutes.get('/:id/onboarding', projectParam, READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const state = await readOnboardingState(id, actorOf(c));
   const body: OnboardingStateResponse = {
@@ -72,6 +77,7 @@ onboardingRoutes.get('/:id/onboarding', projectParam, noQuery, async (c) => {
 onboardingRoutes.post(
   '/:id/onboarding/start',
   projectParam,
+  READ,
   strictBody(startRequestSchema, START_SHAPE),
   async (c) =>
     answer(
@@ -87,6 +93,7 @@ onboardingRoutes.post(
 onboardingRoutes.post(
   '/:id/onboarding/reanalyze',
   projectParam,
+  READ,
   strictBody(reanalyzeRequestSchema, REANALYZE_SHAPE),
   async (c) =>
     answer(
@@ -99,13 +106,19 @@ onboardingRoutes.post(
     ),
 );
 
-onboardingRoutes.post('/:id/onboarding/join', projectParam, emptyBody, async (c) =>
-  answer(c, await joinOnboarding({ projectId: c.req.valid('param').id, actor: actorOf(c) })),
+onboardingRoutes.post(
+  '/:id/onboarding/join',
+  projectParam,
+  requiresOnParam('project.write', 'id'),
+  emptyBody,
+  async (c) =>
+    answer(c, await joinOnboarding({ projectId: c.req.valid('param').id, actor: actorOf(c) })),
 );
 
 onboardingRoutes.post(
   '/:id/onboarding/questionnaires',
   projectParam,
+  READ,
   strictBody(postQuestionnaireRequestSchema, POST_QUESTIONNAIRE_SHAPE),
   async (c) => {
     const outcome = await postOnboardingQuestionnaire({
@@ -122,6 +135,7 @@ onboardingRoutes.post(
 onboardingRoutes.post(
   '/:id/onboarding/updates',
   projectParam,
+  READ,
   strictBody(postUpdateRequestSchema, POST_UPDATE_SHAPE),
   async (c) =>
     answer(
@@ -137,6 +151,7 @@ onboardingRoutes.post(
 onboardingRoutes.post(
   '/:id/onboarding/done',
   projectParam,
+  READ,
   strictBody(markDoneRequestSchema, MARK_DONE_SHAPE),
   async (c) =>
     answer(
@@ -149,7 +164,7 @@ onboardingRoutes.post(
     ),
 );
 
-onboardingRoutes.get('/:id/onboarding/answers', projectParam, noQuery, async (c) => {
+onboardingRoutes.get('/:id/onboarding/answers', projectParam, READ, noQuery, async (c) => {
   const outcome = await readAnswers(c.req.valid('param').id, actorOf(c));
   if (!outcome.ok) return refusedOnboarding(c, outcome.refusals);
   return c.json({

@@ -10,11 +10,9 @@ import { db, type TxOnly } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import type { Refusal } from '../lib/refusal.js';
 import {
-  actorFor,
   type PermissionFacts,
   permissionFactsOf,
-  projectResource,
-  requireCan,
+  requireDeclaredOn,
 } from '../permissions/index.js';
 import { onboardingOf, onboardingView } from './read.js';
 
@@ -33,7 +31,7 @@ export async function refusalFor(
   projectId: string,
   rule: (facts: PermissionFacts) => Refusal | null,
 ): Promise<Refusal | null> {
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   return rule(await permissionFactsOf(actor.userId, projectId));
 }
 

@@ -20,7 +20,7 @@ import { projects } from '../db/schema.js';
 import { onboardings } from '../db/schema-onboarding.js';
 import { type EgressReader, egressAs } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import {
   announce,
   batchesOfConversation,
@@ -178,7 +178,7 @@ export async function reanalyzeOnboarding(input: {
 
 /** A person of the project joins the onboarding thread, so a thread one person started is everyone's. */
 export async function joinOnboarding(input: { projectId: string; actor: OnboardingActor }) {
-  await requireCan(actorFor(input.actor.userId), 'project.write', projectResource(input.projectId));
+  await requireDeclaredOn(input.projectId, input.actor.userId, 'project.write');
   const row = await onboardingOf(db, input.projectId);
   if (!row) return { ok: false as const, refusals: [notStarted()] };
   // addPerson inserts nothing for a person already present (the live-participant unique index).
@@ -196,7 +196,7 @@ export async function joinOnboarding(input: { projectId: string; actor: Onboardi
 }
 
 export async function readAnswers(projectId: string, actor: OnboardingActor & EgressReader) {
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const row = await onboardingOf(db, projectId);
   if (!row) return { ok: false as const, refusals: [notStarted()] };
   const questionnaires = await batchesOfConversation(row.conversationId);
