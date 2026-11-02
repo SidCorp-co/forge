@@ -13,7 +13,9 @@ describe('the support brief states goals, and the consent a change waits on', ()
   });
 
   it('keeps the consent and the claim a change waits on, in the agent own words', () => {
-    expect(brief).toContain('only once they agree in plain words and you cite that message with support.agree');
+    expect(brief).toContain(
+      'only once they agree in plain words and you cite that message with support.agree',
+    );
     expect(brief).toContain('never claim it ran or was recorded until agree says so');
     expect(brief).not.toContain('type a code');
   });

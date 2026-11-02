@@ -143,7 +143,7 @@ describe('forge_uploads refuses a wrong argument by name with its valid shape (c
       expect(answer.body.error?.code).toBe('BAD_REQUEST');
       expect(answer.body.error?.refusals?.map((r) => r.path)).toContain(path);
       expect(answer.body.detail).toBe(
-        'forge_uploads takes { action: "fetch", data: { target: "issue" | "comment" | "session", attachmentId: uuid } }',
+        'forge_uploads takes { action: "fetch", data: { target: "issue" | "comment" | "session" | "feedback", attachmentId: uuid } }',
       );
       for (const r of answer.body.error?.refusals ?? [])
         expect(r.detail).toContain('attachmentId: uuid');

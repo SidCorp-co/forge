@@ -7,7 +7,7 @@ import {
   RELEASES_TOOL_ACTIONS,
 } from '@forge/contracts/mcp-product';
 import { describe, expect, it } from 'vitest';
-import { isRefusal, RefusalError } from '../lib/refusal.js';
+import { isRefusal } from '../lib/refusal.js';
 import type { McpContext, McpTool } from '../lib/tool.js';
 import { assertToolDeclaresAccess, toolGrantFor, toolGrantRefusal } from '../lib/tool-grant.js';
 import { issueProgress, scopeProgress } from './progress.js';
