@@ -36,8 +36,7 @@ export function judgedOnReleaseAt(
       versions,
     };
     const judged = issue.criteria.filter(
-      (c) =>
-        (verdicts.get(c.n)?.length ?? 0) > 0 || voidedStillRead(issue, c.n, reader).length > 0,
+      (c) => (verdicts.get(c.n)?.length ?? 0) > 0 || voidedStillRead(issue, c.n, reader).length > 0,
     );
     if (judged.length === 0) return [];
     const read = { ...issue, criteria: judged, verdicts };
