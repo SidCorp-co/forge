@@ -17,7 +17,7 @@
     "src"
   ],
   "dependencies": {
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
