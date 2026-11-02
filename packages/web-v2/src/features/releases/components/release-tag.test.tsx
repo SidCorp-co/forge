@@ -23,6 +23,7 @@ const shipped = {
   gates: [],
   notes: { designs: [], attention: [], sections: [], language: "en" },
   feedbackAnswered: [],
+  corrections: [],
   cuts: [],
   attempts: [],
   approvals: [],

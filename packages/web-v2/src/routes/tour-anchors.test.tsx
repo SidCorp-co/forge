@@ -52,6 +52,7 @@ const RELEASE = {
   issueCriteria: [],
   requirementsCompleted: [],
   feedbackAnswered: [],
+  corrections: [],
   notes: { designs: [], sections: [], withoutNotes: [], reworked: [], language: "en", attention: [] },
   changes: CHANGES,
   production: null,
