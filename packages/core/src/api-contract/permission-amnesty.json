@@ -30,8 +30,6 @@
     "GET /api/conversations/:id/attachments/:attachmentId/download",
     "GET /api/conversations/:id/candidates",
     "GET /api/conversations/:id/proposals",
-    "GET /api/devices/me/skills",
-    "GET /api/devices/me/skills/:skillId/content",
     "GET /api/ecosystems/:id",
     "GET /api/ecosystems/:id/bus",
     "GET /api/ecosystems/:id/members",

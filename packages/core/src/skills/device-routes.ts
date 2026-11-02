@@ -4,6 +4,7 @@ import { assertDeviceBoundToProject } from '../devices/index.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 import { resolveRegisteredEffectiveSkills } from './effective.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
@@ -26,9 +27,14 @@ function truthy(v: string | undefined): boolean {
 
 export const deviceSkillRoutes = new Hono<{ Variables: DeviceVars }>();
 
+const DEVICE_BOUND = requiresNoPermission(
+  'a paired box’s device credential admits it, and assertDeviceBoundToProject answers only for a project that box serves',
+);
+
 deviceSkillRoutes.get(
   '/me/skills',
   requireDevice(),
+  DEVICE_BOUND,
   zValidator('query', projectQuerySchema),
   async (c) => {
     const device = c.get('device');
@@ -66,6 +72,7 @@ deviceSkillRoutes.get(
 deviceSkillRoutes.get(
   '/me/skills/:skillId/content',
   requireDevice(),
+  DEVICE_BOUND,
   zValidator('param', contentParamSchema),
   zValidator('query', contentQuerySchema),
   async (c) => {
