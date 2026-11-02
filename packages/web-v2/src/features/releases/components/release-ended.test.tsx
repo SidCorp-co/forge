@@ -22,6 +22,8 @@ const cut = (n: number, version: string, outcome: string, over: object = {}) => 
   endedAt: null,
   refusal: null,
   abortReason: null,
+  failure: null,
+  repair: null,
   decidedBy: null,
   rule: { decided: "unrecorded", from: null, carriers: [], line: null, taken: false, overtaken: null },
   carried: null,

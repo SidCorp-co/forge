@@ -76,7 +76,7 @@ const draft = summary({
 });
 const shipped = summary({ key: "0.0.9", version: "0.0.9", state: "shipped", current: true, attentionGroup: "done", waitingOn: nobody, requirements: ["REQ-1"], criteria: { total: 0, proven: 0, failing: 0, open: 0, unproven: 0 }, owner: lan, ownerAct: "Cut", openedAt: AT, releasedAt: AT, cutCount: 3 });
 
-const cut = (n: number, version: string, over: Record<string, unknown>) => ({ n, runId: `r${n}`, version, cutAt: AT, cutBy: lan, outcome: "aborted", endedAt: AT, refusal: null, abortReason: null, decidedBy: lan, rule: { decided: "reused", from: null, carriers: [], line: null, taken: false }, carried: [], ...over });
+const cut = (n: number, version: string, over: Record<string, unknown>) => ({ n, runId: `r${n}`, version, cutAt: AT, cutBy: lan, outcome: "aborted", endedAt: AT, refusal: null, abortReason: null, failure: null, repair: null, decidedBy: lan, rule: { decided: "reused", from: null, carriers: [], line: null, taken: false }, carried: [], ...over });
 
 const detail = {
   ...draft,

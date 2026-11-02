@@ -20,6 +20,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
+import { readReleaseRepair, readRunFailure, repairViewOf } from './release-repair.js';
 import type { Part } from './release-read-views.js';
 import { carriersIn, carriersOf, type Lineage, type LineageRun } from './version-rule.js';
 import { versionStatus } from './versions.js';
@@ -81,7 +82,8 @@ function deciderIdOf(run: LineageRun): string | null {
 export function peopleNamedBy(runs: readonly LineageRun[]): string[] {
   return runs.flatMap((r) => {
     const id = deciderIdOf(r);
-    return id ? [id] : [];
+    const repairer = readReleaseRepair(r.metadata)?.by;
+    return [...(id ? [id] : []), ...(repairer ? [repairer] : [])];
   });
 }
 
@@ -129,6 +131,14 @@ function refusalOf(run: LineageRun): ReleaseCutView['refusal'] {
   if (finish?.state !== 'failed' || !finish.refusal) return null;
   const code = finish.refusal.code || null;
   return { code, text: finish.refusal.reason, says: refusalSays(code) };
+}
+
+function repairOf(
+  run: LineageRun,
+  people: ReadonlyMap<string, ReleasePerson>,
+): ReleaseCutView['repair'] {
+  const record = readReleaseRepair(run.metadata);
+  return record ? repairViewOf(record, people.get(record.by) ?? null) : null;
 }
 
 function endedAtOf(run: LineageRun): Date | null {
@@ -187,6 +197,8 @@ export function cutViewsOf(
       endedAt: ended ? ended.toISOString() : null,
       refusal: refusalOf(run),
       abortReason: str(readAbortStamp(run.metadata)?.reason),
+      failure: readRunFailure(run.metadata),
+      repair: repairOf(run, people),
       decidedBy: decider ? (people.get(decider) ?? null) : null,
       rule: ruleOf(run.metadata),
       carried: reading.kind === 'carried' ? reading.carriers : reading.kind === 'none' ? [] : null,

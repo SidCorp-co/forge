@@ -20,6 +20,8 @@ function cut(over: Partial<ReleaseCutView> & Pick<ReleaseCutView, 'n' | 'version
     endedAt: null,
     refusal: null,
     abortReason: null,
+    failure: null,
+    repair: null,
     decidedBy: null,
     rule: { decided: 'unrecorded', from: null, carriers: [], line: null, taken: false },
     carried: null,

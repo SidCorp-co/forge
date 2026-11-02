@@ -3,7 +3,8 @@ import { sayEn } from '@forge/contracts/said';
 
 /**
  * The one release as the assistant reads it, with every attempt at it: what each was cut with, the
- * refusal that ended it (code, meaning, words) and the abort reason or carried note, so "why was
+ * refusal that ended it (code, meaning, words), the failure its close recorded, the abort reason, a
+ * person's repair or carried note, so "why was
  * 0.4.0 cancelled" is answered from the record. `attempt` is the one wearing the asked version.
  */
 export function releaseToolView(r: ReleaseDetail) {
@@ -18,6 +19,15 @@ export function releaseToolView(r: ReleaseDetail) {
       ? { code: c.refusal.code, meaning: sayEn(c.refusal.says), text: c.refusal.text }
       : null,
     abortReason: c.abortReason,
+    failure: c.failure,
+    repair: c.repair
+      ? {
+          by: c.repair.by?.name ?? null,
+          at: c.repair.at,
+          reason: c.repair.reason,
+          evidence: c.repair.evidence,
+        }
+      : null,
     carried: c.carried,
     roster: c.roster.map((i) => i.key),
   }));

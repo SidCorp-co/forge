@@ -283,6 +283,10 @@ export interface ReleaseCutView {
 	refusal: { code: string | null; text: string; says: Said } | null;
 	/** The abort's own reason, word for word, where it was aborted. */
 	abortReason: string | null;
+	/** Why it ended `failed`, as its close recorded it (`metadata.failure`): the condition's code, its sentence word for word, and the step the run stood at; null where no failed close recorded one (ISS-761). */
+	failure: { code: string; detail: string; step: string | null } | null;
+	/** The recorded act that settled it after it ended: who, when, why and the evidence they named; null where none did (ISS-761). */
+	repair: ReleaseRepairView | null;
 	/** Who ended it: the abort's or the finish's actor; null where Forge ended it itself or it is still open. */
 	decidedBy: ReleasePerson | null;
 	rule: ReleaseVersionRule;
@@ -290,6 +294,17 @@ export interface ReleaseCutView {
 	carried: ReleaseVersionCarrier[] | null;
 	/** The issues this attempt was cut with (`metadata.issueIds`), in key order: its own roster, not the release's last. */
 	roster: { key: string; title: string }[];
+}
+
+/** A person's recorded act settling an ended release to what happened (ISS-761): it shipped. */
+export interface ReleaseRepairView {
+	outcome: "shipped";
+	by: ReleasePerson | null;
+	at: string;
+	reason: string;
+	evidence: string;
+	/** How the attempt read before the repair, kept beside it: its status and the failure it recorded. */
+	was: { status: string; failureCode: string | null };
 }
 
 /** Where a version that did not ship went: the release that carried the same roster on. */
@@ -916,6 +931,12 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_PROMOTION_UNMERGED",
 	/** A promotion release's record naming issues other than the roster the release carries. */
 	"RELEASE_PROMOTION_ROSTER",
+	/** A repair naming a version no release of the project wears (ISS-761). */
+	"RELEASE_REPAIR_UNKNOWN",
+	/** A repair of a release that does not read `failed`: shipped, aborted by a person, or still open (ISS-761). */
+	"RELEASE_REPAIR_NOT_FAILED",
+	/** A repair whose body is not `{ outcome: "shipped", reason, evidence }` (ISS-761). */
+	"RELEASE_REPAIR_SHAPE",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",

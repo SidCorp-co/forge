@@ -34,6 +34,11 @@ function carriedLine(c: ReleaseCutView, t: Copy): string | null {
   return t("releases.carried.some", { carriers: carriersOf(c.carried, t) });
 }
 
+/** The failure's code and the step it stood at, for the tooltip: the sentence is what is read. */
+function failureTitle(f: NonNullable<ReleaseCutView["failure"]>): string {
+  return f.step ? `${f.code} · ${f.step}` : f.code;
+}
+
 function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -73,6 +78,16 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
       {c.abortReason ? (
         <span className="text-13" data-testid="cut-abort-reason">
           <span className="text-muted">{t("releases.attemptAbortReason")}</span> {c.abortReason}
+        </span>
+      ) : null}
+      {c.failure ? (
+        <span className="text-13" data-testid="cut-failure" title={failureTitle(c.failure)}>
+          <span className="text-muted">{t("releases.attemptFailure")}</span> <Written text={c.failure.detail} lang="en" />
+        </span>
+      ) : null}
+      {c.repair ? (
+        <span className="text-13" data-testid="cut-repair" title={c.repair.evidence}>
+          <span className="text-muted">{t("releases.attemptRepaired", { who: c.repair.by?.name ?? "—" })}</span> <Written text={c.repair.reason} lang={null} />
         </span>
       ) : null}
       {carried ? (
@@ -143,7 +158,12 @@ export function EndedAttempt({ r, slug }: { r: ReleaseDetail; slug: string }) {
           <span className="text-muted">{t("releases.attemptAbortReason")}</span> <Written text={own.abortReason} lang={null} />
         </p>
       ) : null}
-      {!own.refusal && !own.abortReason ? <p className="text-muted">{t("releases.ended.noReason")}</p> : null}
+      {own.failure ? (
+        <p data-testid="release-ended-failure" title={failureTitle(own.failure)}>
+          <span className="text-muted">{t("releases.attemptFailure")}</span> <Written text={own.failure.detail} lang="en" />
+        </p>
+      ) : null}
+      {!own.refusal && !own.abortReason && !own.failure ? <p className="text-muted">{t("releases.ended.noReason")}</p> : null}
       {carried ? <p className="text-13 text-muted">{carried}</p> : null}
       <div data-testid="release-ended-roster">
         <p className="text-13 text-muted">{t("releases.ended.roster", { n: own.roster.length })}</p>

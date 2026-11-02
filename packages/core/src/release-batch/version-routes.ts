@@ -16,6 +16,7 @@ import { decideDraftApproval } from './draft-approval.js';
 import { nameReleaseAs } from './naming.js';
 import { findReleaseBatchRun } from './queries.js';
 import { listReleases, readRelease } from './release-read.js';
+import { repairRelease } from './release-repair.js';
 import type { ViewerFacts } from './release-view.js';
 
 export const releaseVersionRoutes = new Hono<{ Variables: AuthVars }>();
@@ -113,6 +114,38 @@ releaseVersionRoutes.post(
       throw new Error('release-batch: a draft decision reached its handler without an auth gate');
     const decision = parseDecision(c.req.valid('json'));
     return c.json(await decideDraftApproval({ projectId, version, userId, agency, decision }), 201);
+  },
+);
+
+// A release that ended `failed` though it shipped, settled to what happened by an admin's recorded
+// act (ISS-761): who, why and the evidence are kept beside the failure it settles, never over it.
+const repairBody = zValidator(
+  'json',
+  z
+    .object({
+      outcome: z.literal('shipped'),
+      reason: z.string().trim().min(1).max(2000),
+      evidence: z.string().trim().min(1).max(2000),
+    })
+    .strict(),
+  invalid(
+    'the repair is { outcome: "shipped", reason, evidence }: why it shipped, and what shows it did',
+    'RELEASE_REPAIR_SHAPE',
+  ),
+);
+
+releaseVersionRoutes.post(
+  '/:projectId/releases/:version/repair',
+  versionParam,
+  requiresOnParam('project.admin'),
+  repairBody,
+  async (c) => {
+    const { projectId, version } = c.req.valid('param');
+    const { reason, evidence } = c.req.valid('json');
+    return c.json(
+      await repairRelease({ projectId, version, userId: c.get('userId'), reason, evidence }),
+      201,
+    );
   },
 );
 
