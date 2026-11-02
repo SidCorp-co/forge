@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.428] - 2026-11-02
+
+An outdated master owing only an independent review now gets a successor
+
+### Fixed
+
+- **A review owed to an independent judge now counts as master work.** An outdated master owing only that review is replaced instead of draining with no successor, and its nudge names each issue and criterion the judge owes (ISS-870).
+
 ## [0.4.0-dev.427] - 2026-11-02
 
 Room questions are answered from the record first, asked only in a thread
