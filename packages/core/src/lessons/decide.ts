@@ -104,12 +104,12 @@ export async function publishLesson(tx: Tx, row: LessonRow): Promise<void> {
   await putLessonEntry(tx, {
     projectId: row.projectId,
     sentence: row.sentence,
-    injection: 'always',
+    injection: 'on_demand',
     meta: await entryMeta(tx, row),
   });
 }
 
-/** Take a lesson out of every prompt, in the transaction that holds or retires it. */
+/** Take a lesson out of every map and search, in the transaction that holds or retires it. */
 export const withdrawLessonEntry = (tx: Tx, row: LessonRow) =>
   setLessonEntryInjection(tx, row.projectId, row.number, 'none');
 

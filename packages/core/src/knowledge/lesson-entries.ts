@@ -1,8 +1,9 @@
 /**
  * A lesson's text as project knowledge (REQ-50 BC-3, docs/proposals/lessons.md section 2). The
  * entry `lesson-<n>` of kind `lesson` is written only here, in the lessons module's own transaction:
- * `always` while the lesson is approved and `none` while it is held or retired, so the injection
- * a prompt reads can never run ahead of the lesson's decision. The month's figures (BC-8) are the
+ * `on_demand` while the lesson is approved and `none` while it is held or retired, so what an agent
+ * can retrieve never runs ahead of the lesson's decision. No prompt carries a lesson's sentence: the
+ * lessons map names its slug and the agent reads it (`lessons/block.ts`, owner rule prompt-is-a-map). The month's figures (BC-8) are the
  * entry `lessons-month-<YYYY-MM>` of the same kind, `on_demand` for this month and the last, so an
  * agent fetches them like any project guide. The general knowledge doors refuse a write to either by
  * name (`lessonOwnedRefusal`). An entry is written with no vector; the embedding backfill fills it, as
@@ -18,6 +19,15 @@ import { type RefusalError, refuser } from '../lib/refusal.js';
 const refuse = refuser<KnowledgeRefusalCode>('KNOWLEDGE_REFUSED');
 
 export const lessonEntrySlug = (number: number) => `lesson-${number}`;
+
+/** A lesson's own entry, as against a month's figures, which share its kind. */
+const LESSON_SLUG_SQL = sql`${knowledgeEntries.slug} ~ '^lesson-[0-9]+$'`;
+
+/** No entry but a lesson's own and an approved one: what knowledge search and the guide index leave
+ *  out, since a held or retired lesson is never retrieved as if it applied, and the lessons map names
+ *  the approved ones. */
+export const notALessonEntry = sql`NOT (${knowledgeEntries.kind} = 'lesson' AND ${LESSON_SLUG_SQL})`;
+export const notAWithdrawnLesson = sql`NOT (${knowledgeEntries.kind} = 'lesson' AND ${LESSON_SLUG_SQL} AND ${knowledgeEntries.injection} = 'none')`;
 
 const MONTH_PREFIX = 'lessons-month-';
 export const lessonsMonthSlug = (month: string) => `${MONTH_PREFIX}${month}`;
@@ -46,7 +56,7 @@ export async function putLessonEntry(
   input: {
     projectId: string;
     sentence: string;
-    injection: 'always' | 'none';
+    injection: 'on_demand' | 'none';
     meta: LessonEntryMeta;
   },
 ): Promise<void> {
@@ -158,7 +168,7 @@ export async function setLessonEntryInjection(
   tx: Tx,
   projectId: string,
   number: number,
-  injection: 'always' | 'none',
+  injection: 'on_demand' | 'none',
 ): Promise<void> {
   await tx
     .update(knowledgeEntries)
@@ -172,7 +182,7 @@ export async function setLessonEntryInjection(
     );
 }
 
-/** The approved lessons a prompt may carry: kind `lesson`, injected `always`, not archived. */
+/** The approved lessons a prompt's map may name: a lesson's own entry, `on_demand`, not archived. */
 export async function selectLessonEntries(projectId: string): Promise<LessonEntry[]> {
   const rows = await db
     .select({
@@ -185,7 +195,8 @@ export async function selectLessonEntries(projectId: string): Promise<LessonEntr
       and(
         eq(knowledgeEntries.projectId, projectId),
         eq(knowledgeEntries.kind, 'lesson'),
-        eq(knowledgeEntries.injection, 'always'),
+        LESSON_SLUG_SQL,
+        eq(knowledgeEntries.injection, 'on_demand'),
         isNull(knowledgeEntries.archivedAt),
       ),
     )

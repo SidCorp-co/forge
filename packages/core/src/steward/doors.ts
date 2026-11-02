@@ -78,6 +78,18 @@ const READS: DoorSpec<never>[] = [
     z.strictObject({}),
     (_a, ctx) => `/api/projects/${ctx.projectId}/masters/standing`,
   ),
+  read(
+    'steward_read_lesson',
+    'Read one approved lesson the map in your prompt names, by its number (lesson-3 is 3): its sentence and scope.',
+    z.strictObject({ lesson: z.number().int().min(1) }),
+    (a, ctx) => `/api/projects/${ctx.projectId}/knowledge/lesson-${a.lesson}`,
+  ),
+  read(
+    'steward_list_lessons',
+    "List the project's approved lessons by slug, where the map in your prompt could not name them all.",
+    z.strictObject({}),
+    (_a, ctx) => `/api/projects/${ctx.projectId}/knowledge?kind=lesson&injection=on_demand`,
+  ),
 ] as unknown as DoorSpec<never>[];
 
 const CATALOGUE: ReadonlyMap<string, DoorSpec<never>> = new Map(

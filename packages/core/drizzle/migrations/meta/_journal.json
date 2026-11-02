@@ -3655,6 +3655,13 @@
       "when": 1832716800000,
       "tag": "0576_a_room_asks_its_questions_in_one_thread_a_day",
       "breakpoints": true
+    },
+    {
+      "idx": 577,
+      "version": "7",
+      "when": 1832803200000,
+      "tag": "0577_a_lesson_is_retrieved_never_injected",
+      "breakpoints": true
     }
   ]
 }

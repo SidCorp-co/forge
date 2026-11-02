@@ -26,6 +26,8 @@ export const STEWARD_DOOR_TOOLS = [
 	"steward_read_issue",
 	"steward_read_suggestion",
 	"steward_read_master_standing",
+	"steward_read_lesson",
+	"steward_list_lessons",
 	"steward_ask",
 	"steward_decide",
 	"steward_prepare_draft",
@@ -44,7 +46,13 @@ export type StewardDoorTool = (typeof STEWARD_DOOR_TOOLS)[number];
 export const STEWARD_ACT_DOORS: Readonly<
 	Record<StewardAct, readonly StewardDoorTool[]>
 > = {
-	note: ["steward_read_item", "steward_read_standings", "steward_write_note"],
+	note: [
+		"steward_read_item",
+		"steward_read_standings",
+		"steward_read_lesson",
+		"steward_list_lessons",
+		"steward_write_note",
+	],
 	intake_check: [
 		"steward_read_item",
 		"steward_read_standings",
@@ -53,6 +61,8 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_ask",
 		"steward_comment_requirement",
 		"steward_write_note",
+		"steward_read_lesson",
+		"steward_list_lessons",
 		"steward_raise_lesson_confusion",
 	],
 	breakdown_check: [
@@ -64,6 +74,8 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_ask",
 		"steward_reject_breakdown",
 		"steward_write_note",
+		"steward_read_lesson",
+		"steward_list_lessons",
 		"steward_raise_lesson_confusion",
 	],
 	stuck_diagnosis: [
@@ -81,6 +93,8 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_set_requirement_owner",
 		"steward_wake_master",
 		"steward_write_note",
+		"steward_read_lesson",
+		"steward_list_lessons",
 		"steward_raise_lesson_confusion",
 	],
 	output_check: [
@@ -92,6 +106,8 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_move_issue",
 		"steward_wake_master",
 		"steward_write_note",
+		"steward_read_lesson",
+		"steward_list_lessons",
 		"steward_raise_lesson_confusion",
 	],
 	triage_draft: [],

@@ -4,6 +4,7 @@ import { cosineDistance } from '../db/pgvector.js';
 import { knowledgeEntries } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
 import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
+import { notAWithdrawnLesson } from './lesson-entries.js';
 
 export interface KnowledgeHit {
   id: string;
@@ -27,7 +28,12 @@ const HIT_COLUMNS = {
 };
 
 function baseWhere(projectId: string) {
-  return [eq(knowledgeEntries.projectId, projectId), isNull(knowledgeEntries.archivedAt)];
+  // a held or retired lesson is never retrieved as if it applied; it stays readable by its slug
+  return [
+    eq(knowledgeEntries.projectId, projectId),
+    isNull(knowledgeEntries.archivedAt),
+    notAWithdrawnLesson,
+  ];
 }
 
 /** Semantic (dense vector) cosine search over the HNSW index. */

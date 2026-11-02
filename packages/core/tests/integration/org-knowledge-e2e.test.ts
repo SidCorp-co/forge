@@ -6,6 +6,11 @@
  *
  * @direct-test-of packages/core/src/knowledge/org-knowledge.ts
  * @direct-test-of packages/core/src/knowledge/org-knowledge-routes.ts
+ * @direct-test-of packages/core/src/knowledge/service.ts
+ * @direct-test-of packages/core/src/prompt/facts/guide-index.ts
+ *
+ * ISS-867: an org's on-demand entry is named in its projects' guide index and read by their agents
+ * through the project's own knowledge door, which a project member reaches with no org access.
  */
 
 import { sql } from 'drizzle-orm';
@@ -102,5 +107,61 @@ describe('org knowledge (ISS-861)', () => {
     expect(JSON.stringify(again.body)).toContain('ORG_KNOWLEDGE_NOT_FOUND');
     const bad = await api(w.admin, 'PUT', entry('Not_A_Slug'), { title: 't', body: 'b' });
     expect(bad.status).toBe(400);
+  });
+
+  it("names an org's on-demand guide in its projects' prompts and lets a project member read it (ISS-867)", async () => {
+    const guide = 'Release notes are written for the person reading them, never for the team.';
+    const put = await api(w.admin, 'PUT', entry('release-notes-voice'), {
+      title: 'Release notes',
+      body: guide,
+      injection: 'on_demand',
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+    const preamble = await preambleOf(w.otherId);
+    expect(preamble).toContain('- release-notes-voice (org)');
+    expect(preamble).not.toContain(guide);
+    expect(await servedCheckoutOrientation(w.otherId, 'other')).toContain(
+      '- release-notes-voice (org)',
+    );
+    // a project member with no org role reads it through the project's door, labelled as the org's
+    const reader = await createTestUser({ verified: true });
+    await addProjectMember(w.otherId, reader.id, 'member');
+    const token = await userToken(reader.id);
+    const read = await api(
+      token,
+      'GET',
+      `/api/projects/${w.otherId}/knowledge/release-notes-voice`,
+    );
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    expect(read.body).toMatchObject({ origin: 'org', body: guide, injection: 'on_demand' });
+    expect((await api(token, 'GET', entry('release-notes-voice'))).status).toBe(403);
+    // an entry neither holds is still a 404
+    const none = await api(token, 'GET', `/api/projects/${w.otherId}/knowledge/no-such-guide`);
+    expect(none.status).toBe(404);
+    // a project entry under the slug takes the org's place, in that project's index and door
+    const own = await api(
+      w.admin,
+      'PUT',
+      `/api/projects/${w.projectId}/knowledge/release-notes-voice`,
+      { kind: 'reference', title: 'Ours', body: 'Here notes are terse.', injection: 'on_demand' },
+    );
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    const mine = await preambleOf(w.projectId);
+    expect(mine).toMatch(/^- release-notes-voice$/m);
+    expect(mine).not.toContain('- release-notes-voice (org)');
+    const ours = await api(
+      w.admin,
+      'GET',
+      `/api/projects/${w.projectId}/knowledge/release-notes-voice`,
+    );
+    expect(ours.body).toMatchObject({ origin: 'project', body: 'Here notes are terse.' });
+    // a project of another org reads none of it
+    const stranger = await createTestProject(reader.id);
+    const away = await api(
+      token,
+      'GET',
+      `/api/projects/${stranger.id}/knowledge/release-notes-voice`,
+    );
+    expect(away.status).toBe(404);
   });
 });

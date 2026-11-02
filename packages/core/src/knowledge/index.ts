@@ -21,12 +21,14 @@ export {
   selectLessonEntries,
   setLessonEntryInjection,
 } from './lesson-entries.js';
+export { orgOnDemandSlugsOf } from './org-knowledge.js';
 export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
 export { provideKnowledgePorts } from './ports.js';
 export { keywordSearchKnowledge, searchKnowledge } from './search.js';
 export {
   type AlwaysInjectFact,
   getKnowledgeEntry,
+  readKnowledgeEntry,
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
   selectOnDemandSlugsFromKnowledge,

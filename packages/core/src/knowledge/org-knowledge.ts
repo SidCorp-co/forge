@@ -4,9 +4,9 @@
 // Read and written at `/api/orgs/:orgId/knowledge/:slug` by an org admin.
 
 import type { OrgKnowledgeEntry, OrgKnowledgeWrite } from '@forge/contracts/org-knowledge';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { orgKnowledgeEntries, projects } from '../db/schema.js';
+import { knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 
 type Row = typeof orgKnowledgeEntries.$inferSelect;
 
@@ -84,4 +84,40 @@ export async function orgAlwaysInjectOf(
     .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
     .where(and(eq(projects.id, projectId), eq(orgKnowledgeEntries.injection, 'always')))
     .orderBy(asc(orgKnowledgeEntries.orderIndex), asc(orgKnowledgeEntries.slug));
+}
+
+/**
+ * The slugs of the on-demand entries of the org `projectId` belongs to, in their order, less any the
+ * project holds under the same slug, which takes the org's place (ISS-867). A prompt's guide index
+ * names them, and the project's own knowledge door reads one (`service.ts:getKnowledgeEntry`).
+ */
+export async function orgOnDemandSlugsOf(projectId: string): Promise<string[]> {
+  const held = db
+    .select({ slug: knowledgeEntries.slug })
+    .from(knowledgeEntries)
+    .where(eq(knowledgeEntries.projectId, projectId));
+  const rows = await db
+    .select({ slug: orgKnowledgeEntries.slug })
+    .from(orgKnowledgeEntries)
+    .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(orgKnowledgeEntries.injection, 'on_demand'),
+        notInArray(orgKnowledgeEntries.slug, held),
+      ),
+    )
+    .orderBy(asc(orgKnowledgeEntries.orderIndex), asc(orgKnowledgeEntries.slug));
+  return rows.map((r) => r.slug);
+}
+
+/** The entry under `slug` of the org `projectId` belongs to, or null where it holds none. */
+export async function orgEntryForProject(projectId: string, slug: string): Promise<Row | null> {
+  const [row] = await db
+    .select({ entry: orgKnowledgeEntries })
+    .from(orgKnowledgeEntries)
+    .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
+    .where(and(eq(projects.id, projectId), eq(orgKnowledgeEntries.slug, slug)))
+    .limit(1);
+  return row?.entry ?? null;
 }

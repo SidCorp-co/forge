@@ -194,10 +194,22 @@ export async function ownProject(): Promise<{ id: string; stewardId: string }> {
   return { id, stewardId: await stewardAccountOf(id) };
 }
 
-/** The lessons block a prompt for this audience carries, empty where none reaches it. */
+/**
+ * What an agent of this audience learns: the lessons map its prompt carries, then each lesson the map
+ * names as the agent retrieves it, through the project's knowledge door (`L-<n> [scope]: sentence`).
+ * Empty where no lesson reaches it.
+ */
 export async function block(audience: { produces: string[]; area: string | null | 'any' }) {
-  const { lessonsBlockFor } = await import('../../src/lessons/index.js');
-  return (await lessonsBlockFor(w.projectId, { ...audience, raise: 'test' } as never, 2)) ?? '';
+  const { lessonsMapFor } = await import('../../src/lessons/index.js');
+  const doors = { fetch: 'the read door', list: 'the list door', raise: 'test' };
+  const map = (await lessonsMapFor(w.projectId, { ...audience, ...doors } as never, 2)) ?? '';
+  const read: string[] = [];
+  for (const [, slug, n, label] of map.matchAll(/(lesson-(\d+)) \[([^\]]+)\]/g)) {
+    const got = await say('member', 'GET', at(`/knowledge/${slug}`));
+    if (got.status !== 200) throw new Error(`${slug} is named and not readable: ${got.status}`);
+    read.push(`L-${n} [${label}]: ${got.json.body}`);
+  }
+  return [map, ...read].join('\n');
 }
 
 /** Opens the world before the file's cases and closes it after them. */

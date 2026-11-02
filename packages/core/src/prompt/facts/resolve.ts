@@ -6,12 +6,13 @@ import { db } from '../../db/client.js';
 import { type IssueStatus, type JobType, labels, projects } from '../../db/schema.js';
 import {
   type LessonEntry,
+  orgOnDemandSlugsOf,
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
   selectLessonEntries,
   selectOnDemandSlugsFromKnowledge,
 } from '../../knowledge/index.js';
-import { lessonsBlockText, RAISE_BY_DOOR } from '../../lessons/index.js';
+import { lessonsMapText, restLessonDoors } from '../../lessons/index.js';
 import { logger } from '../../lib/logger.js';
 import type { ProjectDocument, TestingProfile } from '../../project-config/index.js';
 import {
@@ -28,6 +29,7 @@ import {
   unreservedProjectKeyRefusal,
 } from '../../projects/index.js';
 import { renderTestCreds, renderTestNotes, renderTestUrls } from './environment-keys.js';
+import { guideIndexText } from './guide-index.js';
 import {
   type IntegrationRow,
   loadActiveIntegrationRows,
@@ -56,11 +58,14 @@ interface ProjectFactInputs {
   /** Slugs of this project's `injection: 'on_demand'` knowledge entries — the
    *  fetch-on-demand index, which names the tool that holds them. */
   projectFactKeys: string[];
+  /** Slugs of its org's on-demand entries the project does not shadow (ISS-867), named in the same
+   *  index and read through the project's own knowledge door. */
+  orgFactKeys: string[];
   /** This project's `injection: 'always'` knowledge entries: rendered VERBATIM
    *  into the preamble (like a mandatory ForgeFact), and excluded from the
    *  fetch-on-demand index. Paired with their full body, in order. */
   alwaysInjectFacts: Array<{ key: string; text: string }>;
-  /** This project's approved lessons (REQ-50), carried in their own scoped block, never as rules. */
+  /** This project's approved lessons (REQ-50), named in their own scoped map, never as rules. */
   lessons: LessonEntry[];
   /** The knowledge store could not be read for this project. The index is then
    *  rendered as a named absence rather than left out: an agent told nothing is
@@ -133,6 +138,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let alwaysInjectFacts: Array<{ key: string; text: string }> = [];
   let lessons: LessonEntry[] = [];
   let projectFactKeys: string[] = [];
+  let orgFactKeys: string[] = [];
   let factsUnavailable = false;
   let missingObligations: KnowledgeObligation[] = [];
   try {
@@ -160,9 +166,10 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 
   try {
     let heldSlugs: string[];
-    [alwaysInjectFacts, projectFactKeys, heldSlugs, lessons] = await Promise.all([
+    [alwaysInjectFacts, projectFactKeys, orgFactKeys, heldSlugs, lessons] = await Promise.all([
       selectAlwaysInjectFromKnowledge(projectId),
       selectOnDemandSlugsFromKnowledge(projectId),
+      orgOnDemandSlugsOf(projectId),
       selectAllSlugsFromKnowledge(projectId),
       selectLessonEntries(projectId),
     ]);
@@ -175,6 +182,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     alwaysInjectFacts = [];
     lessons = [];
     projectFactKeys = [];
+    orgFactKeys = [];
     missingObligations = [];
     logger.error(
       { err: (err as Error).message, projectId },
@@ -194,6 +202,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       integrations,
     }),
     projectFactKeys,
+    orgFactKeys,
     alwaysInjectFacts,
     lessons,
     factsUnavailable,
@@ -253,11 +262,11 @@ export function renderStageFactsText(
     projectParts.push(projectRulesText(alwaysInject, 3));
   }
 
-  // a run builds an issue, so it carries the project's lessons and those about issues; an area
-  // lesson is shown labelled with its area, since the run's subject is the issue it was handed
-  const lessons = lessonsBlockText(
+  // a run builds an issue, so its map names the project's lessons and those about issues; an area
+  // lesson is named labelled with its area, since the run's subject is the issue it was handed
+  const lessons = lessonsMapText(
     inputs.lessons,
-    { produces: ['issue'], area: 'any', raise: RAISE_BY_DOOR },
+    { produces: ['issue'], area: 'any', ...restLessonDoors(projectId) },
     3,
   );
   if (lessons) projectParts.push(lessons);
@@ -279,16 +288,14 @@ export function renderStageFactsText(
       ].join('\n'),
     );
   } else {
-    const indexKeys = inputs.projectFactKeys.filter((key) => !alwaysInjectKeys.has(key));
-    if (indexKeys.length > 0) {
-      projectParts.push(
-        [
-          '### Project guides (fetch on demand)',
-          'Author-maintained guides exist for this project. When the task needs one, fetch its text with `forge-runner api projects/<projectId>/knowledge/<slug>` — do NOT guess its contents:',
-          ...indexKeys.map((key) => `- ${key}`),
-        ].join('\n'),
-      );
-    }
+    const index = guideIndexText({
+      projectId,
+      project: inputs.projectFactKeys.filter((key) => !alwaysInjectKeys.has(key)),
+      org: inputs.orgFactKeys,
+      read: (path) => `\`forge-runner api ${path}\``,
+      depth: 3,
+    });
+    if (index) projectParts.push(index);
   }
 
   // What this project owes and has not written. Rendered only when there is

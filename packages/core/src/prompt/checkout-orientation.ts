@@ -1,11 +1,14 @@
 import {
   type AlwaysInjectFact,
   type LessonEntry,
+  orgOnDemandSlugsOf,
   selectAlwaysInjectFromKnowledge,
   selectLessonEntries,
+  selectOnDemandSlugsFromKnowledge,
 } from '../knowledge/index.js';
-import { lessonsBlockText, RAISE_BY_DOOR } from '../lessons/index.js';
+import { lessonsMapText, restLessonDoors } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
+import { guideIndexText } from './facts/guide-index.js';
 import { projectRulesText } from './facts/project-rules.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
 
@@ -22,7 +25,12 @@ export const ORIENTATION_GENERATED_LINE =
  * knowledge entries, or `unreadable` where the knowledge store could not be read.
  */
 export type OrientationRules =
-  | { entries: readonly AlwaysInjectFact[]; lessons?: readonly LessonEntry[] }
+  | {
+      entries: readonly AlwaysInjectFact[];
+      lessons?: readonly LessonEntry[];
+      /** The on-demand slugs of the project and of its org it does not shadow (ISS-867). */
+      guides?: { project: readonly string[]; org: readonly string[] };
+    }
   | { unreadable: true };
 
 /** The rules block, or a named absence: a box told nothing would read a project with no rules. */
@@ -32,19 +40,28 @@ function rulesText(projectId: string, rules: OrientationRules): string | null {
 
 The project's knowledge could not be read when this orientation was written, so its rules are not here. Read them before you work: \`GET /api/projects/${projectId}/knowledge?injection=always\`.`;
   // a master and the runs it declares build issues, breakdowns, designs and revisions, and work
-  // across areas, so every area lesson is shown labelled with its area (REQ-50 BC-3)
-  const lessons = lessonsBlockText(
+  // across areas, so the map names every area lesson labelled with its area (REQ-50 BC-3)
+  const lessons = lessonsMapText(
     rules.lessons ?? [],
     {
       produces: ['issue', 'suggestion', 'requirement', 'workflow'],
       area: 'any',
-      raise: RAISE_BY_DOOR,
+      ...restLessonDoors(projectId),
     },
     2,
   );
+  const always = new Set(rules.entries.map((e) => e.key));
+  const guides = guideIndexText({
+    projectId,
+    project: (rules.guides?.project ?? []).filter((s) => !always.has(s)),
+    org: rules.guides?.org ?? [],
+    read: (path) => `\`forge-runner api ${path}\``,
+    depth: 2,
+  });
   const parts = [
     rules.entries.length > 0 ? projectRulesText(rules.entries, 2) : null,
     lessons,
+    guides,
   ].filter((p): p is string => p !== null);
   return parts.length > 0 ? parts.join('\n\n') : null;
 }
@@ -94,11 +111,13 @@ ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
 export async function servedCheckoutOrientation(projectId: string, slug: string): Promise<string> {
   let rules: OrientationRules;
   try {
-    const [entries, lessons] = await Promise.all([
+    const [entries, lessons, project, org] = await Promise.all([
       selectAlwaysInjectFromKnowledge(projectId),
       selectLessonEntries(projectId),
+      selectOnDemandSlugsFromKnowledge(projectId),
+      orgOnDemandSlugsOf(projectId),
     ]);
-    rules = { entries, lessons };
+    rules = { entries, lessons, guides: { project, org } };
   } catch (err) {
     logger.error(
       { err: (err as Error).message, projectId },

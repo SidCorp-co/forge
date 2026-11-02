@@ -1,5 +1,11 @@
 export { recordApplied, recordAppliedFromText } from './applied.js';
-export { type LessonAudience, lessonsBlockFor, lessonsBlockText, RAISE_BY_DOOR } from './block.js';
+export {
+  LESSONS_MAP_MAX_CHARS,
+  type LessonAudience,
+  lessonsMapFor,
+  lessonsMapText,
+  restLessonDoors,
+} from './block.js';
 export { type ConfusionSettlement, decideConfusion, raiseConfusion } from './confusions.js';
 export { registerLessonCorrections } from './consumers.js';
 export { type CorrectionInput, recordCorrection } from './corrections.js';

@@ -9,7 +9,7 @@ import {
   knowledgeKindEnum,
   upsertKnowledgeInputSchema,
 } from './entry-input.js';
-import { deleteKnowledgeEntry, getKnowledgeEntry, listKnowledgeEntries } from './service.js';
+import { deleteKnowledgeEntry, listKnowledgeEntries, readKnowledgeEntry } from './service.js';
 import { runUnifiedSearch } from './unified-search.js';
 import { upsertKnowledgeEntry } from './upsert.js';
 
@@ -59,7 +59,7 @@ const actions: Record<
   get: async (userId, input) => {
     const slug = required(input.slug, 'slug', 'get');
     await requireOn(userId, 'project.read', input.projectId);
-    const entry = await getKnowledgeEntry(input.projectId, slug);
+    const entry = await readKnowledgeEntry(input.projectId, slug);
     if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
     return entry;
   },

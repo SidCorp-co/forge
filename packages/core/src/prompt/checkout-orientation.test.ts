@@ -1,16 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const store = vi.hoisted(() => ({ read: vi.fn(), lessons: vi.fn() }));
+const store = vi.hoisted(() => ({
+  read: vi.fn(),
+  lessons: vi.fn(),
+  guides: vi.fn(),
+  orgGuides: vi.fn(),
+}));
 vi.mock('../knowledge/index.js', () => ({
   selectAlwaysInjectFromKnowledge: store.read,
   selectLessonEntries: store.lessons,
+  selectOnDemandSlugsFromKnowledge: store.guides,
+  orgOnDemandSlugsOf: store.orgGuides,
 }));
 
+import { LESSONS_MAP_MAX_CHARS } from '../lessons/index.js';
 import {
   checkoutOrientation,
   ORIENTATION_GENERATED_LINE,
   servedCheckoutOrientation,
 } from './checkout-orientation.js';
+import { GUIDE_INDEX_MAX_CHARS } from './facts/guide-index.js';
 import { projectRulesText } from './facts/project-rules.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
 
@@ -77,16 +86,20 @@ describe('the orientation core serves reads the rules from the knowledge store',
   beforeEach(() => {
     store.read.mockReset();
     store.lessons.mockReset().mockResolvedValue([]);
+    store.guides.mockReset().mockResolvedValue([]);
+    store.orgGuides.mockReset().mockResolvedValue([]);
   });
 
   it("reads this project's always-applied entries", async () => {
     store.read.mockResolvedValue(RULES.entries);
     const body = await servedCheckoutOrientation('p-1', 'forge');
     expect(store.read).toHaveBeenCalledWith('p-1');
-    expect(body).toBe(checkoutOrientation('p-1', 'forge', RULES));
+    expect(body).toBe(
+      checkoutOrientation('p-1', 'forge', { ...RULES, guides: { project: [], org: [] } }),
+    );
   });
 
-  it("carries the project's approved lessons beside its rules (REQ-50 BC-3)", async () => {
+  it("names the project's approved lessons beside its rules, never their sentences (ISS-867)", async () => {
     store.read.mockResolvedValue(RULES.entries);
     const lesson = {
       slug: 'lesson-3',
@@ -100,9 +113,57 @@ describe('the orientation core serves reads the rules from the knowledge store',
     store.lessons.mockResolvedValue([lesson]);
     const body = await servedCheckoutOrientation('p-1', 'forge');
     expect(store.lessons).toHaveBeenCalledWith('p-1');
-    expect(body).toBe(checkoutOrientation('p-1', 'forge', { ...RULES, lessons: [lesson] }));
-    expect(body).toContain('L-3');
-    expect(body).toContain('Slice a breakdown by screen, never by table.');
+    expect(body).toBe(
+      checkoutOrientation('p-1', 'forge', {
+        ...RULES,
+        lessons: [lesson],
+        guides: { project: [], org: [] },
+      }),
+    );
+    expect(body).toContain('lesson-3 [all work]');
+    expect(body).toContain('`GET /api/projects/p-1/knowledge/<slug>`');
+    expect(body).not.toContain('Slice a breakdown by screen, never by table.');
+  });
+
+  it("names the project's and its org's on-demand guides, the org's marked, read through the project door", async () => {
+    store.read.mockResolvedValue(RULES.entries);
+    store.guides.mockResolvedValue(['deploy-notes', 'ui-copy-rule']);
+    store.orgGuides.mockResolvedValue(['org-voice-guide']);
+    const body = await servedCheckoutOrientation('p-1', 'forge');
+    expect(store.orgGuides).toHaveBeenCalledWith('p-1');
+    expect(body).toContain('## Project guides (fetch on demand)');
+    expect(body).toContain('- deploy-notes\n- org-voice-guide (org)');
+    expect(body).toContain('`forge-runner api projects/p-1/knowledge/<slug>`');
+    // an always-applied entry is carried whole, so the index does not name it again
+    expect(body).not.toContain('- ui-copy-rule');
+  });
+
+  it('stays a map within its budget however many lessons and guides there are', async () => {
+    const lessons = Array.from({ length: 500 }, (_, i) => ({
+      slug: `lesson-${i + 1}`,
+      sentence: `Lesson sentence number ${i + 1}, which is long enough to matter in a prompt.`,
+      meta: {
+        lessonId: `l${i}`,
+        number: i + 1,
+        scope: { kind: 'project' as const, areaId: null, areaName: null, itemKind: null },
+      },
+    }));
+    const project = Array.from({ length: 300 }, (_, i) => `project-guide-number-${i}`);
+    const org = Array.from({ length: 300 }, (_, i) => `org-guide-number-${i}`);
+    const bare = checkoutOrientation('p-1', 'forge', RULES);
+    const full = checkoutOrientation('p-1', 'forge', {
+      ...RULES,
+      lessons,
+      guides: { project, org },
+    });
+    expect(full.length - bare.length).toBeLessThanOrEqual(
+      LESSONS_MAP_MAX_CHARS + GUIDE_INDEX_MAX_CHARS + 4,
+    );
+    expect(full).not.toContain('Lesson sentence number');
+    expect(full).toMatch(/and \d+ more: `GET \/api\/projects\/p-1\/knowledge\?kind=lesson/);
+    expect(full).toMatch(
+      /- and \d+ more: `forge-runner api projects\/p-1\/knowledge\?injection=on_demand`/,
+    );
   });
 
   it('serves a named absence, not a failed read, when the store throws', async () => {

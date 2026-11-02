@@ -18,7 +18,7 @@ import {
   computeProjectProgress,
   type ProjectProgress,
 } from '../issues/index.js';
-import { type LessonAudience, lessonsBlockFor } from '../lessons/index.js';
+import { type LessonAudience, lessonsMapFor } from '../lessons/index.js';
 import { dataPolicyOf, egressAt, egressRefused, egressText } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
@@ -152,10 +152,12 @@ interface TurnSetup {
 }
 
 /** The assistant drafts requirements, designs, mockups and suggestions as well as answering, and
- *  works across areas, so every area lesson reaches it labelled (REQ-50 BC-3). */
+ *  works across areas, so its map names every area lesson labelled (REQ-50 BC-3). */
 const ASSISTANT_LESSONS: LessonAudience = {
   produces: ['chat', 'requirement', 'workflow', 'mockup', 'suggestion'],
   area: 'any',
+  fetch: '`forge_knowledge` (action get with its slug, or search by topic)',
+  list: '`forge_knowledge` (action list, kindFilter lesson, injectionFilter on_demand)',
   raise: 'the `forge_lesson_confusion` tool',
 };
 
@@ -181,7 +183,7 @@ async function setUpTurn(
         })
       : null,
     dataPolicyOf(args.projectId),
-    lessonsBlockFor(args.projectId, ASSISTANT_LESSONS, 2),
+    lessonsMapFor(args.projectId, ASSISTANT_LESSONS, 2),
     gateOf(args.projectId, 'chat_files_issue'),
   ]);
   if (!project) throw new Error(`project not found: ${args.projectId}`);

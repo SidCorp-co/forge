@@ -3,8 +3,8 @@ import { db } from '../db/client.js';
 import { type IssueStatus, knowledgeEntries } from '../db/schema.js';
 import type { MasterVerb } from '../db/schema-master-charter.js';
 import type { knowledgeInjectionEnum, knowledgeKindEnum } from './entry-input.js';
-import { lessonOwnedRefusal } from './lesson-entries.js';
-import { orgAlwaysInjectOf } from './org-knowledge.js';
+import { lessonOwnedRefusal, notALessonEntry } from './lesson-entries.js';
+import { orgAlwaysInjectOf, orgEntryForProject } from './org-knowledge.js';
 import type { ReadWhenCondition } from './read-when.js';
 
 const MAX_RESPONSE_CHARS = 38_000;
@@ -122,6 +122,9 @@ export async function listKnowledgeEntries(
 }
 
 export interface GetKnowledgeResult {
+  /** `project` for the project's own entry; `org` where the project holds none under the slug and
+   *  its org does (ISS-867), read through the same door so a project's agents need no org access. */
+  origin: 'project' | 'org';
   id: string;
   slug: string;
   kind: string;
@@ -163,7 +166,44 @@ export async function getKnowledgeEntry(
     .where(and(eq(knowledgeEntries.projectId, projectId), eq(knowledgeEntries.slug, slug)))
     .limit(1);
   if (!row) return null;
-  return { ...row, readWhen: (row.readWhen as ReadWhenCondition | null) ?? null };
+  return {
+    origin: 'project',
+    ...row,
+    readWhen: (row.readWhen as ReadWhenCondition | null) ?? null,
+  };
+}
+
+/**
+ * What a project's agents read under `slug` through the project's own knowledge door: the project's
+ * entry, else its org's (ISS-867), so an org's on-demand guide a prompt names is readable by every
+ * agent of its projects without org access. Labelled by `origin`, never passed off as the project's.
+ */
+export async function readKnowledgeEntry(
+  projectId: string,
+  slug: string,
+): Promise<GetKnowledgeResult | null> {
+  const own = await getKnowledgeEntry(projectId, slug);
+  if (own) return own;
+  const org = await orgEntryForProject(projectId, slug);
+  if (!org) return null;
+  // an org entry carries no kind, confidence or author of its own: it is a ruling an org admin wrote
+  return {
+    origin: 'org',
+    id: org.id,
+    slug: org.slug,
+    kind: 'rule',
+    title: org.title,
+    body: org.body,
+    injection: org.injection,
+    confidence: 'verified',
+    authoredBy: 'human',
+    orderIndex: org.orderIndex,
+    metadata: { orgId: org.orgId },
+    archivedAt: null,
+    createdAt: org.createdAt,
+    updatedAt: org.updatedAt,
+    readWhen: null,
+  };
 }
 
 export async function deleteKnowledgeEntry(projectId: string, slug: string): Promise<number> {
@@ -217,7 +257,7 @@ async function projectAlwaysInject(projectId: string): Promise<AlwaysInjectFact[
         eq(knowledgeEntries.projectId, projectId),
         eq(knowledgeEntries.injection, 'always'),
         isNull(knowledgeEntries.archivedAt),
-        // a lesson is carried in its own scoped block (`prompt/facts/lessons.ts`), never as a rule
+        // a lesson is named in its own scoped map (`lessons/block.ts`), never carried as a rule
         ne(knowledgeEntries.kind, 'lesson'),
       ),
     )
@@ -251,6 +291,8 @@ export async function selectOnDemandSlugsFromKnowledge(projectId: string): Promi
         eq(knowledgeEntries.projectId, projectId),
         eq(knowledgeEntries.injection, 'on_demand'),
         isNull(knowledgeEntries.archivedAt),
+        // the lessons map names the approved lessons, so the guide index does not name them twice
+        notALessonEntry,
       ),
     )
     .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug));

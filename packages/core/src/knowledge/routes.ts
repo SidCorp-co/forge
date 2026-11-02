@@ -16,7 +16,7 @@ import {
   slugSchema,
   upsertKnowledgeInputSchema,
 } from './entry-input.js';
-import { deleteKnowledgeEntry, getKnowledgeEntry, listKnowledgeEntries } from './service.js';
+import { deleteKnowledgeEntry, listKnowledgeEntries, readKnowledgeEntry } from './service.js';
 import { runUnifiedSearch } from './unified-search.js';
 import { upsertKnowledgeEntry } from './upsert.js';
 
@@ -128,7 +128,7 @@ knowledgeRoutes.get(
     const userId = c.get('userId');
     await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
-    const entry = await getKnowledgeEntry(id, slug);
+    const entry = await readKnowledgeEntry(id, slug);
     if (!entry) throw notFound();
     return c.json(entry);
   },

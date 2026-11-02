@@ -8,6 +8,8 @@
 // @direct-test-of packages/core/src/lessons/decide.ts
 // @direct-test-of packages/core/src/lessons/applied.ts
 // @direct-test-of packages/core/src/lessons/block.ts
+// @direct-test-of packages/core/src/knowledge/search.ts
+// @direct-test-of packages/core/src/knowledge/service.ts
 // @direct-test-of packages/core/src/lessons/routes.ts
 // @direct-test-of packages/core/src/knowledge/lesson-entries.ts
 // @direct-test-of packages/core/src/steward/lessons-pass.ts
@@ -173,8 +175,8 @@ describe('the steward proposes a lesson and settles it, and no person is asked (
   });
 });
 
-describe('an approved lesson reaches every agent in its scope, and nothing else does (BC-3)', () => {
-  it('reaches the run preamble, the checkout orientation, the assistant and the steward; a proposal reaches none', async () => {
+describe('an approved lesson reaches every agent in its scope by retrieval, and nothing else does (BC-3, ISS-867)', () => {
+  it('is named in the run preamble, the checkout orientation and the assistant, read by its slug; a proposal is in none', async () => {
     const n = await approved('Name the ward on every reminder.');
     const a = await correction('Use plain words (1).');
     const b = await correction('Use plain words (2).');
@@ -191,13 +193,51 @@ describe('an approved lesson reaches every agent in its scope, and nothing else 
     const orientation = await servedCheckoutOrientation(w.projectId, 'lessons');
     const assistant = await block({ produces: ['chat', 'requirement'], area: 'any' });
     for (const text of [preamble, orientation, assistant]) {
-      expect(text).toContain(`L-${n} [all work]: Name the ward on every reminder.`);
+      expect(text).toContain(`lesson-${n} [all work]`);
       expect(text).toContain('Lessons applied: L-3, L-7');
       expect(text).toContain('until the steward settles it');
       expect(text).not.toContain('Use plain words, never codes.');
       expect(text).not.toMatch(/by a person|a person decides/);
     }
+    // the map names the lesson; its sentence is in no prompt, only where the agent reads it
+    expect(preamble).not.toContain('Name the ward on every reminder.');
+    expect(orientation).not.toContain('Name the ward on every reminder.');
+    expect(assistant).toContain(`L-${n} [all work]: Name the ward on every reminder.`);
     expect(preamble).not.toMatch(/Project rules[\s\S]*lesson-/);
+    // nor named twice: the guide index leaves the lesson to the lessons map
+    expect(preamble).not.toContain(`- lesson-${n}`);
+  });
+
+  it('is found by knowledge search and read by its slug; a held one is read by slug and found by no search', async () => {
+    const n = await approved('Quote the dosage in milligrams.');
+    const read = ok(await say('member', 'GET', at(`/knowledge/lesson-${n}`)));
+    expect(read).toMatchObject({
+      origin: 'project',
+      kind: 'lesson',
+      injection: 'on_demand',
+      body: 'Quote the dosage in milligrams.',
+    });
+    const search = async () =>
+      ok(
+        await say('member', 'POST', at('/knowledge/search'), {
+          query: 'dosage milligrams',
+          strategy: 'keyword',
+        }),
+      ).knowledge as Doc[];
+    expect((await search()).map((h) => h.slug)).toContain(`lesson-${n}`);
+    ok(
+      await say('member', 'POST', at(`/lessons/${n}/confusions`), {
+        kind: 'unclear',
+        sides: { lesson: 'Milligrams.', other: 'Some wards dose by drops.' },
+        recommended: { resolution: 'retire' },
+      }),
+      201,
+    );
+    expect((await search()).map((h) => h.slug)).not.toContain(`lesson-${n}`);
+    expect(ok(await say('member', 'GET', at(`/knowledge/lesson-${n}`)))).toMatchObject({
+      injection: 'none',
+    });
+    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`lesson-${n} [`);
   });
 
   it('scopes by area and by kind of item', async () => {
@@ -218,7 +258,7 @@ describe('an approved lesson reaches every agent in its scope, and nothing else 
       `L-${reqs} [requirements]`,
     );
     expect(await block({ produces: ['issue'], area: 'any' })).toContain(
-      `L-${billing} [only work in the area Billing]`,
+      `L-${billing} [area Billing]: Show totals with tax.`,
     );
   });
 
