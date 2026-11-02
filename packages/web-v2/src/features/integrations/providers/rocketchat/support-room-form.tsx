@@ -28,6 +28,7 @@ import {
   type SupportRoomState,
   stateOf,
   supportRoomErrors,
+  type SupportCarried,
   supportSaveConfig,
 } from "./support-room-config";
 
@@ -108,7 +109,11 @@ export function EditSupportRoomForm({ projectId, binding }: { projectId: string;
   if (config.operations) {
     return <p className="fg-body-sm text-muted">{t("integrations.support.operationsNote")}</p>;
   }
-  const carried = config.support?.limits ? { limits: config.support.limits } : undefined;
+  const reads = config.support?.grants?.reads;
+  const carried: SupportCarried | undefined =
+    config.support?.limits || reads
+      ? { ...(config.support?.limits ? { limits: config.support.limits } : {}), ...(reads ? { reads } : {}) }
+      : undefined;
   return (
     <SupportRoomFields
       projectId={projectId}
@@ -134,7 +139,7 @@ function SupportRoomFields(p: {
   saving: boolean;
   canSave: boolean;
   saveLabel?: string | undefined;
-  carried?: Pick<SupportRoomConfig, "limits"> | undefined;
+  carried?: SupportCarried | undefined;
   bot?: ReactNode;
   onSave: (state: SupportRoomState) => Promise<void>;
 }) {
@@ -195,7 +200,7 @@ function SupportRoomFields(p: {
       </Field>
       <Field label={t("integrations.support.abilities")} error={shown("abilities")}>
         <div className="flex flex-col divide-y divide-line border-y border-line">
-          {SUPPORT_ABILITIES.filter((a) => a !== "owner_mode").map((a) => (
+          {SUPPORT_ABILITIES.filter((a) => a !== "owner_mode" && a !== "ops_reads").map((a) => (
             <div key={a} className="py-2">
               <Checkbox
                 checked={has(a)}

@@ -52,6 +52,16 @@ describe("the support room's save", () => {
     });
   });
 
+  it("carries the reads an ops_reads grant declares, which the form does not edit (ISS-871)", () => {
+    const reads = [{ name: "hub-logs", summary: "Search the production log", argv: ["/opt/bin/hub-logs"] }];
+    const support = { grants: { abilities: ["file_items", "ops_reads"] as const, reads } };
+    const block = supportBlockOf(stateOf(support as never, "r"), { reads });
+    expect(block.grants).toEqual({ abilities: ["file_items", "ops_reads"], reads });
+    expect(supportRoomConfigSchema.safeParse(block).success).toBe(true);
+    // without the carried reads the block could never be saved: the schema names the gap
+    expect(supportRoomErrors(stateOf(support as never, "r"))).not.toEqual({});
+  });
+
   it("writes no grant for a room with no ability ticked, and carries the limits the form does not edit", () => {
     const block = supportBlockOf(stateOf(null, "r"), { limits: { messagesPerUserPerHour: 5 } });
     expect(block).toEqual({ readers: "users", answers: "every-message", limits: { messagesPerUserPerHour: 5 } });

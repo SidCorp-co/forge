@@ -24,6 +24,14 @@ export interface SupportRoomState {
   confirmers: string;
 }
 
+/**
+ * What the form does not edit and a save carries over unchanged: the limits, and the reads an
+ * `ops_reads` grant declares (ISS-871), which are set in the binding document.
+ */
+export type SupportCarried = Pick<SupportRoomConfig, "limits"> & {
+  reads?: NonNullable<SupportRoomConfig["grants"]>["reads"];
+};
+
 /** The field a schema message is shown under. */
 export type SupportRoomField =
   | "rid"
@@ -60,12 +68,12 @@ export function stateOf(support: SupportRoomConfig | null | undefined, rid: stri
 /**
  * The `support` block the form writes. An empty text is left out rather than sent blank; a list the
  * room's abilities do not use is left out, so unticking deploy drops its targets with it. No ability
- * ticked writes no `grants`, which core reads as a room holding none. `limits` the form does not edit
- * are carried over unchanged.
+ * ticked writes no `grants`, which core reads as a room holding none. `limits` and the declared
+ * `reads` the form does not edit are carried over unchanged.
  */
 export function supportBlockOf(
   state: SupportRoomState,
-  carried?: Pick<SupportRoomConfig, "limits">,
+  carried?: SupportCarried,
 ): Record<string, unknown> {
   const has = (a: SupportAbility) => state.abilities.includes(a);
   const confirmed = has("build") || has("deploy") || has("run_commands");
@@ -76,6 +84,7 @@ export function supportBlockOf(
           abilities: SUPPORT_ABILITIES.filter(has),
           ...(has("deploy") ? { deployTargets: state.deployTargets } : {}),
           ...(has("run_commands") ? { hosts: words(state.hosts) } : {}),
+          ...(has("ops_reads") && carried?.reads ? { reads: carried.reads } : {}),
           ...(confirmed ? { confirmers: words(state.confirmers) } : {}),
         };
   return {
@@ -91,7 +100,7 @@ export function supportBlockOf(
 /** What a save writes on the binding: its one room and the support block, together. */
 export function supportSaveConfig(
   state: SupportRoomState,
-  carried?: Pick<SupportRoomConfig, "limits">,
+  carried?: SupportCarried,
 ): { rids: string[]; support: Record<string, unknown> } {
   return { rids: [state.rid.trim()], support: supportBlockOf(state, carried) };
 }
@@ -99,7 +108,7 @@ export function supportSaveConfig(
 /** The schema's messages by field, empty when the block is one core takes. */
 export function supportRoomErrors(
   state: SupportRoomState,
-  carried?: Pick<SupportRoomConfig, "limits">,
+  carried?: SupportCarried,
 ): Partial<Record<SupportRoomField, string>> {
   const errors: Partial<Record<SupportRoomField, string>> = {};
   if (!state.rid.trim()) errors.rid = "pick the group this room answers";
