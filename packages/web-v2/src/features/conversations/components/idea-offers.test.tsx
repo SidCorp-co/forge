@@ -12,7 +12,8 @@ import { HOST, PREVIEW_ID, previewOf } from "@/test/previews";
 
 const asked = vi.hoisted((): { calls: number; answer: unknown } => ({ calls: 0, answer: null }));
 vi.mock("@/features/previews/idea-snapshot", async (orig) => {
-  const real = await orig<typeof import("@/features/previews/idea-snapshot")>();
+  // typed structurally: a feature reaches another only through its index.ts, and only the mock path names this module
+  const real = await orig<Record<string, unknown>>();
   return {
     ...real,
     askPageSnapshot: () => {
