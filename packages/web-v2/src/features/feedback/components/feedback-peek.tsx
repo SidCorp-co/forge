@@ -9,7 +9,7 @@ import { PeekHead, PeekPanel, type FullPage, type PeekState, useOpenFullPage, St
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useFeedbackItem } from "../hooks";
-import { FeedbackPrimary } from "./feedback-detail";
+import { ACT_ANCHOR, FeedbackPrimary } from "./feedback-acts";
 import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
 import { FeedbackPeekSaid } from "./feedback-peek-said";
 import { FeedbackProgress } from "./feedback-progress";
@@ -30,7 +30,8 @@ export function FeedbackPeek({
 }) {
   const t = useCopy();
   const q = useFeedbackItem(projectId, fbKey);
-  const openFull = useOpenFullPage(full);
+  // the peek's act opens the full page at its act sheet
+  const openAct = useOpenFullPage({ ...full, href: `${full.href}${ACT_ANCHOR}` });
   return (
     <PeekPanel peek={peek} listLabel={t("feedback.title")} noun={t("feedback.title")} full={full} testId="feedback-peek">
       <QueryBoundary query={q} loadingLabel={t("feedback.loading")}>
@@ -43,7 +44,7 @@ export function FeedbackPeek({
                 itemKey={f.key}
                 badge={<StatusBadge family="feedbackPhase" value={f.phase} />}
                 title={<Written text={f.title} lang={f.writtenLang} />}
-                action={<FeedbackPrimary f={f} onAct={openFull} />}
+                action={<FeedbackPrimary f={f} onAct={openAct} />}
               />
               <FeedbackBanner f={f} slug={slug} className="px-4.5" />
               <FeedbackProgress projectId={projectId} slug={slug} fbKey={f.key} className="px-4.5 pt-3" />

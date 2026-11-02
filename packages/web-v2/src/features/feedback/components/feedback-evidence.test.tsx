@@ -121,7 +121,7 @@ const core = () =>
 const at = (node: Node, other: Node) => node.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING;
 
 describe("a feedback item opens on its evidence", () => {
-  it("opens on its screenshot, above what the reporter said and the actions", async () => {
+  it("opens on its screenshot, above what the reporter said, the acts in their sheet", async () => {
     core();
     const f = view({ attachments: [SHOT], can: { ...NONE, triage: true } });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -131,7 +131,7 @@ describe("a feedback item opens on its evidence", () => {
     const shot = within(evidence).getByRole("img", { name: "Screenshot 1 of 1 for FB-52: Save order fails" });
     expect(shot.getAttribute("src")).toBe(SHOT.url);
     expect(at(evidence, screen.getByTestId("feedback-body")), "the screenshot sits above the reporter's text").toBeTruthy();
-    expect(at(evidence, document.getElementById("feedback-act") as Node), "the screenshot sits above the actions").toBeTruthy();
+    expect(screen.queryByTestId("feedback-triage"), "the triage form is the act sheet's, never the page's").toBeNull();
     expect(screen.queryByRole("img", { name: "IMG_0042.png" }), "no image is read by its file name").toBeNull();
   });
 

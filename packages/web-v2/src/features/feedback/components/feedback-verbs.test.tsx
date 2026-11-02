@@ -191,7 +191,7 @@ describe("messages to reporters", () => {
 
   it("previews the exact notice before it sends, and sends that text to that audience", async () => {
     const calls = core((c) => (c.path.endsWith("/messages/preview") ? { body: { preview: PREVIEW } } : c.path.endsWith("/messages") ? { body: { feedback: merged } } : undefined));
-    renderWithQuery(<Messages projectId="p1" f={merged} />);
+    renderWithQuery(<Messages projectId="p1" f={merged} defaultOpen />);
     fireEvent.click(screen.getByRole("radio", { name: /Every reporter merged into it/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "We are fixing it this week." } });
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
@@ -211,7 +211,7 @@ describe("messages to reporters", () => {
 
   it("drops a preview the moment the text changes, so Send is never for words nobody saw", async () => {
     core((c) => (c.path.endsWith("/messages/preview") ? { body: { preview: PREVIEW } } : undefined));
-    renderWithQuery(<Messages projectId="p1" f={merged} />);
+    renderWithQuery(<Messages projectId="p1" f={merged} defaultOpen />);
     fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "One" } });
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     await screen.findByTestId("message-preview");
@@ -223,7 +223,7 @@ describe("messages to reporters", () => {
   it("marks an internal note as members-only and sends it with no preview", async () => {
     const note = { id: "m1", audience: "internal", text: "Call Ana first.", sentBy: "u1", sentByName: "Dana", sentAgency: "human", sentAt: "2026-10-07T01:00:00.000Z", recipients: [], relayed: false, writtenLang: "en" };
     const calls = core((c) => (c.path.endsWith("/messages") ? { body: { feedback: merged } } : undefined));
-    renderWithQuery(<Messages projectId="p1" f={view({ messages: [note] as FeedbackView["messages"], reporters: merged.reporters })} />);
+    renderWithQuery(<Messages projectId="p1" f={view({ messages: [note] as FeedbackView["messages"], reporters: merged.reporters })} defaultOpen />);
     expect(screen.getByTestId("feedback-note")).toHaveTextContent("Internal note · members only");
     expect(screen.getByTestId("feedback-note")).toHaveTextContent("Call Ana first.");
     fireEvent.click(screen.getByRole("radio", { name: "Internal note" }));
@@ -234,7 +234,7 @@ describe("messages to reporters", () => {
   });
 
   it("offers nothing to write to someone who may neither message nor note, and shows no empty thread", () => {
-    renderWithQuery(<Messages projectId="p1" f={view({ can: { ...CAN, message: false, note: false } })} />);
+    renderWithQuery(<Messages projectId="p1" f={view({ can: { ...CAN, message: false, note: false } })} defaultOpen />);
     expect(screen.queryByTestId("feedback-messages")).toBeNull();
   });
 });

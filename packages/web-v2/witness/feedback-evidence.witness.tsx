@@ -1,8 +1,8 @@
 // A feedback item's page witnessed at phone and desktop width (REQ-35 BC-8, BC-12; ISS-462): it opens
-// on its screenshot and its recordings, above what the reporter said and the actions, with the step
-// it hits lit on that workflow's canvas; every screenshot and recording is read by a text alternative,
-// never its file name; and the attached recording plays in the page. jsdom lays nothing out and plays
-// nothing, so this is where "opens on" and "plays" go red.
+// on its screenshot and its recordings, above what the reporter said, its acts in their sheet (ISS-903),
+// with the step it hits lit on that workflow's canvas; every screenshot and recording is read by a text
+// alternative, never its file name; and the attached recording plays in the page. jsdom lays nothing
+// out and plays nothing, so this is where "opens on" and "plays" go red.
 //
 // The files the item holds are read from `<out>` beside the page, since Chrome reaches no network
 // here: put `IMG_0042.png` and `spinner.webm` there before the run.
@@ -136,7 +136,7 @@ function opens(): string[] {
   if (!evidence || !shot) return ["the page draws no evidence section with a screenshot"];
   if (top(evidence) >= window.innerHeight) wrong.push(`the evidence starts at ${Math.round(top(evidence))} px, below the first screen of ${window.innerHeight} px`);
   if (top(evidence) >= top(q("[data-testid=feedback-body]"))) wrong.push("the screenshot is not above what the reporter said");
-  if (top(evidence) >= top(q("#feedback-act"))) wrong.push("the screenshot is not above the actions");
+  if (q("[data-testid=feedback-triage]")) wrong.push("the triage form is drawn on the page, not in the act sheet");
   if (shot.naturalWidth === 0) wrong.push("the screenshot did not load");
   if (shot.alt !== "Screenshot 1 of 1 for FB-52: Save order spins forever") wrong.push(`the screenshot is read as "${shot.alt}"`);
   if ([...document.querySelectorAll("img")].some((i) => i.alt.includes("IMG_0042"))) wrong.push("an image is read by its file name");

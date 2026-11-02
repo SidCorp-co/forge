@@ -10,7 +10,6 @@ import type { SuggestionView } from "@/features/suggestions";
 import { SuggestionDecider, useWaitingSuggestions } from "@/features/suggestions";
 import { feedbackKeys, useFeedbackAction } from "../hooks";
 import { type FeedbackPick, FeedbackPicker } from "./feedback-picker";
-import { RetargetForm } from "./feedback-retarget";
 import { TellShippedBar } from "./feedback-tell";
 import { DropItem, TriageVerbs } from "./feedback-verbs";
 import { answersOf, type TriageAnswerDraft, TriageAnswerFields } from "./triage-answers";
@@ -166,32 +165,7 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
   );
 }
 
-function RedactBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
-  const t = useCopy();
-  const act = useFeedbackAction(projectId, f.key);
-  const [sure, setSure] = useState(false);
-  return (
-    <div className="grid gap-2">
-      <RefusalLine error={act.error} />
-      <div className="flex items-center gap-2">
-        {sure ? (
-          <>
-            <span className="text-12 text-muted">{t("feedback.redact.consequence")}</span>
-            <Button type="button" size="sm" variant="danger" loading={act.isPending} onClick={() => act.mutate({ kind: "redact" })}>
-              {t("feedback.redact.confirm")}
-            </Button>
-          </>
-        ) : (
-          <button type="button" className="text-12 font-semibold text-muted hover:text-fg" onClick={() => setSure(true)}>
-            {t("feedback.redact.open")}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** What a person can do now; the buttons follow the server's `can`, and a refusal still names why. */
+/** What a person can do now, in the act sheet; the buttons follow the server's `can`, and a refusal still names why. */
 export function FeedbackActions({ projectId, f }: { projectId: string; f: FeedbackView }) {
   return (
     <div className="grid gap-4">
@@ -199,9 +173,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
       {f.can.drop ? <DropItem projectId={projectId} f={f} /> : null}
       {f.can.verify || f.can.reopen || f.can.askVerify ? <VerifyBar projectId={projectId} f={f} /> : null}
-      {f.can.retarget ? <RetargetForm projectId={projectId} f={f} /> : null}
       {f.can.tellShipped ? <TellShippedBar projectId={projectId} f={f} /> : null}
-      {f.can.redact ? <RedactBar projectId={projectId} f={f} /> : null}
     </div>
   );
 }

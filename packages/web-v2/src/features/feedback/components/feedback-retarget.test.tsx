@@ -1,12 +1,15 @@
-// ISS-264: an approver corrects what a feedback item is about from its page. The control follows
-// core's `can.retarget`, sends exactly the one target typed, and a refusal names its code and keeps
-// what was typed.
+// ISS-264: an approver corrects what a feedback item is about from its page: the palette's act (⌘K,
+// ISS-903) opens it in a sheet. The act follows core's `can.retarget`, sends exactly the one target
+// typed, and a refusal names its code and keeps what was typed.
+//
+// @direct-test-of packages/web-v2/src/features/feedback/components/feedback-acts.tsx
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
-import { FeedbackActions } from "./feedback-actions";
+import { PageCommandsProvider, usePageCommandList } from "@/design";
+import { FeedbackPaletteActs } from "./feedback-acts";
 
 const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false };
 
@@ -28,6 +31,23 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   }) as FeedbackView;
 
 afterEach(() => vi.unstubAllGlobals());
+
+/** The page's palette acts as plain buttons: what ⌘K lists, run by a click. */
+function PaletteActs() {
+  return usePageCommandList().map((c) => (
+    <button key={c.label} type="button" onClick={c.onRun}>
+      {c.label}
+    </button>
+  ));
+}
+
+const acts = (f: FeedbackView) =>
+  renderWithQuery(
+    <PageCommandsProvider>
+      <FeedbackPaletteActs projectId="p1" f={f} />
+      <PaletteActs />
+    </PageCommandsProvider>,
+  );
 
 /** The lists the About picker reads beside whatever a test serves: the viewer's projects, and the project's requirements, workflows and releases. */
 const REQUIREMENTS = { requirements: [{ key: "REQ-3", title: "The board keeps its cards" }, { key: "REQ-12", title: "Labels" }], returned: 2 };
@@ -53,13 +73,15 @@ async function open() {
 
 describe("changing what a feedback item is about", () => {
   it("is offered where core says the viewer may, and not otherwise", () => {
-    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    acts(view());
+    expect(screen.queryByTestId("feedback-retarget"), "the form is shut until the act opens it").toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     expect(screen.getByTestId("feedback-retarget")).toBeInTheDocument();
   });
 
   it("picks the requirement by title, sending its key, and refuses text naming none by name", async () => {
     const calls = core((c) => (c.method === "POST" ? { body: { feedback: view() } } : undefined));
-    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    acts(view());
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     await screen.findByTestId("feedback-choices");
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "Nothing like this" } });
@@ -72,7 +94,7 @@ describe("changing what a feedback item is about", () => {
   });
 
   it("is not offered to a reader core says may not", () => {
-    renderWithQuery(<FeedbackActions projectId="p1" f={view({ can: NONE })} />);
+    acts(view({ can: NONE }));
     expect(screen.queryByTestId("feedback-retarget")).toBeNull();
     expect(screen.queryByRole("button", { name: "Change what it is about…" })).toBeNull();
   });
@@ -81,7 +103,7 @@ describe("changing what a feedback item is about", () => {
     const calls = core((c) =>
       c.method === "POST" ? { body: { feedback: view({ target: { type: "requirement", key: "REQ-12", title: "Labels" } }) } } : undefined,
     );
-    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    acts(view());
     await open();
     fireEvent.change(screen.getByLabelText("Why (optional)"), { target: { value: "now a criterion" } });
     fireEvent.click(screen.getByRole("button", { name: "Move it" }));
@@ -95,14 +117,14 @@ describe("changing what a feedback item is about", () => {
 
   // ISS-279's judge: the label was lower-cased whole, so it read "api route or tool"
   it("names a route or tool target with the label's own casing", () => {
-    renderWithQuery(<FeedbackActions projectId="p1" f={view({ target: { type: "endpoint", key: "shop-tools:save_backend_workflow", title: null } })} />);
+    acts(view({ target: { type: "endpoint", key: "shop-tools:save_backend_workflow", title: null } }));
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     expect(screen.getByText("Now route, tool or command shop-tools:save_backend_workflow.")).toBeInTheDocument();
   });
 
   it("tells the mover before Move it that a project serving nothing has no route or tool to name", async () => {
     core((c) => (c.path.endsWith("/endpoints") ? { body: { endpoints: [] } } : undefined));
-    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    acts(view());
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     expect(await screen.findByTestId("feedback-endpoints-none")).toHaveTextContent("Nothing served");
@@ -119,7 +141,7 @@ describe("changing what a feedback item is about", () => {
         },
       },
     }));
-    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    acts(view());
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Move it" }));
     const line = await screen.findByTestId("refusal");

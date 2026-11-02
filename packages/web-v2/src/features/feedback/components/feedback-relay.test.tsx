@@ -123,7 +123,7 @@ describe("the page leads with the reporter's answer", () => {
 describe("a reporter no bell reaches is told by a person", () => {
   it("opens the composer on the relay, records it with no preview and sends relayed", async () => {
     const calls = fakeCore(() => ({ body: { feedback: view() } }));
-    renderWithQuery(<Messages projectId="p1" f={view()} />);
+    renderWithQuery(<Messages projectId="p1" f={view()} defaultOpen />);
     expect(screen.getByRole("radio", { name: "I told them myself" })).toBeChecked();
     expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox", { name: "I told them myself" }), { target: { value: "Told Ana on the support call." } });
@@ -137,7 +137,7 @@ describe("a reporter no bell reaches is told by a person", () => {
 
   it("shows a recorded relay on the thread as told outside Forge", () => {
     const relay = { id: "m1", audience: "reporter", text: "Told Ana on the call.", sentBy: "u1", sentByName: "Dana", sentAgency: "human", sentAt: "2026-10-07T10:00:00.000Z", recipients: [], relayed: true, writtenLang: "en" };
-    renderWithQuery(<Messages projectId="p1" f={view({ messages: [relay] as FeedbackView["messages"] })} />);
+    renderWithQuery(<Messages projectId="p1" f={view({ messages: [relay] as FeedbackView["messages"] })} defaultOpen />);
     expect(screen.getByTestId("feedback-relayed")).toHaveTextContent("Told outside Forge");
   });
 

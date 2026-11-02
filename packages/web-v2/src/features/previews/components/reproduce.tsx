@@ -4,14 +4,15 @@
 // to give) and records what a member does there; once a routed issue's run serves the fix in its
 // live preview, the reporter, or a member for them, says Fixed or Not fixed against that preview.
 // Core decides every move and binds the word to the patch it served; this draws the records and
-// says by name what core refused. The reproduce's id rides the URL, so a reload keeps it.
+// says by name what core refused. The reproduce's id rides the URL, so a reload keeps it. The item's
+// page draws it inside its Reproduce fold (ISS-903), which carries the title.
 
 import { previewKeys } from "../queries";
 import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason, type PreviewRecord } from "@forge/contracts/preview";
 import type { FixConfirmation } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Banner, Button, Textarea, useUrlParams, ViewHeading } from "@/design";
+import { Banner, Button, Textarea, useUrlParams } from "@/design";
 import { RefusedLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { usePreview } from "../hooks";
@@ -71,7 +72,6 @@ export function Reproduction({ projectId, fbKey, carriers, redacted }: Reproduct
 
   return (
     <section aria-label={t("previews.reproduce.title")} data-testid="reproduce-section" data-highlight="reproduce" className="grid gap-3">
-      <ViewHeading>{t("previews.reproduce.title")}</ViewHeading>
       {redacted ? (
         <p className="fg-body-sm text-muted">{t("previews.reproduce.redacted")}</p>
       ) : (

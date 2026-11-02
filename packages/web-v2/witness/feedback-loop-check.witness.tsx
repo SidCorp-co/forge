@@ -2,7 +2,8 @@
 // verified it by itself (the owner's ruling of 2026-10-14), so its facts say what the record reads and
 // that it waits on a triager, its verify bar says a triager answers from the record, and no line says
 // Forge verifies it. Its acts are what core's read answers for a resolved item (core
-// `feedback/read.ts:canOf`): the confirm block, never the triage form beside it. Every question about the
+// `feedback/read.ts:canOf`): the confirm block in the act sheet the header opens (ISS-903), never the
+// triage form beside it. Every question about the
 // item reads on the item itself, open and answered, since there is no Questions page (REQ-33 BC-8),
 // including one a person raised as a comment on it.
 //
@@ -91,11 +92,22 @@ createRoot(document.getElementById("root") as HTMLElement).render(
 );
 
 const q = (sel: string) => document.querySelector<HTMLElement>(sel);
+const settle = () => new Promise((r) => setTimeout(r, 300));
+/** Shuts the open side sheet by its own Close, as a person does. */
+const shut = async () => {
+  q("[role=dialog] [aria-label=Close]")?.click();
+  await settle();
+};
 
-function reads(): string[] {
+async function reads(): Promise<string[]> {
   const wrong: string[] = [];
   const held = q("[data-testid=facts-verify-held]")?.textContent ?? "";
   if (!held.includes("Waiting on a triager: the record reads it gone")) wrong.push(`the facts read "${held}"`);
+  await shut();
+  // the header's Confirm the fix opens the act sheet by its anchor
+  window.history.replaceState(null, "", "#feedback-act");
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  await settle();
   const copy = q("[data-testid=verify-copy]")?.textContent ?? "";
   if (!copy.includes("a triager answers from what the record reads")) wrong.push(`the verify bar reads "${copy}"`);
   if ((document.body.textContent ?? "").includes("Your triage")) wrong.push("a resolved item shows the triage form");
@@ -134,11 +146,11 @@ window.__witness = {
   ready: () => {
     const toggle = q("[data-testid=feedback-properties]");
     if (toggle && toggle.getAttribute("aria-expanded") !== "true") toggle.click();
-    return Boolean(q("[data-testid=facts-verify-held]") && q("[data-testid=verify-copy]"));
+    return Boolean(q("[data-testid=facts-verify-held]"));
   },
   stages: [
     { name: "reads", run: reads },
-    { name: "questions-light", run: () => questions("light") },
+    { name: "questions-light", run: async () => (await shut(), questions("light")) },
     { name: "questions-dark", run: () => questions("dark") },
   ],
 };

@@ -1,12 +1,12 @@
 
-// Messages from a feedback item: the thread of what was sent to reporters and the internal notes kept
-// for members, and a composer. A message to reporters picks its audience, previews the exact notice,
-// then sends; an internal note is marked as one, and says it is never sent to anyone. A relay records
+// Messages from a feedback item, one fold shut to its count: the thread of what was sent to reporters
+// and the internal notes kept for members, and a composer. A message to reporters picks its audience,
+// previews the exact notice, then sends; an internal note is marked as one, and says it is never sent to anyone. A relay records
 // what a person told reporters outside Forge, for one no bell reaches: kept on the thread, sent nowhere.
 
 import { Written } from "@/lib/i18n/written";
 import { useState } from "react";
-import { Button, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
+import { Button, CountSection, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { usePreviewMessage, useSendMessage } from "../hooks";
@@ -138,15 +138,20 @@ function Composer({ projectId, f }: { projectId: string; f: FeedbackView }) {
   );
 }
 
-/** The item's thread, with the composer for those who may write to its reporters or leave a note. */
-export function Messages({ projectId, f }: { projectId: string; f: FeedbackView }) {
+/**
+ * The item's thread, shut to its label and how many messages it holds (ISS-903); open, the thread
+ * and the composer for those who may write to its reporters or leave a note.
+ */
+export function Messages({ projectId, f, defaultOpen = false }: { projectId: string; f: FeedbackView; defaultOpen?: boolean }) {
   const t = useCopy();
-  if (f.messages.length === 0 && !f.can.message && !f.can.note) return null;
+  const compose = f.can.message || f.can.note;
+  if (f.messages.length === 0 && !compose) return null;
   return (
-    <section className="grid gap-3" data-testid="feedback-messages">
-      <h2 className="text-14 font-semibold leading-snug text-fg">{t("feedback.messages.heading")}</h2>
-      <Thread messages={f.messages} />
-      {f.can.message || f.can.note ? <Composer projectId={projectId} f={f} /> : null}
-    </section>
+    <CountSection label={t("feedback.messages.heading")} count={f.messages.length} holds={f.messages.length + (compose ? 1 : 0)} defaultOpen={defaultOpen} testId="feedback-messages">
+      <div className="grid gap-3">
+        <Thread messages={f.messages} />
+        {compose ? <Composer projectId={projectId} f={f} /> : null}
+      </div>
+    </CountSection>
   );
 }

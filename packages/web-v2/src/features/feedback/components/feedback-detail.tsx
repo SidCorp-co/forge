@@ -1,7 +1,8 @@
 
 // A feedback item's full page: its screenshots, recordings and the step it hits, then, while it waits
-// on triage, its triage checklist's answers and gaps (REQ-34 r2 BC-5), the acts a person can take and
-// what the reporter said (Overview), the mockups proposed about it (Mockups), and every decision on it
+// on triage, its triage checklist's answers and gaps (REQ-34 r2 BC-5), what the reporter said, and
+// Reproduce and Messages shut to one line each (Overview); the acts open on demand (feedback-acts.tsx),
+// never inline (ISS-903); the mockups proposed about it (Mockups), and every decision on it
 // with the triage it passed (Activity: past items, REQ-43 BC-8), as tabs beside the sticky facts rail.
 // The header's badge says the phase; the page leads with what the badge does not say (when it is
 // expected, the release that shipped it), then whose turn it is, once (BC-5), then its progress: is
@@ -13,8 +14,8 @@
 import { Written, WrittenMark } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
 import {
-  Button,
   DetailDrawer,
+  Disclosure,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -23,6 +24,7 @@ import {
   StatusBadge,
   useRecordView,
   useRecordViewCommands,
+  useUrlParams,
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -31,14 +33,15 @@ import { FeedbackChecklists } from "@/features/checklists";
 import { IntakeDraft, ValueCheck } from "@/features/intake";
 import { MockupList } from "@/features/mockups";
 import { useMockups } from "@/features/mockups";
-import { Reproduction } from "@/features/previews";
+import { REPRODUCE_PARAM, Reproduction } from "@/features/previews";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useFeedbackForecasts } from "@/features/forecast";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
-import { FeedbackActions, Proposals } from "./feedback-actions";
+import { Proposals } from "./feedback-actions";
+import { actLabel, FeedbackActSheet, FeedbackPaletteActs } from "./feedback-acts";
 import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackOccurrences } from "./feedback-occurrences";
 import { FeedbackAttachments } from "./feedback-attachments";
@@ -56,17 +59,6 @@ import { SimilarFeedback } from "./feedback-similar";
 const FEEDBACK_TABS = ["overview", "mockups", "activity"] as const;
 type FeedbackTab = (typeof FEEDBACK_TABS)[number];
 export const useFeedbackTab = () => useUrlTab(FEEDBACK_TABS);
-
-/** The one primary act the header and the peek offer: it opens the form that commits it. */
-export function FeedbackPrimary({ f, onAct }: { f: FeedbackView; onAct: () => void }) {
-  const t = useCopy();
-  if (!f.can.triage && !f.can.verify && !f.can.reopen) return null;
-  return (
-    <Button type="button" variant="primary" size="sm" onClick={onAct} data-testid="feedback-primary">
-      {f.can.triage ? t("feedback.act.triage") : t("feedback.act.confirmFix")}
-    </Button>
-  );
-}
 
 function Heading({ children }: { children: ReactNode }) {
   return <h2 className="mb-3 text-14 font-semibold leading-snug text-fg">{children}</h2>;
@@ -94,6 +86,25 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
       <FeedbackAttachments projectId={projectId} f={f} />
       <FeedbackOccurrences f={f} />
     </section>
+  );
+}
+
+/** Reproduce and the POC room, one fold shut until a reproduce rides the address. */
+function ReproduceFold({ projectId, f }: { projectId: string; f: FeedbackView }) {
+  const t = useCopy();
+  const [params] = useUrlParams();
+  return (
+    <Disclosure title={t("previews.reproduce.title")} defaultOpen={params.has(REPRODUCE_PARAM)} testId="feedback-reproduce" highlight="reproduce">
+      <div className="grid gap-4">
+        <Reproduction
+          projectId={projectId}
+          fbKey={f.key}
+          carriers={f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : []}
+          redacted={f.redacted}
+        />
+        <FeedbackRoom projectId={projectId} about={f.key} />
+      </div>
+    </Disclosure>
   );
 }
 
@@ -138,6 +149,7 @@ export function FeedbackPage({
   onTab: (t: FeedbackTab) => void;
 }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const [view, onView] = useRecordView();
   const developer = view === "developer";
   useRecordViewCommands(view, onView);
@@ -159,8 +171,12 @@ export function FeedbackPage({
         // past triage it is a past item, whoever reads it, and sits under Activity (REQ-43 BC-8)
         const checklists = <FeedbackChecklists projectId={projectId} fbKey={f.key} canTriage={f.can.triage} developer={developer} />;
         const triageOwed = f.can.triage && (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase);
+        // the suggested triage is the act sheet's where the reader has one, the page's where they read it only
+        const acts = actLabel(f, t, language) !== null;
         return (
           <article className="min-h-full bg-app" data-testid="feedback-detail" data-key={f.key}>
+            <FeedbackActSheet projectId={projectId} f={f} />
+            <FeedbackPaletteActs projectId={projectId} f={f} />
             <DetailMobileTitle title={<span title={f.key}><Written text={f.title} lang={f.writtenLang} /></span>} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
             <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
@@ -184,26 +200,17 @@ export function FeedbackPage({
                 <div className="grid gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
                   <ValueCheck projectId={projectId} slug={slug} itemKey={f.key} />
-                  <Proposals projectId={projectId} f={f} />
+                  {acts ? null : <Proposals projectId={projectId} f={f} />}
                   {developer ? <IntakeDraft projectId={projectId} slug={slug} itemKey={f.key} assumptions /> : null}
                   {triageOwed ? checklists : null}
-                  {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
-                    <section id="feedback-act" data-highlight="triage verify">
-                      <FeedbackActions projectId={projectId} f={f} />
-                    </section>
-                  ) : null}
                   <ClarifyReporter projectId={projectId} f={f} />
                   <FeedbackQuestions projectId={projectId} f={f} />
                   <Body projectId={projectId} f={f} />
                   <SimilarFeedback projectId={projectId} slug={slug} fbKey={f.key} />
-                  <Reproduction
-                    projectId={projectId}
-                    fbKey={f.key}
-                    carriers={f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : []}
-                    redacted={f.redacted}
-                  />
-                  <FeedbackRoom projectId={projectId} about={f.key} />
-                  <Messages projectId={projectId} f={f} />
+                  <div>
+                    <ReproduceFold projectId={projectId} f={f} />
+                    <Messages projectId={projectId} f={f} />
+                  </div>
                 </div>
               ) : null}
               {tab === "activity" ? (

@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Button, enumLabel, Field, Input } from "@/design";
+import { Button, DetailDrawer, enumLabel, Field, Input } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useFeedbackAction } from "../hooks";
@@ -13,22 +13,27 @@ const about = (t: FeedbackView["target"], language: string) => `${inSentence(enu
 
 /**
  * Correct what an item is about (ISS-264), at any phase: an item filed about a screen moves to the
- * requirement that later records its rule. Shown by core's `can.retarget`; a refusal names why and
- * keeps what was typed.
+ * requirement that later records its rule. The palette's act opens it in a side sheet (ISS-903), offered
+ * by core's `can.retarget`; a refusal names why and keeps what was typed, and a move says the new target.
  */
-export function RetargetForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
+export function RetargetSheet({ projectId, f, open, onOpenChange }: { projectId: string; f: FeedbackView; open: boolean; onOpenChange: (open: boolean) => void }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const [open, setOpen] = useState(false);
   const [moved, setMoved] = useState<FeedbackView["target"] | null>(null);
-  if (open) return <RetargetEditor projectId={projectId} f={f} onClose={() => setOpen(false)} onMoved={setMoved} />;
+  const shut = (next: boolean) => {
+    if (!next) setMoved(null);
+    onOpenChange(next);
+  };
   return (
-    <div className="grid gap-1" data-testid="feedback-retarget">
-      {moved ? <p className="text-12 text-muted">{t("feedback.retarget.nowAbout", { about: about(moved, language) })}</p> : null}
-      <button type="button" className="justify-self-start text-12 font-semibold text-muted hover:text-fg" onClick={() => setOpen(true)}>
-        {t("feedback.retarget.open")}
-      </button>
-    </div>
+    <DetailDrawer label={t("feedback.retarget.heading")} trigger={false} open={open} onOpenChange={shut}>
+      {moved ? (
+        <p className="text-13" data-testid="feedback-retarget-moved">
+          {t("feedback.retarget.nowAbout", { about: about(moved, language) })}
+        </p>
+      ) : (
+        <RetargetEditor projectId={projectId} f={f} onClose={() => shut(false)} onMoved={setMoved} />
+      )}
+    </DetailDrawer>
   );
 }
 
@@ -54,10 +59,7 @@ export function RetargetEditor({
     act.mutate(
       { kind: "retarget", request: { [type]: target.trim(), ...(reason.trim() ? { reason: reason.trim() } : {}) } },
       {
-        onSuccess: (r) => {
-          onMoved(r.feedback.target);
-          onClose();
-        },
+        onSuccess: (r) => onMoved(r.feedback.target),
       },
     );
   return (

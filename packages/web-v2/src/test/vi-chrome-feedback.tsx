@@ -10,7 +10,8 @@ import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { FeedbackItemScreen } from "@/features/feedback/components/feedback-item-screen";
 import { FeedbackPeek } from "@/features/feedback/components/feedback-peek";
 import { FeedbackProgress } from "@/features/feedback/components/feedback-progress";
-import { MessagePreview } from "@/features/feedback/components/feedback-messages";
+import { FeedbackActsBody } from "@/features/feedback/components/feedback-acts";
+import { MessagePreview, Messages } from "@/features/feedback/components/feedback-messages";
 import { RetargetEditor } from "@/features/feedback/components/feedback-retarget";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { DeclineForm, DuplicateForm, SnoozeForm } from "@/features/feedback/components/feedback-verbs";
@@ -204,6 +205,14 @@ const feedbackForms = () => (
   </Seeded>
 );
 
+/** What the detail page opens on demand: its act sheet's body, and Messages opened. */
+const feedbackActs = () => (
+  <Seeded>
+    <FeedbackActsBody projectId={P} f={ITEM} />
+    <Messages projectId={P} f={ITEM} defaultOpen />
+  </Seeded>
+);
+
 export const SCREENS: ChromeScreen[] = [
   { name: "Feedback list", render: feedbackList },
   { name: "Feedback detail", render: feedbackDetail },
@@ -211,5 +220,6 @@ export const SCREENS: ChromeScreen[] = [
   { name: "Feedback facts and history", render: feedbackFacts },
   { name: "Feedback progress", render: feedbackProgress },
   { name: "Feedback triage and message forms", render: feedbackForms },
+  { name: "Feedback acts and messages, opened", render: feedbackActs },
   { name: "Feedback filing form", render: feedbackFilingForm },
 ];
