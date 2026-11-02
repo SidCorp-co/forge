@@ -6,6 +6,7 @@ import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { readFeedbackForecasts } from './feedback.js';
 import { readFeedbackProgress } from './feedback-progress.js';
 import { readIssueForecast, readProjectForecast } from './read.js';
@@ -15,7 +16,7 @@ import {
   readRequirementForecast,
   readRequirementForecasts,
 } from './scope.js';
-import { forecastViewerOf } from './viewer.js';
+import { forecastViewerFor } from './viewer.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const issueParam = z.object({
@@ -32,10 +33,11 @@ forecastRoutes.use('*', requireAuth(), assertEmailVerified());
 forecastRoutes.get(
   '/:id/forecast',
   zValidator('param', projectParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const read = await readProjectForecast(projectId, viewer);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', read, 'the forecast'),
@@ -46,10 +48,11 @@ forecastRoutes.get(
 forecastRoutes.get(
   '/:id/forecast/issues/:key',
   zValidator('param', issueParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, key } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const parsed = parseIssueRef(
       key,
       issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
@@ -64,10 +67,11 @@ forecastRoutes.get(
 forecastRoutes.get(
   '/:id/forecast/requirements',
   zValidator('param', projectParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const read = await readRequirementForecasts(projectId, viewer);
     return c.json(
       await egressForRequest(
@@ -84,10 +88,11 @@ forecastRoutes.get(
 forecastRoutes.get(
   '/:id/forecast/feedback',
   zValidator('param', projectParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const actor = restActor(c);
     const read = await readFeedbackForecasts(
       { userId: c.get('userId'), agency: actor.agency },
@@ -104,10 +109,11 @@ forecastRoutes.get(
 forecastRoutes.get(
   '/:id/forecast/feedback/:fb',
   zValidator('param', feedbackParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, fb } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const actor = restActor(c);
     const read = await readFeedbackProgress(
       { userId: c.get('userId'), agency: actor.agency },
@@ -122,10 +128,11 @@ forecastRoutes.get(
 forecastRoutes.get(
   '/:id/forecast/releases/coming',
   zValidator('param', projectParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const read = await readComingNext(projectId, viewer);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', read, 'what comes next'),
@@ -136,10 +143,11 @@ forecastRoutes.get(
 forecastRoutes.get(
   '/:id/forecast/requirements/:key',
   zValidator('param', requirementParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, key } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const read = await readRequirementForecast(projectId, Number(key.slice('REQ-'.length)), viewer);
     if (!read) throw notFound(`requirement ${key} not found in this project`);
     return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', read, key));
@@ -149,10 +157,11 @@ forecastRoutes.get(
 forecastRoutes.get(
   '/:id/forecast/releases/draft',
   zValidator('param', projectParam),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const read = await readDraftReleaseForecast(projectId, viewer);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', read, 'the draft release'),
