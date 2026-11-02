@@ -386,7 +386,8 @@ export async function createReadyDraftIssue(
  * lifecycle r15 ready_check), for a suite that agrees it only as setup: every revision whose goal
  * does not say its value gets a goal stating its problem, value and measure on labelled lines and a
  * persona where it names none, and where it links no workflow design, one approved design
- * (`fixtures/workflows/post-discharge.design.json`, flow `ready-<seq>`) is linked. Call it after the
+ * (`fixtures/workflows/post-discharge.design.json`, flow `ready-<seq>`) is linked; every criterion
+ * tracing no step of a linked design is then traced to one. Call it after the
  * revisions it should cover are written and before they are proposed: a revision past draft is
  * frozen (`requirement_revision_guard`). A suite about the checklist itself never calls it.
  */
@@ -414,7 +415,7 @@ export async function makeAgreeReady(
   const [linked] = await rows<{ n: number }>(sql`
     SELECT count(*)::int AS n FROM requirement_workflows WHERE requirement_id = ${req.id}
   `);
-  if ((linked?.n ?? 0) > 0) return;
+  if ((linked?.n ?? 0) > 0) return traceEveryCriterion(projectId, req.id, userId);
   const doc = JSON.parse(
     readFileSync(
       new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
@@ -440,4 +441,35 @@ export async function makeAgreeReady(
       VALUES (${req.id}, ${wf?.id}, ${userId})
     `);
   });
+  await traceEveryCriterion(projectId, req.id, userId);
+}
+
+/**
+ * Traces every live criterion of the requirement that traces no step of a linked design onto the
+ * first step of the first one it links (by flow), so the ready checklist's `traced` question answers
+ * (ISS-691). A suite about the trace itself never calls `makeAgreeReady`.
+ */
+async function traceEveryCriterion(
+  projectId: string,
+  requirementId: string,
+  userId: string,
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO requirement_criterion_steps (project_id, requirement_id, code, workflow_id, step_id, created_by)
+    SELECT ${projectId}, c.requirement_id, c.code, w.id, w.document->'steps'->0->>'id', ${userId}
+      FROM requirement_criteria c
+      JOIN LATERAL (
+        SELECT pw.id, pw.document FROM requirement_workflows rw
+          JOIN project_workflows pw ON pw.id = rw.workflow_id
+         WHERE rw.requirement_id = c.requirement_id
+         ORDER BY pw.flow LIMIT 1
+      ) w ON w.document->'steps'->0->>'id' IS NOT NULL
+     WHERE c.requirement_id = ${requirementId}
+       AND c.retired_revision IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM requirement_criterion_steps s
+           JOIN requirement_workflows rw ON rw.workflow_id = s.workflow_id AND rw.requirement_id = s.requirement_id
+          WHERE s.requirement_id = c.requirement_id AND s.code = c.code
+       )
+  `);
 }

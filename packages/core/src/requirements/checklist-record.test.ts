@@ -10,11 +10,7 @@ import {
 import { checklistRefusals, evaluateChecklist } from '@forge/contracts/checklists';
 import { goalAnswers } from '@forge/contracts/requirement-goal';
 import { describe, expect, it } from 'vitest';
-import {
-  acceptanceAnswersOf,
-  type ReadyFacts,
-  readyAnswersOf,
-} from './checklist-record.js';
+import { acceptanceAnswersOf, type ReadyFacts, readyAnswersOf } from './checklist-record.js';
 
 const ready: ReadyFacts = {
   key: 'REQ-7',
@@ -95,7 +91,9 @@ describe('the ready checklist, read from the head revision', () => {
     expect(refusals.map((r) => [r.code, r.question, r.path])).toEqual([
       ['CHECKLIST_INCOMPLETE', 'traced', '/answers/traced'],
     ]);
-    expect(refusals[0]?.detail).toContain('BC-2 traces no step or link of a linked workflow design.');
+    expect(refusals[0]?.detail).toContain(
+      'BC-2 traces no step or link of a linked workflow design.',
+    );
     expect(refusals[0]?.detail).toContain(
       'PUT /api/projects/:id/requirements/REQ-7/criteria/BC-n/steps { "workflow": "referral-intake", "steps": [<step id>] }',
     );
