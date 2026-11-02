@@ -118,7 +118,7 @@ export async function resolveTestingSecrets(args: {
       `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
     );
   }
-  const judged = await judgedEnvironment(job.issueId, project.document, `job ${jobId}`);
+  const judged = await judgedEnvironment(job.issueId, project.document, `job ${jobId}`, profileId);
   if (!judged.ok) return judged;
   const { environment, testing } = judged;
   if (testing !== profileId) {
@@ -235,7 +235,7 @@ async function resolveForDeclaredRun(args: {
   let judged: Awaited<ReturnType<typeof judgedEnvironment>> | null = null;
   let issueId: string | null = null;
   for (const id of run.issueIds) {
-    const read = await judgedEnvironment(id, project.document, judge);
+    const read = await judgedEnvironment(id, project.document, judge, profileId);
     if (read.ok && read.testing === profileId) {
       judged = read;
       issueId = id;
@@ -298,10 +298,13 @@ async function resolveForDeclaredRun(args: {
 
 // the environment a job judges is the one deploying the branch its issue's work landed on —
 // the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.
+// Where several deploy that branch, the testing profile the caller names picks the one that names
+// it; the read stays refused by name where none or more than one does.
 export async function judgedEnvironment(
   issueId: string | null,
   document: ProjectDocument,
   judge: string,
+  profileId: string,
 ): Promise<Refused | { ok: true; environment: string; testing: string }> {
   const [issue] = issueId
     ? await db
@@ -339,10 +342,25 @@ export async function judgedEnvironment(
     );
   }
   if (others.length > 0) {
+    const naming = deploying.filter((e) => e.declaration.testing === profileId);
+    const [named, ...alsoNamed] = naming;
+    if (named && alsoNamed.length === 0) {
+      return { ok: true, environment: named.name, testing: profileId };
+    }
+    const listed = deploying
+      .map(
+        (e) =>
+          `${e.name} (testing ${e.declaration.testing ? `\`${e.declaration.testing}\`` : 'none'})`,
+      )
+      .join(', ');
+    const why =
+      naming.length === 0
+        ? `none of them names testing profile \`${profileId}\``
+        : `${naming.length} of them name testing profile \`${profileId}\``;
     return refuse(
       422,
       'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS',
-      `${deploying.length} environments deploy from \`${target}\` (${deploying.map((e) => e.name).join(', ')}), so the one issue ${issueId} is judged on cannot be named.`,
+      `${deploying.length} environments deploy from \`${target}\`: ${listed}, and ${why}, so the one issue ${issueId} is judged on cannot be named. Ask for the profile exactly one of them names.`,
       { target, environments: deploying.map((e) => e.name) },
     );
   }
