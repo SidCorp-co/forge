@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/previews/room-settle.ts
 import { SKETCH_BRANCH } from '@forge/contracts/preview';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,9 +10,9 @@ vi.hoisted(() => {
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
-import { api, type Body } from '../helpers/api.js';
+import { api, type Body, userToken } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
-import { createTestFeedback } from '../helpers/factories.js';
+import { addProjectMember, createTestFeedback, createTestUser } from '../helpers/factories.js';
 import { PocRoomWorld, ROOM_MERGE, type Room, snapshotOf } from '../helpers/poc-room-world.js';
 
 // REQ-44 r2 "POC rooms: build live with the owner, deliver only what is settled": opening, joining
@@ -384,5 +385,24 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     expect(done.settle).toMatchObject({ mergeSha: ROOM_MERGE, revision: 1 });
     expect(done.settle?.requirement).toMatch(/^REQ-\d+$/);
     expect(done.settle?.issue).not.toBeNull();
+  });
+});
+
+describe('who may settle (ISS-824)', () => {
+  it('refuses a project viewer the settle by name, ROOM_FORBIDDEN, and the room stays open', async () => {
+    const key = await agreedScreen('Cart shows a viewer note');
+    const room = await liveRoom(key);
+    await api(owner, 'POST', `/api/rooms/${room.id}/items`, { turnId: room.turns[0]?.id });
+    const viewer = await createTestUser({ verified: true });
+    await addProjectMember(projectId, viewer.id, 'viewer');
+    const token = await userToken(viewer.id);
+    expect((await read(room.id, token)).room.canWrite).toBe(false);
+    const refused = await api(token, 'POST', `/api/rooms/${room.id}/settle`, {
+      alt: 'The cart',
+      snapshot: snapshotOf('cart'),
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect((refused.body.error as Body).code).toBe('ROOM_FORBIDDEN');
+    expect((await read(room.id)).room.state).toBe('open');
   });
 });
