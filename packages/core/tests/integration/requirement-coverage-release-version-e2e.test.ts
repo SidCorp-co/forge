@@ -13,6 +13,7 @@
  * Postgres; nothing reads production.
  *
  * @direct-test-of packages/core/src/release-batch/released-line.ts
+ * @direct-test-of packages/core/src/release-batch/version-store.ts
  * @direct-test-of packages/core/src/requirements/standing-coverage.ts
  * @direct-test-of packages/core/src/requirements/standing-facts.ts
  * @direct-test-of packages/core/src/requirements/standing-identity.ts
@@ -186,7 +187,7 @@ describe('a project whose production names no commit counts verdicts on the rele
     expect(reads.n).toBe(0);
   });
 
-  it('keeps counting 0.76.0 under a later release, and not under one recorded later at a lower version', async () => {
+  it('keeps counting 0.76.0 under a later release, and a lower version recorded later displaces neither (ISS-907)', async () => {
     await agenfold();
     const req = await shippedAt076();
     await ok(judge(req, 'BC-1', { kind: 'release', version: '0.76.0' }));
@@ -196,12 +197,18 @@ describe('a project whose production names no commit counts verdicts on the rele
     expect(bc1?.verdict).toBe('passing');
     expect(bc1?.verdicts[0]?.identity).toBe('release 0.76.0, carried by live release 0.77.0');
 
-    // a hotfix line recorded after it at a lower version: nothing says it carries 0.76.0
+    // a backfill recorded after it at a lower version: 0.77.0 stays live and still carries 0.76.0
     await recordRelease([await landedIssue(3, F4)], '0.75.1');
     [bc1] = (await readOf(req)).standing.coverage;
-    expect(bc1?.verdict).toBe('not_live');
-    expect(bc1?.verdicts[0]?.inLiveBuild).toBe(false);
-    expect(bc1?.verdicts[0]?.notCounted).toContain('release 0.75.1');
+    expect(bc1?.verdict).toBe('passing');
+    expect(bc1?.verdicts[0]?.identity).toBe('release 0.76.0, carried by live release 0.77.0');
+
+    // and a verdict on the backfill itself: nothing says 0.77.0 carries what was recorded after it
+    await ok(judge(req, 'BC-2', { kind: 'release', version: '0.75.1' }));
+    const bc2 = (await readOf(req)).standing.coverage[1];
+    expect(bc2?.verdict).toBe('not_live');
+    expect(bc2?.verdicts[0]?.inLiveBuild).toBe(false);
+    expect(bc2?.verdicts[0]?.notCounted).toContain('judge it again on release 0.77.0');
   });
 
   it('refuses a release no record on this project shipped, by name', async () => {

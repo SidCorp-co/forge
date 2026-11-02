@@ -5,8 +5,9 @@
 // carries it — a pushed tag, a release commit, a published artifact, a notice sent — and then the
 // next attempt takes a new version and records why, naming the carrier. Which version is the rule's
 // (`version-rule.ts:decideVersion`); this module reads the runs it decides over and writes the
-// answer. `currentReleaseVersion` answers what is SERVING and reads the ship stamp, because
-// `cancelConcludedRun` flips a `completed` run to `cancelled` while its bytes are still live. The
+// answer. `currentReleaseVersion` answers what is SERVING: among the runs whose ship stamp is set,
+// because `cancelConcludedRun` flips a `completed` run to `cancelled` while its bytes are still live,
+// the highest version, never the stamp written last (`servingRelease`). The
 // partial unique index `pipeline_runs_release_version_uq` is only the backstop.
 
 import { sql } from 'drizzle-orm';
@@ -15,13 +16,15 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { stampReleaseVersion, writeRunMetadata } from '../pipeline/index.js';
 import { readProjectDocument, readReleasePath } from '../project-config/index.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
-import { LANDED_VERIFICATION } from './landed-build.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 import {
+  compareReleaseVersions,
   formatReleaseVersion,
   isStorableReleaseVersion,
   type PrereleaseLine,
   parseReleaseVersion,
+  RELEASE_VERSION_SHAPE,
+  type ReleaseVersion,
 } from './version.js';
 import {
   cutRecordOf,
@@ -31,6 +34,7 @@ import {
   type VersionCutRecord,
   type VersionDecision,
 } from './version-rule.js';
+import { landedOffProduction } from './versions.js';
 
 /** Allocation is serialized per project, so a second writer of the column is refused, not retried. */
 const versionConflict = (projectId: string, version: string) =>
@@ -136,31 +140,76 @@ export async function decideRosterVersion(
   return decideVersion(runs, roster, line);
 }
 
-/** The version the last release to SHIP cut. `null` when no release here has ever shipped. */
+/** One release whose ship stamp is set (`pipeline_runs.release_released_at`), as the serving rule reads it. */
+export interface StampedRelease {
+  runId: string;
+  version: string;
+  /** When its row was stamped shipped: for a recorded release, when the record was written. */
+  at: Date;
+  metadata: Record<string, unknown>;
+}
+
+/** Every release of the project whose ship stamp is set, in stamp order (oldest first). */
+export async function readStampedReleases(projectId: string): Promise<StampedRelease[]> {
+  const rows = await db.execute<{
+    id: string;
+    release_version: string;
+    release_released_at: Date | string;
+    metadata: Record<string, unknown> | null;
+  }>(sql`
+    SELECT r.id, r.release_version, r.release_released_at, r.metadata
+    FROM pipeline_runs r
+    WHERE r.project_id = ${projectId}
+      AND r.release_version IS NOT NULL
+      AND r.release_released_at IS NOT NULL
+    ORDER BY r.release_released_at ASC, r.id ASC
+  `);
+  return rows.map((r) => ({
+    runId: r.id,
+    version: r.release_version,
+    at: new Date(r.release_released_at),
+    metadata: r.metadata ?? {},
+  }));
+}
+
 /**
- * The version production serves: the release shipped last there. A project whose document declares
- * no production environment has nothing serving production that Forge read, so none; a landing
- * recorded on a branch production does not deploy from deployed nothing, so it is never the answer
- * (`versions.ts:landedOffProduction`).
+ * The release production serves, among `stamped` (ISS-907, FB-481): the highest version by release
+ * order (`version.ts:compareReleaseVersions`, so `0.4.0-dev.10` outranks `0.4.0-dev.9` and a
+ * prerelease sits below the release it previews), never the one stamped last. A stamp on a recorded
+ * release is when its record was written, so a backfill of an older version written after a newer one
+ * would otherwise displace it. A landing recorded on a branch production does not deploy from deployed
+ * nothing, so it is never the answer (`versions.ts:landedOffProduction`). Every reader of "current"
+ * asks this, and nothing else: `currentReleaseVersion` and `released-line.ts:releasedLineOf`.
+ */
+export function servingRelease<T extends Pick<StampedRelease, 'version' | 'metadata'>>(
+  stamped: readonly T[],
+  deploysFrom: string | null,
+): T | null {
+  let best: { row: T; parsed: ReleaseVersion } | null = null;
+  for (const row of stamped) {
+    if (landedOffProduction(row.metadata, deploysFrom) !== null) continue;
+    const parsed = parseReleaseVersion(row.version);
+    // `pipeline_runs_release_version_chk` holds the column to this shape, so a miss is a broken row
+    if (!parsed) {
+      throw new Error(
+        `release ${JSON.stringify(row.version)} is stamped shipped and is no release version (${RELEASE_VERSION_SHAPE}): pipeline_runs_release_version_chk should have refused it`,
+      );
+    }
+    if (!best || compareReleaseVersions(parsed, best.parsed) > 0) best = { row, parsed };
+  }
+  return best?.row ?? null;
+}
+
+/**
+ * The version production serves (`servingRelease`). A project whose document declares no production
+ * environment has nothing serving production that Forge read, so none.
  */
 export async function currentReleaseVersion(projectId: string): Promise<string | null> {
   const read = await readReleasePath(projectId);
   const production = read.ok ? read.path.production : null;
   if (!production) return null;
-  const branch = production.declaration.deploysFrom ?? null;
-  const rows = await db.execute<{ release_version: string }>(sql`
-    SELECT r.release_version
-    FROM pipeline_runs r
-    WHERE r.project_id = ${projectId}
-      AND r.release_version IS NOT NULL
-      AND r.release_released_at IS NOT NULL
-      AND NOT (r.metadata ->> 'source' = ${RELEASE_RECORD_SOURCE}
-               AND r.metadata ->> 'verification' = ${LANDED_VERIFICATION}
-               AND r.metadata ->> 'branch' IS DISTINCT FROM ${branch})
-    ORDER BY r.release_released_at DESC
-    LIMIT 1
-  `);
-  return rows[0]?.release_version ?? null;
+  const stamped = await readStampedReleases(projectId);
+  return servingRelease(stamped, production.declaration.deploysFrom ?? null)?.version ?? null;
 }
 
 /** The details `RELEASE_VERSION_UNDECIDED` is composed from, at every door that reads it. */

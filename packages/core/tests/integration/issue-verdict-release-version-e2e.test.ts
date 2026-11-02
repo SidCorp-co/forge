@@ -341,15 +341,16 @@ describe('a promotion project weighs a criterion judged on a release on its rele
   it('does not count a pass on a release the live one does not carry, naming the release to judge on', async () => {
     await agenfold();
     const { issue } = await shippedAt076();
-    const res = await judge(issue, 1, { kind: 'release', version: '0.76.0' });
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    // a later record at a lower version is what is live, and nothing says it carries 0.76.0
+    // a later record at a lower version never displaces 0.76.0 (ISS-907), and nothing says 0.76.0
+    // carries what was recorded after it, so a pass judged on that backfill does not count
     const other = await landedIssue(2, C1);
     await recordRelease([other], '0.75.9');
+    const res = await judge(issue, 1, { kind: 'release', version: '0.75.9' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     await agenfold(false, true);
     const w = (await weighed(issue)).get(1);
     expect(w?.earned).toBe(false);
-    expect(w?.reason).toContain('judge it again on release 0.75.9');
+    expect(w?.reason).toContain('judge it again on release 0.76.0');
     expect(reads.n).toBe(0);
   });
 

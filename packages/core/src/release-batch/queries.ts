@@ -46,7 +46,8 @@ export interface ReleaseRoster {
   /** When the next scheduled cut fires. `null` = nobody scheduled one. */
   nextCutAt: string | null;
   /**
-   * The version the project is serving: what the last release to SHIP cut. `null` when no release
+   * The version the project is serving (`version-store.ts:servingRelease`): the highest version
+   * among the releases whose ship stamp is set, never the one stamped last. `null` when no release
    * here has ever shipped. Read off the ship stamp rather than the run's status, because
    * `cancelConcludedRun` flips a `completed` run to `cancelled` without taking the bytes down.
    */

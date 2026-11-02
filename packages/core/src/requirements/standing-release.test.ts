@@ -43,10 +43,10 @@ describe('a verdict judged on a release', () => {
     expect(r.countedAs).toBe('release 0.76.0, carried by live release 0.77.0');
   });
 
-  it('does not count under a release recorded later at a lower version', () => {
-    const r = atRelease('0.76.0', line('0.75.1', { '0.76.0': false, '0.75.1': true }));
+  it('does not count on a release recorded after the live one at a lower version', () => {
+    const r = atRelease('0.75.1', line('0.76.0', { '0.76.0': true, '0.75.1': false }));
     expect(r.inLiveBuild).toBe(false);
-    expect(r.notCounted).toContain('judge it again on release 0.75.1');
+    expect(r.notCounted).toContain('judge it again on release 0.76.0');
   });
 
   it('does not count on a version no record shipped, or with none shipped', () => {

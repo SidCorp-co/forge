@@ -7,8 +7,8 @@
 
 /**
  * A project's shipped releases as its record carries them, where its production names no commit it
- * serves: `why` says so, `live` is the newest shipped, the one the record says is live (null where none
- * shipped), and per shipped version when it shipped and whether the live one carries it (core
+ * serves: `why` says so, `live` is the highest version shipped on production's branch, the one the
+ * record says is live, never the record written last (null where none shipped), and per shipped version when it shipped and whether the live one carries it (core
  * `release-batch/released-line.ts:releasedLineOf`).
  */
 export interface ReleasedLine {
@@ -65,7 +65,7 @@ export function readOnRelease(
 	if (!shipped.carried) {
 		return none(
 			false,
-			`and release ${line.live.version}, recorded after it at a lower version, is what the record says is live, so nothing says it carries ${version}: judge it again on release ${line.live.version}`,
+			`and it was recorded after release ${line.live.version}, the highest version shipped and what the record says is live, so nothing says ${line.live.version} carries it: judge it again on release ${line.live.version}`,
 		);
 	}
 	if (version === line.live.version)

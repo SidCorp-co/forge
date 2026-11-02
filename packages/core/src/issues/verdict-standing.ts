@@ -127,8 +127,8 @@ function contractStanding(value: string, identities: IssueIdentities): VerdictSt
   return current === named.version ? 'stands' : 'superseded';
 }
 
-/** A release verdict stands while the record carries its release (`readOnRelease`): one a later
- *  release recorded at a lower version leaves uncarried is superseded; one nothing places is
+/** A release verdict stands while the record carries its release (`readOnRelease`): one on a release
+ *  recorded after the live one at a lower version is left uncarried, so superseded; one nothing places is
  *  unanchored. What a host serves says nothing here: no serving reading enters. */
 function releaseStanding(value: string, identities: IssueIdentities): VerdictStanding {
   const read = readOnRelease(value, identities.released);
