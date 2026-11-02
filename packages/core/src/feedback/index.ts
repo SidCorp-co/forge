@@ -32,7 +32,6 @@ export {
   withDuplicateRoots,
 } from './forge-reads.js';
 export { settleOwnForgeFeedback } from './forge-settle.js';
-export { reporterMasterProject } from './reporter-master.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
 export { feedbackStandingsOf, listFeedbackAs, listFeedbackIn } from './list-page-read.js';
 export { linkedOf, phaseIn } from './list-read.js';
@@ -46,6 +45,7 @@ export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { feedbackAnsweredBy } from './release-feedback.js';
 export { replyOwnForgeFeedback } from './reply.js';
 export { reporterLanguagesOf } from './reporter-language.js';
+export { reporterMasterProject } from './reporter-master.js';
 export { shippedNotice, verifyAskNotice } from './reporter-notices.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
 export { sweepDeclinedFeedback } from './retention.js';

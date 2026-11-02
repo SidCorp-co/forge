@@ -31,7 +31,9 @@ export async function settleOwnForgeFeedback(input: {
   const { homeId, actor } = input;
   const master = await reporterMasterProject(input.feedbackId, actor);
   // on the reporter's behalf the master holds what its project's door asks of a member there
-  const forbidden = master ? personalActRefusal(await roleFacts(actor, master), input.act, false) : null;
+  const forbidden = master
+    ? personalActRefusal(await roleFacts(actor, master), input.act, false)
+    : null;
   return inTx(async (tx) => {
     await lockFeedback(tx, homeId);
     const row = await rowIn(tx, homeId, input.feedbackId, true);

@@ -229,7 +229,9 @@ describe('the project-door twin admits the same master', () => {
     const key = await shippedOwnItem();
     const line = await owedLine();
     expect(owedKeys(line), line).toContain(key);
-    expect(line).toContain(`forge-runner api projects/${own.projectId}/feedback/${key}/verify -X POST`);
+    expect(line).toContain(
+      `forge-runner api projects/${own.projectId}/feedback/${key}/verify -X POST`,
+    );
     const res = await api(
       tokens.master,
       'POST',
