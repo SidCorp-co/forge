@@ -24,7 +24,7 @@ import {
   permissionFactsOf,
   permissionRefusalFor,
   projectResource,
-  requireCan,
+  requireDeclaredOn,
 } from '../permissions/index.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { breakdownGuardIn } from './breakdown.js';
@@ -223,7 +223,7 @@ export async function createSuggestion(input: {
   supersedes?: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, kind } = input;
-  await requireCan(actorFor(input.actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, input.actor.userId, 'project.write');
   if (kind === 'breakdown') {
     const forbidden = breakdownProposerRefusal(
       await permissionFactsOf(input.actor.userId, projectId),

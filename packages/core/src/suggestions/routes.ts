@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { listSuggestions } from './list.js';
 import type { SuggestionActor } from './read.js';
 import {
@@ -69,6 +70,7 @@ function answer(c: Context, outcome: SuggestionOutcome) {
 suggestionRoutes.get(
   '/:id/suggestions',
   projectParam,
+  requiresOnParam('project.read', 'id'),
   zValidator(
     'query',
     listSuggestionsQuerySchema,
@@ -92,6 +94,7 @@ suggestionRoutes.get(
 suggestionRoutes.post(
   '/:id/suggestions',
   projectParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(createSuggestionRequestSchema, CREATE_SUGGESTION_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
@@ -175,7 +178,13 @@ suggestionRoutes.post(
   },
 );
 
-suggestionRoutes.post('/:id/suggestions/:sid/withdraw', suggestionParam, emptyBody, async (c) => {
-  const { id, sid } = c.req.valid('param');
-  return answer(c, await withdrawSuggestion({ projectId: id, id: sid, actor: actorOf(c) }));
-});
+suggestionRoutes.post(
+  '/:id/suggestions/:sid/withdraw',
+  suggestionParam,
+  requiresOnParam('project.write', 'id'),
+  emptyBody,
+  async (c) => {
+    const { id, sid } = c.req.valid('param');
+    return answer(c, await withdrawSuggestion({ projectId: id, id: sid, actor: actorOf(c) }));
+  },
+);

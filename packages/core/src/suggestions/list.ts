@@ -11,7 +11,7 @@ import type {
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { breakdownReadIn } from './breakdown-read.js';
 import { onTarget, type Row, viewOf } from './read.js';
 import { resolveTarget, type SuggestionTargetRef } from './target.js';
@@ -29,7 +29,7 @@ export async function listSuggestions(input: {
   statuses?: readonly SuggestionStatus[] | undefined;
   limit?: number | undefined;
 }): Promise<SuggestionListResponse> {
-  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
+  await requireDeclaredOn(input.projectId, input.userId, 'project.read');
   const target = input.target
     ? await resolveTarget(input.projectId, input.target, input.userId)
     : null;

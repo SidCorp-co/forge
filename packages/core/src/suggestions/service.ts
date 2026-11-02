@@ -33,7 +33,7 @@ import {
   actorFor,
   permissionRefusalFor,
   projectResource,
-  requireCan,
+  requireDeclaredOn,
 } from '../permissions/index.js';
 import { lockRequirements } from '../requirements/index.js';
 import { acceptFenceRefusal } from './accept-fence.js';
@@ -355,7 +355,7 @@ export async function withdrawSuggestion(input: {
   actor: SuggestionActor;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const refusals = await inTx(async (tx) => {
     const row = await rowOf(tx, projectId, input.id, true);
     const refusal = withdrawRefusal(actor.userId, row.producerId) ?? decidedRefusal(row.status);
