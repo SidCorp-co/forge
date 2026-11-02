@@ -106,9 +106,11 @@ export async function repairRelease(args: RepairReleaseArgs): Promise<{
     );
     return settleRepairedRoster({ projectId, runId: run.id, roster, userId, evidence });
   };
-  // a repaired release asked again settles what its roster still owes, writing no second repair
+  // a repaired release asked again settles what its roster still owes, writing no second repair:
+  // repaired is its repair kept and its ship stamped, whether it reads `shipped` or `landed`, and
+  // whichever build wrote that repair (ISS-761's settled no roster). One shipped unrepaired is refused.
   const prior = readReleaseRepair(run.metadata);
-  if (state === 'shipped' && prior) {
+  if (prior && run.releasedAt) {
     return { runId: run.id, version, repair: prior, roster: await rosterOf(), repeated: true };
   }
   if (state !== 'failed') {

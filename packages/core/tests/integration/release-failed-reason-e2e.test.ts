@@ -21,7 +21,11 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { closeRunIfOneShot } from '../../src/pipeline/index.js';
+import {
+  closeRunIfOneShot,
+  stampReleaseShipped,
+  writeRunMetadata,
+} from '../../src/pipeline/index.js';
 import { api, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -247,6 +251,64 @@ describe('a recorded release one of whose issues will not close (catalog-api 0.4
       status: 'closed',
       shippedIn: { version: '0.4.0' },
     });
+  });
+});
+
+// catalog-api 0.4.0 live on 00d46345c: a recorded landing (no production environment) that ended failed
+// was repaired by ISS-761's act, which wrote `metadata.repair` and stamped the ship but settled no
+// roster, so it reads `landed` and ISS-34 waits at awaiting_release reading shippedIn 0.4.0. The repeat
+// repair was refused RELEASE_REPAIR_NOT_FAILED: the not-failed guard ran before the repeat.
+describe('a landing repaired by the earlier act, asked again (catalog-api ISS-34)', () => {
+  beforeEach(async () => {
+    await seedLandedWorld();
+  });
+
+  it('settles its roster on the repeat: 200, repeated, the issue closed into 0.4.0', async () => {
+    const done = await landedIssue(1, F4);
+    const stuck = await landedIssue(2, F4);
+    await plantRefusedClose(stuck);
+    const res = await record([done, stuck], F4, { version: '0.4.0' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const runId = String(res.body.runId);
+    expect((await ownCut(world.token, world.projectId, '0.4.0')).state).toBe('failed');
+
+    // the repair as ISS-761 wrote it: the repair kept on the run and the ship stamped, no roster settled
+    const earlier = {
+      outcome: 'shipped',
+      by: world.ownerId,
+      at: '2026-11-02T03:00:00.000Z',
+      reason: 'It landed and the deploy was healthy.',
+      evidence: 'verify ok; deploy healthy',
+      was: { status: 'failed', failureCode: 'release_record_incomplete' },
+    };
+    await writeRunMetadata(runId, { merge: { repair: earlier }, touch: true });
+    await stampReleaseShipped(runId);
+    await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${PLANTED} ON issues`));
+    expect((await ownCut(world.token, world.projectId, '0.4.0')).state).toBe('landed');
+    const before = await api(world.token, 'GET', `/api/issues/${stuck}`);
+    expect(before.body).toMatchObject({
+      status: 'awaiting_release',
+      shippedIn: { version: '0.4.0' },
+    });
+
+    const again = await api(
+      world.token,
+      'POST',
+      `/api/projects/${world.projectId}/releases/0.4.0/repair`,
+      {
+        outcome: 'shipped',
+        reason: 'Settle the roster 0.4.0 shipped.',
+        evidence: 'ISS-34 shippedIn 0.4.0',
+      },
+    );
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(again.body).toMatchObject({
+      repeated: true,
+      repair: { at: earlier.at },
+      roster: { closed: [stuck], heldForAgent: [] },
+    });
+    const after = await api(world.token, 'GET', `/api/issues/${stuck}`);
+    expect(after.body).toMatchObject({ status: 'closed', shippedIn: { version: '0.4.0' } });
   });
 });
 
