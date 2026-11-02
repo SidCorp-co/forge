@@ -395,6 +395,7 @@ async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<v
       receipt,
       deliveryKey: meta.deliveryKey,
       decision: 'handed-off',
+      isTheDelivery: meta.venue.adapter === 'web',
     });
     await stampDelivered(session.id);
   } catch (err) {

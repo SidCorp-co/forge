@@ -17,6 +17,8 @@ const recorded: string[] = [];
 let deliver: ((session: unknown) => Promise<void>) | null = null;
 let transcript: unknown[] = [];
 let issueLookupFailed = false;
+let recordFails = false;
+const recordedAsDelivery: unknown[] = [];
 
 vi.mock('../agent-sessions/index.js', async () => {
   const { messageRoleToTurnRole } = await import('../agent-sessions/turns-helpers.js');
@@ -62,7 +64,9 @@ vi.mock('./conversation-agent-failover.js', () => ({
 }));
 
 vi.mock('./transcript.js', () => ({
-  recordDeliveredReply: async (row: { text: string }) => {
+  recordDeliveredReply: async (row: { text: string; isTheDelivery?: boolean }) => {
+    recordedAsDelivery.push(row.isTheDelivery);
+    if (recordFails && row.isTheDelivery) throw new Error('the transcript write failed');
     recorded.push(row.text);
   },
 }));
@@ -129,6 +133,23 @@ beforeEach(() => {
   staged = [];
   recorded.length = 0;
   issueLookupFailed = false;
+  recordFails = false;
+  recordedAsDelivery.length = 0;
+});
+
+// A web room shows only its transcript, so the row is the delivery: a write that fails is a reply
+// the room never got, read as that, never as delivered (agent-turn-failure-reads-e2e read an empty
+// room under a failed turn in whole-suite run 41335608476 while this write was swallowed).
+describe('a web reply whose transcript write fails', () => {
+  it('reads as not delivered to the room, never as delivered', async () => {
+    recordFails = true;
+    transcript = [];
+    await deliver?.(session('failed', 'agent_killed'));
+    expect(recordedAsDelivery).toEqual([true]);
+    expect(recorded).toEqual([]);
+    expect(stamped('deliveredAt')).toEqual([]);
+    expect(stamped('failure')).toEqual(['the reply could not be delivered to this room']);
+  });
 });
 
 describe('a reply the screen holds is never reported as no reply', () => {

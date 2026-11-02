@@ -45,6 +45,11 @@ interface DeliveredReply {
    * outputs ran with their permissions, so only they are shown them (`toolContentFor`).
    */
   askedBy?: string | null | undefined;
+  /**
+   * The row IS the delivery: a web room shows only what its transcript holds, so a write that
+   * fails lost the reply, and the caller is told rather than left to record it as delivered.
+   */
+  isTheDelivery?: boolean | undefined;
 }
 
 /**
@@ -69,6 +74,7 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       },
     });
   } catch (err) {
+    if (reply.isTheDelivery) throw err;
     logger.warn(
       { err, conversationId: reply.conversationId },
       'conversations: delivered, but the transcript could not record it',
