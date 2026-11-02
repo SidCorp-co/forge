@@ -328,10 +328,10 @@ describe('ISS-869: a project rule naming a person’s act admits an agent’s as
     expect((await askOn(tok.owner, { rule: 'no-such-rule' })).body.code).toBe(
       'QUESTION_RULE_UNKNOWN',
     );
-    const [{ n }] = await rows<{ n: number }>(
+    const [count] = await rows<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM agent_questions WHERE project_id = ${projectId}`,
     );
-    expect(n).toBe(0);
+    expect(count?.n).toBe(0);
   });
 
   it('refuses a rule on a question asked of the master, by name', async () => {

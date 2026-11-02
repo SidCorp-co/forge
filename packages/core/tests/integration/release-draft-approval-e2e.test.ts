@@ -108,10 +108,10 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
       decidedBy: { id: world.ownerId },
       reason: 'Release notes read; open the upstream MR',
     });
-    const [{ runs }] = (await db.execute(
+    const [count] = (await db.execute(
       sql`SELECT count(*)::int AS runs FROM pipeline_runs WHERE project_id = ${world.projectId}`,
     )) as unknown as Array<{ runs: number }>;
-    expect(runs).toBe(0);
+    expect(count?.runs).toBe(0);
   });
 
   it('stands only for the roster it was given on', async () => {
