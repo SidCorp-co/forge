@@ -24,10 +24,27 @@ export type PermissionOn =
  */
 export type PermissionlessAccess = 'public' | 'credential' | 'self';
 
+/**
+ * The permission a rule-decided action never goes below, held on the project or organization a path
+ * parameter or a call argument names and checked at the door before the rule runs.
+ */
+export type RuleFloor = {
+  permission: ProjectPermission | OrgPermission;
+  on: { param: string } | { arg: string };
+};
+
 export type DeclaredPermission =
   /** A project permission, or an organization's (`org.*`), held on the project or org `on` names. */
   | { permission: ProjectPermission | OrgPermission; on: PermissionOn }
-  | { permission: null; access: PermissionlessAccess; why: string };
+  | { permission: null; access: PermissionlessAccess; why: string }
+  /**
+   * The handler's named rule decides who may (the row, the input or the caller kind, or a named
+   * refusal answering before any permission): `rule` is `<file under src>:<exported function>`, the
+   * code that decides; `floor`, where there is one, is checked at the door first.
+   */
+  | { permission: null; access: 'rule'; rule: string; why: string; floor?: RuleFloor }
+  /** A platform (instance) administrator, the address on the instance's admin list, checked at the door. */
+  | { permission: null; access: 'instance-admin'; why: string };
 
 /** A declaration written as data, for a door that is not middleware (an MCP tool's action). */
 export const onArg = (
@@ -46,20 +63,38 @@ export const permissionless = (access: PermissionlessAccess, why: string): Decla
   why,
 });
 
-const RENDERED_ACCESS: Record<PermissionlessAccess, string> = {
+/** A declaration decided by the handler's named rule, as data, for a tool's action. */
+export const byRule = (rule: string, why: string, floor?: RuleFloor): DeclaredPermission =>
+  floor === undefined
+    ? { permission: null, access: 'rule', rule, why }
+    : { permission: null, access: 'rule', rule, why, floor };
+
+/** A declaration that only a platform (instance) administrator may call the action, as data. */
+export const instanceAdmin = (why: string): DeclaredPermission => ({
+  permission: null,
+  access: 'instance-admin',
+  why,
+});
+
+const RENDERED_ACCESS: Record<PermissionlessAccess | 'instance-admin', string> = {
   credential: 'none',
   self: 'self',
   public: 'public',
+  'instance-admin': 'instanceAdmin',
 };
 
 /**
  * How the published contracts name a declaration: `x-forge-permission` on a route or an action,
- * `{ permission, on }`, or `{ none | self | public: why }` for an action that needs no permission.
+ * `{ permission, on }`; `{ rule, why, floor?: { permission, on } }` where the handler's named rule
+ * decides; or `{ none | self | public | instanceAdmin: why }`.
  */
 export function renderedPermission(declared: DeclaredPermission): Record<string, unknown> {
-  return declared.permission === null
-    ? { [RENDERED_ACCESS[declared.access]]: declared.why }
-    : { permission: declared.permission, on: declared.on };
+  if (declared.permission !== null) return { permission: declared.permission, on: declared.on };
+  if (declared.access === 'rule') {
+    const { rule, why, floor } = declared;
+    return floor === undefined ? { rule, why } : { rule, why, floor };
+  }
+  return { [RENDERED_ACCESS[declared.access]]: declared.why };
 }
 
 /**

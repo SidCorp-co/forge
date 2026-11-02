@@ -2,7 +2,14 @@ import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RefusalError, thrownEnvelope } from '../lib/refusal.js';
 import type { McpTool } from '../lib/tool.js';
-import { onArg, onResolved, permissionless } from '../middleware/declared-permission.js';
+import {
+  byRule,
+  instanceAdmin,
+  onArg,
+  onResolved,
+  permissionless,
+  renderedPermission,
+} from '../middleware/declared-permission.js';
 
 // REQ-12 BC-20 (ISS-824): a REST route and an MCP tool action are refused by the same declaration,
 // through the one enforcer both doors run before the handler, never by a check in the handler.
@@ -28,11 +35,24 @@ vi.mock('../lib/authz.js', () => ({
   effectiveProjectRole: async () => null,
 }));
 
+const admins = vi.hoisted(() => ({ list: [] as string[] }));
+
+vi.mock('../middleware/require-admin.js', () => ({
+  assertInstanceAdmin: async (userId: string | null) => {
+    access.seen.push(`admin list as ${userId}`);
+    if (userId === null || !admins.list.includes(userId)) {
+      throw Object.assign(new Error('admin access required'), { status: 403, code: 'ADMIN_ONLY' });
+    }
+  },
+}));
+
 const {
   enforceDeclared,
   requireDeclared,
   requireDeclaredHeld,
   requireDeclaredOn,
+  requiresByRule,
+  requiresInstanceAdmin,
   requiresOnParam,
   requiresOnResolved,
   runDeclaredTool,
@@ -57,6 +77,25 @@ function restApp(ran: string[]) {
     .post('/i/:id/thing', requiresOnResolved('project.write', "the issue's project"), (c) => {
       requireDeclared({ projectId: PROJECT, role: access.role, grants: [] });
       ran.push('resolved');
+      return c.text('ok');
+    })
+    .post(
+      '/p/:projectId/ruled',
+      requiresByRule('probe/rule.ts:probeRule', 'the row decides', {
+        permission: 'project.read',
+        param: 'projectId',
+      }),
+      (c) => {
+        ran.push('ruled');
+        return c.text('ok');
+      },
+    )
+    .post('/r/:id/ruled', requiresByRule('probe/rule.ts:probeRule', 'the row decides'), (c) => {
+      ran.push('rule-only');
+      return c.text('ok');
+    })
+    .get('/admin/thing', requiresInstanceAdmin('the whole instance'), (c) => {
+      ran.push('admin');
       return c.text('ok');
     })
     .onError((err, c) => {
@@ -90,6 +129,7 @@ beforeEach(() => {
   access.role = 'viewer';
   access.orgRole = 'member';
   access.seen = [];
+  admins.list = [];
 });
 
 describe('one declaration, enforced the same at both doors before the handler', () => {
@@ -247,5 +287,97 @@ describe('a service that loads the access itself checks it the same way (require
         requireDeclaredHeld(held('viewer'), 'project.read'),
       ),
     ).rejects.toThrow(/project\.write/);
+  });
+});
+
+describe('a declaration by a named rule: the floor at the door, the rule in the handler', () => {
+  it('refuses below the floor at the door and runs no handler, at either door', async () => {
+    access.role = null;
+    const ran: string[] = [];
+    const rest = await restApp(ran).request(`/p/${PROJECT}/ruled`, { method: 'POST' });
+    expect(rest.status).toBe(403);
+    expect(await rest.text()).toContain('project.read');
+    const floored = byRule('probe/rule.ts:probeRule', 'the row decides', {
+      permission: 'project.read',
+      on: { arg: 'projectId' },
+    });
+    await expect(
+      runDeclaredTool(tool(ran, floored), { action: 'x', projectId: PROJECT }, 'u1'),
+    ).rejects.toThrow(/project\.read/);
+    expect(ran).toEqual([]);
+  });
+
+  it('runs the handler at the floor, where its rule decides the rest', async () => {
+    const ran: string[] = [];
+    expect((await restApp(ran).request(`/p/${PROJECT}/ruled`, { method: 'POST' })).status).toBe(
+      200,
+    );
+    expect(ran).toEqual(['ruled']);
+  });
+
+  it('checks nothing at the door with no floor: the rule is the whole check', async () => {
+    access.role = null;
+    const ran: string[] = [];
+    expect((await restApp(ran).request('/r/x/ruled', { method: 'POST' })).status).toBe(200);
+    await runDeclaredTool(
+      tool(ran, byRule('probe/rule.ts:probeRule', 'the row decides')),
+      { action: 'x' },
+      'u1',
+    );
+    expect(ran).toEqual(['rule-only', 'mcp']);
+    expect(access.seen).toEqual([]);
+  });
+
+  it('gives a handler that calls requireDeclared under a rule a wiring defect, not a pass', async () => {
+    await expect(
+      runDeclaredTool(
+        tool([], byRule('probe/rule.ts:probeRule', 'the row decides')),
+        { action: 'resolve' },
+        'u1',
+      ),
+    ).rejects.toThrow(/declares no permission for its handler to check/);
+  });
+
+  it('publishes the rule, why it decides and the floor', () => {
+    expect(renderedPermission(byRule('a.ts:f', 'why'))).toEqual({ rule: 'a.ts:f', why: 'why' });
+    expect(
+      renderedPermission(
+        byRule('a.ts:f', 'why', { permission: 'project.read', on: { param: 'id' } }),
+      ),
+    ).toEqual({
+      rule: 'a.ts:f',
+      why: 'why',
+      floor: { permission: 'project.read', on: { param: 'id' } },
+    });
+  });
+});
+
+describe('an instance-admin declaration, checked at the door from the admin list', () => {
+  it('refuses a caller off the list, ADMIN_ONLY, and runs no handler, at either door', async () => {
+    const ran: string[] = [];
+    const rest = await restApp(ran).request('/admin/thing');
+    expect(rest.status).toBe(403);
+    expect(await rest.text()).toContain('admin access required');
+    await expect(
+      runDeclaredTool(tool(ran, instanceAdmin('the instance')), { action: 'x' }, 'u1'),
+    ).rejects.toMatchObject({ code: 'ADMIN_ONLY' });
+    await expect(
+      runDeclaredTool(tool(ran, instanceAdmin('the instance')), { action: 'x' }, null),
+    ).rejects.toMatchObject({ code: 'ADMIN_ONLY' });
+    expect(ran).toEqual([]);
+  });
+
+  it('runs the handler for a caller on the list, reading no project', async () => {
+    admins.list = ['u1'];
+    const ran: string[] = [];
+    expect((await restApp(ran).request('/admin/thing')).status).toBe(200);
+    expect(ran).toEqual(['admin']);
+    expect(access.seen).toEqual(['admin list as u1']);
+  });
+
+  it('publishes instanceAdmin with why', () => {
+    expect(renderedPermission(instanceAdmin('the instance'))).toEqual({
+      instanceAdmin: 'the instance',
+    });
   });
 });

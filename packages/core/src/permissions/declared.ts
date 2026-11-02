@@ -18,12 +18,15 @@ import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { declaredInputOf, type McpTool } from '../lib/tool.js';
 import {
+  byRule,
   type DeclaredPermission,
+  instanceAdmin,
   onResolved,
   permissionless,
   registerDeclaredPermission,
   toolPermissionFor,
 } from '../middleware/declared-permission.js';
+import { assertInstanceAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld, requireOrgHeld } from './can.js';
 
@@ -31,10 +34,13 @@ export type {
   DeclaredPermission,
   PermissionlessAccess,
   PermissionOn,
+  RuleFloor,
   ToolPermission,
 } from '../middleware/declared-permission.js';
 export {
+  byRule,
   declaredPermissions,
+  instanceAdmin,
   onArg,
   onResolved,
   permissionless,
@@ -72,30 +78,40 @@ export async function enforceDeclared<T>(
   run: () => Promise<T>,
 ): Promise<T> {
   let checked: string | null = null;
-  if (declared.permission !== null && !('resolved' in declared.on)) {
-    const id = call.named(declared.on);
-    const where =
-      'param' in declared.on
-        ? `path parameter :${declared.on.param}`
-        : `argument ${declared.on.arg}`;
-    const what = isOrg(declared.permission) ? 'organization' : 'project';
-    if (typeof id !== 'string' || id === '') {
-      throw badRequest(
-        `${call.act} needs ${declared.permission} on the ${what} its ${where} names, and none was sent`,
-      );
-    }
-    // a call argument reaches here before the tool parses it; a route's parameter after its validator
-    if ('arg' in declared.on && !UUID.test(id)) {
-      throw badRequest(`${call.act}: ${declared.on.arg} names the ${what} by its uuid`);
-    }
-    if (isOrg(declared.permission)) {
-      requireOrgHeld(id, await loadOrgRole(id, call.userId), declared.permission);
-    } else {
-      requireHeld(await loadProjectAccess(id, call.userId), declared.permission);
-    }
-    checked = id;
+  if (declared.permission !== null) {
+    if (!('resolved' in declared.on)) checked = await heldOnNamed(declared, declared.on, call);
+  } else if (declared.access === 'rule' && declared.floor !== undefined) {
+    checked = await heldOnNamed(declared.floor, declared.floor.on, call);
+  } else if (declared.access === 'instance-admin') {
+    await assertInstanceAdmin(call.userId);
   }
   return inEffect.run({ declared, checked }, run);
+}
+
+/** `permission` held on the project or organization the call names, the id it was checked on. */
+async function heldOnNamed(
+  { permission }: { permission: ProjectPermission | OrgPermission },
+  on: { param: string } | { arg: string },
+  call: DeclaredCall,
+): Promise<string> {
+  const id = call.named(on);
+  const where = 'param' in on ? `path parameter :${on.param}` : `argument ${on.arg}`;
+  const what = isOrg(permission) ? 'organization' : 'project';
+  if (typeof id !== 'string' || id === '') {
+    throw badRequest(
+      `${call.act} needs ${permission} on the ${what} its ${where} names, and none was sent`,
+    );
+  }
+  // a call argument reaches here before the tool parses it; a route's parameter after its validator
+  if ('arg' in on && !UUID.test(id)) {
+    throw badRequest(`${call.act}: ${on.arg} names the ${what} by its uuid`);
+  }
+  if (isOrg(permission)) {
+    requireOrgHeld(id, await loadOrgRole(id, call.userId), permission);
+  } else {
+    requireHeld(await loadProjectAccess(id, call.userId), permission);
+  }
+  return id;
 }
 
 function wiringDefect(what: string): Error {
@@ -248,6 +264,33 @@ export function requiresSelf(why: string): MiddlewareHandler {
 /** The route answers anyone, with no credential. */
 export function requiresPublic(why: string): MiddlewareHandler {
   return mounted(permissionless('public', why));
+}
+
+/**
+ * The handler's named rule decides who may (`rule`: `<file under src>:<exported function>`), for the
+ * reason `why`: access depends on the row, the input or the caller kind, or a named refusal answers
+ * before any permission could. `floor`, where given, is checked at the door first; leave it out where
+ * it would answer before a named refusal that answers today.
+ */
+export function requiresByRule(
+  rule: string,
+  why: string,
+  floor?: { permission: ProjectPermission | OrgPermission; param: string },
+): MiddlewareHandler {
+  return mounted(
+    byRule(
+      rule,
+      why,
+      floor === undefined
+        ? undefined
+        : { permission: floor.permission, on: { param: floor.param } },
+    ),
+  );
+}
+
+/** Only a platform (instance) administrator may call the route; checked here, never in its handler. */
+export function requiresInstanceAdmin(why: string): MiddlewareHandler {
+  return mounted(instanceAdmin(why));
 }
 
 // ---- the tool door: /mcp and the chat assistant run a tool's action through the same check ----

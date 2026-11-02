@@ -50,7 +50,19 @@ export async function platformAdminNames(): Promise<string[]> {
 }
 
 export async function assertPlatformAdmin(c: Context<{ Variables: AuthVars }>): Promise<void> {
-  const row = await authUserRow(c, c.get('userId'));
+  refuseUnlessAdmin(await authUserRow(c, c.get('userId')));
+}
+
+/**
+ * The instance-admin declaration's check (`requiresInstanceAdmin`, permissions/declared.ts): the
+ * caller's address on the admin list, read from the same row `assertPlatformAdmin` reads, with its
+ * refusals. No caller (a door with no user) is refused as an unknown user.
+ */
+export async function assertInstanceAdmin(userId: string | null): Promise<void> {
+  refuseUnlessAdmin(userId === null ? null : await readAuthUser(userId));
+}
+
+function refuseUnlessAdmin(row: { email: string } | null): void {
   if (row === null) {
     throw new HTTPException(401, {
       message: 'user not found',

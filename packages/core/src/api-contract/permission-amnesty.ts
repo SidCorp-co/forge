@@ -40,7 +40,7 @@ export function undeclaredPermission(
   amnestied: ReadonlySet<string>,
 ): string | null {
   if (declared.length > 0 || amnestied.has(name)) return null;
-  return `${name}: declares no permission — mount requiresOnParam, requiresOnResolved, requiresSelf, requiresPublic or requiresNoPermission (permissions/declared.ts) on it`;
+  return `${name}: declares no permission — mount requiresOnParam, requiresOnResolved, requiresByRule, requiresInstanceAdmin, requiresSelf, requiresPublic or requiresNoPermission (permissions/declared.ts) on it`;
 }
 
 /** Why a tool action that declares no permission is refused, or null where it declares one or is amnestied. */
@@ -50,7 +50,7 @@ export function undeclaredActionPermission(
   amnestied: ReadonlySet<string>,
 ): string | null {
   if (declared !== undefined || amnestied.has(name)) return null;
-  return `${name}: declares no permission — give the tool a \`permission\` naming it (onArg, onResolved or permissionless, middleware/declared-permission.ts)`;
+  return `${name}: declares no permission — give the tool a \`permission\` naming it (onArg, onResolved, byRule, instanceAdmin or permissionless, middleware/declared-permission.ts)`;
 }
 
 /** Entries naming a route or action that declares a permission now, or that is not served: each is refused. */
