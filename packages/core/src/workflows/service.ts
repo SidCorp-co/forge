@@ -9,7 +9,7 @@ import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { personGateOf, readProjectDocument, staleBase } from '../project-config/index.js';
 import { bindRefusalsIn } from './bind-check.js';
 import {
@@ -141,12 +141,7 @@ const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[])
   findTemplate(templates, doc.template);
 
 export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
-  await requireCan(
-    actorFor(writer.userId, writer.agency),
-    'workflow-designs.write',
-    projectResource(projectId),
-    'writing a workflow',
-  );
+  await requireDeclaredOn(projectId, writer.userId, 'workflow-designs.write', 'writing a workflow');
 }
 
 export async function createWorkflow(input: {
@@ -446,12 +441,12 @@ async function listedViews(userId: string, projectId: string, rows: readonly Sto
 }
 
 export async function listWorkflowsAs(userId: string, projectId: string) {
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, userId, 'project.read');
   return listedViews(userId, projectId, await workflowsOf(db, projectId));
 }
 
 export async function readWorkflowAs(userId: string, projectId: string, id: string) {
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, userId, 'project.read');
   const row = await readWorkflow(db, id);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${id}`);

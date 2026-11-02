@@ -8,7 +8,7 @@ import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { personGateOf, readProjectDocument } from '../project-config/index.js';
 import { designApproverRefusal } from './design.js';
 import { standingBaseRefusal } from './design-bases.js';
@@ -227,7 +227,7 @@ export async function readWorkflowHealthAs(
   projectId: string,
   workflow: string,
 ): Promise<WorkflowHealth> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const [row] = await workflowRowsOf(projectId, workflow);
   if (!row) throw notFound(`project ${projectId} holds no workflow ${workflow}`);
   const [ctx, inputs] = await Promise.all([
@@ -260,7 +260,7 @@ export async function projectHealthAs(
   viewer: HealthViewer,
   projectId: string,
 ): Promise<Map<string, WorkflowHealth>> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const read = workflowRowsOf(projectId);
   const [ctx, rows, inputs] = await Promise.all([
     contextOf(projectId, viewer),

@@ -122,7 +122,11 @@ function answer(c: Context, outcome: WorkflowOutcome, readBack?: readonly Ignore
   );
 }
 
-workflowRoutes.post('/:id/workflows', idParam, envelope, async (c) => {
+const READ = requiresOnParam('project.read', 'id');
+const WRITE = requiresOnParam('project.write', 'id');
+const DESIGN = requiresOnParam('workflow-designs.write', 'id');
+
+workflowRoutes.post('/:id/workflows', idParam, DESIGN, envelope, async (c) => {
   const { baseRevision, document } = envelopeOf(c.req.valid('json'));
   const projectId = c.req.valid('param').id;
   return answer(
@@ -131,7 +135,7 @@ workflowRoutes.post('/:id/workflows', idParam, envelope, async (c) => {
   );
 });
 
-workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
+workflowRoutes.get('/:id/workflows', idParam, READ, listView, async (c) => {
   const { id } = c.req.valid('param');
   const viewer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
   const listed = await egressForRequest(
@@ -150,7 +154,7 @@ workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
   });
 });
 
-workflowRoutes.get('/:id/workflows/:workflow', workflowParam, headQuery, async (c) => {
+workflowRoutes.get('/:id/workflows/:workflow', workflowParam, READ, headQuery, async (c) => {
   const { id, workflow } = c.req.valid('param');
   return c.json(
     await egressForRequest(
@@ -163,7 +167,7 @@ workflowRoutes.get('/:id/workflows/:workflow', workflowParam, headQuery, async (
   );
 });
 
-workflowRoutes.put('/:id/workflows/:workflow', workflowParam, envelope, async (c) => {
+workflowRoutes.put('/:id/workflows/:workflow', workflowParam, DESIGN, envelope, async (c) => {
   const { id, workflow } = c.req.valid('param');
   const body = readBackOf(c.req.valid('json'), workflow);
   if (!body.ok) return refused(c, body.refusals, 'WORKFLOW_REFUSED');
@@ -186,24 +190,30 @@ function answerDesign(c: Context, outcome: DesignOutcome) {
   return c.json(outcome.design);
 }
 
-workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, designView, async (c) => {
-  const { id, workflow } = c.req.valid('param');
-  const q = c.req.valid('query');
-  const design = await egressForRequest(
-    c.get('agency'),
-    id,
-    'design',
-    await readDesignAs(writerOf(c), id, workflow),
-    `workflow ${workflow}`,
-  );
-  return c.json(
-    designReadOf(design, q.view ?? 'full', {
-      revision: q.revision,
-      from: q.stepFrom,
-      to: q.stepTo,
-    }),
-  );
-});
+workflowRoutes.get(
+  '/:id/workflows/:workflow/design',
+  workflowParam,
+  READ,
+  designView,
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    const q = c.req.valid('query');
+    const design = await egressForRequest(
+      c.get('agency'),
+      id,
+      'design',
+      await readDesignAs(writerOf(c), id, workflow),
+      `workflow ${workflow}`,
+    );
+    return c.json(
+      designReadOf(design, q.view ?? 'full', {
+        revision: q.revision,
+        from: q.stepFrom,
+        to: q.stepTo,
+      }),
+    );
+  },
+);
 
 const graphQuery = zValidator(
   'query',
@@ -219,6 +229,7 @@ const graphQuery = zValidator(
 workflowRoutes.get(
   '/:id/workflows/:workflow/system-graph',
   workflowParam,
+  READ,
   graphQuery,
   async (c) => {
     const { id, workflow } = c.req.valid('param');
@@ -238,6 +249,7 @@ workflowRoutes.get(
 workflowRoutes.post(
   '/:id/workflows/:workflow/design/propose',
   workflowParam,
+  DESIGN,
   strictBody(
     z.strictObject({
       revision: z.number().int().min(1),
@@ -286,6 +298,7 @@ workflowRoutes.post(
 workflowRoutes.post(
   '/:id/workflows/:workflow/design/withdraw',
   workflowParam,
+  DESIGN,
   strictBody(
     z.strictObject({ reason: z.string().max(REASON_TEXT_MAX).optional() }),
     `{ reason? } — why a design no revision of which was approved is taken back, at most ${REASON_TEXT_MAX} characters`,
@@ -305,18 +318,24 @@ workflowRoutes.post(
   },
 );
 
-workflowRoutes.get('/:id/workflows/:workflow/design/repins', workflowParam, noQuery, async (c) => {
-  const { id, workflow } = c.req.valid('param');
-  return c.json(
-    await egressForRequest(
-      c.get('agency'),
-      id,
-      'design',
-      await readRepinPlanAs(writerOf(c), id, workflow),
-      `workflow ${workflow} re-pins`,
-    ),
-  );
-});
+workflowRoutes.get(
+  '/:id/workflows/:workflow/design/repins',
+  workflowParam,
+  READ,
+  noQuery,
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    return c.json(
+      await egressForRequest(
+        c.get('agency'),
+        id,
+        'design',
+        await readRepinPlanAs(writerOf(c), id, workflow),
+        `workflow ${workflow} re-pins`,
+      ),
+    );
+  },
+);
 
 workflowRoutes.post(
   '/:id/workflows/:workflow/design/repins',
@@ -349,6 +368,7 @@ workflowRoutes.post(
 workflowRoutes.post(
   '/:id/workflows/:workflow/builds',
   workflowParam,
+  WRITE,
   strictBody(
     z.strictObject({
       issue: z.string().trim().min(1).max(200),
@@ -374,7 +394,7 @@ workflowRoutes.post(
   },
 );
 
-workflowRoutes.get('/:id/workflow-templates', idParam, noQuery, async (c) => {
+workflowRoutes.get('/:id/workflow-templates', idParam, READ, noQuery, async (c) => {
   const templates = await listProjectTemplatesAs(c.get('userId'), c.req.valid('param').id);
   return c.json({ templates, returned: templates.length });
 });
@@ -455,19 +475,25 @@ workflowRoutes.get(
   },
 );
 
-workflowRoutes.get('/:id/workflows/:workflow/health', workflowRefParam, noQuery, async (c) => {
-  const { id, workflow } = c.req.valid('param');
-  const viewer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
-  return c.json({
-    health: await egressForRequest(
-      c.get('agency'),
-      id,
-      'design',
-      await readWorkflowHealthAs(viewer, id, workflow),
-      `workflow ${workflow} health`,
-    ),
-  });
-});
+workflowRoutes.get(
+  '/:id/workflows/:workflow/health',
+  workflowRefParam,
+  READ,
+  noQuery,
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    const viewer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
+    return c.json({
+      health: await egressForRequest(
+        c.get('agency'),
+        id,
+        'design',
+        await readWorkflowHealthAs(viewer, id, workflow),
+        `workflow ${workflow} health`,
+      ),
+    });
+  },
+);
 
 export { issueRequirementDesignRoutes } from './issue-routes.js';
 export { workflowTemplateCatalogueRoutes } from './template-routes.js';

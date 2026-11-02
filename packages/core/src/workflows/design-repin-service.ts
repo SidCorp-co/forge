@@ -15,7 +15,7 @@ import { db, type Tx } from '../db/client.js';
 import { userNames } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { type DesignRefusal, fingerprintShape } from './design.js';
 import {
   canonicalDiff,
@@ -122,7 +122,7 @@ export async function readRepinPlanAs(
   projectId: string,
   baseId: string,
 ): Promise<RepinPlan> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const { templates } = await templatesOf(projectId);
   const loaded = await loadDesigns(db, projectId, templates);
   const base = loaded.designs.find((d) => d.id === baseId);

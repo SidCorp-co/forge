@@ -7,7 +7,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, masterFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { personGateOf } from '../project-config/index.js';
 import {
   type DesignDecision,
@@ -201,7 +201,7 @@ export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | n
 }
 
 export async function readDesignAs(viewer: WorkflowWriter, projectId: string, id: string) {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   return designView(await rowIn(projectId, id), viewer);
 }
 
@@ -436,7 +436,7 @@ export async function linkBuildAs(input: {
   observedSteps?: string[] | undefined;
 }): Promise<DesignOutcome> {
   const { projectId, id, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const issue = await resolveIssueRouteRef(input.issue, projectId, actor.userId);
   if (issue.projectId !== projectId) {
     throw notFound(`issue ${input.issue} is not an issue of project ${projectId}`);
