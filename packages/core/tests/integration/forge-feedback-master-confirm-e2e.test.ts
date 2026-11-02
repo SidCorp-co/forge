@@ -174,7 +174,7 @@ describe('the master of the reporting agent’s project settles its shipped Forg
     expect(read.body).toMatchObject({ key, phase: 'resolved' });
 
     const bare = await forgeDoor(tokens.master, key, 'verify');
-    expect(bare.status, JSON.stringify(bare.body)).toBe(400);
+    expect(bare.status, JSON.stringify(bare.body)).toBe(422);
     expect(refusalOf(bare.body)?.code).toBe('FEEDBACK_EVIDENCE_REQUIRED');
 
     const done = await forgeDoor(

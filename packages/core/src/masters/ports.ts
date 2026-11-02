@@ -21,6 +21,8 @@ export interface AgentConfirmOwed {
   reporter: string;
   itemProjectId: string;
   home: boolean;
+  /** The project its agent reported it from: the master owed the confirm is this one's. */
+  reportedFrom: string;
 }
 
 /** A merged change request delivering an issue that holds no merged mark (`issues/owed-merges.ts`). */

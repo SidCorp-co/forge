@@ -30,6 +30,7 @@ let w: World;
 let agent = '';
 let agentPat = '';
 let otherPat = '';
+let strangerPat = '';
 
 interface Refused {
   code: string;
@@ -127,6 +128,18 @@ beforeAll(async () => {
     ).plaintext;
   agentPat = await pat(agent);
   otherPat = await pat(other);
+  const elsewhere = (await createTestProject(w.userId)).id;
+  const stranger = (await createTestUser({ kind: 'agent' })).id;
+  await addProjectMember(elsewhere, stranger);
+  strangerPat = (
+    await mintPat({
+      permissions: ['*'],
+      userId: stranger,
+      name: 'box',
+      projectIds: [elsewhere],
+      grantEpoch: PAT_GRANT_EPOCH,
+    })
+  ).plaintext;
   await db.execute(sql`
     INSERT INTO instance_settings (id, forge_home_project_id) VALUES (1, ${w.projectId})
     ON CONFLICT (id) DO UPDATE SET forge_home_project_id = ${w.projectId}
@@ -232,8 +245,13 @@ describe('the reporter replies once to each answer (BC-12)', () => {
     const member = await reply(fb, { evidence: 'Not mine to reply to.' }, w.token);
     expect(member.status, JSON.stringify(member.body)).toBe(403);
     expect(refusalOf(member.body)?.code).toBe('FORGE_FEEDBACK_NOT_YOURS');
-    // another reporter reads nothing of it
-    const stranger = await reply(fb, { evidence: 'Not mine to reply to.' }, otherPat);
+    // another agent of the reporter's project reads it as the master owed its confirm (ISS-880), and a
+    // reply is still the reporter's own
+    const peer = await reply(fb, { evidence: 'Not mine to reply to.' }, otherPat);
+    expect(peer.status, JSON.stringify(peer.body)).toBe(403);
+    expect(refusalOf(peer.body)?.code).toBe('FORGE_FEEDBACK_NOT_YOURS');
+    // an agent of another project reads nothing of it
+    const stranger = await reply(fb, { evidence: 'Not mine to reply to.' }, strangerPat);
     expect(stranger.status, JSON.stringify(stranger.body)).toBe(404);
     expect(refusalOf(stranger.body)?.code).toBe('FORGE_FEEDBACK_NOT_FOUND');
     expect(await unchanged(fb)).toEqual(before);

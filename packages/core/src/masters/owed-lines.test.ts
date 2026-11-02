@@ -3,6 +3,7 @@ import { masterWork, owedLine, workDigest } from './owed.js';
 import type { AgentConfirmOwed } from './ports.js';
 
 // The owed lines for questions an agent owes and confirms an agent reporter owes (owed-confirms.ts).
+// @direct-test-of packages/core/src/masters/owed-confirms.ts
 
 const none: Parameters<typeof owedLine>[0] = {
   designs: [],
@@ -71,6 +72,7 @@ describe('an agent reporter’s confirm on the owed line', () => {
       reporter: 'catalog-fe',
       itemProjectId: 'home',
       home: true,
+      reportedFrom: 'p',
     };
     const own: AgentConfirmOwed = {
       ...forge,
@@ -87,5 +89,20 @@ describe('an agent reporter’s confirm on the owed line', () => {
     expect(owedLine({ ...none, confirms: [forge, own] })).toContain(
       'owe their confirm (FB-230 from catalog-fe, `forge-runner api forge/feedback/FB-230/verify -X POST`; FB-4 from catalog-fe, `forge-runner api projects/p/feedback/FB-4/verify -X POST`)',
     );
+    expect(one).toContain('confirm it for that agent');
+  });
+
+  it('names the reporter, never a refused command, for an item in a project that is no door of the master’s (ISS-880)', () => {
+    const elsewhere: AgentConfirmOwed = {
+      key: 'FB-9',
+      feedbackId: 'f9',
+      reporter: 'catalog-fe',
+      itemProjectId: 'q',
+      home: false,
+      reportedFrom: 'p',
+    };
+    const line = owedLine({ ...none, confirms: [elsewhere] });
+    expect(line).toContain('FB-9 from catalog-fe, which only catalog-fe settles');
+    expect(line).not.toContain('projects/q/feedback/FB-9/verify');
   });
 });

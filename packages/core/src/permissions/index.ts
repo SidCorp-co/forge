@@ -38,6 +38,7 @@ export {
 export { holderNames, type NamedHolder, namedHolders } from './holders-named.js';
 export {
   actsAsMaster,
+  isMasterCredential,
   MASTER_GRANTS,
   type MasterAsk,
   masterActRefusal,

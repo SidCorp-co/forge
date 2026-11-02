@@ -32,6 +32,7 @@ export {
   withDuplicateRoots,
 } from './forge-reads.js';
 export { settleOwnForgeFeedback } from './forge-settle.js';
+export { reporterMasterProject } from './reporter-master.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
 export { feedbackStandingsOf, listFeedbackAs, listFeedbackIn } from './list-page-read.js';
 export { linkedOf, phaseIn } from './list-read.js';

@@ -26,6 +26,7 @@ import {
   type ReadDoor,
   replyOwnForgeFeedback,
   reportedForge,
+  reporterMasterProject,
   resolveForgeSource,
   settleOwnForgeFeedback,
   shipEvidenceOfShipped,
@@ -189,17 +190,20 @@ async function readableItem(
   const notFound = forgeRefusal(
     'FORGE_FEEDBACK_NOT_FOUND',
     '/feedback',
-    `${key} is not feedback to Forge you reported; GET /api/forge/feedback lists yours.`,
+    `${key} is not feedback to Forge you reported, nor one an agent of a project you are the master of reported; GET /api/forge/feedback lists yours.`,
   );
   const id = await forgeFeedbackIdOfKey(home.id, key);
   if (!id) return { ok: false, refusals: [notFound] };
+  // the master owed an agent reporter's confirm reads what it confirms (REQ-66 BC-8, ISS-880)
   const may =
-    (await readsHomeAsMember(home.id, viewer.userId)) || (await reportedForge(id, viewer.userId));
+    (await readsHomeAsMember(home.id, viewer.userId)) ||
+    (await reportedForge(id, viewer.userId)) ||
+    (await reporterMasterProject(id, viewer)) !== null;
   if (!may) return { ok: false, refusals: [notFound] };
   return { ok: true, homeId: home.id, id };
 }
 
-/** One item: the caller's own, or any item of the home project for one of its members. */
+/** One item: the caller's own, one its agent reporter's master is owed, or any for a member of the home project. */
 export async function getForgeFeedback(
   viewer: ForgeViewer,
   key: string,
@@ -210,7 +214,7 @@ export async function getForgeFeedback(
   return { ok: true, value: await itemById(viewer, found.homeId, found.id, door) };
 }
 
-/** The caller confirms the shipped fix of an item it reported, or reopens it, with its evidence. */
+/** The caller confirms the shipped fix of an item it reported, or as its agent reporter's master, or reopens it, with its evidence. */
 export async function settleForgeFeedback(
   viewer: ForgeViewer,
   key: string,

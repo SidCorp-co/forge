@@ -187,7 +187,8 @@ route, declining included, closes the open question.
   \`feedback.verify\`/\`feedback.reopen\`, with what it ran and saw (\`FEEDBACK_EVIDENCE_REQUIRED\` without it on any door,
   \`FORGE_FEEDBACK_NOT_YOURS\` on an item another account filed). The master of the project the agent
   reported from is owed that confirm: its pass names each such item with the door to settle it through,
-  and the release that ships one wakes it.
+  the release that ships one wakes it, and that door admits it, an agent writing that project, to read,
+  verify and reopen the item for its reporter.
 - \`verify-ask\` sends a resolved item to its reporter's bell again, where it stays until the item is
   verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.

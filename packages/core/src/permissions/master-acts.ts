@@ -41,9 +41,17 @@ export interface MasterAsk {
   profile: GateProfile;
 }
 
+/**
+ * Whether the credential is the project's master, whatever the project's profile: an agent's that
+ * writes it. What it holds beyond its role is `actsAsMaster`'s; who it acts for is the caller's.
+ */
+export function isMasterCredential(facts: PermissionFacts, agency: ActorAgency): boolean {
+  return agency === 'agent' && holds(facts, 'project.write');
+}
+
 /** Whether the caller acts as the project's master on a project that is not strict. */
 export function actsAsMaster(facts: PermissionFacts, ask: MasterAsk): boolean {
-  return ask.profile !== 'strict' && ask.agency === 'agent' && holds(facts, 'project.write');
+  return ask.profile !== 'strict' && isMasterCredential(facts, ask.agency);
 }
 
 /**

@@ -26,6 +26,8 @@ export interface OwedAgentConfirm {
   itemProjectId: string;
   /** Whether that is the Forge home project, whose items are settled through the Forge door. */
   home: boolean;
+  /** The project its agent reported it from, whose master is owed the confirm (`agentReportedFrom`). */
+  reportedFrom: string;
 }
 
 /**
@@ -38,6 +40,20 @@ const reportedFrom = sql<string>`coalesce((
      AND o.source_project_id IS NOT NULL
    ORDER BY o.created_at LIMIT 1
 ), feedback.project_id)`;
+
+/**
+ * The project an agent-reported item was reported from, or null for an item a person reported. Its
+ * master is the one the item's confirm is owed to (`owedAgentConfirms`), so it is also the one the
+ * doors that settle the item admit for its reporter (`reporter-master.ts`): one rule, read here.
+ */
+export async function agentReportedFrom(feedbackId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ from: reportedFrom })
+    .from(feedback)
+    .where(and(eq(feedback.id, feedbackId), eq(feedback.reporterAgency, 'agent')))
+    .limit(1);
+  return row?.from ?? null;
+}
 
 /** Agent-reported items the reporter may still settle, matching `where`; whether each reads resolved is derived after. */
 async function candidates(where: SQL | undefined): Promise<(Row & { from: string })[]> {
@@ -77,6 +93,7 @@ async function resolvedAmong(rows: (Row & { from: string })[]): Promise<OwedAgen
         reporter: names.get(r.reportedBy) ?? r.reportedBy,
         itemProjectId: projectId,
         home: projectId === home?.id,
+        reportedFrom: r.from,
       });
     }
   }
@@ -92,18 +109,11 @@ export async function owedAgentConfirms(projectId: string): Promise<OwedAgentCon
  * Of the agent-reported items `issueIds` carry, the ones now owing their reporter's confirm, each with
  * the project it was reported from: whose master the ship wakes.
  */
-export async function confirmsOwedByShip(
-  issueIds: readonly string[],
-): Promise<(OwedAgentConfirm & { reportedFrom: string })[]> {
+export async function confirmsOwedByShip(issueIds: readonly string[]): Promise<OwedAgentConfirm[]> {
   if (issueIds.length === 0) return [];
   const carried = db
     .select({ id: feedbackRouteIssues.feedbackId })
     .from(feedbackRouteIssues)
     .where(inArray(feedbackRouteIssues.issueId, [...issueIds]));
-  const rows = await candidates(inArray(feedback.id, carried));
-  const from = new Map(rows.map((r) => [r.id, r.from]));
-  return (await resolvedAmong(rows)).map((o) => ({
-    ...o,
-    reportedFrom: from.get(o.feedbackId) ?? o.itemProjectId,
-  }));
+  return resolvedAmong(await candidates(inArray(feedback.id, carried)));
 }
