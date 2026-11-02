@@ -97,6 +97,25 @@ describe('an agent reporter’s confirm on the owed line', () => {
     expect(one).toContain('confirm it for that agent');
   });
 
+  it('names an item again once its wait ended, saying how, and the wait door to set one (ISS-902)', () => {
+    const base: AgentConfirmOwed = {
+      key: 'FB-470',
+      feedbackId: 'f470',
+      reporter: 'agenfold-chat',
+      itemProjectId: 'home',
+      home: true,
+      reportedFrom: 'p',
+      waitEnded: 'lapsed',
+    };
+    const line = owedLine({ ...none, confirms: [base, { ...base, key: 'FB-472', waitEnded: 'met' }] });
+    expect(line).toContain(
+      'FB-470 from agenfold-chat, its wait ended: its date passed, `forge-runner api forge/feedback/FB-470/verify -X POST`',
+    );
+    expect(line).toContain('FB-472 from agenfold-chat, its wait ended: the room message came');
+    expect(line).toContain('`/confirm-wait`');
+    expect(line).toContain('"reason":"<why it waits>"');
+  });
+
   it('names the reporter, never a refused command, for an item in a project that is no door of the master’s (ISS-880)', () => {
     const elsewhere: AgentConfirmOwed = {
       key: 'FB-9',
