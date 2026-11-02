@@ -27,7 +27,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 import { addRoomHandle, addRoomPerson, removeRoomParticipant } from './service.js';
 
@@ -69,18 +69,22 @@ async function membershipOf(
 /**
  * Who this caller could open a room WITH, before any room exists.
  */
-conversationMemberRoutes.get('/candidates', zValidator('query', projectQuerySchema), async (c) => {
-  const { projectId } = c.req.valid('query');
-  const userId = c.get('userId');
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.write');
-  const scope = [projectId];
-  const [people, handles] = await Promise.all([
-    addablePeople(null, scope),
-    addableHandles(null, userId, scope),
-  ]);
-  return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
-});
+conversationMemberRoutes.get(
+  '/candidates',
+  zValidator('query', projectQuerySchema),
+  requiresOnResolved('project.write', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+    requireDeclared(await loadProjectAccess(projectId, userId));
+    const scope = [projectId];
+    const [people, handles] = await Promise.all([
+      addablePeople(null, scope),
+      addableHandles(null, userId, scope),
+    ]);
+    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
+  },
+);
 
 /**
  * Who this caller could still put in this room.

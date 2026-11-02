@@ -35,7 +35,13 @@ import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, can, projectResource, requireHeld } from '../permissions/index.js';
+import {
+  actorFor,
+  can,
+  projectResource,
+  requireDeclared,
+  requiresOnResolved,
+} from '../permissions/index.js';
 import { batchesOfConversation } from '../questionnaires/index.js';
 import { conversationProposalRoutes } from './agreement/routes.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
@@ -116,54 +122,58 @@ conversationRoutes.route('/', conversationMessageRoutes);
 conversationRoutes.route('/', conversationProposalRoutes);
 conversationRoutes.route('/', decisionOutcomeRoutes);
 
-conversationRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
-  const { projectId, page, pageSize, archived } = c.req.valid('query');
-  const userId = c.get('userId');
+conversationRoutes.get(
+  '/',
+  zValidator('query', listQuerySchema),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId, page, pageSize, archived } = c.req.valid('query');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(projectId, userId));
 
-  const rows = await listConversationsInProject(projectId, { archived });
-  const pinned = await pinnedBy(
-    userId,
-    rows.map((r) => r.id),
-  );
+    const rows = await listConversationsInProject(projectId, { archived });
+    const pinned = await pinnedBy(
+      userId,
+      rows.map((r) => r.id),
+    );
 
-  const roleByProject = new Map<string, boolean>();
-  const visible: ConversationRow[] = [];
-  for (const row of rows) {
-    const scope = await derivedScope(row.id);
-    let ok = scope.length > 0;
-    for (const pid of scope) {
-      let held = roleByProject.get(pid);
-      if (held === undefined) {
-        held = await can(actorFor(userId), 'project.read', projectResource(pid));
-        roleByProject.set(pid, held);
+    const roleByProject = new Map<string, boolean>();
+    const visible: ConversationRow[] = [];
+    for (const row of rows) {
+      const scope = await derivedScope(row.id);
+      let ok = scope.length > 0;
+      for (const pid of scope) {
+        let held = roleByProject.get(pid);
+        if (held === undefined) {
+          held = await can(actorFor(userId), 'project.read', projectResource(pid));
+          roleByProject.set(pid, held);
+        }
+        if (!held) ok = false;
       }
-      if (!held) ok = false;
+      if (ok && row.shape === 'direct') {
+        const people = await listParticipants(row.id);
+        ok = people.some((p) => p.kind === 'person' && p.userId === userId);
+      }
+      if (ok) visible.push({ ...row, pinned: pinned.has(row.id) } as ConversationRow);
     }
-    if (ok && row.shape === 'direct') {
-      const people = await listParticipants(row.id);
-      ok = people.some((p) => p.kind === 'person' && p.userId === userId);
-    }
-    if (ok) visible.push({ ...row, pinned: pinned.has(row.id) } as ConversationRow);
-  }
 
-  const offset = (page - 1) * pageSize;
-  const pageRows = visible.slice(offset, offset + pageSize);
-  const marks = await threadMarks(pageRows, userId);
-  return c.json(
-    listResponse(
-      c,
-      pageRows.map((r) => ({
-        ...r,
-        ...(marks.get(r.id) ?? { kind: null, threadStatus: null, subjectKey: null }),
-      })),
-      visible.length,
-      fromPage(page, pageSize),
-    ),
-  );
-});
+    const offset = (page - 1) * pageSize;
+    const pageRows = visible.slice(offset, offset + pageSize);
+    const marks = await threadMarks(pageRows, userId);
+    return c.json(
+      listResponse(
+        c,
+        pageRows.map((r) => ({
+          ...r,
+          ...(marks.get(r.id) ?? { kind: null, threadStatus: null, subjectKey: null }),
+        })),
+        visible.length,
+        fromPage(page, pageSize),
+      ),
+    );
+  },
+);
 
 /**
  * Whether a NEW conversation in this project could be opened in Agent mode.
@@ -171,37 +181,41 @@ conversationRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
 conversationRoutes.get(
   '/agent-mode',
   zValidator('query', z.object({ projectId: z.uuid() }).strict()),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
   async (c) => {
     const { projectId } = c.req.valid('query');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(projectId, c.get('userId')));
     const unavailable = await conversationAgentUnavailableReason(projectId);
     return c.json({ available: unavailable === null, reason: unavailable });
   },
 );
 
-conversationRoutes.post('/', zValidator('json', createSchema), async (c) => {
-  const input = c.req.valid('json');
-  const userId = c.get('userId');
+conversationRoutes.post(
+  '/',
+  zValidator('json', createSchema),
+  requiresOnResolved('project.write', 'the project the body names as projectId'),
+  async (c) => {
+    const input = c.req.valid('json');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(input.projectId, userId);
-  requireHeld(access, 'project.write');
+    requireDeclared(await loadProjectAccess(input.projectId, userId));
 
-  const handles = input.handles ?? [];
-  const people = input.people ?? [];
-  const ecosystemId = await ecosystemOfScope(input.projectId, input.scope);
+    const handles = input.handles ?? [];
+    const people = input.people ?? [];
+    const ecosystemId = await ecosystemOfScope(input.projectId, input.scope);
 
-  const conversation = await openWebConversation({
-    projectId: input.projectId,
-    title: input.title ?? null,
-    ecosystemId,
-    userId,
-    handles,
-    people,
-  });
+    const conversation = await openWebConversation({
+      projectId: input.projectId,
+      title: input.title ?? null,
+      ecosystemId,
+      userId,
+      handles,
+      people,
+    });
 
-  return c.json(conversation, 201);
-});
+    return c.json(conversation, 201);
+  },
+);
 
 conversationRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
   const { id } = c.req.valid('param');
