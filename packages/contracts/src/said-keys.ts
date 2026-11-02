@@ -1741,7 +1741,7 @@ export const SAID = {
 		en: "; no policy names a judge, so the master judges",
 	},
 	"requirements.rule.noReleaseRecorded": {
-		en: "its production names no commit it serves, so a verdict counts only on a release its agent recorded, and none is recorded yet",
+		en: "no release is recorded yet, so no verdict counts",
 	},
 	"requirements.rule.designsFirstR": {
 		en: "linked designs are approved first (REQUIREMENT_DESIGN_UNAPPROVED), then a signer agrees r{r}",

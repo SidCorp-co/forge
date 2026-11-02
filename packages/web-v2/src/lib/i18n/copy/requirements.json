@@ -616,7 +616,7 @@
     "requirements.rule.moving": "đã đồng ý và các issue của nó đang được làm",
     "requirements.rule.noIssue": "đã đồng ý nhưng chưa có issue liên kết",
     "requirements.rule.noJudge": "; không chính sách nào chỉ định người chấm, nên master chấm",
-    "requirements.rule.noReleaseRecorded": "môi trường production không báo commit nào đang chạy, nên một kết luận chỉ được tính trên bản phát hành mà agent đã ghi nhận, và chưa có bản nào được ghi nhận",
+    "requirements.rule.noReleaseRecorded": "chưa ghi nhận bản phát hành nào, nên chưa kết luận nào được tính",
     "requirements.rule.noOwner": "chưa đặt người phụ trách",
     "requirements.rule.notDelivered": "mọi issue được liên kết đã phát hành, nhưng {parts}, nên nó chưa được giao{undeclared}",
     "requirements.rule.overdue": ", và đã quá hạn",
