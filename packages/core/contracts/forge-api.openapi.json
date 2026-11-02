@@ -10130,6 +10130,9 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the items the caller reported"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10242,6 +10245,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "an item about Forge, filed as the caller's own into Forge's home project, which takes no permission there"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -10276,6 +10282,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the answers on the caller's own items"
+        },
         "x-forge-validated": [
           "json"
         ]

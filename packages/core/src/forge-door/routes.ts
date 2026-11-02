@@ -16,7 +16,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresNoPermission } from '../permissions/index.js';
+import { requiresNoPermission, requiresSelf } from '../permissions/index.js';
 import {
   type Answer,
   claimForgeAnswers,
@@ -58,6 +58,9 @@ forgeFeedbackRoutes.use('*', requireAuth(), assertEmailVerified());
 
 forgeFeedbackRoutes.post(
   '/',
+  requiresSelf(
+    "an item about Forge, filed as the caller's own into Forge's home project, which takes no permission there",
+  ),
   strictBody(forgeFeedbackRequestSchema, FORGE_FEEDBACK_SHAPE),
   async (c) => {
     const out = await submitForgeFeedback(callerOf(c), c.req.valid('json'), REST_DOOR);
@@ -65,13 +68,19 @@ forgeFeedbackRoutes.post(
   },
 );
 
-forgeFeedbackRoutes.get('/', zValidator('query', z.strictObject({})), async (c) =>
-  answer(c, await listOwnForgeFeedback(callerOf(c), REST_DOOR)),
+forgeFeedbackRoutes.get(
+  '/',
+  requiresSelf('the items the caller reported'),
+  zValidator('query', z.strictObject({})),
+  async (c) => answer(c, await listOwnForgeFeedback(callerOf(c), REST_DOOR)),
 );
 
 // the answers on the caller's own items none of its sessions was told, each told once (REQ-47 BC-11)
-forgeFeedbackRoutes.post('/answers/claim', strictBody(z.strictObject({}), '{}'), async (c) =>
-  answer(c, await claimForgeAnswers(callerOf(c), REST_DOOR)),
+forgeFeedbackRoutes.post(
+  '/answers/claim',
+  requiresSelf("the answers on the caller's own items"),
+  strictBody(z.strictObject({}), '{}'),
+  async (c) => answer(c, await claimForgeAnswers(callerOf(c), REST_DOOR)),
 );
 
 const keyParam = z.object({

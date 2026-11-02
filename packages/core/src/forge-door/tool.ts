@@ -19,6 +19,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
+import { permissionless } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 import {
   type Answer,
@@ -252,6 +253,18 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   grant: GRANT,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
+  // the REST twins declare the same (forge-door/routes.ts). get, progress, verify, reopen and reply
+  // stay on the amnesty: who may read or settle an item depends on the row (its reporter, an agent
+  // reporter's master, or a member of the home project)
+  permission: {
+    byAction: {
+      submit: permissionless(
+        'self',
+        "an item about Forge, filed as the caller's own into Forge's home project, which takes no permission there",
+      ),
+      list: permissionless('self', 'the items the caller reported'),
+    },
+  },
   handler: async (args) => {
     const read = inputOf(args);
     if (!read.ok) return refusedAnswer(read.refusals, 'FORGE_FEEDBACK_REFUSED');
