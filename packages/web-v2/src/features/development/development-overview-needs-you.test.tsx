@@ -3,7 +3,7 @@
 // decisions read, three at a time with the rest counted and linked to Approvals, as the Dashboard does.
 
 import { type NeedsYouDecision, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DEV } from "@/test/vi-chrome-overview";
 import { Seeded } from "@/test/vi-chrome-requirements";
@@ -49,6 +49,10 @@ describe("Development's Needs you (REQ-68 BC-3)", () => {
       </Seeded>,
     );
     const section = screen.getByTestId("needs-you");
+    // shut to its name and count on the face (ISS-903), opened in place
+    expect(section).toHaveTextContent("Needs you5");
+    expect(within(section).queryAllByTestId("needs-you-decision")).toHaveLength(0);
+    fireEvent.click(within(section).getByRole("button", { name: /Needs you/ }));
     expect(within(section).getAllByTestId("needs-you-decision")).toHaveLength(3);
     const more = within(section).getByTestId("needs-you-more");
     expect(more).toHaveTextContent("2");

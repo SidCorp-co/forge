@@ -109,7 +109,11 @@ window.__witness = {
     { name: "desktop", width: 1280 },
     { name: "phone", width: 390 },
   ],
-  ready: () => rows().length > 0,
+  // Needs you is a fold shut to its name and count on the overview's face (ISS-903): open it, as a person does
+  ready: () => {
+    section()?.querySelector<HTMLElement>("button[aria-expanded=false]")?.click();
+    return rows().length > 0;
+  },
   stages: (["light", "dark"] as const).map((t) => ({
     name: `needs-you-${t}`,
     run: async () => {

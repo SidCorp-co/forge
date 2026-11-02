@@ -90,7 +90,11 @@ window.__witness = {
     { name: "desktop", width: 1440 },
     { name: "phone", width: 390 },
   ],
-  ready: () => Boolean(document.querySelector("[data-testid=delivery-holds]")),
+  // Held is a fold shut to its name and count on the overview's face (ISS-903): open it, as a person does
+  ready: () => {
+    document.querySelector<HTMLElement>("[data-testid=overview-held] button[aria-expanded=false]")?.click();
+    return Boolean(document.querySelector("[data-testid=delivery-holds]"));
+  },
   stages: (["light", "dark"] as const).flatMap((t) => [
     {
       name: `by-issue-${t}`,

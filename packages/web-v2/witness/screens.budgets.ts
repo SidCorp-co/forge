@@ -45,7 +45,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "schedule-detail": { budget: 80 },
   "fire-detail": { budget: 70 },
   "contract-detail": { budget: 70 },
-  "development-overview": { budget: 100, amnesty: waits(162) },
+  "development-overview": { budget: 100 },
   "project-settings": { budget: 70 },
   integrations: { budget: 80, amnesty: waits(101) },
   runners: { budget: 80 },
