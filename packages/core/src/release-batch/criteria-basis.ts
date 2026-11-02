@@ -72,8 +72,9 @@ export interface LandingCriteriaReport {
   unearned: Array<{ criterion: number; why: string }>;
   /** Every criterion that counts there, and the commit its verdict was judged at: the landing
    *  itself, a later build that holds it, or an earlier one it descends from, `carried` saying how
-   *  (`landed-weighing.ts:weighOnLanded`, ISS-845). */
-  counted: Array<{ criterion: number; at: string; carried?: string }>;
+   *  (`landed-weighing.ts:weighOnLanded`, ISS-845), or `release ${version}` where it was judged on
+   *  a release the project's record counts (`release`, ISS-900). */
+  counted: Array<{ criterion: number; at: string; carried?: string; release?: string }>;
 }
 
 /** Each of `issueIds` (of `projectId`) weighed at its landing commit, in the order given. */
@@ -116,7 +117,14 @@ export async function landingCriteriaReports(
       unearned: criteria.flatMap((c) => (c.counts ? [] : [{ criterion: c.criterion, why: c.why }])),
       counted: criteria.flatMap((c) =>
         c.counts
-          ? [{ criterion: c.criterion, at: c.at, ...(c.carried ? { carried: c.carried } : {}) }]
+          ? [
+              {
+                criterion: c.criterion,
+                at: c.at,
+                ...(c.carried ? { carried: c.carried } : {}),
+                ...(c.release ? { release: c.release } : {}),
+              },
+            ]
           : [],
       ),
     };

@@ -4,6 +4,7 @@
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import { projectGate } from '@forge/contracts/gate-profiles';
+import type { ReleasedLine } from '@forge/contracts/released-line';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -11,6 +12,7 @@ import { recognisableIdentity } from '../messaging/verdict-identity.js';
 import { listCriteria } from './criteria/store.js';
 import { type CriterionVerdict, latestByNumber } from './criteria-verdicts.js';
 import { readJudge, readProjectDocument } from './ports.js';
+import { releasedLineOf } from './released-line-reads.js';
 import { declaresProduction, standingOn, standingsOn } from './standing-on.js';
 import { issueIdentities } from './verdict-standing.js';
 
@@ -25,6 +27,9 @@ export interface IssueStandingCriteria {
   owes: boolean;
   /** The project's testing environment (`delivery.judgedOn`, REQ-36 BC-18), or null where it names none. */
   judgedOn: string | null;
+  /** The project's release record where its production names no commit it serves, which a verdict on
+   *  a release is weighed on (ISS-900, `released-line-reads.ts`); null on any other project. */
+  released: ReleasedLine | null;
   criteria: StandingCriterion[];
 }
 
@@ -48,6 +53,7 @@ export async function standingCriteriaOf(
       owes: boolean;
       judgedOn: string | null;
       production: boolean;
+      released: ReleasedLine | null;
       judge: Awaited<ReturnType<typeof readJudge>>;
     }
   >();
@@ -59,6 +65,7 @@ export async function standingCriteriaOf(
       owes: projectGate(document, null, 'release_criteria').mode !== 'off',
       judgedOn: judgedOnOf(delivery),
       production: declaresProduction(document),
+      released: await releasedLineOf(projectId),
       judge: await readJudge(projectId),
     });
   }
@@ -75,6 +82,7 @@ export async function standingCriteriaOf(
     out.set(row.id, {
       owes: project?.owes ?? true,
       judgedOn: project?.judgedOn ?? null,
+      released: project?.released ?? null,
       criteria: stands.criteria.map((c) => ({ criterion: c.n, verdict: latest.get(c.n) ?? null })),
     });
   }

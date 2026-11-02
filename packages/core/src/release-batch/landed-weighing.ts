@@ -6,6 +6,7 @@
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
+import { type ReleasedLine, readOnRelease } from '@forge/contracts/released-line';
 import { landedCommitOf, landedIdentityWhy, verdictEarns } from '@forge/contracts/verdict-identity';
 import {
   type Carriage,
@@ -19,9 +20,11 @@ import type { Holding } from './landed-build.js';
 const short = (sha: string) => sha.slice(0, 12);
 
 /** One live criterion weighed on a landed build: it counts, or why it does not. `carried` says how
- *  a pass at an earlier commit counts on it (`issues/landed-carriage.ts`); absent, it counts where judged. */
+ *  a pass at an earlier commit counts on it (`issues/landed-carriage.ts`), or a pass on an earlier
+ *  release on the live one; absent, it counts where judged. `release` is the version a pass judged on
+ *  a release names, counted on the project's release record (ISS-900), never at a commit. */
 export type LandedCriterion =
-  | { criterion: number; counts: true; at: string; carried?: string }
+  | { criterion: number; counts: true; at: string; carried?: string; release?: string }
   | { criterion: number; counts: false; why: string };
 
 /**
@@ -89,15 +92,20 @@ export function weighOnLanded(
   holders?: ReadonlyMap<string, Holding>,
   /** Per other commit, what `build` holds of it (`landed-build-holds.ts:earlierCarriageOf`); absent, none was asked. */
   descent?: ReadonlyMap<string, Carriage>,
+  /** The project's release record (`issues/criteria-standing.ts`); absent, it keeps none. */
+  released: ReleasedLine | null = null,
 ): LandedCriterion {
+  // on a project weighed on its release record, a pass on the release it says is live counts too
+  const onLive = released?.live ? `, or one judged on release ${released.live.version}` : '';
   const no = (why: string): LandedCriterion => ({
     criterion,
     counts: false,
-    why: `${why}; it needs a \`pass\` whose identity is commit \`${short(build)}\``,
+    why: `${why}; it needs a \`pass\` whose identity is commit \`${short(build)}\`${onLive}`,
   });
   if (!verdict) return no('no verdict was recorded for it');
   if (verdict.unverified) return no(verdict.unverified);
   if (!verdictEarns(verdict.verdict)) return no(`its verdict is \`${verdict.verdict}\``);
+  if (verdict.at?.kind === 'release') return onRelease(criterion, verdict.at.value, released, no);
   const judged = judgedCommit(verdict, judgedOn);
   if ('why' in judged) return no(judged.why);
   if (judged.sha !== build.toLowerCase()) {
@@ -135,6 +143,26 @@ export function weighOnLanded(
   return { criterion, counts: true, at: judged.sha };
 }
 
+/**
+ * A pass judged on release `version`, weighed on the project's release record by the one rule a
+ * requirement's coverage reads (`@forge/contracts/released-line:readOnRelease`, ISS-900): it counts
+ * while that release, or a later one carrying it, is the one the record says is live. Nothing reads
+ * production, and no commit is compared.
+ */
+function onRelease(
+  criterion: number,
+  version: string,
+  released: ReleasedLine | null,
+  no: (why: string) => LandedCriterion,
+): LandedCriterion {
+  const read = readOnRelease(version, released);
+  if (read.notCounted !== null) return no(read.notCounted);
+  const at = `release ${version}`;
+  return read.countedAs
+    ? { criterion, counts: true, at, release: version, carried: read.countedAs }
+    : { criterion, counts: true, at, release: version };
+}
+
 // Where the project's document owes no verdict, a criterion with none is not weighed, and QA may
 // judge it after the landing; a verdict that is there is kernel input all the same: one whose
 // identity names no commit is refused by name rather than closed over (`landedIdentityWhy`), and so
@@ -144,9 +172,17 @@ export function heldWhereNoneOwed(
   build: string,
   criteria: readonly StandingCriterion[],
   judgedOn: string | null,
+  released: ReleasedLine | null = null,
 ): LandedCriterion[] {
   return criteria.flatMap(({ criterion, verdict }): LandedCriterion[] => {
     if (!verdict?.at) return [];
+    if (verdict.at.kind === 'release') {
+      // a release verdict is read on the record (ISS-900): a fail on what it says is live never passes
+      const live = readOnRelease(verdict.at.value, released).notCounted === null;
+      if (!live || verdictEarns(verdict.verdict)) return [];
+      const why = `its verdict is \`${verdict.verdict}\`, judged on release ${verdict.at.value}, which the record says is live: where no verdict is owed a missing one passes, a recorded fail never does`;
+      return [{ criterion, counts: false, why }];
+    }
     const why =
       verdict.at.kind === 'source'
         ? null

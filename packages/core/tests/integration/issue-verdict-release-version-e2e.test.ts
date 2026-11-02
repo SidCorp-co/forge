@@ -23,12 +23,17 @@
  * @direct-test-of packages/core/src/requirements/standing-proof.ts
  * @direct-test-of packages/core/src/messaging/verdict-identity.ts
  * @direct-test-of packages/core/src/issues/criteria/event-verdicts.ts
+ * @direct-test-of packages/core/src/issues/criteria-standing.ts
+ * @direct-test-of packages/core/src/release-batch/landed-weighing.ts
+ * @direct-test-of packages/core/src/release-batch/criteria-basis.ts
+ * @direct-test-of packages/core/src/release-batch/criteria-weighing.ts
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../helpers/api.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
 import {
+  C1,
   F4,
   judgedAll,
   landedIssue,
@@ -67,14 +72,21 @@ const BCS = [
   'An empty workspace says so',
 ];
 
-/** agenfold's document: production deployed outside Forge, reporting a version and no commit. */
-async function agenfold(probe = false): Promise<void> {
+/**
+ * agenfold's document: production deployed outside Forge, reporting a version and no commit. With
+ * `promoted`, work lands on `release/stg` and a promotion carries it to `release/production`, so the
+ * release weighs an issue's criteria at its landing (`criteria-basis.ts`).
+ */
+async function agenfold(probe = false, promoted = false): Promise<void> {
   await seedProjectDocument(world.projectId, world.ownerId, {
     defaultBranch: 'release/stg',
+    ...(promoted
+      ? { promotions: [{ from: 'release/stg', to: 'release/production', via: 'merge' }] }
+      : {}),
     environments: {
       production: {
         tier: 'production',
-        deploysFrom: 'release/stg',
+        deploysFrom: promoted ? 'release/production' : 'release/stg',
         deployment: { mode: 'external', target: 'agenfold-deploy' },
         ...(probe ? { verification: { runtime: [PROBE] } } : {}),
       },
@@ -292,5 +304,50 @@ describe('a comment fence carries a release, refused by the codes the REST door 
     const res = await fenced(issue, '0.76.0');
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(JSON.stringify(res.body)).toContain('VERDICT_RELEASE_UNUSED');
+  });
+});
+
+// A record on a promotion project is made by the release that promotes it (RELEASE_PROMOTION_MISSING),
+// so the releases are recorded first and the promotion declared after, as a project adopting one does.
+describe('a promotion project weighs a criterion judged on a release on its release record (ISS-900)', () => {
+  it('counts a pass on the live release at the landing, as the release hold weighs it', async () => {
+    await agenfold();
+    const { issue } = await shippedAt076();
+    await agenfold(false, true);
+    for (const n of [1, 2]) {
+      const res = await judge(issue, n, { kind: 'release', version: '0.76.0' });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+    }
+    const body = await ok(api(world.token, 'GET', `/api/issues/${issue}/criteria`));
+    const rows = body.criteria as Array<{ n: number; weighing: Record<string, unknown> }>;
+    for (const n of [1, 2]) {
+      const w = rows.find((r) => r.n === n)?.weighing;
+      expect(w, `criterion ${n}`).toMatchObject({
+        earned: true,
+        standing: 'stands',
+        weighedOn: { basis: 'landing', landsOn: 'release/stg', deploysFrom: 'release/production' },
+      });
+      expect(w?.reason).toContain('release 0.76.0');
+    }
+    // the one left unjudged is asked for at the landing, or on the release the record says is live
+    const third = rows.find((r) => r.n === 3)?.weighing;
+    expect(third?.earned).toBe(false);
+    expect(third?.reason).toContain('or one judged on release 0.76.0');
+    expect(reads.n).toBe(0);
+  });
+
+  it('does not count a pass on a release the live one does not carry, naming the release to judge on', async () => {
+    await agenfold();
+    const { issue } = await shippedAt076();
+    const res = await judge(issue, 1, { kind: 'release', version: '0.76.0' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    // a later record at a lower version is what is live, and nothing says it carries 0.76.0
+    const other = await landedIssue(2, C1);
+    await recordRelease([other], '0.75.9');
+    await agenfold(false, true);
+    const w = (await weighed(issue)).get(1);
+    expect(w?.earned).toBe(false);
+    expect(w?.reason).toContain('judge it again on release 0.75.9');
+    expect(reads.n).toBe(0);
   });
 });

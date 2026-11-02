@@ -35,7 +35,14 @@ async function atLanding(
     });
   }
   const landing = report.landing ?? '';
-  for (const { criterion, at, carried } of report.counted) {
+  for (const { criterion, at, carried, release } of report.counted) {
+    if (release) {
+      // judged on a release, read on the project's release record (ISS-900), never at a commit
+      const reason = `${carried ?? `judged on live release ${release}`}, read on this project's release record, which counts there`;
+      const standing = carried ? 'carried' : 'stands';
+      criteria.set(criterion, { earned: true, standing, reason, weighedOn });
+      continue;
+    }
     const own = at === landing.toLowerCase();
     const reason = own
       ? `judged at the landing commit \`${short(at)}\` on \`${landsOn}\`, which counts there`

@@ -373,13 +373,14 @@ export async function landedStandings(
         s.judgedOn,
         holders.get(key),
         descent.get(key),
+        s.released,
       ),
     );
     return [
       {
         issueId,
         owes: s.owes,
-        criteria: s.owes ? weighed : heldWhereNoneOwed(build, s.criteria, s.judgedOn),
+        criteria: s.owes ? weighed : heldWhereNoneOwed(build, s.criteria, s.judgedOn, s.released),
         live: s.criteria.length,
         passing: weighed.filter((c) => c.counts).length,
       },
