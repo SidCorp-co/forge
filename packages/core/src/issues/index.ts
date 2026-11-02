@@ -20,6 +20,7 @@ export {
   blockedByUnsettledSql,
   heldTakeRefusal,
   holdingBlockerSeqsSql,
+  newestHoldingBlockerAt,
   refuseBlockedTake,
   refuseHeldTakeForSeqs,
 } from './blocked-by.js';
@@ -255,6 +256,7 @@ export {
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
 } from './session-claim.js';
+export { LIVE_BLOCKER_ACT_KEYS } from './standing-held.js';
 export { issueWaitsOf, listIssueStanding } from './standing-read.js';
 export {
   heldReleaseWait,

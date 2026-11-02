@@ -144,6 +144,24 @@ export async function blockingEdgesIn(
   }));
 }
 
+/**
+ * When the newest live `blocks` edge onto this issue whose blocker still holds it was drawn, or null
+ * where no blocker holds it: a blocker drawn after a decision on the issue is a question that
+ * decision never answered (ISS-804).
+ */
+export async function newestHoldingBlockerAt(
+  projectId: string,
+  issueId: string,
+): Promise<Date | null> {
+  const rows = (await db.execute(sql`
+    SELECT max(d.created_at) AS at
+    ${liveBlockingEdges(
+      sql`d.project_id = ${projectId} AND d.to_issue_id = ${issueId} AND ${blockerUnsettledSql(sql`b`)}`,
+    )}`)) as unknown as Array<{ at: string | Date | null }>;
+  const at = rows[0]?.at;
+  return at ? new Date(at) : null;
+}
+
 interface UnsettledBlocker {
   issueId: string;
   issueKey: string;

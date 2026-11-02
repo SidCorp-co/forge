@@ -4,22 +4,28 @@
 // While that standing is unchanged it is asked once: a reasoned decision recorded on the item during
 // it answers it, whether recorded before the first ask or after (FB-198); an ask of the master that
 // still stands, or the holders of the act it waits on told (ISS-654), holds it. A moved standing (a
-// new wait, the wait gone stuck, a run reading the item on another basis) asks again.
+// new wait, the wait gone stuck, a run reading the item on another basis) asks again, but a decision
+// naming its own date answers until then while the standing puts the same question: a dependent's
+// blocker moving inside its run is no new question, a blocker drawn after the decision is (ISS-804).
 // The item is an issue, a feedback item or a requirement, its decision read where its own door
 // writes one (ISS-654). An ask about another item than its run's own (a stuck issue asking about its
 // blocker) is answered on either, and a decision recorded since the ask leaves the master's nudge at
 // once, not at the next sweep (ISS-739). A wait a person owes is never the master's, so its ask settles.
 
 import type { ItemStanding, StandingSubjectKind, StewardCite } from '@forge/contracts/steward';
-import { and, desc, eq, gte, inArray, isNotNull, isNull, like, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { type ItemDecision, reasonedDecisionsOnItems } from '../comments/index.js';
 import { db, type Tx } from '../db/client.js';
 import { stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
-import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { type ReasonedDecision, reasonedDecisionsOn } from '../issues/index.js';
+import {
+  newestHoldingBlockerAt,
+  type ReasonedDecision,
+  reasonedDecisionsOn,
+} from '../issues/index.js';
 import { heldStewardOf } from './account.js';
 import { waitsOnPerson } from './ask-addressee.js';
 import { decisionSubjectOf } from './decision-subject-of.js';
+import { questionOfBasis } from './standing-question.js';
 
 /** The act door a wake of the master is logged under. */
 export const WAKE_DOOR = 'WAKE master.wake steward';
@@ -128,44 +134,50 @@ async function decisionsOn(
   }));
 }
 
-const runAt = sql<Date | null>`coalesce(${stewardRuns.startedAt}, ${stewardRuns.queuedAt})`;
+const runAt = sql<Date | string | null>`coalesce(${stewardRuns.startedAt}, ${stewardRuns.queuedAt})`;
+
+/** One reading of a basis: the basis itself, or the question it puts (`standing-question.ts`). */
+type BasisReading = (basis: string) => string;
+const asRead: BasisReading = (basis) => basis;
 
 /**
- * When the item's standing began to read as it does now: when its wait began, or went stuck, where a
- * run read it on another basis no later than that; else the first run that read it as now after the
- * last that read it otherwise (the change fell between them, and nothing earlier counts). Null where
- * no run has read it as now since: nothing recorded yet is on it.
+ * When the item's standing began to read as it does now, `read` deciding which bases read alike: when
+ * its wait began, or went stuck, where a run read it otherwise no later than that; else the first run
+ * that read it as now after the last that read it otherwise (the change fell between them, and
+ * nothing earlier counts). Null where no run has read it as now since: nothing recorded yet is on it.
  */
-async function standingBeganAt(standing: AskedStanding): Promise<Date | null> {
+async function standingBeganAt(
+  standing: AskedStanding,
+  read: BasisReading = asRead,
+): Promise<Date | null> {
   const floor = new Date(
     Math.max(Date.parse(standing.since), Date.parse(standing.stuck?.since ?? standing.since)),
   );
-  const ofItem = and(eq(stewardRuns.subjectId, standing.subject.id), isNotNull(stewardRuns.basis));
-  const [other] = await db
-    .select({ at: sql<string | null>`max(${runAt})` })
+  const runs = await db
+    .select({ basis: stewardRuns.basis, at: runAt })
     .from(stewardRuns)
-    .where(and(ofItem, ne(stewardRuns.basis, standing.basis)));
-  if (!other?.at || new Date(other.at) < floor) return floor;
-  const [first] = await db
-    .select({ at: sql<string | null>`min(${runAt})` })
-    .from(stewardRuns)
-    .where(
-      and(
-        ofItem,
-        eq(stewardRuns.basis, standing.basis),
-        sql`${runAt} > ${sqlTimestamp(new Date(other.at))}`,
-      ),
-    );
-  return first?.at ? new Date(first.at) : null;
+    .where(and(eq(stewardRuns.subjectId, standing.subject.id), isNotNull(stewardRuns.basis)));
+  const now = read(standing.basis);
+  const times = (alike: boolean) =>
+    runs
+      .filter((r) => r.at !== null && (read(r.basis as string) === now) === alike)
+      .map((r) => new Date(r.at as Date | string).getTime());
+  const other = Math.max(-Infinity, ...times(false));
+  if (other === -Infinity || other < floor.getTime()) return floor;
+  const first = Math.min(Infinity, ...times(true).filter((t) => t > other));
+  return first === Infinity ? null : new Date(first);
 }
 
 /** Whether a moment falls on the standing as it reads now (`standingBeganAt`). */
 const onStanding = (at: Date, began: Date | null) => began !== null && at >= began;
 
 /**
- * The newest reasoned decision recorded on the item while its standing reads as now, by the item's
- * own door and anyone but the steward, that still holds: it answers an ask on that standing, made
- * before it or after (ISS-607 c2).
+ * The newest reasoned decision on the item, by the item's own door and anyone but the steward, that
+ * still holds and answers an ask on its standing now, made before it or after (ISS-607 c2): one
+ * recorded while the standing reads as now; or one naming its own date, recorded while the standing
+ * put the question it puts now (`standing-question.ts`), so a dependent's blocker moving inside its
+ * run voids no dated decision on it (ISS-804). On an issue, a blocker drawn onto it after the
+ * decision is a question the decision never answered, dated or not.
  */
 export async function answerOf(
   projectId: string,
@@ -174,13 +186,25 @@ export async function answerOf(
   began?: Date | null,
 ): Promise<AskAnswer | null> {
   const steward = await heldStewardOf(projectId);
-  const decisions = await decisionsOn(
-    standing.subject.kind,
-    [standing.subject.id],
-    steward ? [steward] : [],
-  );
+  const decisions = (
+    await decisionsOn(standing.subject.kind, [standing.subject.id], steward ? [steward] : [])
+  ).filter((d) => holds(d, now));
+  if (decisions.length === 0) return null;
   const from = began === undefined ? await standingBeganAt(standing) : began;
-  return decisions.find((d) => holds(d, now) && onStanding(d.at, from)) ?? null;
+  const asked = decisions.some((d) => d.until !== null)
+    ? await standingBeganAt(standing, questionOfBasis)
+    : from;
+  const blockerAt =
+    standing.subject.kind === 'issue'
+      ? await newestHoldingBlockerAt(projectId, standing.subject.id)
+      : null;
+  return (
+    decisions.find(
+      (d) =>
+        (blockerAt === null || d.at >= blockerAt) &&
+        (onStanding(d.at, from) || (d.until !== null && onStanding(d.at, asked))),
+    ) ?? null
+  );
 }
 
 /**
@@ -215,6 +239,12 @@ async function asksOnStanding(projectId: string, standing: AskedStanding, began:
   );
 }
 
+/** What the turn is told to hold off until: the decision's own date, else its standing moving. */
+const askNothingUntil = (answer: AskAnswer) =>
+  answer.until
+    ? `Ask nothing before ${answer.until.toISOString()} unless its question changes; write the note.`
+    : 'Ask nothing until its standing moves; write the note.';
+
 /**
  * Why an ask about the item on its standing now is not made again, said to the turn, or null where
  * it may be: a decision recorded on that standing answered it, or one on the standing of `asker`, the
@@ -231,12 +261,12 @@ export async function askedAlready(
   const began = await standingBeganAt(standing);
   const answer = await answerOf(projectId, standing, now, began);
   if (answer) {
-    return `${key} has a decision recorded on this standing, so a decision answered it (${answer.at.toISOString()}: ${answer.decision ?? answer.why}). Ask nothing until its standing moves; write the note.`;
+    return `${key} has a decision recorded on this standing, so a decision answered it (${answer.at.toISOString()}: ${answer.decision ?? answer.why}). ${askNothingUntil(answer)}`;
   }
   const own = asker && asker.subject.id !== standing.subject.id ? asker : null;
   const ownAnswer = own ? await answerOf(projectId, own, now) : null;
   if (own && ownAnswer) {
-    return `${own.subject.key}, whose run asks about ${key}, has a decision recorded on its standing, so a decision answered it (${ownAnswer.at.toISOString()}: ${ownAnswer.decision ?? ownAnswer.why}). Ask nothing until its standing moves; write the note.`;
+    return `${own.subject.key}, whose run asks about ${key}, has a decision recorded on its standing, so a decision answered it (${ownAnswer.at.toISOString()}: ${ownAnswer.decision ?? ownAnswer.why}). ${askNothingUntil(ownAnswer)}`;
   }
   for (const ask of await asksOnStanding(projectId, standing, began)) {
     if (toldHolders(ask.door)) {

@@ -18,13 +18,31 @@ const named = (name: string) => say('standing.who.named', { name });
 
 export const awaitsJudge = (e: StandingEdge) => landedWait(e.status, e) !== null;
 
+const RUNNING = say('issues.standing.act.running');
+const NEEDS_PERSON = say('issues.standing.act.needsPerson');
+const PAUSED = say('issues.standing.act.paused');
+const CAME_BACK = say('issues.standing.act.cameBack');
+const NOT_STARTED = say('issues.standing.act.notStarted');
+const LANDED_WAITS_JUDGE = say('issues.standing.act.landedWaitsJudge');
+
+/** What a dependent waits on its live blocker to do, by the blocker's own status. */
 export function blockerAct(status: IssueStatus): Said {
-  if (status === 'in_progress') return say('issues.standing.act.running');
-  if (status === 'needs_info' || status === 'draft') return say('issues.standing.act.needsPerson');
-  if (status === 'on_hold') return say('issues.standing.act.paused');
-  if (status === 'reopen') return say('issues.standing.act.cameBack');
-  return say('issues.standing.act.notStarted');
+  if (status === 'in_progress') return RUNNING;
+  if (status === 'needs_info' || status === 'draft') return NEEDS_PERSON;
+  if (status === 'on_hold') return PAUSED;
+  if (status === 'reopen') return CAME_BACK;
+  return NOT_STARTED;
 }
+
+/**
+ * Every act a dependent's wait names while its blocker is still live, whichever step that blocker is
+ * on (`blockerAct`, and its landed change awaiting a judge): moving among them is the blocker moving
+ * inside its own run, never the blocker settling. A design hold on a settled blocker is not among
+ * them, nor is the blocker's settling, which ends the wait on it (ISS-804).
+ */
+export const LIVE_BLOCKER_ACT_KEYS: ReadonlySet<string> = new Set(
+  [RUNNING, NEEDS_PERSON, PAUSED, CAME_BACK, NOT_STARTED, LANDED_WAITS_JUDGE].map((s) => s.key),
+);
 
 export function blockerTurn(blocker: StandingEdge): Turn {
   const design = SETTLED.includes(blocker.status) ? blocker.designHold : null;
@@ -37,7 +55,7 @@ export function blockerTurn(blocker: StandingEdge): Turn {
       design
         ? say('issues.standing.act.designApproval')
         : judged
-          ? say('issues.standing.act.landedWaitsJudge')
+          ? LANDED_WAITS_JUDGE
           : blockerAct(blocker.status),
       design
         ? say('issues.rule.blockedDesign', { key: blocker.key, design })
