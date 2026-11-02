@@ -339,6 +339,7 @@ describe('personal data is removed before a model reads feedback on a sensitive 
         `/api/projects/${p.redact}/feedback/${String(made.key)}/attachments`,
         unmarked,
       ),
+      201,
     ).feedback as Doc;
     const [a] = attached.attachments as Doc[];
     const res = await say(
@@ -379,6 +380,7 @@ describe('personal data is removed before a model reads feedback on a sensitive 
           ...shot(true),
         },
       ),
+      201,
     ).feedback as Doc;
     const redacted = (marked.attachments as Doc[]).find((a) => a.redacted === true);
     expect((await bytesOf('agent', String(redacted?.id))).status).toBe(200);
