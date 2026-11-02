@@ -58,15 +58,10 @@ describe('onboardingItemRefusals', () => {
     ).toEqual([]);
   });
 
-  it('refuses a fourth question or clarification once, naming the cap and the items', () => {
-    const r = onboardingItemRefusals([
-      item('q1'),
-      item('q2'),
-      item('q3', { group: 'clarification' }),
-      item('q4'),
-    ]);
-    expect(r.map((x) => x.code)).toEqual(['ONBOARDING_QUESTIONS_OVER_CAP']);
-    expect(r[0]?.detail).toContain('at most 3 questions; this one asks 4 (q1, q2, q3, q4)');
+  // REQ-10 r7 BC-6 (ISS-904): a round asks the questions it needs; no count refuses a fourth
+  it('takes a fourth question and more, each still carrying its recommended answer', () => {
+    const asked = ['q1', 'q2', 'q4', 'q5', 'q6'].map((id) => item(id));
+    expect(codes([...asked, item('q3', { group: 'clarification' })])).toEqual([]);
   });
 
   it('refuses a recommendation item: it lands as a suggestion on its own', () => {

@@ -1,5 +1,5 @@
-// The onboarding questionnaire card after REQ-10 r4, witnessed at desktop and phone width: a round
-// asks at most three questions, each with its Recommended answer marked, and lists what the code
+// The onboarding questionnaire card after REQ-10 r7, witnessed at desktop and phone width: a round
+// asks the questions it needs, each with its Recommended answer marked, and lists what the code
 // suggested as Assumptions, read-only with their evidence until the person presses Change, which
 // opens the choice marked Assumed. A fifteen-item batch posted before r4 — inferred answers and
 // accept / reject recommendations among its items — still reads. Red when the page scrolls sideways,
@@ -60,7 +60,6 @@ const batch = (id: string, title: string, round: number, items: QuestionnaireIte
   title,
   intro: null,
   round,
-  maxRounds: 3,
   status: "open",
   items,
   answered: items.filter((i) => i.state === "answered").length,

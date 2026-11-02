@@ -7,5 +7,5 @@ export {
   questionnairesAs,
   roundsInConversation,
 } from './read.js';
-export { posterRefusal, roundsRefusal } from './rules.js';
+export { posterRefusal } from './rules.js';
 export { announce, inTx, postQuestionnaireIn, supersedeOpenIn } from './service.js';

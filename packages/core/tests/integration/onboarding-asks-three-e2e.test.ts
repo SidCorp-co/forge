@@ -1,9 +1,10 @@
 /**
- * REQ-10 r4: onboarding drafts first, asks at most three questions and never waits. The catalog and
+ * REQ-10 r7: onboarding drafts first, asks the questions it needs and never waits. The catalog and
  * epod onboardings each put fifteen items to the person — the agent's own inferred answers and its
  * accept / reject recommendations among them — and sat unanswered from 2026-10-06 to 2026-10-21,
  * never finishing. Here the real routes hold the rule: what the code suggests is an assumption
- * recorded as answered, a round asks at most three recommended questions, a recommendation is a
+ * recorded as answered, a round asks the recommended questions it needs (no count since r7,
+ * ISS-904), a recommendation is a
  * suggestion on its own, and onboarding is done on its assumptions with a question still open.
  */
 
@@ -139,16 +140,22 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('BC-6: a round asks only what the code cannot answer, at most three questions', () => {
-  it('refuses a fourth question by name, and writes no batch', async () => {
+describe('BC-6: a round asks only what the code cannot answer, the questions it needs', () => {
+  it('refuses no round for its count: four questions meet only the fault they carry', async () => {
     const r = await say(
       'master',
       'POST',
       at('/onboarding/questionnaires'),
-      round([question('q1'), question('q2'), question('q3'), question('q4'), assumption('a1')]),
+      round([
+        question('q1'),
+        question('q2'),
+        question('q3'),
+        question('q4', { inferredDefault: undefined }),
+        assumption('a1'),
+      ]),
     );
-    expect(refused(r)).toEqual(['ONBOARDING_QUESTIONS_OVER_CAP']);
-    expect(JSON.stringify(r.json)).toContain('at most 3 questions');
+    expect(refused(r)).toEqual(['ONBOARDING_QUESTION_UNRECOMMENDED']);
+    expect(JSON.stringify(r.json)).not.toContain('ONBOARDING_QUESTIONS_OVER_CAP');
     expect(await batches()).toBe(0);
   });
 
@@ -280,27 +287,23 @@ describe('BC-7 and BC-8: one send, partial allowed, a changed assumption revised
     expect((await onboarding()).status).toBe('done');
   });
 
-  it('asks again only what stayed open, still at most three, on a done onboarding', async () => {
-    expect(
-      refused(
-        await say(
-          'master',
-          'POST',
-          at('/onboarding/questionnaires'),
-          round([question('q2'), question('q5'), question('q6'), question('q7')]),
-        ),
-      ),
-    ).toEqual(['ONBOARDING_QUESTIONS_OVER_CAP']);
+  it('asks again only what stayed open, and the new questions it needs, on a done onboarding', async () => {
     expect(
       refused(
         await say('master', 'POST', at('/onboarding/questionnaires'), round([question('q1')])),
       ),
     ).toEqual(['QUESTIONNAIRE_ITEM_ANSWERED_BEFORE']);
     const second = ok(
-      await say('master', 'POST', at('/onboarding/questionnaires'), round([question('q2')])),
+      await say(
+        'master',
+        'POST',
+        at('/onboarding/questionnaires'),
+        round([question('q2'), question('q5'), question('q6'), question('q7')]),
+      ),
       201,
     ).questionnaire as Doc;
-    expect(second).toMatchObject({ round: 2, open: 1 });
+    expect(second).toMatchObject({ round: 2, open: 4 });
+    expect(second).not.toHaveProperty('maxRounds');
   });
 
   it('lands the changed assumption as a proposed revision that nothing makes current', async () => {

@@ -32,7 +32,7 @@
     "onboarding.q.openMark": "Open",
     "onboarding.q.reject": "Reject",
     "onboarding.q.rejected": "Rejected",
-    "onboarding.q.round": "Round {round} of {max}",
+    "onboarding.q.round": "Round {round}",
     "onboarding.q.send": "Send answers",
     "onboarding.q.shapes": "Shapes",
     "onboarding.q.skip": "Skip for now",

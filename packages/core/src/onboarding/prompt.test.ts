@@ -37,16 +37,18 @@ describe('the onboarding prompt', () => {
     expect(prompt).not.toContain(BEFORE_LAST_ACT);
   });
 
-  // REQ-10 r4: the job says what the kernel holds — assumptions, at most three recommended
-  // questions, recommendations as suggestions, and done without waiting for answers
+  // REQ-10 r7: the job says what the kernel holds — assumptions, the recommended questions it
+  // needs, recommendations as suggestions, and done without waiting for answers
   it.each([
     ['analyse', analysePrompt(ctx)],
     ['revise', revisePrompt({ ...ctx, batchId: 'b1' })],
-  ])('%s: asks at most three questions, records assumptions and never waits', (_, prompt) => {
+  ])('%s: asks the questions it needs, records assumptions and never waits', (_, prompt) => {
     expect(prompt).toContain(
       'group assumption, control choice, inferredDefault the option the code suggests',
     );
-    expect(prompt).toContain('at most 3 items of group question or clarification in a round');
+    expect(prompt).toContain('the questions you need, each a choice');
+    expect(prompt).not.toMatch(/at most \d+ (items of group question|questions|rounds)/);
+    expect(prompt).not.toContain('ONBOARDING_QUESTIONS_OVER_CAP');
     expect(prompt).toContain('ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION');
     expect(prompt).toContain('P/onboarding/done -X POST');
     expect(prompt).not.toMatch(/a recommendation is always accept_reject/);

@@ -174,7 +174,7 @@ export function Questionnaire({ projectId, batch, designTitle = (r) => r }: { pr
     <form aria-label={batch.title} data-testid="questionnaire-card" onSubmit={(e) => e.preventDefault()} className="mt-1.5 border-l-3 border-ai-9 bg-surface">
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 py-2 pr-3 pl-3">
         <span className="text-13 font-bold text-fg">{batch.title}</span>
-        <span className="text-12 text-subtle">{t("onboarding.q.round", { round: batch.round, max: batch.maxRounds })}</span>
+        <span className="text-12 text-subtle">{t("onboarding.q.round", { round: batch.round })}</span>
       </div>
       {/* on a redact or no_egress project the answers reach the agent (scrubbed): the owner's
           2026-10-04 ruling holds them to product information, and the form says so where they are typed */}

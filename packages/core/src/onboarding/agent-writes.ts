@@ -24,7 +24,6 @@ import {
   inTx,
   posterRefusal,
   postQuestionnaireIn,
-  roundsRefusal,
 } from '../questionnaires/index.js';
 import { recordItemLandings } from '../questions/index.js';
 import {
@@ -75,8 +74,6 @@ export async function postOnboardingQuestionnaire(input: {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
     if (!row) return [notStarted()];
-    const blocked = roundsRefusal(row.roundsSent);
-    if (blocked) return [blocked];
     conversationId = row.conversationId;
     const posted = await postQuestionnaireIn(tx, {
       projectId,

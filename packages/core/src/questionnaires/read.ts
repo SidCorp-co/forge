@@ -4,13 +4,12 @@
  */
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
-import {
-  QUESTIONNAIRE_MAX_ROUNDS,
-  type QuestionnaireAnswer,
-  type QuestionnaireItem,
-  type QuestionnaireItemState,
-  type QuestionnaireItemView,
-  type QuestionnaireView,
+import type {
+  QuestionnaireAnswer,
+  QuestionnaireItem,
+  QuestionnaireItemState,
+  QuestionnaireItemView,
+  QuestionnaireView,
 } from '@forge/contracts/onboarding';
 import { and, asc, eq, gte, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -87,7 +86,6 @@ function batchViewOf(
     title: batch.title,
     intro: batch.intro,
     round: batch.round,
-    maxRounds: QUESTIONNAIRE_MAX_ROUNDS,
     status: batch.status,
     items,
     answered: items.filter((i) => i.state === 'answered').length,

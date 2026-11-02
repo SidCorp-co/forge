@@ -39,7 +39,6 @@ const batch: QuestionnaireView = {
   title: "What the code cannot answer",
   intro: null,
   round: 1,
-  maxRounds: 3,
   status: "open",
   items: [
     item("sessions", {}),

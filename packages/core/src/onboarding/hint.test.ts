@@ -31,7 +31,6 @@ const view = (over: Partial<OnboardingView> = {}): OnboardingView => ({
   conversationId: 'c1',
   status: 'in_progress',
   roundsSent: 1,
-  maxRounds: 3,
   startedBy: 'u1',
   startedAt: T0.toISOString(),
   reanalyzedAt: null,

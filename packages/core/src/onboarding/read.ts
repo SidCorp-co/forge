@@ -13,7 +13,6 @@ import {
   type OnboardingThreadRequest,
   type OnboardingView,
   type OpenQuestionnaireBatch,
-  QUESTIONNAIRE_MAX_ROUNDS,
   type QuestionnaireItem,
 } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '@forge/contracts/permissions';
@@ -355,7 +354,7 @@ export async function onboardingView(
   const j = job[0];
   const designs: OnboardingDesignView[] = drafted.map((d) => ({
     ...d,
-    ...linkItems(d, series, row.roundsSent >= QUESTIONNAIRE_MAX_ROUNDS || row.doneAt !== null),
+    ...linkItems(d, series, row.doneAt !== null),
   }));
   const waitingOn =
     j && LIVE.has(j.status) && j.pipelineRunId
@@ -367,7 +366,6 @@ export async function onboardingView(
     conversationId: row.conversationId,
     status: onboardingStatusOf(row, (open?.open ?? 0) > 0, j?.status ?? null),
     roundsSent: row.roundsSent,
-    maxRounds: QUESTIONNAIRE_MAX_ROUNDS,
     startedBy: row.startedBy,
     startedAt: row.startedAt.toISOString(),
     reanalyzedAt: row.reanalyzedAt?.toISOString() ?? null,

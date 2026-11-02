@@ -5,11 +5,7 @@
  * (~/forge-local-docs/onboarding-trial-autoflow.md, onboarding-trial-hop.md).
  */
 
-import {
-  ONBOARDING_MAX_QUESTIONS,
-  QUESTIONNAIRE_MAX_ITEMS,
-  QUESTIONNAIRE_MAX_ROUNDS,
-} from '@forge/contracts/onboarding';
+import { QUESTIONNAIRE_MAX_ITEMS } from '@forge/contracts/onboarding';
 
 export interface OnboardingPromptContext {
   projectId: string;
@@ -71,9 +67,9 @@ function threadRequests(request: string | null | undefined) {
 function questionnaireRules(roundsSent: number) {
   return `The questionnaire (P/onboarding/questionnaires -X POST { title, intro?, items }) — onboarding never waits on the person:
 - Draw first, then ask. What the code or the records suggest is an ASSUMPTION, not a question: group assumption, control choice, inferredDefault the option the code suggests, evidence the file:symbol or record it rests on. Draw the designs on it; it is recorded as answered, shown read-only with its evidence, and the person may change it.
-- Ask only what neither the code nor the records can answer: at most ${ONBOARDING_MAX_QUESTIONS} items of group question or clarification in a round (a fourth is refused ONBOARDING_QUESTIONS_OVER_CAP), each a choice (or multi) whose inferredDefault is the answer you recommend (one without is refused ONBOARDING_QUESTION_UNRECOMMENDED), so one press answers it. Zero questions is a good round.
+- Ask only what neither the code nor the records can answer, the questions you need, each a choice (or multi) whose inferredDefault is the answer you recommend (one without is refused ONBOARDING_QUESTION_UNRECOMMENDED), so one press answers it. Zero questions is a good round.
 - A recommendation is never a questionnaire item (refused ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION): post it on its own as a suggestion (P/suggestions -X POST), which a holder of the approve permission decides. A rejected suggestion is not suggested again.
-- One batch, at most ${QUESTIONNAIRE_MAX_ITEMS} items, assumptions included. This is round ${roundsSent + 1} of at most ${QUESTIONNAIRE_MAX_ROUNDS}.
+- A batch holds up to ${QUESTIONNAIRE_MAX_ITEMS} items, assumptions included; what does not fit goes in the next round. This is round ${roundsSent + 1}.
 - Each item: id (stable, e.g. q-central-entity), group, control, prompt (in the language the project's people write in), options with ids, inferredDefault, why (one or two sentences), evidence (file:symbol, or a record citation), affects (the workflow ids it shapes).`;
 }
 
@@ -95,7 +91,7 @@ export function analysePrompt(ctx: OnboardingPromptContext): string {
 3. Draft the key designs as the plan, drawn from the code, with no evidence, and propose each: system context, the core business journey, the central entity state machine — always; an integration sequence when the code calls an outside system (webhook, API client, queue); a data flow ${ctx.sensitiveData ? "— MANDATORY: this project holds sensitive data (its data policy is on), so draw the product's own trust boundaries and where the product redacts; marking done is refused ONBOARDING_DATA_FLOW_MISSING without it" : "when the code holds personal or health data (mandatory then, with the product's own trust boundaries and where the product redacts)"}. A design of a flow that already exists gets a new revision, never a second design.
 4. P/onboarding/updates -X POST { text, designs: { heading: "Designs drafted", workflowIds } }: a short summary of what you read (stack, modules, routes, models, integrations with counts) — this registers the designs with the onboarding.
 5. Each recommendation: P/suggestions -X POST, on its own.
-6. P/onboarding/questionnaires -X POST: the assumptions the designs rest on, and at most ${ONBOARDING_MAX_QUESTIONS} questions (below).
+6. P/onboarding/questionnaires -X POST: the assumptions the designs rest on, and the questions the code cannot answer (below).
 7. P/onboarding/done -X POST: onboarding is done on its assumptions once every design is proposed (a draft is refused ONBOARDING_DESIGNS_UNPROPOSED). Do not wait for answers: a new job reads them whenever the person sends them, and an unanswered question keeps only its own item open.`,
     FINDINGS,
     CODE_MAP,
@@ -113,7 +109,7 @@ export function revisePrompt(ctx: OnboardingPromptContext & { batchId: string })
 2. For each design the answered questions and clarifications affect, and each assumption the person changed (an assumption whose answeredBy is a person, not you), write ONE new revision carrying every answer that shaped it, and propose it — never current. An assumption still as you posted it is already in the designs. An accepted recommendation of an earlier batch becomes a suggestion (P/suggestions -X POST); a rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED). Leave an unanswered question open: never apply its recommended answer.
 3. P/onboarding/updates -X POST { text, designs: { heading: "Updated designs", workflowIds }, cites: [{ itemId, workflowId, revision } | { itemId, suggestionId }] } naming what changed; cites records on each item the revision or suggestion it landed in (an open item is refused ONBOARDING_CITE_UNANSWERED, two revisions of one design ONBOARDING_CITE_REVISION_TWICE).
 4. Then exactly one of:
-   - questions stayed open (or the answers raised new ones) and fewer than ${QUESTIONNAIRE_MAX_ROUNDS} rounds were sent: post a questionnaire with ONLY the open questions (same ids) and the new ones (isNew: true), still at most ${ONBOARDING_MAX_QUESTIONS};
+   - questions stayed open that the designs still need answered (or the answers raised new ones): post a questionnaire with ONLY those (same ids) and the new ones (isNew: true);
    - otherwise: post an update { text, designs: { heading: "Designs ready for your approval", workflowIds: every onboarding design, approve: true } }. What stays open is listed on its design as an open question by Forge, from the items' own records: do not restate it.
 5. Mark done (P/onboarding/done -X POST): your last act. An onboarding already done stays done; the mark ends your phase.`,
     FINDINGS,

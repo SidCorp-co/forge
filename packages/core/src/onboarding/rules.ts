@@ -5,11 +5,10 @@
  */
 
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
-import {
-  ONBOARDING_MAX_QUESTIONS,
-  type OnboardingRefusal,
-  type OnboardingStatus,
-  type QuestionnaireItem,
+import type {
+  OnboardingRefusal,
+  OnboardingStatus,
+  QuestionnaireItem,
 } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
@@ -111,20 +110,12 @@ export function dataFlowRefusal(
   };
 }
 
-// an onboarding round asks the person only what the code cannot answer (REQ-10 BC-6): at most
-// ONBOARDING_MAX_QUESTIONS questions and clarifications (ONBOARDING_QUESTIONS_OVER_CAP), each a
-// choice carrying its recommended answer (ONBOARDING_QUESTION_UNRECOMMENDED); what the code
+// an onboarding round asks the person only what the code cannot answer, the questions it needs
+// (REQ-10 r7 BC-6), each a choice carrying its recommended answer (ONBOARDING_QUESTION_UNRECOMMENDED); what the code
 // suggests is an assumption, and a recommendation lands as a suggestion on its own, never as an item
 // the round waits on (ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION)
 export function onboardingItemRefusals(items: readonly QuestionnaireItem[]): OnboardingRefusal[] {
   const out: OnboardingRefusal[] = [];
-  const asked = items.filter((i) => i.group === 'question' || i.group === 'clarification');
-  if (asked.length > ONBOARDING_MAX_QUESTIONS)
-    out.push({
-      code: 'ONBOARDING_QUESTIONS_OVER_CAP',
-      path: '/items',
-      detail: `an onboarding round asks at most ${ONBOARDING_MAX_QUESTIONS} questions; this one asks ${asked.length} (${asked.map((i) => i.id).join(', ')}). Post what the code suggests as an assumption (group assumption, inferredDefault the suggested option) and ask only what it cannot answer.`,
-    });
   items.forEach((item, i) => {
     if (item.group === 'recommendation')
       out.push({

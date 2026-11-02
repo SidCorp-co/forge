@@ -6,12 +6,11 @@
  */
 
 import { withArticle } from '@forge/contracts/articles';
-import {
-  type OnboardingRefusal,
-  QUESTIONNAIRE_MAX_ROUNDS,
-  type QuestionnaireAnswer,
-  type QuestionnaireItem,
-  type QuestionnaireStatus,
+import type {
+  OnboardingRefusal,
+  QuestionnaireAnswer,
+  QuestionnaireItem,
+  QuestionnaireStatus,
 } from '@forge/contracts/onboarding';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
@@ -109,17 +108,6 @@ export function repeatRefusals(
     }
   });
   return out;
-}
-
-// at most QUESTIONNAIRE_MAX_ROUNDS batches per series (QUESTIONNAIRE_ROUNDS_EXHAUSTED); after
-// the third, open items stay listed on their designs as open questions
-export function roundsRefusal(roundsSent: number): QuestionnaireRefusal | null {
-  if (roundsSent < QUESTIONNAIRE_MAX_ROUNDS) return null;
-  return {
-    code: 'QUESTIONNAIRE_ROUNDS_EXHAUSTED',
-    path: '',
-    detail: `${roundsSent} of ${QUESTIONNAIRE_MAX_ROUNDS} rounds were sent; no fourth batch is asked. List what stays open on the designs as open questions instead.`,
-  };
 }
 
 // one open batch per thread (QUESTIONNAIRE_ALREADY_OPEN): a skipped batch still waits on its person

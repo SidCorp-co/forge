@@ -96,12 +96,8 @@ const QUESTIONNAIRE_CONTROLS = [
 /** An item's own state, read from its agent_questions row. */
 export const QUESTIONNAIRE_ITEM_STATES = ["open", "answered", "void"] as const;
 export type QuestionnaireItemState = (typeof QUESTIONNAIRE_ITEM_STATES)[number];
-/** At most this many rounds per onboarding (reset by a re-analysis) or per requirement room. */
-export const QUESTIONNAIRE_MAX_ROUNDS = 3;
 /** At most this many items in one batch, assumptions included; the trials landed at 15. */
 export const QUESTIONNAIRE_MAX_ITEMS = 15;
-/** At most this many questions and clarifications put to the person in one onboarding round (REQ-10 BC-6). */
-export const ONBOARDING_MAX_QUESTIONS = 3;
 /** A batch left open this many days raises the dashboard hint to attention. */
 export const QUESTIONNAIRE_DUE_DAYS = 7;
 
@@ -116,7 +112,6 @@ const ONBOARDING_REFUSAL_CODES = [
 	"ONBOARDING_CITE_REVISION_UNKNOWN",
 	"ONBOARDING_CITE_REVISION_TWICE",
 	"ONBOARDING_CITE_SUGGESTION_UNKNOWN",
-	"ONBOARDING_QUESTIONS_OVER_CAP",
 	"ONBOARDING_QUESTION_UNRECOMMENDED",
 	"ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION",
 	"ONBOARDING_DESIGNS_UNPROPOSED",
@@ -127,14 +122,12 @@ export const QUESTIONNAIRE_REFUSAL_CODES = [
 	"QUESTIONNAIRE_SUPERSEDED",
 	"QUESTIONNAIRE_ALREADY_ANSWERED",
 	"QUESTIONNAIRE_ALREADY_OPEN",
-	"QUESTIONNAIRE_ROUNDS_EXHAUSTED",
 	"QUESTIONNAIRE_ITEM_INVALID",
 	"QUESTIONNAIRE_ITEM_ANSWERED_BEFORE",
 	"QUESTIONNAIRE_RECOMMENDATION_REJECTED",
 	"QUESTIONNAIRE_ITEM_UNKNOWN",
 	"QUESTIONNAIRE_ANSWER_INVALID",
 	"QUESTIONNAIRE_NOTHING_ANSWERED",
-	"CLARIFICATION_ALREADY_OPEN",
 	"QUESTIONNAIRE_THREAD_INVALID",
 	"QUESTIONNAIRE_REFUSED",
 ] as const;
@@ -295,7 +288,6 @@ export interface QuestionnaireView {
 	title: string;
 	intro: string | null;
 	round: number;
-	maxRounds: number;
 	status: QuestionnaireStatus;
 	items: QuestionnaireItemView[];
 	answered: number;
@@ -376,7 +368,6 @@ export interface OnboardingView {
 	conversationId: string;
 	status: OnboardingStatus;
 	roundsSent: number;
-	maxRounds: number;
 	startedBy: string;
 	startedAt: string;
 	reanalyzedAt: string | null;

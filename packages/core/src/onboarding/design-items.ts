@@ -56,7 +56,7 @@ const citedRevisionOf = (it: SeriesItem, workflowId: string): number | null => {
 
 // an item links to a design when its `affects` names the design (by id or flow) or an
 // update cited it from one of the design's revisions; once the onboarding is settled — done on its
-// assumptions, or every round sent — the linked items still open are the design's open questions,
+// assumptions — the linked items still open are the design's open questions,
 // read from the item rows and never written anywhere
 export function linkItems(
   design: Pick<DesignKey, 'workflowId' | 'flow'>,
