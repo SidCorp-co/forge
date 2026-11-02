@@ -11,6 +11,7 @@ import { readIssueForecast } from '../forecast/index.js';
 import { findIssueById, issueDisplayIds, resolveIssueRouteRef } from '../issues/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { need, readingArgument } from '../lib/tool-args.js';
+import { onArg, onResolved } from '../permissions/index.js';
 import {
   ANSWER_SHAPE,
   answerBody,
@@ -202,6 +203,19 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
       get: 'questions:read',
       answer: 'questions:write',
       ask: 'issues:write',
+    },
+  },
+  // the REST twins declare the same: POST /api/questions/:id/answer project.write on the question's
+  // project (an admin option asks project.admin, a rule of the chosen option), POST
+  // /api/issues/:id/comments project.write. list and get stay on the amnesty: a project the caller
+  // has no role in, and a question it cannot see, are not found, which a declaration would refuse
+  permission: {
+    byAction: {
+      answer: onResolved(
+        'project.write',
+        'the project of the question `questionId` names; an admin option asks project.admin, a rule of the chosen option',
+      ),
+      ask: onArg('project.write'),
     },
   },
   handler: async (args) => {

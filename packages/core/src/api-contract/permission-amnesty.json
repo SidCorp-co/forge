@@ -267,8 +267,6 @@
     "forge_feedback.verify",
     "forge_projects.create",
     "forge_projects.get",
-    "forge_questions.answer",
-    "forge_questions.ask",
     "forge_questions.get",
     "forge_questions.list",
     "forge_releases.decide",
