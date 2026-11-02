@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.450] - 2026-11-02
+
+Screens show only what you act on; detail opens on click
+
+### Changed
+
+- **Six more screens now show only what you act on.** Master, the status report, the ecosystem map, feedback and releases lead with a name, a status and one next action; detail opens on demand.
+
 ## [0.4.0-dev.449] - 2026-11-02
 
 A wrong shipped-in release can be corrected, and both releases show the move
