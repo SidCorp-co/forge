@@ -138,8 +138,9 @@ describe('a /mcp write from a token without the write scope', () => {
     expect((await call(tool('forge_questions', { action: 'ask' }))).status).toBe(403);
   });
 
-  it('lets forge_issues create through to its refusal: it writes nothing', async () => {
-    expect((await call(tool('forge_issues', { action: 'create' }))).status).toBe(200);
+  // since ISS-861 an MCP client files an issue by forge_issues create, a write like any other
+  it('holds forge_issues create, which files an issue', async () => {
+    expect((await call(tool('forge_issues', { action: 'create' }))).status).toBe(403);
   });
 
   it('lets a token holding write do the same write', async () => {
