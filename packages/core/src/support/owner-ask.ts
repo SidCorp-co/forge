@@ -12,14 +12,15 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { resolveSpeaker } from '../assistant/index.js';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { granters, grantsOf, readersOf, supportConfigOf } from './grants.js';
+import { projectsInScope } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
+import { issueInReach, questionRefusal } from './owner-ask-targets.js';
 import { dayThreadFor } from './question-task.js';
 import { threadLink } from './record.js';
 import { isQuestionThread } from './rules.js';
@@ -39,37 +40,6 @@ interface AskInput {
   questionId?: string | null;
   /** The parked question's thread it was handed in (ISS-873), where it was asked in the day's thread. */
   handedIn?: string;
-}
-
-/** Why a Forge question cannot take the owner's answer through this channel, or null. */
-async function questionRefusal(projectId: string, questionId: string): Promise<string | null> {
-  const [q] = await db
-    .select({
-      projectId: agentQuestions.projectId,
-      status: agentQuestions.status,
-      batchId: agentQuestions.batchId,
-    })
-    .from(agentQuestions)
-    .where(eq(agentQuestions.id, questionId))
-    .limit(1);
-  if (!q || q.projectId !== projectId) return `${questionId} names no question of this project`;
-  if (q.status !== 'open')
-    return `question ${questionId} is ${q.status}, and only an open one takes an answer`;
-  if (q.batchId)
-    return `question ${questionId} is an item of a questionnaire, answered with its batch`;
-  return null;
-}
-
-/** The issue of the project a key such as `ISS-12` names, or null. */
-async function issueOfKey(projectId: string, key: string): Promise<{ id: string } | null> {
-  const seq = Number(key.replace(/^\D+/, ''));
-  if (!Number.isSafeInteger(seq)) return null;
-  const [row] = await db
-    .select({ id: issues.id })
-    .from(issues)
-    .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, seq)))
-    .limit(1);
-  return row ?? null;
 }
 
 /** The username the owner writes under, as Forge saw it on one of their messages in this project. */
@@ -198,16 +168,21 @@ export async function askOwner(
     forgeQuestion: where.value.forgeQuestion ?? request.forgeQuestion,
   };
   const conversationId = await knownThread(room, input.thread);
-  const issue = input.record ? await issueOfKey(room.projectId, input.record) : null;
+  // the issue and the question may be any project's the agent follows (ISS-874)
+  const reach = await projectsInScope(room);
+  const issue = input.record ? await issueInReach(reach, input.record) : null;
   if (input.record && !issue) {
     return no(
       'SUPPORT_OWNER_RECORD_UNKNOWN',
       '/record',
-      `${input.record} names no issue of this project, so the answer would be written nowhere; nothing was asked`,
+      `${input.record} names no issue of the projects this agent follows (${reach.map((p) => p.slug).join(', ')}), so the answer would be written nowhere; nothing was asked`,
     );
   }
   const notAnswerable = input.forgeQuestion
-    ? await questionRefusal(room.projectId, input.forgeQuestion)
+    ? await questionRefusal(
+        reach.map((p) => p.id),
+        input.forgeQuestion,
+      )
     : null;
   if (notAnswerable) {
     return no(

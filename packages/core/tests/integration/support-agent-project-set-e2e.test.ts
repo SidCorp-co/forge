@@ -274,6 +274,49 @@ describe('ISS-874: a channel agent follows the projects its binding names', () =
   });
 });
 
+describe("ISS-874: a question for the owner names any followed project's issue", () => {
+  it("asks the owner about a followed project's issue, and refuses one no followed project holds", async () => {
+    const set = await writeAgent(
+      w.owner,
+      agentBlock({
+        ownerRoom: chat.rid2,
+        grants: { abilities: ['read_checkout', 'file_items'], owner: chat.alice.userId },
+      }),
+    );
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    const outs: Record<string, unknown>[] = [];
+    await onNextAsk(
+      () => chat.sayIn(chat.rid2, chat.bob, `@supportbot ask the owner about the fe issue ${tag}`),
+      async (turn, act) => {
+        const thread = turn.messages.find((m) => m.from !== 'forge')?.thread;
+        outs.push(
+          await act({
+            action: 'ask_owner',
+            thread,
+            question: 'Ship the fix today?',
+            record: 'ISS-99',
+          }),
+        );
+        outs.push(
+          await act({
+            action: 'ask_owner',
+            thread,
+            question: 'Ship the fix today?',
+            record: 'ISS-3',
+          }),
+        );
+      },
+    );
+    expect(refusalCodes(outs[0]), JSON.stringify(outs[0])).toEqual([
+      'SUPPORT_OWNER_RECORD_UNKNOWN',
+    ]);
+    expect(JSON.stringify(outs[0])).toContain(`${API}, ${FE}`);
+    expect(refusalCodes(outs[1]), JSON.stringify(outs[1])).toEqual([]);
+    const restored = await writeAgent(w.owner, agentBlock());
+    expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+  });
+});
+
 describe('ISS-874: one agent hears each group as that group is set', () => {
   it("hears every message of the users' group and only mentions in the team's group", async () => {
     await w.settleWarm();
