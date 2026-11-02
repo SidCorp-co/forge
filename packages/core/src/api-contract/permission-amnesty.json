@@ -362,7 +362,6 @@
     "POST /api/questions/:id/void",
     "POST /api/recordings/:id/stop",
     "POST /api/skills",
-    "POST /api/skills/bulk-push",
     "POST /api/webhooks/github/app",
     "POST /api/webhooks/in/:slug",
     "POST /api/widget/:siteKey/sessions",

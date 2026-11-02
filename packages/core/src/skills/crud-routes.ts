@@ -5,7 +5,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requireHeld, requiresOnResolved } from '../permissions/index.js';
 import { MANAGED_META_SKILLS } from './effective.js';
 import { listSkills, skillById, skillScopeById } from './read.js';
 import { refuse } from './refuse.js';
@@ -194,27 +194,31 @@ skillCrudRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => 
   return c.body(null, 204);
 });
 
-skillCrudRoutes.post('/bulk-push', zValidator('json', bulkPushSchema), async (c) => {
-  const { projectId, deviceId, skillNames } = c.req.valid('json');
-  const userId = c.get('userId');
+skillCrudRoutes.post(
+  '/bulk-push',
+  zValidator('json', bulkPushSchema),
+  requiresOnResolved('project.admin', 'the project the body names as projectId'),
+  async (c) => {
+    const { projectId, deviceId, skillNames } = c.req.valid('json');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.admin');
+    requireDeclared(await loadProjectAccess(projectId, userId));
 
-  // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
-  // each pulls its effective manifest and reports installed hashes back.
-  // No pipeline_run / job is created — skill sync is not pipeline work.
-  const { deviceIds } = await requestSkillSync({
-    projectId,
-    actorUserId: userId,
-    skillNames: skillNames ?? null,
-    deviceId,
-  });
+    // Explicit push: signal device-bound runners (or one `deviceId`) over WS;
+    // each pulls its effective manifest and reports installed hashes back.
+    // No pipeline_run / job is created — skill sync is not pipeline work.
+    const { deviceIds } = await requestSkillSync({
+      projectId,
+      actorUserId: userId,
+      skillNames: skillNames ?? null,
+      deviceId,
+    });
 
-  const results = deviceIds.map((id) => ({
-    target: id,
-    status: 'signalled' as const,
-    deviceId: id,
-  }));
-  return c.json({ results, deviceCount: deviceIds.length });
-});
+    const results = deviceIds.map((id) => ({
+      target: id,
+      status: 'signalled' as const,
+      deviceId: id,
+    }));
+    return c.json({ results, deviceCount: deviceIds.length });
+  },
+);

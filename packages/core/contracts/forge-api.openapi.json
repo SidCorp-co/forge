@@ -57883,6 +57883,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the body names as projectId"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "json"
         ]
