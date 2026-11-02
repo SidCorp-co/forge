@@ -31,7 +31,7 @@ import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { isRefusal, type Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { readRecording } from '../previews/index.js';
 import { feedbackTriageRecord } from './checklist-record.js';
 import { keepTriageAsCorrection } from './correction.js';
@@ -468,7 +468,7 @@ export async function approvedActOn(
   body: (tx: Tx, row: Row) => Promise<TriageWritten>,
 ): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const forbidden = decideActRefusal(await roleFacts(actor, projectId), act);
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);

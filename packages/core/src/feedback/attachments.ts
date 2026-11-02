@@ -22,7 +22,7 @@ import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/att
 import { dataPolicyOf, egressBytesAs } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import type { Refusal } from '../lib/refusal.js';
-import { actorFor, permissionRefusal, projectResource, requireCan } from '../permissions/index.js';
+import { permissionRefusal, requireDeclaredOn } from '../permissions/index.js';
 import { insertAskedQuestion } from '../questions/index.js';
 import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, rowIn } from './read.js';
@@ -43,7 +43,7 @@ export async function askClarification(input: {
   recommended: string;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const first = await rowIn(db, projectId, input.ref);
   const phase = await phaseOfRow(projectId, first);
   const refusals = await inTx(async (tx) => {
@@ -214,7 +214,7 @@ export async function addAttachment(input: {
   label?: FeedbackAttachmentLabel | undefined;
 }): Promise<AttachOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const row = await rowIn(db, projectId, input.ref);
   const forbidden = permissionRefusal(
     await roleFacts(actor, projectId),
@@ -286,7 +286,7 @@ export async function attachmentBytes(input: {
   userId: string;
   agency: ActorAgency;
 }) {
-  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
+  await requireDeclaredOn(input.projectId, input.userId, 'project.read');
   const row = await rowIn(db, input.projectId, input.ref);
   // the item's own, or evidence of a duplicate merged into it, which the item shows
   const merged = db

@@ -20,7 +20,7 @@ import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { writtenLangFor } from '../lib/written-lang.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
 import { messageNotice, tellReporters } from './reporter-notices.js';
 import { type Reporter, reportersOf, withBell } from './reporters.js';
@@ -79,7 +79,7 @@ export async function previewMessage(input: {
   text: string;
 }): Promise<{ ok: true; preview: FeedbackMessagePreview } | { ok: false; refusals: Refusal[] }> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'messaging reporters');
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const row = await rowIn(db, projectId, input.ref);
@@ -106,7 +106,7 @@ export async function sendMessage(input: {
     undefined,
     input.text,
   );
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const facts = await roleFacts(actor, projectId);
   const forbidden =
     audience === 'internal'

@@ -25,7 +25,7 @@ import {
 import { background } from '../lib/background.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
 import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, rowIn } from './read.js';
@@ -131,7 +131,7 @@ export async function similarFeedbackAs(
   door: ReadDoor = {},
   limit = 5,
 ): Promise<SimilarFeedbackResponse> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const { withhold, shown } = feedbackEgress(await dataPolicyOf(projectId), viewer.agency, door);
   const row = await rowIn(db, projectId, ref);
   const own = await itemEmbeddingOf({ feedbackId: row.id });
@@ -172,7 +172,7 @@ export async function similarToDraftAs(
   door: ReadDoor = {},
   limit = 5,
 ): Promise<SimilarFeedbackResponse> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const { withhold, shown } = feedbackEgress(await dataPolicyOf(projectId), viewer.agency, door);
   const text = [draft.title, draft.body ?? ''].filter((t) => t.trim()).join('\n');
   const own = await embedText(projectId, 'feedback', text, 'the feedback draft');

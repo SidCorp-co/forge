@@ -5,7 +5,7 @@ import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-f
 import { getStorage } from '../integrations/index.js';
 import { deleteFeedbackEmbedding } from '../knowledge/index.js';
 import { logger } from '../lib/logger.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { redactRecordingsOf } from '../previews/index.js';
 import { deleteFeedbackQuestions } from '../questions/index.js';
 import { feedbackDependents } from './dependents.js';
@@ -58,7 +58,7 @@ export async function redactReporterData(input: {
   actor: FeedbackActor;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const forbidden = redactActRefusal(await roleFacts(actor, projectId));
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);

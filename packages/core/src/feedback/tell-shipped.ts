@@ -13,7 +13,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js';
 import type { Refusal } from '../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { phaseOfRow } from './list-read.js';
 import { shipEvidenceOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
@@ -103,7 +103,7 @@ export async function tellShippedNow(input: {
   actor: FeedbackActor;
 }): Promise<{ ok: true; feedback: FeedbackView } | { ok: false; refusals: Refusal[] }> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
     'telling reporters their feedback shipped',

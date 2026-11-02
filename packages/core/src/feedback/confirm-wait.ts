@@ -14,7 +14,7 @@ import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { type ConfirmWaitRequest, confirmWaitRefusal } from './confirm-wait-facts.js';
 import { withdrawnSql } from './confirm-wait-read.js';
 import { phaseOfRow } from './list-read.js';
@@ -87,7 +87,7 @@ export async function confirmWaitFeedback(input: {
   wait: ConfirmWaitRequest;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const first = await rowIn(db, projectId, input.ref);
   const refusals = await setConfirmWait({
     projectId,

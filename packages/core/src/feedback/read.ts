@@ -23,13 +23,7 @@ import { findIssueById, isUuid } from '../issues/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import {
-  actorFor,
-  holds,
-  masterFactsOf,
-  projectResource,
-  requireCan,
-} from '../permissions/index.js';
+import { holds, masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { confirmWaitsOf } from './confirm-wait-read.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
@@ -234,7 +228,7 @@ export async function detailAs(
   ref: string,
   door: ReadDoor = {},
 ): Promise<FeedbackView> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const row = await rowIn(db, projectId, ref);
   const [
     level,

@@ -6,7 +6,7 @@
 import type { FeedbackEndpointView } from '@forge/contracts/feedback';
 import { db, type Tx } from '../db/client.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { servedFrom } from './endpoint-rules.js';
 
 /** What `projectId` serves now: its own contracts' current versions, never another project's. */
@@ -22,6 +22,6 @@ export async function servedEndpointsAs(
   viewer: { userId: string },
   projectId: string,
 ): Promise<FeedbackEndpointView[]> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   return servedEndpointsOf(projectId);
 }

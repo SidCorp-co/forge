@@ -17,7 +17,7 @@ import { db } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
 import { linkedOf, summaryOf, viewerCanIn } from './list-read.js';
 import type { FeedbackActor } from './read.js';
@@ -66,7 +66,7 @@ export async function listFeedbackAs(
   query: ListQuery = {},
   door: ReadDoor = {},
 ): Promise<ListAnswer> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   return listFeedbackIn(viewer, projectId, query, door);
 }
 

@@ -27,7 +27,7 @@ import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { writtenLangFor } from '../lib/written-lang.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { actorFor, masterFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
 import { keepDeclineAsCorrection } from './correction.js';
 import { embedFeedbackLater } from './embeddings.js';
@@ -269,7 +269,7 @@ export async function createFeedback(input: {
   dedupKey?: string | undefined;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor, request } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const prepared = await preparedFeedback(projectId, actor, request);
   if (!prepared.ok) return prepared;
   let id = '';
@@ -334,7 +334,7 @@ async function personalAct(
   act: 'verified' | 'reopened',
 ): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const first = await rowIn(db, projectId, input.ref);
   const forbidden = personalActRefusal(
     await roleFacts(actor, projectId),
@@ -406,7 +406,7 @@ export async function askReporterToVerify(input: {
   actor: FeedbackActor;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
     'asking the reporter to verify',

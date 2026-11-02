@@ -105,6 +105,7 @@ function answer(c: Context, outcome: FeedbackOutcome) {
 feedbackRoutes.get(
   '/:id/feedback',
   projectParam,
+  requiresOnParam('project.read', 'id'),
   zValidator(
     'query',
     listFeedbackQuerySchema,
@@ -126,6 +127,7 @@ feedbackRoutes.get(
 feedbackRoutes.post(
   '/:id/feedback',
   projectParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(createFeedbackRequestSchema, CREATE_FEEDBACK_SHAPE),
   holdChatWrite('feedback'),
   async (c) =>
@@ -144,6 +146,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/report',
   projectParam,
+  requiresOnParam('project.read', 'id'),
   strictBody(feedbackReportRequestSchema, FEEDBACK_REPORT_SHAPE),
   holdChatWrite('feedback'),
   async (c) => {
@@ -162,29 +165,48 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/similar',
   projectParam,
+  requiresOnParam('project.read', 'id'),
   strictBody(similarFeedbackDraftSchema, SIMILAR_FEEDBACK_DRAFT_SHAPE),
   async (c) =>
     c.json(await similarToDraftAs(actorOf(c), c.req.valid('param').id, c.req.valid('json'))),
 );
 
 // before `/:fb`, which would read `endpoints` as an item key
-feedbackRoutes.get('/:id/feedback/endpoints', projectParam, noQuery, async (c) => {
-  const body: FeedbackEndpointsResponse = {
-    endpoints: await servedEndpointsAs(actorOf(c), c.req.valid('param').id),
-  };
-  return c.json(body);
-});
+feedbackRoutes.get(
+  '/:id/feedback/endpoints',
+  projectParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const body: FeedbackEndpointsResponse = {
+      endpoints: await servedEndpointsAs(actorOf(c), c.req.valid('param').id),
+    };
+    return c.json(body);
+  },
+);
 
-feedbackRoutes.get('/:id/feedback/:fb', itemParam, noQuery, async (c) => {
-  const { id, fb } = c.req.valid('param');
-  const body: FeedbackResponse = { feedback: await detailAs(actorOf(c), id, fb) };
-  return c.json(body);
-});
+feedbackRoutes.get(
+  '/:id/feedback/:fb',
+  itemParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    const body: FeedbackResponse = { feedback: await detailAs(actorOf(c), id, fb) };
+    return c.json(body);
+  },
+);
 
-feedbackRoutes.get('/:id/feedback/:fb/similar', itemParam, noQuery, async (c) => {
-  const { id, fb } = c.req.valid('param');
-  return c.json(await similarFeedbackAs(actorOf(c), id, fb));
-});
+feedbackRoutes.get(
+  '/:id/feedback/:fb/similar',
+  itemParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    return c.json(await similarFeedbackAs(actorOf(c), id, fb));
+  },
+);
 
 feedbackRoutes.post(
   '/:id/feedback/:fb/triage',
@@ -228,6 +250,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/messages/preview',
   itemParam,
+  requiresOnParam('project.read', 'id'),
   strictBody(feedbackMessageRequestSchema, FEEDBACK_MESSAGE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -276,6 +299,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/messages',
   itemParam,
+  requiresOnParam('project.read', 'id'),
   strictBody(feedbackMessageRequestSchema, FEEDBACK_MESSAGE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -334,6 +358,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/verify-ask',
   itemParam,
+  requiresOnParam('project.read', 'id'),
   strictBody(feedbackEmptyRequestSchema, FEEDBACK_EMPTY_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -344,6 +369,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/tell-shipped',
   itemParam,
+  requiresOnParam('project.read', 'id'),
   strictBody(feedbackEmptyRequestSchema, FEEDBACK_EMPTY_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -393,6 +419,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/clarification',
   itemParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(feedbackClarificationRequestSchema, FEEDBACK_CLARIFICATION_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -436,32 +463,43 @@ feedbackRoutes.post(
   },
 );
 
-feedbackRoutes.get('/:id/feedback/:fb/attachments/:aid', attachmentParam, noQuery, async (c) => {
-  const { id, fb, aid } = c.req.valid('param');
-  const actor = actorOf(c);
-  const file = await attachmentBytes({
-    projectId: id,
-    ref: fb,
-    attachmentId: aid,
-    userId: actor.userId,
-    agency: actor.agency,
-  });
-  if (!file) {
-    throw new HTTPException(404, {
-      message: `feedback ${fb} holds no attachment ${aid}`,
-      cause: { code: 'NOT_FOUND' },
+feedbackRoutes.get(
+  '/:id/feedback/:fb/attachments/:aid',
+  attachmentParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id, fb, aid } = c.req.valid('param');
+    const actor = actorOf(c);
+    const file = await attachmentBytes({
+      projectId: id,
+      ref: fb,
+      attachmentId: aid,
+      userId: actor.userId,
+      agency: actor.agency,
     });
-  }
-  if (!file.ok) return refused(c, [file.refusal], 'FEEDBACK_REFUSED');
-  setInertAttachmentHeaders(c, file.mime, file.name);
-  c.header('Cache-Control', 'private, no-store');
-  return sendBytes(c, file.bytes);
-});
+    if (!file) {
+      throw new HTTPException(404, {
+        message: `feedback ${fb} holds no attachment ${aid}`,
+        cause: { code: 'NOT_FOUND' },
+      });
+    }
+    if (!file.ok) return refused(c, [file.refusal], 'FEEDBACK_REFUSED');
+    setInertAttachmentHeaders(c, file.mime, file.name);
+    c.header('Cache-Control', 'private, no-store');
+    return sendBytes(c, file.bytes);
+  },
+);
 
-feedbackRoutes.delete('/:id/feedback/:fb/reporter-data', itemParam, async (c) => {
-  const { id, fb } = c.req.valid('param');
-  return answer(c, await redactReporterData({ projectId: id, ref: fb, actor: actorOf(c) }));
-});
+feedbackRoutes.delete(
+  '/:id/feedback/:fb/reporter-data',
+  itemParam,
+  requiresOnParam('project.read', 'id'),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    return answer(c, await redactReporterData({ projectId: id, ref: fb, actor: actorOf(c) }));
+  },
+);
 
 // the triage checklist door (REQ-34 BC-3) is served through this face like every other feedback route
 export { feedbackChecklistRoutes } from './checklist-routes.js';

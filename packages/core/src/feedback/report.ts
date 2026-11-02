@@ -25,7 +25,7 @@ import { callFastModelObject } from '../integrations/llm/index.js';
 import { embedText, nearestItems } from '../knowledge/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import {
   type CheckedAttachment,
   checkedAttachment,
@@ -239,7 +239,7 @@ export async function fileFeedbackReport(input: {
 }): Promise<ReportOutcome> {
   const { projectId, actor, request } = input;
   // anyone who can read the page reports on it, as themselves (REQ-66 BC-1)
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const checked = request.screenshot ? checkedAttachment(request.screenshot, '/screenshot') : null;
   if (checked && !checked.ok) return { ok: false, refusals: [checked.refusal] };
   const place = await placeOf(projectId, request);
