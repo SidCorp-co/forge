@@ -10,7 +10,13 @@ import { mailInvitation, refuseUnmailable } from '../lib/invitation-mail.js';
 import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import {
+  actorFor,
+  orgResource,
+  requireOrgCan,
+  requireOrgHeld,
+  requiresOnParam,
+} from '../permissions/index.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
 import {
@@ -101,13 +107,11 @@ orgRoutes.post('/', zValidator('json', createOrgSchema), async (c) => {
 orgRoutes.patch(
   '/:orgId',
   zValidator('param', orgParamSchema),
+  requiresOnParam('org.own', 'orgId'),
   zValidator('json', patchOrgSchema),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const patch = c.req.valid('json');
-    const userId = c.get('userId');
-
-    await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
 
     const updated = await updateOrg(orgId, patch);
     if (!updated) throw notFound('organization not found');
@@ -117,42 +121,53 @@ orgRoutes.patch(
 
 // Delete a TEAM org: owner-only, refused while any project still lives in it
 // (move or delete projects first) and always refused for personal orgs.
-orgRoutes.delete('/:orgId', zValidator('param', orgParamSchema), async (c) => {
-  const { orgId } = c.req.valid('param');
-  const userId = c.get('userId');
+orgRoutes.delete(
+  '/:orgId',
+  zValidator('param', orgParamSchema),
+  requiresOnParam('org.own', 'orgId'),
+  async (c) => {
+    const { orgId } = c.req.valid('param');
+    if (await isPersonalOrg(orgId)) {
+      throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
+    }
+    if ((await orgProjectCount(orgId)) > 0) {
+      throw refuse(
+        'ORG_NOT_EMPTY',
+        'the org still has projects; delete or move its projects first',
+      );
+    }
 
-  await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
-  if (await isPersonalOrg(orgId)) {
-    throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
-  }
-  if ((await orgProjectCount(orgId)) > 0) {
-    throw refuse('ORG_NOT_EMPTY', 'the org still has projects; delete or move its projects first');
-  }
-
-  await deleteOrg(orgId);
-  return c.body(null, 204);
-});
+    await deleteOrg(orgId);
+    return c.body(null, 204);
+  },
+);
 
 // In-org transparency: any org member can SEE which projects the org holds
 // (name+slug only) — access to a project's content still requires an
 // effective role on it.
-orgRoutes.get('/:orgId/projects', zValidator('param', orgParamSchema), noQuery, async (c) => {
-  const { orgId } = c.req.valid('param');
-  const userId = c.get('userId');
+orgRoutes.get(
+  '/:orgId/projects',
+  zValidator('param', orgParamSchema),
+  requiresOnParam('org.read', 'orgId'),
+  noQuery,
+  async (c) => {
+    const { orgId } = c.req.valid('param');
 
-  await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+    return c.json(await listOrgProjects(orgId));
+  },
+);
 
-  return c.json(await listOrgProjects(orgId));
-});
+orgRoutes.get(
+  '/:orgId/members',
+  zValidator('param', orgParamSchema),
+  requiresOnParam('org.read', 'orgId'),
+  noQuery,
+  async (c) => {
+    const { orgId } = c.req.valid('param');
 
-orgRoutes.get('/:orgId/members', zValidator('param', orgParamSchema), noQuery, async (c) => {
-  const { orgId } = c.req.valid('param');
-  const userId = c.get('userId');
-
-  await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
-
-  return c.json(await listOrgMembers(orgId));
-});
+    return c.json(await listOrgMembers(orgId));
+  },
+);
 
 // Direct-add an EXISTING user by email (v1 — no email-token flow at the org
 // tier; project invitations keep theirs). Granting `owner` requires owner.
@@ -216,20 +231,25 @@ orgRoutes.post(
   },
 );
 
-orgRoutes.get('/:orgId/invitations', zValidator('param', orgParamSchema), noQuery, async (c) => {
-  const { orgId } = c.req.valid('param');
-  const userId = c.get('userId');
-  await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
+orgRoutes.get(
+  '/:orgId/invitations',
+  zValidator('param', orgParamSchema),
+  requiresOnParam('org.admin', 'orgId'),
+  noQuery,
+  async (c) => {
+    const { orgId } = c.req.valid('param');
 
-  const rows = await listPendingOrgInvitations(orgId);
+    const rows = await listPendingOrgInvitations(orgId);
 
-  const now = Date.now();
-  return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
-});
+    const now = Date.now();
+    return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
+  },
+);
 
 orgRoutes.delete(
   '/:orgId/invitations',
   zValidator('param', orgParamSchema),
+  requiresOnParam('org.admin', 'orgId'),
   zValidator(
     'query',
     z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) }),
@@ -237,8 +257,6 @@ orgRoutes.delete(
   async (c) => {
     const { orgId } = c.req.valid('param');
     const { email } = c.req.valid('query');
-    const userId = c.get('userId');
-    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
 
     if (!(await revokeOrgInvitation(orgId, email))) {
       throw notFound('pending invitation not found', 'INVITATION_NOT_FOUND');

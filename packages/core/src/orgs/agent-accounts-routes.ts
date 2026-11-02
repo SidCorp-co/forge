@@ -13,7 +13,7 @@ import { projectMemberRoles } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import {
   createAgentAccount,
   listAgentAccounts,
@@ -45,13 +45,15 @@ const createAgentSchema = z
     projectRole: z.enum(projectMemberRoles).optional(),
   })
   .strict();
+const ORG_ADMIN = requiresOnParam('org.admin', 'orgId');
+
 agentAccountRoutes.get(
   '/:orgId/agents',
   zValidator('param', orgParamSchema),
+  ORG_ADMIN,
   noQuery,
   async (c) => {
     const { orgId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     return c.json({ agents: await listAgentAccounts(orgId) });
   },
 );
@@ -59,11 +61,11 @@ agentAccountRoutes.get(
 agentAccountRoutes.post(
   '/:orgId/agents',
   zValidator('param', orgParamSchema),
+  ORG_ADMIN,
   zValidator('json', createAgentSchema),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const body = c.req.valid('json');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     assertMayMintFullCredential(c);
 
     const { agent, plaintext } = await createAgentAccount({
@@ -80,9 +82,9 @@ agentAccountRoutes.post(
 agentAccountRoutes.post(
   '/:orgId/agents/:agentUserId/tokens',
   zValidator('param', agentParamSchema),
+  ORG_ADMIN,
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     assertMayMintFullCredential(c);
     const minted = await mintAgentCredential(orgId, agentUserId, mintEpochFor(c));
     if (!minted) throw notFound('agent not found');
@@ -93,9 +95,9 @@ agentAccountRoutes.post(
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId/tokens',
   zValidator('param', agentParamSchema),
+  ORG_ADMIN,
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const revoked = await revokeAgentCredentials(orgId, agentUserId);
     if (revoked === null) throw notFound('agent not found');
     return c.json({ revoked });
@@ -105,10 +107,10 @@ agentAccountRoutes.delete(
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId',
   zValidator('param', agentParamSchema),
+  ORG_ADMIN,
   zValidator('json', displayNameSchema),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const displayName = await setAgentDisplayName(
       orgId,
       agentUserId,
@@ -126,10 +128,10 @@ agentAccountRoutes.patch(
 agentAccountRoutes.get(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema),
+  ORG_ADMIN,
   noQuery,
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const self = await readAgentSelf(orgId, agentUserId);
     if (!self) throw notFound('agent not found');
     return c.json(self);
@@ -139,11 +141,11 @@ agentAccountRoutes.get(
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema),
+  ORG_ADMIN,
   zValidator('json', agentSelfPatchSchema),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     const actor = c.get('userId');
-    await requireOrgCan(actorFor(actor), 'org.admin', orgResource(orgId));
     const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
     if (!self) throw notFound('agent not found');
     return c.json(self);

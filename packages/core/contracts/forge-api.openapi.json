@@ -20421,6 +20421,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.own"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -20473,6 +20479,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.own"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -20508,6 +20520,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -20580,6 +20598,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -20653,6 +20677,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -20698,6 +20728,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -20809,6 +20845,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -20854,6 +20896,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -20896,6 +20944,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -20974,6 +21028,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -21008,6 +21068,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -21259,6 +21325,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -21476,6 +21548,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "orgId"
+          },
+          "permission": "org.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
