@@ -16,6 +16,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import type { PreviewActor } from './access.js';
 import { settleRoom } from './room-settle.js';
 import {
@@ -39,6 +40,9 @@ const roomParam = z.strictObject({ id: z.uuid() });
 const itemParam = z.strictObject({ id: z.uuid(), itemId: z.uuid() });
 const PATH = invalid('invalid path: /api/rooms/<room id>');
 const envelope = (room: unknown) => roomEnvelopeSchema.parse({ room });
+// each act loads the room first and checks the declared permission on its project
+// (rooms.ts:roomAccess), so a stranger is still told ROOM_NOT_FOUND and a reader ROOM_FORBIDDEN
+const ON_ROOM = 'the project of the POC room the path names';
 
 /** A project's rooms, under `/api/projects`. */
 export const projectRoomRoutes = new Hono<{ Variables: AuthVars }>();
@@ -78,12 +82,19 @@ for (const at of [
   roomRoutes.use(at, requireAuth(), assertEmailVerified());
 }
 
-roomRoutes.get('/:id', zValidator('param', roomParam, PATH), noQuery, async (c) =>
-  c.json(envelope(await readRoom(c.req.valid('param').id, actorOf(c)))),
+roomRoutes.get(
+  '/:id',
+  zValidator('param', roomParam, PATH),
+  noQuery,
+  requiresOnResolved('project.read', ON_ROOM),
+  async (c) => c.json(envelope(await readRoom(c.req.valid('param').id, actorOf(c)))),
 );
 
-roomRoutes.post('/:id/join', zValidator('param', roomParam, PATH), async (c) =>
-  c.json(envelope(await joinRoom(c.req.valid('param').id, actorOf(c)))),
+roomRoutes.post(
+  '/:id/join',
+  zValidator('param', roomParam, PATH),
+  requiresOnResolved('project.read', ON_ROOM),
+  async (c) => c.json(envelope(await joinRoom(c.req.valid('param').id, actorOf(c)))),
 );
 
 roomRoutes.post(
@@ -94,6 +105,7 @@ roomRoutes.post(
     roomAskRequestSchema,
     invalid(`invalid body: { text: 1..${ROOM_LIMITS.ask} characters }`),
   ),
+  requiresOnResolved('project.write', ON_ROOM),
   async (c) =>
     c.json(
       envelope(await askRoom(c.req.valid('param').id, actorOf(c), c.req.valid('json').text)),
@@ -109,6 +121,7 @@ roomRoutes.post(
     settleItemRequestSchema,
     invalid(`invalid body: { turnId, text?: 1..${ROOM_LIMITS.item} characters }`),
   ),
+  requiresOnResolved('project.write', ON_ROOM),
   async (c) =>
     c.json(
       envelope(await settleItem(c.req.valid('param').id, actorOf(c), c.req.valid('json'))),
@@ -119,6 +132,7 @@ roomRoutes.post(
 roomRoutes.delete(
   '/:id/items/:itemId',
   zValidator('param', itemParam, invalid('invalid path: /api/rooms/<room id>/items/<item id>')),
+  requiresOnResolved('project.write', ON_ROOM),
   async (c) => {
     const { id, itemId } = c.req.valid('param');
     return c.json(envelope(await unsettleItem(id, itemId, actorOf(c))));
@@ -136,6 +150,7 @@ roomRoutes.post(
       'PREVIEW_KEEP_SNAPSHOT_INVALID',
     ),
   ),
+  requiresOnResolved('project.write', ON_ROOM),
   async (c) =>
     c.json(
       envelope(await settleRoom(c.req.valid('param').id, c.req.valid('json'), actorOf(c))),
@@ -147,6 +162,7 @@ roomRoutes.post(
   '/:id/abandon',
   zValidator('param', roomParam, PATH),
   zValidator('json', abandonRoomRequestSchema, invalid('invalid body: { reason?: string }')),
+  requiresOnResolved('project.write', ON_ROOM),
   async (c) =>
     c.json(
       envelope(await abandonRoom(c.req.valid('param').id, actorOf(c), c.req.valid('json').reason)),

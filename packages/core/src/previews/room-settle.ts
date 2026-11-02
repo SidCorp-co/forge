@@ -30,7 +30,7 @@ import { askSnapshot } from './approve.js';
 import type { KeptAbout } from './keep-port.js';
 import { scrubEvents } from './recordings.js';
 import { roomSettleWriter } from './room-port.js';
-import { inRoomOrder, insertTurn, readRoom, refuseRoom, roomRow } from './rooms.js';
+import { inRoomOrder, insertTurn, readRoom, refuseRoom, roomAccess, roomRow } from './rooms.js';
 import { roomLanding } from './rules.js';
 import { closeAbandoned } from './service.js';
 import { itemOf } from './subject-reads.js';
@@ -68,13 +68,8 @@ export async function settleRoom(
   actor: PreviewActor,
 ): Promise<Room> {
   const room = await roomRow(roomId);
+  await roomAccess(room, actor, 'project.write', 'settle the POC room');
   const viewed = await readRoom(room.id, actor);
-  if (!viewed.canWrite) {
-    throw refuseRoom(
-      'ROOM_FORBIDDEN',
-      'project.write on this project is needed to settle the POC room',
-    );
-  }
   if (room.state !== 'open') {
     throw refuseRoom(
       'ROOM_CLOSED',

@@ -29,7 +29,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclaredHeld, requireHeld } from '../permissions/index.js';
 import { type PreviewActor, rowOf, siteOrRefuse, userActor, view } from './access.js';
 import { OPEN_STATES } from './rules.js';
 import { closeAbandoned, reopenForViewer } from './service.js';
@@ -54,8 +54,11 @@ export function inRoomOrder(roomId: string, work: () => Promise<void>): Promise<
   return next;
 }
 
-/** The caller's access to the room's project: a stranger is told the room does not exist. */
-async function roomAccess(
+/**
+ * The caller's access to the room's project: a stranger is told the room does not exist, and a member
+ * without `permission` (or what the route declares) is refused ROOM_FORBIDDEN, never a bare 403.
+ */
+export async function roomAccess(
   room: PocRoomRow,
   actor: PreviewActor,
   permission: 'project.read' | 'project.write',
@@ -74,7 +77,7 @@ async function roomAccess(
     throw refuseRoom('ROOM_NOT_FOUND', `no POC room ${room.id}`);
   }
   try {
-    requireHeld(access, permission, act);
+    requireDeclaredHeld(access, permission, act);
   } catch {
     throw refuseRoom(
       'ROOM_FORBIDDEN',
