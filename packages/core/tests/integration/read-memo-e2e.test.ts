@@ -18,6 +18,11 @@ import {
 // the page's own reads queued behind them. A read request now asks each of those once.
 // @direct-test-of packages/core/src/development/needs-you-viewer.ts
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
+// The needs-you read loads release facts for each project, so a change there is its statement count:
+// e467a1157 put one more a project in them and nothing selected this test (ISS-900).
+// @direct-test-of packages/core/src/release-batch/release-facts.ts
+// @direct-test-of packages/core/src/release-batch/released-line.ts
+// @direct-test-of packages/core/src/release-batch/version-store.ts
 // @direct-test-of packages/core/src/requirements/verdicts-read.ts
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/questions/needs-you-read.ts
