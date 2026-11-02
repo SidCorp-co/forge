@@ -2,10 +2,8 @@
   "en": {
     "home.needsYou": "Needs you",
     "home.running": "Running",
-    "home.runningEmpty": "Nothing running",
     "home.runningMore": "{shown} of {total} shown.",
     "home.atRisk": "At risk",
-    "home.atRiskEmpty": "No risks",
     "home.atRiskUnlisted": "{n} more stuck issues and feedback · open Issues",
     "home.why.past": "{by} past the latest similar work took",
     "home.risk.stuck": "Stuck",

@@ -1,7 +1,8 @@
 // REQ-33 BC-7 (r2): a memory that names no requirement, workflow or issue is about the project itself
 // and is read on its Dashboard, in a flat Memory section with the same fields and acts as an item's:
 // who wrote it, when, when it was last checked, why it needs a check, and Still true / Correct /
-// Retire, each correction and retirement with a reason.
+// Retire, each correction and retirement with a reason. A project with no memory of its own draws no
+// section: an empty section is hidden, never shown empty (ISS-903).
 
 import type { MemoryEntry } from "@forge/contracts/memory";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -61,5 +62,17 @@ describe("the Dashboard's Memory section", () => {
     await user.click(within(row).getByRole("button", { name: "Retire this memory" }));
     await waitFor(() => expect(calls.find((c) => c.method === "POST")).toMatchObject({ path: `/memory/m1/retire?projectId=${PROJECT}`, body: { reason: "Releases moved to Thursdays" } }));
     await waitFor(() => expect(screen.queryByTestId("memory-entry")).toBeNull());
+  });
+
+  it("draws nothing while the project holds no memory of its own, nor while the read is out", async () => {
+    const calls = fakeCore((c: Call) =>
+      c.path.startsWith("/memory/entries") ? { body: { items: [], counts: { live: 0, stale: 0, retired: 0 }, returned: 0, total: 0, limit: 100, offset: 0, hasMore: false } } : undefined,
+    );
+    const { container } = renderWithQuery(<ProjectMemory projectId={PROJECT} slug="hop" />);
+    expect(container).toBeEmptyDOMElement();
+    await waitFor(() => expect(calls.some((c) => c.path.startsWith("/memory/entries"))).toBe(true));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("No memory")).toBeNull();
   });
 });

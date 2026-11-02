@@ -2,7 +2,7 @@
 // Running and At risk on the project home: flush rows on hairlines, no cards. What is running and
 // what is late is core's project status; the rows come from `derive.ts` and nothing is decided here.
 // An at-risk row is its title and one chip, Stuck or Late; why, and the steward's line, are that
-// chip's hover (ISS-903).
+// chip's hover (ISS-903). The home draws neither when it holds nothing.
 
 import { RowItem, RowList, StatusChip, WaitingOn } from "@/design";
 import { spanText } from "@/features/forecast";
@@ -28,15 +28,13 @@ export function RunningTable({ rows, total, slug }: { rows: StatusInFlightIssue[
   return (
     <section id="running" aria-label={t("home.running")} data-testid="home-running" className="scroll-mt-24">
       <HomeSectionTitle count={total}>{t("home.running")}</HomeSectionTitle>
-      {rows.length === 0 ? (
-        <p className="text-13 text-muted">{t("home.runningEmpty")}</p>
-      ) : (
+      {rows.length > 0 ? (
         <RowList label={t("home.running")}>
           {rows.map((r) => (
             <RowItem key={r.key} testId="home-running-row" rowKey={r.key} href={issueHref(slug, r.key)} tip={r.key} title={r.title} trailing={<WaitingOn w={r.waitingOn} />} />
           ))}
         </RowList>
-      )}
+      ) : null}
       {total > rows.length && <p className="fg-caption mt-1 text-subtle">{t("home.runningMore", { shown: rows.length, total })}</p>}
     </section>
   );
@@ -64,9 +62,7 @@ export function AtRiskTable({ rows, unlisted = 0, moreHref }: { rows: AtRiskRow[
   return (
     <section id="at-risk" aria-label={t("home.atRisk")} data-testid="home-at-risk" className="scroll-mt-24">
       <HomeSectionTitle count={rows.length + unlisted}>{t("home.atRisk")}</HomeSectionTitle>
-      {rows.length === 0 ? (
-        <p className="text-13 text-muted">{t("home.atRiskEmpty")}</p>
-      ) : (
+      {rows.length > 0 ? (
         <RowList label={t("home.atRisk")}>
           {rows.map((r) => (
             <RowItem
@@ -87,7 +83,7 @@ export function AtRiskTable({ rows, unlisted = 0, moreHref }: { rows: AtRiskRow[
             />
           ))}
         </RowList>
-      )}
+      ) : null}
       {unlisted > 0 &&
         (moreHref ? (
           <Link href={moreHref} className="fg-caption text-fg underline-offset-2 hover:underline" data-testid="home-at-risk-unlisted">

@@ -1,38 +1,12 @@
-// The project home's header: the project's mark and name, and its settings. Nothing on it is to read
-// and not act on (REQ-11 BC-18, BC-19): the slug and the reader's role sit in the mark's tooltip.
+// The project home's header: the project's name, drawn in the top bar, and nothing on the page under it
+// (ISS-903): no mark beside a name the bar already says. Its settings are the palette's act (⌘K) beside
+// the rail's own way in, so no row is spent on one icon.
 
-import { IconButton, PageTitle, ProjectMark, Tooltip } from "@/design";
+import { PageTitle, usePageCommands } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 
-const ROLE_COPY: Record<string, ProductCopyKey> = {
-  admin: "common.role.admin",
-  member: "common.role.member",
-  viewer: "common.role.viewer",
-};
-
-export function ProjectHomeHeader({
-  project,
-  glyph,
-  initials,
-  onSettings,
-}: {
-  project: { name: string; slug: string; role: string | null };
-  glyph: { tint: string; ink: string };
-  initials: string;
-  onSettings: () => void;
-}) {
+export function ProjectHomeHeader({ project, onSettings }: { project: { name: string }; onSettings: () => void }) {
   const t = useCopy();
-  const role = t((project.role && ROLE_COPY[project.role]) || "common.role.org");
-  return (
-    <header className="mb-6 flex items-center gap-4" data-testid="project-home-header">
-      <Tooltip label={`${project.slug} · ${role}`}>
-        <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={48} />
-      </Tooltip>
-      <div className="flex-1">
-        <PageTitle className="fg-h2">{project.name}</PageTitle>
-      </div>
-      <IconButton icon="settings" aria-label={t("dash.projectSettings")} onClick={onSettings} />
-    </header>
-  );
+  usePageCommands([{ label: t("dash.projectSettings"), icon: "settings", onRun: onSettings }]);
+  return <PageTitle>{project.name}</PageTitle>;
 }

@@ -168,17 +168,32 @@ describe("the project home (REQ-41 BC-13)", () => {
     expect(screen.queryByTestId("home-at-risk-unlisted")).toBeNull();
   });
 
-  it("says so when nothing runs and nothing is at risk, and when no decision waits", async () => {
-    fakeCore(({ path }) => {
+  // ISS-903: an empty section is hidden, never a title with "nothing" under it
+  it("draws no section that holds nothing: no Needs you, Running or At risk when none has a row", async () => {
+    const calls = fakeCore(({ path }) => {
       if (path.startsWith("/conversations?")) return { body: { items: [], total: 0 } };
       if (path.endsWith("/needs-you/decisions")) return { body: { ...DECISIONS, total: 0, decisions: [] } };
       if (path.includes("/status")) return { body: status({ inFlight: { ...STATUS.inFlight, running: [], runningCount: 0 }, late: { asOf: STATUS.asOf, items: [] }, stuck: { asOf: STATUS.asOf, count: 0, items: [] } }) };
       return undefined;
     });
+    const { container } = renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
+    await waitFor(() => expect(calls.some((c) => c.path.includes("/status")) && calls.some((c) => c.path.endsWith("/needs-you/decisions"))).toBe(true));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container).toBeEmptyDOMElement();
+    for (const empty of ["Nothing running", "No risks", "Nothing"]) expect(screen.queryByText(empty)).toBeNull();
+  });
+
+  it("keeps the sections that hold a row when another holds none", async () => {
+    fakeCore(({ path }) => {
+      if (path.startsWith("/conversations?")) return { body: { items: [], total: 0 } };
+      if (path.endsWith("/needs-you/decisions")) return { body: { ...DECISIONS, total: 0, decisions: [] } };
+      if (path.includes("/status")) return { body: status({ late: { asOf: STATUS.asOf, items: [] }, stuck: { asOf: STATUS.asOf, count: 0, items: [] } }) };
+      return undefined;
+    });
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
-    expect(await screen.findByText("Nothing running")).toBeInTheDocument();
-    expect(screen.getByText("No risks")).toBeInTheDocument();
-    expect(screen.getByText("Nothing")).toBeInTheDocument();
+    expect(await screen.findByTestId("home-running")).toBeInTheDocument();
+    expect(screen.queryByTestId("home-needs-you")).toBeNull();
+    expect(screen.queryByTestId("home-at-risk")).toBeNull();
   });
 
   it("calls nothing at risk that core neither read stuck nor late, however few criteria it has proven", () => {

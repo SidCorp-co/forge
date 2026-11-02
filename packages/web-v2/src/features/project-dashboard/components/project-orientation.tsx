@@ -2,7 +2,8 @@
 // The project home's header (journey walk 2026-10-08): what the project is, its business modules
 // (the roots of the module tree, owner ruling 2026-10-04: about ten, code directories only on
 // drill-down), the requirements in delivery now and what comes next. One line of description, then a
-// row of chips each, a count beside its label; each row says plainly when it has nothing to show.
+// row of chips each, a count beside its label. A line with nothing to show is not drawn, and a project
+// with nothing to say draws no section (ISS-903: an empty section is hidden, never shown empty).
 // The release live and the one being prepared are the Dashboard's figures above it.
 
 import type { RoadmapItem } from "@forge/contracts/project-status";
@@ -60,47 +61,53 @@ export interface OrientationProps {
   next: RoadmapItem[];
 }
 
+/** Whether the orientation has nothing to say: no description, no modules once read, nothing now or next. */
+export const orientationEmpty = ({ description, modules, now, next }: Omit<OrientationProps, "slug">): boolean =>
+  !description && modules !== null && modules.length === 0 && now.length === 0 && next.length === 0;
+
 export function ProjectOrientation({ slug, description, modules, now, next }: OrientationProps) {
   const t = useCopy();
+  if (orientationEmpty({ description, modules, now, next })) return null;
   const shownModules = (modules ?? []).slice(0, MODULES_SHOWN);
   const moreModules = (modules?.length ?? 0) - shownModules.length;
   return (
     <section aria-label={t("dash.orient.title")} className="grid gap-2" data-testid="project-orientation">
-      <p className={`m-0 max-w-3xl truncate text-14 ${description ? "text-fg" : "text-muted"}`} title={description ?? undefined} data-testid="orient-description">
-        {description ?? t("dash.orient.noDescription")}
-      </p>
+      {description ? (
+        <p className="m-0 max-w-3xl truncate text-14 text-fg" title={description} data-testid="orient-description">
+          {description}
+        </p>
+      ) : null}
       <dl className="m-0">
-        <Line name="modules" label={t("dash.orient.modules")} count={modules?.length}>
-          {modules === null ? (
-            <Quiet>…</Quiet>
-          ) : shownModules.length === 0 ? (
-            <Quiet>
-              {t("dash.orient.noModules")}{" "}
-              <Link href={modulesHref(slug)} className="text-link hover:underline">
-                {t("dash.orient.setUpModules")}
-              </Link>
-            </Quiet>
-          ) : (
-            <>
-              {shownModules.map((m) => (
-                <Link key={m.id} href={moduleHref(slug, m.slug ?? m.id)} className={CHIP}>
-                  {m.name}
-                </Link>
-              ))}
-              {moreModules > 0 ? (
-                <Link href={modulesHref(slug)} className="text-12 text-link hover:underline">
-                  {t("dash.orient.moreModules", { n: moreModules })}
-                </Link>
-              ) : null}
-            </>
-          )}
-        </Line>
-        <Line name="now" label={t("dash.orient.now")} count={now.length}>
-          {now.length === 0 ? <Quiet>{t("dash.orient.nothingNow")}</Quiet> : <Items slug={slug} items={now} />}
-        </Line>
-        <Line name="next" label={t("dash.orient.next")} count={next.length}>
-          {next.length === 0 ? <Quiet>{t("dash.orient.nothingNext")}</Quiet> : <Items slug={slug} items={next} />}
-        </Line>
+        {modules === null || shownModules.length > 0 ? (
+          <Line name="modules" label={t("dash.orient.modules")} count={modules?.length}>
+            {modules === null ? (
+              <Quiet>…</Quiet>
+            ) : (
+              <>
+                {shownModules.map((m) => (
+                  <Link key={m.id} href={moduleHref(slug, m.slug ?? m.id)} className={CHIP}>
+                    {m.name}
+                  </Link>
+                ))}
+                {moreModules > 0 ? (
+                  <Link href={modulesHref(slug)} className="text-12 text-link hover:underline">
+                    {t("dash.orient.moreModules", { n: moreModules })}
+                  </Link>
+                ) : null}
+              </>
+            )}
+          </Line>
+        ) : null}
+        {now.length > 0 ? (
+          <Line name="now" label={t("dash.orient.now")} count={now.length}>
+            <Items slug={slug} items={now} />
+          </Line>
+        ) : null}
+        {next.length > 0 ? (
+          <Line name="next" label={t("dash.orient.next")} count={next.length}>
+            <Items slug={slug} items={next} />
+          </Line>
+        ) : null}
       </dl>
     </section>
   );

@@ -1,11 +1,12 @@
 // The HOP journey walk (2026-10-08): the first screen was a release ticker and a 33-row ask table;
 // what HOP is, its modules and where it stands sat below 1.75 screens or nowhere. The home opens
 // with a header that says what the project is, its business modules, what is in delivery now and
-// what comes next, as chips with a count; each line says so plainly when there is nothing to show.
+// what comes next, as chips with a count; a line with nothing to show is not drawn, nor a section with
+// nothing to say (ISS-903).
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ProjectOrientation, type OrientationProps } from "./project-orientation";
+import { orientationEmpty, ProjectOrientation, type OrientationProps } from "./project-orientation";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -50,11 +51,18 @@ describe("a project home that orients", () => {
     expect(screen.getByTestId("orient-now")).toHaveTextContent("+2 more");
   });
 
-  it("says so plainly where a line has nothing to show", () => {
-    render(<ProjectOrientation slug="hop" description={null} modules={[]} now={[]} next={[]} />);
-    expect(screen.getByTestId("orient-description")).toHaveTextContent("No description");
-    expect(screen.getByTestId("orient-modules")).toHaveTextContent("No modules");
-    expect(screen.getByTestId("orient-now")).toHaveTextContent("Nothing now");
-    expect(screen.getByTestId("orient-next")).toHaveTextContent("Nothing next");
+  it("draws no line that has nothing to show", () => {
+    render(<ProjectOrientation slug="hop" description={null} modules={[]} now={[item("REQ-7", "Referrals")]} next={[]} />);
+    expect(screen.getByTestId("orient-now")).toHaveTextContent("Referrals");
+    for (const name of ["description", "modules", "next"]) expect(screen.queryByTestId(`orient-${name}`), `${name} is drawn empty`).toBeNull();
+    expect(screen.queryByText(/No description|No modules|Nothing now|Nothing next/)).toBeNull();
+  });
+
+  it("draws nothing at all where the project has nothing to say, and says so to the page", () => {
+    const empty = { description: null, modules: [], now: [], next: [] };
+    const { container } = render(<ProjectOrientation slug="hop" {...empty} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(orientationEmpty(empty)).toBe(true);
+    expect(orientationEmpty({ ...empty, modules: null }), "modules still being read are not nothing").toBe(false);
   });
 });

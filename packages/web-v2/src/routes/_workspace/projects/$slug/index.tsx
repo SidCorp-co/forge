@@ -9,7 +9,7 @@ import { ProjectHealthFigures, useHealthWindow } from "@/features/project-dashbo
 import { useProjectHealth } from "@/features/project-dashboard/health-api";
 import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
 import { ProjectMemory } from "@/features/memory";
-import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
+import { orientationEmpty, ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
 import { useModuleRollup } from "@/features/modules";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useComingNext, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast";
@@ -18,13 +18,12 @@ import { useFeedbackList } from "@/features/feedback";
 import { useReleases } from "@/features/releases";
 import { useRequirements } from "@/features/requirements/hooks";
 import { useNeedsYouDecisions } from "@/features/needs-you";
-import { atRiskCount, ProjectHome, ProjectHomeHeader } from "@/features/project-home";
+import { ProjectHome, ProjectHomeHeader } from "@/features/project-home";
 import { useStewardBudget } from "@/features/standing";
 import { useProjectStatus } from "@/features/project-status/hooks";
 import { OnboardingHint } from "@/features/onboarding";
 import { useProjectRef } from "@/features/projects/project-ref";
 import { useOnboardingState } from "@/features/onboarding";
-import { projectGlyph, projectInitials } from "@/features/projects";
 import { canManageProject } from "@/features/projects";
 import { useProjectDocument } from "@/features/project-config";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
@@ -43,16 +42,13 @@ import { useCopy } from "@/lib/i18n/interface-language";
 const rootModules = (modules: { id: string; name: string; slug: string | null; parentId: string | null }[] | undefined) =>
   modules ? modules.filter((m) => m.parentId === null).map((m) => ({ id: m.id, name: m.name, slug: m.slug })) : null;
 
-/** The headline row's figures from the reads the page already holds; a figure still being read is null. */
-function headlineOf(r: { slug: string; needsYou: number | null; status: ProjectStatus | undefined; feedback: FeedbackFigures; draft: { version: string; eta: Eta | null } | null; clock: EtaClock }): HeadlineFiguresProps {
+/** The headline line's figures from the reads the page already holds; a release still being read is null. */
+function headlineOf(r: { slug: string; status: ProjectStatus | undefined; feedback: FeedbackFigures; draft: { version: string; eta: Eta | null } | null; clock: EtaClock }): HeadlineFiguresProps {
   const { slug, status, clock } = r;
   const next = status?.nextRelease.version ?? null;
   const shipped = status?.shipped.latest ?? null;
   const eta = r.draft?.eta && next === r.draft.version ? etaInline(r.draft.eta, clock) : null;
   return {
-    needsYou: r.needsYou,
-    running: status ? status.inFlight.runningCount : null,
-    atRisk: status ? atRiskCount(status, slug) : null,
     feedback: { open: r.feedback.open, untriaged: r.feedback.untriaged, href: feedbackListHref(slug) },
     next: next ? { version: next, eta, href: releaseHref(slug, next) } : null,
     live: shipped ? { version: shipped.version, at: formatDate(shipped.releasedAt, clock.lang, clock.timeZone), href: statusReportHref(slug) } : null,
@@ -119,7 +115,6 @@ function ProjectOverviewPage() {
     );
   }
 
-  const glyph = projectGlyph(project.id);
   const declared = projectDocumentQ.data?.declared ? projectDocumentQ.data.document : null;
   const describedAs = (declared?.project as { description?: unknown } | undefined)?.description;
   const status = statusQ.data;
@@ -140,6 +135,13 @@ function ProjectOverviewPage() {
     clock,
   );
   const weekRows = landsThisWeek(rows, clock);
+  // what the project is: a fold only where it has something to say (ISS-903)
+  const orientation = {
+    description: typeof describedAs === "string" && describedAs.trim() ? describedAs : null,
+    modules: rootModules(modulesQ.data?.modules),
+    now: status?.roadmap.now ?? [],
+    next: status?.roadmap.next ?? [],
+  };
 
   return (
     <>
@@ -147,15 +149,10 @@ function ProjectOverviewPage() {
     <OnboardingHint projectId={project.id} projectName={project.name} />
     <PageContainer className="min-h-dvh">
       {decisionCount > 0 ? <NextAction label={t("approvals.title")} href={approvalsHref(project.slug)} testId="home-next" /> : null}
-      <ProjectHomeHeader
-        project={project}
-        glyph={glyph}
-        initials={projectInitials(project.name)}
-        onSettings={() => router.push(`/projects/${slug}/settings`)}
-      />
+      <ProjectHomeHeader project={project} onSettings={() => router.push(`/projects/${slug}/settings`)} />
 
       <div className="space-y-8">
-        <HeadlineFigures {...headlineOf({ slug: project.slug, needsYou: decisionsQ.data ? decisionCount : null, status, feedback, draft: draft ? { version: draft.version, eta: draftEta } : null, clock })} />
+        <HeadlineFigures {...headlineOf({ slug: project.slug, status, feedback, draft: draft ? { version: draft.version, eta: draftEta } : null, clock })} />
 
         {/* what needs you, with what is running and what is at risk beside it; chat opens from Ask Agent */}
         <ProjectHome projectId={project.id} slug={project.slug} />
@@ -172,15 +169,11 @@ function ProjectOverviewPage() {
               release={status && nextVersion ? { version: nextVersion, progress: status.nextRelease.progress } : null}
             />
           </Disclosure>
-          <Disclosure title={t("dash.orient.title")} testId="home-orientation-fold">
-            <ProjectOrientation
-              slug={project.slug}
-              description={typeof describedAs === "string" && describedAs.trim() ? describedAs : null}
-              modules={rootModules(modulesQ.data?.modules)}
-              now={status?.roadmap.now ?? []}
-              next={status?.roadmap.next ?? []}
-            />
-          </Disclosure>
+          {orientationEmpty(orientation) ? null : (
+            <Disclosure title={t("dash.orient.title")} testId="home-orientation-fold">
+              <ProjectOrientation slug={project.slug} {...orientation} />
+            </Disclosure>
+          )}
           <Disclosure title={t("dash.health")} testId="home-health-fold">
             <ProjectHealthFigures projectId={project.id} />
           </Disclosure>
