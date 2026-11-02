@@ -13,7 +13,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import {
-  requireHeld,
+  requireDeclaredHeld,
   requireMasterAct,
   requiresOnParam,
   requiresOnResolved,
@@ -270,14 +270,20 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
   const run = await findReleaseBatchRun(runId);
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
 
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.write');
+  requireDeclaredHeld(await loadProjectAccess(projectId, userId), 'project.write');
   return run;
 }
+
+// the batch is found in the path's project first, so its not-found answer stands before the check
+const RUN_WRITE = requiresOnResolved(
+  'project.write',
+  'the project `:projectId` names, once the release batch `:runId` is found in it',
+);
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -289,6 +295,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/finish',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   zValidator('json', finishBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -306,6 +313,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/abort',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   zValidator('json', abortBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -327,6 +335,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/carried',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   zValidator(
     'json',
     carriedBodySchema,
@@ -355,6 +364,7 @@ const methodBodySchema = z
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/state',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -368,6 +378,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/method',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   zValidator('json', methodBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -381,6 +392,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/range',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -392,6 +404,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/range/reads',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   zValidator('json', ReleaseRangeReadsBodySchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -403,6 +416,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/range',
   zValidator('param', runParamSchema),
+  RUN_WRITE,
   zValidator('json', ReleaseRangeReportSchema),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');

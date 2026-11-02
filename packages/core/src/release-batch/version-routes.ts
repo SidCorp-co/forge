@@ -103,6 +103,7 @@ releaseVersionRoutes.get(
 releaseVersionRoutes.put(
   '/:projectId/releases/:version/naming',
   versionParam,
+  requiresOnParam('project.admin', 'projectId'),
   zValidator('json', ReleaseNamingSchema),
   async (c) => {
     const { projectId, version } = c.req.valid('param');

@@ -9,9 +9,8 @@ import { and, asc, desc, eq, isNotNull, isNull, ne, notInArray } from 'drizzle-o
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns, releaseDraftNamings } from '../db/schema.js';
 import { arrivedAfterOf } from '../issues/index.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { draftedVersion } from './draft-version.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -147,7 +146,7 @@ export async function nameReleaseAs(
   naming: ReleaseNaming,
   userId: string,
 ): ReturnType<typeof nameRelease> {
-  requireHeld(await loadProjectAccess(projectId, userId), 'project.admin');
+  await requireDeclaredOn(projectId, userId, 'project.admin');
   return nameRelease(projectId, version, naming, userId);
 }
 
