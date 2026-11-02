@@ -16,7 +16,7 @@ import {
   strictBody,
   zValidator,
 } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { DESIGN_DECISIONS } from './design.js';
 import { readRepinPlanAs, repinAs } from './design-repin-service.js';
 import {
@@ -418,10 +418,10 @@ workflowRoutes.post(
 workflowRoutes.get(
   '/:id/workflows/:workflow/observations',
   workflowRefParam,
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id, workflow } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     return c.json(await listObservations(id, workflow));
   },
 );
@@ -439,10 +439,10 @@ workflowRoutes.get(
       'invalid path: a project uuid, a workflow uuid or flow, and latest, a commit sha or an observation id',
     ),
   ),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id, workflow, at } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     return c.json({
       observation: await egressForRequest(
         c.get('agency'),

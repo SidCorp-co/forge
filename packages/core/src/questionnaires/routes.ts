@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { afterSubmit, onSubmittedIn } from './ports.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
 import { submitAnswers } from './submit.js';
@@ -36,17 +36,22 @@ const batchParam = zValidator(
   invalid('invalid path: a project uuid and a questionnaire uuid'),
 );
 
-questionnaireRoutes.get('/:id/questionnaires/:bid', batchParam, noQuery, async (c) => {
-  const { id, bid } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const out = await questionnairesAs(actorOf(c), id, [await batchView(db, id, bid)]);
-  if (!out.ok) return refusedOnboarding(c, [out.refusal]);
-  const [questionnaire] = out.value;
-  if (!questionnaire)
-    throw new Error(`questionnaires: batch ${bid} vanished under its egress read`);
-  const body: QuestionnaireResponse = { questionnaire };
-  return c.json(body);
-});
+questionnaireRoutes.get(
+  '/:id/questionnaires/:bid',
+  batchParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id, bid } = c.req.valid('param');
+    const out = await questionnairesAs(actorOf(c), id, [await batchView(db, id, bid)]);
+    if (!out.ok) return refusedOnboarding(c, [out.refusal]);
+    const [questionnaire] = out.value;
+    if (!questionnaire)
+      throw new Error(`questionnaires: batch ${bid} vanished under its egress read`);
+    const body: QuestionnaireResponse = { questionnaire };
+    return c.json(body);
+  },
+);
 
 // the one submit endpoint for every questionnaire, onboarding round or BA clarification alike:
 // the thread's owner decides what happens after, never the client

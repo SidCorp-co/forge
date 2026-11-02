@@ -6,7 +6,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { adoptVersion } from './adopt-service.js';
 import { readApiPage } from './api-page.js';
 import { readContractContext } from './contract/run-context-service.js';
@@ -39,9 +39,10 @@ const idParam = zValidator(
   invalid('invalid path: the project id is a uuid'),
 );
 
-ecosystemProjectRoutes.get('/:id/interface', idParam, noQuery, async (c) => {
+const READ = requiresOnParam('project.read', 'id');
+
+ecosystemProjectRoutes.get('/:id/interface', idParam, READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(await interfaceView(id, await loadInterface(id)));
 });
 
@@ -111,9 +112,8 @@ ecosystemProjectRoutes.post(
   },
 );
 
-ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, noQuery, async (c) => {
+ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const revisions = await listInterfaceRevisions(id);
   const serialised = serialiseRevisions(revisions);
   // an adopt across an unmeasured version says why on the revision it wrote (REQ-5 BC-15)
@@ -130,6 +130,7 @@ ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, noQuery, async (
 ecosystemProjectRoutes.post(
   '/:id/contract-context',
   idParam,
+  READ,
   zValidator(
     'json',
     CONTEXT_ARGS,
@@ -137,7 +138,6 @@ ecosystemProjectRoutes.post(
   ),
   async (c) => {
     const { id } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     const { paths, session } = c.req.valid('json');
     const read = await readContractContext(id, paths, session ?? null);
     if (!read.ok) return refused(c, read.refusals, 'ECOSYSTEM_REFUSED');
@@ -150,9 +150,8 @@ ecosystemProjectRoutes.get('/:id/api-page', idParam, noQuery, async (c) =>
   c.json(await readApiPage(c.get('userId'), c.req.valid('param').id)),
 );
 
-ecosystemProjectRoutes.get('/:id/ecosystems', idParam, noQuery, async (c) => {
+ecosystemProjectRoutes.get('/:id/ecosystems', idParam, READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const memberships = await membershipsWhere({ projectIds: [id] });
   const ecosystemIds = memberships.map((m) => m.ecosystemId);
   const [rows, peers] = await Promise.all([

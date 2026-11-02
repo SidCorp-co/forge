@@ -10,7 +10,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { readProjectStatus, statusViewerOf } from './read.js';
 
 const statusQuery = z.strictObject({
@@ -23,6 +23,7 @@ projectStatusRoutes.use('/:id/status', requireAuth(), assertEmailVerified());
 projectStatusRoutes.get(
   '/:id/status',
   zValidator('param', idParamSchema, invalid('invalid path: /api/projects/<project>/status')),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', statusQuery, invalid(`invalid query: ${PROJECT_STATUS_QUERY_SHAPE}`)),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -31,7 +32,6 @@ projectStatusRoutes.get(
     if (!agency)
       throw new Error('project status: a request reached its handler without an auth gate');
     const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
     const read = await readProjectStatus(
       projectId,
       statusViewerOf(access, userId, agency),

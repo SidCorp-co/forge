@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { globalEffectiveMd } from './effective.js';
 import { studioSkillsOf } from './read.js';
 
@@ -20,13 +19,10 @@ skillStudioRoutes.use('/:projectId/skills/effective', requireAuth(), assertEmail
 skillStudioRoutes.get(
   '/:projectId/skills/effective',
   zValidator('param', projectParamSchema),
+  requiresOnParam('project.read', 'projectId'),
   noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     const { globals, projectSkills } = await studioSkillsOf(projectId);
 

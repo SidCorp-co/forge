@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { loadProjectAccess } from '../lib/authz.js';
 import { env } from '../lib/env.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { noQuery } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/index.js';
 import { resolveGuide } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
@@ -28,23 +27,27 @@ export const guideRoutes = new Hono();
 const projectGuideRoutes = new Hono<{ Variables: AuthVars }>();
 projectGuideRoutes.use('*', requireAuth());
 
-projectGuideRoutes.get('/:id/guides/:slug', noQuery, async (c) => {
-  const projectId = c.req.param('id');
-  requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
-  const raw = c.req.param('slug');
-  const isMarkdown = raw.endsWith('.md');
-  const guide = await resolveGuide(
-    isMarkdown ? raw.slice(0, -3) : raw,
-    await findProjectOrgId(projectId),
-  );
-  if (!guide) {
-    throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
-  }
-  if (isMarkdown) {
-    return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
-  }
-  return c.json({ guide });
-});
+projectGuideRoutes.get(
+  '/:id/guides/:slug',
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const projectId = c.req.param('id');
+    const raw = c.req.param('slug');
+    const isMarkdown = raw.endsWith('.md');
+    const guide = await resolveGuide(
+      isMarkdown ? raw.slice(0, -3) : raw,
+      await findProjectOrgId(projectId),
+    );
+    if (!guide) {
+      throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
+    }
+    if (isMarkdown) {
+      return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
+    }
+    return c.json({ guide });
+  },
+);
 
 guideRoutes.route('/projects', projectGuideRoutes);
 

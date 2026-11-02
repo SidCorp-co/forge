@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { readStewardNote, writeStewardNote } from './service.js';
 
 const NOTE_SHAPE =
@@ -27,22 +27,27 @@ const paramCheck = zValidator(
   ),
 );
 
-stewardNoteRoutes.get('/:id/steward-notes/:subjectKind/:key', paramCheck, noQuery, async (c) => {
-  const { id, subjectKind, key } = c.req.valid('param');
-  requireHeld(await loadProjectAccess(id, c.get('userId')), 'project.read');
-  const { note } = await readStewardNote(id, subjectKind, key);
-  return c.json({ note });
-});
+stewardNoteRoutes.get(
+  '/:id/steward-notes/:subjectKind/:key',
+  requiresOnParam('project.read', 'id'),
+  paramCheck,
+  noQuery,
+  async (c) => {
+    const { id, subjectKind, key } = c.req.valid('param');
+    const { note } = await readStewardNote(id, subjectKind, key);
+    return c.json({ note });
+  },
+);
 
 stewardNoteRoutes.put(
   '/:id/steward-notes/:subjectKind/:key',
+  requiresOnParam('project.read', 'id'),
   paramCheck,
   zValidator('json', stewardNoteWriteSchema, invalid(`invalid body: ${NOTE_SHAPE}`)),
   async (c) => {
     const { id, subjectKind, key } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.read');
     const note = await writeStewardNote({
       projectId: id,
       kind: subjectKind,

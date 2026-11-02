@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { openRequirementRoom } from './service.js';
 
 export const baDoorRoutes = new Hono<{ Variables: AuthVars }>();
@@ -22,10 +22,14 @@ const param = zValidator(
   invalid('invalid path: a project uuid and a requirement uuid or key'),
 );
 
-baDoorRoutes.post('/:id/requirements/:req/assistant', param, async (c) => {
-  const { id: projectId, req } = c.req.valid('param');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
-  const { conversation, reused } = await openRequirementRoom(projectId, req, userId);
-  return c.json({ conversation, reused }, reused ? 200 : 201);
-});
+baDoorRoutes.post(
+  '/:id/requirements/:req/assistant',
+  param,
+  requiresOnParam('project.write', 'id'),
+  async (c) => {
+    const { id: projectId, req } = c.req.valid('param');
+    const userId = c.get('userId');
+    const { conversation, reused } = await openRequirementRoom(projectId, req, userId);
+    return c.json({ conversation, reused }, reused ? 200 : 201);
+  },
+);

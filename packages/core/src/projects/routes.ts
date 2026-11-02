@@ -16,9 +16,9 @@ import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
   orgResource,
-  requireHeld,
   requireOrgCan,
   requireOrgHeld,
+  requiresOnParam,
 } from '../permissions/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
@@ -93,26 +93,31 @@ projectRoutes.get('/', listQuery, async (c) => {
   );
 });
 
-projectRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+projectRoutes.get(
+  '/:id',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(id, userId);
-  requireHeld(access, 'project.read');
+    const access = await loadProjectAccess(id, userId);
 
-  const detail = await projectDetail(id);
-  if (!detail) throw notFound();
+    const detail = await projectDetail(id);
+    if (!detail) throw notFound();
 
-  return c.json({
-    ...detail.project,
-    baseBranch: (await readDeclaredSource(id)).defaultBranch,
-    role: access.role,
-    orgRole: access.orgRole,
-    members: detail.members,
-    labels: detail.labels,
-    devicePool: detail.devicePool,
-  });
-});
+    return c.json({
+      ...detail.project,
+      baseBranch: (await readDeclaredSource(id)).defaultBranch,
+      role: access.role,
+      orgRole: access.orgRole,
+      members: detail.members,
+      labels: detail.labels,
+      devicePool: detail.devicePool,
+    });
+  },
+);
 
 projectRoutes.patch(
   '/:id',
