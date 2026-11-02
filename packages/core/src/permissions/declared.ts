@@ -16,7 +16,7 @@ import {
 import type { MiddlewareHandler } from 'hono';
 import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
-import type { McpTool } from '../lib/tool.js';
+import { declaredInputOf, type McpTool } from '../lib/tool.js';
 import {
   type DeclaredPermission,
   onResolved,
@@ -195,12 +195,16 @@ export function requiresPublic(why: string): MiddlewareHandler {
  * contract generator holds, and checks in its own handler until its module's sweep moves it.
  */
 export function runDeclaredTool(
-  tool: Pick<McpTool, 'name' | 'permission' | 'handler'>,
+  tool: Pick<McpTool, 'name' | 'permission' | 'handler' | 'inputSchema'>,
   args: Record<string, unknown>,
   userId: string | null,
 ): Promise<unknown> {
   const declared = toolPermissionFor(tool.permission, args.action);
   if (declared === undefined) return tool.handler(args);
+  // a call its own input refuses is answered by the tool's input gate, naming the wrong argument,
+  // before any permission read: the handler parses that input first and does nothing else
+  const input = declaredInputOf(tool.inputSchema);
+  if (input && !input.safeParse(args).success) return tool.handler(args);
   return enforceDeclared(
     declared,
     {
