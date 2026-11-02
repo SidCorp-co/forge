@@ -68,6 +68,7 @@ const upload = (over: Record<string, unknown> = {}) => ({
   flagged: false,
   uploadedBy: BO,
   uploadedByName: "Bo",
+  label: null,
   createdAt: "2026-10-09T11:00:00.000Z",
   url: `/api/projects/${PROJECT_ID}/feedback/FB-52/attachments/v1`,
   ...over,

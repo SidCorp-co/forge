@@ -43,6 +43,7 @@ const file = (id: string, name: string, mime: string) => ({
   flagged: false,
   uploadedBy: ANN,
   uploadedByName: "Ann",
+  label: null,
   createdAt: "2026-10-09T10:00:00.000Z",
   url: `/api/projects/${P}/feedback/FB-52/attachments/${id}`,
 });

@@ -27,6 +27,7 @@ const ATTACHED = {
   flagged: false,
   uploadedBy: "u1",
   uploadedByName: "Ann",
+  label: null,
   createdAt: "2026-10-07T00:00:00.000Z",
   url: "/api/projects/p1/feedback/FB-4/attachments/a1",
 };
