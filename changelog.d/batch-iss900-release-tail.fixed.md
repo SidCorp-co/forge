@@ -1,1 +1,0 @@
-**Release pages tell the whole truth.** A version-recorded release shows its media and any fail judged on it, a repaired release closes its own issues, and a promotion project is asked to judge on its live release.

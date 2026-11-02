@@ -1,1 +1,0 @@
-**Six busy screens now show only what you act on.** Docs, Runs, a requirement, Approvals, the project home and Delivery overview lead with a name, a status and one next action; the rest opens on demand.

@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.444] - 2026-11-02
+
+Owed confirms can wait for a date or the next room message
+
+### Added
+
+- **A shipped item's confirm can wait, with its reason.** A master sets a dated or room-message wait on an agent-reported item through either feedback door; its pass leaves the item out until then, and the item shows why. (ISS-902)
+
+### Changed
+
+- **Six busy screens now show only what you act on.** Docs, Runs, a requirement, Approvals, the project home and Delivery overview lead with a name, a status and one next action; the rest opens on demand.
+
+### Fixed
+
+- **Release pages tell the whole truth.** A version-recorded release shows its media and any fail judged on it, a repaired release closes its own issues, and a promotion project is asked to judge on its live release.
+
 ## [0.4.0-dev.443] - 2026-11-02
 
 A failed release always says why, and an admin can repair one that shipped
