@@ -1,3 +1,8 @@
+// @direct-test-of packages/core/src/intake/prompt.ts
+// @direct-test-of packages/core/src/onboarding/agent-writes.ts
+// @direct-test-of packages/core/src/questionnaires/index.ts
+// @direct-test-of packages/core/src/questionnaires/read.ts
+// @direct-test-of packages/core/src/steward/door-ask.ts
 // ISS-904 (owner, 2026-11-02, "lift the limits"; REQ-10 r7 BC-6, REQ-65 r3 BC-3, REQ-66 r3 BC-4,
 // REQ-67 r2 BC-4): an agent asks the questions it needs, each with a recommended answer. No prompt,
 // guide, tool description or refusal that asks a person something may put a count on those
