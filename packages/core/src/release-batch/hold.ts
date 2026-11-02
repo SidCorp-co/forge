@@ -8,17 +8,12 @@
  */
 
 import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import {
-  type IssueCriteriaReport,
-  issueDisplayIds,
-  type RuntimeReading,
-  releaseHoldWords,
-} from '../issues/index.js';
+import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { CriteriaBasis, LandingCriteriaReport } from './criteria-basis.js';
@@ -372,18 +367,9 @@ export function abortBlockedHold(args: {
  */
 export const RELEASE_UNCLOSED_QUESTION = 'RELEASE_UNCLOSED_QUESTION';
 export const RELEASE_UNCLOSED_REFUSED = 'RELEASE_UNCLOSED_REFUSED';
+export const RELEASE_SHIPPED_IN_OWED = 'RELEASE_SHIPPED_IN_OWED'; // its agent's record (`shipped-in.ts`)
 
-/**
- * The hold a row waits under while its agent owes the record of the release that shipped it
- * (`shipped-in.ts`): a cut carrying it would find nothing of it new.
- */
-export const RELEASE_SHIPPED_IN_OWED = 'RELEASE_SHIPPED_IN_OWED';
-
-/**
- * What holds an issue out of every unattended cut: an aborted release's blocker, a finish's
- * refusal, or a shipped-in record its agent owes, which an abort over an already-shipped roster leaves
- * on a row the sweep would otherwise cut into the same abort (ISS-888).
- */
+/** What holds an issue out of every unattended cut: an aborted release's blocker, a finish's refusal, or an owed shipped-in record (ISS-888). */
 const HELD_FROM_UNATTENDED_CUT: readonly string[] = [
   RELEASE_ABORT_BLOCKED,
   RELEASE_UNCLOSED_QUESTION,
@@ -529,50 +515,6 @@ export async function releaseHoldsOf(
       { ...hold, heldAt: heldAt.toISOString() },
     ]),
   );
-}
-
-/** A standing hold whose act is the agent's: the issue it holds and what it waits for. */
-export interface AgentOwedHold {
-  issueId: string;
-  key: string;
-  code: string;
-  waitingFor: string;
-}
-
-/**
- * Every standing hold on this project's waiting rows whose act is its agent's (ISS-888): owed by the
- * agent, and not one the release path clears by itself (`release-hold-words.ts`, actor `release`),
- * such as a row queued behind a full roster. The master is told each, so no hold names an act
- * nobody reads.
- */
-export async function agentOwedHolds(projectId: string): Promise<AgentOwedHold[]> {
-  const rows = await db
-    .select({
-      issueId: releaseHolds.issueId,
-      code: releaseHolds.code,
-      owes: releaseHolds.owes,
-      waitingFor: releaseHolds.waitingFor,
-    })
-    .from(releaseHolds)
-    .innerJoin(issues, eq(issues.id, releaseHolds.issueId))
-    .where(
-      and(
-        eq(releaseHolds.projectId, projectId),
-        isNull(releaseHolds.clearedAt),
-        eq(releaseHolds.owes, 'agent'),
-        eq(issues.status, 'awaiting_release'),
-        isNull(issues.releaseBatchRunId),
-      ),
-    )
-    .orderBy(asc(releaseHolds.heldAt), asc(releaseHolds.issueId));
-  const owed = rows.filter((r) => releaseHoldWords(r).actor !== 'release');
-  const keys = await issueDisplayIds(owed.map((r) => r.issueId));
-  return owed.map((r) => ({
-    issueId: r.issueId,
-    key: keys.get(r.issueId) ?? r.issueId,
-    code: r.code,
-    waitingFor: r.waitingFor,
-  }));
 }
 
 /** Take the hold off these rows: a release claimed them, or nothing holds them any more. */

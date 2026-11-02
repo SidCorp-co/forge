@@ -67,7 +67,7 @@ export interface ReviewOwed {
 
 /**
  * A standing release hold on a waiting issue whose act is the master's (ISS-888,
- * `release-batch/hold.ts:agentOwedHolds`): owed by the agent, and not one the release clears itself.
+ * `release-batch/agent-owed-holds.ts:agentOwedHolds`): owed by the agent, and not one the release clears itself.
  */
 export interface ReleaseHoldOwed {
   issueId: string;

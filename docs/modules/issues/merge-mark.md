@@ -407,14 +407,14 @@ waiting unclaimed with a mark (`RELEASE_SHIPPED_IN_NOT_WAITING`).
 Two release runs make that record as their own (ISS-888, owner ruling `release-is-the-agents-record`),
 by the same rule and through the same close. A release's finish records every issue waiting
 unclaimed whose landing is no later than its cut and whose mark came after it as shipped in the
-version it ships (`packages/core/src/release-batch/shipped-in.ts:claimMarkedLate`), and lists what it
+version it ships (`packages/core/src/release-batch/shipped-in-runs.ts:claimMarkedLate`), and lists what it
 claimed and what it left out under `lateMarks` on the run; one it cannot close is held
 `RELEASE_SHIPPED_IN_OWED` for its agent, naming why. An abort over a roster an earlier shipped release
-may already hold (`shipped-in.ts:settleAbortedShipped`) records each issue on the release its
+may already hold (`shipped-in-runs.ts:settleAbortedShipped`) records each issue on the release its
 `shippedIn` names; without one, or where that record is refused, the issue is held
 `RELEASE_SHIPPED_IN_OWED` for its agent, never for a person, and no unattended cut takes it while the
 hold stands. Every standing hold whose act is the agent's is on the master's owed work with its
-command (`packages/core/src/release-batch/hold.ts:agentOwedHolds`).
+command (`packages/core/src/release-batch/agent-owed-holds.ts:agentOwedHolds`).
 
 An issue filed for a merge its project owed a filing for, and marked at that merge, landed before it
 was filed, and no cut claims a `draft`. The same record takes it from `draft`

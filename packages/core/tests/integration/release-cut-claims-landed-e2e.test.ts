@@ -12,6 +12,8 @@
  * and the master reads every hold whose act is its own. Against real Postgres.
  *
  * @direct-test-of packages/core/src/release-batch/shipped-in.ts
+ * @direct-test-of packages/core/src/release-batch/shipped-in-runs.ts
+ * @direct-test-of packages/core/src/release-batch/agent-owed-holds.ts
  * @direct-test-of packages/core/src/release-batch/finish.ts
  * @direct-test-of packages/core/src/release-batch/close-roster.ts
  * @direct-test-of packages/core/src/release-batch/hold.ts
@@ -23,8 +25,8 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import type { TransitionActor } from '../../src/issues/index.js';
-import { mastersPorts } from '../../src/masters/ports.js';
 import { owedLine } from '../../src/masters/owed.js';
+import { mastersPorts } from '../../src/masters/ports.js';
 import { shippedReleasesOf } from '../../src/pipeline/index.js';
 import { askQuestion } from '../../src/questions/index.js';
 import { finishReleaseBatch } from '../../src/release-batch/finish.js';

@@ -6,6 +6,7 @@ import type { AgentConfirmOwed } from './ports.js';
 // the release holds whose act is the master's (ISS-888).
 // @direct-test-of packages/core/src/masters/owed-confirms.ts
 // @direct-test-of packages/core/src/masters/owed.ts
+// @direct-test-of packages/core/src/masters/owed-release-gate.ts
 
 const none: Parameters<typeof owedLine>[0] = {
   designs: [],
@@ -151,7 +152,10 @@ describe('releaseHoldsLine: the release holds whose act is the master’s', () =
     expect(owedLine(none)).not.toContain('release gate');
     expect(dispatched(owed).owed).toBe(2);
     expect(workDigest([], owed)).not.toBe(workDigest([], none));
-    const recoded = { ...none, releaseHolds: [{ ...criteria, code: 'NO_RELEASE_GATE' }, shippedIn] };
+    const recoded = {
+      ...none,
+      releaseHolds: [{ ...criteria, code: 'NO_RELEASE_GATE' }, shippedIn],
+    };
     expect(workDigest([], recoded)).not.toBe(workDigest([], owed));
   });
 });

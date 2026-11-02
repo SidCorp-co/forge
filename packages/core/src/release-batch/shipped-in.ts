@@ -15,15 +15,15 @@
  *
  * Two release runs make the same record as their own (ISS-888, owner ruling
  * `release-is-the-agents-record`): a finish records every late-marked landing it holds by that same
- * rule as shipped in the version it ships (`claimMarkedLate`), and an abort whose roster an earlier
- * release already shipped records it there where it names that release, or holds it for the agent
- * naming this record, never for a person (`settleAbortedShipped`).
+ * rule as shipped in the version it ships, and an abort whose roster an earlier release already
+ * shipped records it there where it names that release, or holds it for the agent naming this
+ * record, never for a person (`shipped-in-runs.ts`).
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
-import { activityLog, type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import { activityLog, type IssueStatus, issues } from '../db/schema.js';
 import { resolveSourceHost } from '../integrations/source-host/index.js';
 import {
   accountActor,
@@ -38,22 +38,13 @@ import {
   returnTakenClaims,
   type TransitionActor,
 } from '../issues/index.js';
-import { logger } from '../lib/logger.js';
-import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { writeRunMetadata } from '../pipeline/index.js';
 import { blocker } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
 import { closeRoster } from './close-roster.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import {
-  clearReleaseHolds,
-  RELEASE_SHIPPED_IN_OWED,
-  type ReleaseHold,
-  writeReleaseHolds,
-} from './hold.js';
-import { waitingIssueIds } from './queries.js';
-import { FENCE_LOST, reasonOf, refuseRelease } from './refuse.js';
+import { clearReleaseHolds, RELEASE_SHIPPED_IN_OWED, type ReleaseHold } from './hold.js';
+import { refuseRelease } from './refuse.js';
 import { releaseClaims } from './releasing-recovery.js';
 import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 
@@ -92,7 +83,7 @@ interface CutRelease {
  * issue's current mark counts: the shape a late mark leaves (ISS-774). A `none` recorded after the
  * current mark settles a row until it is marked again.
  */
-async function heldBy<R extends CutRelease>(
+export async function heldBy<R extends CutRelease>(
   projectId: string,
   issueIds: readonly string[],
   releases: readonly R[],
@@ -263,7 +254,7 @@ interface ShippedInRow {
   endedClaim: boolean;
 }
 
-async function readShippedInRow(
+export async function readShippedInRow(
   projectId: string,
   issueId: string,
 ): Promise<ShippedInRow | undefined> {
@@ -285,7 +276,7 @@ async function readShippedInRow(
 }
 
 /** A release an issue is recorded as shipped in: its run, version, cut, and the commit it named. */
-interface ShippingRelease {
+export interface ShippingRelease {
   runId: string;
   version: string;
   cutAt: Date;
@@ -298,7 +289,11 @@ interface ShippingRelease {
  * before the issue landed cannot hold that landing. The record at a finish (`claimMarkedLate`) is held
  * to it too, so there is one rule, not two.
  */
-function refuseCutBeforeLanding(issSeq: number, landedAt: Date, release: ShippingRelease): void {
+export function refuseCutBeforeLanding(
+  issSeq: number,
+  landedAt: Date,
+  release: ShippingRelease,
+): void {
   if (release.cutAt >= landedAt) return;
   throw refuseRelease(
     'RELEASE_SHIPPED_IN_BEFORE_LANDING',
@@ -312,7 +307,7 @@ function refuseCutBeforeLanding(issSeq: number, landedAt: Date, release: Shippin
  * its claim let go, the notice posted, and the outbox told, naming only this issue, since the
  * release's own `release.shipped` named none of it.
  */
-async function shipInto(args: {
+export async function shipInto(args: {
   projectId: string;
   row: ShippedInRow;
   release: ShippingRelease;
@@ -441,178 +436,6 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
         `it is closed into ${release.version}, which was verified serving \`${release.commit}\`.`,
   });
   return { issueId: row.id, version: release.version, runId: release.runId, closed: true };
-}
-
-/** What a release's finish did with the waiting issues it left unclaimed whose landing it holds. */
-export interface LateMarkOutcome {
-  /** Recorded as shipped in this release and closed into it. */
-  claimed: string[];
-  /** Left at the gate, each held for its agent naming the record to make, and why. */
-  leftOut: Array<{ issueId: string; code: string; reason: string; owes: 'agent' }>;
-}
-
-const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
-
-/**
- * ISS-888, at a release's finish: every issue waiting unclaimed at the gate whose landing this
- * release holds by the rule a shipped-in record is held to (landed no later than its cut), and whose
- * merged mark came only after the cut, so the cut's roster never named it, is recorded as shipped in
- * the version this release ships and closed into it. The finish is the release run's record (owner
- * ruling `release-is-the-agents-record`); Forge reads no commit and names no other version. One it
- * cannot close is held for its agent naming the record to make, and named on the run.
- */
-export async function claimMarkedLate(
-  runId: string,
-  actor: TransitionActor,
-): Promise<LateMarkOutcome> {
-  const outcome: LateMarkOutcome = { claimed: [], leftOut: [] };
-  const [run] = await db
-    .select({
-      projectId: pipelineRuns.projectId,
-      version: pipelineRuns.releaseVersion,
-      cutAt: pipelineRuns.createdAt,
-      metadata: pipelineRuns.metadata,
-    })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-  if (!run?.version) return outcome;
-  const meta = (run.metadata ?? {}) as { issueIds?: unknown; finish?: { commit?: unknown } };
-  const roster = Array.isArray(meta.issueIds)
-    ? meta.issueIds.filter((id): id is string => typeof id === 'string')
-    : [];
-  const release: ShippingRelease = {
-    runId,
-    version: run.version,
-    cutAt: run.cutAt,
-    commit: typeof meta.finish?.commit === 'string' ? meta.finish.commit : null,
-  };
-  const late = await heldBy(
-    run.projectId,
-    await waitingIssueIds(run.projectId),
-    [{ ...release, issueIds: roster }],
-    { markedAfterCut: true },
-  );
-  for (const [issueId, owed] of late) {
-    try {
-      const row = await readShippedInRow(run.projectId, issueId);
-      if (!row?.landedAt) continue;
-      refuseCutBeforeLanding(row.issSeq, row.landedAt, release);
-      await shipInto({
-        projectId: run.projectId,
-        row,
-        release,
-        actor,
-        authorId: authorOf(actor),
-        notice:
-          `Shipped in ${release.version}, recorded by that release's finish: this issue landed at ` +
-          `${row.landedAt.toISOString()}, before ${release.version} was cut at ` +
-          `${release.cutAt.toISOString()}, and was marked merged only after the cut, so the cut's ` +
-          `roster never named it. It is closed into ${release.version}.`,
-      });
-      outcome.claimed.push(issueId);
-    } catch (err) {
-      if (isRefusal(err, FENCE_LOST)) throw err;
-      const reason = reasonOf(err);
-      outcome.leftOut.push({
-        issueId,
-        code: refusalCodeOf(err) ?? 'RELEASE_SHIPPED_IN_UNCLAIMED',
-        reason,
-        owes: 'agent',
-      });
-      await writeReleaseHolds({
-        projectId: run.projectId,
-        issueIds: [issueId],
-        holdFor: () => shippedInHold({ releases: [release], commit: owed.commit, refused: reason }),
-        now: new Date(),
-      });
-    }
-  }
-  if (late.size > 0) {
-    await writeRunMetadata(runId, { merge: { lateMarks: outcome }, touch: false });
-    logger.info(
-      { runId, claimed: outcome.claimed.length, leftOut: outcome.leftOut.length },
-      'release-batch: the finish recorded the late-marked landings it holds',
-    );
-  }
-  return outcome;
-}
-
-/** What an abort did with a roster whose landing a shipped release may already hold. */
-export interface AbortShippedOutcome {
-  /** Recorded as shipped in the release the abort named, and closed into it. */
-  recorded: string[];
-  /** Held for their agent, naming the shipped-in record to make. */
-  heldForAgent: string[];
-}
-
-/**
- * ISS-888: an aborted release's roster, back at the gate. Where the abort names the earlier release
- * that already shipped it (`shippedIn`, the release run's record read with git), each issue is
- * recorded there through the same door its agent would use. Every issue whose landing a shipped release
- * cut after it holds by Forge's rows, and every one that record could not close, is held for its
- * agent naming the shipped-in act, whatever blocker the abort named: whether it shipped is the
- * agent's to read, never a person's.
- */
-export async function settleAbortedShipped(args: {
-  projectId: string;
-  runId: string;
-  version: string | null;
-  reason: string;
-  issueIds: readonly string[];
-  shippedIn?: { version: string; evidence: string } | undefined;
-  userId: string;
-}): Promise<AbortShippedOutcome> {
-  const outcome: AbortShippedOutcome = { recorded: [], heldForAgent: [] };
-  if (args.issueIds.length === 0) return outcome;
-  const refused = new Map<string, string>();
-  if (args.shippedIn) {
-    for (const issueId of args.issueIds) {
-      try {
-        await recordShippedIn({
-          projectId: args.projectId,
-          issueId,
-          version: args.shippedIn.version,
-          evidence: args.shippedIn.evidence,
-          userId: args.userId,
-        });
-        outcome.recorded.push(issueId);
-      } catch (err) {
-        refused.set(issueId, reasonOf(err));
-      }
-    }
-  }
-  const rest = args.issueIds.filter((id) => !outcome.recorded.includes(id));
-  const shipped = (await shippedReleaseRuns(args.projectId)).filter((r) => r.runId !== args.runId);
-  const earlier = await heldBy(args.projectId, rest, shipped, { markedAfterCut: false });
-  // what a refused record names: the release the abort said shipped it, as Forge holds it if it does
-  const said = args.shippedIn
-    ? [
-        {
-          version: args.shippedIn.version,
-          commit: shipped.find((r) => r.version === args.shippedIn?.version)?.commit ?? null,
-        },
-      ]
-    : [];
-  const commits = refused.size > 0 ? await markedCommitsOf([...refused.keys()]) : new Map();
-  const held = rest.filter((id) => earlier.has(id) || refused.has(id));
-  await writeReleaseHolds({
-    projectId: args.projectId,
-    issueIds: held,
-    holdFor: (id) => {
-      const found = earlier.get(id);
-      return abortShippedInHold({
-        version: args.version,
-        reason: args.reason,
-        releases: found?.releases ?? said,
-        commit: found?.commit ?? commits.get(id) ?? null,
-        refused: refused.get(id),
-      });
-    },
-    now: new Date(),
-  });
-  outcome.heldForAgent = held;
-  return outcome;
 }
 
 /**
