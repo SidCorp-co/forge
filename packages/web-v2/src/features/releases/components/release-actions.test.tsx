@@ -1,3 +1,5 @@
+// @direct-test-of packages/web-v2/src/features/releases/api.ts
+// @direct-test-of packages/web-v2/src/features/releases/hooks.ts
 // HOP 0.1.0, 2026-10-07: a draft refused only for RELEASE_ROSTER_OVERSIZE told "A project admin" to
 // split it and offered no control, so the admin posted the ids by hand. Where core says the viewer
 // may split, the page offers the act the gate's effect names and sends exactly the ids core chose.
