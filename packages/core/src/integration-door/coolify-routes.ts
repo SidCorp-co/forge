@@ -17,7 +17,7 @@
  * Coolify route that happened to live in the provider-agnostic file.
  */
 
-import type { Context, Hono, MiddlewareHandler } from 'hono';
+import type { Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { deployWebOnly } from '../fast-lane/index.js';
@@ -35,7 +35,7 @@ import {
 import { providerRefused } from '../lib/provider-refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan, requiresOnParam } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { announceIntegrationChanged } from '../project-config/index.js';
 import {
   coolifyDeliveryStatus,
@@ -48,7 +48,7 @@ import {
   runCoolifyDeploy,
   runCoolifyRollback,
 } from '../release-batch/index.js';
-import { coolifyRefusal, given, requireCoolifyRun } from './coolify-access.js';
+import { coolifyRefusal, given } from './coolify-access.js';
 import { coolifyDeploymentLogs, coolifyRuntimeLogs } from './coolify-logs.js';
 
 const deployBodySchema = z
@@ -113,21 +113,10 @@ const rollbackImagesQuerySchema = z.object({
 });
 
 // Membership is refused before the input is read, so a stranger learns nothing from a 400.
-const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(
-    actorFor(c.get('userId')),
-    'project.read',
-    projectResource(c.req.param('projectId') ?? ''),
-  );
-  await next();
-};
+const projectMember = requiresOnParam('project.read', 'projectId');
 
-const coolifyRun =
-  (act: 'deploy' | 'cancel' | 'rollback'): MiddlewareHandler<{ Variables: AuthVars }> =>
-  async (c, next) => {
-    await requireCoolifyRun(actorFor(c.get('userId')), c.req.param('projectId') ?? '', act);
-    await next();
-  };
+/** The one rule for a Coolify act that changes what is running: `deploys.run` on the project. */
+const coolifyRun = requiresOnParam('deploys.run', 'projectId');
 
 /** Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346). */
 async function answer(c: Context, run: () => Promise<unknown>): Promise<Response> {
@@ -162,7 +151,7 @@ function registerCommandRoutes(routes: Routes): void {
   );
   routes.post(
     '/:projectId/integrations/coolify/deploy',
-    coolifyRun('deploy'),
+    coolifyRun,
     zValidator('json', deployBodySchema),
     (c) => {
       const { targets, ...body } = c.req.valid('json');
@@ -180,7 +169,7 @@ function registerCommandRoutes(routes: Routes): void {
   );
   routes.post(
     '/:projectId/integrations/coolify/cancel',
-    coolifyRun('cancel'),
+    coolifyRun,
     zValidator('json', cancelBodySchema),
     (c) =>
       answer(c, () =>
@@ -204,7 +193,7 @@ function registerCommandRoutes(routes: Routes): void {
   );
   routes.post(
     '/:projectId/integrations/coolify/rollback',
-    coolifyRun('rollback'),
+    coolifyRun,
     zValidator('json', rollbackBodySchema),
     (c) =>
       answer(c, () =>

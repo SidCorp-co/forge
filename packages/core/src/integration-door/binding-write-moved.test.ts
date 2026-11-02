@@ -20,9 +20,9 @@ vi.mock('../middleware/auth.js', async (importOriginal) => {
 vi.mock('../permissions/index.js', () => ({
   actorFor: (id: string) => ({ id }),
   projectResource: (id: string) => ({ id }),
-  requireCan: async () => {},
+  requireDeclaredOn: async () => {},
   requireOrgHeld: async () => {},
-  // ISS-824: routes mount a declared permission; the gate under test here is requireCan
+  // ISS-824: routes mount a declared permission; the refusal under test here comes after it
   requiresOnParam: () => async (_c: unknown, next: () => Promise<void>) => next(),
   requiresOnResolved: () => async (_c: unknown, next: () => Promise<void>) => next(),
   requiresNoPermission: () => async (_c: unknown, next: () => Promise<void>) => next(),

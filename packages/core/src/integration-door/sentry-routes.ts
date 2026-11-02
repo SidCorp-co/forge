@@ -21,7 +21,7 @@
  */
 
 import { SENTRY_AGENT_STATUSES } from '@forge/contracts/integrations';
-import type { Hono, MiddlewareHandler } from 'hono';
+import type { Hono } from 'hono';
 import { z } from 'zod';
 import {
   readProjectSentryIssue,
@@ -31,7 +31,7 @@ import {
 } from '../integrations/sentry/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 
 /** Which declared Sentry target to read; required where the binding declares more than one. */
 const targetSchema = z.string().min(1).max(200).optional();
@@ -60,14 +60,7 @@ const listQuerySchema = z
 const getParamSchema = z.object({ issueId: z.string().min(1).max(200) });
 const getQuerySchema = z.object({ target: targetSchema }).strict();
 
-const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(
-    actorFor(c.get('userId')),
-    'project.read',
-    projectResource(c.req.param('projectId') ?? ''),
-  );
-  await next();
-};
+const projectMember = requiresOnParam('project.read', 'projectId');
 
 /** A Sentry read; a refusal says why Sentry could not be read for this project, in the envelope. */
 async function sentryAnswer(read: () => Promise<Record<string, unknown>>) {

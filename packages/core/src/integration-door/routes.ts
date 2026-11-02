@@ -44,13 +44,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import {
-  actorFor,
-  projectResource,
-  requireCan,
-  requireOrgHeld,
-  requiresOnParam,
-} from '../permissions/index.js';
+import { requireDeclaredOn, requireOrgHeld, requiresOnParam } from '../permissions/index.js';
 import { announceIntegrationChanged, setBindingInboundSecret } from '../project-config/index.js';
 import { summarizeBindings, summarizeOneBinding } from './binding-standing.js';
 import { loadConnection } from './connection-routes.js';
@@ -83,17 +77,14 @@ async function projectBinding(
   userId: string,
   need?: 'admin',
 ): Promise<BindingWithConnection> {
-  await requireCan(
-    actorFor(userId),
-    need === 'admin' ? 'project.admin' : 'project.read',
-    projectResource(projectId),
-  );
+  await requireDeclaredOn(projectId, userId, need === 'admin' ? 'project.admin' : 'project.read');
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
   return existing;
 }
 
 const READ = requiresOnParam('project.read', 'projectId');
+const ADMIN = requiresOnParam('project.admin', 'projectId');
 
 integrationsRoutes.get('/:projectId/integrations', READ, noQuery, async (c) => {
   const projectId = c.req.param('projectId');
@@ -104,6 +95,7 @@ integrationsRoutes.get('/:projectId/integrations', READ, noQuery, async (c) => {
 
 integrationsRoutes.patch(
   '/:projectId/integrations/:id',
+  ADMIN,
   zValidator('json', updateSchema),
   async (c) => {
     const projectId = c.req.param('projectId');
@@ -189,7 +181,7 @@ integrationsRoutes.patch(
   },
 );
 
-integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
+integrationsRoutes.post('/:projectId/integrations/:id/test', READ, async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const existing = await projectBinding(projectId, id, c.get('userId'));
@@ -289,7 +281,7 @@ integrationsRoutes.post(
   },
 );
 
-integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) => {
+integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', ADMIN, async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
@@ -322,7 +314,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   });
 });
 
-integrationsRoutes.get('/:projectId/integrations/:id/deliveries', noQuery, async (c) => {
+integrationsRoutes.get('/:projectId/integrations/:id/deliveries', READ, noQuery, async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   await projectBinding(projectId, id, c.get('userId'));

@@ -22,20 +22,27 @@ const state = vi.hoisted(() => ({
   coolifyRows: [] as unknown[],
 }));
 
-vi.mock('../permissions/index.js', () => ({
-  actorFor: (id: string) => ({ id }),
-  projectResource: (id: string) => ({ id }),
-  requireCan: async (_actor: unknown, action: string) => {
+vi.mock('../permissions/index.js', () => {
+  const held = (action: string) => {
     if (!state.held.has(action)) {
       throw new HTTPException(403, { message: `needs ${action}`, cause: { code: 'FORBIDDEN' } });
     }
-  },
-  // ISS-824: routes mount a declared permission; the gate under test here is requireCan
-  requiresOnParam: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  requiresOnResolved: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  requiresNoPermission: () => async (_c: unknown, next: () => Promise<void>) => next(),
-  requireDeclared: () => {},
-}));
+  };
+  return {
+    actorFor: (id: string) => ({ id }),
+    projectResource: (id: string) => ({ id }),
+    requireCan: async (_actor: unknown, action: string) => held(action),
+    // ISS-824: the routes declare their permission where mounted, and that declaration is the gate
+    requiresOnParam: (action: string) => async (_c: unknown, next: () => Promise<void>) => {
+      held(action);
+      await next();
+    },
+    requiresOnResolved: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    requiresNoPermission: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    requireDeclared: () => {},
+    requireDeclaredOn: async (_project: string, _user: unknown, action: string) => held(action),
+  };
+});
 
 vi.mock('../integrations/source-host/index.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../integrations/source-host/index.js')>();

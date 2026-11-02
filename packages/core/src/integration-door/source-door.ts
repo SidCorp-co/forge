@@ -13,22 +13,15 @@ import {
 } from '../integrations/source-host/index.js';
 import { refuser } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 
 export const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 export type Routes = Hono<{ Variables: AuthVars }>;
 
-export const can =
-  (level: 'project.read' | 'project.write'): MiddlewareHandler<{ Variables: AuthVars }> =>
-  async (c, next) => {
-    await requireCan(
-      actorFor(c.get('userId')),
-      level,
-      projectResource(c.req.param('projectId') ?? ''),
-    );
-    await next();
-  };
+/** The permission a source-door route declares on the project its `:projectId` names. */
+export const can = (level: 'project.read' | 'project.write'): MiddlewareHandler =>
+  requiresOnParam(level, 'projectId');
 
 /**
  * The project's source host for an agent, then the call. A binding that is missing, switched off,

@@ -13,7 +13,7 @@
  * has already made the App, and a refusal nobody reads leaves it stranded there (FB-128).
  */
 
-import type { Context, MiddlewareHandler } from 'hono';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
@@ -53,7 +53,13 @@ import {
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, can, orgResource, projectResource, requireCan } from '../permissions/index.js';
+import {
+  actorFor,
+  can,
+  orgResource,
+  projectResource,
+  requiresOnParam,
+} from '../permissions/index.js';
 import { projectOrgHead } from '../projects/index.js';
 import { beginConnect } from './github-app-routes.js';
 import { finishedAt, nameStrandedApp, stateSecret, strandedAt } from './github-connect-shared.js';
@@ -74,14 +80,7 @@ const installedQuerySchema = z.looseObject({
 });
 
 // the admin check runs before the query is read, so a non-admin learns nothing from a 400
-const projectAdmin: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(
-    actorFor(c.get('userId')),
-    'project.admin',
-    projectResource(c.req.param('projectId') ?? ''),
-  );
-  await next();
-};
+const projectAdmin = requiresOnParam('project.admin', 'projectId');
 
 export const githubConnectRoutes = new Hono<{ Variables: AuthVars }>();
 githubConnectRoutes.use('*', requireAuth(), assertEmailVerified());

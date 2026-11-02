@@ -1,10 +1,6 @@
-/**
- * The one rule for a Coolify act that changes what is running: `deploys.run` on the project. The REST
- * routes and the MCP tool both ask it here, so neither door decides it alone.
- */
+/** What the Coolify routes share: how Coolify's own refusal is named, and the options a caller set. */
 
 import { CoolifyApiError, describeCoolifyForbidden } from '../integrations/deploy/index.js';
-import { type PermissionActor, projectResource, requireCan } from '../permissions/index.js';
 
 /** Coolify's own refusal, named the same way on both doors; null for anything that is not one. */
 export function coolifyRefusal(err: unknown): string | null {
@@ -12,14 +8,6 @@ export function coolifyRefusal(err: unknown): string | null {
   return err.status === 403
     ? describeCoolifyForbidden(err)
     : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
-}
-
-export async function requireCoolifyRun(
-  actor: PermissionActor,
-  projectId: string,
-  act: 'deploy' | 'cancel' | 'rollback',
-): Promise<void> {
-  await requireCan(actor, 'deploys.run', projectResource(projectId), `Coolify ${act}`);
 }
 
 /** The keys a caller set, so an absent option stays absent rather than an explicit undefined. */
