@@ -307,13 +307,9 @@ describe('a release awaiting approval names its approver', () => {
     const secondId = (await createTestUser({ verified: true })).id;
     await addProjectMember(projectId, secondId, 'admin');
     const several = await detail('member', '0.1.0');
-    expect(several.waitingOn).toMatchObject({
-      kind: 'person',
-      act: 'approve',
-      who: expect.stringContaining(', '),
-    });
+    expect(several.waitingOn).toMatchObject({ kind: 'person', act: 'approve' });
+    expect(several.waitingOn.who).toContain(', ');
     expect(several.waitingOn.who).not.toContain(String((await userNames([agentId])).get(agentId)));
-
     await db.execute(
       sql`UPDATE project_members SET role = 'member' WHERE project_id = ${projectId} AND user_id IN (${secondId}, ${agentId})`,
     );
