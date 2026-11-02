@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm';
 import { requirementContracts, requirements } from '../db/schema-requirements.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 import { contractsOfProject } from './contract-links.js';
 import type { RequirementActor } from './read.js';
@@ -65,7 +65,7 @@ export async function requestContract(input: {
   { ok: true; request: ContractRequestAnswer } | { ok: false; refusals: RequirementRefusal[] }
 > {
   const { projectId, actor, write } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const [providerSlug = '', contractSlug = ''] = input.contract.split('/');
   const providerId = await findProjectIdBySlug(providerSlug);
   if (!providerId) throw notFound(`no project has the slug ${providerSlug}`);

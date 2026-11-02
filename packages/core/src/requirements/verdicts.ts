@@ -20,7 +20,7 @@ import { requirementCriteria } from '../db/schema-requirements.js';
 import { issueDisplayIds, requirementRecordingSessionOf } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
 import { emitEvents } from '../outbox/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { requirementDependents } from './dependents.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { liveAt, type RequirementRefusal } from './rules.js';
@@ -158,7 +158,7 @@ export async function recordRequirementVerdict(input: {
   body: RecordRequirementVerdictRequest;
 }): Promise<RecordedVerdict> {
   const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const criteria = await db
     .select()
@@ -261,7 +261,7 @@ export async function listRequirementVerdicts(input: {
   actor: RequirementActor;
 }): Promise<RequirementVerdictRow[]> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const row = await rowIn(db, projectId, input.ref);
   const [verdicts, criteria] = await Promise.all([
     requirementVerdictsOf([row.id]),

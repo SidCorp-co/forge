@@ -30,13 +30,7 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import {
-  actorFor,
-  masterFactsOf,
-  permissionFactsOf,
-  projectResource,
-  requireCan,
-} from '../permissions/index.js';
+import { masterFactsOf, permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { questionViewsOf } from './clarity.js';
@@ -167,7 +161,7 @@ export async function listRequirementsAs(
   viewer: RequirementActor,
   projectId: string,
 ): Promise<RequirementSummary[]> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const { rows, areas, runnerBound } = await listRowsOf(projectId);
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
@@ -443,6 +437,6 @@ export async function readRequirementAs(
   ref: string,
   door: ReadDoor = {},
 ): Promise<RequirementDetail> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   return detailOf(await rowIn(db, projectId, ref), viewer, door);
 }

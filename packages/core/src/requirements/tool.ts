@@ -10,7 +10,7 @@ import { db } from '../db/client.js';
 import { principalAgency } from '../issues/index.js';
 import { MCP_DOOR } from '../lib/data-egress.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { criteriaFromDocument } from './document-criteria.js';
 import { designsNamed, draftLinked } from './draft-linked.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
@@ -246,7 +246,7 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
   handler: async (args) => {
     const { projectId, title, criteriaFrom, preview, designs, ...write } = draftInput.parse(args);
     // the caller is refused for the right it lacks before anything is said of what it drew
-    await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
+    await requireDeclaredOn(projectId, ctx.principal.userId, 'project.write');
     const unfit = await undrawn('forge_requirement_draft', args);
     if (unfit.length) return refusedAnswer(unfit, 'REQUIREMENT_REFUSED');
     const linked = await designsNamed(projectId, designs ?? []);
@@ -365,7 +365,7 @@ export const forgeRequirementReviseTool: ContextScopedMcpToolFactory = (ctx) => 
   inputSchema: zodToMcpSchema(reviseInput),
   handler: async (args) => {
     const { projectId, requirement, baseRevision, ...write } = reviseInput.parse(args);
-    await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
+    await requireDeclaredOn(projectId, ctx.principal.userId, 'project.write');
     const unfit = await undrawn('forge_requirement_revise', args);
     if (unfit.length) return refusedAnswer(unfit, 'REQUIREMENT_REFUSED');
     return drafted(

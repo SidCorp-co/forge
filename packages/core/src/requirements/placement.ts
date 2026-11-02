@@ -18,7 +18,7 @@ import {
 import { completeOnce } from '../integrations/llm/index.js';
 import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
@@ -51,7 +51,7 @@ export async function setAreas(input: {
   names: string[];
 }): Promise<AreasOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const names = input.names.map((n) => n.trim());
   if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) {
     return {
@@ -148,7 +148,7 @@ export async function setPlacement(input: {
   shortName?: string | null | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   if (input.shortName && shortNameWords(input.shortName) > SHORT_NAME_MAX_WORDS) {
     return {
@@ -201,7 +201,7 @@ export async function acceptPlacement(input: {
   actor: RequirementActor;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   if (!row.proposedAreaId && !row.proposedShortName) {
     return {
@@ -333,7 +333,7 @@ export async function proposeMissingPlacements(
   projectId: string,
   actor: RequirementActor,
 ): Promise<{ asked: number }> {
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const rows = await db
     .select({ id: requirements.id })
     .from(requirements)

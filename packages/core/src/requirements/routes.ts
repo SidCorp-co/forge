@@ -30,7 +30,7 @@ import { refused } from '../lib/refusal.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { noQuery, strictBody } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { acceptDelivery, dropRequirement, moveDelivery } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
 import { requirementChecklistRoutes } from './checklist-routes.js';
@@ -71,28 +71,43 @@ for (const path of ['/:id/requirements', '/:id/requirements/*', '/:id/contract-r
   requirementRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
-requirementRoutes.get('/:id/requirements', projectParam, viewQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const listed = await egressForRequest(
-    c.get('agency'),
-    id,
-    'requirement',
-    await listRequirementsAs(actorOf(c), id),
-    'the requirement list',
-  );
-  const requirements =
-    c.req.valid('query').view === 'summary' ? listed.map(requirementSummaryOf) : listed;
-  return c.json({ requirements, returned: requirements.length });
-});
+requirementRoutes.get(
+  '/:id/requirements',
+  projectParam,
+  requiresOnParam('project.read', 'id'),
+  viewQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const listed = await egressForRequest(
+      c.get('agency'),
+      id,
+      'requirement',
+      await listRequirementsAs(actorOf(c), id),
+      'the requirement list',
+    );
+    const requirements =
+      c.req.valid('query').view === 'summary' ? listed.map(requirementSummaryOf) : listed;
+    return c.json({ requirements, returned: requirements.length });
+  },
+);
 
-requirementRoutes.get('/:id/requirements/:req/decisions', reqParam, decisionsQuery, async (c) => {
-  const { id, req } = c.req.valid('param');
-  return c.json(await readRequirementDecisionsAs(actorOf(c), id, req, {}, c.req.valid('query').by));
-});
+requirementRoutes.get(
+  '/:id/requirements/:req/decisions',
+  reqParam,
+  requiresOnParam('project.read', 'id'),
+  decisionsQuery,
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return c.json(
+      await readRequirementDecisionsAs(actorOf(c), id, req, {}, c.req.valid('query').by),
+    );
+  },
+);
 
 requirementRoutes.post(
   '/:id/requirements',
   projectParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(
     z.strictObject({
       title: titleText(REQUIREMENT_TITLE_MAX),
@@ -124,6 +139,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/contract-requests',
   projectParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(
     z.strictObject({
       contract: z
@@ -150,28 +166,40 @@ requirementRoutes.post(
   },
 );
 
-requirementRoutes.get('/:id/requirements/:req', reqParam, noQuery, async (c) => {
-  const { id, req } = c.req.valid('param');
-  return c.json(
-    await egressForRequest(
-      c.get('agency'),
-      id,
-      'requirement',
-      await readRequirementAs(actorOf(c), id, req),
-      req,
-    ),
-  );
-});
+requirementRoutes.get(
+  '/:id/requirements/:req',
+  reqParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return c.json(
+      await egressForRequest(
+        c.get('agency'),
+        id,
+        'requirement',
+        await readRequirementAs(actorOf(c), id, req),
+        req,
+      ),
+    );
+  },
+);
 
-requirementRoutes.get('/:id/requirement-areas', projectParam, noQuery, async (c) => {
-  const projectId = c.req.valid('param').id;
-  await requireCan(actorFor(actorOf(c).userId), 'project.read', projectResource(projectId));
-  return c.json({ areas: await areasOf(projectId) });
-});
+requirementRoutes.get(
+  '/:id/requirement-areas',
+  projectParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const projectId = c.req.valid('param').id;
+    return c.json({ areas: await areasOf(projectId) });
+  },
+);
 
 requirementRoutes.put(
   '/:id/requirement-areas',
   projectParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(requirementAreasRequestSchema, REQUIREMENT_AREAS_SHAPE),
   holdChatWrite('requirement_draft'),
   async (c) => {
@@ -187,14 +215,20 @@ requirementRoutes.put(
 );
 
 // a person asks the assistant to propose an area and short name for every requirement without one
-requirementRoutes.post('/:id/requirement-areas/propose', projectParam, async (c) => {
-  const projectId = c.req.valid('param').id;
-  return c.json(await proposeMissingPlacements(projectId, actorOf(c)), 202);
-});
+requirementRoutes.post(
+  '/:id/requirement-areas/propose',
+  projectParam,
+  requiresOnParam('project.write', 'id'),
+  async (c) => {
+    const projectId = c.req.valid('param').id;
+    return c.json(await proposeMissingPlacements(projectId, actorOf(c)), 202);
+  },
+);
 
 requirementRoutes.put(
   '/:id/requirements/:req/placement',
   reqParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(requirementPlacementRequestSchema, REQUIREMENT_PLACEMENT_SHAPE),
   holdChatWrite('requirement_revision'),
   async (c) => {
@@ -210,6 +244,7 @@ requirementRoutes.put(
 requirementRoutes.patch(
   '/:id/requirements/:req',
   reqParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(patchRequirementRequestSchema, PATCH_REQUIREMENT_SHAPE),
   holdChatWrite('requirement_revision'),
   async (c) => {
@@ -226,10 +261,15 @@ requirementRoutes.patch(
   },
 );
 
-requirementRoutes.post('/:id/requirements/:req/placement/accept', reqParam, async (c) => {
-  const { id, req } = c.req.valid('param');
-  return answer(c, await acceptPlacement({ projectId: id, ref: req, actor: actorOf(c) }));
-});
+requirementRoutes.post(
+  '/:id/requirements/:req/placement/accept',
+  reqParam,
+  requiresOnParam('project.write', 'id'),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return answer(c, await acceptPlacement({ projectId: id, ref: req, actor: actorOf(c) }));
+  },
+);
 
 requirementRoutes.route('/', revisionRoutes);
 

@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';
 import { movedRow, transition } from '../lifecycle/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { lockRequirements, requirementKernelActor } from './write-tx.js';
 
@@ -45,7 +45,7 @@ export async function keepRefusedIn(
   tx: Tx,
   input: { projectId: string; requirementId: string; actor: RequirementActor; reason: string },
 ): Promise<{ moved: true } | ValueMoveMissed> {
-  await requireCan(actorFor(input.actor.userId), 'project.write', projectResource(input.projectId));
+  await requireDeclaredOn(input.projectId, input.actor.userId, 'project.write');
   await lockRequirements(tx, input.projectId);
   const row = await rowIn(tx, input.projectId, input.requirementId);
   if (row.status !== 'refused') return { moved: false, status: row.status };

@@ -17,7 +17,7 @@ import {
 import { recordCorrection } from '../lessons/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { emitEvent } from '../outbox/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import {
   createRequirementIn,
@@ -43,7 +43,7 @@ export async function createRequirement(input: {
   write: RevisionWrite;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
@@ -67,7 +67,7 @@ export async function writeRevision(input: {
   write: RevisionWrite;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, write } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
@@ -111,7 +111,7 @@ export async function proposeRevision(input: {
   revision: number;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
@@ -243,7 +243,7 @@ export async function withdrawRevision(input: {
   reason: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   if (!input.reason.trim()) {
     return {

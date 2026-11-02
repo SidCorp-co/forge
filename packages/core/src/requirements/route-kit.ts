@@ -14,7 +14,7 @@ import { db } from '../db/client.js';
 import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { criterionSchema, specSchema } from './schemas.js';
@@ -92,7 +92,7 @@ export function draftPictureFits(onto: 'new' | 'head'): MiddlewareHandler<Requir
     };
     if (!body.picture) return next();
     const { id, req } = c.req.param() as { id: string; req?: string };
-    await requireCan(actorFor(c.get('userId')), 'project.write', projectResource(id));
+    await requireDeclaredOn(id, c.get('userId'), 'project.write');
     const landing =
       onto === 'head' && req
         ? await rowIn(db, id, req).then((row) =>

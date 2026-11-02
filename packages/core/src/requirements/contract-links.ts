@@ -9,7 +9,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementContracts, requirements } from '../db/schema-requirements.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 import { linkedContracts, linkedContractsOf } from './baselines.js';
 import { type RequirementActor, rowIn } from './read.js';
@@ -48,7 +48,7 @@ export async function linkContract(input: {
   contract: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const refusal = contractLinkRefusal({
     contract: input.contract,
@@ -77,7 +77,7 @@ export async function unlinkContract(input: {
   contract: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const linked = (await linkedContracts(db, row.id)).find((c) => c.contract === input.contract);
   if (!linked) throw notFound(`${input.ref} links no contract ${input.contract}`);

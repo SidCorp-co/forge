@@ -22,7 +22,7 @@ import { db } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { gatedMovesOf } from '../lifecycle/index.js';
 import { noQuery } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { deliveryIn, liveBuildOfRequirement } from './acceptance.js';
 import {
   acceptanceAnswersOf,
@@ -30,7 +30,7 @@ import {
   uncitedVerdictsIn,
 } from './checklist-record.js';
 import { type Row, rowIn } from './read.js';
-import { actorOf, type RequirementEnv, reqParam } from './route-kit.js';
+import { type RequirementEnv, reqParam } from './route-kit.js';
 
 // mounted on `routes.ts:requirementRoutes`, whose auth gate covers every requirement path
 export const requirementChecklistRoutes = new Hono<RequirementEnv>();
@@ -54,38 +54,43 @@ async function acceptanceRecord(projectId: string, row: Row): Promise<RecordAnsw
  * words), and its moves, a move recorded before the checklist reading `no_checklist` (BC-9). `now`
  * is null for a checklist the requirement has not reached: acceptance on a draft.
  */
-requirementChecklistRoutes.get('/:id/requirements/:req/checklist', reqParam, noQuery, async (c) => {
-  const { id, req } = c.req.valid('param');
-  await requireCan(actorFor(actorOf(c).userId), 'project.read', projectResource(id));
-  const row = await rowIn(db, id, req);
-  const moves = await gatedMovesOf(db, REQUIREMENT_MACHINE, row.id);
-  const asked: [Checklist, () => Promise<RecordAnswers>][] = [
-    [REQUIREMENT_READY_CHECKLIST, () => requirementReadyRecord(db, row.id)],
-    [REQUIREMENT_ACCEPTANCE_CHECKLIST, () => acceptanceRecord(id, row)],
-  ];
-  const checklists: ChecklistRead[] = [];
-  for (const [checklist, record] of asked) {
-    const onEdge = moves
-      .filter((m) => m.gate === checklist.id)
-      .map((m) => ({ ...m, countsAsPassed: countsAsPassed(m.standing) }));
-    checklists.push({
-      id: checklist.id,
-      version: checklist.version,
-      gates: checklist.gates,
-      design: checklist.design,
-      form: checklistFormOf(checklist),
-      input: checklistInputOf(checklist),
-      now: reached(checklist, row.status, onEdge)
-        ? evaluateChecklist(checklist, { given: {}, record: await record() })
-        : null,
-      moves: onEdge,
-    });
-  }
-  const read: RequirementChecklistsRead = {
-    requirementId: row.id,
-    key: requirementKey(row.reqSeq),
-    revision: row.currentRevision,
-    checklists,
-  };
-  return c.json(read);
-});
+requirementChecklistRoutes.get(
+  '/:id/requirements/:req/checklist',
+  reqParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    const row = await rowIn(db, id, req);
+    const moves = await gatedMovesOf(db, REQUIREMENT_MACHINE, row.id);
+    const asked: [Checklist, () => Promise<RecordAnswers>][] = [
+      [REQUIREMENT_READY_CHECKLIST, () => requirementReadyRecord(db, row.id)],
+      [REQUIREMENT_ACCEPTANCE_CHECKLIST, () => acceptanceRecord(id, row)],
+    ];
+    const checklists: ChecklistRead[] = [];
+    for (const [checklist, record] of asked) {
+      const onEdge = moves
+        .filter((m) => m.gate === checklist.id)
+        .map((m) => ({ ...m, countsAsPassed: countsAsPassed(m.standing) }));
+      checklists.push({
+        id: checklist.id,
+        version: checklist.version,
+        gates: checklist.gates,
+        design: checklist.design,
+        form: checklistFormOf(checklist),
+        input: checklistInputOf(checklist),
+        now: reached(checklist, row.status, onEdge)
+          ? evaluateChecklist(checklist, { given: {}, record: await record() })
+          : null,
+        moves: onEdge,
+      });
+    }
+    const read: RequirementChecklistsRead = {
+      requirementId: row.id,
+      key: requirementKey(row.reqSeq),
+      revision: row.currentRevision,
+      checklists,
+    };
+    return c.json(read);
+  },
+);

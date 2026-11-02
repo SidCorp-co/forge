@@ -24,13 +24,7 @@ import {
 } from '../issues/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import {
-  actorFor,
-  permissionFactsOf,
-  permissionRefusal,
-  projectResource,
-  requireCan,
-} from '../permissions/index.js';
+import { permissionFactsOf, permissionRefusal, requireDeclaredOn } from '../permissions/index.js';
 import { gateOf } from '../project-config/index.js';
 import { projectsOf, requirementNamed } from './issue-projects.js';
 import { planDriftOf } from './plan-drift.js';
@@ -76,7 +70,7 @@ export async function linkIssue(input: {
   adoptPlan?: boolean | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   if (input.adoptPlan) {
@@ -141,7 +135,7 @@ export async function unlinkIssue(input: {
   issue: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   if (issue.requirementId !== row.id)
@@ -158,7 +152,7 @@ export async function linkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const [wf] = await db
     .select({
@@ -223,7 +217,7 @@ export async function unlinkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   await db.transaction(async (tx) => {
     await lockRequirements(tx, projectId);

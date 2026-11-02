@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { strictBody } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { acceptRevision } from './agree.js';
 import { writeKind, writePicture } from './picture.js';
 import {
@@ -29,6 +30,7 @@ export const revisionRoutes = new Hono<RequirementEnv>();
 revisionRoutes.post(
   '/:id/requirements/:req/revisions',
   reqParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(
     z.strictObject({
       baseRevision: z.number().int().min(1).nullable(),
@@ -52,6 +54,7 @@ revisionRoutes.post(
 revisionRoutes.put(
   '/:id/requirements/:req/revisions/:n',
   revisionParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(
     z.strictObject({ title: revisionTitle, ...revisionFields }),
     "{ title? (left out, the draft's), reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } rewrites a draft revision whole; a code the draft or its base holds keeps that code, no code takes the next one; kind and spec left out keep the draft's, and spec {} clears it",
@@ -76,6 +79,7 @@ const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty obj
 revisionRoutes.post(
   '/:id/requirements/:req/revisions/:n/propose',
   revisionParam,
+  requiresOnParam('project.write', 'id'),
   emptyBody,
   async (c) => {
     const { id, req, n } = c.req.valid('param');
@@ -131,6 +135,7 @@ revisionRoutes.post(
 revisionRoutes.post(
   '/:id/requirements/:req/revisions/:n/withdraw',
   revisionParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(
     z.strictObject({ reason: z.string().max(REASON_TEXT_MAX) }),
     '{ reason } says why the draft is withdrawn',
@@ -154,6 +159,7 @@ revisionRoutes.post(
 revisionRoutes.put(
   '/:id/requirements/:req/revisions/:n/picture',
   revisionParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(writePictureRequestSchema, WRITE_PICTURE_SHAPE),
   async (c) => {
     const { id, req, n } = c.req.valid('param');
@@ -173,6 +179,7 @@ revisionRoutes.put(
 revisionRoutes.put(
   '/:id/requirements/:req/revisions/:n/kind',
   revisionParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(writeKindRequestSchema, WRITE_KIND_SHAPE),
   async (c) => {
     const { id, req, n } = c.req.valid('param');

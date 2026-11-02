@@ -12,7 +12,7 @@ import {
   requirementWorkflows,
 } from '../db/schema-requirements.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { type RequirementActor, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
@@ -26,7 +26,7 @@ export async function putCriterionSteps(input: {
   request: PutCriterionStepsRequest;
 }): Promise<RequirementOutcome> {
   const { projectId, ref, code, actor, request } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

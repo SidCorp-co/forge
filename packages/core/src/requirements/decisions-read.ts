@@ -4,7 +4,7 @@ import { listDecisionsAs } from '../comments/index.js';
 import { db } from '../db/client.js';
 import type { ReadDoor } from '../feedback/index.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { answerViewsOf } from './clarity.js';
 import { type RequirementActor, rowIn } from './read.js';
 
@@ -19,7 +19,7 @@ export async function readRequirementDecisionsAs(
   door: ReadDoor = {},
   by: DecisionMaker = 'people',
 ): Promise<RequirementDecisionsResponse> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const row = await rowIn(db, projectId, ref);
   const withheld = egressReading(
     await dataPolicyOf(projectId),

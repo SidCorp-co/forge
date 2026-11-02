@@ -5,6 +5,7 @@ import {
 import { Hono } from 'hono';
 import { refused } from '../lib/refusal.js';
 import { noQuery, strictBody } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { actorOf, type RequirementEnv, reqParam } from './route-kit.js';
 import { listRequirementVerdicts, recordRequirementVerdict } from './verdicts.js';
 
@@ -15,6 +16,7 @@ export const requirementVerdictRoutes = new Hono<RequirementEnv>();
 requirementVerdictRoutes.post(
   '/:id/requirements/:req/verdicts',
   reqParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(recordRequirementVerdictRequestSchema, RECORD_REQUIREMENT_VERDICT_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -33,9 +35,15 @@ requirementVerdictRoutes.post(
   },
 );
 
-requirementVerdictRoutes.get('/:id/requirements/:req/verdicts', reqParam, noQuery, async (c) => {
-  const { id, req } = c.req.valid('param');
-  return c.json({
-    verdicts: await listRequirementVerdicts({ projectId: id, ref: req, actor: actorOf(c) }),
-  });
-});
+requirementVerdictRoutes.get(
+  '/:id/requirements/:req/verdicts',
+  reqParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return c.json({
+      verdicts: await listRequirementVerdicts({ projectId: id, ref: req, actor: actorOf(c) }),
+    });
+  },
+);

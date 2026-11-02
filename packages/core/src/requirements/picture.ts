@@ -21,7 +21,7 @@ import {
   requirementRevisions,
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import {
   altRefusal,
   kindMismatchRefusal,
@@ -133,7 +133,7 @@ export async function writePicture(input: {
   body: DrawnPicture;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const early = [
     altRefusal(body.alt),
     ...(body.kind === 'example_table' ? rowRefusals(body.content) : []),
@@ -194,7 +194,7 @@ export async function writeKind(input: {
   kind: RequirementKind | null;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, kind } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

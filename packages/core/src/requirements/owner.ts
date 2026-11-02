@@ -7,7 +7,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
@@ -18,7 +18,7 @@ export async function setRequirementOwner(input: {
   owner: string | null;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, owner } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const row = await rowIn(db, projectId, input.ref);
   if (owner !== null && (await permissionFactsOf(owner, projectId)).role === null) {
     return {

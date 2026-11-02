@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { strictBody } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { linkContract, unlinkContract } from './contract-links.js';
 import { putCriterionSteps } from './criterion-steps.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
@@ -20,6 +21,7 @@ export const requirementLinkRoutes = new Hono<RequirementEnv>();
 requirementLinkRoutes.post(
   '/:id/requirements/:req/issues',
   reqParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(
     z.strictObject({ issue: z.string().trim().min(1).max(200), adoptPlan: z.boolean().optional() }),
     '{ issue, adoptPlan? } names the issue, by key or uuid; adoptPlan (needs requirements.approve) records its existing plan as written against the current revision',
@@ -53,6 +55,7 @@ requirementLinkRoutes.delete(
 requirementLinkRoutes.post(
   '/:id/requirements/:req/workflows',
   reqParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(
     z.strictObject({ workflowId: z.uuid() }),
     '{ workflowId } names a workflow of this project',
@@ -75,6 +78,7 @@ requirementLinkRoutes.post(
 requirementLinkRoutes.post(
   '/:id/requirements/:req/contracts',
   reqParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(linkRequirementContractRequestSchema, LINK_REQUIREMENT_CONTRACT_SHAPE),
   holdChatWrite('requirement_link'),
   async (c) => {
@@ -97,6 +101,7 @@ requirementLinkRoutes.delete(
     { project: z.string().trim().min(1).max(63), contract: z.string().trim().min(1).max(63) },
     ', and the contract as <project>/<contract>',
   ),
+  requiresOnParam('project.write', 'id'),
   holdChatWrite('requirement_link'),
   async (c) => {
     const { id, req, project, contract } = c.req.valid('param');
@@ -115,6 +120,7 @@ requirementLinkRoutes.delete(
 requirementLinkRoutes.delete(
   '/:id/requirements/:req/workflows/:workflowId',
   reqAnd({ workflowId: z.uuid() }, ' and a workflow uuid'),
+  requiresOnParam('project.write', 'id'),
   holdChatWrite('requirement_link'),
   async (c) => {
     const { id, req, workflowId } = c.req.valid('param');
@@ -128,6 +134,7 @@ requirementLinkRoutes.delete(
 requirementLinkRoutes.put(
   '/:id/requirements/:req/criteria/:code/steps',
   reqAnd({ code: z.string().regex(/^BC-[1-9][0-9]*$/) }, ' and a criterion code (BC-n)'),
+  requiresOnParam('project.write', 'id'),
   strictBody(putCriterionStepsRequestSchema, PUT_CRITERION_STEPS_SHAPE),
   holdChatWrite('requirement_link'),
   async (c) => {
