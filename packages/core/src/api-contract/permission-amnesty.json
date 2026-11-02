@@ -588,7 +588,6 @@
     "POST /api/projects/:id/contracts/:contract/versions/:version/decision",
     "POST /api/projects/:id/executions",
     "POST /api/projects/:id/feedback",
-    "POST /api/projects/:id/feedback/:fb/attachments",
     "POST /api/projects/:id/feedback/:fb/clarification",
     "POST /api/projects/:id/feedback/:fb/comments",
     "POST /api/projects/:id/feedback/:fb/messages",

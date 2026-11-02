@@ -1,17 +1,21 @@
 // project_feedback: a BA's door onto a project's own feedback (FB-n) over /mcp (owner direction
 // 2026-10-16: /mcp serves the product layer). Every action is a REST route's own service call —
-// GET/POST /api/projects/:id/feedback, …/:fb, …/:fb/similar, …/:fb/clarification — and every read
+// GET/POST /api/projects/:id/feedback, …/:fb, …/:fb/similar, …/:fb/clarification, …/:fb/attachments
+// — and every read
 // carries the progress block of the work the item was routed to (`product-progress.ts`).
 
 import {
   CREATE_FEEDBACK_SHAPE,
   createFeedbackRequestSchema,
+  FEEDBACK_ATTACHMENT_SHAPE,
   FEEDBACK_PHASES,
   type FeedbackSummary,
+  feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
 } from '@forge/contracts/feedback';
 import { z } from 'zod';
 import {
+  addAttachment,
   askClarification,
   createFeedback,
   detailAs,
@@ -40,7 +44,7 @@ import {
 } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 
-const ACTIONS = ['list', 'get', 'progress', 'similar', 'submit', 'clarify'] as const;
+const ACTIONS = ['list', 'get', 'progress', 'similar', 'submit', 'clarify', 'attach'] as const;
 const READS = ['list', 'get', 'progress', 'similar'] as const;
 export const PROJECT_FEEDBACK_READ_ACTIONS: readonly string[] = READS;
 
@@ -63,6 +67,7 @@ const inputSchema = z.strictObject({
   kind: createFeedbackRequestSchema.shape.kind.optional(),
   title: createFeedbackRequestSchema.shape.title.optional(),
   ...feedbackClarificationRequestSchema.partial().shape,
+  ...feedbackAttachmentRequestSchema.partial().shape,
 });
 
 type Input = z.infer<typeof inputSchema>;
@@ -77,6 +82,7 @@ const DESCRIPTION = [
   'progress {feedback}: the progress block alone.',
   'similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar.',
   `submit ${CREATE_FEEDBACK_SHAPE}: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with forge_requirements).`,
+  `attach {feedback, ${FEEDBACK_ATTACHMENT_SHAPE.slice(2, -2)}}: attach a file to an existing item, as anyone who may comment on it may; label approved_design marks a mockup a person approved. The bytes are base64; the type and size limits are an issue attachment's. Answers the new attachmentId; get lists every attachment, and forge_uploads fetch {data:{target:"feedback", attachmentId}} reads one.`,
   'clarify {feedback, prompt, needed, recommended}: ask the reporter one question; `needed` says what would settle it, `recommended` is the answer you recommend, which they send by one click. Refused while one is open on the item or to the same reporter, or when the item is past triage.',
   'Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
@@ -90,6 +96,7 @@ const GRANT = {
     similar: 'projects:read',
     submit: 'projects:write',
     clarify: 'projects:write',
+    attach: 'projects:write',
   },
 } as const;
 
@@ -200,12 +207,30 @@ async function submit(ctx: McpContext, projectId: string, input: Input) {
     q: _q,
     prompt: _pr,
     needed: _n,
+    name: _name,
+    mime: _mime,
+    contentBase64: _bytes,
+    redacted: _red,
+    label: _label,
     ...rest
   } = input;
-  const misplaced = (['prompt', 'needed'] as const).filter((k) => input[k] !== undefined);
+  const misplaced = (
+    [
+      ['prompt', 'clarify'],
+      ['needed', 'clarify'],
+      ['name', 'attach'],
+      ['mime', 'attach'],
+      ['contentBase64', 'attach'],
+      ['redacted', 'attach'],
+      ['label', 'attach'],
+    ] as const
+  ).filter(([k]) => input[k] !== undefined);
   if (misplaced.length > 0) {
     throw new ArgumentRefusal(
-      misplaced.map((k) => ({ path: `/${k}`, fault: `${k} belongs to clarify, not submit` })),
+      misplaced.map(([k, owner]) => ({
+        path: `/${k}`,
+        fault: `${k} belongs to ${owner}, not submit`,
+      })),
     );
   }
   const request = createFeedbackRequestSchema.safeParse(rest);
@@ -232,7 +257,29 @@ async function clarify(ctx: McpContext, projectId: string, input: Input) {
   );
 }
 
-const HANDLERS = { list, get, progress, similar, submit, clarify } as const;
+/** A file onto an existing item (ISS-879): its id, and the attachment as get lists it. */
+async function attach(ctx: McpContext, projectId: string, input: Input) {
+  const ref = need(input, input.action, 'feedback').feedback;
+  const body = feedbackAttachmentRequestSchema.safeParse({
+    name: input.name,
+    mime: input.mime,
+    contentBase64: input.contentBase64,
+    redacted: input.redacted,
+    label: input.label,
+  });
+  if (!body.success) throw zodArgumentRefusal(body.error);
+  const out = await addAttachment({ projectId, ref, actor: actorOf(ctx), ...body.data });
+  if (!out.ok) return refusedAnswer(out.refusals, 'FEEDBACK_REFUSED');
+  const one = await readOne(ctx, projectId, out.feedback.key);
+  if ('refused' in one) return one.refused;
+  return {
+    attachmentId: out.attachmentId,
+    attachment: one.item.attachments.find((a) => a.id === out.attachmentId) ?? null,
+    feedback: one.item,
+  };
+}
+
+const HANDLERS = { list, get, progress, similar, submit, clarify, attach } as const;
 
 export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'project_feedback',

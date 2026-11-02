@@ -315,7 +315,12 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_REDACT_MOCKUP_TARGETED",
 	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
-	"FEEDBACK_ATTACHMENT_INVALID",
+	/** The item already holds the most attachments it keeps. */
+	"FEEDBACK_ATTACHMENTS_FULL",
+	// an attachment's bytes, refused under the names every attachment write uses (`attachments.ts`)
+	"EMPTY_FILE",
+	"FILE_TOO_LARGE",
+	"MIME_NOT_ALLOWED",
 	/** A report the agent could not read for its kind, and the reporter named none (REQ-66 BC-1). */
 	"FEEDBACK_KIND_NEEDED",
 	/** A diagnosis rides only the issue route, and names a recording of this item (REQ-41 BC-19). */
@@ -624,6 +629,10 @@ export const similarFeedbackDraftSchema = z.strictObject({
 export type SimilarFeedbackDraft = z.infer<typeof similarFeedbackDraftSchema>;
 export const SIMILAR_FEEDBACK_DRAFT_SHAPE = "{ title, body? }";
 
+/** What an attachment may be marked as: `approved_design` is a mockup a person approved (ISS-879). */
+export const FEEDBACK_ATTACHMENT_LABELS = ["approved_design"] as const;
+export type FeedbackAttachmentLabel = (typeof FEEDBACK_ATTACHMENT_LABELS)[number];
+
 /** `POST …/feedback/:fb/attachments`: bytes as base64, flagged on a sensitive project. */
 export const feedbackAttachmentRequestSchema = z.strictObject({
 	name: z.string().trim().min(1).max(200),
@@ -631,8 +640,12 @@ export const feedbackAttachmentRequestSchema = z.strictObject({
 	contentBase64: z.string().min(4),
 	/** The attacher's word that nothing personal shows in it (REQ-66 BC-7); absent, it is not. */
 	redacted: z.boolean().optional(),
+	label: z.enum(FEEDBACK_ATTACHMENT_LABELS).optional(),
 });
-export const FEEDBACK_ATTACHMENT_SHAPE = "{ name, mime, contentBase64, redacted? }";
+export type FeedbackAttachmentRequest = z.infer<
+	typeof feedbackAttachmentRequestSchema
+>;
+export const FEEDBACK_ATTACHMENT_SHAPE = `{ name, mime, contentBase64, redacted?, label?: ${FEEDBACK_ATTACHMENT_LABELS.join(" | ")} }`;
 
 /** `GET /api/projects/:id/feedback` — `phase` is comma-separated. */
 export const listFeedbackQuerySchema = z.strictObject({
@@ -785,6 +798,8 @@ export interface FeedbackAttachmentView {
 	name: string;
 	mime: string;
 	size: number;
+	/** What the attacher marked it as; null where they marked nothing. */
+	label: FeedbackAttachmentLabel | null;
 	/** On a sensitive project: may hold personal data, so it is never sent to a provider. */
 	flagged: boolean;
 	/** Who attached it, so a recording on the item names who made it (REQ-35 BC-8). */
@@ -999,6 +1014,11 @@ export interface FeedbackView extends FeedbackSummary {
 
 export interface FeedbackResponse {
 	feedback: FeedbackView;
+}
+
+/** `POST …/feedback/:fb/attachments`: the item as it reads next, and the id of the file just attached. */
+export interface FeedbackAttachResponse extends FeedbackResponse {
+	attachmentId: string;
 }
 
 export interface FeedbackListResponse {

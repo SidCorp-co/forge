@@ -48,7 +48,7 @@ import {
   tokenIdOf,
 } from './ecosystem/index.js';
 import { fastLaneMergeRefusal } from './fast-lane/index.js';
-import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
+import { feedbackAttachmentOf, rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
@@ -422,5 +422,5 @@ export function provideWorkPorts(): void {
     recordModelCallUsage,
   });
 
-  provideUploadPorts({ persistConversationAttachment });
+  provideUploadPorts({ persistConversationAttachment, feedbackAttachmentOf });
 }

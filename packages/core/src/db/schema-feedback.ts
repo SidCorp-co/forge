@@ -1,4 +1,5 @@
 import {
+  FEEDBACK_ATTACHMENT_LABELS,
   FEEDBACK_DECISIONS,
   FEEDBACK_KINDS,
   FEEDBACK_MESSAGE_AUDIENCES,
@@ -345,6 +346,8 @@ export const feedbackAttachments = pgTable(
     flagged: boolean('flagged').notNull(),
     /** The reporter's word that nothing personal shows: on a project that redacts, only such bytes reach a model (REQ-66 BC-7). */
     redacted: boolean('redacted').notNull().default(false),
+    /** What the attacher marked it as (ISS-879): `approved_design` is a mockup a person approved. */
+    label: text('label', { enum: FEEDBACK_ATTACHMENT_LABELS }),
     uploadedBy: uuid('uploaded_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -352,6 +355,10 @@ export const feedbackAttachments = pgTable(
   },
   (t) => ({
     feedbackIdx: index('feedback_attachments_feedback_idx').on(t.feedbackId),
+    labelChk: check(
+      'feedback_attachments_label_chk',
+      sql`${t.label} IS NULL OR ${t.label} IN (${inList(FEEDBACK_ATTACHMENT_LABELS)})`,
+    ),
   }),
 );
 

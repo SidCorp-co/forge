@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { principalAgency } from '../issues/index.js';
+import { egressBytesAs } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
-import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -13,7 +15,7 @@ const inputSchema = z
     action: z.literal('fetch').default('fetch'),
     data: z
       .object({
-        target: z.enum(['issue', 'comment', 'session']),
+        target: z.enum(['issue', 'comment', 'session', 'feedback']),
         attachmentId: z.uuid(),
       })
       .strict(),
@@ -23,7 +25,7 @@ const inputSchema = z
 const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 
 async function mintDownloadTicket(
-  target: 'issue' | 'comment' | 'session',
+  target: 'issue' | 'comment' | 'session' | 'feedback',
   attachmentId: string,
   projectId: string,
   principal: McpPrincipal,
@@ -47,11 +49,12 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   route: '/api/issues',
   grant: 'issues:read',
   description:
-    'fetch { data: { target: issue | comment | session, attachmentId } }: ' +
-    'READ an issue, comment or session attachment so you can analyze it: the one Forge read no shell ' +
+    'fetch { data: { target: issue | comment | session | feedback, attachmentId } }: ' +
+    'READ an issue, comment, session or feedback-item attachment so you can analyze it: the one Forge read no shell ' +
     'command can do, because an image comes back as a viewable image block. Uploading is ' +
     '`POST /api/issues/:id/attachments` (multipart) or `forge attach`. ' +
-    'data={target:"issue"|"comment"|"session", attachmentId:<uuid from any attachments[].id>}. ' +
+    'data={target:"issue"|"comment"|"session"|"feedback", attachmentId:<uuid from any attachments[].id>}; ' +
+    'a feedback item lists its attachments in project_feedback get, and one is attached with project_feedback attach. ' +
     'Images (png/jpeg/gif/webp) return as a viewable image block; the structured answer carries no bytes, ' +
     'so it says `inlined: false` with `reason: image_block_in_content` and names the block as ' +
     '`image: { contentIndex, mimeType }`. Text/markdown return inline, framed as data, with `inlined: true`. ' +
@@ -68,6 +71,18 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const att = await loadAttachment(target, attachmentId);
     if (!att) throw notFound(`attachment ${attachmentId} not found on that ${target}`);
     await requireCan(actorFor(principal.userId), 'project.read', projectResource(att.projectId));
+    if (target === 'feedback') {
+      // a feedback file is reporter data: a model reads it on a project that redacts only where a
+      // person redacted it, and never at no_egress (REQ-66 BC-7), as the item's own route answers
+      const gate = await egressBytesAs(
+        { agency: principalAgency(principal) },
+        att.projectId,
+        'feedback.attachments',
+        att.redacted === true,
+        `attachment ${attachmentId}`,
+      );
+      if (!gate.ok) return refusedAnswer([gate.refusal], 'ATTACHMENT_REFUSED');
+    }
 
     const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
     const meta = {

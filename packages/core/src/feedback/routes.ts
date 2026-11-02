@@ -12,6 +12,7 @@ import {
   FEEDBACK_SNOOZE_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
   FEEDBACK_VERIFY_SHAPE,
+  type FeedbackAttachResponse,
   type FeedbackEndpointsResponse,
   type FeedbackMessagePreviewResponse,
   type FeedbackReportResponse,
@@ -38,6 +39,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs, similarToDraftAs } from './embeddings.js';
 import { servedEndpointsAs } from './endpoints.js';
@@ -385,17 +387,28 @@ feedbackRoutes.post(
   },
 );
 
+// a file onto an existing item (ISS-879): whoever may comment on it may attach, and the answer
+// names the new attachment's id beside the item as it reads next
 feedbackRoutes.post(
   '/:id/feedback/:fb/attachments',
   itemParam,
+  requiresOnParam('project.write', 'id'),
   strictBody(feedbackAttachmentRequestSchema, FEEDBACK_ATTACHMENT_SHAPE),
   holdChatWrite('attachment'),
   async (c) => {
     const { id, fb } = c.req.valid('param');
-    return answer(
-      c,
-      await addAttachment({ projectId: id, ref: fb, actor: actorOf(c), ...c.req.valid('json') }),
-    );
+    const out = await addAttachment({
+      projectId: id,
+      ref: fb,
+      actor: actorOf(c),
+      ...c.req.valid('json'),
+    });
+    if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
+    const body: FeedbackAttachResponse = {
+      feedback: out.feedback,
+      attachmentId: out.attachmentId,
+    };
+    return c.json(body, 201);
   },
 );
 

@@ -122,7 +122,7 @@ describe("attaching while filing", () => {
           : c.method === "POST" && c.path === "/projects/p1/feedback"
             ? { status: 201, body: { feedback: { key: "FB-9" } } }
             : c.method === "POST"
-              ? { status: 422, body: { error: "FEEDBACK_REFUSED", refusals: [{ code: "FEEDBACK_ATTACHMENT_INVALID", path: "/mime", detail: "this type is not stored here" }] } }
+              ? { status: 422, body: { error: "FEEDBACK_REFUSED", refusals: [{ code: "MIME_NOT_ALLOWED", path: "/mime", detail: "this type is not stored here" }] } }
               : undefined,
     );
     const onDone = vi.fn();

@@ -1,5 +1,5 @@
 export { claimAnswersTold, type UntoldAnswer, untoldAnswersOf } from './answers-told.js';
-export { askClarification } from './attachments.js';
+export { addAttachment, askClarification, feedbackAttachmentOf } from './attachments.js';
 export { feedbackTriageRecord } from './checklist-record.js';
 export { fileContractChangeIn } from './contract-change.js';
 export { provideFeedbackDependents } from './dependents.js';

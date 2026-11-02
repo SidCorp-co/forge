@@ -5,7 +5,7 @@ import { downloadTickets } from '../db/schema.js';
 /** Short by design — the TTL is the whole containment for a bearer-in-the-URL. */
 const DOWNLOAD_TICKET_TTL_MS = 10 * 60 * 1000;
 
-export type DownloadTargetType = 'issue' | 'comment' | 'session';
+export type DownloadTargetType = 'issue' | 'comment' | 'session' | 'feedback';
 
 interface CreateDownloadTicketInput {
   targetType: DownloadTargetType;

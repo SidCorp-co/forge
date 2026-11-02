@@ -184,6 +184,7 @@ function attachmentViewsOf(
     name: o.withhold ? 'withheld' : a.name,
     mime: a.mime,
     size: a.size,
+    label: a.label,
     flagged: a.flagged,
     uploadedBy: a.uploadedBy,
     uploadedByName: o.names.get(a.uploadedBy) ?? null,

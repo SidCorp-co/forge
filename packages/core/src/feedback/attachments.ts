@@ -6,7 +6,13 @@
 
 import { randomUUID } from 'node:crypto';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
-import { FEEDBACK_LIMITS, feedbackKey } from '@forge/contracts/feedback';
+import {
+  FEEDBACK_LIMITS,
+  type FeedbackAttachmentLabel,
+  type FeedbackRefusalCode,
+  type FeedbackView,
+  feedbackKey,
+} from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -17,12 +23,12 @@ import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/att
 import { dataPolicyOf, egressBytesAs } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import type { Refusal } from '../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, permissionRefusal, projectResource, requireCan } from '../permissions/index.js';
 import { insertAskedQuestion } from '../questions/index.js';
 import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, rowIn } from './read.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
-import { answer, type FeedbackOutcome, inTx, lockFeedback } from './service.js';
+import { answer, type FeedbackOutcome, inTx, lockFeedback, roleFacts } from './service.js';
 
 /** The clarification open to this reporter on any of their items in the project, by question and item. */
 async function openForReporter(
@@ -94,13 +100,20 @@ export async function askClarification(input: {
 /** An attachment as sent, checked: its bytes, the type they are stored as, and a safe name. */
 export type CheckedAttachment = { bytes: Buffer; mime: string; name: string };
 
-const attachmentInvalid = (path: string, detail: string): Refusal => ({
-  code: 'FEEDBACK_ATTACHMENT_INVALID',
-  path,
-  detail,
-});
+const attachmentRefusal = (
+  code: Extract<
+    FeedbackRefusalCode,
+    'EMPTY_FILE' | 'FILE_TOO_LARGE' | 'MIME_NOT_ALLOWED' | 'FEEDBACK_ATTACHMENTS_FULL'
+  >,
+  path: string,
+  detail: string,
+): Refusal => ({ code, path, detail });
 
-/** The bytes sent as base64, refused by name where they are empty, too large or of a type not kept. */
+/**
+ * The bytes sent as base64, refused by name where they are empty (EMPTY_FILE), too large
+ * (FILE_TOO_LARGE) or of a type an issue attachment is not kept as (MIME_NOT_ALLOWED): the names and
+ * the allow-list every attachment write uses.
+ */
 export function checkedAttachment(
   input: { name: string; mime: string; contentBase64: string },
   at = '',
@@ -109,7 +122,8 @@ export function checkedAttachment(
   if (bytes.length === 0) {
     return {
       ok: false,
-      refusal: attachmentInvalid(
+      refusal: attachmentRefusal(
+        'EMPTY_FILE',
         `${at}/contentBase64`,
         'the attachment decodes to no bytes; send its content as base64.',
       ),
@@ -118,7 +132,8 @@ export function checkedAttachment(
   if (bytes.length > FEEDBACK_LIMITS.attachmentBytes) {
     return {
       ok: false,
-      refusal: attachmentInvalid(
+      refusal: attachmentRefusal(
+        'FILE_TOO_LARGE',
         `${at}/contentBase64`,
         `the attachment is ${bytes.length} bytes; at most ${FEEDBACK_LIMITS.attachmentBytes} are stored.`,
       ),
@@ -133,7 +148,8 @@ export function checkedAttachment(
   if (!mime.ok) {
     return {
       ok: false,
-      refusal: attachmentInvalid(
+      refusal: attachmentRefusal(
+        'MIME_NOT_ALLOWED',
         `${at}/mime`,
         `${mime.mime || 'this type'} is not stored here; allowed: ${allowedSetForTarget('issue').mimes.join(', ')}.`,
       ),
@@ -168,7 +184,11 @@ export async function dropStored(path: string): Promise<void> {
 export async function insertAttachmentIn(
   tx: Tx,
   row: { id: string; projectId: string; fbSeq: number },
-  file: CheckedAttachment & { path: string; redacted: boolean },
+  file: CheckedAttachment & {
+    path: string;
+    redacted: boolean;
+    label?: FeedbackAttachmentLabel | undefined;
+  },
   uploadedBy: string,
   level: SensitiveDataLevel,
 ): Promise<{ ok: true; id: string } | { ok: false; refusal: Refusal }> {
@@ -179,7 +199,8 @@ export async function insertAttachmentIn(
   if (held.length >= FEEDBACK_LIMITS.attachmentsPerItem) {
     return {
       ok: false,
-      refusal: attachmentInvalid(
+      refusal: attachmentRefusal(
+        'FEEDBACK_ATTACHMENTS_FULL',
         '',
         `${feedbackKey(row.fbSeq)} already holds ${held.length} attachments, the most one item keeps.`,
       ),
@@ -196,6 +217,7 @@ export async function insertAttachmentIn(
       storagePath: file.path,
       flagged: level !== 'off',
       redacted: file.redacted,
+      label: file.label ?? null,
       uploadedBy,
     })
     .returning({ id: feedbackAttachments.id });
@@ -203,7 +225,16 @@ export async function insertAttachmentIn(
   return { ok: true, id: inserted.id };
 }
 
-/** A reporter's attachment, flagged when the project's data policy is on (Q8). */
+/** An attach: the item as it reads next and the new file's id, or the refusals that wrote nothing. */
+export type AttachOutcome =
+  | { ok: true; feedback: FeedbackView; attachmentId: string }
+  | { ok: false; refusals: Refusal[] };
+
+/**
+ * A file attached to an existing item, flagged when the project's data policy is on (Q8): whoever may
+ * comment on the item may attach (project.write, as a note and a comment take), and a label marks it
+ * an approved design (ISS-879). The bytes go to the store every feedback attachment uses.
+ */
 export async function addAttachment(input: {
   projectId: string;
   ref: string;
@@ -212,16 +243,24 @@ export async function addAttachment(input: {
   mime: string;
   contentBase64: string;
   redacted?: boolean | undefined;
-}): Promise<FeedbackOutcome> {
+  label?: FeedbackAttachmentLabel | undefined;
+}): Promise<AttachOutcome> {
   const { projectId, actor } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
+  const forbidden = permissionRefusal(
+    await roleFacts(actor, projectId),
+    'project.write',
+    `attaching a file to ${feedbackKey(row.fbSeq)}`,
+  );
+  if (forbidden) return { ok: false, refusals: [forbidden] };
   const done = redactedRefusal(row.redactedAt);
   if (done) return { ok: false, refusals: [done] };
   const checked = checkedAttachment(input);
   if (!checked.ok) return { ok: false, refusals: [checked.refusal] };
   const level = await dataPolicyOf(projectId);
   const path = await storedAttachment(projectId, row.id, checked.file);
+  const made: { id?: string } = {};
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
     const gone = redactedRefusal((await rowIn(tx, projectId, row.id, true)).redactedAt);
@@ -229,17 +268,46 @@ export async function addAttachment(input: {
     const put = await insertAttachmentIn(
       tx,
       row,
-      { ...checked.file, path, redacted: input.redacted === true },
+      { ...checked.file, path, redacted: input.redacted === true, label: input.label },
       actor.userId,
       level,
     );
-    return put.ok ? null : [put.refusal];
+    if (!put.ok) return [put.refusal];
+    made.id = put.id;
+    return null;
   });
   if (refusals) {
     await dropStored(path);
     return { ok: false, refusals };
   }
-  return answer(projectId, row.id, actor);
+  if (!made.id) throw new Error('feedback: an attach wrote no row and refused nothing');
+  const read: FeedbackOutcome = await answer(projectId, row.id, actor);
+  if (!read.ok) return read;
+  return { ok: true, feedback: read.feedback, attachmentId: made.id };
+}
+
+/**
+ * One attachment by its id alone, as a fetch reads it (ISS-879): its project, where its bytes are,
+ * and the item route that serves them. Null when no feedback item holds that id.
+ */
+export async function feedbackAttachmentOf(attachmentId: string) {
+  const [row] = await db
+    .select({ a: feedbackAttachments, seq: feedback.fbSeq })
+    .from(feedbackAttachments)
+    .innerJoin(feedback, eq(feedback.id, feedbackAttachments.feedbackId))
+    .where(eq(feedbackAttachments.id, attachmentId))
+    .limit(1);
+  if (!row) return null;
+  const { a } = row;
+  return {
+    name: a.name,
+    mime: a.mime,
+    size: a.size,
+    path: a.storagePath,
+    projectId: a.projectId,
+    url: `/api/projects/${a.projectId}/feedback/${feedbackKey(row.seq)}/attachments/${a.id}`,
+    redacted: a.redacted,
+  };
 }
 
 /** The bytes of one attachment, for a viewer of the project. */

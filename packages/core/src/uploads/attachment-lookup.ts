@@ -20,6 +20,7 @@ import {
 import { getStorage, isEnoent } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
 import type { DownloadTargetType } from './download-ticket-service.js';
+import { feedbackAttachmentOf } from './ports.js';
 
 const refuseAttachment = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
@@ -30,6 +31,8 @@ interface AttachmentRow {
   path: string;
   projectId: string;
   url: string;
+  /** A feedback item's file only: the attacher's word that nothing personal shows in it. */
+  redacted?: boolean;
 }
 
 /** The row behind a download ticket or an MCP fetch, or null when no row has that id. */
@@ -37,6 +40,7 @@ export async function loadAttachment(
   target: DownloadTargetType,
   attachmentId: string,
 ): Promise<AttachmentRow | null> {
+  if (target === 'feedback') return feedbackAttachmentOf(attachmentId);
   if (target === 'session') {
     const [row] = await db
       .select({

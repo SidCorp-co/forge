@@ -148,7 +148,17 @@ export function feedbackDetail(v: FeedbackView, progress: Progress) {
       at: d.decidedAt,
     })),
     messages: v.messages.length,
-    attachments: v.attachments.length,
+    // each file with what it is and who attached it; forge_uploads fetch {target:"feedback"} reads its bytes
+    attachments: v.attachments.map((a) => ({
+      id: a.id,
+      name: a.name,
+      mime: a.mime,
+      size: a.size,
+      label: a.label,
+      by: a.uploadedByName ?? a.uploadedBy,
+      at: a.createdAt,
+      from: a.from,
+    })),
     openSuggestions: v.openSuggestions,
     sensitive: v.sensitive,
   };
