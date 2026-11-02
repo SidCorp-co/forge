@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, requiresOnParam } from '../permissions/index.js';
 import { nameInBackground } from './naming-refresh.js';
 import { type PageViewer, readReleasePage } from './read.js';
 import { refreshInBackground } from './refresh.js';
@@ -23,31 +23,36 @@ const pageParam = zValidator(
 // the view is read as written, so a view the page does not have is refused by its own code
 const pageQuery = zValidator('query', z.object({ view: z.string().max(40).optional() }));
 
-releasePageRoutes.get('/:projectId/releases/:version/page', pageParam, pageQuery, async (c) => {
-  const { projectId, version } = c.req.valid('param');
-  const { view = 'user' } = c.req.valid('query');
-  const access = await loadProjectAccess(projectId, c.get('userId'));
-  requireHeld(access, 'project.read');
-  const userId = c.get('userId');
-  const agency = c.get('agency');
-  const viewer: PageViewer =
-    typeof userId === 'string' && (agency === 'human' || agency === 'agent')
-      ? {
-          userId,
-          agency,
-          isAdmin: holds(access, 'project.admin'),
-          mayApprove: holds(access, 'releases.approve'),
-          mayShare: holds(access, 'shares.write'),
-        }
-      : null;
-  return c.json(
-    await readReleasePage({
-      projectId,
-      version,
-      view,
-      viewer,
-      onOwed: refreshInBackground,
-      onNamingOwed: nameInBackground,
-    }),
-  );
-});
+releasePageRoutes.get(
+  '/:projectId/releases/:version/page',
+  pageParam,
+  requiresOnParam('project.read', 'projectId'),
+  pageQuery,
+  async (c) => {
+    const { projectId, version } = c.req.valid('param');
+    const { view = 'user' } = c.req.valid('query');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    const userId = c.get('userId');
+    const agency = c.get('agency');
+    const viewer: PageViewer =
+      typeof userId === 'string' && (agency === 'human' || agency === 'agent')
+        ? {
+            userId,
+            agency,
+            isAdmin: holds(access, 'project.admin'),
+            mayApprove: holds(access, 'releases.approve'),
+            mayShare: holds(access, 'shares.write'),
+          }
+        : null;
+    return c.json(
+      await readReleasePage({
+        projectId,
+        version,
+        view,
+        viewer,
+        onOwed: refreshInBackground,
+        onNamingOwed: nameInBackground,
+      }),
+    );
+  },
+);

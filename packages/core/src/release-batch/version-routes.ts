@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld, requiresOnParam } from '../permissions/index.js';
+import { holds, requiresOnParam } from '../permissions/index.js';
 import {
   approvalRequestSchema,
   decideApproval,
@@ -74,19 +74,29 @@ function viewerOf(
   };
 }
 
-releaseVersionRoutes.get('/:projectId/releases', projectParam, noQuery, async (c) => {
-  const { projectId } = c.req.valid('param');
-  const access = await loadProjectAccess(projectId, c.get('userId'));
-  requireHeld(access, 'project.read');
-  return c.json(await listReleases(projectId, viewerOf(c, access)));
-});
+releaseVersionRoutes.get(
+  '/:projectId/releases',
+  projectParam,
+  requiresOnParam('project.read', 'projectId'),
+  noQuery,
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    return c.json(await listReleases(projectId, viewerOf(c, access)));
+  },
+);
 
-releaseVersionRoutes.get('/:projectId/releases/:version', versionParam, noQuery, async (c) => {
-  const { projectId, version } = c.req.valid('param');
-  const access = await loadProjectAccess(projectId, c.get('userId'));
-  requireHeld(access, 'project.read');
-  return c.json({ release: await readRelease(projectId, version, viewerOf(c, access)) });
-});
+releaseVersionRoutes.get(
+  '/:projectId/releases/:version',
+  versionParam,
+  requiresOnParam('project.read', 'projectId'),
+  noQuery,
+  async (c) => {
+    const { projectId, version } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    return c.json({ release: await readRelease(projectId, version, viewerOf(c, access)) });
+  },
+);
 
 // A release's name and summary (REQ-40 BC-14), written by whoever may cut it: at the cut, or here
 // for a release cut without them. Each is held to `ReleaseNamingSchema` and refused by name.
@@ -157,11 +167,11 @@ releaseVersionRoutes.post(
 releaseVersionRoutes.post(
   '/:projectId/release-batches/:runId/approvals',
   runParam,
+  requiresOnParam('project.write', 'projectId'),
   requestBody,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');
-    requireHeld(await loadProjectAccess(projectId, userId), 'project.write');
     await assertRunOfProject(runId, projectId);
     return c.json(
       await requestApproval({ projectId, runId, userId, body: c.req.valid('json') }),

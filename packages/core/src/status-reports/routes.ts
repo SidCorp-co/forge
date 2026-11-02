@@ -17,7 +17,7 @@ import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { markStatusReportRead } from '../notifications/index.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, requireHeld, requiresOnParam } from '../permissions/index.js';
 import { saveTemplateReport } from './save.js';
 import {
   deleteStatusReport,
@@ -90,6 +90,8 @@ export const statusReportRoutes = new Hono<{ Variables: AuthVars }>();
 statusReportRoutes.use('/:id/status/reports', requireAuth(), assertEmailVerified());
 statusReportRoutes.use('/:id/status/reports/*', requireAuth(), assertEmailVerified());
 
+const READ = requiresOnParam('project.read', 'id');
+
 statusReportRoutes.get(
   '/:id/status/reports',
   zValidator(
@@ -97,10 +99,10 @@ statusReportRoutes.get(
     projectParam,
     invalid('invalid path: /api/projects/<project>/status/reports'),
   ),
+  READ,
   noQuery,
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
     return c.json({ reports: await listStatusReports(projectId) });
   },
 );
@@ -152,10 +154,10 @@ statusReportRoutes.get(
     reportParam,
     invalid('invalid path: /api/projects/<project>/status/reports/<report id>'),
   ),
+  READ,
   noQuery,
   async (c) => {
     const { id: projectId, reportId } = c.req.valid('param');
-    requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
     const row = await reportRow(projectId, reportId);
     if (!row) throw notFound(`status report ${reportId} is not one of this project's reports`);
     const detail = await readStatusReport(row);
@@ -187,11 +189,11 @@ statusReportRoutes.get(
     reportParam,
     invalid('invalid path: /api/projects/<project>/status/reports/<report id>/export'),
   ),
+  READ,
   zValidator('query', exportQuery, invalid(EXPORT_SHAPE)),
   async (c) => {
     const { id: projectId, reportId } = c.req.valid('param');
     const { format, block } = c.req.valid('query');
-    requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
     const row = await reportRow(projectId, reportId);
     if (!row) throw notFound(`status report ${reportId} is not one of this project's reports`);
     const detail = await readStatusReport(row);
@@ -261,10 +263,10 @@ statusReportRoutes.post(
     reportParam,
     invalid('invalid path: /api/projects/<project>/status/reports/<report id>/read'),
   ),
+  READ,
   async (c) => {
     const { id: projectId, reportId } = c.req.valid('param');
     const userId = c.get('userId');
-    requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
     if (!(await reportRow(projectId, reportId))) {
       throw notFound(`status report ${reportId} is not one of this project's reports`);
     }
@@ -279,11 +281,11 @@ statusReportRoutes.delete(
     reportParam,
     invalid('invalid path: /api/projects/<project>/status/reports/<report id>'),
   ),
+  READ,
   async (c) => {
     const { id: projectId, reportId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
     const row = await reportRow(projectId, reportId);
     if (!row) throw notFound(`status report ${reportId} is not one of this project's reports`);
     requireMayDelete(access, userId, row);

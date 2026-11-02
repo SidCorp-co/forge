@@ -12,7 +12,12 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld, requireMasterAct, requiresOnResolved } from '../permissions/index.js';
+import {
+  requireHeld,
+  requireMasterAct,
+  requiresOnParam,
+  requiresOnResolved,
+} from '../permissions/index.js';
 import { readGateProfile } from '../project-config/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
@@ -125,16 +130,15 @@ releaseBatchRoutes.post(
   },
 );
 
+const WRITE = requiresOnParam('project.write', 'projectId');
+
 releaseBatchRoutes.get(
   '/:projectId/release-batches/active',
   zValidator('param', projectParamSchema),
+  WRITE,
   noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write');
 
     const active = await getActiveReleaseBatch(projectId);
     return c.json(active ?? null);
@@ -144,13 +148,10 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.get(
   '/:projectId/release-batches/roster',
   zValidator('param', projectParamSchema),
+  WRITE,
   noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write');
 
     return c.json(await loadReleaseRoster(projectId));
   },
@@ -159,11 +160,10 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.get(
   '/:projectId/release-readiness',
   zValidator('param', projectParamSchema),
+  WRITE,
   noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.write');
 
     const readiness = await loadReleaseReadiness(projectId);
     if (!readiness) throw notFound('project not found');
@@ -477,12 +477,11 @@ const shippedInBodySchema = z
 releaseBatchRoutes.post(
   '/:projectId/shipped-in-records',
   zValidator('param', projectParamSchema),
+  WRITE,
   zValidator('json', shippedInBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write');
     const { corrects, reason, ...sent } = c.req.valid('json');
     if (corrects !== undefined) {
       return c.json(await correctShippedIn({ projectId, userId, ...sent, corrects, reason }), 201);
@@ -502,11 +501,10 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.get(
   '/:projectId/release-records/:runId',
   zValidator('param', runParamSchema),
+  WRITE,
   noQuery,
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.write');
 
     const record = await readReleaseRecord(projectId, runId);
     if (!record) throw notFound('no release record under this id on this project');
