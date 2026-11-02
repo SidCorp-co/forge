@@ -1,0 +1,1 @@
+**A release recorded by version now shows its clips and pictures.** Its page names the release each pass was judged on, and a promotion project's requirement asks for a judgement on the live release where that counts.
