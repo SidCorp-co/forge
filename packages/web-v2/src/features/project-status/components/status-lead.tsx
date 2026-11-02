@@ -4,25 +4,14 @@
 
 import type { ProjectStatus } from "@forge/contracts/project-status";
 import { Link } from "@/lib/navigation/router";
-import { ViewHeading } from "@/design";
 import { type EtaClock } from "@/features/forecast";
-import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
+import { ReportPart } from "./report-part";
 
 const ROW = "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line-subtle py-2 text-13";
 const LIST = "border-t border-line-subtle";
 const KEY_LINK = "font-mono text-12 text-link hover:underline";
-
-function Lead({ title, asOf, clock, testId, children }: { title: string; asOf: string; clock: EtaClock; testId: string; children: React.ReactNode }) {
-  const t = useCopy();
-  return (
-    <section aria-label={title} data-testid={testId} className="break-inside-avoid">
-      <ViewHeading right={<span className="text-13 text-muted">{t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}</span>}>{title}</ViewHeading>
-      {children}
-    </section>
-  );
-}
 
 export function StuckPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }) {
   const t = useCopy();
@@ -30,7 +19,7 @@ export function StuckPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }) {
   const stuck = s.stuck;
   if (!stuck) return null;
   return (
-    <Lead title={t("status.stuck")} asOf={stuck.asOf} clock={clock} testId="status-stuck">
+    <ReportPart title={t("status.stuck")} asOf={stuck.asOf} clock={clock} count={stuck.count} lead testId="status-stuck">
       {stuck.items.length === 0 ? (
         <p className="text-13 text-muted">{t("status.stuckNone")}</p>
       ) : (
@@ -48,7 +37,7 @@ export function StuckPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }) {
         </ul>
       )}
       {stuck.count > stuck.items.length ? <p className="text-13 text-muted">{t("status.stuckMore", { n: stuck.count - stuck.items.length })}</p> : null}
-    </Lead>
+    </ReportPart>
   );
 }
 
@@ -57,7 +46,7 @@ export function NeedsYouPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }
   const needs = s.needsYou;
   if (!needs) return null;
   return (
-    <Lead title={t("status.needsYou")} asOf={needs.asOf} clock={clock} testId="status-needs-you">
+    <ReportPart title={t("status.needsYou")} asOf={needs.asOf} clock={clock} count={needs.decisions.length + needs.more} lead testId="status-needs-you">
       {needs.decisions.length === 0 ? (
         <p className="text-13 text-muted">{t("status.needsYouNone")}</p>
       ) : (
@@ -82,6 +71,6 @@ export function NeedsYouPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }
           {t("needsYou.decisions.capMore", { n: needs.more })}
         </Link>
       ) : null}
-    </Lead>
+    </ReportPart>
   );
 }

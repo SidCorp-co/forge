@@ -1,13 +1,15 @@
 
 // The status report (JU-4): the project status read as a dated report a person prints, or copies as
-// Markdown to send. Flat: one heading per section over hairline lists, each section dated by the
-// moment its own read answered. Every figure is core's; this page only lays it out.
+// Markdown to send. Flat: each part one line shut to its title, its count and a few words, dated by
+// the moment its own read answered on that line's hover (ISS-903); what is stuck and what needs you
+// stand open, and every part prints open. Copy and Print are the palette's (⌘K). Every figure is
+// core's; this page only lays it out.
 
 import type { ProjectStatus, RoadmapItem } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useMemo, useState } from "react";
-import { Button, MonoTag, SegmentedControl, StatusBadge, ViewHeading, WaitingOn } from "@/design";
+import { MonoTag, SegmentedControl, StatusBadge, usePageCommands, WaitingOn } from "@/design";
 import { IssueProgressText } from "@/features/forecast";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast";
 import { honestyLine } from "@/features/forecast";
@@ -22,6 +24,7 @@ import { needsYouHref, needsYouKeyLabel } from "@/features/needs-you";
 import { verifiedSentence } from "@/features/releases";
 import { personHeading, statusMarkdown, waitGroups } from "../report-markdown";
 import { Written } from "@/lib/i18n/written";
+import { ReportPart } from "./report-part";
 import { NeedsYouPart, StuckPart } from "./status-lead";
 
 export const STATUS_WINDOWS = ["7", "14", "30"] as const;
@@ -30,16 +33,6 @@ type StatusWindow = (typeof STATUS_WINDOWS)[number];
 const ROW = "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line-subtle py-2 text-13";
 const LIST = "border-t border-line-subtle";
 const KEY_LINK = "font-mono text-12 text-link hover:underline";
-
-function Section({ title, asOf, clock, children, testId }: { title: string; asOf: string; clock: EtaClock; children: React.ReactNode; testId: string }) {
-  const t = useCopy();
-  return (
-    <section aria-label={title} data-testid={testId} className="break-inside-avoid">
-      <ViewHeading right={<span className="text-13 text-muted">{t("status.readAt", { at: formatDateTime(asOf, clock.lang, clock.timeZone) })}</span>}>{title}</ViewHeading>
-      {children}
-    </section>
-  );
-}
 
 const Quiet = ({ children }: { children: React.ReactNode }) => <p className="text-13 text-muted">{children}</p>;
 
@@ -118,7 +111,7 @@ function ShippedPart({ s, slug, clock }: PartProps) {
   const t = useCopy();
   const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
   return (
-  <Section title={t("status.shipped")} asOf={s.shipped.asOf} clock={clock} testId="status-shipped">
+  <ReportPart title={t("status.shipped")} asOf={s.shipped.asOf} clock={clock} count={s.shipped.releaseCount} testId="status-shipped">
     {s.shipped.releases.length === 0 ? (
       <Quiet>{t("status.shippedNone")}</Quiet>
     ) : (
@@ -166,7 +159,7 @@ function ShippedPart({ s, slug, clock }: PartProps) {
         ))}
       </p>
     ) : null}
-  </Section>
+  </ReportPart>
   );
 }
 
@@ -174,7 +167,7 @@ function InFlightPart({ s, slug, clock }: PartProps) {
   const t = useCopy();
   const label = useLabel();
   return (
-  <Section title={t("status.inFlight")} asOf={s.inFlight.asOf} clock={clock} testId="status-in-flight">
+  <ReportPart title={t("status.inFlight")} asOf={s.inFlight.asOf} clock={clock} count={s.inFlight.open} testId="status-in-flight">
     <p className="text-13">
       <span className="font-semibold">{t("status.openIssues", { n: s.inFlight.open })}</span>
       {s.inFlight.byStatus.length > 0 ? <span className="text-muted"> · {s.inFlight.byStatus.map((b) => `${label("issueStatus", b.status)} ${b.count}`).join(" · ")}</span> : null}
@@ -196,7 +189,7 @@ function InFlightPart({ s, slug, clock }: PartProps) {
         ))}
       </ul>
     )}
-  </Section>
+  </ReportPart>
   );
 }
 
@@ -205,7 +198,7 @@ function WaitsPart({ s, slug, clock }: PartProps) {
   const language = useInterfaceLanguage();
   const label = useLabel();
   return (
-  <Section title={t("status.waits")} asOf={s.waits.asOf} clock={clock} testId="status-waits">
+  <ReportPart title={t("status.waits")} asOf={s.waits.asOf} clock={clock} count={s.waits.peopleCount} testId="status-waits">
     {s.waits.people.length === 0 ? (
       <Quiet>{t("status.waitsNone")}</Quiet>
     ) : (
@@ -229,14 +222,21 @@ function WaitsPart({ s, slug, clock }: PartProps) {
         {s.waits.peopleCount > s.waits.people.length ? <p className="text-13 text-muted">{t("status.waitsMore", { n: s.waits.peopleCount - s.waits.people.length })}</p> : null}
       </div>
     )}
-  </Section>
+  </ReportPart>
   );
 }
 
 function RequirementsPart({ s, slug, clock }: PartProps) {
   const t = useCopy();
   return (
-  <Section title={t("status.requirements")} asOf={s.requirements.asOf} clock={clock} testId="status-requirements">
+  <ReportPart
+    title={t("status.requirements")}
+    asOf={s.requirements.asOf}
+    clock={clock}
+    count={s.requirements.items.length}
+    note={t("status.criteriaProven", { proven: s.requirements.proven, total: s.requirements.total })}
+    testId="status-requirements"
+  >
     <p className="mb-2 text-13 font-semibold" data-testid="status-criteria-proven">
       {t("status.criteriaProven", { proven: s.requirements.proven, total: s.requirements.total })}
     </p>
@@ -259,7 +259,7 @@ function RequirementsPart({ s, slug, clock }: PartProps) {
         ))}
       </ul>
     )}
-  </Section>
+  </ReportPart>
   );
 }
 
@@ -267,7 +267,7 @@ function NextReleasePart({ s, slug, clock }: PartProps) {
   const t = useCopy();
   const label = useLabel();
   return (
-  <Section title={t("status.nextRelease")} asOf={s.nextRelease.asOf} clock={clock} testId="status-next-release">
+  <ReportPart title={t("status.nextRelease")} asOf={s.nextRelease.asOf} clock={clock} note={s.nextRelease.version ?? undefined} testId="status-next-release">
     {s.nextRelease.version === null ? (
       <Quiet>{t("status.nextReleaseNone")}</Quiet>
     ) : (
@@ -286,14 +286,14 @@ function NextReleasePart({ s, slug, clock }: PartProps) {
         ) : null}
       </p>
     )}
-  </Section>
+  </ReportPart>
   );
 }
 
 function LatePart({ s, clock }: Omit<PartProps, "slug">) {
   const t = useCopy();
   return (
-  <Section title={t("status.late")} asOf={s.late.asOf} clock={clock} testId="status-late">
+  <ReportPart title={t("status.late")} asOf={s.late.asOf} clock={clock} count={s.late.items.length} testId="status-late">
     {s.late.items.length === 0 ? (
       <Quiet>{t("status.lateNone")}</Quiet>
     ) : (
@@ -307,7 +307,7 @@ function LatePart({ s, clock }: Omit<PartProps, "slug">) {
         ))}
       </ul>
     )}
-  </Section>
+  </ReportPart>
   );
 }
 
@@ -328,22 +328,18 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
       () => setCopied("failed"),
     );
   };
+  usePageCommands([
+    { label: t("status.copy"), icon: "link", onRun: copy },
+    { label: t("status.print"), icon: "book", onRun: () => globalThis.print?.() },
+  ]);
   return (
-    <article data-testid="status-report" className="grid gap-9">
-      <header className="grid gap-2">
+    <article data-testid="status-report" className="grid gap-4">
+      <header className="mb-4 grid gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="fg-h2 min-w-0 flex-1">
             {s.name} — {t("status.title")}
           </h1>
-          <div className="flex items-center gap-2 print:hidden">
-            {actions}
-            <Button onClick={copy} data-testid="status-copy">
-              {copied === "done" ? t("status.copied") : t("status.copy")}
-            </Button>
-            <Button onClick={() => globalThis.print?.()} data-testid="status-print">
-              {t("status.print")}
-            </Button>
-          </div>
+          {actions ? <div className="flex items-center gap-2 print:hidden">{actions}</div> : null}
         </div>
         <p className="text-13 text-muted" data-testid="status-as-of">
           {t("status.asOf", { at: when(s.asOf) })} · {t("status.window", { days: s.days })}
@@ -356,6 +352,11 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
               options={STATUS_WINDOWS.map((w) => ({ value: w, label: t("status.days", { days: w }) }))}
             />
           </div>
+        ) : null}
+        {copied === "done" ? (
+          <p role="status" className="text-13 text-muted print:hidden" data-testid="status-copied">
+            {t("status.copied")}
+          </p>
         ) : null}
         {copied === "failed" ? (
           <p role="alert" className="text-13 text-danger">
@@ -380,9 +381,9 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
 
       <LatePart s={s} clock={clock} />
 
-      <Section title={t("status.roadmap")} asOf={s.roadmap.asOf} clock={clock} testId="status-roadmap">
+      <ReportPart title={t("status.roadmap")} asOf={s.roadmap.asOf} clock={clock} testId="status-roadmap">
         <Roadmap s={s} slug={slug} clock={clock} />
-      </Section>
+      </ReportPart>
 
       <p className="text-13 text-muted">{t("status.forecastNote")}</p>
     </article>

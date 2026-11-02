@@ -21,9 +21,13 @@ interface DisclosureProps {
   highlight?: string;
   /** The word the count is of ("open"), read with it: "2 open". */
   countUnit?: string;
+  /** A few words the fold's line says on hover, such as when its read answered. */
+  hint?: string;
+  /** Printed open whatever its state on screen: its body stays in the page, hidden until it prints. */
+  printsOpen?: boolean;
 }
 
-export function Disclosure({ title, count, countUnit, summary, children, defaultOpen = false, open, onOpenChange, testId, highlight }: DisclosureProps) {
+export function Disclosure({ title, count, countUnit, hint, printsOpen = false, summary, children, defaultOpen = false, open, onOpenChange, testId, highlight }: DisclosureProps) {
   return (
     <Collapsible
       defaultOpen={defaultOpen}
@@ -34,7 +38,7 @@ export function Disclosure({ title, count, countUnit, summary, children, default
       data-highlight={highlight}
     >
       {/* the chevron reads its own trigger's state: a fold's open state would turn every fold nested in it */}
-      <CollapsibleTrigger className="group/trigger flex h-row w-full min-w-0 items-center gap-3 text-left focus-visible:outline-none focus-visible:shadow-focus">
+      <CollapsibleTrigger title={hint} className="group/trigger flex h-row w-full min-w-0 items-center gap-3 text-left focus-visible:outline-none focus-visible:shadow-focus">
         <Icon name="chevronRight" size={16} className="flex-none text-subtle transition-transform duration-150 group-data-[panel-open]/trigger:rotate-90" />
         <span className="flex-none text-14 font-medium text-fg">
           {title}
@@ -43,7 +47,9 @@ export function Disclosure({ title, count, countUnit, summary, children, default
         {/* width 0, then grown: a one-line summary is cut to the row, never widens the page it sits in */}
         {summary ? <span className="w-0 min-w-0 flex-1 truncate text-13 text-muted">{summary}</span> : null}
       </CollapsibleTrigger>
-      <CollapsibleContent className="pb-4 pl-7">{children}</CollapsibleContent>
+      <CollapsibleContent keepMounted={printsOpen} className={printsOpen ? "pb-4 pl-7 print:block!" : "pb-4 pl-7"}>
+        {children}
+      </CollapsibleContent>
     </Collapsible>
   );
 }
