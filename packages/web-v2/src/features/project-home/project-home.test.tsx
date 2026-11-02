@@ -109,9 +109,10 @@ describe("the project home (REQ-41 BC-13)", () => {
     expect(within(screen.getByTestId("home-needs-you")).getAllByTestId("needs-you-decision")).toHaveLength(3);
     expect(screen.getAllByTestId("home-running-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["ISS-20", "ISS-21"]);
     expect(screen.getAllByTestId("home-at-risk-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["REQ-7", "REQ-4"]);
-    expect(screen.getAllByTestId("home-at-risk-why").map((n) => n.textContent)).toEqual([
-      "ISS-498 waits on a master and no master serves this project",
-      "2.0 h past the latest similar work took",
+    // each row's chip says Stuck or Late; why is its hover (ISS-903)
+    expect(screen.getAllByTestId("home-at-risk-why").map((n) => [n.textContent?.replace(n.dataset.reason ?? "", ""), n.dataset.reason])).toEqual([
+      ["Stuck", expect.stringContaining("ISS-498 waits on a master and no master serves this project")],
+      ["Late", "2.0 h past the latest similar work took"],
     ]);
     // flat: row lists on hairlines, no card or shadow
     const surfaces = [...home.querySelectorAll("section, table, ul, li, div")].map((n) => n.className).join(" ");

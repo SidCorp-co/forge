@@ -26,7 +26,7 @@ const SLICE_B = "ISS-903 rewrites the screen onto the disclosure kit";
 const waits = (ceiling: number): Amnesty => ({ ceiling, ends: SLICE_B });
 
 export const BUDGETS: Record<string, ScreenBudget> = {
-  "project-home": { budget: 100, amnesty: waits(162) },
+  "project-home": { budget: 100, amnesty: waits(109) },
   "issues-list": { budget: 90 },
   "issue-detail": { budget: 80 },
   "requirements-list": { budget: 80, amnesty: waits(93) },

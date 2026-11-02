@@ -228,3 +228,12 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("the question was answered already"));
   });
 });
+
+// the home's first view (ISS-903): what the read left out is the "more" line's hover, never a sentence under it
+describe("a dense list", () => {
+  it("says on its more line, as its hover, what the read left out", () => {
+    renderWithQuery(<DecisionList read={READ} slug="hop" dense cap={1} moreHref="/projects/hop/approvals" />);
+    expect(screen.queryByTestId("needs-you-left-out")).toBeNull();
+    expect(screen.getByTestId("needs-you-more")).toHaveAttribute("title", expect.stringContaining("37 drafts nobody has proposed merging or dropping yet"));
+  });
+});

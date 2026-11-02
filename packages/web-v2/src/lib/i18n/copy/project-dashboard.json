@@ -1,6 +1,7 @@
 {
   "en": {
     "dash.criteriaProven": "Criteria proven",
+    "dash.details": "Details",
     "dash.fbMoving": "in work",
     "dash.fbOpen": "open",
     "dash.fbStuck": "stuck",
@@ -55,6 +56,7 @@
   },
   "vi": {
     "dash.criteriaProven": "Tiêu chí đã chứng minh",
+    "dash.details": "Chi tiết",
     "dash.fbMoving": "đang xử lý",
     "dash.fbOpen": "đang mở",
     "dash.fbStuck": "bị kẹt",

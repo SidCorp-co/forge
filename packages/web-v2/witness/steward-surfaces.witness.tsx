@@ -27,7 +27,8 @@ const SURFACES: Surface[] = [
     ),
     check: () => [
       ...has("Needs you", `+${APPROVALS_READ.total - 3} more`),
-      ...has("at risk", "REQ-45"),
+      // a row is named by its title, its key the title's hover (ui-copy-rule 10)
+      ...has("at risk", "Checkout reaches the clinic"),
       ...has("at risk", "no master serves"),
       ...has("the steward's day", "27 stuck items wait for tomorrow; new feedback and requirements still run."),
     ],
@@ -50,7 +51,8 @@ const SURFACES: Surface[] = [
         <AttentionScreen />
       </Live>
     ),
-    check: () => [...has("attention", "FB-135"), ...has("attention", `+${APPROVALS_READ.total - 3} more`)],
+    // a decision is named by its title, its key the title's hover (ui-copy-rule 10)
+    check: () => [...has("attention", APPROVALS_READ.decisions.find((d) => d.key === "FB-135")?.title ?? "FB-135"), ...has("attention", `+${APPROVALS_READ.total - 3} more`)],
   },
   {
     name: "pipeline-board",

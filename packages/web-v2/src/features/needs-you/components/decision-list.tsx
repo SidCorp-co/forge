@@ -6,7 +6,7 @@
 // nothing is decided here. Flat rows under hairlines, one heading per group; the project home and
 // the chat draw the same list. `dense` (the project home) draws each as its question and its buttons
 // only: what it changes, its impact and the recommendation's why sit behind the question, and each
-// answer's effect behind its button, a hover away.
+// answer's effect behind its button, a hover away, and what the read left out is its "more" line's hover.
 
 import {
   capDecisions,
@@ -229,6 +229,9 @@ export function DecisionList({
   const groups = NEEDS_YOU_DECISION_GROUPS.map((g) => ({ g, rows: shown.filter((d) => d.group === g) }))
     .filter((x) => x.rows.length > 0);
   const leftOut = read.notDecisions.map((n) => t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }));
+  const leftOutSaid = leftOut.length > 0 ? t("needsYou.decisions.leftOut", { list: leftOut.join(", ") }) : undefined;
+  // a dense list says what it left out on its "more" line's hover, where it has one (ISS-903)
+  const leftOutOnMore = dense && more > 0;
   return (
     <section aria-label={t("needsYou.decisions.aria")} className="flex flex-col gap-3" data-testid="needs-you-decisions">
       {groups.length === 0 && <p className="fg-body-sm text-muted">{t("needsYou.decisions.none")}</p>}
@@ -246,22 +249,22 @@ export function DecisionList({
       ))}
       {more > 0 &&
         (moreHref ? (
-          <Link href={moreHref} className="fg-caption text-fg underline-offset-2 hover:underline" data-testid="needs-you-more">
+          <Link href={moreHref} className="fg-caption text-fg underline-offset-2 hover:underline" title={leftOutOnMore ? leftOutSaid : undefined} data-testid="needs-you-more">
             {t("needsYou.decisions.capMore", { n: more })}
           </Link>
         ) : (
-          <p className="fg-caption text-subtle" data-testid="needs-you-more">
+          <p className="fg-caption text-subtle" title={leftOutOnMore ? leftOutSaid : undefined} data-testid="needs-you-more">
             {t("needsYou.decisions.capMore", { n: more })}
           </p>
         ))}
       {cap === undefined && read.total > read.decisions.length && (
         <p className="fg-caption text-subtle">{t("needsYou.decisions.more", { shown: read.decisions.length, total: read.total })}</p>
       )}
-      {leftOut.length > 0 && (
+      {leftOutSaid && !leftOutOnMore ? (
         <p className="fg-caption text-subtle" data-testid="needs-you-left-out">
-          {t("needsYou.decisions.leftOut", { list: leftOut.join(", ") })}
+          {leftOutSaid}
         </p>
-      )}
+      ) : null}
     </section>
   );
 }

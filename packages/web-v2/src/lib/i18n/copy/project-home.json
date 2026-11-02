@@ -7,6 +7,8 @@
     "home.atRisk": "At risk",
     "home.atRiskEmpty": "No risks",
     "home.atRiskUnlisted": "{n} more stuck issues and feedback · open Issues",
-    "home.why.past": "{by} past the latest similar work took"
+    "home.why.past": "{by} past the latest similar work took",
+    "home.risk.stuck": "Stuck",
+    "home.risk.late": "Late"
   }
 }

@@ -251,7 +251,8 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (path === `/projects/${FP}/pipeline-runs`) return json(listOf([]));
   if (path === "/me/attention") {
     const part = { projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3) };
-    return json({ needsYou: [part], mentions: [], failedJobs: [], channelGates: [], statusReports: [] });
+    const counts = { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 };
+    return json({ needsYou: [part], mentions: [], failedJobs: [], channelGates: [], statusReports: [], offlineRunners: [], counts, waitingOnYou: APPROVALS_READ.total, total: APPROVALS_READ.total });
   }
   if ((init?.method ?? "GET") === "GET") {
     for (const [pattern, answer] of ITEM_READS) {

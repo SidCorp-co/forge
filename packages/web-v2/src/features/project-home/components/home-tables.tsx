@@ -1,8 +1,10 @@
 
 // Running and At risk on the project home: flush rows on hairlines, no cards. What is running and
 // what is late is core's project status; the rows come from `derive.ts` and nothing is decided here.
+// An at-risk row is its title and one chip, Stuck or Late; why, and the steward's line, are that
+// chip's hover (ISS-903).
 
-import { RowItem, RowList, WaitingOn } from "@/design";
+import { RowItem, RowList, StatusChip, WaitingOn } from "@/design";
 import { spanText } from "@/features/forecast";
 import { Link } from "@/lib/navigation/router";
 import { issueHref } from "@/lib/routes/issues";
@@ -74,11 +76,13 @@ export function AtRiskTable({ rows, unlisted = 0, moreHref }: { rows: AtRiskRow[
               href={r.href}
               tip={r.key}
               title={r.title}
-              note={
-                <span className="flex flex-col">
-                  <span className="text-accent-text" data-testid="home-at-risk-why">{r.reasons.map((x) => whyText(x, t, lang)).join(" · ")}</span>
-                  {noteOf(r) && <span className="text-muted" data-testid="home-at-risk-note">{noteOf(r)}</span>}
-                </span>
+              trailing={
+                <StatusChip
+                  tone="err"
+                  label={t(r.reasons[0]?.kind === "stuck" ? "home.risk.stuck" : "home.risk.late")}
+                  reason={[r.reasons.map((x) => whyText(x, t, lang)).join(" · "), noteOf(r)].filter(Boolean).join(" — ")}
+                  testId="home-at-risk-why"
+                />
               }
             />
           ))}
