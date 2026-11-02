@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.436] - 2026-11-02
+
+Main screens lead each row with its name instead of codes
+
+### Changed
+
+- **Screens lead with names, not codes.** Releases, feedback, requirements, the issue page, the project home and ops show titles and words; keys, codes and commits move into tooltips, and a run opens from the keyboard.
+
 ## [0.4.0-dev.435] - 2026-11-02
 
 Forge speaks in chat only when the assistant cannot, once, in Vietnamese
