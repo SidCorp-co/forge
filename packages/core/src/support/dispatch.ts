@@ -196,6 +196,7 @@ async function agentBriefOf(
       product: config?.product ?? null,
       channels: rooms.map((r) => r.rid),
       ownerMode: Boolean(config?.grants?.abilities.includes('owner_mode')),
+      ownerRoom: config?.ownerRoom ?? null,
     }),
   });
 }
