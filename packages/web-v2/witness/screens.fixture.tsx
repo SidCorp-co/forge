@@ -9,6 +9,7 @@ import { APPROVALS_PROJECT as PH, APPROVALS_READ } from "@/test/approvals-read";
 import { STATUS } from "@/test/project-status";
 import { FEEDBACK_SEED } from "@/test/vi-chrome-feedback";
 import { detailQueries } from "@/test/vi-chrome-issues";
+import { AUTOFLOW, EPOD_CATALOG } from "./ecosystem-page.fixture";
 import { reqQueries } from "@/test/vi-chrome-requirements";
 
 export const NOW = "2026-10-21T09:00:00.000Z";
@@ -79,6 +80,19 @@ export const HOME_READS: [RegExp, () => unknown][] = [
   [/\/steward-budget$/, () => ({ day: NOW, resumesAt: NOW, handoff: { gatewayTurns: { spent: 6, of: 80 }, runnerJobs: { spent: 1, of: 4 } }, sweep: { gatewayTurns: { spent: 2, of: 120 }, runnerJobs: { spent: 0, of: 6 } }, paced: 0, quiet: null })],
   [/^\/memory\/entries$/, () => ({ items: [], counts: { live: 0, superseded: 0, archived: 0 }, returned: 0, total: 0, limit: 100 })],
 ];
+
+// ── the ecosystems' reads, as witness/ecosystem-page.witness.tsx answers them, and the person's own feedback to Forge ──
+const BUSES: Record<string, unknown> = { [EPOD_CATALOG.ecosystem.id]: EPOD_CATALOG, [AUTOFLOW.ecosystem.id]: AUTOFLOW };
+export const ECOSYSTEM_ID = EPOD_CATALOG.ecosystem.id;
+const ecosystemRow = (b: typeof EPOD_CATALOG) => ({ id: b.ecosystem.id, slug: b.ecosystem.slug, name: b.ecosystem.name, purpose: null, code: b === AUTOFLOW ? "AF" : "EC", steward: { id: "o1", name: "SidCorp", mine: false }, visibility: "all", responseDays: {}, gate: {}, members: b.projects.map((p) => p.id) });
+const FEEDBACK_AT = "2026-10-20T08:00:00.000Z";
+const told = { answer: null, declined: null, clarification: null, shippedIn: null };
+const mineItem = (key: string, title: string, phase: string, from: string, n: number, says: string, running = false) => ({ key, title, kind: "bug", severity: "medium", phase, route: null, origin: { occurrences: n, project: { id: `p-${from}`, slug: from.toLowerCase(), name: from }, issue: null, run: null, clientVersion: "web 0.4.0-dev.260", reporter: { id: "u1", name: "Lan", agency: "human" }, at: FEEDBACK_AT }, createdAt: FEEDBACK_AT, updatedAt: FEEDBACK_AT, progress: { label: "forecast", asOf: FEEDBACK_AT, running, says, work: null, runs: [], waitingOn: [], eta: { estimate: false } }, shipEvidence: null, told });
+HOME_READS.push(
+  [/^\/ecosystems\/[^/]+\/bus$/, () => EPOD_CATALOG],
+  [/^\/ecosystems\/mine$/, () => ({ ecosystems: [EPOD_CATALOG, AUTOFLOW].map(ecosystemRow), invitations: [], threads: [], drafts: [], projects: [...EPOD_CATALOG.projects, ...AUTOFLOW.projects].map((p) => ({ id: p.id, slug: p.slug, name: p.name })), mine: [] })],
+  [/^\/forge\/feedback$/, () => ({ feedback: [mineItem("FB-212", "The board drops a card dragged to Done", "new", "HOP", 1, "Waiting to be triaged by Forge's team."), mineItem("FB-198", "forge claim refuses a lease that has expired", "planned", "Autoflow", 4, "ISS-1433 carries it and a run is working on it now.", true), mineItem("FB-160", "The release page cuts the version at phone width", "verified", "Catalog", 2, "Shipped in 0.4.0-dev.244 and verified.")], returned: 3, home: { id: "p-forge", slug: "forge-dev", name: "Forge" }, asOf: FEEDBACK_AT })],
+);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 window.fetch = async (input: RequestInfo | URL) => {
   const path = new URL(String(input), "http://forge.test").pathname.replace(/^\/api/, "");

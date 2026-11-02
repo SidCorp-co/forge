@@ -15,9 +15,14 @@ import { Route as ApprovalsRoute } from "@/routes/_workspace/projects/$slug/appr
 import { Route as StatusRoute } from "@/routes/_workspace/projects/$slug/status/index";
 import { Route as LoginRoute } from "@/routes/_auth/login/index";
 import { Route as RegisterRoute } from "@/routes/_auth/register/index";
+import { EcosystemScreen } from "@/features/ecosystem/components/ecosystem-screen";
+import { EcosystemsHome } from "@/features/ecosystem/components/ecosystems-home";
+import { MyForgeFeedback } from "@/features/feedback";
 import { P as FB_P } from "@/test/vi-chrome-feedback";
 import { P as REL_P, releaseSeed } from "@/test/vi-chrome-rel-wf";
 import { REQ_PROJECT, Seeded } from "@/test/vi-chrome-requirements";
+
+import { ECOSYSTEM_ID } from "./screens.fixture";
 
 export interface ScreenPage {
   name: string;
@@ -76,6 +81,9 @@ export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, 
     { name: "settings-account", path: "/settings", pattern: "/settings", render: () => vi("Account preferences") },
     { name: "approvals", path: `${P}/approvals`, pattern: "/projects/$slug/approvals", render: () => routeOf(ApprovalsRoute) },
     { name: "status", path: `${P}/status`, pattern: "/projects/$slug/status", render: () => routeOf(StatusRoute) },
+    { name: "forge-feedback", path: "/forge-feedback", pattern: "/forge-feedback", render: () => <MyForgeFeedback /> },
+    { name: "ecosystems-home", path: "/ecosystems", pattern: "/ecosystems", render: () => <EcosystemsHome /> },
+    { name: "ecosystem-detail", path: "/ecosystems/ecosystem-1", pattern: "/ecosystems/$id", render: () => <EcosystemScreen ecosystemId={ECOSYSTEM_ID} /> },
     { name: "docs", path: "/docs", pattern: "/docs", render: () => <DocsScreen /> },
     { name: "sign-in", path: "/login", pattern: "/login", render: () => routeOf(LoginRoute), bare: true },
     { name: "register", path: "/register", pattern: "/register", render: () => routeOf(RegisterRoute), bare: true },
