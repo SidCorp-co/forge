@@ -6,7 +6,7 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld, requiresOnParam } from '../permissions/index.js';
+import { requireDeclared, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
 import { listProjectPipelineRuns, pipelineRunProjectId } from './read.js';
 import { loadPipelineRunSummary } from './runs-rollup.js';
 
@@ -19,20 +19,25 @@ const listFiltersSchema = paginationSchema.extend({
 export const pipelineRunReadRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineRunReadRoutes.use('*', requireAuth(), assertEmailVerified());
 
-pipelineRunReadRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+pipelineRunReadRoutes.get(
+  '/:id',
+  zValidator('param', idParamSchema),
+  noQuery,
+  requiresOnResolved('project.read', 'the project of the pipeline run the path names'),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const projectId = await pipelineRunProjectId(id);
-  if (!projectId) throw notFound('pipeline run not found');
+    const projectId = await pipelineRunProjectId(id);
+    if (!projectId) throw notFound('pipeline run not found');
 
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(projectId, userId));
 
-  const summary = await loadPipelineRunSummary(id);
-  if (!summary) throw notFound('pipeline run not found');
-  return c.json(summary);
-});
+    const summary = await loadPipelineRunSummary(id);
+    if (!summary) throw notFound('pipeline run not found');
+    return c.json(summary);
+  },
+);
 
 /** Mounted at `/api/projects` so the route is `/api/projects/:id/pipeline-runs`. */
 export const pipelineRunProjectRoutes = new Hono<{ Variables: AuthVars }>();

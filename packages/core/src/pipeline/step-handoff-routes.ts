@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { resolveActor, resolveIssueKeyInProject } from '../issues/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn, requiresOnResolved } from '../permissions/index.js';
 import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
 import { stepHandoffSchema } from './step-handoff-schema.js';
 
@@ -52,41 +52,56 @@ const deleteQuerySchema = z.object({
 export const stepHandoffRoutes = new Hono<{ Variables: AuthVars }>();
 stepHandoffRoutes.use('*', requireAuth(), assertEmailVerified());
 
-stepHandoffRoutes.post('/', zValidator('json', writeBodySchema), async (c) => {
-  const body = c.req.valid('json');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
-  const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
-  return c.json(r, 201);
-});
+stepHandoffRoutes.post(
+  '/',
+  zValidator('json', writeBodySchema),
+  requiresOnResolved('project.write', 'the project the body names as projectId'),
+  async (c) => {
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+    await requireDeclaredOn(body.projectId, userId, 'project.write');
+    const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
+    return c.json(r, 201);
+  },
+);
 
-stepHandoffRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
-  const q = c.req.valid('query');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.read', projectResource(q.projectId));
-  const issueId = await resolveIssueKeyInProject(q.issueId, q.projectId);
-  const rows = await getIssueContexts({
-    projectId: q.projectId,
-    issueId,
-    kind: 'handoff',
-    ...(q.pipelineRunId ? { pipelineRunId: q.pipelineRunId } : {}),
-    ...(q.steps ? { steps: q.steps } : {}),
-    limit: q.limit,
-    orderDir: q.orderDir,
-  });
-  return c.json({ rows });
-});
+stepHandoffRoutes.get(
+  '/',
+  zValidator('query', listQuerySchema),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
+  async (c) => {
+    const q = c.req.valid('query');
+    const userId = c.get('userId');
+    await requireDeclaredOn(q.projectId, userId, 'project.read');
+    const issueId = await resolveIssueKeyInProject(q.issueId, q.projectId);
+    const rows = await getIssueContexts({
+      projectId: q.projectId,
+      issueId,
+      kind: 'handoff',
+      ...(q.pipelineRunId ? { pipelineRunId: q.pipelineRunId } : {}),
+      ...(q.steps ? { steps: q.steps } : {}),
+      limit: q.limit,
+      orderDir: q.orderDir,
+    });
+    return c.json({ rows });
+  },
+);
 
-stepHandoffRoutes.delete('/', zValidator('query', deleteQuerySchema), async (c) => {
-  const q = c.req.valid('query');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.write', projectResource(q.projectId));
-  const n = await deleteIssueContext({
-    projectId: q.projectId,
-    issueId: q.issueId,
-    kind: 'handoff',
-    step: q.step,
-    attempt: q.attempt,
-  });
-  return c.json({ deleted: n > 0 });
-});
+stepHandoffRoutes.delete(
+  '/',
+  zValidator('query', deleteQuerySchema),
+  requiresOnResolved('project.write', 'the project the query names as projectId'),
+  async (c) => {
+    const q = c.req.valid('query');
+    const userId = c.get('userId');
+    await requireDeclaredOn(q.projectId, userId, 'project.write');
+    const n = await deleteIssueContext({
+      projectId: q.projectId,
+      issueId: q.issueId,
+      kind: 'handoff',
+      step: q.step,
+      attempt: q.attempt,
+    });
+    return c.json({ deleted: n > 0 });
+  },
+);
