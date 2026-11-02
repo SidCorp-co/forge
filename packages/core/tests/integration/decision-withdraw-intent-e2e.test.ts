@@ -15,6 +15,7 @@
  * @direct-test-of packages/core/src/issues/record-events/withdraw.ts
  * @direct-test-of packages/core/src/issues/record-events/routes.ts
  * @direct-test-of packages/core/src/comments/intent-edit.ts
+ * @direct-test-of packages/core/src/comments/entity-read.ts
  */
 
 import { sql } from 'drizzle-orm';

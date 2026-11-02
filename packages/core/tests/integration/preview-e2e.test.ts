@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/previews/access.ts
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
