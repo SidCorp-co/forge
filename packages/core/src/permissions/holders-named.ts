@@ -13,10 +13,11 @@ export interface NamedHolder {
   kind: 'human' | 'agent';
 }
 
-/** Whether an agent's account is someone a wait on this permission may name: approval is a permission, so an agent holding it counts. */
-const AGENTS_NAMED: ReadonlySet<ProjectPermission> = new Set(['releases.approve']);
-
 type ProjectHolders = Record<ProjectPermission, NamedHolder[]>;
+
+// A wait on a permission names the people who hold it, never an agent's account: an agent's role can
+// hold an approval (an admin role holds every one), but a wait names whom it waits on, and a release
+// listing its own agent as its approver waits on nobody who will approve it (ISS-869).
 
 // one read a request shares: a page's read models each name holders of the same project, and each
 // asking again was four round trips a project
@@ -24,30 +25,23 @@ function projectHolders(projectId: string): Promise<ProjectHolders> {
   return memoizedRead(`namedHolders:${projectId}`, async () => {
     const byPermission = await holdersOfEach(projectId);
     const people = await peopleOf(Object.values(byPermission).flat());
-    const named = (permission: ProjectPermission, ids: readonly string[]): NamedHolder[] =>
+    const named = (ids: readonly string[]): NamedHolder[] =>
       ids
         .flatMap((id) => {
           const p = people.get(id);
-          return p && (AGENTS_NAMED.has(permission) || p.kind !== 'agent') ? [{ id, ...p }] : [];
+          return p && p.kind !== 'agent' ? [{ id, ...p }] : [];
         })
-        .sort(
-          (a, b) =>
-            Number(a.kind === 'agent') - Number(b.kind === 'agent') || a.name.localeCompare(b.name),
-        );
+        .sort((a, b) => a.name.localeCompare(b.name));
     return Object.fromEntries(
       Object.entries(byPermission).map(([permission, ids]) => [
         permission,
-        named(permission as ProjectPermission, ids),
+        named(ids),
       ]),
     ) as ProjectHolders;
   });
 }
 
-/**
- * Who holds `permission` on one project, people by name first and then agents where the permission
- * counts them. A person's write or admin act is one an agent's account does not take for them, so
- * those name people only.
- */
+/** Who holds `permission` on one project: the people, by name; never an agent's account. */
 export async function namedHolders(
   permission: ProjectPermission,
   projectId: string,
