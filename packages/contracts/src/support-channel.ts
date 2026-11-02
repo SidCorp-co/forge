@@ -194,6 +194,11 @@ export const supportAnnounceRequestSchema = z.strictObject({
 export const supportMasterPostRequestSchema = z.strictObject({
 	text: z.string().trim().min(3).max(4000),
 	rid: z.string().trim().min(1).max(200).optional(),
+	/**
+	 * The thread the master answers in (ISS-871): one a member wrote in, of the named room or of the
+	 * one team room that holds it. Absent, the post is at the room's top level.
+	 */
+	thread: supportThreadIdSchema.optional(),
 });
 export type SupportMasterPostRequest = z.infer<
 	typeof supportMasterPostRequestSchema
