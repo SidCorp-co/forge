@@ -2,7 +2,10 @@ import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mcpRequestClass } from '../mcp/request-class.js';
 
-const scopes = vi.hoisted(() => ({ held: ['read'] as string[] }));
+const scopes = vi.hoisted(() => ({
+  held: ['read'] as string[],
+  oauthGrantId: undefined as string | undefined,
+}));
 
 vi.mock('../credentials/pat.js', () => ({
   verifyPat: async () => ({
@@ -12,7 +15,13 @@ vi.mock('../credentials/pat.js', () => ({
   touchPatUsage: () => {},
 }));
 vi.mock('../credentials/pat-principal.js', () => ({
-  patPrincipalOf: () => ({ kind: 'pat', tokenId: 'tok-1', userId: 'user-1', scopes: scopes.held }),
+  patPrincipalOf: () => ({
+    kind: 'pat',
+    tokenId: 'tok-1',
+    userId: 'user-1',
+    scopes: scopes.held,
+    ...(scopes.oauthGrantId ? { oauthGrantId: scopes.oauthGrantId } : {}),
+  }),
 }));
 vi.mock('../credentials/mcp-audit.js', () => ({ writeMcpAudit: () => {} }));
 vi.mock('../credentials/ports.js', () => ({ tokenChanged: async () => {} }));
@@ -57,6 +66,23 @@ const tool = (name: string, args: Record<string, unknown>) => ({
 describe('a /mcp write from a token without the write scope', () => {
   beforeEach(() => {
     scopes.held = ['read'];
+    scopes.oauthGrantId = undefined;
+  });
+
+  // the ISS-538 judge (2026-11-02): an OAuth client was told to tick write under Settings → API
+  // Tokens, the personal-token route; its own way out is signing in again and allowing write
+  it("names each token's own way to write: a personal token's settings, an OAuth client's consent", async () => {
+    const personal = (await (await call(tool('forge_feedback', { action: 'submit' }))).json()) as {
+      message: string;
+    };
+    expect(personal.message).toContain('Settings → API Tokens');
+    scopes.oauthGrantId = 'grant-1';
+    const res = await call(tool('forge_feedback', { action: 'submit' }));
+    expect(res.status).toBe(403);
+    const oauth = (await res.json()) as { message: string; cause: { code: string } };
+    expect(oauth.cause.code).toBe('INSUFFICIENT_SCOPE');
+    expect(oauth.message).toContain('allow write on the consent page');
+    expect(oauth.message).not.toContain('API Tokens');
   });
 
   it('is refused by name, saying the scope and the tool', async () => {

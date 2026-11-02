@@ -39,6 +39,8 @@ export type PatPrincipal = {
   deviceId: string | null;
   /** The person this token acts for, where it is not its holder's own (`personalAccessTokens.onBehalfOf`). */
   onBehalfOf: string | null;
+  /** The consent an MCP client's OAuth access token was minted for; absent for a personal token. */
+  oauthGrantId?: string;
 };
 
 export type McpPrincipal = PatPrincipal;
@@ -213,11 +215,14 @@ export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> =>
     if (!principal) throw unauth(c, 'invalid personal access token', { invalidToken: true });
     if (requestClass === 'write' && !principal.scopes.includes('write')) {
       const calls = c.get('patRequestWrites') ?? [];
+      // an OAuth client's way out is its own sign-in, not a personal token (the ISS-538 judge, 2026-11-02)
+      const wayOut = principal.oauthGrantId
+        ? 'sign in again from your MCP client and allow write on the consent page, or send only reads with this one'
+        : "create a token with 'write' ticked under Settings → API Tokens, or send only reads with this one";
       throw new HTTPException(403, {
         message:
           `this token lacks the 'write' scope, and this /mcp request writes` +
-          `${calls.length > 0 ? ` (${calls.join(', ')})` : ''} — create a token with 'write' ticked ` +
-          'under Settings → API Tokens, or send only reads with this one',
+          `${calls.length > 0 ? ` (${calls.join(', ')})` : ''} — ${wayOut}`,
         cause: { code: 'INSUFFICIENT_SCOPE', details: { scope: 'write', calls } },
       });
     }

@@ -418,6 +418,25 @@ describe('refreshing', () => {
       scope: 'read write',
     });
     expect(wider.body.error).toBe('invalid_scope');
+
+    // the ISS-538 judge (2026-11-02): the write refusal sent an OAuth client to Settings → API
+    // Tokens; its own way out is signing in again and allowing write
+    const write = await api(
+      pair.body.access_token as string,
+      'POST',
+      '/mcp',
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'forge_requirements', arguments: { action: 'create' } },
+      },
+      { accept: 'application/json, text/event-stream' },
+    );
+    expect(write.status, JSON.stringify(write.body)).toBe(403);
+    expect(JSON.stringify(write.body)).toContain('INSUFFICIENT_SCOPE');
+    expect(JSON.stringify(write.body)).toContain('allow write on the consent page');
+    expect(JSON.stringify(write.body)).not.toContain('API Tokens');
   });
 });
 

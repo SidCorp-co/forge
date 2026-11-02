@@ -2,6 +2,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { UserKind } from '../db/schema.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import type { VerifiedPat } from './pat.js';
+import { mcpOauthGrantIdOf } from './pat-format.js';
 import { statedPatGrant } from './pat-permissions.js';
 
 /**
@@ -9,7 +10,9 @@ import { statedPatGrant } from './pat-permissions.js';
  * exactly as it would when presented at a door. A row stating no grant is refused here.
  */
 export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
+  const oauthGrantId = mcpOauthGrantIdOf(row.name);
   return {
+    ...(oauthGrantId === null ? {} : { oauthGrantId }),
     kind: 'pat',
     agency: credentialAgency({ ownerKind, deviceId: row.deviceId ?? null }),
     agentUserId: ownerKind === 'agent' ? row.userId : null,
