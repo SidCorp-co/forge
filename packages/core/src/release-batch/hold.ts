@@ -148,8 +148,8 @@ const clearer = (owes: CriteriaHoldOwer) =>
 
 export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer): ReleaseHold {
   const reasons = reasonsByWhy(report);
-  // no commit served: a verdict counts on the agent's release record, never a probe (ISS-900)
-  const onRelease = releaseHint(report.released, 'issue');
+  const live = report.serving.kind !== 'serving' && report.released?.live; // release record, ISS-900
+  const onRelease = live ? releaseHint(report.released, 'issue') : null;
   const judge = onRelease ?? judgeClause(report.serving, report.runtimes, report.weighedOn);
   // only a person closes by hand; the master clears it by the verdicts or by moving the issue on
   const byHand =

@@ -51,6 +51,12 @@ describe('the criteria hold where verdicts count on a release', () => {
     expect(held.waitingFor).toBe('a verdict on each criterion named on the live release');
   });
 
+  it('names no release where none is recorded live: a verdict on one cannot count yet', () => {
+    const held = criteriaHold(report({ ...line, live: null, shipped: new Map() }), 'agent');
+    expect(held.reason).toContain('declare one');
+    expect(held.reason).not.toContain("kind: 'release'");
+  });
+
   it('names what is served where production reads the commit it serves', () => {
     const held = criteriaHold(report(null), 'human');
     expect(held.reason).toContain('declare one');
