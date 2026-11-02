@@ -7,7 +7,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import { verdictExercised } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
-import type { LiveBuildHolds } from './standing-identity.js';
+import { holdsFor, type LiveBuildHolds } from './standing-identity.js';
 
 export interface Turn {
   group: RequirementAttentionGroup;
@@ -29,14 +29,10 @@ const MASTER = say('standing.who.master');
 const keysOf = (keys: readonly string[]) => [...new Set(keys)].join(', ');
 /** The issues a verdict can still count on: those tracing the current wording that hold no
  *  judgement, or only one that does not count (on another build, or at an identity nothing checks). */
+const openLinks = (c: RequirementCoverage) =>
+  c.issues.filter((l) => !l.stale && (!verdictExercised(l.verdict) || l.notCounted !== null));
 const unjudgedKeys = (rows: readonly RequirementCoverage[]) =>
-  keysOf(
-    rows.flatMap((c) =>
-      c.issues
-        .filter((l) => !l.stale && (!verdictExercised(l.verdict) || l.notCounted !== null))
-        .map((l) => l.displayId),
-    ),
-  );
+  keysOf(rows.flatMap((c) => openLinks(c).map((l) => l.displayId)));
 /** The issues whose trace sits on an earlier wording, where no verdict can count until it is tied again. */
 const staleKeys = (rows: readonly RequirementCoverage[]) =>
   keysOf(rows.flatMap((c) => c.issues.filter((l) => l.stale).map((l) => l.displayId)));
@@ -59,11 +55,42 @@ const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code
  */
 export type ReleaseAsk = { version: string } | 'none' | null;
 
+/** Per issue, what its own project asks a verdict on (`releaseAskOf` of the build
+ *  `standing-identity.ts:holdsFor` weighs it on): another project's issue is judged on its release. */
+export type IssueReleaseAsk = (issueId: string) => ReleaseAsk;
+
+/** Each open link of `rows` (`unjudgedKeys`) with what its issue's project asks a verdict on. */
+const askedOf = (rows: readonly RequirementCoverage[], askOf: IssueReleaseAsk) =>
+  rows.flatMap((c) =>
+    openLinks(c).map((l) => ({ code: c.code, key: l.displayId, ask: askOf(l.issueId) })),
+  );
+type Asked = ReturnType<typeof askedOf>[number];
+const codesIn = (links: readonly Asked[]) => keysOf(links.map((l) => l.code));
+const keysIn = (links: readonly Asked[]) => keysOf(links.map((l) => l.key));
+
+/** The release each link is asked on: the one version, or each with the issues judged on it. */
+function versionsIn(links: readonly Asked[]): string {
+  const of = (l: Asked) => (l.ask && l.ask !== 'none' ? l.ask.version : '');
+  const versions = [...new Set(links.map(of))];
+  if (versions.length === 1) return versions[0] ?? '';
+  return versions.map((v) => `${v} (${keysIn(links.filter((l) => of(l) === v))})`).join(', ');
+}
+
 export function releaseAskOf(live: LiveBuildHolds | null | undefined): ReleaseAsk {
   const line = live?.released;
   if (!line || live?.landed) return null;
   return line.live ? { version: line.live.version } : 'none';
 }
+
+/** Each issue's own ask: another project's issue on the build its project is read on (`holdsFor`). */
+export const issueReleaseAskOf =
+  (live: LiveBuildHolds | null | undefined): IssueReleaseAsk =>
+  (issueId) =>
+    releaseAskOf(holdsFor(live ?? null, issueId));
+
+/** The requirement project's ask and each issue's own, as `proofTurn` takes them. */
+export const releaseAsksOf = (live: LiveBuildHolds | null | undefined) =>
+  [releaseAskOf(live), issueReleaseAskOf(live)] as const;
 
 /**
  * The turn of a requirement whose unjudged criteria (`codes`) can count only on a release (ISS-900):
@@ -105,6 +132,8 @@ export function proofTurn(
   live: readonly { status: string }[],
   coverage: readonly RequirementCoverage[],
   release: ReleaseAsk = null,
+  /** Per issue, its own project's ask (ISS-900); absent, every issue is the requirement project's. */
+  issueRelease: IssueReleaseAsk = () => release,
 ): Turn | null {
   const unproven = coverage.filter((c) => c.verdict !== 'passing');
   if (live.length === 0 || !live.every((i) => i.status === 'closed') || unproven.length === 0) {
@@ -127,31 +156,36 @@ export function proofTurn(
     parts,
     undeclared: judge === null ? say('requirements.rule.noJudge') : null,
   });
-  if (release && release !== 'none' && judgeable.length > 0) {
+  // each issue is asked what its own project counts: a release, a record, or a commit (ISS-900)
+  const asked = askedOf(judgeable, issueRelease);
+  const onRelease = asked.filter((l) => l.ask !== null && l.ask !== 'none');
+  const byCommit = asked.filter((l) => l.ask === null);
+  if (onRelease.length > 0) {
     return {
       group: 'waiting',
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
         say('standing.act.judgeOnReleaseOn', {
-          codes: codesOf(judgeable),
-          keys: unjudgedKeys(judgeable),
-          version: release.version,
+          codes: codesIn(onRelease),
+          keys: keysIn(onRelease),
+          version: versionsIn(onRelease),
         }),
         rule,
       ),
     };
   }
-  if (release && unjudged.length > 0) return releaseTurn(judge, release, codesOf(unjudged), rule);
-  if (judgeable.length > 0) {
+  if (byCommit.length > 0) {
     return {
       group: 'waiting',
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
-        say('standing.act.judgeOn', { codes: codesOf(judgeable), keys: unjudgedKeys(judgeable) }),
+        say('standing.act.judgeOn', { codes: codesIn(byCommit), keys: keysIn(byCommit) }),
         rule,
       ),
     };
   }
+  if (asked.length > 0) return releaseTurn(judge, 'none', codesIn(asked), rule);
+  if (release && unjudged.length > 0) return releaseTurn(judge, release, codesOf(unjudged), rule);
   if (retie.length > 0) {
     return {
       group: 'waiting',

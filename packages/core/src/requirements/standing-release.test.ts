@@ -3,12 +3,14 @@
 // asks for that judgement, or for the record, never for one that cannot count (`releaseAskOf`).
 // @direct-test-of packages/core/src/requirements/standing-identity.ts
 // @direct-test-of packages/core/src/requirements/standing-proof.ts
+// @direct-test-of packages/core/src/requirements/standing.ts
 // @direct-test-of packages/core/src/lib/standing-act-class.ts
 import { releaseHint } from '@forge/contracts/released-line';
 import { say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
 import { actClassOf } from '../lib/standing-act-class.js';
+import { deriveStanding, type LiveBuildHolds, type StandingIssueCriterion } from './standing.js';
 import { atRelease, type ReleasedLine } from './standing-identity.js';
 import { releaseAskOf } from './standing-proof.js';
 
@@ -94,5 +96,106 @@ describe('the judgement on a release, on the issues that carry it', () => {
     });
     const w = waitingOn('agent', { who: say('standing.who.master'), act, rule: act });
     expect(actClassOf(w)).toBe('judge');
+  });
+});
+
+// Another project's issue is weighed on its own project's build (`standing-identity.ts:holdsFor`), so
+// the judgement it can carry is on its own project's release, never the requirement project's.
+describe("another project's issue is asked on its own project's release", () => {
+  const nothing = { sha: null, holds: new Map(), runtimes: new Map(), unanswered: new Map() };
+  const issue = (n: number) => ({
+    id: `i${n}`,
+    displayId: `ISS-${n}`,
+    title: `Issue ${n}`,
+    status: 'closed',
+    tone: 'neutral' as const,
+    updatedAt: at(1),
+    closedAt: at(1),
+    changedSincePlan: false,
+  });
+  const unjudged = (n: number): StandingIssueCriterion => ({
+    issueId: `i${n}`,
+    n: 1,
+    requirementCriterionId: 'c1',
+    verdict: null,
+    verdictAt: null,
+    identity: null,
+    byBuilder: false,
+    authored: false,
+    recordedAt: null,
+  });
+  /** The requirement project's release 0.78.0; ISS-2 belongs to a project read as `theirs`. */
+  const askOn = (traced: number[], theirs: LiveBuildHolds | null) => {
+    const liveBuild: LiveBuildHolds = {
+      ...nothing,
+      released: line('0.78.0'),
+      foreign: new Map([['i2', theirs]]),
+    };
+    // the standing as the requirement page reads it, through `deriveStanding`'s own wiring
+    const standing = deriveStanding({
+      status: 'agreed',
+      owner: { id: 'u1', name: 'Ba', kind: 'human' },
+      viewer: null,
+      revisions: [
+        {
+          revision: 1,
+          state: 'current',
+          authorId: 'u1',
+          authorName: 'Ba',
+          authorKind: 'human',
+          authorAgency: 'human',
+          createdAt: at(1),
+          proposedAt: at(1),
+          decidedAt: at(1),
+        },
+      ],
+      currentRevision: 1,
+      criteria: [
+        { id: 'c1', code: 'BC-1', body: 'rule 1', sinceRevision: 1, retiredRevision: null },
+      ],
+      issues: traced.map((n) => ({ ...issue(n), parkedOn: null })),
+      issueCriteria: traced.map(unjudged),
+      openSuggestionKinds: [],
+      stalePins: [],
+      staleContractPins: [],
+      unapprovedDesigns: [],
+      feedback: { open: 0, untriaged: [] },
+      judge: 'self',
+      agreedAt: at(1),
+      release: null,
+      updatedAt: at(1),
+      statusSince: at(1),
+      master: 'serves',
+      now: at(3),
+      liveBuild,
+    });
+    return standing.waitingOn.says?.act;
+  };
+
+  it("names the issue's own project's live release, not the requirement's", () => {
+    expect(askOn([2], { ...nothing, released: line('0.76.0') })).toEqual({
+      key: 'standing.act.judgeOnReleaseOn',
+      vars: { codes: 'BC-1', keys: 'ISS-2', version: '0.76.0' },
+    });
+  });
+
+  it('names each release beside the issues judged on it, where the issues span two projects', () => {
+    expect(askOn([1, 2], { ...nothing, released: line('0.76.0') })).toEqual({
+      key: 'standing.act.judgeOnReleaseOn',
+      vars: { codes: 'BC-1', keys: 'ISS-1, ISS-2', version: '0.78.0 (ISS-1), 0.76.0 (ISS-2)' },
+    });
+  });
+
+  it("asks for a commit where the issue's project reads the commit its production serves", () => {
+    expect(askOn([2], null)).toEqual({
+      key: 'standing.act.judgeOn',
+      vars: { codes: 'BC-1', keys: 'ISS-2' },
+    });
+  });
+
+  it("asks the master for the record where the issue's project has recorded no release", () => {
+    expect(askOn([2], { ...nothing, released: line(null) })).toEqual({
+      key: 'standing.act.recordRelease',
+    });
   });
 });
