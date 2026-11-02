@@ -216,6 +216,7 @@ describe('attachments: a reporter attaches, and the item names where the bytes a
         mime: 'image/png',
         contentBase64: png,
       }),
+      201,
     ).feedback;
     const [a] = out.attachments as Doc[];
     expect(a).toMatchObject({ name: 'board.png', mime: 'image/png', from: null });
@@ -236,6 +237,7 @@ describe('attachments: a reporter attaches, and the item names where the bytes a
         mime: 'video/mp4',
         contentBase64: mp4,
       }),
+      201,
     );
     const view = await read(fb, 'bo');
     const [a] = view.attachments as Doc[];
