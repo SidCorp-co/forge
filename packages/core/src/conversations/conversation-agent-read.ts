@@ -11,6 +11,7 @@ import {
   heldBecause,
   readConversationAgentMeta,
 } from './conversation-agent-meta.js';
+import type { Executor } from './db-executor.js';
 
 /**
  * At most one live runner-hosted turn per room.
@@ -80,8 +81,9 @@ export interface ConversationAgentTurnRow {
 export async function readConversationAgentTurns(
   conversationId: string,
   viewerId: string | null,
+  tx: Executor = db,
 ): Promise<ConversationAgentTurnRow[]> {
-  const rows = await db
+  const rows = await tx
     .select({
       id: agentSessions.id,
       status: agentSessions.status,

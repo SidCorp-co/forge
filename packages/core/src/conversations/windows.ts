@@ -235,8 +235,9 @@ export async function claimDueWindows(
 export async function listWindowsForConversation(
   conversationId: string,
   limit: number,
+  tx: Executor = defaultDb,
 ): Promise<ConversationWindowRow[]> {
-  const rows = await defaultDb
+  const rows = await tx
     .select(windowSelection)
     .from(conversationWindows)
     .where(eq(conversationWindows.conversationId, conversationId))

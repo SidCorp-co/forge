@@ -78,13 +78,18 @@ const READ_WINDOW = 200;
 
 /**
  * What a room's read and a send into it both answer with, as `viewerId` may read it: a reply's tool
- * inputs and outputs only to the person whose turn wrote it.
+ * inputs and outputs only to the person whose turn wrote it. One snapshot, since a turn's bridge
+ * stores its reply before it stamps the turn: read apart, a turn could read settled over a room
+ * that does not yet hold its reply.
  */
 export async function roomTail(id: string, viewerId: string) {
-  const [messages, windows, agentTurns] = await Promise.all([
-    readMessages(id, READ_WINDOW),
-    listWindowsForConversation(id, READ_WINDOW),
-    readConversationAgentTurns(id, viewerId),
-  ]);
+  const { messages, windows, agentTurns } = await db.transaction(
+    async (tx) => ({
+      messages: await readMessages(id, READ_WINDOW, tx),
+      windows: await listWindowsForConversation(id, READ_WINDOW, tx),
+      agentTurns: await readConversationAgentTurns(id, viewerId, tx),
+    }),
+    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+  );
   return { messages: messages.map((m) => toolContentFor(m, viewerId)), windows, agentTurns };
 }
