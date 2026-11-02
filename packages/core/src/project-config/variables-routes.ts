@@ -6,6 +6,7 @@ import { SELF_JOB } from '@forge/contracts/project-config';
 import {
   createVariableRequestSchema,
   decideVariableProposalRequestSchema,
+  ENV_MANAGE,
   proposeVariableRequestSchema,
   updateVariableRequestSchema,
   VARIABLE_KEY,
@@ -16,6 +17,7 @@ import { z } from 'zod';
 import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { jobCredential } from './testing-secrets-routes.js';
 import {
   decideVariableProposal,
@@ -54,13 +56,18 @@ const proposalParam = zValidator(
   invalid('invalid path: the project and proposal ids are uuids'),
 );
 
-variableRoutes.get('/:id/variables', projectParam, noQuery, async (c) =>
+const READ = requiresOnParam('project.read', 'id');
+const WRITE = requiresOnParam('project.write', 'id');
+const MANAGE = requiresOnParam(ENV_MANAGE, 'id');
+
+variableRoutes.get('/:id/variables', projectParam, READ, noQuery, async (c) =>
   c.json(await readVariables(c.req.valid('param').id, c.get('userId'))),
 );
 
 variableRoutes.post(
   '/:id/variables',
   projectParam,
+  MANAGE,
   strictBody(
     createVariableRequestSchema,
     '{ key, value, environment: <declared environment> | null, type: plain | secret | file, protected } adds a variable (REQ-80 BC-2)',
@@ -72,17 +79,18 @@ variableRoutes.post(
     ),
 );
 
-variableRoutes.get('/:id/variables/events', projectParam, noQuery, async (c) =>
+variableRoutes.get('/:id/variables/events', projectParam, READ, noQuery, async (c) =>
   c.json(await readVariableEvents(c.req.valid('param').id, c.get('userId'))),
 );
 
-variableRoutes.get('/:id/variables/proposals', projectParam, noQuery, async (c) =>
+variableRoutes.get('/:id/variables/proposals', projectParam, READ, noQuery, async (c) =>
   c.json(await readVariableProposals(c.req.valid('param').id, c.get('userId'))),
 );
 
 variableRoutes.post(
   '/:id/variables/proposals',
   projectParam,
+  WRITE,
   strictBody(
     proposeVariableRequestSchema,
     '{ issue, act: set | delete, key, environment, type?, protected?, value?, reason } proposes a change an issue needs (REQ-80 BC-6)',
@@ -97,6 +105,7 @@ variableRoutes.post(
 variableRoutes.post(
   '/:id/variables/proposals/:proposal/decision',
   proposalParam,
+  MANAGE,
   strictBody(
     decideVariableProposalRequestSchema,
     '{ decision: approve | reject, reason } decides a proposed variable change (REQ-80 BC-6)',
@@ -110,6 +119,7 @@ variableRoutes.post(
 variableRoutes.put(
   '/:id/variables/:variable',
   variableParam,
+  MANAGE,
   strictBody(
     updateVariableRequestSchema,
     '{ baseVersion, value?, type?, protected? } changes a variable against the version read; its key and scope stay (REQ-80 BC-2)',
@@ -123,6 +133,7 @@ variableRoutes.put(
 variableRoutes.delete(
   '/:id/variables/:variable',
   variableParam,
+  MANAGE,
   zValidator(
     'query',
     z.strictObject({ baseVersion: z.coerce.number().int().min(1) }),
@@ -136,11 +147,17 @@ variableRoutes.delete(
   },
 );
 
-variableRoutes.post('/:id/variables/:variable/reveal', variableParam, noQuery, async (c) => {
-  const { id, variable } = c.req.valid('param');
-  c.header('Cache-Control', 'no-store');
-  return c.json(await revealVariable(id, c.get('userId'), variable));
-});
+variableRoutes.post(
+  '/:id/variables/:variable/reveal',
+  variableParam,
+  MANAGE,
+  noQuery,
+  async (c) => {
+    const { id, variable } = c.req.valid('param');
+    c.header('Cache-Control', 'no-store');
+    return c.json(await revealVariable(id, c.get('userId'), variable));
+  },
+);
 
 /** `GET /api/jobs/:id/variables/:environment`: the run door (BC-8), under the run's own credential. */
 export const jobVariableRoutes = new Hono();

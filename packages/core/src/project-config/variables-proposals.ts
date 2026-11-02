@@ -13,7 +13,7 @@ import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { encryptSecret, fingerprintSecret } from '../integrations/index.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { type DeclaredEnvironment, writeRefusals } from './variables-rules.js';
 import {
   type Caller,
@@ -96,7 +96,7 @@ export async function proposeVariable(
   req: ProposeVariableRequest,
 ) {
   const caller = await callerOf(projectId, userId);
-  requireHeld(caller.access, 'project.write', 'proposing a variable change');
+  await requireDeclaredOn(projectId, userId, 'project.write', 'proposing a variable change');
   if (req.act === 'set' && (req.value === undefined || req.type === undefined)) {
     throw refuse(
       'VARIABLE_PROPOSAL_SHAPE',
@@ -167,8 +167,7 @@ export async function proposeVariable(
 }
 
 export async function readVariableProposals(projectId: string, userId: string) {
-  const caller = await callerOf(projectId, userId);
-  requireHeld(caller.access, 'project.read', 'reading variable proposals');
+  await requireDeclaredOn(projectId, userId, 'project.read', 'reading variable proposals');
   return { proposals: (await listProposals(projectId)).map(proposalView) };
 }
 
@@ -180,7 +179,7 @@ export async function decideVariableProposal(
   req: DecideVariableProposalRequest,
 ) {
   const caller = await callerOf(projectId, userId);
-  requireWriter(caller, 'deciding a variable proposal');
+  await requireWriter(caller, 'deciding a variable proposal');
   const environments = await declaredEnvironments(projectId);
   const row = await db.transaction(async (tx) => {
     const proposal = await proposalById(tx, projectId, id);

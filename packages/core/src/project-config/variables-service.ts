@@ -24,7 +24,7 @@ import {
 import { loadProjectAccess, type ProjectAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
-import { actorFor, holds, requireHeld } from '../permissions/index.js';
+import { actorFor, holds, requireDeclaredOn } from '../permissions/index.js';
 import { environmentsOf } from './release-path.js';
 import { readProjectConfig } from './service.js';
 import { type DeclaredEnvironment, writeRefusals } from './variables-rules.js';
@@ -69,8 +69,8 @@ export async function callerOf(projectId: string, userId: string): Promise<Calle
 }
 
 /** A person holding env.manage may write directly; an agent credential proposes instead (BC-6). */
-export function requireWriter(caller: Caller, act: string): void {
-  requireHeld(caller.access, ENV_MANAGE, act);
+export async function requireWriter(caller: Caller, act: string): Promise<void> {
+  await requireDeclaredOn(caller.access.projectId, caller.userId, ENV_MANAGE, act);
   if (caller.agency === 'agent') {
     throw refuse(
       'VARIABLE_AGENT_PROPOSES',
@@ -158,7 +158,7 @@ function view(row: VariableRow, value: string | null): VariableView {
 /** Every variable of the project: names to any reader, plain values to a person holding env.manage (BC-1, BC-6). */
 export async function readVariables(projectId: string, userId: string) {
   const caller = await callerOf(projectId, userId);
-  requireHeld(caller.access, 'project.read', 'reading the project’s variables');
+  await requireDeclaredOn(projectId, userId, 'project.read', 'reading the project’s variables');
   const rows = await listVariables(projectId);
   const seesPlain =
     caller.agency === 'human' && holds(caller.access, ENV_MANAGE) && isVaultConfigured();
@@ -246,7 +246,7 @@ export async function createVariable(
   req: CreateVariableRequest,
 ) {
   const caller = await callerOf(projectId, userId);
-  requireWriter(caller, 'adding a variable');
+  await requireWriter(caller, 'adding a variable');
   requireVault();
   throwAll(writeRefusals(req, await declaredEnvironments(projectId)));
   try {
@@ -297,7 +297,7 @@ export async function changeVariable(
   req: UpdateVariableRequest,
 ) {
   const caller = await callerOf(projectId, userId);
-  requireWriter(caller, 'changing a variable');
+  await requireWriter(caller, 'changing a variable');
   requireVault();
   const environments = await declaredEnvironments(projectId);
   const row = await db.transaction(async (tx) => {
@@ -357,7 +357,7 @@ export async function removeVariable(
   baseVersion: number,
 ) {
   const caller = await callerOf(projectId, userId);
-  requireWriter(caller, 'deleting a variable');
+  await requireWriter(caller, 'deleting a variable');
   await db.transaction(async (tx) => {
     const held = await heldOrRefuse(tx, projectId, id);
     staleOrNot(held, baseVersion);
@@ -372,7 +372,7 @@ export async function removeVariable(
 /** `POST /api/projects/:id/variables/:variable/reveal`: one value, to a person holding env.manage (BC-1). */
 export async function revealVariable(projectId: string, userId: string, id: string) {
   const caller = await callerOf(projectId, userId);
-  requireHeld(caller.access, ENV_MANAGE, 'revealing a variable');
+  await requireDeclaredOn(projectId, userId, ENV_MANAGE, 'revealing a variable');
   if (caller.agency === 'agent') {
     throw refuse(
       'VARIABLE_VALUE_AGENT_REFUSED',
@@ -395,8 +395,7 @@ export async function readVariableEvents(
   projectId: string,
   userId: string,
 ): Promise<{ events: VariableEventView[] }> {
-  const caller = await callerOf(projectId, userId);
-  requireHeld(caller.access, 'project.read', 'reading the variables audit');
+  await requireDeclaredOn(projectId, userId, 'project.read', 'reading the variables audit');
   const rows = await listEvents(projectId, 200);
   return {
     events: rows.map((e) => ({
