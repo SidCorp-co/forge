@@ -8,7 +8,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requireHeld, requiresOnResolved } from '../permissions/index.js';
 import { resolvedWindowDaysFor } from '../pipeline/index.js';
 import { ownedDeviceForBind } from './project-binding.js';
 import {
@@ -80,6 +80,12 @@ const patchBody = z
 
 const idParam = z.object({ id: z.uuid() });
 
+// each handler loads the runner first, so its own `runner not found` answer stands, then checks the
+// declared permission on the runner's project
+const RUNNER_PROJECT = 'the project of the runner the path names';
+const QUERY_PROJECT = 'the project the query names as projectId';
+const BODY_PROJECT = 'the project the body names as projectId';
+
 const listQuery = z.object({
   projectId: z.uuid().optional(),
   type: z.enum(runnerTypes).optional(),
@@ -105,24 +111,33 @@ runnerRoutes.get('/', zValidator('query', listQuery), async (c) => {
 
 const activeQuery = z.object({ projectId: z.uuid() });
 
-runnerRoutes.get('/active', zValidator('query', activeQuery), async (c) => {
-  const userId = c.get('userId');
-  const { projectId } = c.req.valid('query');
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
+runnerRoutes.get(
+  '/active',
+  zValidator('query', activeQuery),
+  requiresOnResolved('project.read', QUERY_PROJECT),
+  async (c) => {
+    const userId = c.get('userId');
+    const { projectId } = c.req.valid('query');
+    requireDeclared(await loadProjectAccess(projectId, userId));
 
-  return c.json(await activeRunnersOf(projectId));
-});
+    return c.json(await activeRunnersOf(projectId));
+  },
+);
 
-runnerRoutes.get('/:id', zValidator('param', idParam), noQuery, async (c) => {
-  const userId = c.get('userId');
-  const { id } = c.req.valid('param');
-  const row = await runnerRow(id);
-  if (!row) throw notFound();
-  const access = await loadProjectAccess(row.projectId, userId);
-  requireHeld(access, 'project.read');
-  return c.json({ runner: publicRunner(rowToRunner(row)) });
-});
+runnerRoutes.get(
+  '/:id',
+  zValidator('param', idParam),
+  noQuery,
+  requiresOnResolved('project.read', RUNNER_PROJECT),
+  async (c) => {
+    const userId = c.get('userId');
+    const { id } = c.req.valid('param');
+    const row = await runnerRow(id);
+    if (!row) throw notFound();
+    requireDeclared(await loadProjectAccess(row.projectId, userId));
+    return c.json({ runner: publicRunner(rowToRunner(row)) });
+  },
+);
 
 // Per-runner activity feed — surfaces what a runner has been doing/erroring on,
 // drawn entirely from data we already persist (no new capture): the change-gated
@@ -139,14 +154,14 @@ runnerRoutes.get(
   '/:id/activity',
   zValidator('param', idParam),
   zValidator('query', activityQuery),
+  requiresOnResolved('project.read', RUNNER_PROJECT),
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
     const { limit } = c.req.valid('query');
     const row = await runnerRow(id);
     if (!row) throw notFound();
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(row.projectId, userId));
 
     const { events, sessions } = await runnerActivity(row, limit);
 
@@ -158,57 +173,61 @@ runnerRoutes.get(
   },
 );
 
-runnerRoutes.post('/', zValidator('json', createBody), async (c) => {
-  const userId = c.get('userId');
-  const input = c.req.valid('json');
-  const access = await loadProjectAccess(input.projectId, userId);
-  requireHeld(access, 'project.admin');
-  await ownedDeviceForBind(input.deviceId, userId);
+runnerRoutes.post(
+  '/',
+  zValidator('json', createBody),
+  requiresOnResolved('project.admin', BODY_PROJECT),
+  async (c) => {
+    const userId = c.get('userId');
+    const input = c.req.valid('json');
+    requireDeclared(await loadProjectAccess(input.projectId, userId));
+    await ownedDeviceForBind(input.deviceId, userId);
 
-  const adapter = getRunnerAdapter(input.type);
-  if (!adapter) throw badRequest({ type: 'no adapter registered for type' });
+    const adapter = getRunnerAdapter(input.type);
+    if (!adapter) throw badRequest({ type: 'no adapter registered for type' });
 
-  const result = adapter.validateConfig(input.config);
-  if (!result.ok) throw badRequest({ config: result.error });
+    const result = adapter.validateConfig(input.config);
+    if (!result.ok) throw badRequest({ config: result.error });
 
-  const row = await insertRunner({
-    projectId: input.projectId,
-    type: input.type,
-    deviceId: input.deviceId,
-    name: input.name,
-    labels: input.labels ?? [],
-    capabilities: input.capabilities ?? {},
-    config: result.config,
-  });
+    const row = await insertRunner({
+      projectId: input.projectId,
+      type: input.type,
+      deviceId: input.deviceId,
+      name: input.name,
+      labels: input.labels ?? [],
+      capabilities: input.capabilities ?? {},
+      config: result.config,
+    });
 
-  await emitEvent(db, 'runner.changed', {
-    projectId: input.projectId,
-    runnerId: row.id,
-    event: 'runner.created',
-    data: { runnerId: row.id, projectId: input.projectId, type: row.type },
-    runnerRoom: false,
-  });
-  await emitEvent(db, 'runner.provisionRequested', {
-    projectId: input.projectId,
-    deviceId: input.deviceId,
-    runnerId: row.id,
-  });
+    await emitEvent(db, 'runner.changed', {
+      projectId: input.projectId,
+      runnerId: row.id,
+      event: 'runner.created',
+      data: { runnerId: row.id, projectId: input.projectId, type: row.type },
+      runnerRoom: false,
+    });
+    await emitEvent(db, 'runner.provisionRequested', {
+      projectId: input.projectId,
+      deviceId: input.deviceId,
+      runnerId: row.id,
+    });
 
-  return c.json({ runner: publicRunner(rowToRunner(row)) }, 201);
-});
+    return c.json({ runner: publicRunner(rowToRunner(row)) }, 201);
+  },
+);
 
 runnerRoutes.patch(
   '/:id',
   zValidator('param', idParam),
   zValidator('json', patchBody),
+  requiresOnResolved('project.admin', RUNNER_PROJECT),
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
     const existing = await runnerRow(id);
     if (!existing) throw notFound();
-    const access = await loadProjectAccess(existing.projectId, userId);
-    requireHeld(access, 'project.admin');
+    requireDeclared(await loadProjectAccess(existing.projectId, userId));
 
     let nextConfig = existing.config as Record<string, unknown>;
     if (input.config) {
@@ -254,23 +273,27 @@ runnerRoutes.patch(
   },
 );
 
-runnerRoutes.delete('/:id', zValidator('param', idParam), async (c) => {
-  const userId = c.get('userId');
-  const { id } = c.req.valid('param');
-  const existing = await runnerRow(id);
-  if (!existing) throw notFound();
-  const access = await loadProjectAccess(existing.projectId, userId);
-  requireHeld(access, 'project.admin');
-  await deleteRunner(id);
-  await emitEvent(db, 'runner.changed', {
-    projectId: existing.projectId,
-    runnerId: id,
-    event: 'runner.deleted',
-    data: { runnerId: id, projectId: existing.projectId },
-    runnerRoom: false,
-  });
-  return c.json({ ok: true });
-});
+runnerRoutes.delete(
+  '/:id',
+  zValidator('param', idParam),
+  requiresOnResolved('project.admin', RUNNER_PROJECT),
+  async (c) => {
+    const userId = c.get('userId');
+    const { id } = c.req.valid('param');
+    const existing = await runnerRow(id);
+    if (!existing) throw notFound();
+    requireDeclared(await loadProjectAccess(existing.projectId, userId));
+    await deleteRunner(id);
+    await emitEvent(db, 'runner.changed', {
+      projectId: existing.projectId,
+      runnerId: id,
+      event: 'runner.deleted',
+      data: { runnerId: id, projectId: existing.projectId },
+      runnerRoom: false,
+    });
+    return c.json({ ok: true });
+  },
+);
 
 export { projectRunnerRoutes } from './project-routes.js';
 export { runnerLoadRoutes } from './runner-load-routes.js';
