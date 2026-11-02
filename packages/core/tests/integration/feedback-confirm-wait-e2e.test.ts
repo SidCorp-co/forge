@@ -6,6 +6,7 @@
  * message arrives in the project's room, then names it again; the item shows why it waits.
  *
  * @direct-test-of packages/core/src/feedback/confirm-wait.ts
+ * @direct-test-of packages/core/src/feedback/confirm-wait-read.ts
  * @direct-test-of packages/core/src/feedback/owed-verify.ts
  * @direct-test-of packages/core/src/forge-door/service.ts
  * @direct-test-of packages/core/src/masters/owed-confirms.ts
