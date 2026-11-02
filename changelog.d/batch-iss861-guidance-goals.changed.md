@@ -1,0 +1,1 @@
+**Agents get goals instead of step-by-step rituals.** Run, master, steward and channel prompts drop rules like zero narration and why-not reports, keeping what Forge enforces. A connected MCP client can now file an issue.
