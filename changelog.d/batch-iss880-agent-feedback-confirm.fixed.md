@@ -1,0 +1,1 @@
+**A project's master can now confirm its agents' shipped Forge feedback.** The Forge door lets the master read, verify and reopen items its project's agents reported, so a listed confirm no longer stands unsettled.
