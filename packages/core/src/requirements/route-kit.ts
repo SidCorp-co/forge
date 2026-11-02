@@ -14,7 +14,7 @@ import { db } from '../db/client.js';
 import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { requireDeclaredOn } from '../permissions/index.js';
+import { requireDeclaredOn, requiresOnParam } from '../permissions/index.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { criterionSchema, specSchema } from './schemas.js';
@@ -115,3 +115,11 @@ export function answer(c: Context, outcome: RequirementOutcome) {
   if (!outcome.ok) return refused(c, outcome.refusals, 'REQUIREMENT_REFUSED');
   return c.json(outcome.requirement, outcome.created ? 201 : 200);
 }
+
+/**
+ * The floor of a sign-off act (agree, repin, promote, accept, a delivery move, drop, defer, a
+ * revision's accept or return): project.read on the project :id names, which every signer holds,
+ * however the gate is set. The act's own permission is `read.ts:signerRefusal`'s, a per-row rule
+ * the requirement's gate and the project's policy decide (ISS-824, recorded on the issue).
+ */
+export const SIGNOFF_FLOOR = requiresOnParam('project.read', 'id');

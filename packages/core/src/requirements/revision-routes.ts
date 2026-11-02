@@ -22,6 +22,7 @@ import {
   revisionFields,
   revisionParam,
   revisionTitle,
+  SIGNOFF_FLOOR,
 } from './route-kit.js';
 import { proposeRevision, returnRevision, withdrawRevision, writeRevision } from './service.js';
 
@@ -93,6 +94,7 @@ revisionRoutes.post(
 revisionRoutes.post(
   '/:id/requirements/:req/revisions/:n/accept',
   revisionParam,
+  SIGNOFF_FLOOR,
   strictBody(acceptRevisionRequestSchema, ACCEPT_REVISION_SHAPE),
   async (c) => {
     const { id, req, n } = c.req.valid('param');
@@ -112,6 +114,7 @@ revisionRoutes.post(
 revisionRoutes.post(
   '/:id/requirements/:req/revisions/:n/return',
   revisionParam,
+  SIGNOFF_FLOOR,
   strictBody(
     z.strictObject({ reason: z.string().max(REASON_TEXT_MAX) }),
     '{ reason } says why it went back',

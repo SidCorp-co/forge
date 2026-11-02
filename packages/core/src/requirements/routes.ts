@@ -61,6 +61,7 @@ import {
   type RequirementEnv,
   reqParam,
   revisionFields,
+  SIGNOFF_FLOOR,
   viewQuery,
 } from './route-kit.js';
 import { requirementVerdictRoutes } from './verdict-routes.js';
@@ -276,6 +277,7 @@ requirementRoutes.route('/', revisionRoutes);
 requirementRoutes.post(
   '/:id/requirements/:req/agree',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(
     z.strictObject({
       revision: z.number().int().min(1),
@@ -302,6 +304,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/repin',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(repinRequirementRequestSchema, REPIN_REQUIREMENT_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -323,6 +326,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/promote',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(promoteRequirementDraftsRequestSchema, PROMOTE_REQUIREMENT_DRAFTS_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -341,6 +345,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/defer',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(deferRequirementRequestSchema, DEFER_REQUIREMENT_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -361,6 +366,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/undefer',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(undeferRequirementRequestSchema, UNDEFER_REQUIREMENT_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -379,6 +385,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/accept',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(acceptRequirementRequestSchema, ACCEPT_REQUIREMENT_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -401,6 +408,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/start-delivery',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(moveRequirementRequestSchema, START_DELIVERY_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -415,6 +423,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/mark-delivered',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(moveRequirementRequestSchema, MARK_DELIVERED_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
@@ -429,6 +438,7 @@ requirementRoutes.post(
 requirementRoutes.post(
   '/:id/requirements/:req/drop',
   reqParam,
+  SIGNOFF_FLOOR,
   strictBody(dropRequirementRequestSchema, DROP_REQUIREMENT_SHAPE),
   async (c) => {
     const { id, req } = c.req.valid('param');
