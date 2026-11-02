@@ -1,1 +1,0 @@
-**A judge reads its testing profile where two environments share a branch.** When several environments deploy the branch work landed on, the judge's read takes the one naming the profile it asks for, and is refused by name otherwise (ISS-788).

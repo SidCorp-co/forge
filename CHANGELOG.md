@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.453] - 2026-11-02
+
+Judges read test secrets when two environments deploy one branch
+
+### Changed
+
+- **Filing an issue from MCP starts from the product.** A client is pointed to Feedback or a Requirement first, and told when to file directly and when to ask the person (ISS-861).
+
+### Fixed
+
+- **A judge reads its testing profile where two environments share a branch.** When several environments deploy the branch work landed on, the judge's read takes the one naming the profile it asks for, and is refused by name otherwise (ISS-788).
+
 ## [0.4.0-dev.452] - 2026-11-02
 
 Patched dependency advisories and declared permissions on channel, design and support tools
