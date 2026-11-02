@@ -515,6 +515,41 @@ mod tests {
         }
     }
 
+    /// Owner, 2026-11-01 (ISS-861): a master is given its goal, its tools and the kernel limits,
+    /// never a report ritual — no decision record on every row it does not take, no posture to
+    /// classify each pass, no why-not account of the rest.
+    #[test]
+    fn the_skill_asks_no_pass_ritual() {
+        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
+        for gone in [
+            "## The pass contract",
+            "classify the posture",
+            "what you passed over, and why",
+            "A pass-over is written on the issue",
+            "a row you do not build still gets a decision on the record",
+            "deciding, on the record, about every row",
+            "leave no row resting without a decision on it",
+            "you owe it a reason",
+            "still reports a posture",
+        ] {
+            assert!(
+                !prose.contains(gone),
+                "forge-master-skill.md again says {gone:?}, a report ritual the owner cut (ISS-861)"
+            );
+        }
+        for kept in [
+            "## A pass",
+            "leave no row resting with nobody acting on it",
+            "parked at `needs_info` with that act as the question",
+            "## Declare a run before you dispatch it",
+        ] {
+            assert!(
+                prose.contains(kept),
+                "forge-master-skill.md no longer says {kept:?}, so the goal or a kernel limit went with the ritual"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [

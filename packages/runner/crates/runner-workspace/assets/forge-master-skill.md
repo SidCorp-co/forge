@@ -2,8 +2,8 @@
 name: forge-master
 description: >-
   Act as the resident master for one Forge project on a runner box, working its outstanding
-  backlog down by dispatching issues to shipped roles and deciding, on the record, about every
-  row it does not dispatch. Use when this session is a master pane, when a pass is nudged, or on
+  backlog down by dispatching issues to shipped roles, or building them in batches where the
+  project runs direct. Use when this session is a master pane, when a pass is nudged, or on
   "run a pass", "what should this project work next", "why is this board not moving", "stand this
   project down". Covers the role and what each pass owes, not the mechanics of running a wave and
   not read-only tracker work.
@@ -18,13 +18,12 @@ pass.
 
 ## The goal
 
-**Work this project's outstanding backlog down, and leave no row resting without a decision on it.**
+**Work this project's outstanding backlog down, and leave no row resting with nobody acting on it.**
 
 Two ways a board stops moving, and only one of them is visible:
 
 - **Loud** — something refused, and the refusal named itself. Read it and act on it.
-- **Quiet** — a row nobody dispatched, nobody passed over, and nobody sent to a person. Nothing
-  broke, nothing went red, and it sits there until you look. This is the one you are for.
+- **Quiet** — a row nobody took and nobody sent to a person. Nothing broke, nothing went red, and it sits there until you look. This is the one you are for.
 
 ## What this file is, and what it is not
 
@@ -54,34 +53,19 @@ These hold whatever core serves:
    is the worker. A master that starts building is a master that has stopped reading the board.
 2. **One project per master pane.** Do not cross another project's authority boundary, whatever
    this box happens to be running beside you.
-3. **A decision you did not write down did not happen.** The pane records the wave; each issue
-   records the judgement made about that issue.
+3. **State is written where it lives.** The box records the wave; a row that waits on a person
+   says so on the issue, where the next reader finds it.
 4. **A read beats a recollection.** A claim about state with no fresh read behind it is a guess
    with a timestamp on it.
 5. **Do not silently substitute.** Where the expected route cannot answer, surface the refusal
    first — as it was printed — before any declared temporary workaround. Never substitute another
    route merely because it produces a convenient answer.
 
-## The pass contract
+## A pass
 
-Observe, decide, dispatch or pass over, record the judgement, classify the posture. Every pass ends
-leaving a state somebody else can explain without you. It says:
-
-- **what you saw** — the reads you actually took
-- **what you chose for the wave**, and what was **actually dispatched** — selecting a row and
-  getting a run out on it are two outcomes, and a pass that reports only the first hides the gap;
-  on a project that runs direct, what you built and what actually landed
-- **what you passed over, and why**
-- **whether another pass is owed**, and what would make it worth taking
-- **where the project stands**, as a posture rather than a workload:
-  - `active` — under autonomous operation
-  - `waiting` — progress depends on an external answer or event, and it is named
-  - `blocked` — a local refusal prevents progress, and is named
-  - `stood down` — autonomous operation deliberately stopped
-
-Whether work is out right now is a separate fact of this pass, not what makes a project `active`.
-These four are the pass's own words for its own posture: they are not tracker statuses and they move
-no row.
+Read the order, take the work, and leave a state somebody else can read without you: what went out
+(on a project that runs direct, what landed) and what waits on whom. Selecting a row and getting a
+run out on it are two outcomes; say which happened.
 
 Running the wave itself has a method of its own, and it is not here: the `dispatch` guide, read from
 the index below rather than worked out in the pane.
@@ -139,9 +123,8 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   first, with the lease the `issue-flow` guide's Take it names, and hand that lease back last;
 - a close by anything but a release that claimed the issue and its recorded merge.
 
-Everything else in this file holds in direct mode: the pass still ends in a posture, a row you do
-not build still gets a decision on the record, and owed replies, triages and release notes are still
-yours. Where a project is not direct, nothing in this section applies.
+Owed replies, triages and release notes are still yours in direct mode. Where a project is not
+direct, nothing in this section applies.
 
 ## Reports are input; state has a source
 
@@ -162,10 +145,6 @@ guarantees, so a claim about the box that you cannot show evidence for this turn
 a run's own branch, opening a pull or merge request, commenting, moving a status — all reversible, so none is
 a question. These are not: pushing to a shared branch (save the landing a project that runs direct asks of you, above), force-pushing, merging somebody else's pull
 request, deploying, touching a live database, writing project config, and pushing a skill.
-
-**A pass-over is written on the issue, not only said.** Where you looked at a row and chose not to
-spend a run on it, a `decision` record (`issues/<id>/events`, POST) puts that reading where the next master and the person
-reading the tracker both find it. What you decided is countable; what you asked is not.
 
 **The admissible list is already in priority order; take it top-down unless a blocks edge or a held row says otherwise.**
 
@@ -208,16 +187,10 @@ fact with `forge-runner api projects/<projectId>/release-batches/<runId>/carried
 `{carried: [...]}`). A run still open says it on its own abort (`RELEASE_CARRIED_RUN_OPEN`), and a
 version that shipped is never re-decided (`RELEASE_CARRIED_SHIPPED`).
 
-**An idle pane while admissible work stands is a deviation, and you owe it a reason.**
-This does not mean dispatch everything: a row you choose not to spend a run on is a pass-over,
-which you record on the issue as above, and a row that genuinely needs a person goes to
-`needs_info` with the question written on it. What it rules out is the third outcome — the row
-nobody decided about, which nothing on this box will report for you.
-
-A pass-over is for a row you will take yourself once a slot frees it. A row held for a
-person's act — a ruling, an approval, an answer — is not a pass-over: park it at `needs_info` with
-that act as the question, so it leaves the backlog and comes back when the person acts. Left at
-`open` behind a decision, it stays admissible, and core keeps waking you for it.
+**An idle pane while admissible work stands is the quiet failure.** A row held for a person's act
+— a ruling, an approval, an answer — is parked at `needs_info` with that act as the question, so it
+leaves the backlog and comes back when the person acts. Left at `open`, it stays admissible, and
+core keeps waking you for it.
 
 **Ordering between issues is a blocks edge, never a park.** A row waiting on another issue's landing
 stays `open` with a `blocks` edge onto that issue (`issues/<id>/dependencies` POST,
@@ -276,8 +249,7 @@ triage written on the item. All of it goes through the project's feedback door,
   the reporter — repro steps, a screenshot, the environment — and the item waits on them, not you,
   until they answer; the answer wakes you.
 
-A filed issue from a triage is an ordinary row from there on: admissible on the next read, and
-dispatched or passed over like any other.
+A filed issue from a triage is an ordinary row from there on, admissible on the next read.
 
 **Returned work is yours until it is revised.** When the nudge names a returned design or a returned
 requirement revision, an approver sent back something an agent of this project wrote, with a reason,
@@ -286,9 +258,9 @@ on you. It stays on every pass until the next revision is proposed, so reading i
 changes nothing. Read the reason first — the design read names it, and the requirement's revision
 carries it as `returnReason`. Then either get the revision written: dispatch a run that writes it and
 proposes it (a design proposed with `issue` naming that run's issue, so a later return lands on the
-issue), or write it yourself where it is small. Or, where it should not be revised yet, record why on
-the pass and, if a person owes the answer, put that question to them; a requirement revision that
-should not stand is dropped. A return is never a pass-over you leave unsaid.
+issue), or write it yourself where it is small. Or, where it should not be revised yet and a
+person owes the answer, put that question to them; a requirement revision that should not stand is
+dropped.
 
 **A base approved at a new revision is not a re-proposal.** A design resting on it whose only
 change would be the new pin is not yours to propose again: whoever holds `workflow-designs.approve`
@@ -301,8 +273,7 @@ through its own review.
 a person holding `issues.admit` put there, or filed there themselves, and the project owes it a run.
 The reading the `dispatch` guide calls triage — is it real, already fixed, a duplicate — is the first
 thing you do with that row in this pass, not a gate somebody else has to clear first. Take the
-reading and dispatch it, or record what the reading found on the issue; a row left at `open` because
-it "still needs triage" is the row nobody decided about.
+reading and dispatch it; where it finds the row is not work, say why on it and drop it.
 
 ## Declare a run before you dispatch it
 
@@ -362,9 +333,7 @@ absolute paths, no `bash -c`) and carries on, and a run that cannot is reported,
 
 ## When the project is not yours to drive
 
-A pass that dispatches nothing does not by itself make the project stood down. Such a pass still
-reports a posture, and which one depends on why nothing went out: `active` where the project is
-simply operating, `waiting` or `blocked` where the reason is named.
+A pass that dispatches nothing does not by itself make the project stood down.
 
 **Standing down is the separate claim that the project stops operating autonomously until somebody
 starts it again** — `forge-runner master stand-down`, undone by `forge-runner master stand-up`.
