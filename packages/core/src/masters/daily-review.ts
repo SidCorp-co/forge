@@ -59,8 +59,9 @@ export function dailyReviewBrief(args: {
     `Daily review for ${args.slug}, ${args.since.toISOString()} to ${args.until.toISOString()} (ISS-862).`,
     "Goal: tell the owner how the project's day went, short, in Vietnamese, in your own words, in the project's Forge-Communicate thread: what shipped and is live, what is in flight, what is blocked and on whom, and what you found and folded into the next batch.",
     'Then hunt on your own for what to fix, optimise or build: Sentry errors, production logs and slow endpoints, failed or flaky runs, UX rough edges, debt, and your own backlog. File or fix what you find, and fold it into the running batch.',
-    `Facts: ${at('/releases')} · ${at('/runs/standing?scope=finished')} · ${at('/runs/standing?scope=live')} · ${at('/issues/standing?scope=open')} · ${at('/integrations/sentry/issues')} · ${at('/support/rooms')}.`,
-    `Post: POST ${at('/support/master-posts')} { text, rid? }, rid naming the room where the project binds several.`,
+    "Audit (owner, 2026-11-02, product-delivery-audit-loop): read the day's channel conversations and how each ended (who asked, what the agent answered, what was left open or answered wrong), turn what you find into product items (feedback, a requirement revision) folded into the next batch, and raise a decision only the owner can take in this project's Forge-Communicate thread, never in a room its users read.",
+    `Facts: ${at('/releases')} · ${at('/runs/standing?scope=finished')} · ${at('/runs/standing?scope=live')} · ${at('/issues/standing?scope=open')} · ${at('/integrations/sentry/issues')} · ${at('/support/rooms')} · ${at('/support/turns')} · ${at('/support/rooms/<roomId>/actions')}.`,
+    `Post: POST ${at('/support/master-posts')} { text, rid }, rid naming the Forge-Communicate room, never a room whose readers are users.`,
   ].join('\n');
 }
 
