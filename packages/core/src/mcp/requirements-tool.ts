@@ -20,11 +20,10 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
-import { argumentRefusal, need, zodArgumentRefusal } from '../lib/tool-args.js';
+import { argumentRefusal, need } from '../lib/tool-args.js';
 import { onResolved, requireDeclaredOn } from '../permissions/index.js';
 import { issuesOfRequirements, liveRunsByIssue, runsOn } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
-import { ANSWER_SHAPE, answerBody, answerWithToken } from '../questions/index.js';
 import {
   draftRequirement,
   listRequirementsAs,
@@ -35,6 +34,7 @@ import {
   withdrawRevision,
   writeRevision,
 } from '../requirements/index.js';
+import { ANSWER_LINE, answerOnRequirement } from './requirement-answer.js';
 import { requirementDetail, requirementProgress, requirementRow } from './requirement-views.js';
 
 const ACTIONS = [
@@ -118,7 +118,7 @@ const DESCRIPTION = [
   'revise {requirement, baseRevision, criteria, title?, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement, its title included (title, applied when a person accepts it; there is no other rename). Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a revision is open. A draft is rewritten by passing revision: n; a proposed one is frozen until a holder of requirements.approve returns or accepts it, which this tool does not, so tell the person. REQUIREMENT_REVISION_STALE: the head moved, get it again.',
   'propose {requirement, revision}: put a draft revision before the people who agree it.',
   'withdraw {requirement, revision, reason}: withdraw an open draft revision for good, saying why, as POST …/revisions/:n/withdraw does: its author may, anyone else needs requirements.approve. It frees the one open revision (REQUIREMENT_REVISION_OPEN) and is the one act left on a dropped requirement (REQUIREMENT_DROPPED).',
-  `answer {requirement, questionId, round, optionId | answer}: answer a question standing on the requirement (one get lists under questions), as POST /api/questions/:id/answer does — ${ANSWER_SHAPE}, the free answer passed here as answer. Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, the spec or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in; one blocked on another agent is refused QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered.`,
+  ANSWER_LINE,
   'Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
 ].join(' ');
@@ -325,32 +325,9 @@ async function withdraw(ctx: McpContext, projectId: string, input: Input) {
   );
 }
 
-/** A question standing on the requirement, answered as the token's holder; one standing elsewhere is not found here. */
+/** A question standing on the requirement, answered through the question door (requirement-answer.ts). */
 async function answer(ctx: McpContext, projectId: string, input: Input) {
-  const { requirement: key, questionId } = need(input, input.action, 'requirement', 'questionId');
-  const detail = await readRequirementAs(actorOf(ctx), projectId, key, MCP_DOOR);
-  if (!detail.questions.some((q) => q.id === questionId)) {
-    throw new Error(
-      `NOT_FOUND: question ${questionId} does not stand on ${detail.key}; answer one get lists under questions, or answer this one with forge_questions`,
-    );
-  }
-  const { principal } = ctx;
-  const body = answerBody.safeParse({
-    round: input.round,
-    ...(input.optionId === undefined ? {} : { optionId: input.optionId }),
-    ...(input.answer === undefined ? {} : { text: input.answer }),
-  });
-  if (!body.success) throw zodArgumentRefusal(body.error, { text: 'answer' });
-  return answerWithToken({
-    token: {
-      questionId,
-      userId: principal.userId,
-      agentUserId: principal.agentUserId ?? null,
-      tokenId: principal.tokenId,
-    },
-    body: body.data,
-    agency: actorOf(ctx).agency,
-  });
+  return answerOnRequirement(ctx, actorOf(ctx), projectId, input);
 }
 
 const HANDLERS = {
