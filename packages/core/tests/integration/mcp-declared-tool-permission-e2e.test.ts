@@ -20,6 +20,8 @@
  * @direct-test-of packages/core/src/ecosystem/tool.ts
  * @direct-test-of packages/core/src/ecosystem/tool-handlers.ts
  * @direct-test-of packages/core/src/ecosystem/channel-tool.ts
+ * @direct-test-of packages/core/src/product-door/design-tool.ts
+ * @direct-test-of packages/core/src/product-door/design-permission.ts
  * @direct-test-of packages/core/src/permissions/declared.ts
  */
 
@@ -318,5 +320,36 @@ describe('forge_channel (declared on the side the handler resolves, after the ro
       ),
     );
     expect(read).toHaveProperty('documents');
+  });
+});
+
+describe('forge_design (declared on projectId, which every call sends)', () => {
+  it("refuses a viewer's design_create at the door, naming workflow-designs.write, before the missing body", async () => {
+    const refused = await mcp('viewer', 'forge_design', { action: 'design_create', projectId });
+    expect(codeOf(refused)).toBe('PERMISSION_FORBIDDEN');
+    expect(refused.text).toContain('workflow-designs.write');
+  });
+
+  it("lets a member's design_create through the door, to the handler naming the missing body", async () => {
+    const reached = await mcp('member', 'forge_design', { action: 'design_create', projectId });
+    expect(codeOf(reached)).not.toBe('PERMISSION_FORBIDDEN');
+    expect(reached.text).toContain('body');
+  });
+
+  it("refuses a viewer's mockup_comment at the door, naming project.write, before the missing mockup", async () => {
+    const refused = await mcp('viewer', 'forge_design', { action: 'mockup_comment', projectId });
+    expect(codeOf(refused)).toBe('PERMISSION_FORBIDDEN');
+    expect(refused.text).toContain('project.write');
+  });
+
+  it('refuses a caller holding no role the design list, naming project.read', async () => {
+    const refused = await mcp('outsider', 'forge_design', { action: 'design_list', projectId });
+    expect(codeOf(refused)).toContain('not a member of this project');
+    expect(refused.text).toContain('project.read');
+  });
+
+  it('lists the designs for a viewer', async () => {
+    const read = ok(await mcp('viewer', 'forge_design', { action: 'design_list', projectId }));
+    expect(read).toHaveProperty('workflows');
   });
 });

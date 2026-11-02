@@ -61,6 +61,7 @@ import {
 } from '../workflows/index.js';
 import { parseArgs } from './args.js';
 import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
+import { DESIGN_PERMISSION } from './design-permission.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
 
@@ -487,6 +488,7 @@ export const forgeDesignTool: ContextScopedMcpToolFactory = (ctx) => ({
       DESIGN_TOOL_ACTIONS.map((a) => [a, READS.has(a) ? 'projects:read' : 'projects:write']),
     ) as Record<(typeof DESIGN_TOOL_ACTIONS)[number], 'projects:read' | 'projects:write'>,
   },
+  permission: DESIGN_PERMISSION,
   handler: async (args) => {
     const i = parseArgs(input, args, SHAPE);
     return ACTIONS[i.action](ctx, i);
