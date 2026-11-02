@@ -60,6 +60,7 @@ function issue(verdicts: CarriedVerdict[][]): IssueFact {
       unverified: null,
     })),
     verdicts: new Map(verdicts.map((list, k) => [k + 1, list])),
+    voided: new Map(),
     reopenedAt: null,
     closedAt: [],
     merged: { at: null, landing: null, artifacts: null, commitSha: null, readPaths: null },

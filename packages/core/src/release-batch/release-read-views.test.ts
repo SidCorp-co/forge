@@ -44,6 +44,7 @@ function facts(n: number): ReleaseFacts {
       requirementId: null,
       criteria: [],
       verdicts: new Map(),
+      voided: new Map(),
       reopenedAt: null,
       closedAt: [],
       merged: {
@@ -379,6 +380,7 @@ describe('a release that shipped the rework claims it at its own close (BC-6, J1
       requirementId: null,
       criteria: [],
       verdicts: new Map(),
+      voided: new Map(),
       reopenedAt: reopened ? at(reopened) : null,
       closedAt: closes.map(at),
       merged: {

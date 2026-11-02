@@ -19,14 +19,17 @@
  * @direct-test-of packages/core/src/release-batch/released-line.ts
  * @direct-test-of packages/contracts/src/released-line.ts
  * @direct-test-of packages/core/src/release-page/facts.ts
+ * @direct-test-of packages/core/src/release-batch/judged-before-reopen.ts
  * @direct-test-of packages/core/src/release-page/claims.ts
  * @direct-test-of packages/contracts/src/release-page.ts
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { reopenOnFail } from '../../src/issues/fail-reopen.js';
 import { api } from '../helpers/api.js';
+import { seedIssueStatus } from '../helpers/factories.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
-import { F4, landedIssue, ok, seedLandedWorld, world } from '../helpers/landed-world.js';
+import { F4, landedIssue, ok, seedLandedWorld, statusOf, world } from '../helpers/landed-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 const reads = vi.hoisted(() => ({ n: 0 }));
@@ -68,7 +71,7 @@ const recordRelease = (issueIds: string[], version: string) =>
 
 type Verified = { level: string; proven: number; total: number };
 type ReleaseRead = {
-  criteria: { proven: number; total: number };
+  criteria: { proven: number; failing?: number; total: number };
   verified: Verified;
   issueCriteria: Array<{ key: string; criteria: Array<{ identity: string | null }> }>;
 };
@@ -158,6 +161,61 @@ describe('a release reads a criterion judged on a release it is or carries (ISS-
     };
     expect(page.header.verified).toMatchObject({ proven: 2, total: 2 });
     expect(page.requirements[0]?.business.proven.map((p) => p.code)).toEqual(['BC-1', 'BC-2']);
+    expect(reads.n).toBe(0);
+  });
+
+  // agenfold ISS-59 on 3d747ff16: its passes judged on 0.77.0 are carried by 0.78.0; a fail judged on
+  // 0.78.0 reopened it, and its fix awaits a later release. The reopen voids the fail for the fix's
+  // round, so 0.78.0 read 19/19, failing 0, though criterion 1 failed on it.
+  it('reads a fail judged on a release as failing there and on every release until one ships the fix', async () => {
+    await agenfold();
+    const req = await agreedRequirement(['A fold opens', 'A fold saves']);
+    const iss59 = await landedIssue(59, F4, ['A fold opens', 'A fold saves']);
+    await traced(req, iss59, 59, { 1: 'BC-1', 2: 'BC-2' });
+    await recordRelease([iss59], '0.77.0');
+    const judge = (n: number, verdict: 'pass' | 'fail', version: string) =>
+      ok(
+        api(world.token, 'POST', `/api/issues/${iss59}/verdicts`, {
+          criterion: n,
+          verdict,
+          reason: `${verdict === 'pass' ? 'Held' : 'Broke'} on production ${version}.`,
+          identity: { kind: 'release', version },
+          evidence: ['https://agenfold.example.test/clips/iss-59.webm'],
+        }),
+      );
+    for (const n of [1, 2]) await judge(n, 'pass', '0.77.0');
+    await recordRelease([await landedIssue(60, F4, [])], '0.78.0');
+    const failed = await judge(1, 'fail', '0.78.0');
+    // the fail-reopen consumer, as `verdict.recorded` runs it
+    await reopenOnFail({
+      criterion: 1,
+      requirement: null,
+      reason: 'Broke on production 0.78.0.',
+      authorUserId: world.ownerId,
+      authorDeviceId: null,
+      agency: 'agent',
+      issueId: iss59,
+      verdictId: String((failed.verdict as { id?: string } | undefined)?.id ?? failed.id),
+    });
+    expect(await statusOf(iss59)).toBe('reopen');
+
+    const live = await releaseOf('0.78.0');
+    expect(live.criteria).toMatchObject({ proven: 1, failing: 1, total: 2 });
+    expect(live.verified.level).toBe('some_criteria');
+    const iss = live.issueCriteria.find((i) => i.key === 'ISS-59');
+    expect(iss?.criteria.map((c) => c.identity)).toEqual(['release 0.78.0', 'release 0.77.0']);
+    // 0.77.0 shipped before the fail and does not carry 0.78.0: it reads what was judged on it
+    expect((await releaseOf('0.77.0')).criteria).toMatchObject({ proven: 2, total: 2 });
+    // a later release without the fix still serves the failing criterion
+    await recordRelease([await landedIssue(61, F4, [])], '0.79.0');
+    expect((await releaseOf('0.79.0')).criteria).toMatchObject({ proven: 1, failing: 1, total: 2 });
+
+    // the release that ships the fix judges it anew: the void holds there
+    await seedIssueStatus(iss59, 'awaiting_release');
+    await recordRelease([iss59], '0.80.0');
+    const fixed = await releaseOf('0.80.0');
+    const round = fixed.issueCriteria.find((i) => i.key === 'ISS-59');
+    expect(round?.criteria.map((c) => c.identity)).toEqual([null, 'release 0.77.0']);
     expect(reads.n).toBe(0);
   });
 });

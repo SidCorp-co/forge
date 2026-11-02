@@ -4,6 +4,7 @@
 
 import { versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseCriterionView } from '@forge/contracts/releases';
+import { voidedOnRelease } from './judged-before-reopen.js';
 import { criteriaAt, type ReleaseFacts } from './release-facts.js';
 
 /**
@@ -27,7 +28,12 @@ export function judgedOnReleaseAt(
         vs.filter((v) => v.identityKind === 'release' && versions.has(v.releaseVersion ?? '')),
       ]),
     );
-    const judged = issue.criteria.filter((c) => (verdicts.get(c.n)?.length ?? 0) > 0);
+    // a fail judged on this release before the reopen it caused is still this release's (ISS-59)
+    const judged = issue.criteria.filter(
+      (c) =>
+        (verdicts.get(c.n)?.length ?? 0) > 0 ||
+        voidedOnRelease(issue, c.n, versions, facts.released, version).length > 0,
+    );
     if (judged.length === 0) return [];
     const read = { ...issue, criteria: judged, verdicts };
     return [

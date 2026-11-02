@@ -35,6 +35,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { issueNamingOf, namedIssue, standingsOf } from '../requirements/index.js';
+import { voidedOnRelease } from './judged-before-reopen.js';
 import type { CompletionFacts } from './release-view.js';
 import { releasedLineOf } from './released-line.js';
 
@@ -50,6 +51,9 @@ export interface IssueFact {
   criteria: ReleaseCriterionView[];
   /** Every verdict each live criterion earned since the issue's last reopen, by its number. */
   verdicts: ReadonlyMap<number, readonly CarriedVerdict[]>;
+  /** Every verdict that reopen voided, by number: what a release shipped before it still reads
+   *  (`judged-before-reopen.ts`, ISS-900). */
+  voided: ReadonlyMap<number, readonly CarriedVerdict[]>;
   /** The issue's last move to `reopen`: its note and mark after it are a later round's. */
   reopenedAt: Date | null;
   /** Every move of the issue into `closed`, oldest first: the moments releases shipped it. */
@@ -176,14 +180,19 @@ export function criteriaAt(
 ): ReleaseCriterionView[] {
   const versions = versionsCountedOn(released, version);
   return issue.criteria.map((c) => {
-    const newestFirst = [...(issue.verdicts.get(c.n) ?? [])].reverse();
+    const before = voidedOnRelease(issue, c.n, versions, released, version);
+    const newestFirst = [...(issue.verdicts.get(c.n) ?? []), ...before].sort((a, b) =>
+      b.at.localeCompare(a.at),
+    );
     const counted = newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, versions));
     const read = verifiedOf(counted, judge);
     const stands = read.stands;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
     const unjudgedThere = build !== null && judgedOn !== null && !stands;
     const unverified = proven ? null : unjudgedThere ? notJudgedOnWhy(judgedOn, build) : read.why;
-    if (build === null) return { ...c, proven, unverified };
+    // with no build, a verdict judged on a release still names what it stands on (ISS-900)
+    if (build === null && stands?.identityKind !== 'release') return { ...c, proven, unverified };
+    const at = build ?? '';
     return {
       ...c,
       standing: !stands
@@ -195,8 +204,8 @@ export function criteriaAt(
         ? stands.identityKind === 'release'
           ? `release ${stands.releaseVersion}`
           : judgedOn === null
-            ? commitIdentityPhrase(build)
-            : `runtime ${build.slice(0, 12)} on ${judgedOn}`
+            ? commitIdentityPhrase(at)
+            : `runtime ${at.slice(0, 12)} on ${judgedOn}`
         : null,
       reason: stands?.reason ?? null,
       judgedAt: stands?.at ?? null,
@@ -350,14 +359,12 @@ export async function loadReleaseFacts(
         .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
       reopened.get(issueId),
     ) ?? undefined;
-  const judged = (issueId: string) =>
+  const judged = (issueId: string, kept: boolean) =>
     new Map(
       (criteria.get(issueId) ?? []).map((c) => {
         const voidedBy = voidedFor(issueId, c.id)?.getTime() ?? Number.NEGATIVE_INFINITY;
-        const kept = verdicts.filter(
-          (v) => v.criterionId === c.id && new Date(v.at).getTime() > voidedBy,
-        );
-        return [c.n, kept];
+        const after = (v: CarriedVerdict) => new Date(v.at).getTime() > voidedBy;
+        return [c.n, verdicts.filter((v) => v.criterionId === c.id && after(v) === kept)];
       }),
     );
   const byIssue = new Map<string, IssueFact>(
@@ -372,7 +379,8 @@ export async function loadReleaseFacts(
         releaseNotes: r.releaseNotes ?? null,
         requirementId: r.requirementId,
         criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, voidedFor(r.id, c.id))),
-        verdicts: judged(r.id),
+        verdicts: judged(r.id, true),
+        voided: judged(r.id, false),
         reopenedAt: reopened.get(r.id) ?? null,
         closedAt: closed.get(r.id) ?? [],
         merged: {
