@@ -173,6 +173,8 @@ struct Turn {
     /// See `StartFrame::checkout`: resolved, and for `build` already pointing `repo_path` at the
     /// room's working copy.
     checkout: CheckoutView,
+    /// See `chat_checkout::ViewFields::sibling_checkouts`: validated, each shown read-only.
+    siblings: Vec<PathBuf>,
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -293,6 +295,11 @@ pub async fn handle_start(
     else {
         return Ok(());
     };
+    let Some(siblings) =
+        chat_checkout::turn_siblings(client, &f.session_id, &f.view, f.confined).await
+    else {
+        return Ok(());
+    };
     let staged = stage_attachments(
         client,
         &f.session_id,
@@ -322,6 +329,7 @@ pub async fn handle_start(
             ungated: f.ungated,
             keep_resident: f.keep_resident,
             checkout,
+            siblings,
         },
         placing,
     )
@@ -341,6 +349,11 @@ pub async fn handle_send(
     let repo_path = resolve_repo(f.repo_path.as_deref(), f.project_slug.as_deref())?;
     let Some((checkout, repo_path)) =
         chat_checkout::turn_view(client, &f.session_id, &f.view, f.confined, repo_path).await
+    else {
+        return Ok(());
+    };
+    let Some(siblings) =
+        chat_checkout::turn_siblings(client, &f.session_id, &f.view, f.confined).await
     else {
         return Ok(());
     };
@@ -374,6 +387,7 @@ pub async fn handle_send(
             ungated: f.ungated,
             keep_resident: f.keep_resident,
             checkout,
+            siblings,
         },
         placing,
     )
@@ -422,6 +436,7 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         confinement: turn.confined.then(|| Confinement {
             reads: turn.attachment_dir.iter().cloned().collect(),
             checkout: turn.checkout.clone(),
+            siblings: turn.siblings.clone(),
         }),
         hooks_off: turn.ungated,
         keep_resident: turn.keep_resident,
@@ -444,6 +459,9 @@ fn resident_disposition(resident: Option<&Resident>, turn: &Turn) -> Disposition
         None => Disposition::Spawn,
         // its mounts were fixed at spawn: another view is another process
         Some(r) if r.checkout != turn.checkout => Disposition::Close("checkout view changed"),
+        Some(r) if r.siblings != turn.siblings => {
+            Disposition::Close("followed projects' checkouts changed")
+        }
         Some(r) if turn.credential.is_some() && !(turn.keep_resident && r.refreshable) => {
             Disposition::Close("this turn carries its own token")
         }
@@ -932,6 +950,7 @@ mod tests {
             ungated: f.ungated,
             keep_resident: f.keep_resident,
             checkout: f.view.view(f.confined).unwrap(),
+            siblings: f.view.siblings(f.confined).unwrap(),
         }
     }
 
@@ -941,7 +960,36 @@ mod tests {
             head_sha: None,
             refreshable,
             checkout: CheckoutView::Write,
+            siblings: Vec::new(),
         }
+    }
+
+    /// The projects a channel agent follows changed (ISS-874): the resident spawned with the old
+    /// mounts is closed, so the next turn reads exactly the checkouts it is now told of.
+    #[test]
+    fn a_turn_naming_other_followed_checkouts_closes_the_resident() {
+        let dir = std::env::temp_dir();
+        let mut frame = serde_json::json!({
+            "sessionId": "s1", "message": "hi", "forgeToken": "t", "confined": true,
+            "keepResident": true, "checkout": "read",
+            "siblingCheckouts": [dir.to_string_lossy()],
+        });
+        let following = turn_of(frame.clone(), None);
+        assert_eq!(following.siblings, vec![dir.clone()]);
+        let mut held = resident(true);
+        held.checkout = CheckoutView::Read;
+        assert_eq!(
+            resident_disposition(Some(&held), &following),
+            Disposition::Close("followed projects' checkouts changed")
+        );
+        held.siblings = vec![dir.clone()];
+        assert_eq!(
+            resident_disposition(Some(&held), &following),
+            Disposition::Reuse
+        );
+        frame.as_object_mut().unwrap().remove("siblingCheckouts");
+        let spec = chat_spec("s1", "hi", &turn_of(frame, None));
+        assert_eq!(spec.confinement.unwrap().siblings, Vec::<PathBuf>::new());
     }
 
     /// A support room's grant changed what its session may see (REQ-75 r5 BC-27): the resident
@@ -1094,6 +1142,7 @@ mod tests {
             Some(Confinement {
                 reads: vec![PathBuf::from("/tmp/forge-attach-s1")],
                 checkout: CheckoutView::Write,
+                siblings: Vec::new(),
             }),
             "a turn core marked confined spawned a session with the box's view"
         );

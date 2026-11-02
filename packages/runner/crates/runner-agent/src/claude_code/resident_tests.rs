@@ -51,6 +51,7 @@ async fn try_stand_in(
                 model: None,
                 project_slug: None,
                 checkout: crate::CheckoutView::Write,
+                siblings: Vec::new(),
             },
             tx,
         )

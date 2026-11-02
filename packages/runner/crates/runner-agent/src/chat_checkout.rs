@@ -33,6 +33,10 @@ pub(crate) struct ViewFields {
     pub build_key: Option<String>,
     #[serde(default)]
     pub own_hosts: Option<Vec<String>>,
+    /// `siblingCheckouts` (ISS-874): the box's checkouts of the projects a channel agent follows
+    /// besides its home, each shown read-only. Only a confined turn names them.
+    #[serde(default)]
+    pub sibling_checkouts: Option<Vec<String>>,
 }
 
 impl ViewFields {
@@ -51,6 +55,47 @@ impl ViewFields {
             },
             other => other,
         })
+    }
+}
+
+impl ViewFields {
+    /// The followed projects' checkouts a turn names, or why they cannot be shown: each an absolute
+    /// path with no `.` or `..` segment, and only on a confined turn, whose mounts are what keeps
+    /// them read-only. A checkout the box no longer holds is refused by name, never skipped, so the
+    /// session is never told of code it cannot read.
+    pub(crate) fn siblings(&self, confined: bool) -> Result<Vec<PathBuf>, String> {
+        let named = self.sibling_checkouts.clone().unwrap_or_default();
+        if named.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !confined {
+            return Err(format!(
+                "{TAG} this turn names `siblingCheckouts` and is not confined; they are shown \
+                 read-only through a sandbox's mounts, so an unconfined session would write them"
+            ));
+        }
+        named
+            .into_iter()
+            .map(|raw| {
+                let path = PathBuf::from(&raw);
+                // Path::components drops a `.` segment, so the raw string is read
+                let plain =
+                    path.is_absolute() && !raw.split('/').any(|seg| seg == "." || seg == "..");
+                if !plain {
+                    return Err(format!(
+                        "{TAG} a followed project's checkout is an absolute path with no . or .. \
+                         segment; this turn sent {raw:?}"
+                    ));
+                }
+                if !path.is_dir() {
+                    return Err(format!(
+                        "{TAG} the followed project's checkout {raw} is not on this box; register \
+                         that project's checkout here, or core stops naming it"
+                    ));
+                }
+                Ok(path)
+            })
+            .collect()
     }
 }
 
@@ -96,6 +141,24 @@ pub(crate) async fn turn_view(
     repo_path: String,
 ) -> Option<(CheckoutView, String)> {
     match resolve(view, confined, repo_path).await {
+        Ok(found) => Some(found),
+        Err(msg) => {
+            tracing::error!("[chat {session_id}] {msg}");
+            crate::chat::patch_failed(client, session_id, None, &msg).await;
+            None
+        }
+    }
+}
+
+/// [`ViewFields::siblings`], with a checkout this box cannot show failing the turn by name: `None`,
+/// and nothing is spawned.
+pub(crate) async fn turn_siblings(
+    client: &runner_transport::CoreClient,
+    session_id: &str,
+    view: &ViewFields,
+    confined: bool,
+) -> Option<Vec<PathBuf>> {
+    match view.siblings(confined) {
         Ok(found) => Some(found),
         Err(msg) => {
             tracing::error!("[chat {session_id}] {msg}");
@@ -376,6 +439,7 @@ mod tests {
             build_base: Some("dev".into()),
             build_key: Some("own-b1".into()),
             own_hosts: Some(vec!["https://github.com".into()]),
+            sibling_checkouts: None,
         };
         assert_eq!(
             fields.view(true),
@@ -478,5 +542,47 @@ mod tests {
             again.join("edit.txt").is_file(),
             "a second turn remade the working copy and lost the session's edit"
         );
+    }
+
+    /// A channel agent following several projects (ISS-874) is shown each one's checkout on this
+    /// box, read-only: only on a confined turn, only an absolute plain path, and only one the box
+    /// holds. A checkout it does not hold fails the turn by name, never a session told of code it
+    /// cannot read.
+    #[test]
+    fn followed_checkouts_are_shown_only_confined_absolute_and_present() {
+        let root = std::env::temp_dir().join(format!("forge-siblings-{}", std::process::id()));
+        let fe = root.join("project-fe");
+        std::fs::create_dir_all(&fe).unwrap();
+        let fields = |paths: &[&str]| ViewFields {
+            checkout: Some("read".into()),
+            sibling_checkouts: Some(paths.iter().map(|p| p.to_string()).collect()),
+            ..ViewFields::default()
+        };
+        let fe_str = fe.to_string_lossy().into_owned();
+        assert_eq!(fields(&[&fe_str]).siblings(true).unwrap(), vec![fe.clone()]);
+        assert_eq!(
+            ViewFields::default().siblings(false).unwrap(),
+            Vec::<PathBuf>::new()
+        );
+
+        let err = fields(&[&fe_str]).siblings(false).unwrap_err();
+        assert!(
+            err.starts_with(TAG) && err.contains("not confined"),
+            "{err}"
+        );
+        for bad in ["relative/fe", "/srv/../etc", "/srv/./fe"] {
+            let err = fields(&[bad]).siblings(true).unwrap_err();
+            assert!(
+                err.starts_with(TAG) && err.contains("absolute path"),
+                "{bad}: {err}"
+            );
+        }
+        let gone = root.join("gone").to_string_lossy().into_owned();
+        let err = fields(&[&fe_str, &gone]).siblings(true).unwrap_err();
+        assert!(
+            err.contains("is not on this box") && err.contains(&gone),
+            "{err}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

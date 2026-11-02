@@ -61,6 +61,9 @@ pub struct JobSpec {
 pub struct Confinement {
     pub reads: Vec<PathBuf>,
     pub checkout: CheckoutView,
+    /// The box's checkouts of the projects a channel agent follows besides its home (ISS-874),
+    /// each shown read-only at its own path, whatever `checkout` is.
+    pub siblings: Vec<PathBuf>,
 }
 
 /// How a confined session sees the working directory it is spawned in (`checkout` on the turn

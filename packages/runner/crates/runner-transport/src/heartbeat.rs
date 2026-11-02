@@ -182,6 +182,8 @@ pub(crate) fn heartbeat_body(
 /// credential to that repository alone. `hostCommands` is whether this box runs a command on a
 /// named host over its own SSH (`host.command`), which needs no sandbox; `opsReads` (ISS-871) whether
 /// it runs a read a room's grant declares from its fixed argv with no shell (`ops.read`), nor needs one.
+/// `siblingCheckouts` (ISS-874) is whether it shows a channel agent the checkouts of the projects it
+/// follows read-only beside its own, a sandbox mount like the rest.
 pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> serde_json::Value {
     let mut out = serde_json::json!({
         "turnCredential": true,
@@ -195,6 +197,7 @@ pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> 
     out["chatCheckoutModes"] = confines.into();
     out["supportBuilds"] = confines.into();
     out["ownerCheckouts"] = confines.into();
+    out["siblingCheckouts"] = confines.into();
     if let runner_platform::confine::Availability::Unavailable(why) = confine {
         out["confinedChatUnavailable"] = why.clone().into();
     }
@@ -235,12 +238,14 @@ mod tests {
         let caps = capabilities(&Availability::Available);
         assert_eq!(caps["chatCheckoutModes"], true, "{caps}");
         assert_eq!(caps["ownerCheckouts"], true, "{caps}");
+        assert_eq!(caps["siblingCheckouts"], true, "{caps}");
         assert_eq!(caps["supportBuilds"], true, "{caps}");
         assert_eq!(caps["hostCommands"], true, "{caps}");
         assert_eq!(caps["opsReads"], true, "{caps}");
         let caps = capabilities(&Availability::Unavailable("no bwrap".into()));
         assert_eq!(caps["chatCheckoutModes"], false, "{caps}");
         assert_eq!(caps["ownerCheckouts"], false, "{caps}");
+        assert_eq!(caps["siblingCheckouts"], false, "{caps}");
         assert_eq!(caps["supportBuilds"], false, "{caps}");
         assert_eq!(caps["hostCommands"], true, "{caps}");
     }

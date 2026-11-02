@@ -58,6 +58,7 @@ pub async fn run(b: &OwnBox, script: &str) -> Result<std::process::Output, Strin
                 base: b.base.clone(),
                 hosts: b.hosts.clone(),
             },
+            siblings: vec![],
         }),
         hooks_off: false,
         keep_resident: false,

@@ -105,6 +105,8 @@ pub(crate) struct Handed<'a> {
     /// How the session sees `repo`: writable, read-only, or not at all. A `Build` view's `repo` is
     /// already the room's working copy, which it writes.
     pub checkout: &'a crate::CheckoutView,
+    /// The followed projects' checkouts (ISS-874), each shown read-only at its own path.
+    pub siblings: &'a [PathBuf],
     pub project_slug: Option<&'a str>,
     pub project_id: &'a str,
     /// The checkout's git directories, read outside the sandbox: `--absolute-git-dir` and
@@ -248,6 +250,7 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
         mounts.push(Mount::Read(shim.to_path_buf()));
     }
     mounts.extend(checkout_mounts(handed));
+    mounts.extend(sibling_mounts(handed.siblings));
 
     Ok(Sandbox {
         mounts,
@@ -295,6 +298,21 @@ pub(crate) fn checkout_mounts(handed: &Handed<'_>) -> Vec<Mount> {
     let workspace_mcp = handed.repo.join(".mcp.json");
     if workspace_mcp.is_file() {
         mounts.push(Mount::Hide(workspace_mcp));
+    }
+    mounts
+}
+
+/// The checkouts of the projects a channel agent follows besides its home (ISS-874): each read-only,
+/// its git directory with it, and its `.mcp.json` hidden as the home checkout's is. Their `.claude`
+/// settings are never loaded: the session runs in its own checkout.
+pub(crate) fn sibling_mounts(siblings: &[PathBuf]) -> Vec<Mount> {
+    let mut mounts = Vec::new();
+    for dir in siblings.iter().filter(|d| d.is_dir()) {
+        mounts.push(Mount::Read(dir.clone()));
+        let workspace_mcp = dir.join(".mcp.json");
+        if workspace_mcp.is_file() {
+            mounts.push(Mount::Hide(workspace_mcp));
+        }
     }
     mounts
 }

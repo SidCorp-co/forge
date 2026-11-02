@@ -465,6 +465,7 @@ fn each_checkout_view_mounts_the_checkout_as_its_room_was_granted() {
             bearer_dir: None,
             reads: &reads,
             checkout,
+            siblings: &[],
             project_slug: None,
             project_id: "",
             git_dirs: git_dirs.clone(),
@@ -535,6 +536,7 @@ async fn a_read_view_writes_nothing_and_a_none_view_sees_nothing() {
             s.confinement = Some(Confinement {
                 reads: vec![],
                 checkout,
+                siblings: vec![],
             });
             let script = format!(
                 "cat '{repo}/README' 2>/dev/null && echo README-READ; \
@@ -580,5 +582,76 @@ async fn a_read_view_writes_nothing_and_a_none_view_sees_nothing() {
     assert!(
         !p.repo.join("written-by-view").exists(),
         "a none view's write reached the real checkout"
+    );
+}
+
+/// A followed project's checkout (ISS-874) is mounted read-only, its `.mcp.json` hidden as the home
+/// checkout's is; one the box no longer holds mounts nothing.
+#[test]
+fn a_followed_projects_checkout_is_mounted_read_only_with_its_mcp_config_hidden() {
+    use runner_platform::confine::Mount;
+    let root = std::env::temp_dir().join(format!("forge-sibling-mounts-{}", std::process::id()));
+    let fe = root.join("project-fe");
+    std::fs::create_dir_all(&fe).unwrap();
+    std::fs::write(fe.join(".mcp.json"), "{}").unwrap();
+    let mounts = super::confine::sibling_mounts(&[fe.clone(), root.join("gone")]);
+    assert_eq!(
+        mounts,
+        vec![Mount::Read(fe.clone()), Mount::Hide(fe.join(".mcp.json"))],
+        "a followed checkout is not shown read-only with its MCP config hidden"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// As a sandbox enforces it (ISS-874): a session reads a followed project's checkout and writes none
+/// of it, beside its own checkout's view.
+#[tokio::test]
+async fn a_followed_projects_checkout_is_read_and_never_written_inside_the_sandbox() {
+    use crate::CheckoutView;
+    if !bwrap_or_skip("a_followed_projects_checkout_is_read_and_never_written_inside_the_sandbox") {
+        return;
+    }
+    let p = plant();
+    let fe = p.root.join("followed-fe");
+    std::fs::create_dir_all(&fe).unwrap();
+    std::fs::write(fe.join("OrderDetail.tsx"), "mark valid").unwrap();
+    let mut s = spec(&p, true);
+    s.confinement = Some(Confinement {
+        reads: vec![],
+        checkout: CheckoutView::Read,
+        siblings: vec![fe.clone()],
+    });
+    let script = format!(
+        "cat '{fe}/OrderDetail.tsx' 2>/dev/null && echo SIBLING-READ; \
+         echo x > '{fe}/written' 2>/dev/null && echo SIBLING-WRITABLE; true",
+        fe = fe.display()
+    );
+    let args = vec!["-c".to_string(), script];
+    let (mut cmd, _egress) = SessionCommand {
+        spec: &s,
+        program: std::ffi::OsStr::new("/bin/sh"),
+        args: &args,
+        repo: &p.repo.to_string_lossy(),
+        credential: TURN,
+        mcp_path: &p.mcp,
+        bearer_dir: None,
+        core_url: "https://core.example",
+    }
+    .build(Some(view(&p)))
+    .await
+    .expect("the session command is built");
+    let out = cmd
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .expect("the session ran");
+    let seen = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        seen.contains("SIBLING-READ"),
+        "the followed project's checkout is not readable: {seen}"
+    );
+    assert!(
+        !seen.contains("SIBLING-WRITABLE") && !fe.join("written").exists(),
+        "the session wrote a followed project's checkout"
     );
 }

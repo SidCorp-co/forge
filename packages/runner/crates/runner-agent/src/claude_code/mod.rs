@@ -76,6 +76,8 @@ struct Session {
     head_sha: Option<String>,
     /// How the session was spawned to see its checkout; a turn that asks for another view respawns.
     checkout: crate::CheckoutView,
+    /// The followed projects' checkouts it was spawned to read (ISS-874); another set respawns.
+    siblings: Vec<std::path::PathBuf>,
     permit: Option<tokio::sync::OwnedSemaphorePermit>,
     project_slug: Option<String>,
     /// Raised by the completion task once it has reaped the process and removed this entry: what
@@ -222,6 +224,8 @@ pub struct Resident {
     pub refreshable: bool,
     /// How it sees its checkout (`crate::CheckoutView`), fixed by its mounts at spawn.
     pub checkout: crate::CheckoutView,
+    /// The followed projects' checkouts it reads (ISS-874), fixed by its mounts at spawn.
+    pub siblings: Vec<std::path::PathBuf>,
 }
 
 /// `plugins` is the checkout this runner loads its plugins from, empty where it loads the
@@ -303,6 +307,7 @@ impl ClaudeCodeRunner {
             head_sha: s.head_sha.clone(),
             refreshable: s.bearer_dir.is_some(),
             checkout: s.checkout.clone(),
+            siblings: s.siblings.clone(),
         })
     }
 
@@ -598,6 +603,7 @@ pub(crate) struct Spawned {
     pub(crate) model: Option<String>,
     pub(crate) project_slug: Option<String>,
     pub(crate) checkout: crate::CheckoutView,
+    pub(crate) siblings: Vec<std::path::PathBuf>,
 }
 
 impl ClaudeCodeRunner {
@@ -621,6 +627,7 @@ impl ClaudeCodeRunner {
             model,
             project_slug,
             checkout,
+            siblings,
         } = spawned;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
@@ -662,6 +669,7 @@ impl ClaudeCodeRunner {
                 model,
                 head_sha: None,
                 checkout,
+                siblings,
                 permit,
                 project_slug,
                 ended,
@@ -773,6 +781,11 @@ impl Runner for ClaudeCodeRunner {
                     .confinement
                     .as_ref()
                     .map(|c| c.checkout.clone())
+                    .unwrap_or_default(),
+                siblings: spec
+                    .confinement
+                    .as_ref()
+                    .map(|c| c.siblings.clone())
                     .unwrap_or_default(),
             },
             tx,
@@ -951,6 +964,7 @@ impl SessionCommand<'_> {
             bearer_dir,
             reads: &confinement.reads,
             checkout: &confinement.checkout,
+            siblings: &confinement.siblings,
             project_slug: spec.project_slug.as_deref(),
             project_id: &spec.project_id,
             git_dirs,
