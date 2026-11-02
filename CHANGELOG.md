@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.434] - 2026-11-02
+
+A master confirms its agents' shipped Forge feedback
+
+### Fixed
+
+- **A project's master can now confirm its agents' shipped Forge feedback.** The Forge door lets the master read, verify and reopen items its project's agents reported, so a listed confirm no longer stands unsettled.
+
 ## [0.4.0-dev.433] - 2026-11-02
 
 A project rule can ask its owner; no-production drafts are approved by version
