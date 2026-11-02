@@ -1,11 +1,10 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from './clear-fault-flags.js';
 import { runnersPorts } from './ports.js';
 import {
@@ -39,30 +38,33 @@ projectRunnerRoutes.use('*', requireAuth(), assertEmailVerified());
 // Project-centric runner list — the device pools serving THIS project, with
 // device identity + live provision status. Powers the project Runners screen
 // (the inverse of the device-centric GET /api/devices/:id/runners). Any member.
-projectRunnerRoutes.get('/:id/runners', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
-  const access = await loadProjectAccess(id, userId);
-  requireHeld(access, 'project.read');
+projectRunnerRoutes.get(
+  '/:id/runners',
+  zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
 
-  const rows = await listProjectRunnerPools(id);
+    const rows = await listProjectRunnerPools(id);
 
-  return c.json(
-    rows.map((r) => ({ ...r, poolRead: runnersPorts().readRunnerPoolRead(r.poolRead) })),
-  );
-});
+    return c.json(
+      rows.map((r) => ({ ...r, poolRead: runnersPorts().readRunnerPoolRead(r.poolRead) })),
+    );
+  },
+);
+
+const ADMIN = requiresOnParam('project.admin', 'id');
 
 projectRunnerRoutes.post(
   '/:id/runners',
   zValidator('param', idParamSchema),
+  ADMIN,
   zValidator('json', createRunnerBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { deviceId, capabilities, repoPath, branch } = c.req.valid('json');
     const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.admin');
 
     const device = await ownedDeviceForBind(deviceId, userId);
 
@@ -102,14 +104,11 @@ const patchRunnerBodySchema = z
 projectRunnerRoutes.patch(
   '/:id/runners/:runnerId',
   zValidator('param', runnerParamSchema),
+  ADMIN,
   zValidator('json', patchRunnerBodySchema),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
     const { repoPath, branch, capabilities, labels } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.admin');
 
     const runner = await patchProjectRunner(id, runnerId, {
       repoPath,
@@ -132,12 +131,9 @@ projectRunnerRoutes.patch(
 projectRunnerRoutes.post(
   '/:id/runners/:runnerId/clear-error',
   zValidator('param', runnerParamSchema),
+  ADMIN,
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.admin');
 
     if (!(await projectHasRunner(id, runnerId))) {
       throw new HTTPException(404, {
@@ -154,12 +150,9 @@ projectRunnerRoutes.post(
 projectRunnerRoutes.delete(
   '/:id/runners/:runnerId',
   zValidator('param', runnerParamSchema),
+  ADMIN,
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.admin');
 
     // Idempotent: 204 whether the runner existed or not, mirroring the old
     // PUT/DELETE /:id/devices/:deviceId contract.

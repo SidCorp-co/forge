@@ -7,7 +7,7 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireHeld, requiresOnParam } from '../permissions/index.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/index.js';
 import { readJob } from './job-queries.js';
 import { noPromptMessage, poolPrompt } from './pool-served.js';
@@ -71,14 +71,12 @@ jobProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 jobProjectRoutes.post(
   '/:id/jobs',
   zValidator('param', projectIdParamSchema),
+  requiresOnParam('project.write', 'id'),
   zValidator('json', jobCreateSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const input = c.req.valid('json');
     const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write');
 
     refuseUnmintableType(input.type);
     if (input.issueId) await assertIssueInProject(projectId, input.issueId);
@@ -113,14 +111,11 @@ jobProjectRoutes.post(
 jobProjectRoutes.get(
   '/:id/jobs',
   zValidator('param', projectIdParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', jobListFiltersSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const q = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     const { rows, total } = await listProjectJobs(
       projectId,

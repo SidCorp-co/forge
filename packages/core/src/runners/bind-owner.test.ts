@@ -17,10 +17,15 @@ vi.mock('../middleware/auth.js', async (orig) => ({
     },
   assertEmailVerified: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
-vi.mock('../lib/authz.js', () => ({ loadProjectAccess: vi.fn(async () => ({})) }));
-vi.mock('../permissions/index.js', async (orig) => ({
-  ...(await orig<typeof import('../permissions/index.js')>()),
-  requireHeld: vi.fn(),
+// the caller is a project admin: the declared floor and the handler's own checks pass on these facts
+vi.mock('../lib/authz.js', () => ({
+  loadProjectAccess: vi.fn(async (projectId: string) => ({
+    projectId,
+    orgId: 'o-1',
+    orgRole: null,
+    role: 'admin',
+    grants: [],
+  })),
 }));
 vi.mock('../db/client.js', () => {
   const chain = {

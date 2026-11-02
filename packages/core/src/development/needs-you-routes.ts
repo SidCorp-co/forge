@@ -4,7 +4,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { readNeedsYouDecisions } from './needs-you-decisions-read.js';
 import { readNeedsYou } from './needs-you-list.js';
 import { needsYouViewerOf } from './needs-you-viewer.js';
@@ -22,6 +22,7 @@ needsYouRoutes.get(
     idParamSchema,
     invalid('invalid path: /api/projects/<project uuid>/needs-you'),
   ),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -29,7 +30,6 @@ needsYouRoutes.get(
     const agency = c.get('agency');
     if (!agency) throw new Error('needs-you: a request reached its handler without an auth gate');
     const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
     return c.json(await readNeedsYou(projectId, needsYouViewerOf(access, userId, agency), access));
   },
 );
@@ -42,6 +42,7 @@ needsYouRoutes.get(
     idParamSchema,
     invalid('invalid path: /api/projects/<project uuid>/needs-you/decisions'),
   ),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -49,7 +50,6 @@ needsYouRoutes.get(
     const agency = c.get('agency');
     if (!agency) throw new Error('needs-you: a request reached its handler without an auth gate');
     const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
     return c.json(
       await readNeedsYouDecisions(projectId, needsYouViewerOf(access, userId, agency), access),
     );

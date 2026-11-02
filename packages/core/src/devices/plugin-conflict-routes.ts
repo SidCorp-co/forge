@@ -2,11 +2,10 @@
 // shares, read by `plugin-conflicts.ts:readPluginConflicts`.
 
 import { Hono } from 'hono';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { readPluginConflicts } from './plugin-conflicts.js';
 
 export const projectPluginConflictRoutes = new Hono<{ Variables: AuthVars }>();
@@ -16,10 +15,10 @@ projectPluginConflictRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
-    requireHeld(await loadProjectAccess(id, c.get('userId')), 'project.read');
     return c.json({ conflicts: await readPluginConflicts(id) });
   },
 );

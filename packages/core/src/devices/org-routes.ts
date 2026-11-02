@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { listOrgDevices } from './read.js';
 
@@ -22,11 +22,11 @@ deviceOrgRoutes.use('*', requireAuth(), assertEmailVerified());
 deviceOrgRoutes.get(
   '/:orgId/devices',
   zValidator('param', orgIdParamSchema),
+  requiresOnParam('org.read', 'orgId'),
   noQuery,
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
     const visibleIds = await loadVisibleProjectIds(userId);
     if (visibleIds.length === 0) return c.json([]);

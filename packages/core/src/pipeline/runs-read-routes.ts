@@ -6,7 +6,7 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireHeld, requiresOnParam } from '../permissions/index.js';
 import { listProjectPipelineRuns, pipelineRunProjectId } from './read.js';
 import { loadPipelineRunSummary } from './runs-rollup.js';
 
@@ -41,14 +41,11 @@ pipelineRunProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 pipelineRunProjectRoutes.get(
   '/:id/pipeline-runs',
   zValidator('param', idParamSchema),
+  requiresOnParam('project.read', 'id'),
   zValidator('query', listFiltersSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const q = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     const { items, total } = await listProjectPipelineRuns(projectId, q);
     return c.json(listResponse(c, items, total, q));
