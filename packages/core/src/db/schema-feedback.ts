@@ -1,5 +1,6 @@
 import {
   FEEDBACK_ATTACHMENT_LABELS,
+  FEEDBACK_CONFIRM_WAIT_ON,
   FEEDBACK_DECISIONS,
   FEEDBACK_KINDS,
   FEEDBACK_MESSAGE_AUDIENCES,
@@ -116,6 +117,20 @@ export const feedback = pgTable(
      */
     verifyHeldAt: timestamp('verify_held_at', { withTimezone: true }),
     verifyHeldWhy: text('verify_held_why'),
+    /**
+     * A shipped agent-reported item's confirm waits (ISS-902): out of its master's owed line until
+     * `until`, or until `on` happens first (`confirmWaitMetAt`), for the reason a person reads on it.
+     * Set by the reporter or its master (`confirm-wait.ts`); cleared by the verify or reopen it waits for.
+     */
+    confirmWaitUntil: timestamp('confirm_wait_until', { withTimezone: true }),
+    confirmWaitOn: text('confirm_wait_on', { enum: FEEDBACK_CONFIRM_WAIT_ON }),
+    confirmWaitReason: text('confirm_wait_reason'),
+    confirmWaitSetAt: timestamp('confirm_wait_set_at', { withTimezone: true }),
+    confirmWaitSetBy: uuid('confirm_wait_set_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    /** When the event `confirmWaitOn` names happened, which ends the wait before its date. */
+    confirmWaitMetAt: timestamp('confirm_wait_met_at', { withTimezone: true }),
     status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
     route: text('route', { enum: FEEDBACK_ROUTES }),
     // an issue route's carriers are rows of `feedback_route_issues`, one or more (ISS-265)
@@ -186,6 +201,10 @@ export const feedback = pgTable(
     verifyHeldChk: check(
       'feedback_verify_held_chk',
       sql`(${t.verifyHeldAt} IS NULL) = (${t.verifyHeldWhy} IS NULL)`,
+    ),
+    confirmWaitChk: check(
+      'feedback_confirm_wait_chk',
+      sql`(${t.confirmWaitUntil} IS NULL) = (${t.confirmWaitReason} IS NULL) AND (${t.confirmWaitUntil} IS NULL) = (${t.confirmWaitSetAt} IS NULL) AND (${t.confirmWaitReason} IS NULL OR ${t.confirmWaitReason} ~ '[^[:space:]]') AND (${t.confirmWaitOn} IS NULL OR (${t.confirmWaitUntil} IS NOT NULL AND ${t.confirmWaitOn} IN (${inList(FEEDBACK_CONFIRM_WAIT_ON)}))) AND (${t.confirmWaitMetAt} IS NULL OR ${t.confirmWaitOn} IS NOT NULL)`,
     ),
     contractFk: foreignKey({
       name: 'feedback_contract_version_fk',

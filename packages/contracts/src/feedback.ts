@@ -266,7 +266,18 @@ export const FEEDBACK_LIMITS = {
 	/** The longest a snooze may run: past it the item is not parked, it is forgotten. */
 	snoozeDays: 365,
 	message: 4_000,
+	/** The longest a confirm wait may run (ISS-902): past it the item is not waiting, it is forgotten. */
+	confirmWaitDays: 30,
+	/** A confirm wait's reason: one line a person reads on the item, not an essay. */
+	confirmWaitReason: 500,
 } as const;
+
+/**
+ * What a confirm wait may wait on besides its date (ISS-902): `room_message`, a member's next message
+ * in a support room of the project the item was reported from, which Forge records as it arrives.
+ */
+export const FEEDBACK_CONFIRM_WAIT_ON = ["room_message"] as const;
+export type FeedbackConfirmWaitOn = (typeof FEEDBACK_CONFIRM_WAIT_ON)[number];
 
 /** Every refusal a feedback write answers with, by name. Who-may-act codes end `_FORBIDDEN`. */
 export const FEEDBACK_REFUSAL_CODES = [
@@ -303,6 +314,14 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_SNOOZE_PAST",
 	"FEEDBACK_SNOOZE_TOO_FAR",
 	"FEEDBACK_SNOOZE_REASON_REQUIRED",
+	/** A confirm wait says why the item waits; none is refused (ISS-902). */
+	"FEEDBACK_CONFIRM_WAIT_REASON_REQUIRED",
+	"FEEDBACK_CONFIRM_WAIT_PAST",
+	"FEEDBACK_CONFIRM_WAIT_TOO_FAR",
+	/** Only a shipped item an agent reported owes a confirm, so only one may wait on it. */
+	"FEEDBACK_CONFIRM_WAIT_NOT_OWED",
+	/** Only the agent that reported it, or the master of the project it reported from, sets its wait. */
+	"FEEDBACK_CONFIRM_WAIT_FORBIDDEN",
 	"FEEDBACK_MESSAGE_EMPTY",
 	"FEEDBACK_MESSAGE_NO_RECIPIENT",
 	"FEEDBACK_RELAY_NOT_TO_REPORTERS",
@@ -546,6 +565,31 @@ export const feedbackSnoozeRequestSchema = z.strictObject({
 	reason,
 });
 export const FEEDBACK_SNOOZE_SHAPE = "{ until: ISO 8601 date-time, reason }";
+
+/**
+ * `POST …/feedback/:fb/confirm-wait` and `POST /api/forge/feedback/:key/confirm-wait` (ISS-902): the
+ * confirm a shipped agent-reported item owes waits until `until`, or until `on` happens first, for
+ * `reason`. `reason` is optional here only so its absence is refused by name, never as a parse error.
+ */
+export const feedbackConfirmWaitRequestSchema = z.strictObject({
+	until: z.iso.datetime({ offset: true }),
+	on: z.enum(FEEDBACK_CONFIRM_WAIT_ON).optional(),
+	reason: z.string().max(FEEDBACK_LIMITS.confirmWaitReason).optional(),
+});
+export type FeedbackConfirmWaitRequest = z.infer<
+	typeof feedbackConfirmWaitRequestSchema
+>;
+export const FEEDBACK_CONFIRM_WAIT_SHAPE = `{ until: ISO 8601 date-time within ${FEEDBACK_LIMITS.confirmWaitDays} days, on?: ${FEEDBACK_CONFIRM_WAIT_ON.join(" | ")}, reason }`;
+
+/** A confirm wait still holding: until when, on what besides, why, and who set it when. */
+export interface FeedbackConfirmWaitView {
+	until: string;
+	on: FeedbackConfirmWaitOn | null;
+	/** Null where the item's words are withheld from the viewer. */
+	reason: string | null;
+	setAt: string;
+	setBy: string | null;
+}
 
 /** Who a message reaches: the item's own reporter, every reporter merged into it, or nobody (a note for members). */
 export const FEEDBACK_MESSAGE_AUDIENCES = [
@@ -946,6 +990,11 @@ export interface FeedbackShipEvidence {
 export interface FeedbackView extends FeedbackSummary {
 	/** Set once the item is verified. */
 	verified: FeedbackVerifiedView | null;
+	/**
+	 * While a shipped agent-reported item's confirm waits (ISS-902): why, and until when; null when none
+	 * holds. Optional only until the web fixtures ISS-903 rewrites carry it; core always sends it.
+	 */
+	confirmWait?: FeedbackConfirmWaitView | null;
 	/**
 	 * While it reads resolved and names a violated criterion: when the record is read on "is the
 	 * problem gone?" if nobody has answered, and the window that dates it. Null where no criterion is

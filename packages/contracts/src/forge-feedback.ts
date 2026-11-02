@@ -8,6 +8,7 @@ import {
 	FEEDBACK_KINDS,
 	FEEDBACK_LIMITS,
 	FEEDBACK_SEVERITIES,
+	type FeedbackConfirmWaitView,
 	type FeedbackKind,
 	type FeedbackOriginView,
 	type FeedbackPhase,
@@ -145,6 +146,8 @@ export interface ForgeFeedbackItem {
 	shipEvidence: FeedbackShipEvidence | null;
 	/** What its triage told the reporter, in the words the project's own read gives (REQ-47 BC-10). */
 	told: FeedbackToldView;
+	/** While its confirm waits on a date or an event (ISS-902): why and until when; null when none holds. */
+	confirmWait: FeedbackConfirmWaitView | null;
 }
 
 /**

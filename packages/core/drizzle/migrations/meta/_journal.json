@@ -3718,6 +3718,13 @@
       "when": 1833494400000,
       "tag": "0585_lift_question_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 586,
+      "version": "7",
+      "when": 1833580800000,
+      "tag": "0586_feedback_confirm_wait",
+      "breakpoints": true
     }
   ]
 }
