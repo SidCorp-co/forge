@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.432] - 2026-11-02
+
+Requirement coverage counts criteria a shipped issue earned at its landing
+
+### Fixed
+
+- **A requirement now counts what its shipped issues earned at their landing.** On a project that promotes work to production, coverage weighs issue verdicts at each landing, as the issue does, so proven criteria are not judged again.
+
 ## [0.4.0-dev.431] - 2026-11-02
 
 Chat groups drop the daily change cap; the verified owner sets channel rules
