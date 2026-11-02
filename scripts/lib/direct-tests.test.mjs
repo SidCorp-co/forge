@@ -19,15 +19,21 @@ import {
   runnerSelection,
   selectDirect,
   specifiersOf,
+  stripJsonComments,
+  tsPaths,
   whenPatternsOf,
 } from './direct-tests.mjs';
 
-const TSCONFIG = JSON.stringify({
+// a tsconfig as the repo writes one: a comment, a trailing comma, and an `include` glob whose `*/`
+// would close a comment opened by the `/*` inside `"@/*"` if strings were not read as strings
+const TSCONFIG = `{
   // comments and trailing commas are what a tsconfig holds
-  compilerOptions: {
-    paths: { '@forge/contracts/*': ['../contracts/src/*'], '@/*': ['./src/*'] },
+  "compilerOptions": {
+    "paths": { "@/*": ["./src/*"], "@forge/contracts/*": ["../contracts/src/*"], },
   },
-});
+  "include": ["**/*.ts", "**/*.tsx"],
+}
+`;
 
 const FILES = {
   'packages/core/tsconfig.json': TSCONFIG,
@@ -539,6 +545,34 @@ describe('no count of touched files and no share of the suite widens the selecti
         Object.entries(byCollection(selectDirect(set, tests))).map(([k, v]) => [k, [...v].sort()]),
       );
       expect([set, got]).toEqual([set, union]);
+    }
+  });
+});
+
+describe('a tsconfig is read as JSON with comments, and an unreadable one is refused by name', () => {
+  it('keeps a `/*` inside a string as text: `"@/*"` beside `"**/*.ts"` is no comment', () => {
+    const text = '{ "paths": { "@/*": ["./src/*"] }, "include": ["**/*.ts"] /* note */ }';
+    expect(JSON.parse(stripJsonComments(text))).toEqual({
+      paths: { '@/*': ['./src/*'] },
+      include: ['**/*.ts'],
+    });
+  });
+
+  it("reads the web package's `@/*` alias from a tsconfig shaped like the repo's", () => {
+    expect(tsPaths(root, 'packages/web-v2')).toContainEqual({
+      alias: '@/*',
+      target: 'packages/web-v2/src/*',
+    });
+  });
+
+  it('throws naming the file, never an empty alias list, when the tsconfig cannot be parsed', () => {
+    const bad = mkdtempSync(join(tmpdir(), 'direct-tests-bad-'));
+    mkdirSync(join(bad, 'packages/web-v2'), { recursive: true });
+    writeFileSync(join(bad, 'packages/web-v2/tsconfig.json'), '{ "compilerOptions": { "paths": ');
+    try {
+      expect(() => tsPaths(bad, 'packages/web-v2')).toThrow(/packages\/web-v2\/tsconfig\.json/);
+    } finally {
+      rmSync(bad, { recursive: true, force: true });
     }
   });
 });

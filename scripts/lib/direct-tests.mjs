@@ -211,16 +211,48 @@ export function declarationCovers(declared, path) {
   return declared.endsWith('/') ? path.startsWith(declared) : path === declared;
 }
 
-/** tsconfig `paths` of a package, read leniently: comments and trailing commas are allowed there. */
-function tsPaths(root, pkgDir) {
+/**
+ * JSONC without its comments: a `//` or `/*` inside a string is text, not a comment. A tsconfig's
+ * `"@/*"` beside `"**\/*.ts"` otherwise reads as one comment and swallows the `paths` block.
+ */
+export function stripJsonComments(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else if (ch === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+    } else if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const stop = end === -1 ? text.length : end + 2;
+      out += text.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop;
+    } else {
+      out += ch;
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/** tsconfig `paths` of a package: comments and trailing commas are allowed there. */
+export function tsPaths(root, pkgDir) {
   const file = join(root, pkgDir, 'tsconfig.json');
   if (!existsSync(file)) return [];
-  const text = stripComments(readFileSync(file, 'utf8')).replace(/,(\s*[}\]])/g, '$1');
+  const text = stripJsonComments(readFileSync(file, 'utf8')).replace(/,(\s*[}\]])/g, '$1');
   let paths;
   try {
     paths = JSON.parse(text).compilerOptions?.paths ?? {};
-  } catch {
-    return [];
+  } catch (err) {
+    // an unread alias drops every test importing through it from the selection, silently
+    throw new Error(
+      `${pkgDir}/tsconfig.json cannot be read for its paths, so no alias import can be resolved: ${err.message}`,
+    );
   }
   return Object.entries(paths).map(([alias, [target]]) => ({
     alias,
