@@ -2,7 +2,7 @@
 // open about it, the gaps the kernel can see, and whether the steward has checked it since its head
 // was agreed. The move into delivery is refused naming each open question and a missing check at
 // once (`move-gates.ts:REQUIREMENT_CHECKED_GUARD`); a gap refuses nothing: the steward reads it and
-// asks at most three questions about it, and those questions hold the move until answered.
+// asks the questions it needs about it, and those questions hold the move until answered.
 
 /** What the kernel can see is missing before delivery starts. */
 export const DELIVERY_GAP_KINDS = [
@@ -44,6 +44,3 @@ export interface RequirementDeliveryCheck {
 	/** Nothing of the check holds the move into delivery: no open question, and checked where owed. */
 	clear: boolean;
 }
-
-/** The most questions the steward keeps open about one item (BC-4). */
-export const STEWARD_OPEN_ASKS_MAX = 3;

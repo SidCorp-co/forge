@@ -3,7 +3,7 @@
  * about it, the gaps the kernel can see, and whether the steward has checked it since its head was
  * agreed. One read serves the move's guard, which refuses naming each open question and a missing
  * check at once (`REQUIREMENT_CHECKED_GUARD`), the requirement's read and the steward's check, which
- * turns the gaps into at most three questions about the requirement.
+ * turns the gaps into the questions it needs about the requirement.
  *
  * A gap is a fact, never a judgement: whether each criterion can be checked on the running product
  * is the steward's to judge, and it asks about what it finds.

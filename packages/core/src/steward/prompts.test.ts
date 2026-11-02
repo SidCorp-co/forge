@@ -5,8 +5,7 @@ import { actPrompt } from './prompts.js';
 const all = STEWARD_ACTS.map((act) => [act, actPrompt(act)] as const);
 
 // ISS-861 (owner, 2026-11-01): a steward act is told its goal and the doors it acts through, not a
-// script with a question count. How many questions stand open at once is the door's to refuse
-// (`STEWARD_ASK_LIMIT`, `FEEDBACK_CLARIFICATION_ALREADY_OPEN`), never a count the prompt restates.
+// script with a question count. No door refuses a question by count either (ISS-904).
 describe('a steward act is told a goal, not a script', () => {
   it.each(all)('%s carries no smallest-act rule and no question count', (_act, prompt) => {
     expect(prompt).toContain('Your goal is that the item moves again');
