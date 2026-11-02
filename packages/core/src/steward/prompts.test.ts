@@ -1,0 +1,26 @@
+import { STEWARD_ACTS } from '@forge/contracts/steward';
+import { describe, expect, it } from 'vitest';
+import { actPrompt } from './prompts.js';
+
+const all = STEWARD_ACTS.map((act) => [act, actPrompt(act)] as const);
+
+// ISS-861 (owner, 2026-11-01): a steward act is told its goal and the doors it acts through, not a
+// script with a question count. How many questions stand open at once is the door's to refuse
+// (`STEWARD_ASK_LIMIT`, `FEEDBACK_CLARIFICATION_ALREADY_OPEN`), never a count the prompt restates.
+describe('a steward act is told a goal, not a script', () => {
+  it.each(all)('%s carries no smallest-act rule and no question count', (_act, prompt) => {
+    expect(prompt).toContain('Your goal is that the item moves again');
+    expect(prompt).not.toContain('the smallest act');
+    expect(prompt).not.toMatch(/at most \d+ questions/);
+    expect(prompt).not.toContain('up to 3 candidates');
+    expect(prompt).not.toContain('one is open at a time per reporter');
+  });
+
+  it('keeps the limits the steward may not cross', () => {
+    const stuck = actPrompt('stuck_diagnosis');
+    expect(stuck).toContain('Never dispatch a run');
+    expect(stuck).toContain('drop, decline, merge or verify anything yourself');
+    expect(actPrompt('triage_draft')).toContain('Never decline an item');
+    expect(actPrompt('output_check')).toContain('You never move an issue back');
+  });
+});
