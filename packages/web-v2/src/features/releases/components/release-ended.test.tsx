@@ -105,3 +105,39 @@ describe("a re-cut moved above a version claimed since", () => {
     expect(screen.getAllByTestId("cut-rule")[1]).toHaveTextContent("0.4.0-dev.211 thấp hơn 0.4.0-dev.226"); // i18n-allow: Vietnamese text under test
   });
 });
+
+// ISS-761, catalog-api 0.4.0: a release that failed read "No reason" though its close recorded one.
+describe("a release its close failed", () => {
+  const FAILURE = { code: "release_record_incomplete", detail: "1 of the recorded issues would not close: ISS-12 (a refusal)", step: null };
+  const failed = (over: object = {}) => ({
+    version: "0.4.0",
+    runId: "run-1",
+    state: "failed",
+    cuts: [cut(1, "0.4.0", "failed", { failure: FAILURE, ...over })],
+  });
+
+  it("says what failed it, never that no reason was recorded", () => {
+    renderWithQuery(<EndedAttempt r={failed() as never} slug="catalog" />);
+    const ended = screen.getByTestId("release-ended");
+    expect(within(ended).getByTestId("release-ended-failure")).toHaveTextContent("ISS-12");
+    expect(ended).not.toHaveTextContent("No reason");
+  });
+
+  it("reads no reason only where nothing on the attempt says one", () => {
+    renderWithQuery(<EndedAttempt r={failed({ failure: null }) as never} slug="catalog" />);
+    expect(screen.getByTestId("release-ended")).toHaveTextContent("No reason");
+  });
+
+  it("names a person's repair on the attempt that shipped after all", () => {
+    const repaired = {
+      ...failed({
+        outcome: "shipped",
+        repair: { outcome: "shipped", by: { id: "u1", name: "Lan", kind: "human" }, at: "2026-11-02T00:00:00.000Z", reason: "It landed and served.", evidence: "!1023", was: { status: "failed", failureCode: FAILURE.code } },
+      }),
+      state: "shipped",
+    };
+    renderWithQuery(<ReleaseAttempts r={repaired as never} slug="catalog" />);
+    expect(screen.getByTestId("cut-repair")).toHaveTextContent("Shipped, recorded by Lan: It landed and served.");
+    expect(screen.getByTestId("cut-failure")).toHaveTextContent("ISS-12");
+  });
+});

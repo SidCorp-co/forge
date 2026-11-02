@@ -6,7 +6,7 @@
 // word, kept (owner rule `release-is-the-agents-record`).
 
 import type { ReleaseRepairView } from '@forge/contracts/releases';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { releaseRunsByVersion, stampReleaseShipped, writeRunMetadata } from '../pipeline/index.js';
@@ -113,7 +113,7 @@ export async function repairRelease(
         value: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('repair', ${JSON.stringify(record)}::jsonb)`,
         when: and(
           isNull(pipelineRuns.releaseReleasedAt),
-          eq(pipelineRuns.status, run.status),
+          sql`${pipelineRuns.status} = ${run.status}`,
           sql`${pipelineRuns.metadata} -> 'repair' IS NULL`,
         ),
         touch: true,
