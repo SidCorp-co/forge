@@ -252,7 +252,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:module field:query:party field:query:q field:query:search field:query:status
     field:query:step field:query:steps field:query:verb field:query:view field:query:error
     field:query:errorCode field:query:method field:query:path field:query:query field:query:release
-    field:query:window field:query:role`,
+    field:query:window field:query:role field:query:since field:query:until`,
   'a value core’s own middleware set once it admitted the caller, never the secret': words`
     var:agency var:agentUserId var:authUserResolution var:chatWriteAdmitted var:device
     var:deviceId var:onBehalfOf var:patDeviceId var:patRequestClass var:patRequestResolution
