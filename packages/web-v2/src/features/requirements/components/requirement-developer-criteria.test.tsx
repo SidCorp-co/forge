@@ -37,7 +37,7 @@ describe("the requirement's criteria, in the developer view", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } });
     client.setQueryData(["requirement", PROJECT, "REQ-1"], reqDetail);
     client.setQueryData(["suggestions", PROJECT, { requirement: "REQ-1" }], { suggestions: [readiness] });
-    renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab="criteria" onTab={() => {}} />, client);
+    renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab="overview" onTab={() => {}} />, client);
     const strip = await screen.findByTestId("criteria-developer");
     expect(strip).toHaveTextContent(`r${reqDetail.standing.shownRevision}`);
     expect(screen.queryByTestId("readiness")).toBeNull();

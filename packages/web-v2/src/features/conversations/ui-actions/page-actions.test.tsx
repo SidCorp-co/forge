@@ -297,15 +297,15 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
   it("switches a requirement page to the tab that shows the section, then marks it", async () => {
     function RequirementPage() {
       const tab = new URLSearchParams(useLocationSearch()).get("tab");
-      return tab === "criteria" ? <section data-testid="view-criteria">criteria</section> : <section data-testid="view-overview" />;
+      return tab === "activity" ? <section data-testid="view-activity">history</section> : <section data-testid="view-overview" />;
     }
     const p = page(<RequirementPage />, "/projects/demo/requirements/REQ-34");
     p.send(turn());
-    p.send(turn({ name: "ui_highlight", args: { target: { section: "criteria" } } }));
-    expect(window.location.search).toBe("?tab=criteria");
+    p.send(turn({ name: "ui_highlight", args: { target: { section: "history" } } }));
+    expect(window.location.search).toBe("?tab=activity");
     p.send(turn());
-    await waitFor(() => expect(screen.getByTestId("view-criteria")).toHaveAttribute("data-highlighted", "true"));
-    await waitFor(() => expect(snapshot()).toMatchObject({ item: { kind: "requirement", key: "REQ-34" }, highlight: { target: "section", section: "criteria" } }));
+    await waitFor(() => expect(screen.getByTestId("view-activity")).toHaveAttribute("data-highlighted", "true"));
+    await waitFor(() => expect(snapshot()).toMatchObject({ item: { kind: "requirement", key: "REQ-34" }, highlight: { target: "section", section: "history" } }));
   });
 
   // QA of dev.219: "open ISS-493 and highlight its plan" sent the key with the section, and was refused

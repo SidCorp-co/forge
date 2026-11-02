@@ -53,7 +53,7 @@ export const client = (d: RequirementDetail = reqDetail) => {
   return c;
 };
 
-export function page(tab: "overview" | "criteria" | "revisions" | "activity" | "mockups" | "memory", d: RequirementDetail = reqDetail) {
+export function page(tab: "overview" | "revisions" | "activity" | "mockups" | "memory", d: RequirementDetail = reqDetail) {
   renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab={tab} onTab={() => {}} />, client(d));
 }
 

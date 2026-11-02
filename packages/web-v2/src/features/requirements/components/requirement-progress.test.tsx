@@ -144,7 +144,7 @@ describe("the top of a requirement page", () => {
 describe("the verified count", () => {
   it("counts passing criteria only: stale, not judged, failing and gap are not verified", () => {
     core();
-    page("criteria", mixed);
+    page("overview", mixed);
     expect(within(screen.getByTestId("requirement-progress")).getByTestId("progress-verified")).toHaveTextContent(/^1\/5 verified$/);
     // said once: the criteria view does not count it again (REQ-43 BC-5)
     expect(screen.getAllByText(/verified/)).toHaveLength(1);
@@ -154,7 +154,7 @@ describe("the verified count", () => {
 describe("the criteria", () => {
   it("read as a checklist under verdict pills, a glyph dot leading each criterion", () => {
     core();
-    page("criteria");
+    page("overview");
     expect(screen.getByTestId("criteria-filter")).toBeInTheDocument();
     const rows = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-row");
     expect(rows.map((r) => [r.querySelector('[data-testid="verdict-dot"]') === r.firstElementChild?.firstElementChild, within(r).getByTestId("verdict-dot").textContent])).toEqual([
@@ -166,7 +166,7 @@ describe("the criteria", () => {
 
   it("mark each verdict with its own glyph named on it, never by colour alone, and count them only in the pills (REQ-43 BC-10)", async () => {
     core();
-    page("criteria", mixed);
+    page("overview", mixed);
     const rows = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-row");
     for (const r of rows) {
       const dot = within(r).getByTestId("verdict-dot");
@@ -186,7 +186,7 @@ describe("the criteria", () => {
 describe("the strip's words", () => {
   it("are the lifecycle's steps and the verdicts' own words, and nothing else", () => {
     core();
-    page("criteria", mixed);
+    page("overview", mixed);
     const strip = screen.getByTestId("requirement-progress");
     expect(strayInStrip(strip, mixed.standing)).toBeNull();
     const steps = [...within(strip).getByTestId("step-bar").querySelectorAll("ol > li")].map((li) => li.getAttribute("aria-label"));

@@ -1,8 +1,9 @@
-
-// A requirement's Overview tab: its summary, its checklists' answers and gaps (REQ-34 r2 BC-5, BC-26),
-// what is still unclear, what it assumes, whom it serves and its scope, and the suggestions waiting on
-// it. Its value check is for everyone who reads it (REQ-65). The revision each is read from, where an
-// answer came from and the intake assistant's draft are agent text, drawn in the developer view (REQ-43 BC-7).
+// A requirement's Overview tab, read top down under its picture (REQ-65 BC-7, ISS-691): Problem,
+// Value and Measured by as short properties, then the criteria as short rows, then its summary where
+// it has one, its value check (REQ-65), its checklists' answers and gaps (REQ-34 r2 BC-5, BC-26), what
+// is still unclear, what it assumes, whom it serves and its scope, and the suggestions waiting on it.
+// The revision each is read from, where an answer came from and the intake assistant's draft are agent
+// text, drawn in the developer view (REQ-43 BC-7).
 
 import { FieldLabel, ViewHeading } from "@/design";
 import { RequirementChecklists } from "@/features/checklists";
@@ -13,6 +14,8 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { Written } from "@/lib/i18n/written";
 import type { RequirementDetail, RequirementRevision } from "../types";
+import { RequirementCriteria } from "./requirement-criteria";
+import { RequirementGoal } from "./requirement-goal";
 import { Assumptions, OpenQuestions } from "./requirement-unclear";
 
 function Bullets({ items }: { items: string[] }) {
@@ -51,24 +54,26 @@ export function RequirementOverview({
   const t = useCopy();
   const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
   const spec = shown?.spec ?? {};
-  const summary = requirementSummary(d)?.text;
-  const goalBeyond = shown?.tldr && spec.goal && spec.goal !== shown.tldr ? spec.goal : null;
   const sug = useWaitingSuggestions(projectId, { requirement: d.key });
   const waiting = d.canSignOff && (sug.data?.suggestions.length ?? 0) > 0;
   return (
     <div className="grid gap-8" data-testid="view-overview">
-      <section>
-        <ViewHeading right={developer && shown ? <span className="text-12 text-subtle">{t("requirements.overview.fromR", { r: shown.revision })}</span> : undefined}>
-          {t("requirements.overview.summary")}
-        </ViewHeading>
-        {summary ? <Written className="block max-w-2xl text-14 leading-relaxed text-fg" text={summary} lang={shown?.writtenLang} /> : <p className="text-13 text-subtle">{t("requirements.overview.noSummary")}</p>}
-        {goalBeyond ? (
-          <details className="mt-2 max-w-xl">
+      <div className="grid gap-2">
+        <RequirementGoal d={d} developer={developer} />
+        {spec.goal ? (
+          <details className="max-w-xl" data-testid="goal-full">
             <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("requirements.overview.fullGoal")}</summary>
-            <p className="mt-1.5 text-14 leading-relaxed">{goalBeyond}</p>
+            <Written className="mt-1.5 block whitespace-pre-line text-14 leading-relaxed" text={spec.goal} lang={shown?.writtenLang} />
           </details>
         ) : null}
-      </section>
+      </div>
+      <RequirementCriteria d={d} projectId={projectId} slug={slug} developer={developer} />
+      {shown?.tldr ? (
+        <section>
+          <ViewHeading>{t("requirements.overview.summary")}</ViewHeading>
+          <Written className="block max-w-2xl text-14 leading-relaxed text-fg" text={shown.tldr} lang={shown.writtenLang} />
+        </section>
+      ) : null}
       <ValueCheck projectId={projectId} slug={slug} itemKey={d.key} />
       <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} developer={developer} />
       <OpenQuestions questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />

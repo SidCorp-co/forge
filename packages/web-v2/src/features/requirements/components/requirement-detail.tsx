@@ -2,11 +2,11 @@
 // A requirement's full page: a main column for reading and acting, beside a sticky rail of the
 // at-a-glance facts. The column opens on one strip (whose turn, where it stands on the lifecycle and
 // what is next, k/n verified), then the requirement's picture above any text (REQ-35 BC-1,
-// `requirement-picture.tsx`), then its views by tabs (Overview with what is still unclear in
-// `requirement-overview.tsx`, Criteria, Revisions, Mockups, Activity, and Memory in the developer
-// view). Revisions holds the open one and the act that proposes the next; the revisions that stood
-// before and the decisions taken are past items, read folded under Activity (REQ-35 BC-7, REQ-43
-// BC-8). Each fact and each act appears once: Accept / Reject only beside the diff; a count is said
+// `requirement-picture.tsx`), then its views by tabs: the Overview reads Problem, Value and Measured
+// by, then the criteria as short rows, then what is still unclear (REQ-65 BC-7, ISS-691,
+// `requirement-overview.tsx`); then Revisions, Mockups, Activity, and Memory in the developer view.
+// Revisions holds the open one and the act that proposes the next; the revisions that stood before
+// and the decisions taken are past items, read folded under Activity (REQ-35 BC-7, REQ-43 BC-8). Each fact and each act appears once: Accept / Reject only beside the diff; a count is said
 // once, so no tab counts what its view counts (BC-5). A person's view leaves the agent text out —
 // criterion codes, revision numbers, the assistant's draft, agent memory — and `?view=developer`
 // draws it (BC-7). Everything derived (whose turn, coverage, history) comes from core's read model.
@@ -37,9 +37,8 @@ import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
-import { CriteriaTrace } from "./criteria-trace";
 import { RequirementProperties } from "./requirement-facts";
-import { CriteriaChanges, CriteriaChecklist, RevisionDiff } from "./requirement-proof";
+import { CriteriaChanges, RevisionDiff } from "./requirement-proof";
 import { RequirementActivity } from "./requirement-activity";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { RequirementOverview } from "./requirement-overview";
@@ -47,32 +46,11 @@ import { RequirementPicture } from "./requirement-picture";
 import { DraftRevisionEditor, NewRevision } from "./revision-editor";
 import { RequirementStandingHead } from "./standing-bits";
 
-const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "activity", "memory"] as const;
+const REQUIREMENT_TABS = ["overview", "revisions", "mockups", "activity", "memory"] as const;
 type RequirementTab = (typeof REQUIREMENT_TABS)[number];
 
 /** The open view rides `?tab=`, written without a navigation, so back from an issue lands on it. */
 export const useRequirementTab = () => useUrlTab(REQUIREMENT_TABS);
-
-/**
- * The criteria as a checklist under their verdict pills. "k/n verified" is the strip's, above the tabs,
- * so the view does not say it again; the developer view adds the revision the wording is read at. Under it, while the requirement is not done, the steps of each
- * linked design that serve each criterion, traced by hand.
- */
-function Criteria({ d, projectId, slug, developer }: { d: RequirementDetail; projectId: string; slug: string; developer: boolean }) {
-  const t = useCopy();
-  return (
-    <section data-testid="view-criteria">
-      <ViewHeading>{t("requirements.criteria.heading")}</ViewHeading>
-      {developer ? (
-        <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-13 text-muted" data-testid="criteria-developer">
-          {d.standing.shownRevision !== null ? <span>{t("requirements.criteria.wordingOf", { r: d.standing.shownRevision })}</span> : null}
-        </div>
-      ) : null}
-      <CriteriaChecklist d={d} slug={slug} developer={developer} />
-      {d.standing.attentionGroup !== "done" ? <CriteriaTrace projectId={projectId} d={d} /> : null}
-    </section>
-  );
-}
 
 function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId: string; open: RequirementRevision }) {
   const t = useCopy();
@@ -178,7 +156,6 @@ export function RequirementPage({
         const s = d.standing;
         const tabs = [
           { value: "overview" as const, label: t("requirements.tab.overview"), count: d.unclear || undefined },
-          { value: "criteria" as const, label: t("requirements.tab.criteria") },
           { value: "revisions" as const, label: t("requirements.tab.revisions") },
           { value: "mockups" as const, label: t("requirements.tab.mockups"), count: mockups.data?.returned },
           { value: "activity" as const, label: t("requirements.tab.activity") },
@@ -205,7 +182,6 @@ export function RequirementPage({
             <DetailTabs tabs={tabs} value={shownTab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === shownTab)?.label ?? t("requirements.tab.overview")}>
               {shownTab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} onRevise={() => onTab("revisions")} developer={developer} /> : null}
-              {shownTab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} developer={developer} /> : null}
               {shownTab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
               {shownTab === "mockups" ? <MockupList projectId={projectId} slug={slug} target={mockupTarget} hostViewer={false} /> : null}
               {shownTab === "memory" ? <RequirementMemory projectId={projectId} slug={slug} reqKey={d.key} /> : null}

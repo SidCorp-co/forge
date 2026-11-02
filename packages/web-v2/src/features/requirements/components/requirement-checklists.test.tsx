@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 const PROJECT = "7f1c1d1e-0000-4000-8000-000000000001";
-const READY_GIVEN = { problem: "Clinics lose the filter.", value: "They find a patient at once.", measured: "Fewer searches.", criteria: "1 criterion: BC-1", questions: "None open." };
+const READY_GIVEN = { problem: "Clinics lose the filter.", value: "They find a patient at once.", measured: "Fewer searches.", criteria: "1 criterion: BC-1", questions: "None open.", traced: "Each criterion traces its steps: BC-1." };
 /** The page in a view: where an answer came from is agent text, drawn in the developer view (REQ-43 BC-7). */
 function requirementPage(reads: ChecklistRead[], revision: number | null, onTab = vi.fn(), view: "person" | "developer" = "developer") {
   window.history.replaceState(null, "", view === "developer" ? "/?view=developer" : "/");

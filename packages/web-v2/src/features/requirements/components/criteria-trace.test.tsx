@@ -33,7 +33,7 @@ function show(detail: RequirementDetail) {
     if (c.path === `/projects/${PROJECT}/workflows`) return { body: { workflows: [{ document: { id: "w1", flow: "thanh-toan", title: "Thanh toan", steps } }], returned: 1 } };
     return HANG;
   });
-  renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab="criteria" onTab={() => {}} />, client(detail));
+  renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab="overview" onTab={() => {}} />, client(detail));
   return calls;
 }
 

@@ -22,7 +22,7 @@ const HIGHLIGHT_ANCHORS: { [K in UiPageItemKind]?: Partial<Record<UiHighlightSec
   requirement: {
     waiting: anchor(null, '[data-testid="requirement-progress"] [data-testid="wait-banner"]', '[data-testid="requirement-progress"]'),
     question: anchor("overview", '[data-testid="requirement-unclear"]'),
-    criteria: anchor("criteria", '[data-testid="view-criteria"]'),
+    criteria: anchor("overview", '[data-testid="view-criteria"]'),
     picture: anchor(null, '[data-testid="requirement-picture"]'),
     delivery: anchor(null, '[data-testid="requirement-progress"]'),
     history: anchor("activity", '[data-testid="view-activity"]'),

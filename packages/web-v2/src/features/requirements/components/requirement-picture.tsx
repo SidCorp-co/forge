@@ -1,10 +1,10 @@
 
 // A requirement's picture, the first thing its page shows under the progress strip and above every
 // text view (REQ-35 BC-1; Requirement lifecycle r14 steps picture, picture_none, picture_shown;
-// Requirement to delivery r15 `req-head`). The kind chooses it (BC-2): a process its linked
-// workflow with the steps and links its criteria trace lit and the rest dimmed (BC-3), or its rough
-// flow where it links none; a rule its example table (BC-4); a screen its wireframe, drawn inline;
-// a report its sample chart. Each is labelled a rough sketch (BC-11) and named for a screen reader
+// Requirement to delivery r15 `req-head`). Any kind linking a workflow shows it first, with the steps
+// and links its criteria trace lit and the rest dimmed (BC-3; REQ-65 BC-7, ISS-691). The kind chooses
+// the rest (BC-2): a process's linked workflow is its picture, or its rough flow where it links none;
+// a rule its example table (BC-4); a screen its wireframe, drawn inline; a report its sample chart. Each is labelled a rough sketch (BC-11) and named for a screen reader
 // by its text alternative (BC-12). No picture is an empty slot that nothing waits on (BC-14). A
 // person holding project.write sets the kind (`requirement-kind-field.tsx`) and draws or replaces the
 // picture here (BC-10); a linked process's picture is its workflow, so nothing is drawn for it. A
@@ -100,7 +100,10 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
   const kind = rev?.kind ?? null;
   const picture = rev?.picture ?? null;
   const wanted = kind ? PICTURE_KIND_OF[kind] : null;
-  const linked = kind === "process" && traced.length > 0;
+  // any kind linking a design shows it with the steps its criteria touch lit (ISS-691); a process's
+  // linked design is its picture, and every other kind keeps its own beneath it
+  const linked = traced.length > 0;
+  const own = !(linked && kind === "process");
   const save = useWriteRequirementPicture(projectId, d.key);
   const kindRefused = namedRefusals(save.error).find((r) => r.path === "/kind")?.detail;
   const endRef = useRef<HTMLSpanElement>(null);
@@ -109,10 +112,11 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
     save.reset();
   };
 
-  let body: ReactNode;
-  if (linked) body = <WorkflowPicture projectId={projectId} slug={slug} traced={traced} />;
-  else if (picture) body = <StoredPicture p={picture} projectId={projectId} reqKey={d.key} slug={slug} canWrite={writer} />;
-  else {
+  // the kind's own slot: its picture, else an empty slot naming it; with no kind named, a linked
+  // workflow already stands for the picture and no empty slot is added beneath it
+  let body: ReactNode = null;
+  if (own && picture) body = <StoredPicture p={picture} projectId={projectId} reqKey={d.key} slug={slug} canWrite={writer} />;
+  else if (own && (wanted || !linked)) {
     body = (
       <p className="max-w-2xl border border-dashed border-line-strong px-4 py-6 text-13 text-muted" data-testid="picture-empty">
         {wanted ? t("requirements.picture.empty", { picture: t(`requirements.picture.of.${wanted}`) }) : t("requirements.picture.noKind")}
@@ -130,7 +134,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
         {writer && rev ? (
           <KindField projectId={projectId} reqKey={d.key} revision={rev.revision} kind={kind} picture={picture} held={editing} refused={kindRefused} />
         ) : null}
-        {writer && rev && wanted && !linked && !editing ? (
+        {writer && rev && wanted && own && !editing ? (
           <Button type="button" size="sm" variant="secondary" onClick={() => setEditing(true)}>
             {t(picture ? "requirements.picture.edit.replace" : "requirements.picture.edit.draw", { picture: t(`requirements.picture.of.${wanted}`) })}
           </Button>
@@ -146,9 +150,12 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
       >
         {t("requirements.picture.skip")}
       </a>
-      {body}
+      <div className="grid gap-4">
+        {linked ? <WorkflowPicture projectId={projectId} slug={slug} traced={traced} /> : null}
+        {body}
+      </div>
       <span ref={endRef} id={`${headingId}-end`} tabIndex={-1} className="outline-none" data-testid="picture-end" />
-      {editing && rev && wanted && !linked ? <PictureEditor key={`${rev.revision}:${wanted}`} revision={rev.revision} kind={wanted} picture={picture} save={save} onDone={close} /> : null}
+      {editing && rev && wanted && own ? <PictureEditor key={`${rev.revision}:${wanted}`} revision={rev.revision} kind={wanted} picture={picture} save={save} onDone={close} /> : null}
       {kind === null || kind === "screen" ? (
         <div className="mt-3 max-w-2xl">
           <OpenRoom projectId={projectId} slug={slug} about={d.key} canWrite={writer} />
