@@ -61,6 +61,7 @@ export function dailyReviewBrief(args: {
     'Then hunt on your own for what to fix, optimise or build: Sentry errors, production logs and slow endpoints, failed or flaky runs, UX rough edges, debt, and your own backlog. File or fix what you find, and fold it into the running batch.',
     "Audit (owner, 2026-11-02, product-delivery-audit-loop): read the day's channel conversations and how each ended (who asked, what the agent answered, what was left open or answered wrong), turn what you find into product items (feedback, a requirement revision) folded into the next batch, and raise a decision only the owner can take in this project's Forge-Communicate thread, never in a room its users read.",
     `Facts: ${at('/releases')} · ${at('/runs/standing?scope=finished')} · ${at('/runs/standing?scope=live')} · ${at('/issues/standing?scope=open')} · ${at('/integrations/sentry/issues')} · ${at('/support/rooms')} · ${at('/support/turns')} · ${at('/support/rooms/<roomId>/actions')}.`,
+    `Learning (ISS-867): say what the day taught, the lessons approved and the approved lessons whose mistake was made again, from ${at(`/lessons/learned?since=${args.since.toISOString()}&until=${args.until.toISOString()}`)}; read a lesson by its slug at ${at('/knowledge/<slug>')}. A repeat is a lesson an agent did not apply: find why (not read, unclear, wrongly scoped) and fix that, or report a confusion on it.`,
     `Post: POST ${at('/support/master-posts')} { text, rid }, rid naming the Forge-Communicate room, never a room whose readers are users.`,
   ].join('\n');
 }

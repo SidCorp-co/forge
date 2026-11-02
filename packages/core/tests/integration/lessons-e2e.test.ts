@@ -11,6 +11,7 @@
 // @direct-test-of packages/core/src/knowledge/search.ts
 // @direct-test-of packages/core/src/knowledge/service.ts
 // @direct-test-of packages/core/src/lessons/routes.ts
+// @direct-test-of packages/core/src/lessons/learned.ts
 // @direct-test-of packages/core/src/knowledge/lesson-entries.ts
 // @direct-test-of packages/core/src/steward/lessons-pass.ts
 // @direct-test-of packages/core/src/steward/lessons-review.ts
@@ -362,5 +363,49 @@ describe('an output lists the lessons it applied, and an agent marks one wrongly
     expect(
       codes(await say('member', 'POST', at(`/lessons/${n}/confusions`), wrong('ISS-7'))),
     ).toEqual(['LESSON_APPLICATION_MARKED']);
+  });
+});
+
+describe('the daily review reads what a day taught, by slug (ISS-867)', () => {
+  const learned = (since: Date, until: Date) =>
+    say(
+      'member',
+      'GET',
+      at(`/lessons/learned?since=${since.toISOString()}&until=${until.toISOString()}`),
+    );
+
+  it('lists the lessons approved in the window and the approved ones whose mistake was made again', async () => {
+    const since = new Date(Date.now() - 1000);
+    const n = await approved('Name the bed on every transfer.');
+    const again = await correction('The transfer named no bed again.');
+    await pass({ links: [{ correction: again, lesson: n }] });
+    const got = ok(await learned(since, new Date(Date.now() + 60_000)));
+    expect(got.learned).toContainEqual(
+      expect.objectContaining({ key: `L-${n}`, slug: `lesson-${n}` }),
+    );
+    // the two corrections it was learned from were said before its approval: only the third repeats
+    expect(got.repeats).toContainEqual({
+      key: `L-${n}`,
+      slug: `lesson-${n}`,
+      count: 1,
+      items: [expect.any(String)],
+    });
+    expect(JSON.stringify(got)).not.toContain('Name the bed');
+    // a window that closed before it was approved holds neither
+    const before = ok(await learned(new Date(since.getTime() - 3_600_000), since));
+    expect((before.learned as Doc[]).map((l) => l.key)).not.toContain(`L-${n}`);
+    expect((before.repeats as Doc[]).map((l) => l.key)).not.toContain(`L-${n}`);
+  });
+
+  it('refuses by name a window that is not one', async () => {
+    const now = new Date();
+    expect(codes(await learned(now, now))).toEqual(['LESSON_WINDOW_INVALID']);
+    expect(codes(await learned(new Date(now.getTime() - 40 * 86_400_000), now))).toEqual([
+      'LESSON_WINDOW_INVALID',
+    ]);
+    const half = await say('member', 'GET', at(`/lessons/learned?since=${now.toISOString()}`));
+    expect(codes(half)).toEqual(['LESSON_WINDOW_INVALID']);
+    // thirty-one days is the edge, and holds
+    ok(await learned(new Date(now.getTime() - 31 * 86_400_000), now));
   });
 });

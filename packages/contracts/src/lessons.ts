@@ -128,6 +128,7 @@ export const LESSON_REFUSAL_CODES = [
 	"LESSON_CONFUSION_INVALID",
 	"LESSON_CONFUSION_DECIDED",
 	"LESSON_APPLICATION_MARKED",
+	"LESSON_WINDOW_INVALID",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type LessonRefusalCode = (typeof LESSON_REFUSAL_CODES)[number];
@@ -209,4 +210,31 @@ export interface LessonEventPayloads {
 		assistantMessageId: string;
 		personMessageId: string;
 	};
+}
+
+/**
+ * `GET …/lessons/learned?since=&until=` (ISS-867): what a window taught, for the daily review to point
+ * at. `learned` is each lesson approved in it; `repeats` is each approved lesson whose mistake was
+ * made again, a correction said after its approval and linked to it in the window. Slugs and keys,
+ * never sentences: an agent reads a sentence from knowledge by its slug.
+ */
+export const lessonsLearnedQuerySchema = z.strictObject({
+	since: z.iso.datetime({ offset: true }),
+	until: z.iso.datetime({ offset: true }),
+});
+export const LESSONS_LEARNED_SHAPE =
+	"?since=<ISO datetime>&until=<ISO datetime>, since before until, at most 31 days apart";
+export const LESSONS_LEARNED_MAX_DAYS = 31;
+
+export interface LessonsLearnedView {
+	since: string;
+	until: string;
+	learned: Array<{ key: string; slug: string; approvedAt: string }>;
+	repeats: Array<{
+		key: string;
+		slug: string;
+		count: number;
+		/** The items the repeated mistake was made on, by key (`ISS-12`, `FB-3`). */
+		items: string[];
+	}>;
 }

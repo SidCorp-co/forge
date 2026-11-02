@@ -36,4 +36,15 @@ describe('the daily review brief', () => {
     );
     expect(brief).not.toMatch(/rid\?/);
   });
+
+  // ISS-867: the review says what the day taught, by pointing at where it is read, never the lessons
+  it('points at the day’s new lessons and repeats, never carrying a lesson itself', () => {
+    expect(brief).toContain(
+      '/api/projects/p-1/lessons/learned?since=2026-11-01T01:00:00.000Z&until=2026-11-02T01:00:00.000Z',
+    );
+    expect(brief).toMatch(/lessons approved and the approved lessons whose mistake was made again/);
+    expect(brief).toContain('/api/projects/p-1/knowledge/<slug>');
+    // the audit line stands beside it
+    expect(brief).toMatch(/Audit \(owner, 2026-11-02/);
+  });
 });
