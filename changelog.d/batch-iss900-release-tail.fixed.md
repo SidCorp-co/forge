@@ -1,1 +1,1 @@
-**A release recorded by version now shows its clips and pictures.** Its page names the release each pass was judged on, and a promotion project's requirement asks for a judgement on the live release where that counts.
+**Release pages tell the whole truth.** A version-recorded release shows its media and any fail judged on it, a repaired release closes its own issues, and a promotion project is asked to judge on its live release.
