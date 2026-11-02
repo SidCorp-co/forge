@@ -142,7 +142,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:param:workflow field:param:workflowId field:param:roomId
     field:query:assignee field:query:assigneeId field:query:connectionId field:query:createdBy
     field:query:deviceId field:query:installation_id field:query:integrationId field:query:issue
-    field:query:issueId field:query:memoryId field:query:orgId field:query:rid
+    field:query:issueId field:query:memoryId field:query:orgId field:query:rid field:query:project
     field:query:pipelineRunId field:query:projectId field:query:requirement
     field:query:resourceUuid field:query:rootIssueId field:query:runId field:query:sessionId
     field:query:sourceRef field:query:feedback field:query:workflow field:query:ref field:query:actor
