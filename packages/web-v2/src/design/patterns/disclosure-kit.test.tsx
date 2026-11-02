@@ -213,6 +213,23 @@ describe("CountSection", () => {
     expect(document.querySelector("[data-count-section=empty]")).toHaveTextContent("Files0");
     expect(screen.queryByText("never drawn")).toBeNull();
   });
+
+  it("carries one number, what is open, never the total beside it, and opens on settled rows at zero", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <CountSection label="Still unclear" count={2} unit="open" holds={3}>
+        <p>three questions</p>
+      </CountSection>,
+    );
+    expect(screen.getByRole("button", { name: /Still unclear/ })).toHaveTextContent(/^Still unclear2 open$/);
+    rerender(
+      <CountSection label="Still unclear" count={0} unit="open" holds={1}>
+        <p>one answered</p>
+      </CountSection>,
+    );
+    await user.click(screen.getByRole("button", { name: /Still unclear0 open/ }));
+    expect(screen.getByText("one answered")).toBeInTheDocument();
+  });
 });
 
 function Screen({ acts }: { acts: string[] }) {

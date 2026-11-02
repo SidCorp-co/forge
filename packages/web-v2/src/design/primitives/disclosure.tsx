@@ -19,9 +19,11 @@ interface DisclosureProps {
   testId?: string;
   /** The `data-highlight` the chat's ui.highlight finds this fold by. */
   highlight?: string;
+  /** The word the count is of ("open"), read with it: "2 open". */
+  countUnit?: string;
 }
 
-export function Disclosure({ title, count, summary, children, defaultOpen = false, open, onOpenChange, testId, highlight }: DisclosureProps) {
+export function Disclosure({ title, count, countUnit, summary, children, defaultOpen = false, open, onOpenChange, testId, highlight }: DisclosureProps) {
   return (
     <Collapsible
       defaultOpen={defaultOpen}
@@ -36,7 +38,7 @@ export function Disclosure({ title, count, summary, children, defaultOpen = fals
         <Icon name="chevronRight" size={16} className="flex-none text-subtle transition-transform duration-150 group-data-[panel-open]/trigger:rotate-90" />
         <span className="flex-none text-14 font-medium text-fg">
           {title}
-          {count !== undefined ? <span className="ml-1.5 text-12 font-medium text-muted">{count}</span> : null}
+          {count !== undefined ? <span className="ml-1.5 text-12 font-medium text-muted">{countUnit ? `${count} ${countUnit}` : count}</span> : null}
         </span>
         {/* width 0, then grown: a one-line summary is cut to the row, never widens the page it sits in */}
         {summary ? <span className="w-0 min-w-0 flex-1 truncate text-13 text-muted">{summary}</span> : null}

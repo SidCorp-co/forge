@@ -81,8 +81,9 @@ function OpenQuestion({ q, projectId, reqKey, slug }: { q: RequirementQuestionVi
 }
 
 /**
- * "Still unclear": one line shut — how many questions stand, how many are open and how many block the
- * agree — and the questions with their answer boxes opened on demand (ISS-903). Open ones first.
+ * "Still unclear": one line shut — one number, how many are open, and how many of those block the agree
+ * as its qualifier — and the questions with their answer boxes opened on demand, the answered ones
+ * only there (ISS-903). Open ones first.
  */
 export function OpenQuestions({
   questions,
@@ -99,10 +100,10 @@ export function OpenQuestions({
 }) {
   const t = useCopy();
   const blocking = questions.filter((q) => q.status === "open" && q.blocking).length;
-  const note = [unclear > 0 ? t("requirements.unclear.count", { n: unclear }) : null, blocking > 0 ? t("requirements.unclear.blocksN", { n: blocking }) : null].filter(Boolean).join(" · ");
+  const note = blocking > 0 ? `· ${t("requirements.unclear.blocksN", { n: blocking })}` : undefined;
   return (
     <section data-testid="requirement-unclear">
-      <CountSection label={t("requirements.unclear.heading")} count={questions.length} note={note || undefined} testId="unclear-fold">
+      <CountSection label={t("requirements.unclear.heading")} count={unclear} unit={t("requirements.unclear.open")} holds={questions.length} note={note} testId="unclear-fold">
         <ul className="grid">
           {questions.map((q) => (
             <OpenQuestion key={q.id} q={q} projectId={projectId} reqKey={reqKey} slug={slug} />

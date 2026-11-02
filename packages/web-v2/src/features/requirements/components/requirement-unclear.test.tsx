@@ -33,12 +33,23 @@ const refusal = (code: string, detail: string) => ({
 });
 
 describe("what a requirement still leaves unclear", () => {
-  it("is one line shut, saying how many stand, how many are open and how many block the agree (ISS-903)", () => {
-    renderWithQuery(<OpenQuestions questions={[question({}), question({ id: "q2", blocking: false })]} unclear={2} projectId="p1" reqKey="REQ-14" slug="hop" />);
+  it("is one line shut with one number, the open count, and what blocks the agree its qualifier (ISS-903)", () => {
+    const answered = question({ id: "q3", status: "answered", blocking: false, answer: { text: "Yes", at: "2026-10-07T11:00:00Z", by: "Dana" } });
+    renderWithQuery(<OpenQuestions questions={[question({}), question({ id: "q2", blocking: false }), answered]} unclear={2} projectId="p1" reqKey="REQ-14" slug="hop" />);
     const fold = within(screen.getByTestId("requirement-unclear")).getByRole("button");
-    expect(fold).toHaveTextContent(/^Still unclear22 open · 1 blocks the agree$/);
+    expect(fold).toHaveTextContent(/^Still unclear2 open· 1 blocks the agree$/);
+    expect(fold.textContent).not.toContain("3");
     expect(fold).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryAllByTestId("unclear-question")).toHaveLength(0);
+  });
+
+  it("opens on its answered questions where none is open, its number the zero open", () => {
+    const answered = question({ status: "answered", blocking: false, answer: { text: "Yes", at: "2026-10-07T11:00:00Z", by: "Dana" } });
+    renderWithQuery(<OpenQuestions questions={[answered]} unclear={0} projectId="p1" reqKey="REQ-14" slug="hop" />);
+    const fold = within(screen.getByTestId("requirement-unclear")).getByRole("button");
+    expect(fold).toHaveTextContent(/^Still unclear0 open$/);
+    fireEvent.click(fold);
+    expect(screen.getAllByTestId("unclear-question")).toHaveLength(1);
   });
 
   it("counts the open questions, flags the one the agree waits for, and says who answers and where it was asked", () => {
