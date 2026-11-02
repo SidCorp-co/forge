@@ -28,6 +28,11 @@ import { refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.
  * @direct-test-of packages/core/src/support/search.ts
  * @direct-test-of packages/core/src/support/project-read.ts
  * @direct-test-of packages/core/src/integrations/rocketchat/support-binding.ts
+ * @direct-test-of packages/core/src/integrations/rocketchat/room-handlers.ts
+ * @direct-test-of packages/core/src/support/read.ts
+ * @direct-test-of packages/core/src/support/result.ts
+ * @direct-test-of packages/core/src/support/owner-ask-targets.ts
+ * @direct-test-of packages/core/src/agent-sessions/chat-checkout.ts
  */
 
 // ISS-874, for every channel agent rather than one bot. The trial (test group 6ae81413, 2026-11-02):

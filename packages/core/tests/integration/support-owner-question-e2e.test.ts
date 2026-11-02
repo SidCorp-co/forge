@@ -115,7 +115,9 @@ describe("ISS-871: a master's question asked of the owner through the channel", 
       },
     );
     expect(code(outs.unknown)).toBe('SUPPORT_OWNER_QUESTION_UNKNOWN');
-    expect(JSON.stringify(outs.unknown)).toContain('names no question of the projects this agent follows');
+    expect(JSON.stringify(outs.unknown)).toContain(
+      'names no question of the projects this agent follows',
+    );
     expect(code(outs.answered)).toBe('SUPPORT_OWNER_QUESTION_UNKNOWN');
     expect(JSON.stringify(outs.answered)).toContain('is answered, and only an open one');
     expect(outs.shape?.isError, JSON.stringify(outs.shape)).toBe(true);
