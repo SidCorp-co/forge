@@ -114,6 +114,7 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
   });
 
   it('diagnoses with a granted tool, posts only its answer in the thread, records the check, and never prints the credential (BC-12, BC-15, BC-17)', async () => {
+    const echoed: Record<string, unknown>[] = [];
     w.box.model = async (turn, act) => {
       for (const m of turn.messages) {
         if (m.from === 'forge') continue;
@@ -123,11 +124,20 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
           tool: 'order_status',
           args: { orderId: '4321' },
         });
-        // the session echoes everything the API said, a careless model would
+        // the session echoes everything the API said, a careless model would: the echo names the
+        // API's credential field, and a room the product's users read takes no credential word
+        // (ISS-872), so it is refused and the session says it in plain words
+        echoed.push(
+          await act({
+            action: 'reply',
+            thread: m.thread,
+            text: `The order says: ${JSON.stringify(checked)}`,
+          }),
+        );
         await act({
           action: 'reply',
           thread: m.thread,
-          text: `The order says: ${JSON.stringify(checked)}`,
+          text: 'Your order 4321 is payment_pending, and its invoice was not sent yet.',
         });
       }
     };
@@ -137,6 +147,8 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
     // REQ-75 r8 BC-12, BC-15: the answer is the only post; a check is no progress line in the room
     expect(thread).toHaveLength(1);
     expect(thread[0]?.text).toContain('payment_pending');
+    expect(JSON.stringify(echoed[0])).toContain('SUPPORT_INTERNAL_CODE');
+    expect(JSON.stringify(echoed[0])).toContain('credential word');
     expect(thread.some((l) => l.text.startsWith('Checked:'))).toBe(false);
     const [check] = (await db.execute(sql`
       SELECT kind, output, external_id FROM support_actions
