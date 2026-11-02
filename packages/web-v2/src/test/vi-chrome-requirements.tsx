@@ -249,7 +249,39 @@ export function Seeded({ children, data }: { children: ReactNode; data: [QueryKe
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+/** A workflow record the requirement links, its design approved at r3: the steps its picture draws. */
+const workflowRecord = (id: string, flow: string, title: string, steps: string[]) => ({
+  workflowId: id,
+  revision: 3,
+  writer: "u1",
+  writerName: "Lan",
+  requirements: [],
+  design: { status: "approved", approvedRevision: 3 },
+  document: {
+    version: 2,
+    project: REQ_PROJECT,
+    flow,
+    kind: "flow",
+    title,
+    summary: "",
+    template: { id: "operational-flow", version: 1 },
+    steps: steps.map((s, i) => ({ id: `s${i + 1}`, title: s, does: s, after: i ? [`s${i}`] : [], node: { type: "TASK", label: s } })),
+    writtenBy: {},
+    id,
+    createdAt: at,
+    updatedAt: at,
+  },
+});
+
+/** The two workflows `reqDetail` links, so its picture draws one rather than saying it could not be read. */
+export const REQ_WORKFLOWS = {
+  workflows: [workflowRecord("w1", "thanh-toan", "Thanh toan", ["Gio hang", "Dia chi", "Thanh toan", "Xac nhan"]), workflowRecord("w2", "hoan-tien", "Hoan tien", ["Yeu cau", "Duyet", "Hoan"])],
+  returned: 2,
+};
+
 export const reqQueries = (): [QueryKey, unknown][] => [
+  [["workflows", REQ_PROJECT], REQ_WORKFLOWS],
+  [["workflow-templates", REQ_PROJECT], { templates: [] }],
   [["requirements", REQ_PROJECT], { requirements: [reqSummary("REQ-1"), reqSummary("REQ-2", { standing: { ...standing, attentionGroup: "done", state: "accepted" } as never })], returned: 2 }],
   [["requirement", REQ_PROJECT, "REQ-1"], reqDetail],
   [["suggestions", REQ_PROJECT, "*"], { suggestions: reqSuggestions }],
