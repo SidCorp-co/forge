@@ -54573,6 +54573,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the question `:id` names; an admin option asks project.admin, a rule of the chosen option"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json"
         ]

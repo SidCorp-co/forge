@@ -13,7 +13,12 @@ import { issueDisplayIds, writeIssueRelations } from '../issues/index.js';
 import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
-import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
+import {
+  holds,
+  type PermissionFacts,
+  requireDeclaredOr,
+  requireHeld,
+} from '../permissions/index.js';
 import { recordOnRequirement } from './answer-decision.js';
 import { recordAnswerOnIssue } from './answer-record.js';
 import { carryStewardDecision, decideChannelGate, type StewardDecisionAnswer } from './ports.js';
@@ -170,6 +175,8 @@ async function answerRound(
         `option ${optionId} is not on round ${current.round} of this question`,
       );
     }
+    // a body-dependent rule the declaration cannot carry: the chosen option's authority names the
+    // permission, project.write (the route's declared floor) or project.admin for an admin option
     requireHeld(args.facts, optionPermission(option), `choosing option ${option.id}`);
     if (row.origin?.kind === 'channel_gate') {
       await decideChannelGate(tx, {
@@ -198,7 +205,7 @@ async function answerRound(
         `round ${current.round} asks for text and this answer carries none`,
       );
     }
-    requireHeld(args.facts, 'project.write', 'answering a free-text round');
+    requireDeclaredOr(args.facts, 'project.write', 'answering a free-text round');
     return {
       ...current,
       answeredAt: now.toISOString(),

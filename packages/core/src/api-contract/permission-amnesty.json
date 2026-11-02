@@ -636,7 +636,6 @@
     "POST /api/projects/:projectId/speaker-links",
     "POST /api/projects/:projectId/speaker-links/proposals",
     "POST /api/questions",
-    "POST /api/questions/:id/answer",
     "POST /api/questions/:id/void",
     "POST /api/recordings/:id/stop",
     "POST /api/rooms/:id/abandon",

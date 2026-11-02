@@ -22,6 +22,7 @@ import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { fieldShape, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { assertTokenMayAnswer } from './answer-door.js';
 import { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
 import { askAs } from './ask.js';
@@ -210,30 +211,38 @@ questionRoutes.get('/:id', noQuery, async (c) => {
   return c.json(await shown(readerOf(c.get('agency')), seen));
 });
 
-questionRoutes.post('/:id/answer', strictBody(answerBody, ANSWER_SHAPE), async (c) => {
-  if (c.get('principal') === 'pat') {
-    const tokenId = c.get('patTokenId');
-    if (!tokenId)
-      throw new Error('questions: a token request reached the answer without its token id');
-    await assertTokenMayAnswer({
-      questionId: questionId(c),
-      userId: c.get('userId'),
-      agentUserId: c.get('agentUserId') ?? null,
-      tokenId,
-      agency: restActor(c).agency,
-      note: c.req.valid('json').note,
-    });
-  }
-  return c.json(
-    await answerAs({
-      questionId: questionId(c),
-      ...givenAnswerOf(c.req.valid('json')),
-      userId: c.get('userId'),
-      agency: restActor(c).agency,
-      via: await doorOfRequest(c),
-    }),
-  );
-});
+questionRoutes.post(
+  '/:id/answer',
+  requiresOnResolved(
+    'project.write',
+    'the project of the question `:id` names; an admin option asks project.admin, a rule of the chosen option',
+  ),
+  strictBody(answerBody, ANSWER_SHAPE),
+  async (c) => {
+    if (c.get('principal') === 'pat') {
+      const tokenId = c.get('patTokenId');
+      if (!tokenId)
+        throw new Error('questions: a token request reached the answer without its token id');
+      await assertTokenMayAnswer({
+        questionId: questionId(c),
+        userId: c.get('userId'),
+        agentUserId: c.get('agentUserId') ?? null,
+        tokenId,
+        agency: restActor(c).agency,
+        note: c.req.valid('json').note,
+      });
+    }
+    return c.json(
+      await answerAs({
+        questionId: questionId(c),
+        ...givenAnswerOf(c.req.valid('json')),
+        userId: c.get('userId'),
+        agency: restActor(c).agency,
+        via: await doorOfRequest(c),
+      }),
+    );
+  },
+);
 
 questionRoutes.post(
   '/:id/void',
