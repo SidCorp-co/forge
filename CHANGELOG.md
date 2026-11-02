@@ -15,7 +15,7 @@ Room questions are answered from the record first, asked only in a thread
 
 ### Fixed
 
-- **A parked run's question no longer appears unasked at the top of a chat room, in English and full of codes.** The room's agent now tries to answer it from the record first (the issue, its requirement, the feedback linked to it with its decisions and attached files, the answers already given) and posts nothing when the record settles it. Only when a person is truly needed does it ask, once, in the room's language and plain words, inside the thread the question came from or the room's one thread for the day's questions, which every question that day shares. In a project answered by a channel agent, the question goes to that agent as a task and, if the owner is needed, into the owner's room's thread for the day, never into another room. No room's post may carry an issue key, an MR or PR number, an environment variable name, a commit sha or a credential word, except a reply inside the thread of a team member who asked for the detail.
+- **A parked run's question no longer appears unasked at the top of a chat room.** The room's agent answers it from the record first; otherwise it asks once, in the room's language and plain words, inside a thread.
 
 ## [0.4.0-dev.426] - 2026-11-02
 
@@ -23,7 +23,7 @@ Users' chat rooms take no internal posts; owner questions go only to the owner
 
 ### Fixed
 
-- **A chat room the product's users read no longer gets a project's questions or internal codes.** A master's post goes to the top level only of a room the team reads, and into a users' room only into the thread of the person who asked. The channel agent asks the owner only in the room the binding names as `agent.ownerRoom`, and it no longer relays a project's or a master's question in any other group. Any post into a users' room that holds an issue key, an MR or PR number, an environment variable name, a commit sha or a credential word is refused by name, and nothing is posted. Order numbers and PO codes still go through.
+- **A chat room the product's users read no longer gets a project's questions or internal codes.** Owner questions go only to `agent.ownerRoom`; a post holding an issue key, MR number, sha or credential word is refused there.
 
 ## [0.4.0-dev.425] - 2026-11-02
 
@@ -35,7 +35,7 @@ Channel agents read production through declared reads; releases close on the age
 
 ### Added
 
-- **A channel agent reads production through the reads its grant declares (ISS-871).** A room granted `ops_reads` declares named reads, each a fixed program on the box with typed parameters; the agent calls `read` by name, every argument is checked against its pattern or values before anything runs, the box runs it with no shell, and the answer is scrubbed before the agent sees it. A scheduled check is told the room's reads. A master can post its result in the asker's own thread (`master-posts` takes `thread`), and the agent can ask the owner a master's Forge question, the owner's answer recorded on it.
+- **A channel agent reads production through the reads its grant declares (ISS-871).** Each read is a named program with checked parameters, run without a shell, its answer scrubbed. Masters can answer in the asker's thread.
 
 ### Changed
 
@@ -72,7 +72,7 @@ Patched dependencies, a daily project review, and notifications only when you mu
 
 ### Added
 
-- **Every project can get a daily review.** A daily review schedule hands the project's master a brief each day to report the day to the owner and hunt for work; a day with no master online is recorded as missed (ISS-862).
+- **Every project can get a daily review.** A daily schedule hands the project's master a brief to report the day and hunt for work; a day with no master online is recorded as missed (ISS-862).
 
 ### Fixed
 
@@ -96,7 +96,7 @@ Agent speaks for itself, runs free their claims, plain live bar
 
 ### Fixed
 
-- **A builder reads a peer's contract before consuming it.** A project's pane token reads the approved versions of contracts published to an ecosystem its project is a member of, so a builder run can map against them before it declares the consumption.
+- **A builder reads a peer's contract before consuming it.** A project's pane token reads the approved contracts published to its ecosystems, so a builder run can map against them before declaring the consumption.
 - **A judge declares over a requirement.** `run declare --requirement REQ-n --role qa` declares a judge of a shipped requirement with no issue, so it no longer waits on another run holding an issue.
 - **A verdict that records nothing is refused.** A comment whose verdict fence names no criterion is refused by name instead of being accepted with nothing recorded (ISS-786).
 - **A closed run gives its claim back.** Closing a run returns the issue claim it held, even when the master declares the next run in the same tree before the close reaches core.
