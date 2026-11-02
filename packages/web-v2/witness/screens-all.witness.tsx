@@ -8,6 +8,9 @@
 //   [VITE_WITNESS_THEMES=light,dark] [VITE_WITNESS_ONLY=name,name] pnpm --filter web-v2 witness witness/screens-all.witness.tsx --out <dir>
 //
 // A screen that throws or draws nothing is named and fails the run: it is never a screen with few words.
+//
+// VITE_WITNESS_WHOLE=1 draws each page unscrolled, its whole height in the shot, and prints the words
+// of the whole page as `WHOLE <name> <theme> <n>`: what a person reads by scrolling to the end.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
@@ -22,6 +25,7 @@ import { Caught, FEEDBACK_TITLED, HomePage, ISSUE_TITLED, OPS_SEED, REQUIREMENTS
 import { SCREEN_PAGES } from "./screens.pages";
 
 const THEMES = (import.meta.env.VITE_WITNESS_THEMES ?? "light").split(",") as ("light" | "dark")[];
+const WHOLE = import.meta.env.VITE_WITNESS_WHOLE === "1";
 
 const replace = window.history.replaceState.bind(window.history);
 window.history.replaceState = (data, unused, url) => {
@@ -60,17 +64,17 @@ function Shell() {
     <InRouter key={p.name} at={p.path} pattern={p.pattern ?? "/projects/$slug/$"}>
       <TopBarSlotProvider>
         {p.bare ? (
-          <div className="h-dvh overflow-y-auto bg-app" data-witness="page" data-witness-page={p.name} data-page>
+          <div className={WHOLE ? "min-h-dvh bg-app" : "h-dvh overflow-y-auto bg-app"} data-witness="page" data-witness-page={p.name} data-page>
             <Caught key={p.name}>
               <Draw render={p.render} />
             </Caught>
           </div>
         ) : (
-        <div className="flex h-dvh overflow-hidden bg-app" data-shell>
+        <div className={WHOLE ? "flex min-h-dvh bg-app" : "flex h-dvh overflow-hidden bg-app"} data-shell>
           <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: 280 }} />
           <div className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name} data-page>
             <ShellTopBar chatOpen={false} onToggleChat={() => {}} />
-            <main className="min-h-0 flex-1 overflow-y-auto" data-witness="main">
+            <main className={WHOLE ? "flex-1" : "min-h-0 flex-1 overflow-y-auto"} data-witness="main">
               <Caught key={p.name}><Draw render={p.render} /></Caught>
             </main>
           </div>
@@ -107,8 +111,8 @@ window.__witness = {
         const threw = q("[data-witness=threw]");
         if (threw) return [`the ${p.name} page threw: ${threw.innerText.slice(0, 300)}`];
         if (window.innerHeight !== 900) return [`the window is ${window.innerHeight} px tall, not 900`];
-        const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement);
-        console.log(`WORDS ${p.name} ${t} ${count} :: ${words.slice(0, 400).join(" ")}`);
+        const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement, { whole: WHOLE });
+        console.log(`${WHOLE ? "WHOLE" : "WORDS"} ${p.name} ${t} ${count} :: ${words.slice(0, 400).join(" ")}`);
         return count < 8 ? [`the ${p.name} page drew ${count} words: it did not draw its screen`] : [];
       },
     })),

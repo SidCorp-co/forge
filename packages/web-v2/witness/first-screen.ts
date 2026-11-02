@@ -19,9 +19,13 @@ interface FirstScreen {
   words: string[];
 }
 
-export function firstScreenWords(column: HTMLElement): FirstScreen {
+/**
+ * `whole` counts the words of the whole page instead, scrolled or not (ISS-903's full-page read): the
+ * window's bottom edge stops nothing, and a word is still unseen when folded, hidden or clipped.
+ */
+export function firstScreenWords(column: HTMLElement, { whole = false }: { whole?: boolean } = {}): FirstScreen {
   const bounds = column.getBoundingClientRect();
-  const bottom = Math.min(window.innerHeight, bounds.bottom);
+  const bottom = whole ? bounds.bottom : Math.min(window.innerHeight, bounds.bottom);
   const right = Math.min(window.innerWidth, bounds.right);
   const words: string[] = [];
   const walker = document.createTreeWalker(column, NodeFilter.SHOW_TEXT);
