@@ -3676,6 +3676,13 @@
       "when": 1832976000000,
       "tag": "0579_a_feedback_attachment_carries_its_label",
       "breakpoints": true
+    },
+    {
+      "idx": 580,
+      "version": "7",
+      "when": 1833062400000,
+      "tag": "0580_a_support_group_counts_no_changes_a_day",
+      "breakpoints": true
     }
   ]
 }
