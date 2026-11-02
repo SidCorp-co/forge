@@ -159,10 +159,22 @@ export async function requireDeclaredOn(
   act?: string,
 ): Promise<void> {
   const store = inEffect.getStore();
-  const declared = store?.declared;
-  if (store?.checked === projectId && declared?.permission === needed) return;
-  const access = await loadProjectAccess(projectId, userId);
+  if (store?.checked === projectId && store.declared.permission === needed) return;
+  requireDeclaredHeld(await loadProjectAccess(projectId, userId), needed, act);
+}
+
+/**
+ * `requireDeclaredOn` for a service that loads the access itself, so its own not-found answer
+ * stands (a preview's, a comment's): `needed` on that access, and a resolved declaration naming
+ * another permission as well.
+ */
+export function requireDeclaredHeld(
+  access: PermissionFacts,
+  needed: ProjectPermission,
+  act?: string,
+): void {
   requireHeld(access, needed, act);
+  const declared = inEffect.getStore()?.declared;
   if (
     declared &&
     declared.permission !== null &&

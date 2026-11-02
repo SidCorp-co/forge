@@ -17151,6 +17151,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue the path names"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -17185,6 +17191,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the issue the path names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -22392,6 +22404,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the preview the path names"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -22445,6 +22463,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the preview the path names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -22480,6 +22504,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the preview the path names"
+          },
+          "permission": "previews.approve"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -22541,6 +22571,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the preview the path names"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -22627,6 +22663,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the preview the path names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -22683,6 +22725,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the preview the path names"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -22925,6 +22973,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project of the preview the path names"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "param"
         ]

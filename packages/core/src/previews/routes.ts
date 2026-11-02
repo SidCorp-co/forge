@@ -28,6 +28,7 @@ import { projectScopeQuery } from '../issues/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { confirmFix } from './confirm.js';
 import { keepIdea } from './keep.js';
 import {
@@ -55,6 +56,11 @@ const abandonBody = z.strictObject({
   reason: z.string().trim().max(PREVIEW_LIMITS.detail).optional(),
 });
 
+// each route's project is the one its issue or preview names; the service checks it once it has the
+// row, so its own not-found answer stands (access.ts:accessFor)
+const ON_ISSUE = 'the project of the issue the path names';
+const ON_PREVIEW = 'the project of the preview the path names';
+
 const actorOf = (c: { get(key: 'userId'): string; get(key: 'agency'): AuthVars['agency'] }) => {
   const agency = c.get('agency');
   if (!agency) throw new Error('previews: a request reached its handler without an auth gate');
@@ -68,6 +74,7 @@ issuePreviewRoutes.use('/:issueId/preview', requireAuth(), assertEmailVerified()
 issuePreviewRoutes.get(
   '/:issueId/preview',
   zValidator('param', issueParam, invalid('invalid path: /api/issues/<issue id>/preview')),
+  requiresOnResolved('project.read', ON_ISSUE),
   projectScopeQuery,
   async (c) =>
     c.json(
@@ -80,6 +87,7 @@ issuePreviewRoutes.get(
 issuePreviewRoutes.post(
   '/:issueId/preview',
   zValidator('param', issueParam, invalid('invalid path: /api/issues/<issue id>/preview')),
+  requiresOnResolved('project.write', ON_ISSUE),
   async (c) => {
     const opened = await openIssuePreview(c.req.valid('param').issueId, actorOf(c));
     return c.json(
@@ -130,30 +138,47 @@ for (const at of [
   previewRoutes.use(at, requireAuth(), assertEmailVerified());
 }
 
-previewRoutes.get('/:id', zValidator('param', previewParam, PATH), noQuery, async (c) =>
-  c.json(
-    previewEnvelopeSchema.parse({
-      preview: await readPreview(c.req.valid('param').id, actorOf(c)),
-    }),
-  ),
+previewRoutes.get(
+  '/:id',
+  zValidator('param', previewParam, PATH),
+  requiresOnResolved('project.read', ON_PREVIEW),
+  noQuery,
+  async (c) =>
+    c.json(
+      previewEnvelopeSchema.parse({
+        preview: await readPreview(c.req.valid('param').id, actorOf(c)),
+      }),
+    ),
 );
 
-previewRoutes.post('/:id/ticket', zValidator('param', previewParam, PATH), async (c) => {
-  c.header('Cache-Control', 'no-store');
-  return c.json(
-    previewTicketResponseSchema.parse(await mintPreviewTicket(c.req.valid('param').id, actorOf(c))),
-  );
-});
+previewRoutes.post(
+  '/:id/ticket',
+  zValidator('param', previewParam, PATH),
+  requiresOnResolved('project.read', ON_PREVIEW),
+  async (c) => {
+    c.header('Cache-Control', 'no-store');
+    return c.json(
+      previewTicketResponseSchema.parse(
+        await mintPreviewTicket(c.req.valid('param').id, actorOf(c)),
+      ),
+    );
+  },
+);
 
-previewRoutes.post('/:id/approve', zValidator('param', previewParam, PATH), async (c) =>
-  c.json(
-    previewApproveResponseSchema.parse(await approvePreview(c.req.valid('param').id, actorOf(c))),
-  ),
+previewRoutes.post(
+  '/:id/approve',
+  zValidator('param', previewParam, PATH),
+  requiresOnResolved('previews.approve', ON_PREVIEW),
+  async (c) =>
+    c.json(
+      previewApproveResponseSchema.parse(await approvePreview(c.req.valid('param').id, actorOf(c))),
+    ),
 );
 
 previewRoutes.post(
   '/:id/abandon',
   zValidator('param', previewParam, PATH),
+  requiresOnResolved('project.write', ON_PREVIEW),
   zValidator('json', abandonBody, invalid('invalid body: { reason?: string }')),
   async (c) => {
     const { reason } = c.req.valid('json');
@@ -168,6 +193,7 @@ previewRoutes.post(
 previewRoutes.post(
   '/:id/messages',
   zValidator('param', previewParam, PATH),
+  requiresOnResolved('project.write', ON_PREVIEW),
   zValidator(
     'json',
     previewMessageRequestSchema,
@@ -187,6 +213,7 @@ previewRoutes.post(
 previewRoutes.post(
   '/:id/confirm',
   zValidator('param', previewParam, PATH),
+  requiresOnResolved('project.read', ON_PREVIEW),
   zValidator(
     'json',
     z.strictObject(confirmFixRequestSchema.shape),
@@ -205,6 +232,7 @@ previewRoutes.post(
 previewRoutes.post(
   '/:id/keep',
   zValidator('param', previewParam, PATH),
+  requiresOnResolved('project.write', ON_PREVIEW),
   zValidator(
     'json',
     keepPreviewRequestSchema,

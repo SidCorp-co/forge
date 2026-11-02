@@ -31,6 +31,7 @@ vi.mock('../lib/authz.js', () => ({
 const {
   enforceDeclared,
   requireDeclared,
+  requireDeclaredHeld,
   requireDeclaredOn,
   requiresOnParam,
   requiresOnResolved,
@@ -214,5 +215,37 @@ describe('a shared service checks what its door has not already checked (require
     await expect(requireDeclaredOn(PROJECT, 'u1', 'project.write')).rejects.toThrow(
       /project\.write/,
     );
+  });
+});
+
+describe('a service that loads the access itself checks it the same way (requireDeclaredHeld)', () => {
+  const held = (role: 'viewer' | 'member') => ({ projectId: PROJECT, role, grants: [] });
+  const at = (declared: Parameters<typeof enforceDeclared>[0], service: () => void) =>
+    enforceDeclared(declared, { userId: 'u1', named: () => PROJECT, act: 'probe' }, async () =>
+      service(),
+    );
+
+  it('checks what it needs for a caller no door declared for', () => {
+    expect(() => requireDeclaredHeld(held('viewer'), 'project.write')).toThrow(/project\.write/);
+    expect(() => requireDeclaredHeld(held('viewer'), 'project.read')).not.toThrow();
+  });
+
+  it('checks what it needs under a resolved declaration of the same permission', async () => {
+    await expect(
+      at(onResolved('project.write', 'the row'), () =>
+        requireDeclaredHeld(held('viewer'), 'project.write'),
+      ),
+    ).rejects.toThrow(/project\.write/);
+    await at(onResolved('project.write', 'the row'), () =>
+      requireDeclaredHeld(held('member'), 'project.write'),
+    );
+  });
+
+  it('checks the resolved declaration too where it names another permission', async () => {
+    await expect(
+      at(onResolved('project.write', 'the row'), () =>
+        requireDeclaredHeld(held('viewer'), 'project.read'),
+      ),
+    ).rejects.toThrow(/project\.write/);
   });
 });

@@ -13,7 +13,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type Refusal, RefusalError, refuser } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclaredHeld } from '../permissions/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { type PreviewSite, previewSite } from './domain.js';
 import { previewById, previewView } from './read.js';
@@ -113,11 +113,11 @@ export async function planOf(
 export async function accessFor(
   projectId: string,
   actor: PreviewActor,
-  permission: Parameters<typeof requireHeld>[1],
+  permission: Parameters<typeof requireDeclaredHeld>[1],
   act: string,
 ) {
   const access = await loadProjectAccess(projectId, actor.userId, 'preview not found');
-  requireHeld(access, permission, act);
+  requireDeclaredHeld(access, permission, act);
   return access;
 }
 

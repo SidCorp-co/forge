@@ -36,6 +36,7 @@ export {
   type PermissionOn,
   permissionless,
   requireDeclared,
+  requireDeclaredHeld,
   requireDeclaredOn,
   requireDeclaredOr,
   requireDeclaredOrg,
