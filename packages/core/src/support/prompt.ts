@@ -12,7 +12,7 @@ import {
   type SupportTool,
 } from '@forge/contracts/support';
 import { readMessages } from '../conversations/index.js';
-import { guideRef } from '../guides/guide-ref.js';
+import { guideRef } from '../guides/index.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { writerRoles } from './channel-read.js';
 import type { FollowedCheckout } from './dispatch.js';
