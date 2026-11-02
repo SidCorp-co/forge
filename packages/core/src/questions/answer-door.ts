@@ -6,7 +6,8 @@
 // in (owner, 2026-10-16, on the ground of ADR 0007: whoever holds the permission acts). A question
 // blocked on an agent or a peer keeps the agent-token rule (ISS-1003): only an agent's token answers
 // it, its own or the box's it runs on. An agent's token answers any question, recording why, except
-// one that is a person's: serious, on a strict project (REQ-79 BC-14, `owed.ts`). This door says
+// one that is a person's: serious on a strict project, or naming a project rule that asks a person's
+// act (REQ-79 BC-14, ISS-869, `owed.ts`). This door says
 // whose word the token carries and whether that word is one the question takes; whether its holder
 // may answer it is `answerAs`'s, the check a session's answer meets — the project role and the
 // chosen option's authority — never a second copy of it here.
@@ -15,7 +16,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { tokenIdentityOf } from '../credentials/token-identity.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type AnswerBody, givenAnswerOf } from './answer-input.js';
-import { agentDecidesWhy, SERIOUS } from './owed.js';
+import { agentDecidesWhy, type Owing, personsBecause } from './owed.js';
 import { doorOfToken } from './ports.js';
 import { answerAs, readQuestionFor } from './read.js';
 import { refuseQuestion } from './write.js';
@@ -24,11 +25,11 @@ const OWN_TOKEN =
   'their own personal access token, or the MCP client they signed in to Forge with (Claude Code ' +
   'and the like)';
 
-/** An agent's token on a question that is a person's: serious, on a strict project (REQ-79 BC-13). */
-const owedByPerson = () =>
+/** An agent's token on a question that is a person's: serious on a strict project, or a rule's (REQ-79 BC-13, ISS-869). */
+const owedByPerson = (owing: Owing) =>
   refuseQuestion(
     'QUESTION_OWED_BY_PERSON',
-    `this question is marked serious (${SERIOUS}) on a strict project, so it is a person’s, and ` +
+    `${personsBecause(owing)}, so it is a person’s, and ` +
       'this request carries an agent’s token. The person who owes it answers it — with ' +
       `${OWN_TOKEN}, signed in, or in the room it was delivered to.`,
   );
@@ -83,8 +84,9 @@ export async function assertTokenMayAnswer(token: {
   if (!seen) throw notFound('question not found');
   if (token.agentUserId || token.agency === 'agent') {
     if (seen.blockerKind === 'master_or_peer') return;
-    const why = await agentDecidesWhy(seen.projectId as string, seen.serious);
-    if (why === null) throw owedByPerson();
+    const owing = { serious: seen.serious, rule: seen.rule };
+    const why = await agentDecidesWhy(seen.projectId as string, owing);
+    if (why === null) throw owedByPerson(owing);
     if (!token.note?.trim()) throw reasonRequired(why);
     return;
   }

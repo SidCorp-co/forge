@@ -53,6 +53,8 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_AGENT_DECIDES",
 	/** An agent answering a question a person was asked records why (REQ-79 BC-11, BC-14). */
 	"QUESTION_AGENT_REASON_REQUIRED",
+	/** A question naming a `rule` that is no live rule of its project's knowledge (ISS-869). */
+	"QUESTION_RULE_UNKNOWN",
 	"QUESTION_OPTIONS_STEWARDS",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];

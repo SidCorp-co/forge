@@ -3683,6 +3683,13 @@
       "when": 1833062400000,
       "tag": "0580_a_support_group_counts_no_changes_a_day",
       "breakpoints": true
+    },
+    {
+      "idx": 581,
+      "version": "7",
+      "when": 1833148800000,
+      "tag": "0581_a_rule_names_a_persons_act",
+      "breakpoints": true
     }
   ]
 }

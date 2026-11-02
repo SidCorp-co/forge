@@ -206,6 +206,29 @@ export async function readKnowledgeEntry(
   };
 }
 
+/** A rule of a project as a question names it (ISS-869), or why the slug names none. */
+export type ProjectRuleRead =
+  | { ok: true; slug: string; title: string }
+  | { ok: false; why: string };
+
+/**
+ * Whether `slug` names a live rule of the project: an entry of kind `rule`, or one carried into every
+ * prompt as a project rule (`injection: 'always'`), the project's own or its org's ruling read through
+ * the project's door (`readKnowledgeEntry`). An archived entry or a lesson is none; why is said.
+ */
+export async function readProjectRule(projectId: string, slug: string): Promise<ProjectRuleRead> {
+  const entry = await readKnowledgeEntry(projectId, slug);
+  if (!entry) return { ok: false, why: `the project holds no knowledge entry \`${slug}\`` };
+  if (entry.archivedAt) return { ok: false, why: `knowledge entry \`${slug}\` is archived` };
+  if (entry.kind === 'lesson' || (entry.kind !== 'rule' && entry.injection !== 'always')) {
+    return {
+      ok: false,
+      why: `knowledge entry \`${slug}\` is a ${entry.kind} read ${entry.injection}, not a rule: a rule is an entry of kind \`rule\`, or one carried into every prompt (\`injection: "always"\`)`,
+    };
+  }
+  return { ok: true, slug: entry.slug, title: entry.title };
+}
+
 export async function deleteKnowledgeEntry(projectId: string, slug: string): Promise<number> {
   const owned = await lessonOwnedRefusal(projectId, [{ slug }]);
   if (owned) throw owned;

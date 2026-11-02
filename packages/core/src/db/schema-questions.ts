@@ -180,6 +180,12 @@ export const agentQuestions = pgTable(
      * only where it is serious (`questions/owed.ts`).
      */
     serious: boolean('serious').notNull().default(false),
+    /**
+     * The slug of the project rule (a knowledge entry) that names the person's act this question asks
+     * for (ISS-869, migration 0581): such a question is that person's on any gate profile. Checked as a
+     * live rule of the project when asked; null on every other question.
+     */
+    rule: text('rule'),
     steps: jsonb('steps').$type<QuestionStep[]>().notNull(),
     maxRounds: integer('max_rounds').notNull().default(3),
     assumed: jsonb('assumed').$type<Record<string, unknown>>(),

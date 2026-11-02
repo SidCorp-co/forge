@@ -80,6 +80,15 @@ const askSchema = z
       .describe(
         'the asker judged it serious: irreversible, real money, credentials or product direction (REQ-79 BC-13); an agent asks a person only for such a decision, on a strict project',
       ),
+    rule: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe(
+        "the slug of this project's own rule (a knowledge entry) that names the person's act asked for (ISS-869): it admits an agent's ask of a person on any gate profile, and the question stays that person's",
+      ),
     assumed: z.record(z.string(), z.unknown()).optional(),
     maxRounds: z.number().int().min(1).max(10).optional(),
     parkDeadlineAt: z.iso.datetime().optional(),

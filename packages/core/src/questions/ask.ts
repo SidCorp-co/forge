@@ -27,6 +27,8 @@ type AskAsInput = {
   /** Who asks: an agent asking a person what it may decide itself is refused by name (REQ-79 BC-14). */
   agency: ActorAgency;
   serious?: boolean | undefined;
+  /** The project rule naming the person's act asked for (ISS-869): it admits an agent's ask of a person. */
+  rule?: string | undefined;
   issueId?: string | undefined;
   projectId?: string | undefined;
   prompt: string;
@@ -90,6 +92,7 @@ export async function askAs(args: AskAsInput) {
     prompt: args.prompt,
     blockerKind: args.blockerKind,
     ...(args.serious ? { serious: true } : {}),
+    ...(args.rule === undefined ? {} : { rule: args.rule }),
     ...(args.agency === 'agent' ? { askedByAgent: true as const } : {}),
     answer: args.answer,
     ...(args.assumed ? { assumed: args.assumed } : {}),

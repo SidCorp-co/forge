@@ -28,7 +28,9 @@ export { keywordSearchKnowledge, searchKnowledge } from './search.js';
 export {
   type AlwaysInjectFact,
   getKnowledgeEntry,
+  type ProjectRuleRead,
   readKnowledgeEntry,
+  readProjectRule,
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
   selectOnDemandSlugsFromKnowledge,

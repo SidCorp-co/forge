@@ -43,6 +43,8 @@ const askBodySchema = z.object({
   blockerKind: z.enum(questionBlockerKinds).optional(),
   /** The run judged it serious (REQ-79 BC-13): a run asks a person only for such a decision, on a strict project. */
   serious: z.boolean().optional(),
+  /** The project rule naming the person's act the run asks for (ISS-869): it admits the ask on any profile. */
+  rule: z.string().trim().min(1).max(200).optional(),
   answerShape: z.enum(answerShapes).optional(),
   options: z
     .array(

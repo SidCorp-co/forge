@@ -72,6 +72,8 @@ export type AskInput = {
   blockerKind: QuestionBlockerKind;
   /** Who owes it (REQ-79 BC-13, `owed.ts:owedBlockerOf`): serious, a decision core asks, an agent's ask. */
   serious?: boolean;
+  /** The slug of the project rule naming the person's act this asks for (ISS-869, `owed.ts`). */
+  rule?: string;
   decides?: true;
   askedByAgent?: true;
   answer: AskAnswer;
@@ -378,6 +380,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
       askedBy: input.askedBy,
       blockerKind: input.blockerKind,
       serious: input.serious === true,
+      rule: input.rule ?? null,
       steps: [step(1, input.prompt, input.answer, input.sensitive)],
       assumed: scrubSecretsDeep(input.assumed),
       origin,
