@@ -1,1 +1,1 @@
-**Every MCP tool action now declares its permission like a REST route**, published per action in the MCP contract, and both doors enforce it from that one declaration before the handler (ISS-824).
+**MCP tool actions declare their permission as REST routes do**, published per action in the MCP contract; both doors enforce that one declaration before the handler. Nine modules and `forge_issues` moved their checks into it (ISS-824).
