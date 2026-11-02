@@ -19,6 +19,7 @@ export const SUPPORT_BOX_CAPS = JSON.stringify({
   hostCommands: true,
   opsReads: true,
   ownerCheckouts: true,
+  siblingCheckouts: true,
 });
 
 /** What core asks a box to do outside a session (REQ-75 r5, ISS-871). */
@@ -59,6 +60,8 @@ export interface Turn {
   buildBase: string | null;
   /** The hosts an owner-mode agent's own clone reaches besides the model and core (ISS-765). */
   ownHosts: string[] | null;
+  /** The followed projects' checkouts the frame told the box to show read-only (ISS-874). */
+  siblingCheckouts: string[] | null;
   /** When the box heard it. */
   at: number;
 }
@@ -264,6 +267,7 @@ export class SessionBox {
       checkout: (d.checkout as string | undefined) ?? null,
       buildBase: (d.buildBase as string | undefined) ?? null,
       ownHosts: (d.ownHosts as string[] | undefined) ?? null,
+      siblingCheckouts: (d.siblingCheckouts as string[] | undefined) ?? null,
       warmUp: messages.length === 0 && text.includes('reply with the single word: ready'),
       at: Date.now(),
     };

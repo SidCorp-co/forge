@@ -166,6 +166,11 @@ const ANY_ROOM = new Set<SupportActInput['action']>([
   'deployment',
   'project',
   'read',
+  // the tracker reads the same from any group, over every project the agent follows (ISS-874)
+  'projects',
+  'issues',
+  'releases',
+  'requirements',
 ]);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
