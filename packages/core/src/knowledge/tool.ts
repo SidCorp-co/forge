@@ -112,7 +112,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'Read/write curated knowledge entries for a project (stored in `knowledge_entries`). ' +
     'Actions: `list` — project entries (body-free index; use `get` for the full body). ' +
-    '`get` — full entry by slug. ' +
+    "`get` — full entry by slug: the project's own or, where it holds none under that slug, its organisation's (`origin: org`). " +
     '`upsert` — create or replace an entry; embeds body for semantic search; tolerates embeddings outage (degraded write). ' +
     '`delete` — idempotent remove. ' +
     '`search` — semantic/keyword/hybrid search; `scope` controls which store(s): ' +
