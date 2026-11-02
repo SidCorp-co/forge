@@ -46,8 +46,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isOrg = (p: ProjectPermission | OrgPermission): p is OrgPermission =>
   (ORG_PERMISSIONS as readonly string[]).includes(p);
 
-/** The permission the running action declared, for its handler's `requireDeclared`. */
-const inEffect = new AsyncLocalStorage<DeclaredPermission>();
+/**
+ * The permission the running action declared, for its handler's `requireDeclared`, and the project
+ * or organization the door checked it on (null where the handler resolves it, or none is needed).
+ */
+const inEffect = new AsyncLocalStorage<{ declared: DeclaredPermission; checked: string | null }>();
 
 /** The name a door gives the caller and reads a declaration's `param` or `arg` from. */
 export type DeclaredCall = {
@@ -68,6 +71,7 @@ export async function enforceDeclared<T>(
   call: DeclaredCall,
   run: () => Promise<T>,
 ): Promise<T> {
+  let checked: string | null = null;
   if (declared.permission !== null && !('resolved' in declared.on)) {
     const id = call.named(declared.on);
     const where =
@@ -89,8 +93,9 @@ export async function enforceDeclared<T>(
     } else {
       requireHeld(await loadProjectAccess(id, call.userId), declared.permission);
     }
+    checked = id;
   }
-  return inEffect.run(declared, run);
+  return inEffect.run({ declared, checked }, run);
 }
 
 function wiringDefect(what: string): Error {
@@ -101,7 +106,7 @@ function wiringDefect(what: string): Error {
 
 /** The resolved permission the running action declared, or a wiring defect naming what is missing. */
 function resolvedInEffect(): ProjectPermission | OrgPermission {
-  const declared = inEffect.getStore();
+  const declared = inEffect.getStore()?.declared;
   if (!declared || declared.permission === null) {
     throw wiringDefect('the running action declares no permission for its handler to check');
   }
@@ -132,12 +137,40 @@ export function requireDeclaredOr(
   fallback: ProjectPermission,
   act?: string,
 ): void {
-  const declared = inEffect.getStore();
+  const declared = inEffect.getStore()?.declared;
   if (declared && declared.permission !== null && 'resolved' in declared.on) {
     requireDeclared(access, act);
     return;
   }
   requireHeld(access, fallback, act);
+}
+
+/**
+ * What a service shared by several doors (and by callers that are no door, the steward among them)
+ * checks on the project it was handed: nothing more where the running action's door already checked
+ * exactly `needed` on this very project; otherwise `needed`, so a service never checks less than it
+ * did before its doors declared. A resolved declaration naming another permission is checked too,
+ * so what the contract names is never left unchecked.
+ */
+export async function requireDeclaredOn(
+  projectId: string,
+  userId: string | null | undefined,
+  needed: ProjectPermission,
+  act?: string,
+): Promise<void> {
+  const store = inEffect.getStore();
+  const declared = store?.declared;
+  if (store?.checked === projectId && declared?.permission === needed) return;
+  const access = await loadProjectAccess(projectId, userId);
+  requireHeld(access, needed, act);
+  if (
+    declared &&
+    declared.permission !== null &&
+    declared.permission !== needed &&
+    'resolved' in declared.on
+  ) {
+    requireDeclared(access, act);
+  }
 }
 
 /** The action's declared organization permission, held on the org the handler found. */

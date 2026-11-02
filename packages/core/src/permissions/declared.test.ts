@@ -28,8 +28,14 @@ vi.mock('../lib/authz.js', () => ({
   effectiveProjectRole: async () => null,
 }));
 
-const { enforceDeclared, requireDeclared, requiresOnParam, requiresOnResolved, runDeclaredTool } =
-  await import('./declared.js');
+const {
+  enforceDeclared,
+  requireDeclared,
+  requireDeclaredOn,
+  requiresOnParam,
+  requiresOnResolved,
+  runDeclaredTool,
+} = await import('./declared.js');
 
 const WRITE = onArg('project.write');
 
@@ -167,5 +173,46 @@ describe('one declaration, enforced the same at both doors before the handler', 
     await runDeclaredTool(tool(ran, undefined), { action: 'write', projectId: PROJECT }, 'u1');
     expect(ran).toEqual(['mcp']);
     expect(access.seen).toEqual([]);
+  });
+});
+
+describe('a shared service checks what its door has not already checked (requireDeclaredOn)', () => {
+  const OTHER = '00000000-0000-4000-8000-000000000002';
+  const at = (declared: Parameters<typeof enforceDeclared>[0], service: () => Promise<void>) =>
+    enforceDeclared(declared, { userId: 'u1', named: () => PROJECT, act: 'probe' }, service);
+
+  beforeEach(() => {
+    access.role = 'member';
+  });
+
+  it('skips where the door checked the same permission on the same project', async () => {
+    await at(onArg('project.write'), () => requireDeclaredOn(PROJECT, 'u1', 'project.write'));
+    // the door's one read, and none by the service
+    expect(access.seen).toEqual([`project ${PROJECT} as u1`]);
+  });
+
+  it('checks a project other than the one the door checked', async () => {
+    await at(onArg('project.write'), () => requireDeclaredOn(OTHER, 'u1', 'project.write'));
+    expect(access.seen).toEqual([`project ${PROJECT} as u1`, `project ${OTHER} as u1`]);
+    access.role = 'viewer';
+    access.seen = [];
+    await expect(
+      at(onArg('project.read'), () => requireDeclaredOn(OTHER, 'u1', 'project.write')),
+    ).rejects.toThrow(/project\.write/);
+  });
+
+  it('checks what it needs where the door checked a weaker permission on the same project', async () => {
+    access.role = 'viewer';
+    await expect(
+      at(onArg('project.read'), () => requireDeclaredOn(PROJECT, 'u1', 'project.write')),
+    ).rejects.toThrow(/project\.write/);
+    expect(access.seen).toEqual([`project ${PROJECT} as u1`, `project ${PROJECT} as u1`]);
+  });
+
+  it('checks what it needs for a caller no door declared for, the steward among them', async () => {
+    access.role = 'viewer';
+    await expect(requireDeclaredOn(PROJECT, 'u1', 'project.write')).rejects.toThrow(
+      /project\.write/,
+    );
   });
 });
