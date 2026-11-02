@@ -25,6 +25,7 @@
  * @direct-test-of packages/core/src/issues/criteria/event-verdicts.ts
  * @direct-test-of packages/core/src/issues/criteria-standing.ts
  * @direct-test-of packages/core/src/release-batch/landed-weighing.ts
+ * @direct-test-of packages/core/src/release-batch/landed-build.ts
  * @direct-test-of packages/core/src/release-batch/criteria-basis.ts
  * @direct-test-of packages/core/src/release-batch/criteria-weighing.ts
  */

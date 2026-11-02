@@ -18,6 +18,9 @@
  * @direct-test-of packages/core/src/release-batch/release-read-views.ts
  * @direct-test-of packages/core/src/release-batch/released-line.ts
  * @direct-test-of packages/contracts/src/released-line.ts
+ * @direct-test-of packages/core/src/release-page/facts.ts
+ * @direct-test-of packages/core/src/release-page/claims.ts
+ * @direct-test-of packages/contracts/src/release-page.ts
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -121,6 +124,40 @@ describe('a release reads a criterion judged on a release it is or carries (ISS-
     const earlier = await releaseOf('0.75.0');
     expect(earlier.criteria).toMatchObject({ proven: 0, total: 2 });
     expect(earlier.verified.level).toBe('some_criteria');
+    expect(reads.n).toBe(0);
+  });
+
+  it("claims on a release's page each criterion judged on that release, though it names no build", async () => {
+    await agenfold();
+    const req = await agreedRequirement([
+      'A member opens the workspace',
+      'A workspace lists its folds',
+    ]);
+    const iss1 = await landedIssue(1, F4, [
+      'A member opens the workspace',
+      'A workspace lists its folds',
+    ]);
+    await traced(req, iss1, 1, { 1: 'BC-1', 2: 'BC-2' });
+    await recordRelease([iss1], '0.75.0');
+    for (const n of [1, 2]) {
+      await ok(
+        api(world.token, 'POST', `/api/issues/${iss1}/verdicts`, {
+          criterion: n,
+          verdict: 'pass',
+          reason: 'Opened the workspace on production 0.75.0.',
+          identity: { kind: 'release', version: '0.75.0' },
+          evidence: ['https://agenfold.example.test/clips/req-11.webm'],
+        }),
+      );
+    }
+    const page = (await ok(
+      api(world.token, 'GET', `/api/projects/${world.projectId}/releases/0.75.0/page`),
+    )) as unknown as {
+      header: { verified: { proven: number; total: number } };
+      requirements: Array<{ business: { proven: Array<{ code: string }> } }>;
+    };
+    expect(page.header.verified).toMatchObject({ proven: 2, total: 2 });
+    expect(page.requirements[0]?.business.proven.map((p) => p.code)).toEqual(['BC-1', 'BC-2']);
     expect(reads.n).toBe(0);
   });
 });
