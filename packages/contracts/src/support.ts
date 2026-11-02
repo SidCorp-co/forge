@@ -42,7 +42,8 @@ export type SupportLimits = z.infer<typeof supportLimitsSchema>;
  * `build` gives the session a writable working copy of the project's development branch, and once a
  * confirmer confirms, the box commits it on a feat/ or fix/ branch, pushes it (never forced) and core
  * opens a change request into the development branch, never the production one; `deploy` deploys a bound target the grant names; `run_commands` runs a command on a host the grant
- * names. Policy (VISION kernel-hard-policy-soft); the gate that refuses an ungranted one is core's.
+ * names; `ops_reads` runs a read the grant declares by name (ISS-871, REQ-77 BC-3). Policy (VISION
+ * kernel-hard-policy-soft); the gate that refuses an ungranted one is core's.
  */
 export const SUPPORT_ABILITIES = [
 	"read_checkout",
@@ -52,6 +53,7 @@ export const SUPPORT_ABILITIES = [
 	"deploy",
 	"run_commands",
 	"owner_mode",
+	"ops_reads",
 ] as const;
 export type SupportAbility = (typeof SUPPORT_ABILITIES)[number];
 
@@ -68,6 +70,8 @@ export const SUPPORT_ABILITY_MEANING: Record<SupportAbility, string> = {
 		"run commands on the hosts this room names; a change waits for a confirmer",
 	owner_mode:
 		"work as a full session for the owner the grant names: code, pull requests and merges, and confirm changes; everyone else reads and asks",
+	ops_reads:
+		"run the named production reads this room declares (a log search, a fixed data read), at once and read-only, through the box; the tool keeps its own credential",
 };
 
 /** Who reads a room: a product's users (no developer detail), or the team the room was bound for. */
@@ -99,6 +103,139 @@ export const chatUsernameSchema = z
 	.string()
 	.regex(/^[A-Za-z0-9._-]{1,64}$/, "a Rocket.Chat username, without @");
 
+/** A declared read's name: what the agent calls it by, never a path (ISS-871). */
+export const supportReadNameSchema = z
+	.string()
+	.regex(
+		/^[a-z][a-z0-9-]{1,39}$/,
+		"a read's name is 2 to 40 lowercase letters, digits and dashes, starting with a letter, such as hub-logs",
+	);
+
+/** The program a read runs on the box: an absolute path, never a name the box's PATH resolves. */
+const readProgramSchema = z
+	.string()
+	.max(300)
+	.regex(
+		/^\/(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._+@-]+(?:\/[A-Za-z0-9._+@-]+)*$/,
+		"the program is an absolute path on the box, with no . or .. segment",
+	);
+
+/** A fixed argument of a read: words the box passes as they are, one argv item each. */
+const readFixedArgSchema = z
+	.string()
+	.min(1)
+	.max(200)
+	.refine(
+		(v) =>
+			[...v].every((c) => c.charCodeAt(0) >= 0x20 && c.charCodeAt(0) !== 0x7f),
+		"an argument holds no control character",
+	);
+
+/**
+ * One typed parameter of a declared read (ISS-871): what the agent may pass, checked whole against
+ * its pattern or its enum and its length before anything runs, and passed to the program as its own
+ * argv item, after its fixed `flag` where one is named, else as the next positional.
+ */
+export const supportReadParamSchema = z
+	.strictObject({
+		name: z
+			.string()
+			.regex(
+				/^[a-z][a-z0-9_]{0,31}$/,
+				"a parameter name: a lowercase letter, then lowercase letters, digits or _",
+			),
+		description: z.string().trim().min(3).max(300),
+		/** The fixed flag the value follows, such as `--date`; absent, the value is a positional. */
+		flag: z
+			.string()
+			.regex(
+				/^--?[A-Za-z0-9][A-Za-z0-9-]{0,39}$/,
+				"a flag such as --date or -n",
+			)
+			.optional(),
+		required: z.boolean().optional(),
+		/** A regular expression the value must match whole. */
+		pattern: z.string().min(1).max(200).optional(),
+		/** The only values it takes. */
+		enum: z.array(readFixedArgSchema).min(1).max(30).optional(),
+		maxLength: z.number().int().min(1).max(500),
+	})
+	.superRefine((p, ctx) => {
+		if ((p.pattern === undefined) === (p.enum === undefined)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["pattern"],
+				message: `parameter ${p.name} takes exactly one of pattern or enum, so every value it passes is checked`,
+			});
+		}
+		if (p.pattern !== undefined) {
+			try {
+				new RegExp(p.pattern);
+			} catch {
+				ctx.addIssue({
+					code: "custom",
+					path: ["pattern"],
+					message: "not a regular expression",
+				});
+			}
+		}
+	});
+export type SupportReadParam = z.infer<typeof supportReadParamSchema>;
+
+/** The longest a read may run on the box, and how long when it names none. */
+export const SUPPORT_READ_TIMEOUT_MAX_MS = 120_000;
+export const SUPPORT_READ_TIMEOUT_DEFAULT_MS = 60_000;
+
+/**
+ * A read a room's grant declares (ISS-871, REQ-77 BC-3): a name the agent calls, a fixed argv the box
+ * runs with no shell (`argv[0]` an absolute path), and typed parameters. The program keeps its own
+ * credential; the agent sees the name, the summary and the parameters, never the argv.
+ */
+export const supportReadSchema = z
+	.strictObject({
+		name: supportReadNameSchema,
+		/** What it reads, in words the agent's brief lists. */
+		summary: z.string().trim().min(3).max(300),
+		argv: z
+			.array(readFixedArgSchema)
+			.min(1)
+			.max(20)
+			.refine(
+				(argv) => readProgramSchema.safeParse(argv[0]).success,
+				"argv[0] is the program: an absolute path on the box, with no . or .. segment",
+			),
+		params: z
+			.array(supportReadParamSchema)
+			.max(10)
+			.refine(
+				(ps) => new Set(ps.map((p) => p.name)).size === ps.length,
+				"a parameter is named once",
+			)
+			.optional(),
+		timeoutMs: z
+			.number()
+			.int()
+			.min(1000)
+			.max(SUPPORT_READ_TIMEOUT_MAX_MS)
+			.optional(),
+	})
+	.superRefine((r, ctx) => {
+		const positional = (r.params ?? []).filter((p) => !p.flag);
+		const firstOptional = positional.findIndex((p) => !p.required);
+		if (
+			firstOptional >= 0 &&
+			positional.slice(firstOptional + 1).some((p) => p.required)
+		) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["params"],
+				message:
+					"a required positional parameter follows an optional one, so the program could read one value as the other: put required positionals first",
+			});
+		}
+	});
+export type SupportRead = z.infer<typeof supportReadSchema>;
+
 /**
  * A room's grant (BC-27): the abilities, and what the targeted ones reach. `deploy` names the
  * project's deploy bindings it may deploy, `run_commands` the hosts, and either names who may
@@ -122,9 +259,27 @@ export const supportGrantsSchema = z
 		 * power.
 		 */
 		owner: chatUserIdSchema.optional(),
+		/** The production reads `ops_reads` runs, by name (ISS-871). */
+		reads: z
+			.array(supportReadSchema)
+			.max(20)
+			.refine(
+				(reads) => new Set(reads.map((r) => r.name)).size === reads.length,
+				"two reads share a name; a name names one read",
+			)
+			.optional(),
 	})
 	.superRefine((g, ctx) => {
 		const has = (a: SupportAbility) => g.abilities.includes(a);
+		if (has("ops_reads") !== Boolean(g.reads?.length)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["reads"],
+				message: has("ops_reads")
+					? "ops_reads is granted and declares no read: declare the reads this room may run"
+					: "reads are declared and ops_reads is not granted: grant ops_reads or drop them",
+			});
+		}
 		if (has("deploy") !== Boolean(g.deployTargets?.length)) {
 			ctx.addIssue({
 				code: "custom",
@@ -490,6 +645,7 @@ export const SUPPORT_ACTIONS = [
 	"check_result",
 	"agree",
 	"link",
+	"read",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -537,13 +693,20 @@ export const supportAgreeRequestSchema = z.strictObject({
 	thread: threadId,
 	proposal: z
 		.string()
-		.regex(SUPPORT_CONFIRM_CODE_PATTERN, "a proposal handle, as `record`, `propose_fix`, `build`, `deploy` or `command` answered it")
-		.describe("the proposal the person answered: the `proposal` its act answered"),
+		.regex(
+			SUPPORT_CONFIRM_CODE_PATTERN,
+			"a proposal handle, as `record`, `propose_fix`, `build`, `deploy` or `command` answered it",
+		)
+		.describe(
+			"the proposal the person answered: the `proposal` its act answered",
+		),
 	message: z
 		.string()
 		.min(1)
 		.max(64)
-		.describe("the id of the person's message that agrees or declines, as you were handed it (`message`)"),
+		.describe(
+			"the id of the person's message that agrees or declines, as you were handed it (`message`)",
+		),
 	decision: z.enum(["agree", "decline"]).optional(),
 });
 
@@ -557,7 +720,9 @@ export const supportLinkRequestSchema = z.strictObject({
 		.string()
 		.min(1)
 		.max(64)
-		.describe("the member's chat account id, as you were handed it (`from.id`)"),
+		.describe(
+			"the member's chat account id, as you were handed it (`from.id`)",
+		),
 });
 
 export const supportMoveIssueRequestSchema = z.strictObject({
@@ -602,6 +767,39 @@ export const supportCommandRequestSchema = z.strictObject({
 	host: supportCommandHostSchema,
 	command: z.string().trim().min(1).max(SUPPORT_COMMAND_MAX_CHARS),
 });
+
+/**
+ * A declared read, run by name (ISS-871): `args` by parameter name; `thread` the member thread it
+ * answers, or `check` the scheduled check it serves, either recorded with it.
+ */
+export const supportReadRequestSchema = z.strictObject({
+	name: supportReadNameSchema.describe(
+		"a read this room's grant declares, as your brief lists it",
+	),
+	args: z
+		.record(z.string(), z.union([z.string(), z.number()]))
+		.optional()
+		.describe("the read's parameters by name, as your brief lists them"),
+	thread: threadId.optional(),
+	check: z
+		.string()
+		.regex(
+			/^check:[a-z0-9][a-z0-9-]{1,39}:\d{4}-\d{2}-\d{2}$/,
+			"the check as it was handed: check:<name>:<YYYY-MM-DD>",
+		)
+		.optional(),
+});
+
+/** What a declared read came back with: its name and what the program printed, scrubbed by core. */
+export interface SupportReadResult {
+	name: string;
+	exitCode: number | null;
+	stdout: string;
+	stderr: string;
+	truncated: boolean;
+	timedOut: boolean;
+	durationMs: number;
+}
 
 /** What a box answers for one command it ran on a host, over its own SSH. */
 export interface SupportCommandResult {
@@ -693,6 +891,8 @@ export const SUPPORT_BOX_CAPABILITIES = {
 	build: "supportBuilds",
 	/** The box runs a command on a named host over its own SSH (`host.command`). */
 	commands: "hostCommands",
+	/** The box runs a read a grant declares, from its fixed argv with no shell (`ops.read`, ISS-871). */
+	reads: "opsReads",
 	/**
 	 * The box runs an owner-mode channel agent confined in its own clone of the repository, pushing
 	 * with a credential for that repository alone (ISS-765).
@@ -814,6 +1014,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_DEPLOYMENT_UNREADABLE",
 	/** An act only a channel agent takes, asked by a support group's session (ISS-775). */
 	"SUPPORT_NOT_A_CHANNEL_AGENT",
+	/** A read the room's grant does not declare (ISS-871). */
+	"SUPPORT_READ_UNDECLARED",
+	/** A read's argument outside its parameter's pattern, enum or length, unknown, or missing (ISS-871). */
+	"SUPPORT_READ_ARGS",
+	/** The box could not run a declared read (ISS-871). */
+	"SUPPORT_READ_FAILED",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -885,4 +1091,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	AGENT_SWITCH_OUTSIDE_NOT_SELF: 409,
 	SUPPORT_DEPLOYMENT_UNREADABLE: 503,
 	SUPPORT_NOT_A_CHANNEL_AGENT: 409,
+	SUPPORT_READ_UNDECLARED: 404,
+	SUPPORT_READ_ARGS: 400,
+	SUPPORT_READ_FAILED: 503,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

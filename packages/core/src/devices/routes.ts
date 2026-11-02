@@ -7,7 +7,12 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import {
+  actorFor,
+  orgResource,
+  requireOrgCan,
+  requiresNoPermission,
+} from '../permissions/index.js';
 import {
   ANCESTRY_PAIRS_MAX,
   answerBoxAct,
@@ -381,8 +386,9 @@ deviceAuthRoutes.post(
 );
 
 // Device → server: what a box did for a room's session (REQ-75 r5): a command it ran on a host
-// (`host.command`) or a working copy it committed and pushed (`build.push`). Settled only for the box
-// it was asked of; what the answer says is read in `runners/box-acts.ts`.
+// (`host.command`), a declared read it ran (`ops.read`, ISS-871) or a working copy it committed and
+// pushed (`build.push`). Settled only for the box it was asked of; what the answer says is read in
+// `runners/box-acts.ts`.
 const boxActAnswerSchema = z
   .object({
     projectId: z.uuid(),
@@ -401,10 +407,17 @@ const boxActAnswerSchema = z
   })
   .strict();
 
-for (const path of ['/me/host-commands/:requestId', '/me/support-builds/:requestId'] as const) {
+for (const path of [
+  '/me/host-commands/:requestId',
+  '/me/ops-reads/:requestId',
+  '/me/support-builds/:requestId',
+] as const) {
   deviceAuthRoutes.post(
     path,
     requireDevice(),
+    requiresNoPermission(
+      'a box answers what core asked of it: settled only for the device, project and request asked',
+    ),
     zValidator('param', z.object({ requestId: z.uuid() })),
     zValidator('json', boxActAnswerSchema),
     async (c) => {

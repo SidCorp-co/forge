@@ -56,6 +56,7 @@ async function capabilitiesNeeded(room: RoomRow): Promise<string[]> {
   }
   if (grants.abilities.includes('build')) need.push(SUPPORT_BOX_CAPABILITIES.build);
   if (grants.abilities.includes('run_commands')) need.push(SUPPORT_BOX_CAPABILITIES.commands);
+  if (grants.abilities.includes('ops_reads')) need.push(SUPPORT_BOX_CAPABILITIES.reads);
   return need;
 }
 

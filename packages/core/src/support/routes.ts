@@ -7,6 +7,7 @@ import {
   supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
   supportProposeFixRequestSchema,
+  supportReadRequestSchema,
   supportRecordRequestSchema,
   supportReplyRequestSchema,
   supportRunRequestSchema,
@@ -38,7 +39,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
+import { requiresNoPermission, requiresOnParam } from '../permissions/index.js';
 import { type SupportActInput, supportAct } from './acts.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
@@ -114,6 +115,7 @@ const SHAPES = {
   deploy: '{ thread, target }',
   deployment: '{ target }',
   command: '{ thread, host, command }',
+  read: '{ name, args?, thread?, check? }',
   member: '{ member, roles, askFor?, message }',
   rule: '{ thread, message, text }',
   commonIssue: '{ threads, question, answer, feedback? }',
@@ -216,6 +218,23 @@ supportRoutes.post(
   projectParam,
   strictBody(supportCommandRequestSchema, SHAPES.command),
   (c) => act(c, c.req.valid('param').id, { action: 'command', ...c.req.valid('json') }),
+);
+// a read the room's grant declares, run at once through the box with no shell (ISS-871)
+supportRoutes.post(
+  '/:id/support/session/reads',
+  projectParam,
+  requiresNoPermission(
+    "only the room's own session, under its current turn's token, is admitted (support/access.ts), and the room's grant gates the read",
+  ),
+  ridQuery,
+  strictBody(supportReadRequestSchema, SHAPES.read),
+  (c) =>
+    act(
+      c,
+      c.req.valid('param').id,
+      { action: 'read', ...c.req.valid('json') },
+      c.req.valid('query').rid,
+    ),
 );
 
 // an operations room's acts (REQ-75 BC-20..BC-24): read the scope, move delivery, draft direction, research;

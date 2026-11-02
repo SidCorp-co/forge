@@ -7,8 +7,8 @@ import WebSocket from 'ws';
 
 /**
  * What a box serving a support room declares: a confined chat turn, the checkout views a grant asks
- * for, the box acts (`host.command`, `build.push`) of REQ-75 r5, and an owner-mode agent's own clone
- * (ISS-765).
+ * for, the box acts (`host.command`, `build.push`) of REQ-75 r5, a declared read (`ops.read`, ISS-871),
+ * and an owner-mode agent's own clone (ISS-765).
  */
 export const SUPPORT_BOX_CAPS = JSON.stringify({
   followUpCredential: true,
@@ -17,8 +17,12 @@ export const SUPPORT_BOX_CAPS = JSON.stringify({
   chatCheckoutModes: true,
   supportBuilds: true,
   hostCommands: true,
+  opsReads: true,
   ownerCheckouts: true,
 });
+
+/** What core asks a box to do outside a session (REQ-75 r5, ISS-871). */
+export type BoxActEvent = 'host.command' | 'ops.read' | 'build.push';
 
 /** One message of a turn as the session reads it: its thread, its writer, and the words. */
 export interface TurnMessage {
@@ -132,7 +136,7 @@ export class SessionBox {
   /** How the box reports a turn's end: completed, or failed as a crashed process is. */
   turnEnd: 'completed' | 'failed' = 'completed';
   /** What core asked the box to do outside a session (REQ-75 r5): commands on hosts, builds pushed. */
-  readonly acts: { event: 'host.command' | 'build.push'; data: Record<string, unknown> }[] = [];
+  readonly acts: { event: BoxActEvent; data: Record<string, unknown> }[] = [];
   /** How the box answers a `host.command`: as its SSH would, or `{ error }` where it could not run. */
   commandAnswer: (data: Record<string, unknown>) => Record<string, unknown> = (d) => ({
     exitCode: 0,
@@ -141,6 +145,15 @@ export class SessionBox {
     truncated: false,
     timedOut: false,
     durationMs: 12,
+  });
+  /** How the box answers an `ops.read` (ISS-871): what the program printed, or `{ error }`. */
+  readAnswer: (data: Record<string, unknown>) => Record<string, unknown> = (d) => ({
+    exitCode: 0,
+    stdout: `read ${JSON.stringify(d.argv)}`,
+    stderr: '',
+    truncated: false,
+    timedOut: false,
+    durationMs: 7,
   });
   /** How the box answers a `build.push`: the commit it pushed, or `{ error }`. */
   buildAnswer: (data: Record<string, unknown>) => Record<string, unknown> = (d) => ({
@@ -182,7 +195,11 @@ export class SessionBox {
         this.run(frame).catch(failed);
       } else if (frame.event === 'session.send') {
         this.inject(frame.data).catch(failed);
-      } else if (frame.event === 'host.command' || frame.event === 'build.push') {
+      } else if (
+        frame.event === 'host.command' ||
+        frame.event === 'ops.read' ||
+        frame.event === 'build.push'
+      ) {
         this.act(frame.event, frame.data).catch(failed);
       }
     });
@@ -291,13 +308,22 @@ export class SessionBox {
   }
 
   /** Answers a box act on the device route under its request id, as the runner does. */
-  private async act(
-    event: 'host.command' | 'build.push',
-    data: Record<string, unknown>,
-  ): Promise<void> {
+  private async act(event: BoxActEvent, data: Record<string, unknown>): Promise<void> {
     this.acts.push({ event, data });
-    const answer = event === 'host.command' ? this.commandAnswer(data) : this.buildAnswer(data);
-    const route = event === 'host.command' ? 'host-commands' : 'support-builds';
+    const answer =
+      event === 'host.command'
+        ? this.commandAnswer(data)
+        : event === 'ops.read'
+          ? this.readAnswer(data)
+          : this.buildAnswer(data);
+    // an answer that never comes, as a box that does not take the frame
+    if (answer.silent === true) return;
+    const route =
+      event === 'host.command'
+        ? 'host-commands'
+        : event === 'ops.read'
+          ? 'ops-reads'
+          : 'support-builds';
     await this.post(`/api/devices/me/${route}/${String(data.requestId)}`, {
       projectId: data.projectId,
       ...answer,

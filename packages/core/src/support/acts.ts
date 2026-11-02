@@ -23,6 +23,7 @@ import { settleLatency } from './delivery.js';
 import { agreeTo } from './fixes.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
+import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
 import { askOwner } from './owner-ask.js';
 import { readProjectFacts } from './project-read.js';
@@ -103,7 +104,14 @@ export type SupportActInput =
       message: string;
       decision?: 'agree' | 'decline' | undefined;
     }
-  | { action: 'link'; thread: string; member: string };
+  | { action: 'link'; thread: string; member: string }
+  | {
+      action: 'read';
+      name: string;
+      args?: Record<string, string | number> | undefined;
+      thread?: string | undefined;
+      check?: string | undefined;
+    };
 
 /**
  * One act of a room's session. `rid` names the group a channel agent acts in where the act names no
@@ -125,17 +133,26 @@ export async function supportAct(
           `${input.action} is a support group's and a channel agent's act, and this room is an operations room: its acts are ${OPERATION_ACTIONS.join(', ')}, reply and thread`,
         );
   // a refusal, an ungranted ability's included, is the session's to read and say in its own words:
-  // core posts nothing in the room (ISS-845), and records the ungranted one (BC-28)
-  if (!out.ok && 'thread' in input) await recordNotGranted(room, input.thread, input.action, out);
+  // core posts nothing in the room (ISS-845), and records the ungranted one (BC-28); a read records
+  // every refusal of its own (`ops-read.ts`)
+  if (!out.ok && 'thread' in input && input.action !== 'read' && input.thread) {
+    await recordNotGranted(room, input.thread, input.action, out);
+  }
   // the session's first post in a thread answers every message of it the session had been handed
-  if (out.ok && 'thread' in input && POSTS.has(input.action)) {
+  if (out.ok && 'thread' in input && input.thread && POSTS.has(input.action)) {
     await settleLatency(room.id, input.thread, new Date());
   }
   return out;
 }
 
 /** The acts that read the same from any group of a channel agent: its grant and project are shared. */
-const ANY_ROOM = new Set<SupportActInput['action']>(['search', 'tools', 'deployment', 'project']);
+const ANY_ROOM = new Set<SupportActInput['action']>([
+  'search',
+  'tools',
+  'deployment',
+  'project',
+  'read',
+]);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
 function hintOf(input: SupportActInput, rid: string | undefined): RoomHint {
@@ -285,5 +302,9 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     }
     case 'link':
       return linkMember(room, { thread: input.thread, member: input.member });
+    case 'read': {
+      const { action: _, ...request } = input;
+      return runRead(room, request);
+    }
   }
 }

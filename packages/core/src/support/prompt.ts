@@ -5,6 +5,7 @@
 import {
   SUPPORT_ABILITY_MEANING,
   type SupportGrants,
+  type SupportRead,
   type SupportRoomConfig,
   type SupportTool,
 } from '@forge/contracts/support';
@@ -12,6 +13,7 @@ import { readMessages } from '../conversations/index.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { writerRoles } from './channel-read.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-ask.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
@@ -93,6 +95,18 @@ export function agentOpening(input: {
   ];
 }
 
+/** The reads a grant declares, as the agent is shown them: name, summary, parameters, never the argv. */
+export function readsLines(reads: readonly SupportRead[]): string {
+  return reads
+    .map((r) => {
+      const params = (r.params ?? []).map(
+        (p) => `${p.name}${p.required ? '' : '?'} (${p.description}; ${paramTakes(p)})`,
+      );
+      return `  - ${r.name}: ${r.summary}${params.length ? ` — args: ${params.join('; ')}` : ' — no args'}`;
+    })
+    .join('\n');
+}
+
 /** What the room's grant holds, as the brief lists it and a grant change re-tells it (BC-27). */
 export function grantsLine(g: SupportGrants): string {
   if (g.abilities.length === 0) {
@@ -108,7 +122,9 @@ export function grantsLine(g: SupportGrants): string {
             ? ' — your working folder is this checkout, read-only'
             : a === 'build'
               ? ' — your working folder is a writable copy of the development branch; you change files there, and never commit or push yourself'
-              : '';
+              : a === 'ops_reads'
+                ? ` — call each with support.read { name, args }:\n${readsLines(g.reads ?? [])}`
+                : '';
     return `- ${a}: ${SUPPORT_ABILITY_MEANING[a]}${reach}`;
   });
   const confirmers = g.confirmers?.length

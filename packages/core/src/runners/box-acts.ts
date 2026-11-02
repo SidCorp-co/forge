@@ -1,10 +1,11 @@
-// Two things core asks one box to do for a room's session, outside the session's sandbox (REQ-75 r5
-// BC-27): run a command on a host over the box's own SSH (`host.command`), and commit, push and name
-// the room's working copy (`build.push`). Core decided the act may run before it asks; the box runs
+// Three things core asks one box to do for a room's session, outside the session's sandbox (REQ-75 r5
+// BC-27): run a command on a host over the box's own SSH (`host.command`), run a read the room's grant
+// declares from its fixed argv with no shell (`ops.read`, ISS-871), and commit, push and name the
+// room's working copy (`build.push`). Core decided the act may run before it asks; the box runs
 // it with its own credentials and answers on the device route under the request's id. Asked of the
 // box the session runs on, never fanned out: a command runs once.
 
-import type { SupportCommandResult } from '@forge/contracts/support';
+import type { SupportCommandResult, SupportReadResult } from '@forge/contracts/support';
 import { boxAsks } from './box-ask.js';
 import { runnersPorts } from './ports.js';
 
@@ -92,6 +93,40 @@ export function runHostCommand(
         ok: true,
         value: {
           host: input.host,
+          exitCode: typeof a.exitCode === 'number' ? a.exitCode : null,
+          stdout: text(a.stdout, 64_000),
+          stderr: text(a.stderr, 64_000),
+          truncated: a.truncated === true,
+          timedOut: a.timedOut === true,
+          durationMs: typeof a.durationMs === 'number' ? a.durationMs : 0,
+        },
+      };
+    },
+  });
+}
+
+/**
+ * Run a declared read through the box `deviceId`: `argv` as the grant fixed it with the parameters as
+ * their own items, no shell, killed at `timeoutMs` (ISS-871). The answer is the program's own, unscrubbed.
+ */
+export function runOpsRead(
+  input: { deviceId: string; projectId: string; name: string; argv: string[]; timeoutMs: number },
+  deps: BoxActDeps = defaultDeps(),
+): Promise<BoxActOutcome<SupportReadResult>> {
+  return askBox({
+    deviceId: input.deviceId,
+    projectId: input.projectId,
+    event: 'ops.read',
+    data: { argv: input.argv, timeoutMs: input.timeoutMs },
+    timeoutMs: input.timeoutMs + 15_000,
+    deps,
+    read: (raw) => {
+      const a = (raw ?? {}) as Record<string, unknown>;
+      if (typeof a.error === 'string') return { ok: false, why: a.error.slice(0, 2000) };
+      return {
+        ok: true,
+        value: {
+          name: input.name,
           exitCode: typeof a.exitCode === 'number' ? a.exitCode : null,
           stdout: text(a.stdout, 64_000),
           stderr: text(a.stderr, 64_000),

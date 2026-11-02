@@ -8,6 +8,7 @@ export {
   HOST_COMMAND_TIMEOUT_MS,
   pushSupportBuild,
   runHostCommand,
+  runOpsRead,
 } from './box-acts.js';
 export {
   ANCESTRY_PAIRS_MAX,

@@ -5,13 +5,13 @@
 // group's top level, or none, and nothing is posted. One result per firing, whoever sends it; a
 // check turn that fails posts nothing in the group.
 
-import type { SupportCheck } from '@forge/contracts/support';
+import type { SupportCheck, SupportGrants } from '@forge/contracts/support';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions, supportRooms } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { deliverWaiting } from './dispatch.js';
-import { supportConfigOf } from './grants.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { checkThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
@@ -24,12 +24,19 @@ function utcParts(now: Date): { day: string; time: string } {
   return { day: iso.slice(0, 10), time: iso.slice(11, 16) };
 }
 
-/** What the agent is handed when a check fires. */
-function checkNote(check: SupportCheck, thread: string): string {
+/**
+ * What the agent is handed when a check fires: the tracker reads, and the production reads the
+ * room's grant declares (ISS-871), by name only.
+ */
+export function checkNote(check: SupportCheck, thread: string, grants: SupportGrants): string {
+  const reads = grants.abilities.includes('ops_reads') ? (grants.reads ?? []) : [];
+  const production = reads.length
+    ? ` Read production with support.read { name, args?, check: "${thread}" }, through the reads this room is granted: ${reads.map((r) => r.name).join(', ')} (your brief lists what each takes).`
+    : '';
   return [
     `Scheduled check \`${check.name}\` for channel ${check.rid}:`,
     check.ask,
-    `Answer it with support.check_result { check: "${thread}", finding }: the one finding to post in the channel when something is wrong, or finding null when nothing is, and nothing is posted. Write the finding as the persona speaks, its language and its length. Read the tracker with support.issues, support.releases and support.requirements. Post nothing else for this check.`,
+    `Answer it with support.check_result { check: "${thread}", finding }: the one finding to post in the channel when something is wrong, or finding null when nothing is, and nothing is posted. Write the finding as the persona speaks, its language and its length. Read the tracker with support.issues, support.releases and support.requirements.${production} Post nothing else for this check.`,
   ].join('\n\n');
 }
 
@@ -57,7 +64,8 @@ export async function fireDueChecks(now = new Date()): Promise<number> {
     .where(and(eq(supportRooms.kind, 'agent'), isNotNull(supportRooms.sessionId)));
   let fired = 0;
   for (const room of rooms) {
-    const checks = (await supportConfigOf(room))?.checks ?? [];
+    const config = await supportConfigOf(room);
+    const checks = config?.checks ?? [];
     for (const { check, thread } of dueChecks(checks, room.rid, now)) {
       const row = await insertAction({
         roomId: room.id,
@@ -66,7 +74,7 @@ export async function fireDueChecks(now = new Date()): Promise<number> {
         thread,
         kind: 'message_in',
         actorKind: 'core',
-        input: { note: checkNote(check, thread), check: check.name },
+        input: { note: checkNote(check, thread, grantsOf(config)), check: check.name },
         externalId: thread,
       });
       if (!row) continue;
@@ -80,7 +88,7 @@ export async function fireDueChecks(now = new Date()): Promise<number> {
 }
 
 /** The firing a result names, in this room: a message core wrote under that check thread. */
-async function firingOf(room: RoomRow, thread: string): Promise<boolean> {
+export async function firingOf(room: RoomRow, thread: string): Promise<boolean> {
   const [row] = await db
     .select({ id: supportActions.id })
     .from(supportActions)
