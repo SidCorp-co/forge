@@ -18,6 +18,7 @@
  * @direct-test-of packages/core/src/release-batch/close-roster.ts
  * @direct-test-of packages/core/src/release-batch/hold.ts
  * @direct-test-of packages/core/src/release-batch/routes.ts
+ * @direct-test-of packages/core/src/release-batch/prompt.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -201,7 +202,14 @@ describe('an abort over a roster an earlier release already shipped (ISS-888 sha
     await shipped('0.4.0-dev.1', C1, 60);
     const x = await landed(120);
     await markedAgo(x, 90);
-    const { runId } = await fx.claim([x]);
+    const { runId, jobId } = await fx.claim([x]);
+    const [job] = await rows<{ prompt: string }>(
+      sql`SELECT payload ->> 'promptString' AS prompt FROM jobs WHERE id = ${jobId}`,
+    );
+    expect(
+      job?.prompt,
+      'the release run is told how to name the release that shipped it',
+    ).toContain('"shippedIn":{"version":"<that release>"');
     const aborted = await api(
       token,
       'POST',
