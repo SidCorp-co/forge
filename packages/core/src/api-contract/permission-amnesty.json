@@ -195,8 +195,6 @@
     "POST /api/projects/:id/workflows/:workflow/observations",
     "POST /api/projects/:projectId/release-batches",
     "POST /api/projects/:projectId/release-batches/:runId/approvals/:approvalId/decision",
-    "POST /api/projects/:projectId/speaker-links",
-    "POST /api/projects/:projectId/speaker-links/proposals",
     "POST /api/questions",
     "POST /api/questions/:id/void",
     "POST /api/recordings/:id/stop",

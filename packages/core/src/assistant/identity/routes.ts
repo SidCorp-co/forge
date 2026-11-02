@@ -7,13 +7,13 @@
  */
 
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
-import { Hono, type MiddlewareHandler } from 'hono';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { invalid, zValidator } from '../../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
+import { requiresOnParam } from '../../permissions/index.js';
 import { confirmSpeakerLink } from '../service.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
@@ -50,14 +50,12 @@ const refused = (refusal: SpeakerRefusal, path = ''): RefusalError =>
   refuseSpeaker(refusal.code, refusal.message, path);
 
 // project access is refused before the body is read, so a stranger learns nothing from a 400
-const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(
-    actorFor(c.get('userId')),
-    'project.write',
-    projectResource(c.req.param('projectId') ?? ''),
-  );
-  await next();
-};
+const projectParam = zValidator(
+  'param',
+  z.object({ projectId: z.uuid() }),
+  invalid('invalid path: /api/projects/<project uuid>/speaker-links'),
+);
+const projectAccess = requiresOnParam('project.write');
 
 function readBody(
   raw: SpeakerBody,
@@ -122,6 +120,7 @@ speakerLinkProjectRoutes.use(
 
 speakerLinkProjectRoutes.post(
   '/projects/:projectId/speaker-links/proposals',
+  projectParam,
   projectAccess,
   speakerBody,
   async (c) => {
@@ -137,6 +136,7 @@ speakerLinkProjectRoutes.post(
 
 speakerLinkProjectRoutes.post(
   '/projects/:projectId/speaker-links',
+  projectParam,
   projectAccess,
   speakerBody,
   async (c) => {
