@@ -30,7 +30,7 @@ import type { ChromeScreen } from "./vi-chrome-screens";
 // seeded with data that carries no English word of its own: core's act texts are registry keys the
 // said reader renders, and everything a person or an agent wrote is placeholder words.
 
-const P = "p1";
+export const P = "p1";
 const AT = "2026-10-07T10:00:00Z";
 const nobody = waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE });
 const you = (act: Said) => waitingOn("you", { who: say("standing.who.you"), act, rule: RULE });
@@ -151,7 +151,7 @@ const coming = {
   draft: { ...stamp, scope: "release", key: "draft", title: null, progress: { total: 2, shipped: 0, awaitingRelease: 1, toDo: 1 }, forecast: null, next: null, delivery: null },
 };
 
-const releaseSeed = (): [QueryKey, unknown][] => [
+export const releaseSeed = (): [QueryKey, unknown][] => [
   [["releases", P], { releases: [draft, shipped], counts: {}, approvalRequired: true, production: { ok: false, reason: "r" } }],
   [["issues", "standing", "forecast", "coming-next", P], coming],
   [["release", P, "0.1.0"], { release: detail }],
