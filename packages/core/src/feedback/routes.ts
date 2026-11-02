@@ -63,6 +63,10 @@ import { tellShippedNow } from './tell-shipped.js';
 import { triageFeedback } from './triage.js';
 import { snoozeFeedback } from './verbs.js';
 
+// each route's floor on the project :id names; a service keeps its act's decide rule
+const READ = requiresOnParam('project.read', 'id');
+const WRITE = requiresOnParam('project.write', 'id');
+
 export const feedbackRoutes = new Hono<{ Variables: AuthVars }>();
 
 for (const path of ['/:id/feedback', '/:id/feedback/*']) {
@@ -105,7 +109,7 @@ function answer(c: Context, outcome: FeedbackOutcome) {
 feedbackRoutes.get(
   '/:id/feedback',
   projectParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   zValidator(
     'query',
     listFeedbackQuerySchema,
@@ -127,7 +131,7 @@ feedbackRoutes.get(
 feedbackRoutes.post(
   '/:id/feedback',
   projectParam,
-  requiresOnParam('project.write', 'id'),
+  WRITE,
   strictBody(createFeedbackRequestSchema, CREATE_FEEDBACK_SHAPE),
   holdChatWrite('feedback'),
   async (c) =>
@@ -146,7 +150,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/report',
   projectParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   strictBody(feedbackReportRequestSchema, FEEDBACK_REPORT_SHAPE),
   holdChatWrite('feedback'),
   async (c) => {
@@ -165,48 +169,30 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/similar',
   projectParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   strictBody(similarFeedbackDraftSchema, SIMILAR_FEEDBACK_DRAFT_SHAPE),
   async (c) =>
     c.json(await similarToDraftAs(actorOf(c), c.req.valid('param').id, c.req.valid('json'))),
 );
 
 // before `/:fb`, which would read `endpoints` as an item key
-feedbackRoutes.get(
-  '/:id/feedback/endpoints',
-  projectParam,
-  requiresOnParam('project.read', 'id'),
-  noQuery,
-  async (c) => {
-    const body: FeedbackEndpointsResponse = {
-      endpoints: await servedEndpointsAs(actorOf(c), c.req.valid('param').id),
-    };
-    return c.json(body);
-  },
-);
+feedbackRoutes.get('/:id/feedback/endpoints', projectParam, READ, noQuery, async (c) => {
+  const body: FeedbackEndpointsResponse = {
+    endpoints: await servedEndpointsAs(actorOf(c), c.req.valid('param').id),
+  };
+  return c.json(body);
+});
 
-feedbackRoutes.get(
-  '/:id/feedback/:fb',
-  itemParam,
-  requiresOnParam('project.read', 'id'),
-  noQuery,
-  async (c) => {
-    const { id, fb } = c.req.valid('param');
-    const body: FeedbackResponse = { feedback: await detailAs(actorOf(c), id, fb) };
-    return c.json(body);
-  },
-);
+feedbackRoutes.get('/:id/feedback/:fb', itemParam, READ, noQuery, async (c) => {
+  const { id, fb } = c.req.valid('param');
+  const body: FeedbackResponse = { feedback: await detailAs(actorOf(c), id, fb) };
+  return c.json(body);
+});
 
-feedbackRoutes.get(
-  '/:id/feedback/:fb/similar',
-  itemParam,
-  requiresOnParam('project.read', 'id'),
-  noQuery,
-  async (c) => {
-    const { id, fb } = c.req.valid('param');
-    return c.json(await similarFeedbackAs(actorOf(c), id, fb));
-  },
-);
+feedbackRoutes.get('/:id/feedback/:fb/similar', itemParam, READ, noQuery, async (c) => {
+  const { id, fb } = c.req.valid('param');
+  return c.json(await similarFeedbackAs(actorOf(c), id, fb));
+});
 
 feedbackRoutes.post(
   '/:id/feedback/:fb/triage',
@@ -250,7 +236,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/messages/preview',
   itemParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   strictBody(feedbackMessageRequestSchema, FEEDBACK_MESSAGE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -299,7 +285,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/messages',
   itemParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   strictBody(feedbackMessageRequestSchema, FEEDBACK_MESSAGE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -358,7 +344,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/verify-ask',
   itemParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   strictBody(feedbackEmptyRequestSchema, FEEDBACK_EMPTY_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -369,7 +355,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/tell-shipped',
   itemParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   strictBody(feedbackEmptyRequestSchema, FEEDBACK_EMPTY_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -381,7 +367,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/confirm-wait',
   itemParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   strictBody(feedbackConfirmWaitRequestSchema, FEEDBACK_CONFIRM_WAIT_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -419,7 +405,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/clarification',
   itemParam,
-  requiresOnParam('project.write', 'id'),
+  WRITE,
   strictBody(feedbackClarificationRequestSchema, FEEDBACK_CLARIFICATION_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -443,7 +429,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/attachments',
   itemParam,
-  requiresOnParam('project.write', 'id'),
+  WRITE,
   strictBody(feedbackAttachmentRequestSchema, FEEDBACK_ATTACHMENT_SHAPE),
   holdChatWrite('attachment'),
   async (c) => {
@@ -466,7 +452,7 @@ feedbackRoutes.post(
 feedbackRoutes.get(
   '/:id/feedback/:fb/attachments/:aid',
   attachmentParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   noQuery,
   async (c) => {
     const { id, fb, aid } = c.req.valid('param');
@@ -491,15 +477,10 @@ feedbackRoutes.get(
   },
 );
 
-feedbackRoutes.delete(
-  '/:id/feedback/:fb/reporter-data',
-  itemParam,
-  requiresOnParam('project.read', 'id'),
-  async (c) => {
-    const { id, fb } = c.req.valid('param');
-    return answer(c, await redactReporterData({ projectId: id, ref: fb, actor: actorOf(c) }));
-  },
-);
+feedbackRoutes.delete('/:id/feedback/:fb/reporter-data', itemParam, READ, async (c) => {
+  const { id, fb } = c.req.valid('param');
+  return answer(c, await redactReporterData({ projectId: id, ref: fb, actor: actorOf(c) }));
+});
 
 // the triage checklist door (REQ-34 BC-3) is served through this face like every other feedback route
 export { feedbackChecklistRoutes } from './checklist-routes.js';
