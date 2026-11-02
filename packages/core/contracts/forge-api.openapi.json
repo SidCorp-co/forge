@@ -2374,6 +2374,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2444,6 +2447,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -2619,6 +2625,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2675,6 +2684,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -2697,6 +2709,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -2731,6 +2746,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -18392,6 +18410,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -18427,6 +18448,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -18478,6 +18502,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -18582,6 +18609,9 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s own preferences and product state, keyed by the caller"
+        },
         "x-forge-validated": [
           "json"
         ]

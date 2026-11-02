@@ -12,7 +12,7 @@ import { answerStyles } from '../db/schema.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan, requiresSelf } from '../permissions/index.js';
 import { listProductState, readMePreferences, readPreferences, readProductState } from './read.js';
 import {
   listPreferenceChanges,
@@ -39,23 +39,27 @@ const patchBodySchema = z
 
 const changeParamSchema = z.object({ id: z.uuid() });
 
+// every route reads or writes the caller's own preferences and product state, keyed by the caller
+const OWN = requiresSelf('the caller’s own preferences and product state, keyed by the caller');
+
 export const preferenceRoutes = new Hono<{ Variables: AuthVars }>();
 
 preferenceRoutes.use('/preferences', requireAuth());
 preferenceRoutes.use('/preferences/*', requireAuth());
 preferenceRoutes.use('/me/preferences', requireAuth());
 
-preferenceRoutes.get('/preferences', noQuery, async (c) =>
+preferenceRoutes.get('/preferences', OWN, noQuery, async (c) =>
   c.json(await readPreferences(c.get('userId'))),
 );
 
-preferenceRoutes.get('/preferences/changes', noQuery, async (c) =>
+preferenceRoutes.get('/preferences/changes', OWN, noQuery, async (c) =>
   c.json({ items: await listPreferenceChanges(c.get('userId')) }),
 );
 
 preferenceRoutes.post(
   '/preferences/changes/:id/restore',
   zValidator('param', changeParamSchema),
+  OWN,
   async (c) => {
     const userId = c.get('userId');
     const restored = await restorePreferenceChange({
@@ -73,7 +77,7 @@ preferenceRoutes.post(
   },
 );
 
-preferenceRoutes.patch('/preferences', zValidator('json', patchBodySchema), async (c) => {
+preferenceRoutes.patch('/preferences', OWN, zValidator('json', patchBodySchema), async (c) => {
   const { answerStyle, assistantInstructions } = c.req.valid('json');
   const userId = c.get('userId');
   await writeAssistantPreferences({
@@ -97,12 +101,12 @@ const preferencesSchema = z
   })
   .strict();
 
-preferenceRoutes.get('/me/preferences', noQuery, async (c) => {
+preferenceRoutes.get('/me/preferences', OWN, noQuery, async (c) => {
   const userId = c.get('userId');
   return c.json(await readMePreferences(userId));
 });
 
-preferenceRoutes.patch('/me/preferences', zValidator('json', preferencesSchema), async (c) => {
+preferenceRoutes.patch('/me/preferences', OWN, zValidator('json', preferencesSchema), async (c) => {
   const userId = c.get('userId');
   const patch = c.req.valid('json');
   if (Object.keys(patch).length === 0) {
@@ -112,6 +116,7 @@ preferenceRoutes.patch('/me/preferences', zValidator('json', preferencesSchema),
     });
   }
 
+  // a data rule, not the route's permission: the org the body names must be one the caller reads
   if (patch.activeOrgId != null) {
     await requireOrgCan(actorFor(userId), 'org.read', orgResource(patch.activeOrgId));
   }
@@ -134,17 +139,18 @@ export const productStateRoutes = new Hono<{ Variables: AuthVars }>();
 productStateRoutes.use('/product-state', requireAuth());
 productStateRoutes.use('/product-state/*', requireAuth());
 
-productStateRoutes.get('/product-state', noQuery, async (c) =>
+productStateRoutes.get('/product-state', OWN, noQuery, async (c) =>
   c.json({ items: await listProductState(c.get('userId')) }),
 );
 
-productStateRoutes.get('/product-state/:key', productStateKeyParam, noQuery, async (c) =>
+productStateRoutes.get('/product-state/:key', productStateKeyParam, OWN, noQuery, async (c) =>
   c.json(await readProductState(c.get('userId'), c.req.valid('param').key as ProductStateKey)),
 );
 
 productStateRoutes.put(
   '/product-state/:key',
   productStateKeyParam,
+  OWN,
   strictBody(putProductStateRequestSchema, '{ value: the value the key holds }'),
   async (c) => {
     const outcome = await writeProductState({
@@ -162,6 +168,7 @@ productStateRoutes.use('/tour-events', requireAuth());
 /** One event of the person's tour run: started, completed, dismissed at a step, or a step skipped. */
 productStateRoutes.post(
   '/tour-events',
+  OWN,
   strictBody(tourEventRequestSchema, TOUR_EVENT_SHAPE),
   async (c) =>
     c.json(
