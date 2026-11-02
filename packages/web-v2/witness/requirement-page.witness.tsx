@@ -116,6 +116,9 @@ const firstView = (t: "light" | "dark") => async () => {
     if (wide && nodes.some((n) => n.left < box.left || n.right > box.right)) wrong.push("a step of the workflow is cut at the pane's edge at 1440");
     if (!wide && nodes.some((n) => n.left < box.left - 1 && n.right > box.left + 1)) wrong.push("a step of the workflow is cut at the pane's left edge");
   }
+  // the tabs stand in one row at every width: a phone keeps the open one and puts the rest behind More (ISS-903)
+  const rows = new Set([...document.querySelectorAll<HTMLElement>("[data-testid=requirement-tabs] [role=tab]")].map((x) => Math.round(x.getBoundingClientRect().top)));
+  if (rows.size > 1) wrong.push(`the tabs wrap onto ${rows.size} rows at ${window.innerWidth} px`);
   const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement);
   console.log(`requirement ${t} ${window.innerWidth}: ${count} words on the first screen: ${words.join(" ")}`);
   if (count > MOST_WORDS) wrong.push(`the page shows ${count} words on its first screen, over ${MOST_WORDS}; it starts: ${words.slice(0, 40).join(" ")}`);

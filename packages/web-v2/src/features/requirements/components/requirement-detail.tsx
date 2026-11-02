@@ -20,7 +20,6 @@ import {
   Disclosure,
   DetailMobileTitle,
   DetailPane,
-  DetailTabs,
   FactsRail,
   type RecordView,
   StatusBadge,
@@ -30,6 +29,7 @@ import {
   ViewHeading,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { RequirementTabs } from "./requirement-tabs";
 import { MockupList, RequirementMockups } from "@/features/mockups";
 import { useMockups } from "@/features/mockups";
 import { PendingBadge } from "@/features/suggestions";
@@ -170,7 +170,7 @@ export function RequirementPage({
             <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
             <div className="flex items-end justify-between gap-3 pr-8 pt-3 max-md:flex-col-reverse max-md:items-end max-md:gap-0 max-md:pr-4" data-testid="requirement-tabs-bar">
               <div className="min-w-0 flex-1 max-md:w-full max-md:flex-none">
-                <DetailTabs tabs={tabs} value={shownTab} onChange={onTab} testId="requirement-tabs" />
+                <RequirementTabs tabs={tabs} value={shownTab} onTab={onTab} />
               </div>
               <DetailDrawer label={t("common.properties")} testId="requirement-properties">
                 <FactsRail testId="relations-rail">
