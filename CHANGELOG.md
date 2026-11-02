@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.447] - 2026-11-02
+
+Agents can correct a closed issue's wrong shipped-in release, keeping the old record
+
+### Added
+
+- **A wrong shipped-in record can be corrected.** The same record with `corrects` and a `reason` moves a closed issue to the release that truly shipped it; the old record stays on its release, marked superseded.
+
 ## [0.4.0-dev.446] - 2026-11-02
 
 A requirement revision can rename the requirement when accepted
