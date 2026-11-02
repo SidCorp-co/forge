@@ -173,8 +173,8 @@ Upload the file from disk instead of inlining base64 bytes into a request: \`for
     audience: 'agent',
     title: 'Working in a Forge-managed repo',
     summary:
-      'Start here: what Forge owns, the recall-first rule, draft vs open, and the red flags that waste a runner slot.',
-    version: 1,
+      'Start here: what Forge owns, the recall-first rule, draft vs open, and what is worth watching.',
+    version: 2,
     body: `## Working in a Forge-managed repo
 
 If a repo has a \`.forge/\` directory or an \`mcp.json\` naming a \`forge\` server, its issues, pipeline
@@ -206,21 +206,16 @@ dispatches. So:
 - A note, learning or decision → **not an issue at all**; write it to memory. Nobody browses the
   issue list for notes.
 
-### Red flags
-- **prose-deps** — describing an ordering in text instead of setting a \`blocks\` edge. Only the edge
-  gates dispatch; prose gates nothing.
-- **open-as-note** / **draft-as-note** — filing a note as an issue.
-- **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. On a staged project
-  those are written by the clarify and plan steps, on an autonomous one by the driver's own
-  clarifying and planning phases; filling them deletes that work's reason to exist.
-- **wholesale-config-clobber** — writing the policy without reading it first. It is written
-  whole against the revision you read; a stale revision is refused, so read, change, send.
-- **skip-recall** — see above.
-- **fix-by-hand-and-forget** — fixing something outside the pipeline and leaving no status move and
-  no recorded learning.
+### Worth watching
+- An ordering written in prose gates nothing; only a \`blocks\` edge does.
+- A note filed as an issue is read by nobody; memory is where it is found again.
+- The policy and the project document are written whole against the revision you read; a stale
+  revision is refused, so read, change, send.
+- A fix made outside the pipeline still owes its merge mark and its status move.
 
 ### Writing an issue
-Fill \`title\`, \`description\`, \`priority\`, \`category\`. Keep the description a **requirements
+Fill \`title\`, \`description\`, \`priority\`, \`category\`, and a plan or criteria where you already
+have them. Keep the description a **requirements
 contract** — outcome, business rules, invariants, what is out of scope. Not an implementation script
 naming files and endpoints: those claims go stale and, in practice, outrank live exploration.`,
   },

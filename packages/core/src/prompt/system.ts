@@ -40,8 +40,8 @@ You are working in a Forge-managed project. Its issues, comments, status and pro
 
 For codebase & project knowledge, read \`projects/<id>/knowledge\` (or \`forge knowledge\`) — no local file. Follow any always-applied Project rules in this preamble, then explore with search tools.`;
 
-const CHAT_ISSUE_RULES = `## Turning a request into issues — consolidate, do NOT pre-split
-When the conversation produces work to track, capture **one coherent request as ONE issue** whose body holds the full spec the user gave — all the parts, sub-features, acceptance criteria, and context, kept together. Do NOT shatter a multi-part request into many atomic tickets yourself. **Splitting is the pipeline's call, not yours**: whoever works the issue decides whether it is one change or several, and orders them itself. Your job is to gather and clarify; theirs is to break down. One feature-set the user described together = one issue, not N. If the user explicitly asks for separate issues, follow them — but the default is consolidate.`;
+const CHAT_ISSUE_RULES = `## Turning a request into issues
+When the conversation produces work to track, shape it the way it will be built: a request that is one change is one issue with the whole spec the user gave; parts that ship separately are separate issues, with a \`blocks\` edge where one must land first. Use judgement, and follow the user where they say how they want it filed.`;
 
 /**
  * The "## Your role in this chat" section, tuned to the reader's assigned

@@ -5,8 +5,8 @@ export const WHAT_IS_AN_ISSUE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'What is an issue?',
   summary:
-    'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
-  version: 4,
+    'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and how to give a residual an owner.',
+  version: 5,
   body: `## What is an issue?
 
 An issue is a unit of **work** — not a note, not a question, not a record of something already done.
@@ -34,19 +34,16 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 | An audit or scan finding | an observation | memory, until it becomes work with a deliverable |
 | A fix you already made by hand | a record | move the status, capture the learning in memory |
 
-### Residuals — fix them, don't file them
+### Residuals — give each one an owner
 
-Under-filing ships bugs. Measured case: four separate stages flagged an unauthenticated data leak, each asked for a follow-up to be filed, none was, and the leak shipped.
+A residual nobody owns is the failure: four stages once flagged the same data leak, each asked for a follow-up, none was filed, and the leak shipped. A pile of unowned \`draft\`s is the same failure in another shape.
 
-Filing was the wrong correction. Measured 2026-08-18 on forge-dev: 30 open \`draft\`s, the oldest untouched for 54 days, most of them fixable defects a stage deferred rather than fixed — two of them describing drafts being filed and forgotten while themselves sitting filed and forgotten.
+So decide where each one goes:
 
-So anything a stage wants to hand onward routes as:
-
-1. **You can fix it here** → **fix it**, and declare it under \`Extra fixes:\` in your comment. This is the default and covers most residuals. A declared extra fix is authorized work, not scope-creep — review judges it on merit.
+1. **In reach here** → usually cheapest to fix it, declared under \`Extra fixes:\` in your comment. A declared extra fix is authorized work, judged on merit.
 2. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
 3. **It needs a human decision** → \`needs_info\` + \`waitingKind: needs_decision\` + \`reason\` when it blocks this issue; a standing policy question → a line in \`docs/proposals/\`.
-
-Filing a NEW issue is not on that list. If it fits none of the three, say it in a comment on the issue you are already working on — silence is the only thing that is never acceptable.
+4. **It is separate work** → an issue of its own that passes the four gates, with someone who will pick it up.
 
 ### When you find one that is not work — act on it, don't leave it
 
