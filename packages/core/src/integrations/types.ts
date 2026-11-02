@@ -397,6 +397,7 @@ export interface BindingTargetRefusal {
     | 'SUPPORT_OWNER_MODE_NOT_AGENT'
     | 'SUPPORT_CHECK_NOT_AGENT'
     | 'SUPPORT_CHECK_ROOM_UNKNOWN'
+    | 'SUPPORT_OWNER_ROOM_UNKNOWN'
     | 'AGENT_SWITCH_NOT_READY';
   path: string;
   detail: string;

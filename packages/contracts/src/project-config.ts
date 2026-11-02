@@ -89,6 +89,8 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_CHECK_NOT_AGENT",
 	/** A scheduled check names a group the binding does not answer (REQ-77 BC-13). */
 	"SUPPORT_CHECK_ROOM_UNKNOWN",
+	/** A channel agent's `ownerRoom` is no group the binding answers, or sits on another block (ISS-872). */
+	"SUPPORT_OWNER_ROOM_UNKNOWN",
 	/** A group an outside bot answers joins the channel agent before its switch may run (REQ-77 BC-16). */
 	"AGENT_SWITCH_NOT_READY",
 ] as const;

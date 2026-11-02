@@ -14,6 +14,7 @@ import {
   type SupportCallResult,
 } from '../integrations/support-api/index.js';
 import { askerOf, mentionRefusal, readerOf } from './channel.js';
+import { readersOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
@@ -204,6 +205,5 @@ async function doorOf(room: RoomRow, member: Parameters<typeof readerOf>[0]): Pr
     const reader = readerOf(member);
     if (reader) return reader === 'detail' ? 'operations-reply' : 'support-reply';
   }
-  const team = room.kind === 'operations' || (await roomConfig(room))?.readers === 'team';
-  return team ? 'operations-reply' : 'support-reply';
+  return (await readersOf(room)) === 'team' ? 'operations-reply' : 'support-reply';
 }

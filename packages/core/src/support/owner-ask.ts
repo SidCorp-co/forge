@@ -18,12 +18,12 @@ import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
-import { granters, grantsOf, supportConfigOf } from './grants.js';
+import { granters, grantsOf, readersOf, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { threadLink } from './record.js';
 import { screenForThread } from './screen.js';
-import { type ActionRow, insertAction, type RoomRow } from './store.js';
-import { postInThread, roomAuth, scrubbedForRoom } from './thread.js';
+import { type ActionRow, insertAction, type RoomRow, threadMembers } from './store.js';
+import { postInThread, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
 
 const ASK = 'ask_owner';
 const ANSWER = 'owner_answer';
@@ -86,7 +86,41 @@ async function ownerUsername(projectId: string, ownerId: string): Promise<string
 }
 
 /**
- * Ask the owner the binding names, in a thread of the agent's group. Refused by name, nothing posted,
+ * A project's question reaches the owner only in the room the binding names for them (ISS-872), in a
+ * thread a member wrote in: never in a room the product's users read, another group, or at top level.
+ */
+async function ownerRoomRefusal(
+  room: RoomRow,
+  ownerRoom: string | null,
+  thread: string,
+): Promise<Outcome<never> | null> {
+  if (!ownerRoom) {
+    return no(
+      'SUPPORT_NOT_THE_OWNER_ROOM',
+      '/action',
+      `this agent's binding names no owner's room, so nobody was asked: a question for the owner goes only to the group the binding names as \`agent.ownerRoom\`; ${await granters(room.projectId)}`,
+    );
+  }
+  if (room.rid !== ownerRoom) {
+    const readers = (await readersOf(room)) === 'users' ? "the product's users" : 'the team';
+    return no(
+      'SUPPORT_NOT_THE_OWNER_ROOM',
+      '/action',
+      `${room.rid} is read by ${readers}, and a question for the owner is asked only in the owner's room ${ownerRoom}, in a thread there, in plain words; nothing was asked`,
+    );
+  }
+  if (thread === TOP_LEVEL) {
+    return no(
+      'SUPPORT_NOT_THE_OWNER_ROOM',
+      '/thread',
+      `a question for the owner is asked in a thread of ${ownerRoom} a member wrote in, never at its top level; nothing was asked`,
+    );
+  }
+  return null;
+}
+
+/**
+ * Ask the owner the binding names, in a thread of the owner's room (ISS-872). Refused by name, nothing posted,
  * when the room is not a channel agent's, the binding names no owner, the thread is unknown, or the
  * issue the answer should be written on is not one of this project.
  */
@@ -113,7 +147,8 @@ export async function askOwner(
       "ask_owner is a channel agent's act: this room's binding carries no `agent` block, so it names no owner to ask",
     );
   }
-  const owner = grantsOf(await supportConfigOf(room)).owner;
+  const config = await supportConfigOf(room);
+  const owner = grantsOf(config).owner;
   if (!owner) {
     return no(
       'SUPPORT_OWNER_NOT_NAMED',
@@ -121,7 +156,12 @@ export async function askOwner(
       `this agent's binding names no owner, so nobody was asked: name the owner's Rocket.Chat user id in its grant; ${await granters(room.projectId)}`,
     );
   }
-  const conversationId = await knownThread(room, input.thread);
+  const notOwnerRoom = await ownerRoomRefusal(room, config?.ownerRoom ?? null, input.thread);
+  if (notOwnerRoom) return notOwnerRoom;
+  // an asker's thread: a member wrote in it, never the top-level post of an announcement
+  const conversationId = (await threadMembers(room.id, input.thread)).length
+    ? await knownThread(room, input.thread)
+    : null;
   if (!conversationId) return threadUnknown(input.thread);
   const issue = input.record ? await issueOfKey(room.projectId, input.record) : null;
   if (input.record && !issue) {

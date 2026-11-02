@@ -71,6 +71,8 @@ export async function settleSupportRoom(args: {
   }
   const checksRefused = checkRefusals(args.config, { support, agent, answered });
   if (checksRefused.length > 0) return { ok: false, refusals: checksRefused };
+  const ownerRoomRefused = ownerRoomRefusals(args.config, { support, answered });
+  if (ownerRoomRefused.length > 0) return { ok: false, refusals: ownerRoomRefused };
   // an operations binding attaches any number of rooms, each with a session of its own (BC-20)
   if (!support) return { ok: true, config: args.config };
   const rids = Array.isArray(args.config.rids) ? args.config.rids : [];
@@ -87,6 +89,37 @@ export async function settleSupportRoom(args: {
     };
   }
   return { ok: true, config: args.config };
+}
+
+/**
+ * The owner's room is a channel agent's (ISS-872): the one group it asks the owner in, so it is one
+ * of the groups the binding answers, and a support group's block names none.
+ */
+function ownerRoomRefusals(
+  config: Record<string, unknown>,
+  held: { support: boolean; answered: readonly unknown[] },
+): BindingTargetRefusal[] {
+  const ownerRoomOf = (block: unknown) =>
+    (block as { ownerRoom?: string } | null)?.ownerRoom ?? null;
+  if (held.support && ownerRoomOf(config.support)) {
+    return [
+      {
+        code: 'SUPPORT_OWNER_ROOM_UNKNOWN',
+        path: '/support/ownerRoom',
+        detail:
+          "the owner's room is a channel agent's, where it asks the owner: move this binding's block from `support` to `agent`, or drop ownerRoom",
+      },
+    ];
+  }
+  const room = ownerRoomOf(config.agent);
+  if (!room || held.answered.includes(room)) return [];
+  return [
+    {
+      code: 'SUPPORT_OWNER_ROOM_UNKNOWN',
+      path: '/agent/ownerRoom',
+      detail: `the owner's room ${room} is no group this binding's agent answers, so a question for the owner would go nowhere; name one of ${held.answered.join(', ') || 'the groups in `rids`'}`,
+    },
+  ];
 }
 
 /**

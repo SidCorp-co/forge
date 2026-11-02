@@ -11,7 +11,7 @@ import { db } from '../db/client.js';
 import { supportActions, supportRooms } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { deliverWaiting } from './dispatch.js';
-import { grantsOf, supportConfigOf } from './grants.js';
+import { grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { checkThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
@@ -123,7 +123,7 @@ export async function checkResult(
   const config = await supportConfigOf(room);
   const finding = input.finding === null ? null : await scrubbedForRoom(room, input.finding);
   // screened before the firing's one result is taken, so a finding the screen refuses can be rewritten
-  const door = config?.readers === 'team' ? 'operations-reply' : 'support-reply';
+  const door = readersOfConfig(room, config) === 'team' ? 'operations-reply' : 'support-reply';
   const admitted =
     finding === null
       ? null

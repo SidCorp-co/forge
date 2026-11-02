@@ -13,7 +13,7 @@ import { externalItemPhases } from '../feedback/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
-import { supportConfigOf } from './grants.js';
+import { readersOfConfig, supportConfigOf } from './grants.js';
 import { roomHealth } from './health.js';
 import { roleOfRoom } from './ops-role.js';
 import { percentile } from './rules.js';
@@ -51,7 +51,7 @@ export async function supportRoomsOf(
         principalUserId: r.principalUserId,
         toolCount: api?.tools.length ?? 0,
         name,
-        readers: r.kind === 'operations' ? 'team' : (config?.readers ?? 'users'),
+        readers: readersOfConfig(r, config),
         answers: config?.answers ?? 'every-message',
         grants: config?.grants ?? null,
         health,

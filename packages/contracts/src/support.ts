@@ -370,6 +370,12 @@ export const supportRoomConfigSchema = z.strictObject({
 	 * production, as its user-facing notes, for the agent to write in its own words. Off when absent.
 	 */
 	announce: z.strictObject({ releases: z.boolean().optional() }).optional(),
+	/**
+	 * The group, one of the binding's `rids`, where a channel agent asks the owner (`agent` block
+	 * only, ISS-872): `ask_owner` posts nowhere else, and this group's readers are the owner, whatever
+	 * `readers` says of the others.
+	 */
+	ownerRoom: z.string().min(1).max(200).optional(),
 	/** Scheduled checks: a channel agent's (`agent` block) only (REQ-77 BC-13). */
 	checks: z
 		.array(supportCheckSchema)
@@ -1022,6 +1028,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_READ_ARGS",
 	/** The box could not run a declared read (ISS-871). */
 	"SUPPORT_READ_FAILED",
+	/** A post into a room the product's users read holds an internal code (ISS-872). */
+	"SUPPORT_INTERNAL_CODE",
+	/** A master's top-level post into a room the product's users read (ISS-872). */
+	"SUPPORT_MASTER_POST_USERS_ROOM",
+	/** A question for the owner outside the room the binding names as `ownerRoom` (ISS-872). */
+	"SUPPORT_NOT_THE_OWNER_ROOM",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1097,4 +1109,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_READ_UNDECLARED: 404,
 	SUPPORT_READ_ARGS: 400,
 	SUPPORT_READ_FAILED: 503,
+	SUPPORT_INTERNAL_CODE: 400,
+	SUPPORT_MASTER_POST_USERS_ROOM: 409,
+	SUPPORT_NOT_THE_OWNER_ROOM: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

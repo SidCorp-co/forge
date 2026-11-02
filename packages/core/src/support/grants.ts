@@ -7,6 +7,7 @@ import {
   SUPPORT_ABILITY_MEANING,
   type SupportAbility,
   type SupportGrants,
+  type SupportReaders,
   type SupportRoomConfig,
 } from '@forge/contracts/support';
 import { findBindingWithConnectionById } from '../integrations/index.js';
@@ -24,6 +25,24 @@ export async function supportConfigOf(room: RoomRow): Promise<SupportRoomConfig 
   const pair = await findBindingWithConnectionById(room.bindingId);
   const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
   return (room.kind === 'agent' ? config?.agent : config?.support) ?? null;
+}
+
+/**
+ * Who reads a room (ISS-872): an operations room's team; a channel agent's owner room, its owner,
+ * read here as the team; otherwise the binding's `readers`, the product's users when it names none.
+ */
+export function readersOfConfig(
+  room: Pick<RoomRow, 'kind' | 'rid'>,
+  config: SupportRoomConfig | null,
+): SupportReaders {
+  if (room.kind === 'operations') return 'team';
+  if (room.kind === 'agent' && config?.ownerRoom === room.rid) return 'team';
+  return config?.readers ?? 'users';
+}
+
+/** Who reads a room, by its binding as it holds it now. */
+export async function readersOf(room: RoomRow): Promise<SupportReaders> {
+  return readersOfConfig(room, await supportConfigOf(room));
 }
 
 const NO_GRANT: SupportGrants = { abilities: [] };
