@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.437] - 2026-11-02
+
+The chat assistant tells the owner which question a paused issue waits on
+
+### Added
+
+- **The chat assistant can tell the owner what he owes.** For an issue waiting on someone, it now reads the open question, its choices and who must answer, across every project it follows.
+
 ## [0.4.0-dev.436] - 2026-11-02
 
 Main screens lead each row with its name instead of codes
