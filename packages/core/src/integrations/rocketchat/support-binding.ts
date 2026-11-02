@@ -1,6 +1,6 @@
 import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../index.js';
-import { listActiveDeployBindingsForProvider } from '../index.js';
-import { agentSwitchGate } from './room-handlers.js';
+import { listActiveBindingsNamingRid, listActiveDeployBindingsForProvider } from '../index.js';
+import { agentProjectsGate, agentSwitchGate } from './room-handlers.js';
 
 type Settled =
   | { ok: true; config: Record<string, unknown> }
@@ -56,6 +56,19 @@ export async function settleSupportRoom(args: {
     ((block as { grants?: { abilities?: string[] } } | null)?.grants?.abilities ?? []).includes(
       'owner_mode',
     );
+  if (support && (args.config.support as { projects?: unknown } | null)?.projects !== undefined) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'SUPPORT_AGENT_PROJECTS_NOT_AGENT',
+          path: '/support/projects',
+          detail:
+            "following other projects is a channel agent's: move this binding's block from `support` to `agent`, or drop projects",
+        },
+      ],
+    };
+  }
   if (support && ownerMode(args.config.support)) {
     return {
       ok: false,
@@ -160,6 +173,55 @@ function checkRefusals(
 }
 
 /**
+ * One session answers a group (ISS-874): a group this binding names in `rids` that another active
+ * binding on the same chat server already names is refused, whichever project holds that binding.
+ * Two bindings of one group would be two answerers; a channel agent that answers for several
+ * projects follows them through `agent.projects` instead.
+ */
+async function answeredTwiceRefusals(
+  args: VerifyBindingTargetArgs,
+): Promise<BindingTargetRefusal[]> {
+  const rids = Array.isArray(args.config.rids) ? (args.config.rids as string[]) : [];
+  const server = serverOf(args.connection.config);
+  const out: BindingTargetRefusal[] = [];
+  for (const [i, rid] of rids.entries()) {
+    const other = (await listActiveBindingsNamingRid('rocketchat', rid)).find(
+      (pair) =>
+        pair.binding.id !== args.bindingId &&
+        (pair.connection.id === args.connection.id ||
+          (server !== null && serverOf(pair.connection.config) === server)),
+    );
+    if (!other) continue;
+    out.push({
+      code: 'SUPPORT_ROOM_ANSWERED_TWICE',
+      path: `/rids/${i}`,
+      detail: `group ${rid} is already answered by binding ${other.binding.id} of project ${other.binding.projectId}, so binding it here gives the group two answerers; to answer for several projects in one group, name the others in that binding's agent.projects, or drop the group from it first`,
+    });
+  }
+  return out;
+}
+
+const serverOf = (config: unknown): string | null => {
+  const url = (config as { serverUrl?: unknown } | null)?.serverUrl;
+  return typeof url === 'string' ? url.trim().replace(/\/+$/, '').toLowerCase() : null;
+};
+
+/** A channel agent's `agent.projects`, checked by the support domain (`support/agent-projects.ts`). */
+async function agentProjectRefusals(
+  args: VerifyBindingTargetArgs,
+): Promise<BindingTargetRefusal[]> {
+  const named = (args.config.agent as { projects?: string[] } | null | undefined)?.projects ?? [];
+  if (named.length === 0) return [];
+  const held = (args.held?.agent as { projects?: string[] } | null | undefined)?.projects ?? [];
+  return agentProjectsGate().refusals({
+    projectId: args.projectId,
+    userId: args.userId,
+    named,
+    held,
+  });
+}
+
+/**
  * A group the binding held in `outsideRids`, answered by a bot outside Forge, joins the channel agent
  * only through its switch (REQ-77 BC-16): the support domain names what still stands before it.
  */
@@ -189,6 +251,10 @@ async function switchRefusals(args: VerifyBindingTargetArgs): Promise<BindingTar
 export async function verifySupportGrant(
   args: VerifyBindingTargetArgs,
 ): Promise<BindingTargetRefusal[]> {
+  const twice = await answeredTwiceRefusals(args);
+  if (twice.length > 0) return twice;
+  const following = await agentProjectRefusals(args);
+  if (following.length > 0) return following;
   const switching = await switchRefusals(args);
   if (switching.length > 0) return switching;
   type Granting = { grants?: { deployTargets?: string[] } } | undefined;

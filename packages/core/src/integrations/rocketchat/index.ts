@@ -44,7 +44,9 @@ export {
 } from './rest-client.js';
 export { resolveRoomPostAuth, roomStillBoundTo } from './room-auth.js';
 export {
+  type AgentProjectsGate,
   type AgentSwitchGate,
+  provideAgentProjectsGate,
   provideAgentSwitchGate,
   provideRoomHandlers,
   provideSupportRoomHandler,

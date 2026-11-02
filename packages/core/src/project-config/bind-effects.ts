@@ -31,6 +31,8 @@ interface BindEffects {
   inboundSecret(connectionId: string, pending?: IntegrationConnectionRow | null): Promise<string>;
   targetRefusals(input: {
     projectId: string;
+    bindingId: string;
+    userId: string;
     connectionId: string;
     provider: string;
     config: Record<string, unknown>;
@@ -95,12 +97,21 @@ export const bindEffects: BindEffects = {
     return (connection && heldInboundSecret(connection)) ?? mintInboundSecret();
   },
 
-  async targetRefusals({ projectId, connectionId, provider, config, held, ...given }) {
+  async targetRefusals({
+    projectId,
+    bindingId,
+    userId,
+    connectionId,
+    provider,
+    config,
+    held,
+    ...given
+  }) {
     const verify = getAdapter(provider)?.verifyBindingTarget;
     if (!verify) return [];
     const connection = given.connection ?? (await findConnectionById(connectionId));
     if (!connection) return [];
-    const refused = await verify({ projectId, connection, config, held });
+    const refused = await verify({ projectId, bindingId, userId, connection, config, held });
     return refused.map((r) => ({ ...r, path: `/target${r.path}` }));
   },
 

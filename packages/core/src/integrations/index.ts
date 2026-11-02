@@ -123,6 +123,7 @@ export {
   findConnectionById,
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
+  listActiveBindingsNamingRid,
   listActiveDeployBindingsForProvider,
   listBindingsByConnectionIds,
   listBindingsForConnection,

@@ -306,6 +306,8 @@ export async function planBinding(input: {
   if (refusals.length > 0) return { ok: false, refusals };
   const unverified = await bindEffects.targetRefusals({
     projectId,
+    bindingId,
+    userId,
     connectionId: doc.connection,
     provider: encoded.provider,
     config: encoded.config,

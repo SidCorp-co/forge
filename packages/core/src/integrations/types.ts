@@ -398,13 +398,21 @@ export interface BindingTargetRefusal {
     | 'SUPPORT_CHECK_NOT_AGENT'
     | 'SUPPORT_CHECK_ROOM_UNKNOWN'
     | 'SUPPORT_OWNER_ROOM_UNKNOWN'
-    | 'AGENT_SWITCH_NOT_READY';
+    | 'AGENT_SWITCH_NOT_READY'
+    | 'SUPPORT_AGENT_PROJECT_UNKNOWN'
+    | 'SUPPORT_AGENT_PROJECT_NOT_ADMIN'
+    | 'SUPPORT_AGENT_PROJECTS_NOT_AGENT'
+    | 'SUPPORT_ROOM_ANSWERED_TWICE';
   path: string;
   detail: string;
 }
 
 export interface VerifyBindingTargetArgs {
   projectId: string;
+  /** The binding being written, so a check across bindings leaves this one out. */
+  bindingId: string;
+  /** Who writes it: a target naming another project is theirs to name only where they may (ISS-874). */
+  userId: string;
   connection: IntegrationConnectionLike & { id: string; ownerType: string; config: unknown };
   /** The binding-tier config the document encodes to. */
   config: Record<string, unknown>;

@@ -69,3 +69,30 @@ export interface AgentSwitchGate {
 const switchGateSlot = portSlot<AgentSwitchGate>('rocketchat', 'provideAgentSwitchGate');
 export const provideAgentSwitchGate = switchGateSlot.provide;
 export const agentSwitchGate = switchGateSlot.get;
+
+/**
+ * What the support domain answers the binding door with for a channel agent's `agent.projects`
+ * (ISS-874): each named project is a sibling of the home project's organization, and one the write
+ * adds is named by someone who may administer it. Handed in at boot, so this directory reads no
+ * project or permission table.
+ */
+export interface AgentProjectsGate {
+  refusals(args: {
+    projectId: string;
+    userId: string;
+    /** The slugs this write names. */
+    named: readonly string[];
+    /** The slugs the binding held before this write: kept ones are not asked for again. */
+    held: readonly string[];
+  }): Promise<
+    {
+      code: 'SUPPORT_AGENT_PROJECT_UNKNOWN' | 'SUPPORT_AGENT_PROJECT_NOT_ADMIN';
+      path: string;
+      detail: string;
+    }[]
+  >;
+}
+
+const projectsGateSlot = portSlot<AgentProjectsGate>('rocketchat', 'provideAgentProjectsGate');
+export const provideAgentProjectsGate = projectsGateSlot.provide;
+export const agentProjectsGate = projectsGateSlot.get;

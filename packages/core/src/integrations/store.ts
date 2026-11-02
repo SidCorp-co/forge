@@ -116,6 +116,31 @@ export async function findActiveBindingByConfigValue(
   return rows[0] ?? null;
 }
 
+/**
+ * Every active binding of `provider`, on an active connection, whose binding-tier `rids` names
+ * `rid`: who answers a chat group, whichever project binds it (ISS-874).
+ */
+export async function listActiveBindingsNamingRid(
+  provider: IntegrationProvider,
+  rid: string,
+): Promise<BindingWithConnection[]> {
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.provider, provider),
+        sql`${integrationBindings.config} -> 'rids' @> ${JSON.stringify([rid])}::jsonb`,
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    );
+}
+
 /** The binding of `provider`, switched on or off, whose config holds `value` at `key`. */
 export async function findBindingIdByConfigValue(
   provider: IntegrationProvider,

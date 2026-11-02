@@ -12,8 +12,8 @@ import {
 import { readMessages } from '../conversations/index.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { writerRoles } from './channel-read.js';
-import { grantsOf, supportConfigOf } from './grants.js';
 import type { FollowedCheckout } from './dispatch.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-ask.js';
 import type { ActionRow, RoomRow } from './store.js';

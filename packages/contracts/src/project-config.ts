@@ -93,6 +93,14 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_OWNER_ROOM_UNKNOWN",
 	/** A group an outside bot answers joins the channel agent before its switch may run (REQ-77 BC-16). */
 	"AGENT_SWITCH_NOT_READY",
+	/** A channel agent's `agent.projects` names no sibling project of its home's organization, or names its home (ISS-874). */
+	"SUPPORT_AGENT_PROJECT_UNKNOWN",
+	/** The writer adds a project to `agent.projects` they are not an admin of (ISS-874). */
+	"SUPPORT_AGENT_PROJECT_NOT_ADMIN",
+	/** `projects` on a block other than a channel agent's (ISS-874). */
+	"SUPPORT_AGENT_PROJECTS_NOT_AGENT",
+	/** A group another active binding already answers: two sessions would answer it (ISS-874). */
+	"SUPPORT_ROOM_ANSWERED_TWICE",
 ] as const;
 
 /** Every code a project-config document write answers with. */

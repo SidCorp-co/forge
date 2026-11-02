@@ -35,9 +35,12 @@ async function reachOf(room: RoomRow): Promise<Reach> {
   const siblings = await orgSiblingProjects(room.projectId);
   const home = siblings.find((p) => p.id === room.projectId);
   if (!home) throw new Error(`support: room ${room.id}'s home project is gone`);
-  if (room.kind === 'operations' && room.scope === 'forge') return { projects: siblings, unknown: [] };
+  if (room.kind === 'operations' && room.scope === 'forge')
+    return { projects: siblings, unknown: [] };
   const named = await agentProjectSlugs(room);
-  const followed = named.flatMap((slug) => siblings.filter((p) => p.slug === slug && p.id !== home.id));
+  const followed = named.flatMap((slug) =>
+    siblings.filter((p) => p.slug === slug && p.id !== home.id),
+  );
   return {
     projects: [home, ...followed],
     unknown: named.filter((slug) => !siblings.some((p) => p.slug === slug)),

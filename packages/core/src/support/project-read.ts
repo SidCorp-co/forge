@@ -5,8 +5,8 @@
 
 import { scrubSecretsDeep } from '@forge/observability';
 import { readProjectDocument } from '../project-config/index.js';
-import type { OpsOutcome } from './ops-types.js';
 import { namedProject } from './ops-scope.js';
+import type { OpsOutcome } from './ops-types.js';
 import { no } from './outcome.js';
 import type { RoomRow } from './store.js';
 
