@@ -28,8 +28,12 @@ describe('the daily review brief', () => {
   });
 
   it('raises owner decisions only in the Forge-Communicate thread, never in a users’ room', () => {
-    expect(brief).toMatch(/in this project's Forge-Communicate thread, never in a room its users read/);
-    expect(brief).toMatch(/rid naming the Forge-Communicate room, never a room whose readers are users/);
+    expect(brief).toMatch(
+      /in this project's Forge-Communicate thread, never in a room its users read/,
+    );
+    expect(brief).toMatch(
+      /rid naming the Forge-Communicate room, never a room whose readers are users/,
+    );
     expect(brief).not.toMatch(/rid\?/);
   });
 });
