@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.435] - 2026-11-02
+
+Forge speaks in chat only when the assistant cannot, once, in Vietnamese
+
+### Fixed
+
+- **Forge speaks for the chat assistant only when it cannot answer.** That is when it is offline, a reply failed, or there were too many messages; each notice is plain Vietnamese with no codes, said once per thread.
+
 ## [0.4.0-dev.434] - 2026-11-02
 
 A master confirms its agents' shipped Forge feedback
