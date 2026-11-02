@@ -3725,6 +3725,13 @@
       "when": 1833580800000,
       "tag": "0586_feedback_confirm_wait",
       "breakpoints": true
+    },
+    {
+      "idx": 587,
+      "version": "7",
+      "when": 1833667200000,
+      "tag": "0587_a_revision_names_the_title_it_gives",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ import type {
   RequirementRefusalCode,
 } from '@forge/contracts/requirements';
 import { isAgreedStatus, isDeliveringStatus } from '@forge/contracts/requirements';
+import { REQUIREMENT_TITLE_MAX } from '@forge/contracts/title-text';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { gateRefusal } from '../lib/gated.js';
 import { refuser } from '../lib/refusal.js';
@@ -67,6 +68,25 @@ export function openRevisionRefusal(
 }
 
 /** The base a new or proposed revision names must still be the head. */
+/**
+ * A revision's title as the write takes it (ISS-829): absent names none; given, it is trimmed, not
+ * blank and at most REQUIREMENT_TITLE_MAX characters, as a requirement's title is at creation. The
+ * doors' schemas refuse the same shape first; this holds it for every caller of the write.
+ */
+export function titleRefusal(title: string | undefined, path = '/title'): RequirementRefusal | null {
+  if (title === undefined) return null;
+  const text = title.trim();
+  if (text.length > 0 && text.length <= REQUIREMENT_TITLE_MAX) return null;
+  return {
+    code: 'REQUIREMENT_TITLE_INVALID',
+    path,
+    detail:
+      text.length === 0
+        ? `the revision's title is blank: give the requirement's new title in a few words (1 to ${REQUIREMENT_TITLE_MAX} characters), or leave title out to keep the one it has.`
+        : `the revision's title is ${text.length} characters: shorten it to ${REQUIREMENT_TITLE_MAX} or fewer, or leave title out to keep the one it has.`,
+  };
+}
+
 export function staleBaseRefusal(
   base: number | null,
   head: number | null,

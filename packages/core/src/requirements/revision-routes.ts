@@ -20,6 +20,7 @@ import {
   reqParam,
   revisionFields,
   revisionParam,
+  revisionTitle,
 } from './route-kit.js';
 import { proposeRevision, returnRevision, withdrawRevision, writeRevision } from './service.js';
 
@@ -29,8 +30,12 @@ revisionRoutes.post(
   '/:id/requirements/:req/revisions',
   reqParam,
   strictBody(
-    z.strictObject({ baseRevision: z.number().int().min(1).nullable(), ...revisionFields }),
-    "{ baseRevision, reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } — baseRevision is the head you read; kind and spec left out are the head's, and spec {} clears it",
+    z.strictObject({
+      baseRevision: z.number().int().min(1).nullable(),
+      title: revisionTitle,
+      ...revisionFields,
+    }),
+    "{ baseRevision, title? (the title it gives on accept; left out, the head's), reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } — baseRevision is the head you read; kind and spec left out are the head's, and spec {} clears it",
   ),
   draftPictureFits('head'),
   holdChatWrite('requirement_revision'),
@@ -48,8 +53,8 @@ revisionRoutes.put(
   '/:id/requirements/:req/revisions/:n',
   revisionParam,
   strictBody(
-    z.strictObject(revisionFields),
-    "{ reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } rewrites a draft revision whole; a code the draft or its base holds keeps that code, no code takes the next one; kind and spec left out keep the draft's, and spec {} clears it",
+    z.strictObject({ title: revisionTitle, ...revisionFields }),
+    "{ title? (left out, the draft's), reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } rewrites a draft revision whole; a code the draft or its base holds keeps that code, no code takes the next one; kind and spec left out keep the draft's, and spec {} clears it",
   ),
   async (c) => {
     const { id, req, n } = c.req.valid('param');

@@ -37,6 +37,7 @@ import {
   type RequirementRefusal,
   staleBaseRefusal,
   stateRefusal,
+  titleRefusal,
 } from './rules.js';
 
 export interface RevisionWrite {
@@ -55,6 +56,9 @@ export interface RevisionWrite {
   kind?: RequirementKind | null | undefined;
   /** The picture drawn with this draft (REQ-35 BC-10), shown the moment the revision is written. */
   picture?: DraftPicture | undefined;
+  /** The title it gives the requirement once accepted (ISS-829): absent carries the head's (on a new
+   *  revision) or keeps the draft's (an edit). A requirement is retitled only by a revision agreed. */
+  title?: string | undefined;
 }
 
 /** The spec a write stores: the one it gives, else `carried` (the head's, or the draft's own), else none.
@@ -84,6 +88,7 @@ export function storedWrite(level: SensitiveDataLevel, write: RevisionWrite): Re
     reason: write.reason == null ? write.reason : text(write.reason),
     spec: write.spec === undefined ? undefined : storedDeep(level, write.spec),
     tldr: write.tldr == null ? write.tldr : text(write.tldr),
+    title: write.title === undefined ? undefined : text(write.title),
     changeSummary: write.changeSummary == null ? write.changeSummary : text(write.changeSummary),
     criteria: write.criteria.map((c) => ({ ...c, body: text(c.body) })),
   };
@@ -107,6 +112,7 @@ export async function createRequirementIn(
   const { projectId, actor } = input;
   const level = await dataPolicyOf(projectId);
   const write = storedWrite(level, input.write);
+  const title = storedText(level, input.title.trim()).text;
   const [{ next } = { next: 1 }] = await tx
     .select({ next: sql<number>`coalesce(max(${requirements.reqSeq}), 0)::int + 1` })
     .from(requirements)
@@ -122,7 +128,7 @@ export async function createRequirementIn(
     .values({
       projectId,
       reqSeq: next,
-      title: storedText(level, input.title.trim()).text,
+      title,
       ownerId: input.ownerId === undefined ? actor.userId : input.ownerId,
       // its author is told every step from here (`step-notice.ts`)
       toldStep: 'draft',
@@ -149,6 +155,7 @@ export async function createRequirementIn(
   await tx.insert(requirementRevisions).values({
     requirementId: row.id,
     revision: 1,
+    title,
     spec: why
       ? { ...asked.spec, openQuestions: [...(asked.spec.openQuestions ?? []), why] }
       : asked.spec,
@@ -212,12 +219,15 @@ export function newRevisionRow(input: {
   at: Date;
   /** What the head carries over: its kind, and its picture where the new revision keeps that kind. */
   carried?: { kind: RequirementKind | null; pictureId: string | null } | undefined;
+  /** The title in force, carried where the write names none (ISS-829). */
+  carriedTitle?: string | null | undefined;
 }) {
   const { write, landing } = input;
   const kind = write.kind === undefined ? (input.carried?.kind ?? null) : write.kind;
   return {
     requirementId: input.requirementId,
     revision: input.revision,
+    title: write.title?.trim() ?? input.carriedTitle ?? null,
     baseRevision: input.head,
     authorId: input.author.userId,
     authorAgency: input.author.agency,
@@ -248,13 +258,14 @@ export async function newRevisionIn(
 ): Promise<RequirementRefusal[] | null> {
   const { requirementId } = input;
   const [owner] = await tx
-    .select({ projectId: requirements.projectId })
+    .select({ projectId: requirements.projectId, title: requirements.title })
     .from(requirements)
     .where(eq(requirements.id, requirementId));
   if (!owner) throw new Error(`requirements: ${requirementId} has no row`);
   const level = await dataPolicyOf(owner.projectId);
   const write = storedWrite(level, input.write);
   const refusal =
+    titleRefusal(input.write.title) ??
     openRevisionRefusal(await openRevisionOf(tx, requirementId)) ??
     staleBaseRefusal(input.baseRevision, input.head);
   if (refusal) return [refusal];
@@ -275,6 +286,7 @@ export async function newRevisionIn(
             kind: requirementRevisions.kind,
             pictureId: requirementRevisions.pictureId,
             spec: requirementRevisions.spec,
+            title: requirementRevisions.title,
           })
           .from(requirementRevisions)
           .where(
@@ -306,6 +318,8 @@ export async function newRevisionIn(
         kind: (carried.kind as RequirementKind | null) ?? null,
         pictureId: carried.pictureId,
       },
+      // the head's title, or the requirement's where the head names none (or there is no head)
+      carriedTitle: carried?.title ?? owner.title,
     }),
     writtenLang: await writtenLangFor(
       input.actor,
@@ -345,6 +359,8 @@ export async function rewriteRevisionIn(
   },
 ): Promise<RequirementRefusal[] | null> {
   const { projectId, requirementId, revision, actor } = input;
+  const badTitle = titleRefusal(input.write.title);
+  if (badTitle) return [badTitle];
   const level = await dataPolicyOf(projectId);
   const stored = storedWrite(level, input.write);
   const unfit = draftPictureRefusals(
@@ -382,6 +398,8 @@ export async function rewriteRevisionIn(
       spec: asked.spec,
       tldr: stored.tldr ?? null,
       changeSummary: stored.changeSummary ?? null,
+      // an edit that names no title keeps the one the draft gives
+      ...(stored.title === undefined ? {} : { title: stored.title.trim() }),
       // an edit that gives no reason keeps the one the draft holds
       ...(reasonOf(stored) === null ? {} : { reason: reasonOf(stored) }),
       authorId: actor.userId,

@@ -155,9 +155,12 @@ function requirementSummary(kind: ChatProposalKind, args: Args, ref: string | nu
     kind === 'requirement_draft'
       ? `New requirement: ${str(args.title) ?? 'untitled'}`
       : `Revision of ${ref ?? 'a requirement'}`;
+  // a revision's title is the requirement's new name once agreed (ISS-829): the card says it
+  const retitle = kind === 'requirement_revision' ? str(args.title) : null;
   return {
     title,
     lines: [
+      ...(retitle ? [`New title: ${oneLine(retitle)}`] : []),
       ...(reason ? [`Why: ${oneLine(reason)}`] : []),
       ...criteriaLines(args),
       ...(picture ? [picture] : []),

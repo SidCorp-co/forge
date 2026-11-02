@@ -823,6 +823,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	/** An area left out of the list still holds requirements: move them first, so none loses its area unseen. */
 	"REQUIREMENT_AREA_IN_USE",
 	"REQUIREMENT_SHORT_NAME_TOO_LONG",
+	/** A revision's title is blank or longer than the bound a requirement's title takes (ISS-829). */
+	"REQUIREMENT_TITLE_INVALID",
 	/** The owner named is not a member of the project, so nothing it owns would reach them. */
 	"REQUIREMENT_OWNER_NOT_MEMBER",
 	"REQUIREMENT_PLACEMENT_NOT_PROPOSED",
@@ -1071,6 +1073,8 @@ export interface RequirementRevision {
 	spec: RequirementSpec;
 	tldr: string | null;
 	changeSummary: string | null;
+	/** The title it gives the requirement once accepted (ISS-829): its own, else the head's carried; null names none. */
+	title: string | null;
 	/** Why it was written; null until its author answers the question the create asked (REQ-34 BC-17). */
 	reason: string | null;
 	authorId: string;
@@ -1118,6 +1122,8 @@ export interface RequirementCriterionChange {
 export interface RequirementSpecChanges {
 	/** The revision compared against; null where there is none. */
 	against: number | null;
+	/** The title it gives against the one its base gave (ISS-829); null where it names the same or none. */
+	title: { before: string | null; after: string } | null;
 	goal: { before: string | null; after: string | null } | null;
 	kind: {
 		before: RequirementKind | null;
@@ -1132,6 +1138,8 @@ export interface RequirementSpecChanges {
 /** One side of a spec comparison: a revision's spec fields, its kind and its live criteria. */
 export interface RequirementSpecSide {
 	revision: number;
+	/** The title the revision gives; null or absent where it names none, which is never read as a change. */
+	title?: string | null;
 	spec: RequirementSpec;
 	kind: RequirementKind | null;
 	criteria: readonly { code: string; body: string }[];
@@ -1168,8 +1176,13 @@ export function specChangesOf(
 		if (was !== null && now !== null && was === now) continue;
 		criteria.push({ code, was, now });
 	}
+	const title = next.title ?? null;
 	return {
 		against: base?.revision ?? null,
+		title:
+			title !== null && title !== (base?.title ?? null)
+				? { before: base?.title ?? null, after: title }
+				: null,
 		goal:
 			a.goal !== b.goal
 				? { before: a.goal ?? null, after: b.goal ?? null }

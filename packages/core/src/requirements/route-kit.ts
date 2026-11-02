@@ -6,6 +6,7 @@ import {
   type RequirementKind,
   revisionKindField,
 } from '@forge/contracts/requirement-pictures';
+import { REQUIREMENT_TITLE_MAX, titleText } from '@forge/contracts/title-text';
 import { writtenLangSchema } from '@forge/contracts/written-lang';
 import type { Context, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
@@ -66,6 +67,16 @@ export const revisionFields = {
   criteria: z.array(criterionSchema).max(200),
   writtenLang: writtenLangSchema.optional(),
 };
+
+/**
+ * The title a revision gives the requirement once accepted (ISS-829): a revise door's own field,
+ * never in `revisionFields`, which the create doors spread after their required `title`.
+ */
+export const revisionTitle = titleText(REQUIREMENT_TITLE_MAX)
+  .optional()
+  .describe(
+    "the requirement's new title, given when it is accepted; left out, the head's title is carried (a draft's edit keeps the draft's). A revision may change only the title, with the same criteria",
+  );
 
 /**
  * A draft's picture judged where its body arrives, after the body's validator and before a chat's

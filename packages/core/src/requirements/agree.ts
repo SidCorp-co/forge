@@ -186,7 +186,12 @@ export async function acceptRevision(input: {
       .where(revisionWhere(row.id, target.revision));
     await tx
       .update(requirements)
-      .set({ currentRevision: target.revision, updatedAt: new Date() })
+      // the accepted revision's title becomes the requirement's (ISS-829): a retitle is agreed, never patched
+      .set({
+        currentRevision: target.revision,
+        ...(target.title === null ? {} : { title: target.title }),
+        updatedAt: new Date(),
+      })
       .where(eq(requirements.id, row.id));
     if (rebaseline) {
       await transition(tx, REQUIREMENT_MACHINE, {

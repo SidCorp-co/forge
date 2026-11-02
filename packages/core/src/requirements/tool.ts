@@ -16,7 +16,7 @@ import { designsNamed, draftLinked } from './draft-linked.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 import { listRequirementsAs, readRequirementAs, rowIn } from './read.js';
 import { criteriaRefusalsAt } from './revision-criteria.js';
-import { revisionFields } from './route-kit.js';
+import { revisionFields, revisionTitle } from './route-kit.js';
 import { writeRevision } from './service.js';
 import type { RequirementOutcome } from './write-tx.js';
 
@@ -176,6 +176,7 @@ const reviseInput = z.strictObject({
     .min(1)
     .nullable()
     .describe('the head revision you read with forge_requirement (currentRevision)'),
+  title: revisionTitle,
   ...revisionFields,
   ...drawnFields,
 });

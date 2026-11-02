@@ -76,6 +76,7 @@ export function revisionView(
   const kindOf = (x: RevisionRow) => (x.kind as RequirementKind | null) ?? null;
   const side = (x: RevisionRow) => ({
     revision: x.revision,
+    title: x.title,
     spec: x.spec as RequirementSpec,
     kind: kindOf(x),
     criteria: liveAt(criteria, x.revision),
@@ -90,6 +91,7 @@ export function revisionView(
     ),
     tldr: r.tldr,
     changeSummary: r.changeSummary,
+    title: r.title,
     reason: r.reason,
     authorId: r.authorId,
     authorName: name(r.authorId),

@@ -147,6 +147,9 @@ export const requirementRevisions = pgTable(
     specVersion: integer('spec_version').notNull().default(1),
     tldr: text('tldr'),
     changeSummary: text('change_summary'),
+    // the title it gives the requirement on accept (ISS-829, migration 0587): its own, else the head's
+    // carried; null names none and changes nothing. Frozen with the text once it leaves draft
+    title: text('title'),
     // null until its author answers the question the create asked (REQ-34 BC-17), then frozen
     reason: text('reason'),
     authorId: uuid('author_id')
@@ -179,6 +182,10 @@ export const requirementRevisions = pgTable(
     pictureId: uuid('picture_id').references((): AnyPgColumn => requirementPictures.id),
   },
   (t) => ({
+    titleChk: check(
+      'requirement_revisions_title_chk',
+      sql`${t.title} IS NULL OR ${t.title} ~ '[^[:space:]]'`,
+    ),
     kindChk: check(
       'requirement_revisions_kind_chk',
       sql`${t.kind} IS NULL OR ${t.kind} IN (${inList(REQUIREMENT_KINDS)})`,
