@@ -10,6 +10,7 @@ import { db } from '../db/client.js';
 import { gatedMovesOf } from '../lifecycle/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { feedbackTriageRecord, withReportedSeverity } from './checklist-record.js';
 import { detailAs } from './read.js';
 
@@ -31,6 +32,7 @@ feedbackChecklistRoutes.get(
     z.object({ id: z.uuid(), fb: z.string().trim().min(1).max(64) }),
     invalid('invalid path: a project uuid and a feedback uuid or key (FB-n)'),
   ),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id, fb } = c.req.valid('param');

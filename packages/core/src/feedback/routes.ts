@@ -197,6 +197,7 @@ feedbackRoutes.get('/:id/feedback/:fb/similar', itemParam, READ, noQuery, async 
 feedbackRoutes.post(
   '/:id/feedback/:fb/triage',
   itemParam,
+  READ,
   strictBody(feedbackTriageSchema, FEEDBACK_TRIAGE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -216,6 +217,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/snooze',
   itemParam,
+  READ,
   strictBody(feedbackSnoozeRequestSchema, FEEDBACK_SNOOZE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -308,6 +310,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/retarget',
   itemParam,
+  READ,
   strictBody(feedbackRetargetRequestSchema, FEEDBACK_RETARGET_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -326,6 +329,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/verify',
   itemParam,
+  READ,
   strictBody(feedbackVerifyRequestSchema, FEEDBACK_VERIFY_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -387,6 +391,7 @@ feedbackRoutes.post(
 feedbackRoutes.post(
   '/:id/feedback/:fb/reopen',
   itemParam,
+  READ,
   strictBody(feedbackReasonRequestSchema, FEEDBACK_REASON_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
