@@ -4,6 +4,7 @@
  *
  * @direct-test-of packages/core/src/onboarding/service.ts
  * @direct-test-of packages/contracts/src/onboarding.ts
+ * @direct-test-of packages/core/src/onboarding/act.ts
  */
 
 import { sql } from 'drizzle-orm';

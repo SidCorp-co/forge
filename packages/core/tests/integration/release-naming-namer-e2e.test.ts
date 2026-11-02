@@ -17,6 +17,7 @@
  * @direct-test-of packages/core/src/release-page/ports.ts
  * @direct-test-of packages/core/src/release-page/naming-refresh.ts
  * @direct-test-of packages/core/src/release-page/share-source.ts
+ * @direct-test-of packages/core/src/release-batch/naming.ts
  */
 
 import { sql } from 'drizzle-orm';

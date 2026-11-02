@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/suggestions/list.ts
 /**
  * ISS-278 / FB-90: a breakdown suggestion's details showed only its issue titles, so a person
  * accepted slices without seeing what each covers. The suggestion list now serves, per slice of a

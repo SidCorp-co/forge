@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/mockups/comments.ts
 /**
  * REQ-49 (ISS-600): a mockup is proposed, tried and discussed on the item it shapes. Through the REST
  * doors: a mockup is proposed on a requirement at a revision (BC-5, BC-7), commented on with a pin
