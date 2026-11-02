@@ -133,6 +133,9 @@ describe('ISS-873: a parked question in a channel agent project posts nothing by
     expect(delivery?.status).toBe('delivered');
     expect(topLevel().length).toBe(before);
     expect(topLevel().map((l) => l.text)).not.toContain('Room input is needed to unblock the run.');
+    // nor is a channel agent's room ever the project's question room, should the hand-off be missing
+    const { roomForProject } = await import('../../src/integrations/rocketchat/index.js');
+    expect(await roomForProject(w.projectId)).toBeNull();
   });
 
   it('answers from the approved image on linked feedback, posting nothing', async () => {
