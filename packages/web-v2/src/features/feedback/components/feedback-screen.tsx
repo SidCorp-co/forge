@@ -1,7 +1,8 @@
 
 // The Feedback list (`forge-prototype.html` #/feedback): the grouping in the top header, a search,
 // the triage funnel, then the shared GroupedList — the same columns as Requirements and Issues — by
-// whose turn it is or by what each item is about. Whose turn comes from core's read model
+// whose turn it is or by what each item is about. A row leads with its title: the key and the
+// target's key are tooltips, and the reporter is the owner column, never a fact beside it (REQ-11). Whose turn comes from core's read model
 // (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
 
 import { Written } from "@/lib/i18n/written";
@@ -100,10 +101,16 @@ function Funnel({ rows, untold }: { rows: FeedbackSummary[]; untold: FeedbackLis
   );
 }
 
-const aboutLine = (r: FeedbackSummary, t: Copy, language: string) =>
-  r.target.type === "screen"
-    ? t("feedback.target.screen", { label: enumLabel("feedbackTarget", "screen", language), key: r.target.key })
-    : `${enumLabel("feedbackTarget", r.target.type, language)} ${r.target.key}`;
+/** Targets whose key is the name a person says (a release's version, a screen as written); every other key stays behind the tooltip. */
+const NAMED_BY_KEY = new Set(["release", "screen"]);
+
+/** What an item is about, by its target's title: "Requirement Sign-in". A key is never the face (REQ-11 BC-19). */
+const aboutLine = (r: FeedbackSummary, t: Copy, language: string) => {
+  const kind = enumLabel("feedbackTarget", r.target.type, language);
+  if (r.target.type === "screen") return t("feedback.target.screen", { label: kind, key: r.target.key });
+  if (r.target.title) return `${kind} ${r.target.title}`;
+  return NAMED_BY_KEY.has(r.target.type) ? `${kind} ${r.target.key}` : kind;
+};
 
 type Grouping = "attention" | "subject";
 
@@ -157,8 +164,9 @@ const rowOf =
         ...(notes.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : []),
         ...(r.snoozed ? [t("feedback.row.snoozedUntil", { date: time.dateTime(r.snoozed.until) })] : []),
         enumLabel("feedbackKind", r.kind, language),
-        t("feedback.row.about", { about: aboutLine(r, t, language) }),
-        reporter,
+        <span key="about" title={r.target.key}>
+          {t("feedback.row.about", { about: aboutLine(r, t, language) })}
+        </span>,
         ...(r.origin?.project ? [t("feedback.row.from", { project: r.origin.project.name })] : []),
         ...(r.origin && r.origin.occurrences > 1 ? [t("feedback.row.reports", { n: r.origin.occurrences })] : []),
         t("feedback.row.severity", { severity: statusReading("severity", r.severity, language).label }),
@@ -254,6 +262,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                 selected={peek.open}
                 onPeek={list.togglePeek}
                 empty={t("feedback.noMatch")}
+                lead="title"
               />
             </>
           )}
