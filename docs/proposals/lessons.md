@@ -188,6 +188,12 @@ asks, not text every prompt should pay for.
 
 No route serves the figures to a person and no screen shows them.
 
+**A day's learning** (ISS-867). The daily review's brief (`masters/daily-review.ts:dailyReviewBrief`)
+points the master at `GET /api/projects/:id/lessons/learned?since=&until=` (`lessons/learned.ts`,
+`project.read`, a window of at most 31 days): the lessons approved in it, and each approved lesson
+whose mistake was made again, a correction said after its approval and linked to it in the window.
+Keys and slugs only; the master reads a sentence by its slug.
+
 ## 7. Migrations 0510 and 0522
 
 0510 creates `corrections`, `lessons`, `lesson_applications` and `lesson_confusions`, and guards
