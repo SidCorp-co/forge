@@ -81,6 +81,7 @@ const none = {
   recordings: [] as Parameters<typeof owedLine>[0]['recordings'],
   requests: [] as Parameters<typeof owedLine>[0]['requests'],
   carriers: [] as Parameters<typeof owedLine>[0]['carriers'],
+  reviews: [] as Parameters<typeof owedLine>[0]['reviews'],
   contentLanguage: 'vi',
 };
 
@@ -129,6 +130,10 @@ const OWED_KINDS = {
   },
   requests: { item: { kind: 'requirement', key: 'REQ-9' }, guide: 'requirement-lifecycle' },
   carriers: { item: { key: 'ISS-26' }, guide: 'issue-flow' },
+  reviews: {
+    item: { issueId: 'u27', key: 'ISS-27', status: 'awaiting_release', criteria: [1] },
+    guide: 'qa',
+  },
   questions: { item: { id: 'q7', on: 'ISS-7' }, guide: 'pipeline-and-issue-lifecycle' },
 } as const satisfies Record<string, { item: object; guide: GuideSlug }>;
 
