@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.445] - 2026-11-02
+
+Verdicts judged on a release count where production reports only a version
+
+### Fixed
+
+- **A failed check stays on the release it was judged on.** Where releases are read by commit, a fail judged on a shipped release now shows there until a release ships the fix. (ISS-900)
+
 ## [0.4.0-dev.444] - 2026-11-02
 
 Owed confirms can wait for a date or the next room message
