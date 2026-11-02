@@ -1,4 +1,8 @@
 import {
+  FEEDBACK_CONFIRM_WAIT_SHAPE,
+  feedbackConfirmWaitRequestSchema,
+} from '@forge/contracts/feedback';
+import {
   carryAgentReportsRequestSchema,
   FORGE_FEEDBACK_SETTLE_SHAPE,
   FORGE_FEEDBACK_SHAPE,
@@ -22,6 +26,7 @@ import {
   replyForgeFeedback,
   settleForgeFeedback,
   submitForgeFeedback,
+  waitForgeFeedback,
 } from './service.js';
 
 type Ctx = Context<{ Variables: AuthVars }>;
@@ -112,6 +117,25 @@ forgeFeedbackRoutes.post(
         REST_DOOR,
       ),
     ),
+);
+
+// the reporter, or its master, records why the confirm waits and until when (ISS-902)
+forgeFeedbackRoutes.post(
+  '/:key/confirm-wait',
+  zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/confirm-wait')),
+  strictBody(feedbackConfirmWaitRequestSchema, FEEDBACK_CONFIRM_WAIT_SHAPE),
+  async (c) => {
+    const body = c.req.valid('json');
+    return answer(
+      c,
+      await waitForgeFeedback(
+        callerOf(c),
+        c.req.valid('param').key,
+        { until: new Date(body.until), on: body.on, reason: body.reason },
+        REST_DOOR,
+      ),
+    );
+  },
 );
 
 // the reporter replies once to the item's answer, which sends it back to triage (REQ-47 BC-12)

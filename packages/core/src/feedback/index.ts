@@ -31,6 +31,7 @@ export {
   reportedForge,
   withDuplicateRoots,
 } from './forge-reads.js';
+export { confirmWaitsOf, meetRoomConfirmWaits, setConfirmWait } from './confirm-wait.js';
 export { settleOwnForgeFeedback } from './forge-settle.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
 export { feedbackStandingsOf, listFeedbackAs, listFeedbackIn } from './list-page-read.js';

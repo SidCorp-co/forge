@@ -137,6 +137,16 @@ export async function closeClarification(tx: Tx, feedbackId: string, why: string
 /** Lifts a snooze: written by every act that moves an item off New, since a snooze holds only there (feedback_snooze_chk). */
 export const NOT_SNOOZED = { snoozedUntil: null, snoozeReason: null } as const;
 
+/** Lifts a confirm wait (ISS-902): written by the verify or reopen it waited for, so no stale wait outlives it. */
+export const NO_CONFIRM_WAIT = {
+  confirmWaitUntil: null,
+  confirmWaitOn: null,
+  confirmWaitReason: null,
+  confirmWaitSetAt: null,
+  confirmWaitSetBy: null,
+  confirmWaitMetAt: null,
+} as const;
+
 type NewFeedback = Omit<typeof feedback.$inferInsert, 'fbSeq'>;
 
 export function feedbackKernelActor(actor: FeedbackActor): KernelActor {
@@ -361,7 +371,7 @@ export async function personalActIn(
   const moved = await transition(tx, FEEDBACK_MACHINE, {
     to: act,
     expect: row.status,
-    set: { resolvedSeenAt: null, updatedAt: new Date() },
+    set: { ...NO_CONFIRM_WAIT, resolvedSeenAt: null, updatedAt: new Date() },
     where: eq(feedback.id, row.id),
     reason: note?.trim() || null,
     actor: feedbackKernelActor(actor),

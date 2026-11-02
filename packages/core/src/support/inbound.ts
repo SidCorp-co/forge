@@ -8,6 +8,7 @@ import { containsSecret, scrubLogText } from '@forge/observability';
 import { pushProjectNow } from '../agent-sessions/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
 import { db } from '../db/client.js';
+import { meetRoomConfirmWaits } from '../feedback/index.js';
 import {
   type ActiveConnection,
   type RocketChatIncomingMessage,
@@ -176,6 +177,8 @@ async function recordInbound(
       tx,
     );
     if (!action) return false;
+    // a member's message is the event a confirm waiting on the next room message waits for (ISS-902)
+    await meetRoomConfirmWaits(tx, room.projectId, new Date());
     // the bar on the project's pages reads the room's waiting message (REQ-15 BC-10)
     await pushProjectNow(tx, room.projectId, 'rooms');
     await appendMessagesIn(tx, {

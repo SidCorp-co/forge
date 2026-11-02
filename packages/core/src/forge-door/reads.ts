@@ -5,7 +5,11 @@
  * which items they are shown before anything here reads them.
  */
 
-import type { FeedbackShipEvidence, FeedbackSummary } from '@forge/contracts/feedback';
+import type {
+  FeedbackConfirmWaitView,
+  FeedbackShipEvidence,
+  FeedbackSummary,
+} from '@forge/contracts/feedback';
 import type { FeedbackToldView, ForgeFeedbackItem } from '@forge/contracts/forge-feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { listFeedbackIn, type ReadDoor, withDuplicateRoots } from '../feedback/index.js';
@@ -87,6 +91,7 @@ export function forgeItemOf(
   reads: FeedbackReads,
   shipEvidence: FeedbackShipEvidence | null,
   told: FeedbackToldView,
+  confirmWait: FeedbackConfirmWaitView | null,
 ): ForgeFeedbackItem {
   return {
     key: s.key,
@@ -101,5 +106,6 @@ export function forgeItemOf(
     progress: feedbackProgress(s, reads),
     shipEvidence,
     told,
+    confirmWait,
   };
 }

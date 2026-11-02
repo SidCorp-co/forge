@@ -344,6 +344,7 @@ describe('workDigest: the same work digests the same, and changed work does not'
       itemProjectId: 'p',
       home: false,
       reportedFrom: 'p',
+      waitEnded: null,
     };
     expect(workDigest([issue('a')], { ...none, confirms: [confirm] })).not.toBe(base);
   });

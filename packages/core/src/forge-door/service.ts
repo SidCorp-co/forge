@@ -4,7 +4,7 @@
  * BC-8), and reply once to its answer (REQ-47 BC-12). Every refusal is named and writes nothing.
  */
 
-import { feedbackKey } from '@forge/contracts/feedback';
+import { type FeedbackConfirmWaitOn, feedbackKey } from '@forge/contracts/feedback';
 import type {
   ForgeFeedbackAnswersClaimed,
   ForgeFeedbackFiled,
@@ -15,6 +15,7 @@ import type {
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import {
   claimAnswersTold,
+  confirmWaitsOf,
   type ForgeCaller,
   feedbackEgress,
   fileForgeFeedback,
@@ -28,6 +29,7 @@ import {
   reportedForge,
   reporterMasterProject,
   resolveForgeSource,
+  setConfirmWait,
   settleOwnForgeFeedback,
   shipEvidenceOfShipped,
   toldOf,
@@ -69,13 +71,14 @@ async function itemsById(
   });
   // what triage told the reporter is theirs to read at the item, through this door too (BC-10)
   const told = await toldOf(homeId, shown, withhold);
+  const waits = await confirmWaitsOf(ids, withhold);
   const items: ForgeFeedbackItem[] = [];
   for (const s of shown) {
     const evidence = withhold ? null : await shipEvidenceOfShipped(homeId, s.id, s.phase);
     const said = told.get(s.id);
     if (!said)
       throw new Error(`forge feedback: what item ${s.id} told its reporter does not read back`);
-    items.push(forgeItemOf(s, reads, evidence, said));
+    items.push(forgeItemOf(s, reads, evidence, said, waits.get(s.id) ?? null));
   }
   return { items, asOf: reads.asOf };
 }
@@ -230,6 +233,34 @@ export async function settleForgeFeedback(
     actor: { userId: viewer.userId, agency: viewer.agency },
     act,
     evidence,
+  });
+  if (refusals) return { ok: false, refusals };
+  return { ok: true, value: await itemById(viewer, found.homeId, found.id, door) };
+}
+
+/**
+ * The caller records why the confirm of an item it reported, or one its agent reporter's master is
+ * owed, waits and until when (ISS-902): the master's owed line leaves it out until then.
+ */
+export async function waitForgeFeedback(
+  viewer: ForgeViewer,
+  key: string,
+  wait: { until: Date; on: FeedbackConfirmWaitOn | undefined; reason: string | undefined },
+  door: ReadDoor,
+): Promise<Answer<ForgeFeedbackItem>> {
+  const found = await readableItem(viewer, key);
+  if (!found.ok) return found;
+  const refusals = await setConfirmWait({
+    projectId: found.homeId,
+    feedbackId: found.id,
+    actor: { userId: viewer.userId, agency: viewer.agency },
+    wait,
+    notYours: (k) =>
+      forgeRefusal(
+        'FORGE_FEEDBACK_NOT_YOURS',
+        '/feedback',
+        `${k} was filed by another account; only its reporter, or for an agent reporter the master of the project it reported from, sets the wait on its confirm here.`,
+      ),
   });
   if (refusals) return { ok: false, refusals };
   return { ok: true, value: await itemById(viewer, found.homeId, found.id, door) };

@@ -3,6 +3,7 @@ import {
   createFeedbackRequestSchema,
   FEEDBACK_ATTACHMENT_SHAPE,
   FEEDBACK_CLARIFICATION_SHAPE,
+  FEEDBACK_CONFIRM_WAIT_SHAPE,
   FEEDBACK_EMPTY_SHAPE,
   FEEDBACK_MESSAGE_SHAPE,
   FEEDBACK_PHASES,
@@ -19,6 +20,7 @@ import {
   type FeedbackResponse,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
+  feedbackConfirmWaitRequestSchema,
   feedbackEmptyRequestSchema,
   feedbackMessageRequestSchema,
   feedbackReasonRequestSchema,
@@ -41,6 +43,7 @@ import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
+import { confirmWaitFeedback } from './confirm-wait.js';
 import { similarFeedbackAs, similarToDraftAs } from './embeddings.js';
 import { servedEndpointsAs } from './endpoints.js';
 import { listFeedbackAs } from './list-page-read.js';
@@ -345,6 +348,26 @@ feedbackRoutes.post(
   async (c) => {
     const { id, fb } = c.req.valid('param');
     return answer(c, await tellShippedNow({ projectId: id, ref: fb, actor: actorOf(c) }));
+  },
+);
+
+// the agent reporter, or the master acting for it, records why its confirm waits and until when (ISS-902)
+feedbackRoutes.post(
+  '/:id/feedback/:fb/confirm-wait',
+  itemParam,
+  strictBody(feedbackConfirmWaitRequestSchema, FEEDBACK_CONFIRM_WAIT_SHAPE),
+  async (c) => {
+    const { id, fb } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return answer(
+      c,
+      await confirmWaitFeedback({
+        projectId: id,
+        ref: fb,
+        actor: actorOf(c),
+        wait: { until: new Date(body.until), on: body.on, reason: body.reason },
+      }),
+    );
   },
 );
 

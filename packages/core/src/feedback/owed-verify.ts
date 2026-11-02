@@ -9,11 +9,12 @@
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';
-import { and, eq, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import { userNames } from '../lib/people.js';
+import { confirmWaitEnded } from './confirm-wait-facts.js';
 import { linkedOf, phaseIn } from './list-read.js';
 import type { Row } from './read.js';
 
@@ -28,13 +29,15 @@ export interface OwedAgentConfirm {
   home: boolean;
   /** The project its agent reported it from, whose master is owed the confirm (`agentReportedFrom`). */
   reportedFrom: string;
+  /** A wait set on its confirm that ended, and how (ISS-902): the line names the item again with it. */
+  waitEnded: 'met' | 'lapsed' | null;
 }
 
 /**
  * The project the item's reporter reported it from. Spelled with its table names: inside a select list
  * drizzle renders a column unqualified, and an unqualified `id` here would be the occurrence's own.
  */
-const reportedFrom = sql<string>`coalesce((
+export const reportedFromSql = sql<string>`coalesce((
   SELECT o.source_project_id FROM feedback_occurrences o
    WHERE o.feedback_id = feedback.id AND o.reported_by = feedback.reported_by
      AND o.source_project_id IS NOT NULL
@@ -48,7 +51,7 @@ const reportedFrom = sql<string>`coalesce((
  */
 export async function agentReportedFrom(feedbackId: string): Promise<string | null> {
   const [row] = await db
-    .select({ from: reportedFrom })
+    .select({ from: reportedFromSql })
     .from(feedback)
     .where(and(eq(feedback.id, feedbackId), eq(feedback.reporterAgency, 'agent')))
     .limit(1);
@@ -57,8 +60,9 @@ export async function agentReportedFrom(feedbackId: string): Promise<string | nu
 
 /** Agent-reported items the reporter may still settle, matching `where`; whether each reads resolved is derived after. */
 async function candidates(where: SQL | undefined): Promise<(Row & { from: string })[]> {
+  const now = new Date();
   const rows = await db
-    .select({ row: feedback, from: reportedFrom })
+    .select({ row: feedback, from: reportedFromSql })
     .from(feedback)
     .where(
       and(
@@ -66,7 +70,13 @@ async function candidates(where: SQL | undefined): Promise<(Row & { from: string
         eq(feedback.reporterAgency, 'agent'),
         isNull(feedback.redactedAt),
         // a snoozed item is owed to nobody until its date
-        or(isNull(feedback.snoozedUntil), lte(feedback.snoozedUntil, new Date())),
+        or(isNull(feedback.snoozedUntil), lte(feedback.snoozedUntil, now)),
+        // nor one whose confirm waits, until its date passes or its event happens (ISS-902)
+        or(
+          isNull(feedback.confirmWaitUntil),
+          lte(feedback.confirmWaitUntil, now),
+          isNotNull(feedback.confirmWaitMetAt),
+        ),
         where,
       ),
     )
@@ -94,6 +104,7 @@ async function resolvedAmong(rows: (Row & { from: string })[]): Promise<OwedAgen
         itemProjectId: projectId,
         home: projectId === home?.id,
         reportedFrom: r.from,
+        waitEnded: confirmWaitEnded(r, new Date()),
       });
     }
   }
@@ -102,7 +113,7 @@ async function resolvedAmong(rows: (Row & { from: string })[]): Promise<OwedAgen
 
 /** The shipped items agents of `projectId` reported, each owing that agent's confirm or reopen. */
 export async function owedAgentConfirms(projectId: string): Promise<OwedAgentConfirm[]> {
-  return resolvedAmong(await candidates(sql`${reportedFrom} = ${projectId}`));
+  return resolvedAmong(await candidates(sql`${reportedFromSql} = ${projectId}`));
 }
 
 /**
