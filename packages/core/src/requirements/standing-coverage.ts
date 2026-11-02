@@ -5,6 +5,7 @@
  * every rule below is a unit test (`standing.test.ts`, `standing-shipped.test.ts`).
  */
 
+import { releaseHint } from '@forge/contracts/released-line';
 import type {
   BcVerdict,
   CoverageCount,
@@ -27,7 +28,6 @@ import {
   type LandedHolds,
   type LiveBuildHolds,
   type Resolved,
-  releaseHint,
   resolve,
   short,
 } from './standing-identity.js';
@@ -152,6 +152,7 @@ export function coverageOf(
         ic.verdict === null ? null : resolve(ic.identity, build, traced.issueId, ic.covers ?? null),
         ic.identity?.kind === 'commit' || ic.identity?.kind === 'runtime',
         build,
+        'issue',
       );
       return [
         {
@@ -243,6 +244,7 @@ function requirementVerdictsOn(
                 atLiveCommit(v.commit, `commit ${short(v.commit)}`, live),
                 true,
                 live,
+                'requirement',
               );
     const replaced =
       !stale && stands !== undefined && stands.id !== v.id
@@ -276,15 +278,17 @@ function requirementIdentityWords(v: StandingRequirementVerdict): string | null 
 /**
  * A commit or runtime that does not count on a project whose production names no commit it serves
  * (ISS-900), weighed on the live build rather than at a landing: the reason says what can count there,
- * a judgement on the release its record says is live, so the judge is never sent back to the same
- * commit. Anywhere else, the reading as it stands.
+ * a judgement on the release its record says is live, on the issue for an issue criterion's verdict
+ * and at the requirement for one recorded there, so the judge is never sent back to the same commit
+ * nor away from the issue that can carry it. Anywhere else, the reading as it stands.
  */
 function withReleaseHint(
   r: Resolved | null,
   atCommit: boolean,
   live: LiveBuildHolds | null,
+  where: 'issue' | 'requirement',
 ): Resolved | null {
-  const hint = atCommit && !live?.landed ? releaseHint(live?.released) : null;
+  const hint = atCommit && !live?.landed ? releaseHint(live?.released, where) : null;
   if (!r || r.notCounted === null || hint === null) return r;
   return { ...r, notCounted: `${r.notCounted}; ${hint}` };
 }

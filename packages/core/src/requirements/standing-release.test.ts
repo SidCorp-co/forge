@@ -3,8 +3,9 @@
 // asks for that judgement, or for the record, never for one that cannot count (`releaseAskOf`).
 // @direct-test-of packages/core/src/requirements/standing-identity.ts
 // @direct-test-of packages/core/src/requirements/standing-proof.ts
+import { releaseHint } from '@forge/contracts/released-line';
 import { describe, expect, it } from 'vitest';
-import { atRelease, type ReleasedLine, releaseHint } from './standing-identity.js';
+import { atRelease, type ReleasedLine } from './standing-identity.js';
 import { releaseAskOf } from './standing-proof.js';
 
 const WHY = 'its production `production` declares no source probe';
@@ -61,13 +62,19 @@ describe('what the standing asks where a verdict counts only on a release', () =
   it('names the live release, or none recorded', () => {
     expect(releaseAskOf({ ...live, released: line('0.76.0') })).toEqual({ version: '0.76.0' });
     expect(releaseAskOf({ ...live, released: line(null) })).toBe('none');
-    expect(releaseHint(line('0.76.0'))).toContain("{ kind: 'release', version: '0.76.0' }");
+    expect(releaseHint(line('0.76.0'), 'requirement')).toContain(
+      "{ kind: 'release', version: '0.76.0' }` at the requirement",
+    );
+    // an issue criterion's verdict is sent to the issue that can carry it, never to the requirement
+    expect(releaseHint(line('0.76.0'), 'issue')).toContain(
+      "{ kind: 'release', version: '0.76.0' }` on the issue",
+    );
   });
 
   it('asks as before where production reads its commit, or issues weigh at their landings', () => {
     expect(releaseAskOf(live)).toBeNull();
     expect(releaseAskOf(null)).toBeNull();
     expect(releaseAskOf({ ...live, released: line('0.76.0'), landed: new Map() })).toBeNull();
-    expect(releaseHint(undefined)).toBeNull();
+    expect(releaseHint(undefined, 'issue')).toBeNull();
   });
 });

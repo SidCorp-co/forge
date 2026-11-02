@@ -1,0 +1,132 @@
+// One rule for a verdict judged on a release (ISS-900, FB-479): on a project whose production names no
+// commit it serves (no source probe: its releases are its agent's record by version, agenfold's owner
+// rule `release-is-the-agents-record`), a verdict names the release version it was judged on, and
+// counts while that release, or a later one the record carries, is what the record says is live. The
+// issue's verdict door and weighing, the release hold and a requirement's coverage and verdict door all
+// read this one rule. Nothing here reads production, and no commit is compared.
+
+/**
+ * A project's shipped releases as its record carries them, where its production names no commit it
+ * serves: `why` says so, `live` is the newest shipped, the one the record says is live (null where none
+ * shipped), and per shipped version when it shipped and whether the live one carries it (core
+ * `release-batch/released-line.ts:releasedLineOf`).
+ */
+export interface ReleasedLine {
+	why: string;
+	live: { version: string; at: Date } | null;
+	shipped: ReadonlyMap<string, { at: Date; carried: boolean }>;
+}
+
+/** Whether a verdict judged on a release counts, and if not why; `countedAs` where a later release carries it. */
+export interface ReleaseReading {
+	/** Whether the release the record says is live carries it; null where nothing places it. */
+	inLiveBuild: boolean | null;
+	notCounted: string | null;
+	countedAs?: string;
+}
+
+/**
+ * A verdict judged on release `version`: it counts while that release, or a later one the record
+ * carries, is the one the record says is live (`ReleasedLine.shipped[].carried`). On a project whose
+ * production reads the commit it serves (`line` absent) no version is placed, so it does not count,
+ * saying why: there a verdict names the commit judged.
+ */
+export function readOnRelease(
+	version: string,
+	line: ReleasedLine | null | undefined,
+): ReleaseReading {
+	const judged = `judged on release ${version}`;
+	const none = (inLiveBuild: boolean | null, why: string): ReleaseReading => ({
+		inLiveBuild,
+		notCounted: `${judged}, ${why}`,
+	});
+	if (!line) {
+		return none(
+			null,
+			"and this project reads the commit its production serves, so a verdict there names the commit judged",
+		);
+	}
+	if (!line.live)
+		return none(null, `and no release is recorded as shipped: ${line.why}`);
+	const shipped = line.shipped.get(version);
+	if (!shipped) {
+		return none(
+			null,
+			`which no release this project recorded as shipped names; release ${line.live.version} is what its record says is live`,
+		);
+	}
+	if (!shipped.carried) {
+		return none(
+			false,
+			`and release ${line.live.version}, recorded after it at a lower version, is what the record says is live, so nothing says it carries ${version}: judge it again on release ${line.live.version}`,
+		);
+	}
+	if (version === line.live.version)
+		return { inLiveBuild: true, notCounted: null };
+	return {
+		inLiveBuild: true,
+		notCounted: null,
+		countedAs: `release ${version}, carried by live release ${line.live.version}`,
+	};
+}
+
+/** Why a release a verdict names is refused: no version, no place for one, or none recorded. */
+export type ReleaseIdentityFault = "shape" | "unused" | "unknown";
+
+/**
+ * The version a verdict judged on a release names, as the record stores it, or why it is refused,
+ * where it sits in the body and in words naming `subject` (`BC-2`, `criterion 3`). `line` is the
+ * project's release line, null where its production reads the commit it serves or it declares none;
+ * `versionOf` reads a version as the record stores it (`v0.76.0` → `0.76.0`).
+ */
+export function releaseIdentityOf(
+	subject: string,
+	sent: string,
+	line: ReleasedLine | null,
+	versionOf: (text: string) => string | null,
+):
+	| { version: string }
+	| { fault: ReleaseIdentityFault; path: string; detail: string } {
+	const version = versionOf(sent);
+	if (!version) {
+		return {
+			fault: "shape",
+			path: "/identity/version",
+			detail: `${subject} names release \`${sent}\`, which is no release version: send MAJOR.MINOR.PATCH (e.g. 0.76.0), with or without a leading \`v\`, as the app reported it.`,
+		};
+	}
+	if (!line) {
+		return {
+			fault: "unused",
+			path: "/identity/kind",
+			detail: `${subject} names release ${version}, and this project's production reads the commit it serves (or it declares no production environment), so a verdict there names the commit judged: send { kind: 'commit', sha: <40 hex> }.`,
+		};
+	}
+	if (!line.shipped.has(version)) {
+		return {
+			fault: "unknown",
+			path: "/identity/version",
+			detail: line.live
+				? `${subject} names release ${version}, and this project recorded no release shipped under it; its record says ${line.live.version} is live: name the version the app reported, or record that release first (POST /api/projects/:id/release-records).`
+				: `${subject} names release ${version}, and this project has recorded no release as shipped yet: record the release production serves first (POST /api/projects/:id/release-records), then judge it.`,
+		};
+	}
+	return { version };
+}
+
+/**
+ * Where a commit or runtime judged on a project whose production names no commit does not count, the
+ * act that can count: a judgement on the release the record says is live, named on the issue for an
+ * issue criterion and at the requirement for a verdict there, or, with none recorded, the record
+ * itself. Null on any other project.
+ */
+export function releaseHint(
+	line: ReleasedLine | null | undefined,
+	where: "issue" | "requirement",
+): string | null {
+	if (!line) return null;
+	if (!line.live)
+		return `${line.why}, and none is recorded yet: record the release first`;
+	const at = where === "issue" ? "on the issue" : "at the requirement";
+	return `${line.why}: judge it on release ${line.live.version}, naming \`{ kind: 'release', version: '${line.live.version}' }\` ${at}`;
+}

@@ -6,12 +6,15 @@
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
+import { type ReleasedLine, readOnRelease } from '@forge/contracts/released-line';
 import {
   landedCommitOf,
   type StorefrontDraftPart,
   storefrontDraftsPhrase,
 } from '@forge/contracts/verdict-identity';
 import { type Carriage, carriedToLanding } from '../issues/index.js';
+
+export type { ReleasedLine } from '@forge/contracts/released-line';
 
 /**
  * What a verdict names as the thing it was judged against, with what coverage checks it by: a design
@@ -22,6 +25,7 @@ export type CoverageIdentity =
   | { kind: 'commit'; sha: string }
   | { kind: 'commit_unresolved'; sha: string }
   | { kind: 'runtime'; ref: string }
+  | { kind: 'release'; version: string }
   | { kind: 'design'; workflow: string; revision: number; pinned: number | null }
   | { kind: 'contract'; ref: string; version: string; pinned: string | null }
   | { kind: 'storefront_draft'; drafts: readonly StorefrontDraftPart[]; environment: string };
@@ -79,17 +83,6 @@ export interface LiveBuildHolds {
   foreign?: ReadonlyMap<string, LiveBuildHolds | null>;
 }
 
-/**
- * A project's shipped releases as its record carries them, where its production names no commit it
- * serves (ISS-900): `why` says so, `live` is the newest shipped, the one the record says is live (null
- * where none shipped), and per shipped version when it shipped and whether the live one carries it.
- */
-export interface ReleasedLine {
-  why: string;
-  live: { version: string; at: Date } | null;
-  shipped: ReadonlyMap<string, { at: Date; carried: boolean }>;
-}
-
 /** The build an issue's verdicts are weighed on: its own project's where it is another project's issue. */
 export function holdsFor(live: LiveBuildHolds | null, issueId: string): LiveBuildHolds | null {
   const key = issueId.toLowerCase();
@@ -140,6 +133,8 @@ function identityValue(identity: CoverageIdentity): string {
       return identity.sha;
     case 'runtime':
       return identity.ref;
+    case 'release':
+      return identity.version;
     case 'design':
       return `${identity.workflow} rev ${identity.revision}`;
     case 'contract':
@@ -159,6 +154,8 @@ export function identityWords(identity: CoverageIdentity | null): string | null 
       return `abbreviated commit ${identity.sha}`;
     case 'runtime':
       return `runtime ${short(identity.ref)}`;
+    case 'release':
+      return `release ${identity.version}`;
     case 'design':
       return `design ${identity.workflow} rev ${identity.revision}`;
     case 'contract':
@@ -222,6 +219,8 @@ export function resolve(
   const atCommit = (commit: string, judged: string) => atLiveCommit(commit, judged, live);
   const none = (why: string): Resolved => ({ commit: null, inLiveBuild: null, notCounted: why });
   if (!identity) return none('it names nothing it was judged against');
+  // a release is placed on its agent's record wherever the project's issues are weighed (ISS-900)
+  if (identity.kind === 'release') return atRelease(identity.version, live?.released);
   const landed = live?.landed;
   if (landed) {
     // the record door's reading of the commit a verdict names (contracts `landedCommitOf`)
@@ -414,55 +413,9 @@ export function atRecordedLanding(
 
 /**
  * A verdict judged on release `version` (ISS-900), on a project whose production names no commit it
- * serves: the owner's rule (`release-is-the-agents-record`) makes the agent's release record what says
- * what is live, so the verdict counts while that release, or a later one the record carries, is the
- * one the record says is live (`ReleasedLine.shipped[].carried`). Nothing reads production and no
- * commit is matched. On a project whose production does read the commit it serves no version is
- * placed, so it does not count, saying why: there a verdict names the commit judged.
+ * serves: the one rule every door reads (`@forge/contracts/released-line:readOnRelease`). Nothing reads
+ * production and no commit is matched.
  */
 export function atRelease(version: string, line: ReleasedLine | undefined): Resolved {
-  const judged = `judged on release ${version}`;
-  const none = (inLiveBuild: boolean | null, why: string): Resolved => ({
-    commit: null,
-    inLiveBuild,
-    notCounted: `${judged}, ${why}`,
-  });
-  if (!line) {
-    return none(
-      null,
-      'and this project reads the commit its production serves, so a verdict there names the commit judged',
-    );
-  }
-  if (!line.live) return none(null, `and no release is recorded as shipped: ${line.why}`);
-  const shipped = line.shipped.get(version);
-  if (!shipped) {
-    return none(
-      null,
-      `which no release this project recorded as shipped names; release ${line.live.version} is what its record says is live`,
-    );
-  }
-  if (!shipped.carried) {
-    return none(
-      false,
-      `and release ${line.live.version}, recorded after it at a lower version, is what the record says is live, so nothing says it carries ${version}: judge it again on release ${line.live.version}`,
-    );
-  }
-  if (version === line.live.version) return { commit: null, inLiveBuild: true, notCounted: null };
-  return {
-    commit: null,
-    inLiveBuild: true,
-    notCounted: null,
-    countedAs: `release ${version}, carried by live release ${line.live.version}`,
-  };
-}
-
-/**
- * Where a commit judged on a project whose production names no commit (ISS-900) does not count, the
- * act that can count: a judgement on the release the record says is live, or, with none recorded,
- * the record itself.
- */
-export function releaseHint(line: ReleasedLine | undefined): string | null {
-  if (!line) return null;
-  if (!line.live) return `${line.why}, and none is recorded yet: record the release first`;
-  return `${line.why}: judge it on release ${line.live.version}, naming \`{ kind: 'release', version: '${line.live.version}' }\` at the requirement`;
+  return { commit: null, ...readOnRelease(version, line) };
 }
