@@ -28,6 +28,7 @@ pub mod lifecycle;
 pub mod master;
 pub mod master_verdict;
 pub mod mcp_servers;
+pub mod ops_read;
 pub mod plugins;
 pub mod pool;
 pub mod provision;

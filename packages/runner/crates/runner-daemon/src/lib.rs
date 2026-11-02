@@ -30,6 +30,7 @@ pub mod master_exit;
 pub mod master_handed;
 pub mod master_limit;
 pub mod master_pass;
+mod ops_read;
 pub mod pool_jobs;
 pub mod pool_reads;
 mod previews;

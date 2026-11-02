@@ -1,5 +1,5 @@
-//! The frame handling `checkout.head.read`, `checkout.ancestry.read`, `host.command` and
-//! `build.push` share.
+//! The frame handling `checkout.head.read`, `checkout.ancestry.read`, `host.command`, `ops.read`
+//! and `build.push` share.
 //!
 //! Core asks, this box reads and answers under the request's id: the decode, the answer to a frame
 //! this build cannot decode, the refusal body, and the post. What each channel reads and the shape
@@ -9,13 +9,16 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
 use runner_platform::git::strip_userinfo;
-use runner_transport::{checkout_ancestry, checkout_head, host_command, support_build, CoreClient};
+use runner_transport::{
+    checkout_ancestry, checkout_head, host_command, ops_read, support_build, CoreClient,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Channel {
     Head,
     Ancestry,
     HostCommand,
+    OpsRead,
     SupportBuild,
 }
 
@@ -26,6 +29,7 @@ impl Channel {
             Self::Head => "head",
             Self::Ancestry => "ancestry",
             Self::HostCommand => "host-command",
+            Self::OpsRead => "ops-read",
             Self::SupportBuild => "support-build",
         }
     }
@@ -36,6 +40,7 @@ impl Channel {
             Self::Head => "checkout.head.read",
             Self::Ancestry => "checkout.ancestry.read",
             Self::HostCommand => "host.command",
+            Self::OpsRead => "ops.read",
             Self::SupportBuild => "build.push",
         }
     }
@@ -50,6 +55,7 @@ impl Channel {
             Self::Head => checkout_head::answer(client, request_id, body).await,
             Self::Ancestry => checkout_ancestry::answer(client, request_id, body).await,
             Self::HostCommand => host_command::answer(client, request_id, body).await,
+            Self::OpsRead => ops_read::answer(client, request_id, body).await,
             Self::SupportBuild => support_build::answer(client, request_id, body).await,
         }
     }

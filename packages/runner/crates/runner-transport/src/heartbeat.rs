@@ -180,12 +180,14 @@ pub(crate) fn heartbeat_body(
 /// so false where the box cannot confine. `ownerCheckouts` (ISS-765) is whether it runs an
 /// owner-mode channel agent confined in its own clone, its git and `gh` asking core for a
 /// credential to that repository alone. `hostCommands` is whether this box runs a command on a
-/// named host over its own SSH (`host.command`), which needs no sandbox.
+/// named host over its own SSH (`host.command`), which needs no sandbox; `opsReads` (ISS-871) whether
+/// it runs a read a room's grant declares from its fixed argv with no shell (`ops.read`), nor needs one.
 pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> serde_json::Value {
     let mut out = serde_json::json!({
         "turnCredential": true,
         "followUpCredential": true,
         "hostCommands": true,
+        "opsReads": true,
     });
     let confines = matches!(confine, runner_platform::confine::Availability::Available);
     out["confinedChat"] = confines.into();
@@ -235,6 +237,7 @@ mod tests {
         assert_eq!(caps["ownerCheckouts"], true, "{caps}");
         assert_eq!(caps["supportBuilds"], true, "{caps}");
         assert_eq!(caps["hostCommands"], true, "{caps}");
+        assert_eq!(caps["opsReads"], true, "{caps}");
         let caps = capabilities(&Availability::Unavailable("no bwrap".into()));
         assert_eq!(caps["chatCheckoutModes"], false, "{caps}");
         assert_eq!(caps["ownerCheckouts"], false, "{caps}");

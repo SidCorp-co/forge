@@ -21,10 +21,10 @@ use tokio::process::Command;
 use crate::checkout_frame::{serve, Channel, Frame};
 
 /// The most of each stream handed back; the rest is read and dropped.
-const STREAM_CAP: usize = 32 * 1024;
-const MIN_TIMEOUT_MS: u64 = 1_000;
-const MAX_TIMEOUT_MS: u64 = 120_000;
-const DEFAULT_TIMEOUT_MS: u64 = 60_000;
+pub(crate) const STREAM_CAP: usize = 32 * 1024;
+pub(crate) const MIN_TIMEOUT_MS: u64 = 1_000;
+pub(crate) const MAX_TIMEOUT_MS: u64 = 120_000;
+pub(crate) const DEFAULT_TIMEOUT_MS: u64 = 60_000;
 /// The longest command this box passes on.
 const MAX_COMMAND_CHARS: usize = 4_000;
 
@@ -79,7 +79,7 @@ pub(crate) async fn handle(client: &CoreClient, data: Value) {
 }
 
 /// Whether this box binds `project_id` at all: a box runs commands only for a project it serves.
-fn project_bound_here(project_id: &str) -> Result<(), String> {
+pub(crate) fn project_bound_here(project_id: &str) -> Result<(), String> {
     let cfg = Config::load().map_err(|e| format!("this box's config could not be read: {e}"))?;
     if cfg
         .bindings

@@ -1,6 +1,7 @@
 //! The frames core addresses to this box about one project: reading or setting up its checkout
 //! (`skill.sync`, `checkout.head.read`, `checkout.ancestry.read`, `provision.request`), and a
-//! support room's acts the box carries out for it (`host.command`, `build.push`, REQ-75 r5).
+//! support room's acts the box carries out for it (`host.command`, `ops.read`, `build.push`, REQ-75
+//! r5, ISS-871).
 //! `actors::on_frame` routes them here; each is handled off the frame loop.
 
 use crate::*;
@@ -11,12 +12,13 @@ pub(crate) fn takes(event: &str) -> bool {
 }
 
 /// The frames [`on_frame`] takes.
-const BOX_FRAMES: [&str; 6] = [
+const BOX_FRAMES: [&str; 7] = [
     "skill.sync",
     "checkout.head.read",
     "checkout.ancestry.read",
     "provision.request",
     "host.command",
+    "ops.read",
     "build.push",
 ];
 
@@ -42,6 +44,10 @@ pub(crate) fn on_frame(frame: Frame, client: &Arc<CoreClient>, cfg: &Arc<Config>
         "host.command" => {
             let client = client.clone();
             tokio::spawn(async move { crate::host_command::handle(&client, frame.data).await });
+        }
+        "ops.read" => {
+            let client = client.clone();
+            tokio::spawn(async move { crate::ops_read::handle(&client, frame.data).await });
         }
         "build.push" => {
             let client = client.clone();
