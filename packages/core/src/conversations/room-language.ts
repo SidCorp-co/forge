@@ -14,7 +14,7 @@ const READ_LAST = 20;
  * every thread under it), or null where nobody wrote one yet.
  */
 export async function roomLanguageOf(
-  adapter: 'rocketchat',
+  adapter: (typeof conversations.$inferSelect)['adapter'],
   venue: string,
 ): Promise<ReplyLanguage | null> {
   const venues = db
