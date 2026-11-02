@@ -179,19 +179,17 @@ export const ISSUE_CREATE_REFUSAL_CODES = [
 	"INVALID_DETECTOR_KEY",
 	"RELEASE_NOTE_REFUSED",
 	"CHAT_FILES_FEEDBACK_NOT_ISSUES",
-	"MCP_FILES_FEEDBACK_NOT_ISSUES",
 ] as const;
 export type IssueCreateRefusalCode =
 	(typeof ISSUE_CREATE_REFUSAL_CODES)[number];
 
 /**
- * A chat door's credential is refused an issue whoever holds it, and so is an MCP client: each
- * files Feedback or a Requirement, and issues are born from those.
+ * A chat door's credential is refused an issue whoever holds it where the project's gate
+ * `chat_files_issue` is enforced: it files Feedback or a Requirement, and issues are born from those.
  */
 export const ISSUE_CREATE_REFUSAL_STATUSES = {
 	RELEASE_NOTE_REFUSED: 400,
 	CHAT_FILES_FEEDBACK_NOT_ISSUES: 403,
-	MCP_FILES_FEEDBACK_NOT_ISSUES: 403,
 } as const satisfies RefusalStatuses<IssueCreateRefusalCode>;
 
 export const ISSUE_TAKE_REFUSAL_CODES = [

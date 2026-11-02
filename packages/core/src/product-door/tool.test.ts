@@ -83,43 +83,27 @@ describe('the product tools on /mcp', () => {
 describe('forge_issues create', () => {
   const issues = tools.forge_issues as McpTool;
 
-  async function refusalOf(args: Record<string, unknown>): Promise<RefusalError> {
-    const err = await issues.handler(args).then(
-      () => null,
-      (e: unknown) => e,
+  // ISS-861 (owner, 2026-11-01): an MCP client is no longer refused an issue over its form; it files
+  // one by the create every door takes, under the write grant and project.write.
+  it('files with a write grant and refuses no create by form', () => {
+    expect(toolGrantFor(issues, { action: 'create' })).toBe('issues:write');
+    expect(toolGrantRefusal(issues, { action: 'create' }, ['issues:read'])).toContain(
+      "forge_issues action 'create' needs 'issues:write'",
     );
-    expect(err).toBeInstanceOf(RefusalError);
-    return err as RefusalError;
-  }
-
-  it('files nothing and says where the record goes instead, and when to step in', async () => {
-    const err = await refusalOf({ action: 'create', projectId: ctx.principal.userId });
-    expect(isRefusal(err, 'MCP_FILES_FEEDBACK_NOT_ISSUES')).toBe(true);
-    const detail = err.refusals[0]?.detail ?? '';
-    expect(detail).toContain('An MCP client files no issue');
-    expect(detail).toContain('project_feedback');
-    expect(detail).toContain('forge_requirements');
-    expect(detail).toContain('forge_design suggestion_accept');
-    expect(detail).toContain('forge_questions ask');
-    expect(detail).toContain('ask the person before recording anything');
-    expect(detail).toContain('never accept a breakdown or a triage on your own');
+    expect(issues.description).not.toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
+    expect(issues.description).not.toContain('An MCP client files no issue');
+    expect(issues.description).toContain('files an issue as you');
   });
 
-  it('steers a create carrying any fields, the retired tool’s `data` included', async () => {
-    const err = await refusalOf({
-      action: 'create',
-      data: { title: 'Login is broken', description: 'Safari' },
-      title: 'Login is broken',
-    });
-    expect(isRefusal(err, 'MCP_FILES_FEEDBACK_NOT_ISSUES')).toBe(true);
-  });
-
-  it('carries the same steering in the description a client reads before it calls', () => {
-    expect(issues.description).toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
-    expect(issues.description).toContain('An MCP client files no issue');
-    expect(toolGrantFor(issues, { action: 'create' })).toEqual({
-      none: expect.stringContaining('writes nothing'),
-    });
+  it('refuses a create with no title by the argument it lacks', async () => {
+    const err = await issues
+      .handler({ action: 'create', projectId: '00000000-0000-4000-8000-000000000009' })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(err).toBeTruthy();
+    expect(String((err as Error).message ?? err)).toContain('action create needs title');
   });
 
   it('refuses an action it does not take by the schema, not by guessing', async () => {

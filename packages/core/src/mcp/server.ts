@@ -272,7 +272,7 @@ It lists five tools, so you load only what you use: \`forge_find { query }\` fin
 - \`releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
 - \`design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.
 - \`questions\` — questions waiting on a person, one read in full, the person's answer in their own words, and your own question on an issue.
-- \`issues\` — delivery work read: each issue's status, whether an agent works on it now and when it is likely done. It files no issue: \`issues.create\` is refused MCP_FILES_FEEDBACK_NOT_ISSUES and says where the record goes instead (Feedback, a Requirement, or a question).
+- \`issues\` — delivery work: each issue's status, whether an agent works on it now and when it is likely done, and \`issues.create\` to file one where you hold project.write. Judge where a record belongs: a problem or idea a person reported is often Feedback, new or changed behaviour a Requirement; ask the person when it is unclear.
 - \`uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
 
 Every answer about work in motion carries \`progress\`: whether work is running now, what waits on whom, and the forecast date, or plainly why there is none. Tell the person \`progress.says\`; never give a date it does not hold.

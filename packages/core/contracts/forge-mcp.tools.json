@@ -597,7 +597,7 @@
       "name": "forge_feedback"
     },
     {
-      "description": "Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none). It reads; it files nothing.\n- action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and `progress`. `pause` names a wait that holds the whole project, such as no runner online.\n- action=get { projectId, issue }: one issue with its description, the questions it waits on, `progress`, and `requirement`: the requirement it delivers, whichever project of its organization holds it (`otherProject` names a sibling's), at its current revision with its spec, its criteria (code and body) and its latest agreed baseline; null where it delivers none.\n- action=create: refused (MCP_FILES_FEEDBACK_NOT_ISSUES). An MCP client files no issue. Issues are the delivery side: Forge files one only when a requirement's breakdown is accepted, or when feedback is triaged as delivery work, so the product record always leads. Record what the person means instead, after they confirm it: (1) a problem, bug, change or idea someone reported is Feedback (project_feedback; kind bug | change_request | idea | question), linked to the requirement it touches, and its triage files the issue; (2) new or changed behaviour is a Requirement or a revision of one (forge_requirements), and accepting its breakdown (forge_design suggestion_accept) files the issues, so read every slice first; (3) a question about work already under way is forge_questions ask on that issue. When to step in: ask the person before recording anything, and never accept a breakdown or a triage on your own: each files delivery work, so the person decides it. Work so urgent it fits none of these is filed by the person in the Forge web app, not from here.",
+      "description": "Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none), and the filing of one.\n- action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and `progress`. `pause` names a wait that holds the whole project, such as no runner online.\n- action=get { projectId, issue }: one issue with its description, the questions it waits on, `progress`, and `requirement`: the requirement it delivers, whichever project of its organization holds it (`otherProject` names a sibling's), at its current revision with its spec, its criteria (code and body) and its latest agreed baseline; null where it delivers none.\n- action=create { projectId, title, description?, priority?, category?, relations?, admit? }: files an issue as you, the way any other door does: it needs project.write, is born at `draft` unless `admit: true` asks `open` (the project's admission gate decides, and `admission` says where it stands), and answers its key. Judge where the record belongs: delivery work someone will build is an issue; a problem or idea a person reported is often Feedback (project_feedback), and new or changed behaviour a Requirement (forge_requirements). Ask the person when it is unclear.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -608,6 +608,33 @@
               "create"
             ],
             "type": "string"
+          },
+          "admit": {
+            "description": "create: true files it asking `open`, which the project admission gate decides; left out, it is born at `draft`",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "issue": {
             "description": "get: an issue key (ISS-12) or uuid",
@@ -625,10 +652,61 @@
             "minimum": 0,
             "type": "integer"
           },
+          "priority": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "none"
+            ],
+            "type": "string"
+          },
           "projectId": {
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
+          },
+          "relations": {
+            "description": "create: edges filed with it, e.g. [{ kind: 'blocks', dependsOnId }], committed before it can dispatch",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "blocksId": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "dependsOnId": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "kind": {
+                  "default": "blocks",
+                  "enum": [
+                    "blocks",
+                    "relates"
+                  ],
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                "validUntil": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "type": "array"
           },
           "search": {
             "maxLength": 200,
@@ -672,6 +750,12 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "title": {
+            "description": "create: the issue title",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
           }
         },
         "required": [
@@ -2118,5 +2202,5 @@
       "name": "project_feedback"
     }
   ],
-  "version": "3.9.4"
+  "version": "3.10.0"
 }

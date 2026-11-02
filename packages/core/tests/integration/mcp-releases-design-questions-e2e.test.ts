@@ -109,7 +109,7 @@ describe('the product actions are found by an MCP client', () => {
       expect(doors.has(door), door).toBe(true);
     expect(doors.has('coolify_deploy')).toBe(false);
     const create = await surface('forge_describe', { action: 'issues.create' });
-    expect(create.guide).toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
+    expect(create.guide).not.toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
   });
 });
 
@@ -364,18 +364,28 @@ describe('forge_issues', () => {
     expect((got.progress as Json).says).toEqual(expect.any(String));
   });
 
-  it('files no issue: create is refused by name with where the record goes instead', async () => {
+  // ISS-861 (owner, 2026-11-01): create files by the create every door takes, refused by no form
+  it('files an issue at draft as the caller, and a viewer is refused project.write by name', async () => {
     const before = await issueCount();
-    const refused = await mcp('owner', 'forge_issues', {
+    const filed = ok(
+      await mcp('owner', 'forge_issues', {
+        action: 'create',
+        projectId,
+        title: 'Login is broken on Safari',
+      }),
+    );
+    expect(filed).toMatchObject({ status: 'draft', title: 'Login is broken on Safari' });
+    expect(filed.key).toEqual(expect.stringMatching(/-\d+$/));
+    expect(await issueCount()).toBe(before + 1);
+
+    const refused = await mcp('viewer', 'forge_issues', {
       action: 'create',
       projectId,
-      title: 'Login is broken on Safari',
+      title: 'A viewer may not file',
     });
-    expect(codeOf(refused)).toBe('MCP_FILES_FEEDBACK_NOT_ISSUES');
-    expect((refused.json as { status?: number }).status).toBe(403);
-    expect(refused.text).toContain('project_feedback');
-    expect(refused.text).toContain('forge_requirements');
-    expect(await issueCount()).toBe(before);
+    expect(codeOf(refused)).toBe('PERMISSION_FORBIDDEN');
+    expect(refused.text).toContain('project.write');
+    expect(await issueCount()).toBe(before + 1);
   });
 });
 

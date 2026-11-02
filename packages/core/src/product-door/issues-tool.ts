@@ -1,47 +1,34 @@
 // `forge_issues`: delivery work as a person following it reads it — what is being built, how far it
-// has got, whether an agent is on it now and when it is likely done. It reads; it files nothing. An
-// issue is the delivery side, born from a requirement's breakdown or from triaged feedback, so an MCP
-// client that reaches for `create` is refused by name and told where the record it means goes.
+// has got, whether an agent is on it now and when it is likely done — and the filing of one, by the
+// same create every other door takes (ISS-861: the client judges where a record belongs, and the
+// kernel's own refusals still hold: project.write, the admission an `open` birth asks, the edges).
 
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
-import type { IssueCreateRefusalCode } from '@forge/contracts/issues';
 import { ISSUES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { z } from 'zod';
 import { readIssueForecast, readProjectForecast } from '../forecast/index.js';
-import { activeIssuePrefix, listIssues, resolveIssueRouteRef } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  createIssue,
+  issueCreateSchema,
+  listIssues,
+  resolveIssueRouteRef,
+} from '../issues/index.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { egressAs, egressOr } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { RefusalError, refuser } from '../lib/refusal.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { argumentRefusal, need, readingArgument } from '../lib/tool-args.js';
 import { readQuestionsForIssue } from '../questions/index.js';
 import { issueRequirementOf } from '../requirements/index.js';
 import { parseArgs } from './args.js';
-import { forecastViewerOf, readAccess, readerOf } from './context.js';
+import { requireHeld } from '../permissions/index.js';
+import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
 
 const LIST_MAX = 100;
-
-/**
- * What an MCP client is told when it reaches for an issue: issues come from the product record, and
- * where the thing it meant to file goes instead. The refusal and the tool's description both say it.
- */
-export const ISSUE_CREATE_STEER =
-  'An MCP client files no issue. Issues are the delivery side: Forge files one only when a ' +
-  "requirement's breakdown is accepted, or when feedback is triaged as delivery work, so the " +
-  'product record always leads. Record what the person means instead, after they confirm it: ' +
-  '(1) a problem, bug, change or idea someone reported is Feedback (project_feedback; kind bug | ' +
-  'change_request | idea | question), linked to the requirement it touches, and its triage files ' +
-  'the issue; (2) new or changed behaviour is a Requirement or a revision of one ' +
-  '(forge_requirements), and accepting its breakdown (forge_design suggestion_accept) files the ' +
-  'issues, so read every slice first; (3) a question about work already under way is ' +
-  'forge_questions ask on that issue. When to step in: ask the person before recording anything, ' +
-  'and never accept a breakdown or a triage on your own: each files delivery work, so the person ' +
-  'decides it. Work so urgent it fits none of these is filed by the person in the Forge web app, ' +
-  'not from here.';
-
-const refuseCreate = refuser<IssueCreateRefusalCode>('ISSUE_CREATE_REFUSED');
 
 const input = z.strictObject({
   action: z.enum(ISSUES_TOOL_ACTIONS),
@@ -58,15 +45,29 @@ const input = z.strictObject({
   search: z.string().trim().min(1).max(200).optional(),
   limit: z.number().int().min(1).max(LIST_MAX).optional(),
   offset: z.number().int().min(0).optional(),
+  title: issueCreateSchema.shape.title.optional().describe('create: the issue title'),
+  description: issueCreateSchema.shape.description,
+  priority: issueCreateSchema.shape.priority,
+  category: issueCreateSchema.shape.category,
+  relations: issueCreateSchema.shape.relations.describe(
+    "create: edges filed with it, e.g. [{ kind: 'blocks', dependsOnId }], committed before it can dispatch",
+  ),
+  admit: z
+    .boolean()
+    .optional()
+    .describe(
+      'create: true files it asking `open`, which the project admission gate decides; left out, it is born at `draft`',
+    ),
 });
 type Input = z.infer<typeof input>;
 
-const SHAPE = '{ action, projectId, issue?, status?, statusNot?, search?, limit?, offset? }';
+const SHAPE =
+  '{ action, projectId, issue?, status?, statusNot?, search?, limit?, offset?, title?, description?, priority?, category?, relations?, admit? }';
 
-const DESCRIPTION = `Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none). It reads; it files nothing.
+const DESCRIPTION = `Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none), and the filing of one.
 - action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and \`progress\`. \`pause\` names a wait that holds the whole project, such as no runner online.
 - action=get { projectId, issue }: one issue with its description, the questions it waits on, \`progress\`, and \`requirement\`: the requirement it delivers, whichever project of its organization holds it (\`otherProject\` names a sibling's), at its current revision with its spec, its criteria (code and body) and its latest agreed baseline; null where it delivers none.
-- action=create: refused (MCP_FILES_FEEDBACK_NOT_ISSUES). ${ISSUE_CREATE_STEER}`;
+- action=create { projectId, title, description?, priority?, category?, relations?, admit? }: files an issue as you, the way any other door does: it needs project.write, is born at \`draft\` unless \`admit: true\` asks \`open\` (the project's admission gate decides, and \`admission\` says where it stands), and answers its key. Judge where the record belongs: delivery work someone will build is an issue; a problem or idea a person reported is often Feedback (project_feedback), and new or changed behaviour a Requirement (forge_requirements). Ask the person when it is unclear.`;
 
 async function list(ctx: McpContext, i: Input) {
   const access = await readAccess(ctx, i.projectId);
@@ -164,30 +165,60 @@ async function requirementShown(
   });
 }
 
-function create(): never {
-  throw refuseCreate('MCP_FILES_FEEDBACK_NOT_ISSUES', ISSUE_CREATE_STEER, '/action');
+async function create(ctx: McpContext, i: Input) {
+  const { title } = need(i, 'create', 'title');
+  const access = await loadProjectAccess(i.projectId, ctx.principal.userId);
+  requireHeld(access, 'project.write');
+  const actor = actorOf(ctx);
+  const result = await createIssue(
+    {
+      projectId: i.projectId,
+      title,
+      description: i.description,
+      priority: i.priority,
+      category: i.category,
+      relations: i.relations,
+      status: i.admit ? 'open' : undefined,
+    },
+    {
+      createdById: actor.userId,
+      createdByDeviceId: null,
+      createdVia: 'mcp',
+      actor: { type: 'user', id: actor.userId, agency: actor.agency },
+    },
+  );
+  if (result.deduped) {
+    return { deduped: true, key: result.existingIssueDisplayId, id: result.existingIssueId };
+  }
+  const prefix = await activeIssuePrefix(i.projectId);
+  return {
+    key: formatIssueRef(prefix, result.issue.issSeq),
+    id: result.issue.id,
+    title: result.issue.title,
+    status: result.issue.status,
+    admission: result.admission,
+    relations: result.relations,
+    warnings: result.bodyWarnings,
+  };
 }
 
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
-  reach: { byAction: { list: 'project', get: 'project', create: 'public' } },
+  reach: 'project',
   route: ['/api/projects', '/api/issues'],
   grant: {
     byAction: {
       list: 'projects:read',
       get: 'issues:read',
-      create: { none: 'it writes nothing and reads nothing: it answers how an issue comes to be' },
+      create: 'issues:write',
     },
   },
-  // `create` is answered before the arguments are read, so whatever fields a client sends with it
-  // (a title, a description, the retired tool's `data`) it meets the steering, not a schema error
   handler: async (args) => {
-    if (args.action === 'create') create();
     const i = parseArgs(input, args, SHAPE);
     if (i.action === 'list') return list(ctx, i);
     if (i.action === 'get') return get(ctx, i);
-    return create();
+    return create(ctx, i);
   },
 });

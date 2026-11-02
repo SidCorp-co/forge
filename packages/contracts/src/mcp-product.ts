@@ -46,9 +46,10 @@ export const QUESTIONS_TOOL_ACTIONS = [
 	...QUESTIONS_TOOL_WRITES,
 ] as const;
 
-/**
- * `create` writes nothing: an MCP client files no issue, and the action answers how one comes to
- * be (MCP_FILES_FEEDBACK_NOT_ISSUES), so it is read-class and reaches a read-only token too.
- */
-export const ISSUES_TOOL_READS = ["list", "get", "create"] as const;
-export const ISSUES_TOOL_ACTIONS = ISSUES_TOOL_READS;
+/** `create` files an issue by the same create every other door takes, so it is write-class (ISS-861). */
+export const ISSUES_TOOL_READS = ["list", "get"] as const;
+const ISSUES_TOOL_WRITES = ["create"] as const;
+export const ISSUES_TOOL_ACTIONS = [
+	...ISSUES_TOOL_READS,
+	...ISSUES_TOOL_WRITES,
+] as const;
