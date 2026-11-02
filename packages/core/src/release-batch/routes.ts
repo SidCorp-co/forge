@@ -467,7 +467,7 @@ const shippedInBodySchema = z
     /** The version a closed issue's shipped-in record names now, which this record replaces (ISS-846). */
     corrects: z.string().trim().min(1).max(100).optional(),
     /** Why the record `corrects` replaces was wrong; required with it, refused without it. */
-    reason: z.string().trim().max(2_000).optional(),
+    reason: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
   })
   .strict();
 

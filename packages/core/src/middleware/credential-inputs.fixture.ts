@@ -226,7 +226,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt
     field:json:readWhen field:json:timeZone field:json:until field:json:validUntil
-    field:json:startedAt field:json:version`,
+    field:json:startedAt field:json:version field:json:corrects`,
   'a git name: a branch, a commit, a path in a repository, the smart-HTTP service git asks for': words`
     param:rest field:query:service field:json:agentCommit field:json:atSha field:json:base field:json:branch field:json:commit
     field:json:head field:json:repoPath field:json:sha`,
