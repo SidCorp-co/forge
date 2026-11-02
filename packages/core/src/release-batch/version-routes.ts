@@ -5,7 +5,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, requireHeld, requiresOnParam } from '../permissions/index.js';
 import {
   approvalRequestSchema,
   decideApproval,
@@ -103,6 +103,7 @@ releaseVersionRoutes.put(
 releaseVersionRoutes.post(
   '/:projectId/releases/:version/approval',
   versionParam,
+  requiresOnParam('releases.approve'),
   decisionBody,
   async (c) => {
     const { projectId, version } = c.req.valid('param');
@@ -110,7 +111,6 @@ releaseVersionRoutes.post(
     const agency = c.get('agency');
     if (!agency)
       throw new Error('release-batch: a draft decision reached its handler without an auth gate');
-    requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
     const decision = parseDecision(c.req.valid('json'));
     return c.json(await decideDraftApproval({ projectId, version, userId, agency, decision }), 201);
   },
