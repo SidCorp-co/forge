@@ -6,6 +6,7 @@ import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { refuser } from '../lib/refusal.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 import { loadAttachment, readAttachmentBytes } from './attachment-lookup.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
 import { persistUpload } from './persist-upload.js';
@@ -44,6 +45,9 @@ export const uploadRoutes = new Hono();
 
 uploadRoutes.put(
   '/:uploadId',
+  requiresNoPermission(
+    'the upload ticket in the path is the credential: unguessable, single-use and short-lived, minted for a caller who could attach, and it fixes the target, name and uploader',
+  ),
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
@@ -79,6 +83,9 @@ uploadRoutes.put(
 
 uploadRoutes.get(
   '/download/:ticketId',
+  requiresNoPermission(
+    'the download ticket in the path is the credential: short-lived and minted for a caller who could read the attachment it names, and it answers that attachment alone',
+  ),
   zValidator('param', z.object({ ticketId: z.uuid() }), invalid('invalid ticketId')),
   noQuery,
   async (c) => {

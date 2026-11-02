@@ -110,7 +110,6 @@
     "GET /api/runners",
     "GET /api/skills",
     "GET /api/skills/:id",
-    "GET /api/uploads/download/:ticketId",
     "GET /api/workflow-templates",
     "GET /api/workflow-templates/:templateId/:version",
     "PATCH /api/admin/instance-settings",
@@ -269,8 +268,7 @@
     "PUT /api/projects/:id/interface",
     "PUT /api/projects/:id/links/:link",
     "PUT /api/projects/:projectId/releases/:version/naming",
-    "PUT /api/skills/:id",
-    "PUT /api/uploads/:uploadId"
+    "PUT /api/skills/:id"
   ],
   "actions": [
     "forge_bindings.get",
