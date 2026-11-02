@@ -8,6 +8,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import {
   automationViewerOf,
   readAutomationStanding,
@@ -30,6 +31,9 @@ const noQuery = z.strictObject({});
 export const automationRoutes = new Hono<{ Variables: AuthVars }>();
 automationRoutes.use('/:id/automation/*', requireAuth(), assertEmailVerified());
 
+// a reader reads the standing; what the viewer may do there is drawn into it by `automationViewerOf`
+const reads = requiresOnParam('project.read', 'id');
+
 async function viewerOf(projectId: string, userId: string) {
   const viewer = await automationViewerOf(projectId, userId);
   if (!viewer) throw forbidden('not a project member');
@@ -43,6 +47,7 @@ automationRoutes.get(
     idParamSchema,
     invalid('invalid path: /api/projects/<project uuid>/automation/standing'),
   ),
+  reads,
   zValidator('query', firesQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -61,6 +66,7 @@ automationRoutes.get(
     scheduleParam,
     invalid('invalid path: /api/projects/<project uuid>/automation/schedules/<schedule uuid>'),
   ),
+  reads,
   zValidator('query', firesQuery),
   async (c) => {
     const { id: projectId, scheduleId } = c.req.valid('param');
@@ -86,6 +92,7 @@ automationRoutes.get(
     fireParam,
     invalid('invalid path: /api/projects/<project uuid>/automation/fires/<fire uuid>'),
   ),
+  reads,
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, fireId } = c.req.valid('param');
