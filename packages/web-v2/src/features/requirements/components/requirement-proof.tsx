@@ -74,12 +74,21 @@ function CriteriaChange({ label, rows }: { label: string; rows: RequirementCrite
 export function RevisionDiff({ changes }: { changes: RequirementSpecChanges }) {
   const t = useCopy();
   const kindWord = (k: RequirementKind | null) => (k ? t(`requirements.picture.kind.${k}`) : t("requirements.picture.edit.kindNone"));
-  const { goal, kind, personas, scopeIn, scopeOut, criteria } = changes;
-  if (!goal && !kind && !personas && !scopeIn && !scopeOut && criteria.length === 0) {
+  const { title, goal, kind, personas, scopeIn, scopeOut, criteria } = changes;
+  if (!title && !goal && !kind && !personas && !scopeIn && !scopeOut && criteria.length === 0) {
     return <p className="text-13 text-subtle">{t("requirements.diff.unchanged")}</p>;
   }
   return (
     <div data-testid="revision-diff">
+      {title ? (
+        <div data-testid="revision-diff-title">
+          <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.diff.title")}</h4>
+          <p className="flex flex-wrap gap-2 text-14">
+            {title.before ? <Del>{title.before}</Del> : null}
+            <Ins>{title.after}</Ins>
+          </p>
+        </div>
+      ) : null}
       {goal ? (
         <div>
           <h4 className="mb-1 mt-3 text-13 font-medium text-muted">{t("requirements.diff.goal")}</h4>

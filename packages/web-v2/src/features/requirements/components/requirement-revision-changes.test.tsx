@@ -51,4 +51,15 @@ describe("a revision's changes on the Revisions view", () => {
     expect(within(kind).getByText("Not named yet").tagName).toBe("DEL");
     expect(within(kind).getByText("Rule").tagName).toBe("INS");
   });
+
+  it("shows a retitle as one line: the old title struck, the new one added (ISS-829)", async () => {
+    const [open, current] = reqDetail.revisions;
+    const title = { before: "One DKIM key on every node", after: "A DKIM key per node" };
+    revisions({ ...reqDetail, revisions: [{ ...open, state: "draft", title: title.after, specChanges: { ...open.specChanges, title } }, current] });
+    await userEvent.setup().click(within(screen.getByTestId("open-revision-diff")).getByRole("button"));
+    const line = await screen.findByTestId("revision-diff-title");
+    expect(line).toHaveTextContent("Title");
+    expect(within(line).getByText(title.before).tagName).toBe("DEL");
+    expect(within(line).getByText(title.after).tagName).toBe("INS");
+  });
 });

@@ -40,6 +40,7 @@ describe("specChangesOf", () => {
 		]);
 		expect(specChangesOf(base, next)).toEqual({
 			against: 1,
+			title: null,
 			goal: { before: "old", after: "new" },
 			kind: null,
 			personas: { kept: ["b"], added: ["c"], removed: ["a"] },
@@ -57,6 +58,7 @@ describe("specChangesOf", () => {
 		const same = side(1, { goal: "g" }, null, [{ code: "BC-1", body: "one" }]);
 		expect(specChangesOf(same, { ...same, revision: 2 })).toEqual({
 			against: 1,
+			title: null,
 			goal: null,
 			kind: null,
 			personas: null,
@@ -64,5 +66,16 @@ describe("specChangesOf", () => {
 			scopeOut: null,
 			criteria: [],
 		});
+	});
+
+	it("names a title the revision gives against its base's, and never one it carries or repeats (ISS-829)", () => {
+		const base = { ...side(1, {}), title: "One key on every node" };
+		expect(specChangesOf(base, { ...side(2, {}), title: "A key per node" }).title).toEqual({
+			before: "One key on every node",
+			after: "A key per node",
+		});
+		expect(specChangesOf(base, { ...side(2, {}), title: "One key on every node" }).title).toBeNull();
+		expect(specChangesOf(base, side(2, {})).title).toBeNull();
+		expect(specChangesOf(null, { ...side(1, {}), title: "First" }).title).toEqual({ before: null, after: "First" });
 	});
 });
