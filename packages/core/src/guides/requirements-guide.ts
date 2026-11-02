@@ -35,10 +35,12 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   requirement whose issues all closed and whose every BC passes still reads \`agreed\` until someone
   moves it, and its standing asks for that move. A BC's coverage is the newest
   pass, short or fail on any issue criterion tracing its current wording that its identity lets
-  count, and the BC names it. An unjudged one masks nothing. A commit, or the commit a runtime
-  served, counts only where the live build is read to hold it. One it does not hold, and one
-  nobody could check (production unreadable, or its ancestry unanswered), do not count and say
-  which on their line, so an outage reads \`not_judged\` with its reason, never \`passing\`. A
+  count, and the BC names it. An unjudged one masks nothing. On an issue, a commit, or the commit a
+  runtime served, counts where the release weighs that issue's criteria: at its landing where the
+  project has no production or a promotion stands before it, else only where the live build is read
+  to hold it, as is a verdict at the requirement on a project with production. One it does not
+  hold, and one nobody could check (production unreadable, or its ancestry unanswered), do not count
+  and say which on their line, so an outage reads \`not_judged\` with its reason, never \`passing\`. A
   runtime that resolves to no commit, a design revision or contract version other than the one the
   requirement's latest baseline pins, a storefront draft and a backfilled abbreviated commit never
   count, and each says why on its line. A BC traced only at an earlier wording reads \`stale\`, one

@@ -1,0 +1,1 @@
+**A requirement now counts what its shipped issues earned at their landing.** On a project that promotes work to production, coverage weighs issue verdicts at each landing, as the issue does, so proven criteria are not judged again.
