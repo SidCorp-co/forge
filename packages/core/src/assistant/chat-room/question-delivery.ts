@@ -41,7 +41,31 @@ import {
   roundOf,
   settle,
 } from './question-ledger.js';
-import { agentAsks, agentOpensDay, type Spoken } from './question-voice.js';
+import { questionRecord } from './question-record.js';
+import { agentAsks, agentOpensDay, roundFacts, type Spoken } from './question-voice.js';
+
+/** A round handed to the project's channel agent (ISS-873): its facts and the record about it. */
+export interface ChannelAgentRound {
+  questionId: string;
+  projectId: string;
+  round: number;
+  facts: string;
+  record: Record<string, unknown>;
+}
+
+/**
+ * Hands a round to the project's channel agent: `none` where the project has none, `handed`, or
+ * why it can be handed nowhere. The support module provides it at boot.
+ */
+type ChannelAgentQuestions = (
+  round: ChannelAgentRound,
+) => Promise<'none' | 'handed' | { refused: string }>;
+
+let channelAgentQuestions: ChannelAgentQuestions = async () => 'none';
+
+export function provideChannelAgentQuestions(port: ChannelAgentQuestions): void {
+  channelAgentQuestions = port;
+}
 
 async function noteFailure(
   owed: OwedRound,
@@ -147,6 +171,32 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
     return 'delivered';
   }
 
+  const issueKey = owed.issueId
+    ? ((await issueDisplayIds([owed.issueId])).get(owed.issueId) ?? null)
+    : null;
+  const round = {
+    issueKey,
+    step,
+    parkDeadlineAt: question.parkDeadlineAt ?? null,
+    askedBy: question.origin?.kind === 'conversation' ? question.origin.askedByLabel : null,
+  };
+  // a project question goes to the project's channel agent where it has one, never into its rooms
+  if (!question.origin) {
+    const handed = await channelAgentQuestions({
+      questionId: owed.questionId,
+      projectId: owed.projectId,
+      round: step.round,
+      facts: roundFacts(round),
+      record: await questionRecord(owed.questionId),
+    });
+    if (handed === 'handed') {
+      await settle(owed, { status: 'delivered' }, now);
+      await resolveUndeliverableAlert(owed.questionId);
+      return 'delivered';
+    }
+    if (handed !== 'none') return refuse(owed, handed.refused, now);
+  }
+
   const destination = await resolveQuestionDestination({
     questionId: owed.questionId,
     projectId: owed.projectId,
@@ -165,9 +215,6 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
     ? await roomLanguageOf('rocketchat', `${namespace} ${destination.rid}`)
     : null;
 
-  const issueKey = owed.issueId
-    ? ((await issueDisplayIds([owed.issueId])).get(owed.issueId) ?? null)
-    : null;
   const botName = liveConnectionFor(destination.connectionId)?.username ?? undefined;
   // the room's agent answers it from the record or asks it in its own words; core composes no line (ISS-857, ISS-873)
   const spoken = await agentAsks({
@@ -175,12 +222,7 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
     botName,
     questionId: owed.questionId,
     replyLanguage,
-    round: {
-      issueKey,
-      step,
-      parkDeadlineAt: question.parkDeadlineAt ?? null,
-      askedBy: question.origin?.kind === 'conversation' ? question.origin.askedByLabel : null,
-    },
+    round,
   }).catch((err: unknown): Spoken => ({ kind: 'error', reason: messageOf(err) }));
   if (spoken.kind === 'answered') {
     await settle(owed, { status: 'delivered' }, now);

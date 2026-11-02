@@ -7,6 +7,11 @@ export {
 export { recordedIn as agreedRecordsIn } from './agreement/store.js';
 export { provideHeldWriteVets } from './agreement/vet.js';
 export { drainRoomQuestions, registerRoomBridges } from './chat-room/drains.js';
+export {
+  type ChannelAgentRound,
+  provideChannelAgentQuestions,
+} from './chat-room/question-delivery.js';
+export { answerFromRecord, provideRecordAnswerer } from './chat-room/question-record.js';
 export { drainRoomWindows, registerRoomChat } from './chat-room/room-chat.js';
 export {
   postServiceAnswer,

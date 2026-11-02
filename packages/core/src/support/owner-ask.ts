@@ -20,7 +20,9 @@ import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { granters, grantsOf, readersOf, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
+import { dayThreadFor } from './question-task.js';
 import { threadLink } from './record.js';
+import { isQuestionThread } from './rules.js';
 import { screenForThread } from './screen.js';
 import { type ActionRow, insertAction, type RoomRow, threadMembers } from './store.js';
 import { postInThread, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
@@ -35,6 +37,8 @@ interface AskInput {
   issueId: string | null;
   /** The master's Forge question the answer is recorded on (ISS-871); absent on an older ask. */
   questionId?: string | null;
+  /** The parked question's thread it was handed in (ISS-873), where it was asked in the day's thread. */
+  handedIn?: string;
 }
 
 /** Why a Forge question cannot take the owner's answer through this channel, or null. */
@@ -119,6 +123,17 @@ async function ownerRoomRefusal(
   return null;
 }
 
+/** An asker's thread: a member wrote in it, never the top-level post of an announcement. */
+async function askersThread(
+  room: RoomRow,
+  thread: string,
+): Promise<Outcome<{ thread: string; forgeQuestion?: string }>> {
+  const known = (await threadMembers(room.id, thread)).length
+    ? await knownThread(room, thread)
+    : null;
+  return known ? { ok: true, value: { thread } } : threadUnknown(thread);
+}
+
 /**
  * Ask the owner the binding names, in a thread of the owner's room (ISS-872). Refused by name, nothing posted,
  * when the room is not a channel agent's, the binding names no owner, the thread is unknown, or the
@@ -126,11 +141,12 @@ async function ownerRoomRefusal(
  */
 export async function askOwner(
   room: RoomRow,
-  input: {
+  request: {
     thread: string;
     question: string;
     record?: string | undefined;
     forgeQuestion?: string | undefined;
+    opener?: string | undefined;
   },
 ): Promise<
   Outcome<{
@@ -156,13 +172,32 @@ export async function askOwner(
       `this agent's binding names no owner, so nobody was asked: name the owner's Rocket.Chat user id in its grant; ${await granters(room.projectId)}`,
     );
   }
-  const notOwnerRoom = await ownerRoomRefusal(room, config?.ownerRoom ?? null, input.thread);
+  const notOwnerRoom = await ownerRoomRefusal(room, config?.ownerRoom ?? null, request.thread);
   if (notOwnerRoom) return notOwnerRoom;
-  // an asker's thread: a member wrote in it, never the top-level post of an announcement
-  const conversationId = (await threadMembers(room.id, input.thread)).length
-    ? await knownThread(room, input.thread)
-    : null;
-  if (!conversationId) return threadUnknown(input.thread);
+  const handed = isQuestionThread(request.thread);
+  if (handed) {
+    // screened before the day's thread is opened for it, so a refused question opens nothing
+    const first = await screenForThread(
+      room,
+      null,
+      request.thread,
+      await scrubbedForRoom(room, request.question),
+      'operations-reply',
+      ASK,
+    );
+    if (!first.ok) return first;
+  }
+  // a parked question handed to this agent is asked in the owner's room's thread of the day (ISS-873)
+  const where = handed
+    ? await dayThreadFor(room, request)
+    : await askersThread(room, request.thread);
+  if (!where.ok) return where;
+  const input = {
+    ...request,
+    thread: where.value.thread,
+    forgeQuestion: where.value.forgeQuestion ?? request.forgeQuestion,
+  };
+  const conversationId = await knownThread(room, input.thread);
   const issue = input.record ? await issueOfKey(room.projectId, input.record) : null;
   if (input.record && !issue) {
     return no(
@@ -205,6 +240,7 @@ export async function askOwner(
     record: input.record ?? null,
     issueId: issue?.id ?? null,
     questionId: input.forgeQuestion ?? null,
+    ...(handed ? { handedIn: request.thread } : {}),
   };
   await insertAction({
     roomId: room.id,
@@ -229,7 +265,7 @@ export async function askOwner(
   };
 }
 
-/** The questions a thread asked the owner that no message has answered yet, oldest first. */
+/** The questions a thread asked the owner that nothing has answered yet, oldest first. */
 async function openAsks(room: RoomRow, thread: string): Promise<ActionRow[]> {
   const rows = await db
     .select()
@@ -237,16 +273,27 @@ async function openAsks(room: RoomRow, thread: string): Promise<ActionRow[]> {
     .where(
       and(
         eq(supportActions.roomId, room.id),
-        eq(supportActions.thread, thread),
         eq(supportActions.kind, 'routed'),
-        inArray(supportActions.tool, [ASK, ANSWER]),
+        inArray(supportActions.tool, [ASK, ANSWER, 'answer_question']),
       ),
     )
     .orderBy(asc(supportActions.createdAt));
   const answered = new Set(
     rows.filter((r) => r.tool === ANSWER).map((r) => (r.input as { ask?: string }).ask),
   );
-  return rows.filter((r) => r.tool === ASK && !answered.has(r.id));
+  // a handed question the agent answered itself (ISS-873), wherever it was asked
+  const settled = new Set(
+    rows
+      .filter((r) => r.tool === 'answer_question')
+      .map((r) => (r.input as { forgeQuestion?: string }).forgeQuestion),
+  );
+  return rows.filter(
+    (r) =>
+      r.tool === ASK &&
+      r.thread === thread &&
+      !answered.has(r.id) &&
+      !settled.has((r.input as AskInput).questionId ?? undefined),
+  );
 }
 
 /**
@@ -265,7 +312,25 @@ export async function settleOwnerAnswer(input: {
   const owner = grantsOf(await supportConfigOf(room)).owner;
   if (!owner || author.key !== owner) return false;
   let answered = false;
-  for (const ask of await openAsks(room, thread)) {
+  const open = await openAsks(room, thread);
+  // the day's thread may hold several handed questions: whose answer this is, the agent says (ISS-873)
+  const handedAsks = open.filter((a) => (a.input as AskInput).handedIn);
+  if (handedAsks.length > 1) {
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId: handedAsks[0]?.conversationId ?? null,
+      thread,
+      kind: 'message_in',
+      actorKind: 'core',
+      input: {
+        note: `The owner's message ${message.id} is in today's questions thread, where ${handedAsks.length} questions wait, so it was recorded on none. Record the one it answers with support.answer_question { thread, message: "${message.id}" }, naming that question's thread (${handedAsks.map((a) => (a.input as AskInput).handedIn).join(', ')}); where it is unclear, ask the owner in this thread which one they mean.`,
+      },
+      externalId: `owner-answer-several:${message.id}`,
+    });
+    return true;
+  }
+  for (const ask of open) {
     const asked = ask.input as AskInput;
     const marker = await insertAction({
       roomId: room.id,

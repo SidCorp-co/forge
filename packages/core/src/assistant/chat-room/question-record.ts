@@ -20,8 +20,18 @@ import { requirements } from '../../db/schema-requirements.js';
 import { logger } from '../../lib/logger.js';
 import { isRefusal } from '../../lib/refusal.js';
 import { answerAs } from '../../questions/index.js';
-import { stewardAccountOf } from '../../steward/index.js';
 import type { ChatToolset } from '../tools/mcp-adapter.js';
+
+/**
+ * The project's agent account a record answer is recorded as: the steward's, provided at boot by
+ * the steward module, which this one may not import (it reads the assistant).
+ */
+type RecordAnswerer = (projectId: string) => Promise<string>;
+let recordAnswerer: RecordAnswerer | null = null;
+
+export function provideRecordAnswerer(answerer: RecordAnswerer): void {
+  recordAnswerer = answerer;
+}
 
 export const READ_RECORD_TOOL = 'read_record';
 export const ANSWER_FROM_RECORD_TOOL = 'answer_from_record';
@@ -217,6 +227,84 @@ function answerNamed(
   return { kind: 'option', optionId: option.id };
 }
 
+type Refusal = { code: string; path: string; detail: string };
+
+/**
+ * Answer an open round from the record, as the project's agent account with the citation as its
+ * reason; the refusals, by name, where the round or the answer does not fit. The chat room's agent
+ * and a channel agent answer through this one door (ISS-873).
+ */
+export async function answerFromRecord(c: {
+  questionId: string;
+  projectId: string;
+  round: number;
+  args: Record<string, unknown>;
+}): Promise<{ ok: true; answeredAs: string } | { ok: false; refusals: Refusal[] }> {
+  const no = (code: string, path: string, detail: string) => ({
+    ok: false as const,
+    refusals: [{ code, path, detail }],
+  });
+  const source = typeof c.args.source === 'string' ? c.args.source.trim() : '';
+  if (!source) {
+    return no(
+      'QUESTION_SOURCE_REQUIRED',
+      '/source',
+      'say where in the record the answer is (the feedback item, its attached file, the earlier answer). Nothing was recorded.',
+    );
+  }
+  const [question] = await db
+    .select({ status: agentQuestions.status, steps: agentQuestions.steps })
+    .from(agentQuestions)
+    .where(eq(agentQuestions.id, c.questionId))
+    .limit(1);
+  const step = question?.steps.at(-1);
+  if (question?.status !== 'open' || !step || step.round !== c.round) {
+    return no(
+      'QUESTION_NOT_OPEN',
+      '',
+      `this round is ${question?.status === 'open' ? 'superseded by a later one' : (question?.status ?? 'gone')}, so nothing can be answered on it. Nothing was recorded.`,
+    );
+  }
+  const answer = answerNamed(step, c.args);
+  if (typeof answer === 'string') {
+    return no('QUESTION_ANSWER_WRONG_SHAPE', '/option', `${answer}. Nothing was recorded.`);
+  }
+  if (!recordAnswerer) {
+    throw new Error(
+      'question: no agent account is provided to record an answer from the record as; the steward module provides it at boot (provideRecordAnswerer)',
+    );
+  }
+  const answeredAs = await recordAnswerer(c.projectId);
+  try {
+    await answerAs({
+      questionId: c.questionId,
+      answer,
+      round: c.round,
+      userId: answeredAs,
+      agency: 'agent',
+      note: `Answered from the record: ${source}`,
+      via: 'assistant',
+    });
+  } catch (err) {
+    if (isRefusal(err)) {
+      return {
+        ok: false,
+        refusals: err.refusals.map((r) => ({ code: r.code, path: r.path ?? '', detail: r.detail })),
+      };
+    }
+    logger.error(
+      { err, questionId: c.questionId, round: c.round },
+      'question: recording the answer from the record failed',
+    );
+    return no('QUESTION_ANSWER_UNWRITTEN', '', 'the answer could not be written. Nothing changed.');
+  }
+  logger.info(
+    { questionId: c.questionId, round: c.round, source },
+    'question: answered from the record; nothing is posted',
+  );
+  return { ok: true, answeredAs };
+}
+
 /**
  * The tools an asking turn is offered: read the record, and answer the round from it, citing where.
  */
@@ -270,63 +358,10 @@ export function recordTools(c: {
       if (answered) {
         return refused('QUESTION_ALREADY_ANSWERED', '', 'this turn already recorded the answer.');
       }
-      const source = typeof args.source === 'string' ? args.source.trim() : '';
-      if (!source) {
-        return refused(
-          'QUESTION_SOURCE_REQUIRED',
-          '/source',
-          'say where in the record the answer is (the feedback item, its attached file, the earlier answer). Nothing was recorded.',
-        );
-      }
-      const [question] = await db
-        .select({ status: agentQuestions.status, steps: agentQuestions.steps })
-        .from(agentQuestions)
-        .where(eq(agentQuestions.id, c.questionId))
-        .limit(1);
-      const step = question?.steps.at(-1);
-      if (question?.status !== 'open' || !step || step.round !== c.round) {
-        return refused(
-          'QUESTION_NOT_OPEN',
-          '',
-          `this round is ${question?.status === 'open' ? 'superseded by a later one' : (question?.status ?? 'gone')}, so nothing can be answered on it. Nothing was recorded.`,
-        );
-      }
-      const answer = answerNamed(step, args);
-      if (typeof answer === 'string') {
-        return refused(
-          'QUESTION_ANSWER_WRONG_SHAPE',
-          '/option',
-          `${answer}. Nothing was recorded.`,
-        );
-      }
-      try {
-        answeredAs = await stewardAccountOf(c.projectId);
-        await answerAs({
-          questionId: c.questionId,
-          answer,
-          round: c.round,
-          userId: answeredAs,
-          agency: 'agent',
-          note: `Answered from the record: ${source}`,
-          via: 'assistant',
-        });
-      } catch (err) {
-        if (isRefusal(err)) return said({ refused: err.refusals }, true);
-        logger.error(
-          { err, questionId: c.questionId, round: c.round },
-          'chat-room.question: recording the answer from the record failed',
-        );
-        return refused(
-          'QUESTION_ANSWER_UNWRITTEN',
-          '',
-          'the answer could not be written. Nothing changed.',
-        );
-      }
+      const out = await answerFromRecord({ ...c, args });
+      if (!out.ok) return said({ refused: out.refusals }, true);
+      answeredAs = out.answeredAs;
       answered = true;
-      logger.info(
-        { questionId: c.questionId, round: c.round, source },
-        'chat-room.question: answered from the record; nothing is posted',
-      );
       return said({ recorded: true, note: 'The run that asked is woken. Write nothing.' });
     },
     // the project's agent account answers; reading the record acts as nobody

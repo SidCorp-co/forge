@@ -99,6 +99,12 @@ export const isCheckThread = (thread: string) => thread.startsWith(CHECK_THREAD_
 /** The thread a room's release notes are handed under (ISS-854): no member's. */
 export const RELEASE_THREAD_PREFIX = 'release:';
 
+/** The thread a parked Forge question is handed to a channel agent under (ISS-873): no member's. */
+const QUESTION_THREAD_PREFIX = 'question-';
+export const questionThreadOf = (questionId: string, round: number) =>
+  `${QUESTION_THREAD_PREFIX}${questionId}-${round}`;
+export const isQuestionThread = (thread: string) => thread.startsWith(QUESTION_THREAD_PREFIX);
+
 /** A thread core opened for its own note, no member's: a failure there is recorded, never posted. */
 export const isCoreThread = (thread: string) =>
-  isCheckThread(thread) || thread.startsWith(RELEASE_THREAD_PREFIX);
+  isCheckThread(thread) || thread.startsWith(RELEASE_THREAD_PREFIX) || isQuestionThread(thread);

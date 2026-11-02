@@ -5,7 +5,7 @@ import {
   provideSendRefusedListener,
   provideTerminalSessionBridge,
 } from '../agent-sessions/index.js';
-import { provideSpeakerLinkedListener } from '../assistant/index.js';
+import { provideChannelAgentQuestions, provideSpeakerLinkedListener } from '../assistant/index.js';
 import {
   provideAgentSwitchGate,
   provideSupportRoomHandler,
@@ -19,6 +19,7 @@ import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { recoverLostTurns } from './lost-turns.js';
+import { handQuestionToChannelAgent } from './question-task.js';
 import {
   deliverReleaseNotes,
   noteReleaseShipped,
@@ -72,6 +73,8 @@ export function registerSupportRooms(): void {
   provideSendRefusedListener(INJECT_INTENT, onInjectRefused);
   // a link confirmed on the link page is told to the sessions of the rooms its account wrote in
   provideSpeakerLinkedListener(tellLinked);
+  // a project's parked question goes to its channel agent as a task, never into a room (ISS-873)
+  provideChannelAgentQuestions(handQuestionToChannelAgent);
   onBoxListening(() => {
     void recoverLostTurns().catch((err) =>
       logger.error({ err }, 'support: recovering lost turns on a box reconnect failed'),

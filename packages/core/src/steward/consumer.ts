@@ -4,7 +4,9 @@
 
 import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 import type { StandingSubjectKind, StewardTrigger } from '@forge/contracts/steward';
+import { provideRecordAnswerer } from '../assistant/index.js';
 import { consume, type Delivery } from '../outbox/index.js';
+import { stewardAccountOf } from './account.js';
 import { isUndoOverride } from './acts-store.js';
 import { settleJobRun } from './dispatch.js';
 import { revokeEndedJobCredential } from './job.js';
@@ -44,6 +46,8 @@ async function one(
 }
 
 export function registerSteward(): void {
+  // a parked question the record answers is answered as the project's agent account (ISS-873)
+  provideRecordAnswerer(stewardAccountOf);
   consume('requirement.agreed', {
     name: 'steward',
     handle: async (p, d) =>

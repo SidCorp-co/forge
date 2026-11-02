@@ -5,7 +5,11 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { SupportRecordKind } from '@forge/contracts/support';
-import type { ChannelRole, ChannelRoute } from '@forge/contracts/support-channel';
+import type {
+  ChannelRole,
+  ChannelRoute,
+  SupportAnswerQuestionRequest,
+} from '@forge/contracts/support-channel';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import {
@@ -28,6 +32,7 @@ import { no } from './outcome.js';
 import { askOwner } from './owner-ask.js';
 import { readProjectFacts } from './project-read.js';
 import { proposeFix, proposeRecord } from './propose.js';
+import { answerHandedQuestion } from './question-task.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose } from './service.js';
 import { linkMember } from './speaker-link.js';
@@ -95,7 +100,15 @@ export type SupportActInput =
       text: string;
     }
   | { action: 'announce'; text: string }
-  | { action: 'ask_owner'; thread: string; question: string; record?: string | undefined }
+  | {
+      action: 'ask_owner';
+      thread: string;
+      question: string;
+      record?: string | undefined;
+      forgeQuestion?: string | undefined;
+      opener?: string | undefined;
+    }
+  | ({ action: 'answer_question' } & SupportAnswerQuestionRequest)
   | { action: 'check_result'; check: string; finding: string | null }
   | {
       action: 'agree';
@@ -293,6 +306,10 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     case 'ask_owner': {
       const { action: _, ...request } = input;
       return askOwner(room, request);
+    }
+    case 'answer_question': {
+      const { action: _, ...request } = input;
+      return answerHandedQuestion(room, request);
     }
     case 'check_result':
       return checkResult(room, { check: input.check, finding: input.finding });

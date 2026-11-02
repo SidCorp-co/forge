@@ -136,8 +136,9 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   askerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
-  issueId = (await createTestIssue(projectId, ownerId, 85, { status: 'in_progress', createdAt: new Date() }))
-    .id;
+  issueId = (
+    await createTestIssue(projectId, ownerId, 85, { status: 'in_progress', createdAt: new Date() })
+  ).id;
   const [conn] = await rows<{ id: string }>(sql`
     INSERT INTO integration_connections (owner_type, owner_id, provider, display_name, config)
     VALUES ('user', ${ownerId}::uuid, 'rocketchat', 'Team bot', '{"serverUrl":"https://chat.example.com"}'::jsonb)
@@ -155,7 +156,9 @@ beforeAll(async () => {
   });
   await appendMessages({
     conversationId: room.id,
-    messages: [{ role: 'user', content: 'Mọi người xem giúp mình bản dựng mới nhé, cảm ơn cả nhà' }],
+    messages: [
+      { role: 'user', content: 'Mọi người xem giúp mình bản dựng mới nhé, cảm ơn cả nhà' },
+    ],
   });
 }, 120_000);
 
@@ -185,7 +188,10 @@ describe('a round the record answers is answered there, and nothing is posted', 
       read.push(record?.content[0]?.text ?? '');
       await t.tools?.execute(
         'answer_from_record',
-        JSON.stringify({ source: `${fb}, its attached home-mockup.png`, answer: 'home-mockup.png' }),
+        JSON.stringify({
+          source: `${fb}, its attached home-mockup.png`,
+          answer: 'home-mockup.png',
+        }),
       );
       return { reply: '' };
     };
@@ -296,7 +302,8 @@ describe('a round that needs the owner is asked once, in a thread, in the room l
   it('posts nothing when every attempt keeps a code', async () => {
     const id = await parked('Which domain goes live?');
     model.act = async (t) => ({
-      reply: t.tools || t.message.includes('cannot be sent') ? 'Run ISS-85 waits on a1b2c3d' : OPENER,
+      reply:
+        t.tools || t.message.includes('cannot be sent') ? 'Run ISS-85 waits on a1b2c3d' : OPENER,
     });
     await drain(new Date());
     expect(posted.some((p) => /ISS-85|a1b2c3d/.test(p.text))).toBe(false);

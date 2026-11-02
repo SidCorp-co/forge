@@ -230,7 +230,64 @@ export const supportAskOwnerRequestSchema = z.strictObject({
 		.describe(
 			"a master's open Forge question of this project, by id: the owner's answer is recorded on it",
 		),
+	/**
+	 * Asking from a parked question's thread (ISS-873), where the owner's room has no thread for the
+	 * day's questions yet: one short line, in the persona's language, that opens it at the room's top
+	 * level; the question goes inside it.
+	 */
+	opener: z
+		.string()
+		.trim()
+		.min(3)
+		.max(300)
+		.optional()
+		.describe(
+			"one short line in the persona's language opening today's questions thread of the owner's room, where none is open yet",
+		),
 });
+
+/**
+ * A parked Forge question handed to a channel agent (ISS-873), answered by it: from the record,
+ * citing where (`source`), or with the owner's message in the owner's room that answers it
+ * (`message`). Nothing is posted.
+ */
+export const supportAnswerQuestionRequestSchema = z.strictObject({
+	/** The `question:` thread the question was handed in. */
+	thread: supportThreadIdSchema,
+	source: z
+		.string()
+		.trim()
+		.min(3)
+		.max(500)
+		.optional()
+		.describe(
+			"where in the record the answer is: the feedback item, its attached file, an earlier answer",
+		),
+	message: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.optional()
+		.describe("the id of the owner's message that answers it"),
+	option: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.optional()
+		.describe("for a choice, the id of the option settled"),
+	answer: z
+		.string()
+		.trim()
+		.min(1)
+		.max(4000)
+		.optional()
+		.describe("for a question asked in words, the answer"),
+});
+export type SupportAnswerQuestionRequest = z.infer<
+	typeof supportAnswerQuestionRequestSchema
+>;
 
 /** A person's correction of a member (BC-33): written confirmed. */
 export const channelMemberWriteSchema = z.strictObject({

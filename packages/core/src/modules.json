@@ -532,7 +532,7 @@
     "integrations/rocketchat": {
       "kind": "adapter",
       "context": "adapters",
-      "owns": ["rocketchatThreads"],
+      "owns": ["rocketchatThreads", "rocketchatDailyThreads"],
       "serves": ["personal-data-flow#src-rocketchat", "personal-data-flow#pr-chat-out", "REQ-75"]
     },
     "integrations/sentry": {

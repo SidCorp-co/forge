@@ -648,6 +648,7 @@ export const SUPPORT_ACTIONS = [
 	"route",
 	"announce",
 	"ask_owner",
+	"answer_question",
 	"check_result",
 	"agree",
 	"link",
@@ -1028,12 +1029,22 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_READ_ARGS",
 	/** The box could not run a declared read (ISS-871). */
 	"SUPPORT_READ_FAILED",
-	/** A post into a room the product's users read holds an internal code (ISS-872). */
+	/** A post holds an internal code outside a team member's own thread (ISS-872, ISS-873). */
 	"SUPPORT_INTERNAL_CODE",
 	/** A master's top-level post into a room the product's users read (ISS-872). */
 	"SUPPORT_MASTER_POST_USERS_ROOM",
 	/** A question for the owner outside the room the binding names as `ownerRoom` (ISS-872). */
 	"SUPPORT_NOT_THE_OWNER_ROOM",
+	/** A thread that names no parked question handed to this group (ISS-873). */
+	"SUPPORT_QUESTION_UNKNOWN",
+	/** An answer naming neither or both of where it is: the record, or the owner's message (ISS-873). */
+	"SUPPORT_ANSWER_SOURCE",
+	/** A message the owner did not write in this group, cited as their answer (ISS-873). */
+	"SUPPORT_ANSWER_NOT_THE_OWNER",
+	/** The question was already asked and waits in the owner's room (ISS-873). */
+	"SUPPORT_OWNER_ALREADY_ASKED",
+	/** No thread for the day's questions is open yet, and the ask carries no line to open it (ISS-873). */
+	"SUPPORT_DAY_THREAD_OPENER",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1112,4 +1123,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_INTERNAL_CODE: 400,
 	SUPPORT_MASTER_POST_USERS_ROOM: 409,
 	SUPPORT_NOT_THE_OWNER_ROOM: 409,
+	SUPPORT_QUESTION_UNKNOWN: 404,
+	SUPPORT_ANSWER_SOURCE: 400,
+	SUPPORT_ANSWER_NOT_THE_OWNER: 409,
+	SUPPORT_OWNER_ALREADY_ASKED: 409,
+	SUPPORT_DAY_THREAD_OPENER: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

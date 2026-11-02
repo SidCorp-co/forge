@@ -16,6 +16,7 @@ import {
 } from '@forge/contracts/support';
 import {
   supportAnnounceRequestSchema,
+  supportAnswerQuestionRequestSchema,
   supportAskOwnerRequestSchema,
   supportCheckResultRequestSchema,
   supportCommonIssueRequestSchema,
@@ -121,7 +122,8 @@ const SHAPES = {
   commonIssue: '{ threads, question, answer, feedback? }',
   route: '{ thread, to: forge | technical | product, member?, title?, text }',
   announce: '{ text }',
-  askOwner: '{ thread, question, record?, forgeQuestion? }',
+  askOwner: '{ thread, question, record?, forgeQuestion?, opener? }',
+  answerQuestion: '{ thread, source | message, option? | answer? }',
   checkResult: '{ check, finding: string | null }',
   gitCredential: '{ host, path }',
 } as const;
@@ -339,6 +341,17 @@ supportRoutes.post(
   projectParam,
   strictBody(supportAskOwnerRequestSchema, SHAPES.askOwner),
   (c) => act(c, c.req.valid('param').id, { action: 'ask_owner', ...c.req.valid('json') }),
+);
+
+// a parked question handed to the channel agent, answered from the record or the owner's message (ISS-873)
+supportRoutes.post(
+  '/:id/support/session/question-answers',
+  projectParam,
+  requiresNoPermission(
+    "only the room's own session, under its current turn's token, is admitted (support/access.ts), and only a question handed to that room is answered",
+  ),
+  strictBody(supportAnswerQuestionRequestSchema, SHAPES.answerQuestion),
+  (c) => act(c, c.req.valid('param').id, { action: 'answer_question', ...c.req.valid('json') }),
 );
 
 supportRoutes.post(
