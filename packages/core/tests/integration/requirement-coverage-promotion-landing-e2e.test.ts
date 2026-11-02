@@ -160,8 +160,11 @@ describe('a promotion project: coverage counts what its shipped issue earned at 
     const read = await requirementRead(req);
     expect(read.standing.delivery.criteriaCoverage).toEqual({ criteria: 1, passing: 0, judged: 0 });
     const [bc] = read.standing.coverage;
-    expect(bc?.verdict).toBe('not_live');
-    expect(bc?.issues[0]?.notCounted).toContain(`not at its issue's landing ${LANDING.slice(0, 12)}`);
+    // nothing Forge recorded says the served commit holds the landing: unchecked, never passing
+    expect(bc?.verdict).toBe('not_judged');
+    expect(bc?.issues[0]?.notCounted).toContain(
+      `judged at commit ${SERVED.slice(0, 12)}, not at its issue's landing ${LANDING.slice(0, 12)}`,
+    );
     // the one BC the issue did not earn is the one its turn asks to be judged again
     expect(JSON.stringify(read.standing)).toContain('standing.act.judgeOn');
   });

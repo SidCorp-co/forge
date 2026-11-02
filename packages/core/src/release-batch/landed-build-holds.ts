@@ -43,37 +43,54 @@ export interface JudgedAgainst {
   value: string;
 }
 
-/**
- * A requirement's coverage reading on a project with no production environment
- * (`requirements/standing-coverage.ts`): each issue's landed build (on a change-request project,
- * its request's unchanged head or host merge commit), rather than a production probe that cannot
- * exist, and, per issue in `judged`, whether each later commit its verdicts name holds that build
- * (REQ-36 BC-18), and what that build holds of each such commit, so a pass at an earlier landing it
- * descends from is carried to it as the release hold carries it (ISS-845, `earlierCarriageOf`): the
- * same commit reading (contracts `landedCommitOf`) the record door uses, answered from the landings
- * Forge recorded (`recorded-holding.ts`) and never from the host. An open request's
- * head is not a landing, so nothing is read for it. Null on a project with production, whose coverage reads the live build
- * (`judged-build.ts:liveBuildHolds`).
- */
-export async function landedBuildHolds(
-  projectId: string,
-  issueIds: readonly string[],
-  judged: ReadonlyMap<string, readonly JudgedAgainst[]> = new Map(),
-): Promise<{
+/** What a requirement's coverage reads of its issues' landed builds (`standing-identity.ts:LiveBuildHolds`). */
+export interface LandingHoldsRead {
   sha: null;
   holds: Map<string, boolean>;
   runtimes: Map<string, string | null>;
   unanswered: Map<string, string>;
   landed: Map<string, LandedHolds>;
   judgedOn: string | null;
-} | null> {
+  /**
+   * Set where production stands behind a promotion (`criteria-basis.ts:coverageLandingHolds`): the
+   * issues' verdicts count at their landings, and the requirement's own on the live build.
+   */
+  promoted?: true;
+}
+
+/**
+ * A requirement's coverage reading on a project with no production environment
+ * (`requirements/standing-coverage.ts`): each issue's landed build (on a change-request project,
+ * its request's unchanged head or host merge commit), rather than a production probe that cannot
+ * exist, weighed as `holdsOnBuilds` weighs it. An open request's head is not a landing, so nothing
+ * is read for it. Null on a project with production, whose coverage reads the basis its release
+ * weighs on (`criteria-basis.ts:coverageLandingHolds`).
+ */
+export async function landedBuildHolds(
+  projectId: string,
+  issueIds: readonly string[],
+  judged: ReadonlyMap<string, readonly JudgedAgainst[]> = new Map(),
+): Promise<LandingHoldsRead | null> {
   const delivery = await deliveryOf(projectId);
   if (!delivery) return null;
   const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
-  const [builds, held] = await Promise.all([
-    deliveredBuildsOf(projectId, delivery, ids),
-    readProjectDocument(projectId),
-  ]);
+  return holdsOnBuilds(projectId, await deliveredBuildsOf(projectId, delivery, ids), judged);
+}
+
+/**
+ * Each of `builds` as coverage weighs its issue's verdicts on it: per issue in `judged`, whether
+ * each later commit its verdicts name holds that build (REQ-36 BC-18), and what that build holds of
+ * each such commit, so a pass at an earlier landing it descends from is carried to it as the release
+ * hold carries it (ISS-845, `earlierCarriageOf`): the same commit reading (contracts
+ * `landedCommitOf`) the record door uses, answered from the landings Forge recorded
+ * (`recorded-holding.ts`) and never from the host.
+ */
+export async function holdsOnBuilds(
+  projectId: string,
+  builds: ReadonlyMap<string, LandedBuild>,
+  judged: ReadonlyMap<string, readonly JudgedAgainst[]>,
+): Promise<LandingHoldsRead> {
+  const held = await readProjectDocument(projectId);
   const judgedOn = judgedOnOf(held?.document.delivery);
   const [holders, carriage] = await Promise.all([
     laterHoldersOf(projectId, builds, judged, () => judgedOn),

@@ -11,8 +11,8 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
+import { coverageLandingHolds } from './criteria-basis.js';
 import { LANDED_VERIFICATION } from './landed-build.js';
-import { landedBuildHolds } from './landed-build-holds.js';
 
 interface LandingRow {
   id: string;
@@ -127,4 +127,4 @@ export async function landedRecordOf(issueId: string): Promise<IssueLanding | nu
 }
 
 /** What a requirement reads of its issues' landings (`requirements/dependents.ts`), handed in at boot. */
-export const landingReads = { landedBuildHolds, landedRecordsOf };
+export const landingReads = { landingHolds: coverageLandingHolds, landedRecordsOf };

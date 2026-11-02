@@ -3,7 +3,11 @@
 // never assumed, through the standing that carries it.
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { deriveStanding, type StandingRequirementVerdict } from './standing.js';
+import {
+  deriveStanding,
+  type LiveBuildHolds,
+  type StandingRequirementVerdict,
+} from './standing.js';
 
 const at = (iso: string) => new Date(iso);
 const LIVE = 'c'.repeat(40);
@@ -36,7 +40,12 @@ const verdict = (
 
 const read = (
   verdicts: StandingRequirementVerdict[],
-  more: { criteria?: ReturnType<typeof bc>[]; judge?: 'self' | 'independent' | null } = {},
+  more: {
+    criteria?: ReturnType<typeof bc>[];
+    judge?: 'self' | 'independent' | null;
+    /** What coverage reads beside the live build: a landing basis's fields (ISS-849). */
+    live?: Partial<LiveBuildHolds>;
+  } = {},
 ) => {
   const s = deriveStanding({
     status: 'agreed',
@@ -76,6 +85,7 @@ const read = (
       ]),
       runtimes: new Map(),
       unanswered: new Map(),
+      ...more.live,
     },
     updatedAt: at('2026-10-01T02:00:00Z'),
     statusSince: at('2026-10-01T02:00:00Z'),
@@ -204,5 +214,30 @@ describe('a verdict recorded at the requirement', () => {
     expect(two?.verdicts[0]?.stale).toBe(true);
     expect(kinds(s)).toEqual([]);
     expect(s.waitingOn.says.act.vars).toEqual({ codes: 'BC-2' });
+  });
+});
+
+// ISS-849: a promotion project weighs its issues' verdicts at their landings, and the verdicts at the
+// requirement itself still on the running build production serves, never on a recorded landing.
+describe("a requirement's own verdicts beside a landing basis", () => {
+  const passes = [
+    verdict('c1-1', 'pass', '2026-10-01T10:00:00Z'),
+    verdict('c2-1', 'pass', '2026-10-01T11:00:00Z'),
+  ];
+
+  it('count on the live build where a promotion reaches production', () => {
+    const s = read(passes, { live: { landed: new Map(), promoted: true } });
+    expect(s.coverage.map((c) => [c.code, c.verdict, c.counts?.source])).toEqual([
+      ['BC-1', 'passing', 'requirement'],
+      ['BC-2', 'passing', 'requirement'],
+    ]);
+  });
+
+  it('count only on a recorded landing where the project has no production', () => {
+    const s = read(passes, { live: { landed: new Map() } });
+    expect(s.coverage.map((c) => c.verdict)).toEqual(['not_judged', 'not_judged']);
+    expect(s.coverage[0]?.verdicts[0]?.notCounted).toBe(
+      `judged at commit ${HELD.slice(0, 12)}, and no landing Forge recorded was read to place it`,
+    );
   });
 });

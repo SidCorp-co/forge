@@ -40,11 +40,19 @@ export interface LiveBuildHolds {
   runtimes: ReadonlyMap<string, string | null>;
   unanswered: ReadonlyMap<string, string>;
   /**
-   * On a project with no production environment (`release-batch/landed-build-holds.ts:landedBuildHolds`),
-   * per issue id the landed build its verdicts count on, or why it has none. Present, it replaces the
-   * live build for every commit and runtime verdict.
+   * Where the release weighs an issue's criteria at its landing
+   * (`release-batch/criteria-basis.ts:coverageLandingHolds`): a project with no production
+   * environment, or one whose production a promotion reaches. Per issue id the landed build its
+   * verdicts count on, or why it has none. Present, it replaces the live build for every commit and
+   * runtime verdict on an issue.
    */
   landed?: ReadonlyMap<string, LandedHolds>;
+  /**
+   * Beside `landed`, set where a promotion reaches production (ISS-849): only the issues' verdicts
+   * count at their landings, and the requirement's own are judged on the live build (`sha`, `holds`)
+   * as on any project with production, never on a recorded landing.
+   */
+  promoted?: boolean;
   /**
    * Beside `landed`, the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18): a runtime
    * verdict at a whole commit is weighed at its landing as a commit verdict is. Null or absent, it

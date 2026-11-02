@@ -183,12 +183,12 @@ export function coverageOf(
 }
 
 // A verdict recorded on the criterion at the requirement (ISS-588) is judged against the running
-// build as a commit verdict on an issue is: it counts only where the live build is read to hold its
-// commit. A project with no production environment has no running build to hold it (its issues count
-// on their own landings), so there it never counts, saying why. Of those on the current wording the
-// one it stands on is read as an issue criterion's is (`judgesOf`): the newest a judge recorded; every
-// other is kept on the line, naming the one that replaced it. One on an
-// earlier wording is stale and never counts for this one.
+// build: it counts only where the live build is read to hold its commit, on a promotion project too,
+// whose issues count on their own landings (ISS-849). A project with no production environment has
+// no running build to hold it, so there it counts on a landing Forge recorded (`atRecordedLanding`).
+// Of those on the current wording the one it stands on is read as an issue criterion's is
+// (`judgesOf`): the newest a judge recorded; every other is kept on the line, naming the one that
+// replaced it. One on an earlier wording is stale and never counts for this one.
 function requirementVerdictsOn(
   bc: { id: string; code: string },
   input: CoverageInput,
@@ -220,7 +220,7 @@ function requirementVerdictsOn(
     const r: Resolved | null =
       !judged || v.commit === null
         ? null
-        : live?.landed
+        : live?.landed && !live.promoted
           ? atRecordedLanding(v.commit, traced, live.recordedLandings)
           : atLiveCommit(v.commit, `commit ${short(v.commit)}`, live);
     const replaced =

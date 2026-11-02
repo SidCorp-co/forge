@@ -33,11 +33,13 @@ export interface RequirementDependents {
     asked: { commits: readonly string[]; runtimes: readonly string[] },
   ): Promise<LiveBuildHolds | null>;
   /**
-   * On a project with no production environment, each issue's landed build, which its verdicts are
-   * weighed on, and whether each later commit `judged` names for an issue holds it
-   * (`release-batch/landed-build-holds.ts:landedBuildHolds`); null on a project with one.
+   * Each issue's landed build, which its verdicts are weighed on, and whether each later commit
+   * `judged` names for an issue holds it, where the release weighs the issue's criteria at its
+   * landing: a project with no production environment, or one whose production a promotion reaches
+   * (`release-batch/criteria-basis.ts:coverageLandingHolds`, ISS-849); null where it weighs at what
+   * is served.
    */
-  landedBuildHolds(
+  landingHolds(
     projectId: string,
     issueIds: readonly string[],
     judged: ReadonlyMap<string, readonly { kind: string; value: string }[]>,

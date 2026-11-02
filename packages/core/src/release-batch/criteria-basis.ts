@@ -11,10 +11,20 @@
 // ISS-5 was held on a pass at a dev head holding its landing, which its requirement already counted.
 // A pass at an earlier commit the landing descends from is carried to it (ISS-845,
 // `landed-build-holds.ts:earlierCarriageOf`): a fix round's landing keeps the round before it's passes.
+// A requirement's coverage reads its issues on this same basis (`coverageLandingHolds`, ISS-849):
+// adminhub-api REQ-11 read no criterion passing while its shipped ISS-53 had earned every one at its
+// landing, because coverage weighed those passes against what production serves.
 
 import { readReleasePath } from '../project-config/index.js';
 import { landedBuildsOf, landedStandings } from './landed-build.js';
-import { earlierCarriageOf, laterHoldersOf } from './landed-build-holds.js';
+import {
+  earlierCarriageOf,
+  holdsOnBuilds,
+  type JudgedAgainst,
+  type LandingHoldsRead,
+  landedBuildHolds,
+  laterHoldersOf,
+} from './landed-build-holds.js';
 
 export type CriteriaBasis =
   | { kind: 'serving' }
@@ -31,6 +41,27 @@ export async function criteriaBasisOf(projectId: string): Promise<CriteriaBasis>
     landsOn: read.path.defaultBranch ?? crossing.from,
     deploysFrom: crossing.to,
   };
+}
+
+/**
+ * The builds a requirement's coverage weighs its issues' verdicts on, by the basis the release weighs
+ * their criteria on: on a project with no production environment, each issue's delivered build
+ * (`landedBuildHolds`); where a promotion stands between the landing and production, each issue's
+ * landing commit as `landingCriteriaReports` reads it (`landedBuildsOf`), with what later and earlier
+ * commits its verdicts name hold of it, so a criterion its issue earned there counts for the
+ * requirement too. Null where the release weighs at what is served, or its basis could not be read:
+ * there coverage reads the live build.
+ */
+export async function coverageLandingHolds(
+  projectId: string,
+  issueIds: readonly string[],
+  judged: ReadonlyMap<string, readonly JudgedAgainst[]> = new Map(),
+): Promise<LandingHoldsRead | null> {
+  const delivered = await landedBuildHolds(projectId, issueIds, judged);
+  if (delivered) return delivered;
+  if ((await criteriaBasisOf(projectId)).kind !== 'landing') return null;
+  const builds = await landedBuildsOf(issueIds);
+  return { ...(await holdsOnBuilds(projectId, builds, judged)), promoted: true };
 }
 
 /** One waiting issue weighed at its landing: each criterion that does not count there, and why. */

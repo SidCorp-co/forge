@@ -289,17 +289,26 @@ async function projectBuildOf(
   const runtimes = judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : []));
   const voidedAtCommit = rows.some((r) => r.beforeReopen?.identity?.kind === 'commit');
   if (commits.length === 0 && runtimes.length === 0 && !voidedAtCommit) return null;
-  // With no production environment each verdict is weighed on its own issue's landing instead, and
-  // a later commit it names counts where it holds that landing (`standing-identity.ts:atLanding`).
-  const landed = await requirementDependents().landedBuildHolds(
+  // Where the release weighs an issue's criteria at its landing (no production environment, or a
+  // promotion before production, ISS-849), each verdict is weighed on its own issue's landing instead,
+  // and a later commit it names counts where it holds that landing (`standing-identity.ts:atLanding`).
+  const landed = await requirementDependents().landingHolds(
     projectId,
     [...new Set(rows.map((r) => r.issueId))],
     judgedAgainstOf(rows),
   );
   if (landed) {
-    // a verdict at the requirement itself is weighed on a landing Forge recorded (`standing-identity.ts:atRecordedLanding`)
     const asked = own.flatMap((v) => (v.commit ? [v.commit] : []));
     if (asked.length === 0) return landed;
+    if (landed.promoted) {
+      // a verdict at the requirement itself judges the running build, which production serves here
+      const live = await requirementDependents().liveBuildHolds(projectId, {
+        commits: asked,
+        runtimes: [],
+      });
+      return { ...landed, ...(live ?? {}) };
+    }
+    // a verdict at the requirement itself is weighed on a landing Forge recorded (`standing-identity.ts:atRecordedLanding`)
     const recordedLandings = await recordedLandingsOf(projectId, asked, [
       ...new Set(rows.map((r) => r.issueId)),
     ]);
