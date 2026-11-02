@@ -24,7 +24,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 };
 
 const row = () =>
-  [...document.querySelectorAll<HTMLElement>("[data-testid=approval-row]")].find((r) => r.querySelector("[data-testid=approval-open]")?.textContent?.includes(STEWARD_DECISION.key));
+  [...document.querySelectorAll<HTMLElement>("[data-testid=approval-row]")].find((r) => r.dataset.key === STEWARD_DECISION.key);
 const recommended = STEWARD_DECISION.answers.find((a) => a.recommended);
 if (!recommended) throw new Error(`the fixture's ${STEWARD_DECISION.key} decision recommends no answer`);
 

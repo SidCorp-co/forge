@@ -15,7 +15,6 @@
     "approvals.noun.workflow": "Design",
     "approvals.noun.release": "Release",
     "approvals.search": "key, title or proposal",
-    "approvals.chip.all": "All",
     "approvals.chip.recommends": "Agent recommends",
     "approvals.topic.feedback": "Feedback",
     "approvals.topic.feedback.desc": "How the agent proposes to handle each report",
@@ -112,6 +111,10 @@
     "approvals.leftOut.agentHeading": "Not yours, the master decides them: {what}",
     "approvals.leftOut.next": "· next: {next}",
     "approvals.leftOut.more": "and {n} more",
-    "approvals.peek.merges": "Merges, in order"
+    "approvals.peek.merges": "Merges, in order",
+    "approvals.leftOut.fold": "Not counted here",
+    "approvals.next": "Decide the next",
+    "approvals.cmd.topic": "Only {topic}",
+    "approvals.cmd.allTopics": "Every topic"
   }
 }

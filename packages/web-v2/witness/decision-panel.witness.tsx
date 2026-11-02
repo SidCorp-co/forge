@@ -12,6 +12,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
+import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { BottomTabBar, TopBarSlotProvider, useTopBarSlotTargets } from "@/design";
 import { ApprovalsScreen } from "@/features/approvals";
 import { bottomTabItems } from "@/features/shell/nav-model";
@@ -62,12 +63,22 @@ createRoot(document.getElementById("root") as HTMLElement).render(
 );
 
 const rows = () => [...document.querySelectorAll<HTMLElement>("[data-testid=approval-row]")];
-const rowOf = (key: string) => rows().find((r) => r.querySelector("[data-testid=approval-open]")?.textContent?.includes(key));
+const rowOf = (key: string) => rows().find((r) => r.dataset.key === key);
 const peek = () => document.querySelector<HTMLElement>("[data-testid=approval-peek]");
 const settle = () => new Promise((r) => setTimeout(r, 250));
 
-function open(key: string): string[] {
+/** Type into the page's search, as a person narrows the list to reach a row past the first three (REQ-68 BC-3). */
+async function search(text: string) {
+  const box = document.querySelector<HTMLInputElement>("input[type=search]");
+  if (!box) return;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(box, text);
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  await settle();
+}
+
+async function open(key: string): Promise<string[]> {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await search(key);
   const button = rowOf(key)?.querySelector<HTMLElement>("[data-testid=approval-open]");
   if (!button) return [`no row ${key} to open`];
   button.click();
@@ -169,12 +180,13 @@ window.__witness = {
     { name: "desktop", width: 1440 },
     { name: "phone", width: 390 },
   ],
-  ready: () => rows().length === READ.total,
+  // three decisions show at a time (REQ-68 BC-3): a row past them is reached by the search
+  ready: () => rows().length === Math.min(NEEDS_YOU_PERSON_CAP, READ.total),
   stages: [
     {
       name: "question-iss-625",
       run: async () => {
-        const wrong = open(STEWARD_625.key);
+        const wrong = await open(STEWARD_625.key);
         await settle();
         return [...wrong, ...once(STEWARD_625, STEWARD_625_REASON), ...evidence(STEWARD_625), ...keys(STEWARD_625), ...reachable(STEWARD_625)];
       },
@@ -183,7 +195,7 @@ window.__witness = {
       name: "feedback-suggestion",
       run: async () => {
         const d = DECISIONS.find((x) => x.key === "FB-135") as NeedsYouDecision;
-        const wrong = open(d.key);
+        const wrong = await open(d.key);
         await settle();
         return [...wrong, ...once(d, null), ...keys(d), ...reachable(d)];
       },
@@ -192,7 +204,7 @@ window.__witness = {
       name: "design-update",
       run: async () => {
         const d = DECISIONS.find((x) => x.key === "system-context") as NeedsYouDecision;
-        const wrong = open(d.key);
+        const wrong = await open(d.key);
         await settle();
         return [...wrong, ...once(d, null), ...keys(d), ...reachable(d)];
       },

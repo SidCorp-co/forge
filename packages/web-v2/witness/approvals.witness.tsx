@@ -85,7 +85,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
 );
 
 const rows = () => [...document.querySelectorAll<HTMLElement>("[data-testid=approval-row]")];
-const rowOf = (key: string) => rows().find((r) => r.querySelector("[data-testid=approval-open] span span")?.textContent === key);
+const rowOf = (key: string) => rows().find((r) => r.dataset.key === key);
 const peek = () => document.querySelector<HTMLElement>("[data-testid=approval-peek]");
 const settle = () => new Promise((r) => setTimeout(r, 200));
 const theme = (t: "light" | "dark") => {

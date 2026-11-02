@@ -10,43 +10,18 @@
 // @direct-test-of packages/web-v2/src/features/approvals/use-decision-keys.ts
 // @direct-test-of packages/web-v2/src/features/approvals/components/bulk-bar.tsx
 // @direct-test-of packages/web-v2/src/test/approvals-read.ts
+// @direct-test-of packages/web-v2/src/test/approvals-page.ts
 
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APPROVALS_PROJECT as P, APPROVALS_READ as READ, STEWARD_DECISION } from "@/test/approvals-read";
+import { answerIn, core, DECISIONS, keysDrawn, openAt, openLeftOut, posts, rowOf } from "@/test/approvals-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ApprovalsScreen } from "./components/approvals-screen";
 import { bulkSummary } from "./derive";
 import { UNDO_MS } from "./use-decide";
 
-/** The peek's button for one answer, by the id core gave it. */
-const answerIn = (peek: HTMLElement, id: string) => {
-  const b = peek.querySelector<HTMLElement>(`[data-testid=approval-peek-answer][data-answer="${id}"]`);
-  if (!b) throw new Error(`the peek draws no answer ${id}`);
-  return b;
-};
-
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
-
-const DECISIONS = `/projects/${P}/needs-you/decisions`;
-
-function core() {
-  return fakeCore(({ path, method }) => {
-    if (method === "GET" && path === DECISIONS) return { body: READ };
-    if (method === "POST") return { body: { ok: true } };
-    return undefined;
-  });
-}
-
-const rowOf = (key: string) => {
-  const row = screen.getAllByTestId("approval-row").find((r) => within(r).queryByText(key, { exact: true }));
-  if (!row) throw new Error(`no row ${key}`);
-  return row;
-};
-const posts = <C extends { method: string }>(calls: C[]): C[] => calls.filter((c) => c.method === "POST");
-
-/** Approvals opened narrowed to `search`, which is how a row past the first three is reached. */
-const openAt = (search = "") => window.history.replaceState(null, "", `/projects/hop/approvals${search}`);
 
 beforeEach(() => openAt());
 afterEach(() => {
@@ -78,21 +53,23 @@ describe("the Approvals page", () => {
 
     const text = screen.getByTestId("approvals-screen").textContent ?? "";
     for (const internal of ["Suggestion ·", "Feedback triage", "Re-pin", "Decided on its page", "Asker not recorded", "feedback_triage", "suggestion:"]) expect(text).not.toContain(internal);
-    expect(screen.getByTestId("approvals-left-out")).toHaveTextContent("FB-140");
+    expect(openLeftOut()).toHaveTextContent("FB-140");
   });
 
-  it("narrows by topic chip and to what the agent recommends, kept in the URL", async () => {
+  it("narrows to a topic the address names, its chip clearing it, and to what the agent recommends", async () => {
+    openAt("?topic=feedback");
     core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    fireEvent.click(screen.getByTestId("approval-chip-feedback"));
     expect(screen.getAllByTestId("approval-row").map((r) => r.dataset.topic)).toEqual(["feedback", "feedback", "feedback"]);
     expect(screen.getByTestId("approvals-cap-more")).toHaveTextContent("1 more after these");
-    expect(window.location.search).toContain("topic=feedback");
     fireEvent.click(screen.getByTestId("approval-chip-recommends"));
     expect(screen.getAllByTestId("approval-row").map((r) => within(r).getByTestId("approval-tags").textContent)).toEqual([expect.stringContaining("Agent recommends"), expect.stringContaining("Agent recommends")]);
     // the count is the read's, whatever the chips narrow
     expect(screen.getByTestId("approvals-count")).toHaveTextContent(`Decisions waiting on you: ${READ.total}`);
+    fireEvent.click(screen.getByTestId("approval-chip-topic"));
+    expect(window.location.search).not.toContain("topic=");
+    expect(screen.queryByTestId("approval-chip-topic")).toBeNull();
   });
 
   it("states what approving a selection makes before it acts, and approves only those an ✓ can", async () => {
@@ -107,7 +84,7 @@ describe("the Approvals page", () => {
     expect(posts(calls)).toHaveLength(0);
     fireEvent.click(screen.getByTestId("approval-bulk-approve"));
     // the three leave, and the next decision comes up in their place
-    for (const key of ["FB-135", "FB-137", "FB-139"]) expect(screen.queryAllByText(key, { exact: true })).toHaveLength(0);
+    for (const key of ["FB-135", "FB-137", "FB-139"]) expect(keysDrawn()).not.toContain(key);
     expect(rowOf("FB-131")).toBeTruthy();
     expect(screen.getByTestId("approval-undo")).toHaveTextContent("3 items approved");
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
@@ -135,7 +112,7 @@ describe("the Approvals page", () => {
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
     fireEvent.click(within(rowOf("FB-137")).getByTestId("approval-approve"));
-    expect(screen.queryAllByText("FB-137", { exact: true })).toHaveLength(0);
+    expect(keysDrawn()).not.toContain("FB-137");
     expect(screen.getByTestId("approval-undo")).toHaveTextContent("FB-137 approved");
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS - 100));
     expect(posts(calls)).toHaveLength(0);
@@ -207,7 +184,7 @@ describe("what each row's ✓ and ✕ send", () => {
     core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    const items = within(screen.getByTestId("approvals-left-out")).getAllByTestId("approvals-left-out-item");
+    const items = within(openLeftOut()).getAllByTestId("approvals-left-out-item");
     const flow = items.find((i) => i.textContent?.startsWith("Issue lifecycle"));
     expect(flow).toHaveTextContent("Issue lifecycle· next: update the design to the contract");
     expect(within(flow as HTMLElement).getByRole("link").getAttribute("href")).toBe("/projects/hop/workflows/issue-lifecycle");
@@ -222,7 +199,7 @@ describe("what each row's ✓ and ✕ send", () => {
     expect(count).toHaveTextContent(`Decisions waiting on you: ${READ.total}`);
     expect(within(count).getByTestId("approvals-count-across")).toHaveTextContent("128 across your projects");
     // the left-out line counts no figure under the header's words: one phrase, one count
-    const left = screen.getByTestId("approvals-left-out");
+    const left = openLeftOut();
     expect(left).not.toHaveTextContent("waiting on you");
     expect(left).toHaveTextContent("Also yours, not counted above:");
   });
@@ -337,6 +314,7 @@ describe("what the master takes (REQ-68 BC-3)", () => {
     });
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
+    openLeftOut();
     const taken = screen.getByRole("region", { name: "7 the agent takes itself" });
     expect(taken).toHaveTextContent("Not yours, the master decides them: 7 the agent takes itself");
     expect(taken).not.toHaveTextContent("Also yours");

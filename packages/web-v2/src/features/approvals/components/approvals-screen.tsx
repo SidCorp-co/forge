@@ -1,14 +1,15 @@
 // Approvals, the full Needs you page (REQ-48 BC-11): every decision waiting on the viewer in one
 // project, from the one Needs you read the Dashboard, the menu badge and /attention count from, so
 // the page's number is theirs. At most three are shown at a time (REQ-68 BC-3), the next coming up as
-// one is decided. Chips narrow it by topic and to what the agent recommends; a selection
-// replaces the chips with a bar that states what approving makes before it acts; a row opens its
-// peek, decides in place with ✓ / ✕, and every decision is held five seconds for Undo.
+// one is decided. One chip narrows it to what the agent recommends; the topics are the palette's (⌘K),
+// a narrowed topic standing as a chip that clears it (ISS-903). A selection replaces the chips with a
+// bar that states what approving makes before it acts; a row opens its peek, decides in place with
+// ✓ / ✕, and every decision is held five seconds for Undo. What the count leaves out is one shut line.
 
 import type { DecisionAnswer, NeedsYouDecision, NeedsYouDecisions } from "@forge/contracts/needs-you-decisions";
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
-import { useMemo, useState } from "react";
-import { Checkbox, EmptyState, FilterChip, ListLayout, ListSearch, ListToolbar, PageTitle, usePeek, usePeekKeys, useUrlChoice, useUrlParams } from "@/design";
+import { type ReactNode, useMemo, useState } from "react";
+import { Checkbox, type Command, CountSection, EmptyState, FilterChip, ListLayout, ListSearch, ListToolbar, NextAction, PageTitle, usePageCommands, usePeek, usePeekKeys, useUrlChoice, useUrlParams } from "@/design";
 import { decisionHref, useNeedsYouDecisions, wordsAsItStands } from "@/features/needs-you";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -53,20 +54,60 @@ function Sub({ read, across }: { read: NeedsYouDecisions; across: number | null 
   );
 }
 
-function Chips({ all, chip, onChip, rec, onRec }: { all: readonly NeedsYouDecision[]; chip: (typeof CHIPS)[number]; onChip: (c: (typeof CHIPS)[number]) => void; rec: boolean; onRec: () => void }) {
+type Topic = (typeof CHIPS)[number];
+
+/** The narrowed topic as a chip that clears it, and the one chip that narrows to what the agent recommends. */
+function Chips({ all, chip, onChip, rec, onRec }: { all: readonly NeedsYouDecision[]; chip: Topic; onChip: (c: Topic) => void; rec: boolean; onRec: () => void }) {
   const t = useCopy();
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="approval-chips">
-      {CHIPS.map((c) => (
-        <FilterChip key={c} on={chip === c} onToggle={() => onChip(chip === c ? "all" : c)} count={c === "all" ? all.length : all.filter((d) => d.topic === c).length} testId={`approval-chip-${c}`}>
-          {t(c === "all" ? "approvals.chip.all" : `approvals.topic.${c}`)}
+      {chip === "all" ? null : (
+        <FilterChip on onToggle={() => onChip("all")} count={all.filter((d) => d.topic === chip).length} testId="approval-chip-topic">
+          {t(`approvals.topic.${chip}`)}
         </FilterChip>
-      ))}
-      <span className="w-2" />
+      )}
       <FilterChip on={rec} onToggle={onRec} count={all.filter(recommends).length} tone="done" testId="approval-chip-recommends">
         {t("approvals.chip.recommends")}
       </FilterChip>
     </div>
+  );
+}
+
+/** Each topic as the palette's act for this page, and the act that shows every topic again. */
+function useTopicCommands(chip: Topic, onChip: (c: Topic) => void) {
+  const t = useCopy();
+  const commands: Command[] = CHIPS.filter((c): c is Exclude<Topic, "all"> => c !== "all" && c !== chip).map((c) => ({ label: t("approvals.cmd.topic", { topic: t(`approvals.topic.${c}`) }), icon: "filter", onRun: () => onChip(c) }));
+  if (chip !== "all") commands.push({ label: t("approvals.cmd.allTopics"), icon: "x", onRun: () => onChip("all") });
+  usePageCommands(commands);
+}
+
+interface GroupProps {
+  topic: NeedsYouDecision["topic"];
+  rows: readonly NeedsYouDecision[];
+  picked: ReadonlySet<string>;
+  setPicked: (next: (p: ReadonlySet<string>) => ReadonlySet<string>) => void;
+  children: (d: NeedsYouDecision) => ReactNode;
+}
+
+/** One topic's rows under its name and count, its checkbox selecting the rows it shows; what the topic is, the name's hover. */
+function DecisionGroup({ topic, rows, picked, setPicked, children }: GroupProps) {
+  const t = useCopy();
+  const on = rows.filter((d) => picked.has(d.id)).length;
+  return (
+    <section aria-label={t(`approvals.topic.${topic}`)} data-testid={`approval-group-${topic}`}>
+      <div className="flex items-center gap-3 border-b border-line-subtle bg-sunken px-4 py-2">
+        <Checkbox
+          checked={on > 0 && on === rows.length}
+          indeterminate={on > 0 && on < rows.length}
+          onChange={(v) => setPicked((p) => new Set(v ? [...p, ...rows.map((d) => d.id)] : [...p].filter((id) => !rows.some((d) => d.id === id))))}
+          ariaLabel={t("approvals.selectGroup", { group: t(`approvals.topic.${topic}`) })}
+        />
+        <h2 className="shrink-0 whitespace-nowrap text-13 font-semibold text-fg" title={t(`approvals.topic.${topic}.desc`)}>
+          {t(`approvals.topic.${topic}`)} · {rows.length}
+        </h2>
+      </div>
+      <ul>{rows.map(children)}</ul>
+    </section>
   );
 }
 
@@ -81,6 +122,7 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
   const router = useRouter();
   const [params, setParams] = useUrlParams();
   const [chip, setChip] = useUrlChoice("topic", CHIPS, "all");
+  useTopicCommands(chip, setChip);
   const rec = params.get("rec") === "1";
   const query = params.get("q") ?? "";
   const decide = useDecide();
@@ -172,6 +214,7 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
 
   return (
     <ListLayout peek={peekPanel} testId="approvals-layout">
+      {rows[0] ? <NextAction label={t("approvals.next")} onClick={() => peek.set(rows[0]?.id ?? null)} testId="approvals-next" /> : <NextAction label={t("approvals.next")} />}
       <div className="min-w-0">
         {selected.length > 0 ? (
           <BulkBar selected={selected} onApprove={() => bulk("approve", null)} onDecline={(r) => bulk("decline", r)} onClear={() => setPicked(new Set())} />
@@ -186,39 +229,22 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
             <EmptyState message={t("approvals.empty")} />
           </div>
         ) : (
-          groupsOf(rows).map((g) => {
-            const on = g.rows.filter((d) => picked.has(d.id)).length;
-            return (
-              <section key={g.topic} aria-label={t(`approvals.topic.${g.topic}`)} data-testid={`approval-group-${g.topic}`}>
-                <div className="flex items-center gap-3 border-b border-line-subtle bg-sunken px-4 py-2">
-                  <Checkbox
-                    checked={on > 0 && on === g.rows.length}
-                    indeterminate={on > 0 && on < g.rows.length}
-                    onChange={(v) => setPicked((p) => new Set(v ? [...p, ...g.rows.map((d) => d.id)] : [...p].filter((id) => !g.rows.some((d) => d.id === id))))}
-                    ariaLabel={t("approvals.selectGroup", { group: t(`approvals.topic.${g.topic}`) })}
-                  />
-                  <h2 className="shrink-0 whitespace-nowrap text-13 font-semibold text-fg">
-                    {t(`approvals.topic.${g.topic}`)} · {g.rows.length}
-                  </h2>
-                  <span className="min-w-0 truncate text-12 text-muted">{t(`approvals.topic.${g.topic}.desc`)}</span>
-                </div>
-                <ul>
-                  {g.rows.map((d) => (
-                    <PendingDecision
-                      key={d.id}
-                      d={d}
-                      open={peek.open === d.id}
-                      selected={picked.has(d.id)}
-                      onOpen={() => peek.set(peek.open === d.id ? null : d.id)}
-                      onSelect={(v) => select(d.id, v)}
-                      onApprove={() => approveRow(d)}
-                      onDecline={() => declineRow(d)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            );
-          })
+          groupsOf(rows).map((g) => (
+            <DecisionGroup key={g.topic} topic={g.topic} rows={g.rows} picked={picked} setPicked={setPicked}>
+              {(d) => (
+                <PendingDecision
+                  key={d.id}
+                  d={d}
+                  open={peek.open === d.id}
+                  selected={picked.has(d.id)}
+                  onOpen={() => peek.set(peek.open === d.id ? null : d.id)}
+                  onSelect={(v) => select(d.id, v)}
+                  onApprove={() => approveRow(d)}
+                  onDecline={() => declineRow(d)}
+                />
+              )}
+            </DecisionGroup>
+          ))
         )}
         {all.length > 0 && rows.length === 0 ? <p className="px-5 py-6 text-13 text-muted">{t("approvals.noMatch")}</p> : null}
         {matching.length > rows.length ? (
@@ -236,14 +262,18 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
 /**
  * What the read carries beyond these rows (REQ-48 r3 BC-17): the decisions past its page, and the rows
  * waiting on you that are not decisions, each named by its title with the step it waits on and opening
- * its own page. Neither is in the page's count, and the line says so.
+ * its own page. Neither is in the page's count, and the fold's headings say so; shut, it is one line
+ * with how many it holds (ISS-903).
  */
 function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
   const t = useCopy();
   const more = read.total > read.decisions.length;
   if (!more && read.notDecisions.length === 0) return null;
+  const count = read.notDecisions.reduce((n, d) => n + d.count, more ? read.total - read.decisions.length : 0);
   return (
-    <div className="flex flex-col gap-3 px-5 py-4 text-13" data-testid="approvals-left-out">
+    <div className="px-5 py-2">
+    <CountSection label={t("approvals.leftOut.fold")} count={count} testId="approvals-left-out">
+    <div className="flex flex-col gap-3 text-13">
       {more ? <p className="text-subtle" data-testid="approvals-more">{t("approvals.more", { shown: read.decisions.length, total: read.total })}</p> : null}
       {read.notDecisions.map((n) => (
         <section key={n.reason} aria-label={t(`needsYou.decisions.reason.${n.reason}`, { n: n.count })}>
@@ -270,6 +300,8 @@ function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
           </ul>
         </section>
       ))}
+    </div>
+    </CountSection>
     </div>
   );
 }

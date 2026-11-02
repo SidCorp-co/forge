@@ -1,13 +1,15 @@
-// One decision on the Approvals page, read as a decision (REQ-48 BC-11): the key and the subject's title,
-// then what the agent proposes as a verb and its object (or what is asked, where a person asked it),
-// then its tags, and on the right how long it has waited and the ✓ / ✕ that decide it in place. Flat:
+// One decision on the Approvals page, read as a decision (REQ-48 BC-11): the subject's title (its key the
+// title's tooltip, never text beside it, ISS-903), then what the agent proposes as a verb and its object
+// (or what is asked, where a person asked it), then one chip, whether the agent recommends it, its tags
+// that chip's hover (the peek draws them in full), and on the right how long it has waited and the ✓ / ✕
+// that decide it in place. Flat:
 // a hairline under each row, the open one marked by a left rule. A decision with no proposal names the
 // answer its ✓ sends on the ✓ itself, and how many others its peek offers (ISS-539): a row never sends
 // an answer the person cannot see. Nor words: where the ✓ sends a reason as it stands, the row shows
 // it before the press, since it is recorded under the person's name (REQ-4 BC-16, ISS-645 r2).
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
-import { Button, Checkbox, IconButton } from "@/design";
+import { Button, Checkbox, IconButton, StatusChip } from "@/design";
 import { wordsAsItStands } from "@/features/needs-you";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
@@ -39,6 +41,16 @@ export function DecisionTags({ d }: { d: NeedsYouDecision }) {
       ))}
     </span>
   );
+}
+
+/** The row's one chip: stuck, else whether the agent recommends it; the proposal's tags are its hover. */
+function DecisionChip({ d }: { d: NeedsYouDecision }) {
+  const t = useCopy();
+  const tags = (d.proposal?.tags ?? []).map((tag) => tag.text);
+  const recommends = d.proposal ? t(d.proposal.recommends ? "approvals.tag.recommends" : "approvals.tag.checkFirst") : null;
+  if (d.stuck) return <StatusChip tone="err" label={t("approvals.tag.stuck")} reason={[recommends, ...tags].filter(Boolean).join(" · ") || null} testId="approval-tags" />;
+  if (!d.proposal) return null;
+  return <StatusChip tone={d.proposal.recommends ? "ready" : "you"} label={recommends} reason={tags.join(" · ") || null} testId="approval-tags" />;
 }
 
 interface RowProps {
@@ -100,6 +112,7 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
       )}
       data-testid="approval-row"
       data-row-key={d.id}
+      data-key={d.key}
       data-topic={d.topic}
     >
       <div className="pt-0.5">
@@ -107,9 +120,8 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <button type="button" className="flex min-w-0 cursor-pointer flex-col gap-1 text-left" onClick={onOpen} data-testid="approval-open">
-        <span className="flex w-full min-w-0 items-baseline gap-2">
-          <span className="shrink-0 whitespace-nowrap font-mono text-12 text-link">{d.key}</span>
-          <span className="min-w-0 truncate text-14 font-medium text-fg">{d.title || d.key}</span>
+        <span className="block w-full min-w-0 truncate text-14 font-medium text-fg" title={d.key} data-testid="approval-title">
+          {d.title || d.key}
         </span>
         <span className="block w-full min-w-0 truncate text-13 text-muted" data-testid="approval-proposal">
           {d.proposal ? (
@@ -121,9 +133,13 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
           )}
         </span>
         <SentReason d={d} open={open} />
-        <DecisionTags d={d} />
         {d.mockup ? <MockupStanding m={d.mockup} /> : null}
       </button>
+      {d.stuck || d.proposal ? (
+        <span className="flex">
+          <DecisionChip d={d} />
+        </span>
+      ) : null}
       {d.proposal ? null : <NamedAnswer d={d} onOpen={onOpen} onApprove={onApprove} />}
       </div>
       <RowMockup d={d} />
