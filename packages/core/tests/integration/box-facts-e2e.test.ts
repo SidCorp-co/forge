@@ -155,9 +155,12 @@ describe('a box reporting its facts', () => {
     expect(row?.orientation).toBe(
       checkoutOrientation(project.id, project.slug, {
         entries: [{ key: 'ui-copy-rule', text: rule }],
+        guides: { project: ['build-commands'], org: [] },
       }),
     );
     expect(row?.orientation).toContain(`### ui-copy-rule\n${rule}`);
+    // an on-demand entry is listed by its slug to fetch, never its body (ISS-867)
+    expect(row?.orientation).toContain('- build-commands');
     expect(row?.orientation).not.toContain('pnpm build');
   });
 

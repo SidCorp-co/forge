@@ -303,15 +303,19 @@ describe('a release awaiting approval names its approver', () => {
     const runId = String(cut.body.runId);
     const asked = await call('agent', 'POST', `/release-batches/${runId}/approvals`, evidence);
     expect(asked.status, JSON.stringify(asked.body)).toBe(201);
+    // a second person who may decide; the agent's own account is never listed among them (ISS-869)
+    const secondId = (await createTestUser({ verified: true })).id;
+    await addProjectMember(projectId, secondId, 'admin');
     const several = await detail('member', '0.1.0');
     expect(several.waitingOn).toMatchObject({
       kind: 'person',
       act: 'approve',
       who: expect.stringContaining(', '),
     });
+    expect(several.waitingOn.who).not.toContain(String((await userNames([agentId])).get(agentId)));
 
     await db.execute(
-      sql`UPDATE project_members SET role = 'member' WHERE project_id = ${projectId} AND user_id = ${agentId}`,
+      sql`UPDATE project_members SET role = 'member' WHERE project_id = ${projectId} AND user_id IN (${secondId}, ${agentId})`,
     );
     const member = await detail('member', '0.1.0');
     expect(member.attentionGroup).toBe('waiting');
