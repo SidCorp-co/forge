@@ -173,6 +173,7 @@ export {
   owedMarks,
 } from './owed-merges.js';
 export { parkSinceSql } from './park-since.js';
+export { loadIssuePark } from './park-view.js';
 export {
   assertPatternReviewsSettledForIssue,
   patternReviewPendingSql,
