@@ -7,6 +7,7 @@
  * table's one writer.
  */
 
+import { releaseHint } from '@forge/contracts/released-line';
 import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -147,7 +148,9 @@ const clearer = (owes: CriteriaHoldOwer) =>
 
 export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer): ReleaseHold {
   const reasons = reasonsByWhy(report);
-  const judge = judgeClause(report.serving, report.runtimes, report.weighedOn);
+  // no commit served: a verdict counts on the agent's release record, never a probe (ISS-900)
+  const onRelease = releaseHint(report.released, 'issue');
+  const judge = onRelease ?? judgeClause(report.serving, report.runtimes, report.weighedOn);
   // only a person closes by hand; the master clears it by the verdicts or by moving the issue on
   const byHand =
     owes === 'human'
@@ -160,10 +163,7 @@ export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer
       `this one is not — ${reasons}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
       '`awaiting_release` if it is not to ship.',
     owes,
-    waitingFor:
-      owes === 'human'
-        ? 'a verdict on each criterion named at the running deployment, or the issue closed by hand'
-        : 'a verdict on each criterion named at the running deployment',
+    waitingFor: `a verdict on each criterion named ${onRelease ? 'on the live release' : 'at the running deployment'}${owes === 'human' ? ', or the issue closed by hand' : ''}`,
     criteria: report.unearned.map((c) => c.criterion),
   };
 }

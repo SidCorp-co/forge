@@ -226,6 +226,7 @@ export {
 } from './release-evidence.js';
 export { releaseHoldWords, WORDED_RELEASE_HOLDS } from './release-hold-words.js';
 export { releaseRecordGaps } from './release-record-required.js';
+export { provideReleasedLineReads } from './released-line-reads.js';
 export {
   type IssueCreateInput,
   type IssueFilters,

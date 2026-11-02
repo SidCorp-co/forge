@@ -76,6 +76,9 @@ const verdictIdentitySchema = z.discriminatedUnion('kind', [
     })
     .strict(),
   storefrontDraftIdentitySchema,
+  // the release version the app reported, where production names no commit it serves (ISS-900): a
+  // free string here, so a malformed one is refused by name (`verdict-record.ts`, VERDICT_RELEASE_SHAPE)
+  z.object({ kind: z.literal('release'), version: z.string().trim().min(1).max(100) }).strict(),
 ]);
 
 /**

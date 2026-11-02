@@ -115,6 +115,8 @@ export const VERDICT_IDENTITY_KINDS = [
 	"contract",
 	"storefront_draft",
 	"commit_unresolved",
+	// the release version an app reported, where production names no commit it serves (ISS-900)
+	"release",
 ] as const;
 export type VerdictIdentityKindName = (typeof VERDICT_IDENTITY_KINDS)[number];
 
@@ -128,6 +130,8 @@ interface VerdictReading extends StorefrontDraftVerdictView {
 	designRevision: number | null;
 	contractRef: string | null;
 	contractVersion: string | null;
+	/** The release version a verdict judged on a release names (ISS-900); absent reads as none. */
+	releaseVersion?: string | null;
 }
 
 // a backfilled abbreviated commit that never resolved reads Unresolved whatever it said; `short` reads Short on every screen and is never proven (`verified-rule.ts:verifiedOf`)
@@ -155,6 +159,8 @@ export function identityPhraseOf(v: VerdictReading): string {
 			return `design ${v.designFlow ?? v.designWorkflowId} rev ${v.designRevision}`;
 		case "contract":
 			return `contract ${v.contractRef}@${v.contractVersion}`;
+		case "release":
+			return `release ${v.releaseVersion}`;
 		case "storefront_draft":
 			return `storefront draft ${storefrontDraftsPhrase(v.storefrontDrafts)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (${v.corroboration ?? "uncorroborated"}: ${v.corroborationNote})`}`;
 		default:
@@ -186,8 +192,16 @@ export function landedIdentityWhy(
 	if (kind === "commit") return null;
 	// on a project naming its testing environment (`delivery.judgedOn`, REQ-36 BC-18), a runtime ref
 	// that is a whole commit names that commit as it ran there, weighed at it as a commit verdict is
-	if (kind === "runtime" && judgedOn !== null && /^[0-9a-f]{40}$/i.test(value.trim())) {
+	if (
+		kind === "runtime" &&
+		judgedOn !== null &&
+		/^[0-9a-f]{40}$/i.test(value.trim())
+	) {
 		return null;
+	}
+	// a release is weighed on its agent's record (`released-line.ts:readOnRelease`), never at a landing
+	if (kind === "release") {
+		return `judged on release \`${value}\`, which names no landed commit: a verdict on a release counts on the release record, where production names no commit it serves, never at a landing`;
 	}
 	const there =
 		kind === "runtime"

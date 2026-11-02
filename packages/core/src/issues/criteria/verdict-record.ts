@@ -3,6 +3,7 @@
 
 import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { type ReleaseIdentityFault, releaseIdentityOf } from '@forge/contracts/released-line';
 import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
@@ -22,6 +23,7 @@ import { criterionRoutesOf } from '../design-record.js';
 import { readJudge, readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
+import { releasedLineOf, releaseVersionOf } from '../released-line-reads.js';
 import { clipFault } from './clip-citation.js';
 import { probeNote } from './probe-rules.js';
 import { probeOfVerdict } from './probes.js';
@@ -61,6 +63,7 @@ const IDENTITY_FIELDS: ReadonlyArray<readonly [keyof VerdictColumns, string]> = 
   ['designRevision', 'design-revision'],
   ['contractRef', 'contract'],
   ['contractVersion', 'contract-version'],
+  ['releaseVersion', 'release'],
   ['storefrontEnvironment', 'environment'],
   ['corroboration', 'corroboration'],
 ];
@@ -153,6 +156,37 @@ async function storefrontColumns(
   };
 }
 
+// this door's name for each fault the shared release rule reads; keyed on its declared type, so a
+// fault the rule gains and this door does not name fails the typecheck rather than passing unnamed
+const RELEASE_REFUSALS = {
+  shape: 'VERDICT_RELEASE_SHAPE',
+  unused: 'VERDICT_RELEASE_UNUSED',
+  unknown: 'VERDICT_RELEASE_UNKNOWN',
+} as const satisfies Record<ReleaseIdentityFault, VerdictRefusal['code']>;
+
+/**
+ * A verdict judged on a release (ISS-900): accepted only where the project's production names no
+ * commit it serves, at a version the project recorded as shipped, by the rule a requirement's verdict
+ * door asks too (`@forge/contracts/released-line:releaseIdentityOf`). Nothing reads production.
+ */
+async function releaseColumns(
+  projectId: string,
+  criterion: number,
+  sent: string,
+): Promise<VerdictColumns> {
+  const line = await releasedLineOf(projectId);
+  const read = releaseIdentityOf(`criterion ${criterion}`, sent, line, releaseVersionOf);
+  if ('fault' in read) {
+    throw verdictRefused({
+      code: RELEASE_REFUSALS[read.fault],
+      criterion,
+      detail: read.detail,
+      path: read.path,
+    });
+  }
+  return { identityKind: 'release', releaseVersion: read.version };
+}
+
 /** The identity columns a draft writes, the design resolved to its workflow row. */
 async function identityColumns(
   tx: Tx,
@@ -168,6 +202,8 @@ async function identityColumns(
       return storefrontColumns(projectId, draft.criterion, identity, readDraft);
     case 'commit':
       return { identityKind: 'commit', commitSha: identity.sha.trim().toLowerCase() };
+    case 'release':
+      return releaseColumns(projectId, draft.criterion, identity.version);
     case 'runtime': {
       const ref = identity.ref.trim().toLowerCase();
       const unobserved = await unobservedRuntimeFault(issue, draft.criterion, ref);

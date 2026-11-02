@@ -56,6 +56,7 @@ import {
   provideCleanupLandingPort,
   provideFailReturnPort,
   provideIssuePorts,
+  provideReleasedLineReads,
 } from './issues/index.js';
 import {
   broadcastSessionEvent,
@@ -139,6 +140,7 @@ import {
   judgedBuildOf,
   landedRecordOf,
   nextDraftVersion,
+  releasedLineReads,
   releaseEndsRun,
   releaseHoldsOf,
   settleChangeRequestRelease,
@@ -246,6 +248,7 @@ async function liveReachForIssue(issue: LiveReachIssue & { projectId: string }) 
 export function provideWorkPorts(): void {
   provideWorkPipelinePorts();
 
+  provideReleasedLineReads(releasedLineReads);
   provideIssuePorts({
     projectCreatorOf,
     keepCorrection: recordCorrection,

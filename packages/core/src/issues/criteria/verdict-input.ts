@@ -9,6 +9,9 @@
  *   a runtime is a whole object id               VERDICT_RUNTIME_NOT_FULL
  *   a design is `<flow or id> rev <n>`           VERDICT_DESIGN_SHAPE
  *   a contract is `<project>/<contract>@<version>`  VERDICT_CONTRACT_SHAPE
+ *   a release is a release version the project      VERDICT_RELEASE_SHAPE, _UNUSED, _UNKNOWN
+ *     recorded as shipped, where production names    (asked where the record is read,
+ *     no commit it serves (ISS-900)                   `verdict-record.ts:releaseColumns`)
  *   its reason and evidence carry no secret      VERDICT_SECRET (naming the span read as one)
  *
  * A storefront draft names every workflow draft its criterion rests on, each workflow once, and an
@@ -41,6 +44,7 @@ export type VerdictIdentity =
   | { readonly kind: 'runtime'; readonly ref: string }
   | { readonly kind: 'design'; readonly workflow: string; readonly revision: number }
   | { readonly kind: 'contract'; readonly ref: string; readonly version: string }
+  | { readonly kind: 'release'; readonly version: string }
   | {
       readonly kind: 'storefront_draft';
       /** Every workflow draft the criterion rests on; or, for one, `workflowId` and `draftVersion`. */
@@ -233,6 +237,10 @@ function identityFault(criterion: number, identity: VerdictIdentity): VerdictRef
             criterion,
             `criterion ${criterion} names a design identity that is not \`<workflow flow or id> rev <n>\` with a revision of 1 or more.`,
           );
+    case 'release':
+      // its shape and its place are asked against the project's release record, which only the record
+      // door reads (`verdict-record.ts:releaseColumns`)
+      return null;
     case 'contract':
       return parseContractIdentity(`${identity.ref.trim()}@${identity.version.trim()}`)
         ? null
@@ -311,7 +319,7 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
     return refuse(
       'VERDICT_IDENTITY_REQUIRED',
       criterion,
-      `criterion ${criterion}'s \`${verdict}\` names nothing it was judged against: a whole commit sha, a runtime, a design (\`<flow> rev <n>\`), a contract (\`<project>/<contract>@<version>\`) or a storefront draft (${STOREFRONT_DRAFT_SHAPE}).`,
+      `criterion ${criterion}'s \`${verdict}\` names nothing it was judged against: a whole commit sha, a runtime, a design (\`<flow> rev <n>\`), a contract (\`<project>/<contract>@<version>\`), a storefront draft (${STOREFRONT_DRAFT_SHAPE}), or, where production names no commit it serves, a release (\`{ kind: 'release', version: '0.76.0' }\`).`,
     );
   }
   return identityFault(criterion, draft.identity);

@@ -41,7 +41,7 @@ export async function liveVerdictsOfIssues(
     SELECT c.issue_id::text AS issue_id, c.n, v.id AS v_id, v.verdict, v.reason, v.identity_kind,
            v.commit_sha, v.runtime_ref,
            v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-           v.contract_version, v.storefront_drafts,
+           v.contract_version, v.release_version, v.storefront_drafts,
            v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.covers, v.probe_id,
            v.author_agency, v.backfilled, v.created_at AS v_created_at,
            ${byBuilder} AS by_builder,

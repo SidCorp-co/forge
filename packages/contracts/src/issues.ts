@@ -41,6 +41,12 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_COMMIT_NOT_FULL",
 	"VERDICT_RUNTIME_NOT_FULL",
 	"VERDICT_RUNTIME_UNOBSERVED",
+	/** A release that is no release version (ISS-900). */
+	"VERDICT_RELEASE_SHAPE",
+	/** A release on a project whose production reads the commit it serves, or has none (ISS-900). */
+	"VERDICT_RELEASE_UNUSED",
+	/** A release version the project recorded no shipped release under (ISS-900). */
+	"VERDICT_RELEASE_UNKNOWN",
 	"VERDICT_DESIGN_SHAPE",
 	"VERDICT_CONTRACT_SHAPE",
 	"VERDICT_CRITERION_UNKNOWN",

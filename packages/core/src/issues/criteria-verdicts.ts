@@ -6,6 +6,7 @@
 // and the builder's own pass, as the release record counts them unproven.
 
 import { projectGate } from '@forge/contracts/gate-profiles';
+import type { ReleasedLine } from '@forge/contracts/released-line';
 import type { ServingReading } from '@forge/contracts/releases';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import { eq, inArray } from 'drizzle-orm';
@@ -17,6 +18,7 @@ import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { currentContracts, designRevisions, pinnedAnchorsOf } from './criteria-anchors.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import { readJudge, readProjectDocument } from './ports.js';
+import { releasedLineOf } from './released-line-reads.js';
 import {
   type OwedRuntimes,
   owedRuntimes,
@@ -70,6 +72,8 @@ function identityOfRow(row: LatestVerdict): VerdictIdentity | null {
       return row.contractRef && row.contractVersion
         ? { kind: 'contract', value: `${row.contractRef}@${row.contractVersion}` }
         : null;
+    case 'release':
+      return row.releaseVersion ? { kind: 'release', value: row.releaseVersion } : null;
     case 'storefront_draft':
       return row.storefrontDrafts && row.storefrontDrafts.length > 0
         ? {
@@ -161,6 +165,12 @@ export interface IssueCriteriaReport {
   readonly runtimes: readonly RuntimeReading[];
   /** Criteria earned on a runtime nothing could re-read: earned, and weaker than a checked one. */
   readonly uncorroborated: readonly number[];
+  /**
+   * Where the project's production names no commit it serves, what its agent's release record says is
+   * live, which its `release` verdicts were weighed on (ISS-900): the release a hold names to judge
+   * on. Null on any other project.
+   */
+  readonly released: ReleasedLine | null;
 }
 
 /** Every name the tracker holds an attachment under for this issue, its comments' included. */
@@ -344,14 +354,19 @@ async function reportFor(
   row: CriteriaRow,
   serving: ServingReading,
   weighing: Weighing,
-  anchors: Pick<IssueIdentities, 'designs' | 'contracts' | 'pinnedBy'>,
+  anchors: Pick<IssueIdentities, 'designs' | 'contracts' | 'pinnedBy' | 'released'>,
   judge: Awaited<ReturnType<typeof readJudge>>,
   production: boolean,
 ): Promise<IssueCriteriaReport> {
   const { runtimes } = weighing;
   // a closed issue's change was released; until then it is weighed where it was judged
   const on = weighedOn(row.status === 'closed', serving, weighing);
-  const placed = { serving: on.serving, weighedOn: on.environment, runtimes };
+  const placed = {
+    serving: on.serving,
+    weighedOn: on.environment,
+    runtimes,
+    released: anchors.released ?? null,
+  };
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), ...anchors };
   const stands = await standingOn(row.id, await listCriteria(db, row.id), judge, production);
@@ -414,6 +429,9 @@ export async function unearnedCriteriaReports(
   const required = new Map<string, boolean>();
   const production = new Map<string, boolean>();
   const judges = new Map<string, Awaited<ReturnType<typeof readJudge>>>();
+  // where production names no commit it serves, what the agent's release record says is live: a
+  // release verdict is weighed there (ISS-900)
+  const released = new Map<string, Awaited<ReturnType<typeof releasedLineOf>>>();
   for (const id of projectIds) {
     const document = (await readProjectDocument(id))?.document;
     // gate `release_criteria` (REQ-76): off owes no verdict; advise and enforce weigh them, and the
@@ -421,6 +439,7 @@ export async function unearnedCriteriaReports(
     required.set(id, projectGate(document, null, 'release_criteria').mode !== 'off');
     production.set(id, declaresProduction(document));
     judges.set(id, await readJudge(id));
+    released.set(id, await releasedLineOf(id));
   }
   const out: IssueCriteriaReport[] = [];
   for (const row of [...rows].sort(byMerge)) {
@@ -434,6 +453,7 @@ export async function unearnedCriteriaReports(
         weighedOn: null,
         runtimes: weighing.runtimes,
         uncorroborated: [],
+        released: released.get(row.projectId) ?? null,
       });
       continue;
     }
@@ -443,12 +463,15 @@ export async function unearnedCriteriaReports(
         row,
         serving,
         weighing,
-        pin
-          ? { designs: pin.designs, contracts: pin.contracts, pinnedBy: pin.key }
-          : {
-              designs: designs.get(row.projectId) ?? new Map(),
-              contracts: contracts.get(row.projectId) ?? new Map(),
-            },
+        {
+          ...(pin
+            ? { designs: pin.designs, contracts: pin.contracts, pinnedBy: pin.key }
+            : {
+                designs: designs.get(row.projectId) ?? new Map(),
+                contracts: contracts.get(row.projectId) ?? new Map(),
+              }),
+          released: released.get(row.projectId) ?? null,
+        },
         judges.get(row.projectId) ?? null,
         production.get(row.projectId) ?? true,
       ),

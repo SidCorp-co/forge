@@ -5,6 +5,7 @@
  * naming nothing leaves a source verdict to the issue's own source. Shapes: `messaging/verdict-identity.ts`.
  */
 
+import { type ReleasedLine, readOnRelease } from '@forge/contracts/released-line';
 import { type ServingReading, servedCommits } from '@forge/contracts/releases';
 import type { VerdictDraftReading } from '@forge/contracts/verdict-identity';
 import {
@@ -14,9 +15,10 @@ import {
 } from '../messaging/verdict-identity.js';
 
 /** `source` is a commit that was read, which cannot say the code was ever running. `design` is a
- *  stored workflow design revision: for work that lands as a design, the thing itself. */
+ *  stored workflow design revision: for work that lands as a design, the thing itself. `release` is
+ *  the version the app reported, where production names no commit it serves (ISS-900). */
 export interface VerdictIdentity {
-  readonly kind: 'runtime' | 'source' | 'design' | 'contract' | 'storefront_draft';
+  readonly kind: 'runtime' | 'source' | 'design' | 'contract' | 'storefront_draft' | 'release';
   readonly value: string;
   readonly corroboration?: VerdictDraftReading | null;
   readonly corroborationNote?: string | null;
@@ -34,6 +36,13 @@ export interface IssueIdentities {
    * delivers one, a design or contract verdict counts against the pinned version both sides built.
    */
   readonly pinnedBy?: string;
+  /**
+   * Where the project's production names no commit it serves, what its agent's release record says is
+   * live (`release-batch/released-line.ts:releasedLineOf`, ISS-900): a `release` verdict is weighed on
+   * it by the rule a requirement's coverage reads (`@forge/contracts/released-line:readOnRelease`).
+   * Null or absent on any other project, where a release places nothing.
+   */
+  readonly released?: ReleasedLine | null;
 }
 
 /** How a verdict's identity resolves; `stands` and `uncorroborated` are the two a criterion is
@@ -118,6 +127,25 @@ function contractStanding(value: string, identities: IssueIdentities): VerdictSt
   return current === named.version ? 'stands' : 'superseded';
 }
 
+/** A release verdict stands while the record carries its release (`readOnRelease`): one a later
+ *  release recorded at a lower version leaves uncarried is superseded; one nothing places is
+ *  unanchored. What a host serves says nothing here: no serving reading enters. */
+function releaseStanding(value: string, identities: IssueIdentities): VerdictStanding {
+  const read = readOnRelease(value, identities.released);
+  if (read.notCounted === null) return 'stands';
+  return read.inLiveBuild === false ? 'superseded' : 'unanchored';
+}
+
+/** The release rule's own sentence: what it counts as, or why it does not count. */
+function releaseSentence(value: string, identities: IssueIdentities): string {
+  const read = readOnRelease(value, identities.released);
+  if (read.notCounted !== null) return read.notCounted;
+  const live = identities.released?.live?.version;
+  return read.countedAs
+    ? `judged on ${read.countedAs}, which the release record says is live`
+    : `judged on release ${value}${live === value ? ', which the release record says is live' : ''}`;
+}
+
 export function verdictStanding(
   at: VerdictIdentity | null,
   serving: ServingReading,
@@ -130,6 +158,7 @@ export function verdictStanding(
   }
   if (at.kind === 'design') return designStanding(at.value, identities);
   if (at.kind === 'contract') return contractStanding(at.value, identities);
+  if (at.kind === 'release') return releaseStanding(at.value, identities);
   if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
   const observed = servedSource(at.value, serving);
   if (observed) return observed;
@@ -271,6 +300,7 @@ export function standingSentence(
   if (runtime !== null && standing !== 'superseded') {
     return `for the \`${runtime}\` runtime, ${standingSentence(standing, at, serving, identities)}`;
   }
+  if (at?.kind === 'release') return releaseSentence(at.value, identities);
   if (at?.kind === 'design') return designSentence(standing, at.value, identities);
   if (at?.kind === 'contract') return contractSentence(standing, at.value, identities);
   if (at?.kind === 'storefront_draft') {

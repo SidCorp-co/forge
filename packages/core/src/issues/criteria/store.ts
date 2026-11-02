@@ -68,6 +68,8 @@ export interface LatestVerdict {
   readonly designRevision: number | null;
   readonly contractRef: string | null;
   readonly contractVersion: string | null;
+  /** The release a `release` verdict was judged on (ISS-900); absent or null on any other. */
+  readonly releaseVersion?: string | null;
   /** Every workflow draft a storefront_draft verdict was judged on, in the order written. */
   readonly storefrontDrafts: readonly StorefrontDraftPart[] | null;
   readonly storefrontEnvironment: string | null;
@@ -396,7 +398,7 @@ const LIST_SQL = (issueIds: readonly string[]) => sql`
   SELECT c.issue_id, c.id, c.n, c.statement, c.position, c.requirement_criterion_id,
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-         v.contract_version, v.storefront_drafts,
+         v.contract_version, v.release_version, v.storefront_drafts,
          v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.covers, v.probe_id, v.author_agency, v.backfilled, v.created_at AS v_created_at
     FROM issue_criteria c
     LEFT JOIN LATERAL (
@@ -430,6 +432,7 @@ export type ListRow = {
   design_revision: number | null;
   contract_ref: string | null;
   contract_version: string | null;
+  release_version?: string | null;
   storefront_drafts: StorefrontDraftPart[] | null;
   storefront_environment: string | null;
   corroboration: VerdictCorroboration | null;
@@ -456,6 +459,7 @@ export function latestOf(row: ListRow): LatestVerdict | null {
     designRevision: row.design_revision,
     contractRef: row.contract_ref,
     contractVersion: row.contract_version,
+    releaseVersion: row.release_version ?? null,
     storefrontDrafts: row.storefront_drafts,
     storefrontEnvironment: row.storefront_environment,
     corroboration: row.corroboration,
@@ -512,7 +516,7 @@ export async function listRetiredCriteria(
     SELECT c.issue_id, c.id, c.n, c.statement, c.position, c.requirement_criterion_id, c.retired_at,
            v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
            v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-           v.contract_version, v.storefront_drafts,
+           v.contract_version, v.release_version, v.storefront_drafts,
            v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.covers,
            v.probe_id, v.author_agency, v.backfilled, v.created_at AS v_created_at
       FROM issue_criteria c

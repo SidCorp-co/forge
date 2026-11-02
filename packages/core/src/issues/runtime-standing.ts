@@ -200,6 +200,12 @@ export function weighVerdict(
   /** The path prefixes the verdict covers (ISS-845); null where it names none. */
   covers: readonly string[] | null = null,
 ): WeighedVerdict {
+  // a release names the whole app as its agent recorded it, never a commit a runtime or the deployment
+  // serves: its record decides it once, and no serving reading enters (ISS-900)
+  if (at?.kind === 'release') {
+    const standing = verdictStanding(at, serving, identities);
+    return { standing, runtime: null, environment: null, serving, beside: [], carried: null };
+  }
   const results: WeighedVerdict[] = [];
   if (owed.deployment) {
     // only a runtime verdict was judged somewhere; any other is read against production, as before

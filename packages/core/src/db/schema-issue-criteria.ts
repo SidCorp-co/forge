@@ -126,6 +126,11 @@ export const criterionVerdicts = pgTable(
     designRevision: integer('design_revision'),
     contractRef: text('contract_ref'),
     contractVersion: text('contract_version'),
+    /**
+     * The release a `release` verdict was judged on, as its project recorded it shipped (0584,
+     * ISS-900): where production names no commit it serves, a verdict names the version instead.
+     */
+    releaseVersion: text('release_version'),
     /** Every workflow draft a storefront_draft verdict was judged on, in the order written (0514). */
     storefrontDrafts: jsonb('storefront_drafts').$type<StorefrontDraftPart[]>(),
     storefrontEnvironment: text('storefront_environment'),
@@ -177,7 +182,14 @@ export const criterionVerdicts = pgTable(
         OR (${t.identityKind} = 'runtime' AND ${t.runtimeRef} ~ '^[0-9a-f]{40,64}$' AND ${t.commitSha} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)
         OR (${t.identityKind} = 'design' AND ${t.designWorkflowId} IS NOT NULL AND ${t.designRevision} >= 1 AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)
         OR (${t.identityKind} = 'contract' AND ${t.contractRef} ~ '[^[:space:]]' AND ${t.contractVersion} ~ '[^[:space:]]' AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL)
-        OR (${t.identityKind} = 'storefront_draft' AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)`,
+        OR (${t.identityKind} = 'storefront_draft' AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)
+        OR (${t.identityKind} = 'release' AND ${t.commitSha} IS NULL AND ${t.runtimeRef} IS NULL AND ${t.designWorkflowId} IS NULL AND ${t.designRevision} IS NULL AND ${t.contractRef} IS NULL AND ${t.contractVersion} IS NULL)`,
+    ),
+    // a release verdict names its version, as the record stores one (`version-store.ts:givenReleaseVersion`); no other names one
+    releaseChk: check(
+      'criterion_verdicts_release_chk',
+      sql`(${t.identityKind} = 'release' AND coalesce(${t.releaseVersion}, '') ~ '^[0-9]{1,9}\\.[0-9]{1,9}\\.[0-9]{1,9}(-[a-z][a-z0-9]{0,15}\\.[0-9]{1,9})?$')
+        OR (${t.identityKind} IS DISTINCT FROM 'release' AND ${t.releaseVersion} IS NULL)`,
     ),
     storefrontChk: check(
       'criterion_verdicts_storefront_chk',

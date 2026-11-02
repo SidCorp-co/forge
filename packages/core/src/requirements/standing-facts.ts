@@ -37,6 +37,7 @@ type CriterionVerdictRow = {
   contract_ref: string | null;
   contract_version: string | null;
   contract_pinned: string | null;
+  release_version?: string | null;
   storefront_drafts: StorefrontDraftPart[] | null;
   storefront_environment: string | null;
   covers: string[] | null;
@@ -53,6 +54,8 @@ function identityOf(r: CriterionVerdictRow): CoverageIdentity | null {
       return r.commit_sha ? { kind: 'commit_unresolved', sha: r.commit_sha } : null;
     case 'runtime':
       return r.runtime_ref ? { kind: 'runtime', ref: r.runtime_ref } : null;
+    case 'release':
+      return r.release_version ? { kind: 'release', version: r.release_version } : null;
     case 'design':
       return r.design_workflow_id && r.design_revision !== null
         ? {
@@ -121,7 +124,7 @@ export async function issueCriteriaOf(
            v.identity_kind,
            v.commit_sha, v.runtime_ref, w.flow AS design_flow, v.design_workflow_id,
            v.design_revision, dp.design_revision AS design_pinned, v.contract_ref,
-           v.contract_version, cp.contract_version AS contract_pinned, v.storefront_drafts,
+           v.contract_version, cp.contract_version AS contract_pinned, v.release_version, v.storefront_drafts,
            v.storefront_environment, v.covers,
            (${verdictByBuilderSql({
              issueId: sql`c.issue_id`,
@@ -137,7 +140,7 @@ export async function issueCriteriaOf(
         SELECT cv.id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
                cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
-               cv.contract_version, cv.storefront_drafts,
+               cv.contract_version, cv.release_version, cv.storefront_drafts,
                cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id, cv.run_session_id
           FROM criterion_verdicts cv
          WHERE cv.criterion_id = c.id

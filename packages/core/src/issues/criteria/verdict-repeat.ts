@@ -21,6 +21,7 @@ const IDENTITY_KEYS = [
   'designRevision',
   'contractRef',
   'contractVersion',
+  'releaseVersion',
   'storefrontEnvironment',
 ] as const satisfies ReadonlyArray<keyof VerdictColumns>;
 
