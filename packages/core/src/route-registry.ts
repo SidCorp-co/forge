@@ -30,7 +30,11 @@ import {
   entityCommentRoutes,
   registerIssueCommentRoutes,
 } from './comments/routes.js';
-import { mcpOauthMetadataRoutes } from './credentials/mcp-oauth-metadata.js';
+import {
+  AUTHORIZATION_SERVER_PATH,
+  mcpOauthMetadataRoutes,
+  PROTECTED_RESOURCE_PATH,
+} from './credentials/mcp-oauth-metadata.js';
 import { mcpOauthRoutes } from './credentials/mcp-oauth-routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
@@ -126,7 +130,7 @@ import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
 import { outboxAdminRoutes } from './outbox/routes.js';
-import { requiresNoPermission, requiresPublic } from './permissions/index.js';
+import { requiresNoPermission, requiresPublic, requiresSelf } from './permissions/index.js';
 import {
   phaseRoutes,
   pipelineAnalyticsRoutes,
@@ -215,11 +219,27 @@ const INSTALL_IS_PUBLIC = requiresPublic(
   'a box with no credential yet fetches the installer and the published runner build; nothing a project owns',
 );
 
+// credentials and api-contract sit below permissions (.arch.json context direction), so the routes
+// they serve are declared where they are mounted, as install's are
+const DISCOVERY_IS_PUBLIC = requiresPublic(
+  'an MCP client with no token reads where to sign in; the documents name endpoints, never a row',
+);
+const CONTRACT_IS_PUBLIC = requiresPublic(
+  'a published contract describes shapes and gates, never a row or a secret, and is read with no credential',
+);
+
 /** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
   // an MCP client that reaches /mcp with no token is pointed here to sign in through the browser
+  for (const path of [
+    PROTECTED_RESOURCE_PATH,
+    `${PROTECTED_RESOURCE_PATH}/mcp`,
+    AUTHORIZATION_SERVER_PATH,
+  ]) {
+    app.use(path, DISCOVERY_IS_PUBLIC);
+  }
   app.route('/', mcpOauthMetadataRoutes);
   app.use('/mcp', mcpRequestClass(), requirePat());
   app.post(
@@ -249,6 +269,8 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   }
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
+  for (const path of ['/api/openapi.json', '/api/mcp-tools.json'])
+    app.use(path, CONTRACT_IS_PUBLIC);
   app.route('/api', publishedContractRoutes());
   app.route('/api', codeTraceRoutes);
   // a client site's visitor, never a Forge user: the site key, the session token or the status link
@@ -268,6 +290,16 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', preferenceRoutes);
   app.route('/api/auth', logoutRoutes);
   app.route('/api/auth', reauthRoutes);
+  app.on(
+    'GET',
+    '/api/pat',
+    requiresSelf('the caller’s own personal access tokens, listed by the caller'),
+  );
+  app.on(
+    'DELETE',
+    '/api/pat/:id',
+    requiresSelf('the caller revokes a token of their own; another’s answers not found'),
+  );
   app.route('/api', patRoutes);
   app.route('/api/mcp-auth', mcpOauthRoutes);
   app.route('/api/auth', oauthRoutes);
