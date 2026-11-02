@@ -1,0 +1,1 @@
+**Dependencies with known critical and high advisories are patched.** The diagram drawing, contract pattern checks and lint and test tools now run on fixed releases, so a dependency audit reports no critical or high advisory.
