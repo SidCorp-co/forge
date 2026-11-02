@@ -175,7 +175,7 @@ describe('REQ-77 BC-13: a scheduled check posts one finding, and nothing when th
           await act({
             action: 'check_result',
             check,
-            finding: 'The supplier token for Acme expires in 3 days.',
+            finding: 'The supplier access for Acme expires in 3 days.',
           }),
         );
         results.push(await act({ action: 'check_result', check, finding: 'Another finding.' }));
@@ -184,7 +184,7 @@ describe('REQ-77 BC-13: a scheduled check posts one finding, and nothing when th
     expect(results[0], JSON.stringify(results[0])).toMatchObject({ posted: expect.any(String) });
     expect(JSON.stringify(results[1])).toContain('SUPPORT_CHECK_ANSWERED');
     const lines = topLevelLines().slice(before);
-    expect(lines.map((l) => l.text)).toEqual(['The supplier token for Acme expires in 3 days.']);
+    expect(lines.map((l) => l.text)).toEqual(['The supplier access for Acme expires in 3 days.']);
   });
 
   it('refuses a result for a check that never fired', async () => {

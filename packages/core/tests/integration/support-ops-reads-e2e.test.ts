@@ -460,7 +460,7 @@ describe('ISS-871: the scheduled morning check works through the read door (REQ-
       out.result = await act({
         action: 'check_result',
         check: m.thread,
-        finding: 'Supplier 12 (Acme): its token expires in 3 days.',
+        finding: 'Supplier 12 (Acme): its access expires in 3 days.',
       });
     };
     expect(await fireDueChecks(new Date('2026-11-02T01:30:00Z'))).toBe(1);
