@@ -16,7 +16,7 @@ import {
 } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireHeld, requiresOnParam, requiresSelf } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
 import { projectsPorts } from './ports.js';
@@ -93,13 +93,10 @@ memberRoutes.use('*', requireAuth(), assertEmailVerified());
 memberRoutes.get(
   '/:projectId/members',
   zValidator('param', projectParamSchema),
+  requiresOnParam('project.read', 'projectId'),
   noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
 
     // `kind` and `displayName` are here because an agent account IS a project
     // member (ISS-932) and a reader that is only told its synthesized address
@@ -112,13 +109,10 @@ memberRoutes.get(
 memberRoutes.get(
   '/:projectId/members/invitations',
   zValidator('param', projectParamSchema),
+  requiresOnParam('members.admin', 'projectId'),
   noQuery,
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'members.admin');
 
     const rows = await listPendingProjectInvitations(projectId);
 
@@ -132,14 +126,13 @@ memberRoutes.get(
 memberRoutes.post(
   '/:projectId/members',
   zValidator('param', projectParamSchema),
+  requiresOnParam('members.admin', 'projectId'),
   zValidator('json', directAddSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const { userId: targetUserId, role } = c.req.valid('json');
     const callerId = c.get('userId');
-
     const access = await loadProjectAccess(projectId, callerId);
-    requireHeld(access, 'members.admin');
 
     // Same-org guard: direct-add skips the email handshake, which is only
     // safe for someone the org has already vetted.
@@ -173,6 +166,7 @@ memberRoutes.post(
 memberRoutes.post(
   '/:projectId/members/invite',
   zValidator('param', projectParamSchema),
+  requiresOnParam('members.admin', 'projectId'),
   zValidator('json', inviteSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -182,8 +176,6 @@ memberRoutes.post(
     };
     const inviterId = c.get('userId');
 
-    const access = await loadProjectAccess(projectId, inviterId);
-    requireHeld(access, 'members.admin');
     const name = await projectName(projectId);
     if (name === null) throw notFound('NOT_FOUND', 'project not found');
     const project = { name };
@@ -249,14 +241,12 @@ memberRoutes.post(
 memberRoutes.patch(
   '/:projectId/members/:userId',
   zValidator('param', memberParamSchema),
+  requiresOnParam('members.admin', 'projectId'),
   zValidator('json', patchMemberSchema),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');
     const { role, grants } = c.req.valid('json');
-    const callerId = c.get('userId');
 
-    const access = await loadProjectAccess(projectId, callerId);
-    requireHeld(access, 'members.admin');
     const refused = grantRefusals(grants ?? []);
     if (refused.length > 0) throw new RefusalError(refused, 'MEMBER_GRANT_UNKNOWN_PERMISSION');
 
@@ -276,14 +266,11 @@ memberRoutes.patch(
 memberRoutes.delete(
   '/:projectId/members/invitations',
   zValidator('param', projectParamSchema),
+  requiresOnParam('members.admin', 'projectId'),
   zValidator('query', revokeInvitationQuerySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const { email } = c.req.valid('query');
-    const callerId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, callerId);
-    requireHeld(access, 'members.admin');
 
     if (!(await revokeProjectInvitation(projectId, email)))
       throw notFound('INVITATION_NOT_FOUND', 'pending invitation not found');
@@ -295,14 +282,17 @@ memberRoutes.delete(
 memberRoutes.delete(
   '/:projectId/members/:userId',
   zValidator('param', memberParamSchema),
+  requiresSelf(
+    'the caller leaving the project; removing another member needs members.admin, a per-row rule the handler reads',
+  ),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');
     const callerId = c.get('userId');
 
-    const access = await loadProjectAccess(projectId, callerId);
+    // a per-row rule the route's `self` declaration names: removing another member needs members.admin
     const selfLeave = targetUserId === callerId;
     if (!selfLeave) {
-      requireHeld(access, 'members.admin');
+      requireHeld(await loadProjectAccess(projectId, callerId), 'members.admin');
     }
 
     if ((await projectMemberRole(projectId, targetUserId)) === null)

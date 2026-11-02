@@ -32094,6 +32094,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -32136,6 +32142,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "charter.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -52126,6 +52138,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "projectId"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -52189,6 +52207,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "projectId"
+          },
+          "permission": "members.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -52232,6 +52256,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "projectId"
+          },
+          "permission": "members.admin"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -52266,6 +52296,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "projectId"
+          },
+          "permission": "members.admin"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -52329,6 +52365,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "projectId"
+          },
+          "permission": "members.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -52374,6 +52416,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller leaving the project; removing another member needs members.admin, a per-row rule the handler reads"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -52445,6 +52490,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "projectId"
+          },
+          "permission": "members.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
