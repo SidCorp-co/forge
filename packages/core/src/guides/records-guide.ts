@@ -140,8 +140,14 @@ block names what that criterion was judged against before the next \`criterion\`
   when one cannot be read. Only a corroborated draft
   on a project whose \`source.type\` is \`storefront\` counts toward the release hold, which earns
   neither a superseded nor an uncorroborated one.
+- \`release: <version>\` — the release the app reported, on a project whose production declares no
+  source probe: its releases are its agent's record by version and no commit is matched. It counts
+  while that release, or a later one the record says carries it, is the newest the record holds,
+  and on each release page that is or carries it. Refused as \`POST /api/issues/:id/verdicts\`
+  refuses it: \`VERDICT_RELEASE_SHAPE\`, \`VERDICT_RELEASE_UNUSED\` (production reads its commit, or
+  there is none) and \`VERDICT_RELEASE_UNKNOWN\` (no release recorded as shipped under it).
 
-A block carrying a verdict and naming none of the five is refused at the write door under
+A block carrying a verdict and naming none of the six is refused at the write door under
 \`verdict-identity\`, as is an identity not written as one and a \`runtime\` written as an
 abbreviation. A \`design\` naming a workflow this issue's project does not hold, a revision that
 workflow never held, or a workflow of another project is refused under \`verdict-design\`, which

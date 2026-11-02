@@ -24,7 +24,7 @@ import { draftFromBlock } from './verdict-input.js';
 import { recordVerdict, type VerdictAuthor } from './verdict-record.js';
 
 const SHAPE =
-  'a verdict block names a criterion this issue carries, a verdict (pass | short | fail | skipped; skipped with a `why`), and what it was judged against: `commit: <the whole 40-character sha>`, `runtime: <whole object id>`, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>`, or `design: <flow> rev <n>`';
+  'a verdict block names a criterion this issue carries, a verdict (pass | short | fail | skipped; skipped with a `why`), and what it was judged against: `commit: <the whole 40-character sha>`, `runtime: <whole object id>`, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>`, `design: <flow> rev <n>`, or `release: <version>` where production declares no source probe';
 
 const EXAMPLE = [
   '```forge-record: verdict · contract 1',

@@ -19,6 +19,9 @@ const SOURCE_FIELD = 'commit';
 export const DESIGN_FIELD = 'design';
 /** `contract: <project slug>/<contract slug>@<version>`, a version the issue's project recorded. */
 export const CONTRACT_FIELD = 'contract';
+/** `release: <version>`, a release the project recorded as shipped, where production names no
+ *  commit it serves (ISS-900): its shape and place are asked by the record door, as on REST. */
+export const RELEASE_FIELD = 'release';
 
 const ENVIRONMENT_FIELD = 'environment';
 
@@ -34,7 +37,7 @@ const HEXADECIMAL = /^[0-9a-f]+$/iu;
 const RULE = 'verdict-identity';
 
 const SHAPE =
-  "a criterion block of a `verdict` record names what it was judged against: `runtime: <a whole object id>` for an identity something was observed serving, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>` for a storefront draft judged on that environment, `commit: <at least seven hex characters>` for a source that was read, `design: <workflow flow or id> rev <n>` for a workflow design revision this issue's project holds, or `contract: <project>/<contract>@<version>` for a contract version this issue's project recorded";
+  "a criterion block of a `verdict` record names what it was judged against: `runtime: <a whole object id>` for an identity something was observed serving, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>` for a storefront draft judged on that environment, `commit: <at least seven hex characters>` for a source that was read, `design: <workflow flow or id> rev <n>` for a workflow design revision this issue's project holds, `contract: <project>/<contract>@<version>` for a contract version this issue's project recorded, or `release: <version>` for a release the project recorded as shipped, where its production declares no source probe";
 
 const STOREFRONT_DRAFT_RUNTIME = /^(\S+)@draft:(\S+)$/u;
 
@@ -160,6 +163,8 @@ export interface CriterionBlock {
   /** The block's `why` line: the reason a `skipped` verdict must carry (ISS-55). */
   readonly why: string | null;
   readonly contract: string | null;
+  /** The block's `release` line: the release version it was judged on (ISS-900). */
+  readonly release: string | null;
   readonly environment: string | null;
   /** The block's `without-clip` line: why an observable criterion's judgement cites no clip (REQ-40 BC-4). */
   readonly withoutClip: string | null;
@@ -177,6 +182,7 @@ const SINGLE_FIELDS = {
   [DESIGN_FIELD]: 'design',
   why: 'why',
   [CONTRACT_FIELD]: 'contract',
+  [RELEASE_FIELD]: 'release',
   [ENVIRONMENT_FIELD]: 'environment',
   'without-clip': 'withoutClip',
 } as const satisfies Record<string, Exclude<keyof CriterionBlock, 'criterion' | 'cited'>>;
@@ -216,6 +222,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
           design: null,
           why: null,
           contract: null,
+          release: null,
           environment: null,
           withoutClip: null,
           cited: [],
@@ -244,7 +251,8 @@ function refusalsForBlock(block: CriterionBlock): MessageRefusal[] {
     block.runtime === null &&
     block.source === null &&
     block.design === null &&
-    block.contract === null
+    block.contract === null &&
+    block.release === null
   ) {
     out.push(
       refusal(

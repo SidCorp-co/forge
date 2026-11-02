@@ -21,6 +21,8 @@
  * @direct-test-of packages/core/src/requirements/standing-identity.ts
  * @direct-test-of packages/core/src/requirements/standing-facts.ts
  * @direct-test-of packages/core/src/requirements/standing-proof.ts
+ * @direct-test-of packages/core/src/messaging/verdict-identity.ts
+ * @direct-test-of packages/core/src/issues/criteria/event-verdicts.ts
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -97,6 +99,26 @@ const judge = (issueId: string, criterion: number, identity: Record<string, unkn
     reason: 'Opened the workspace on production 0.76.0.',
     identity,
     evidence: [CLIP],
+  });
+
+const FENCE = '```';
+
+/** A comment carrying one verdict fence judged on `release`, as `forge record verdict` writes it. */
+const fenced = (issueId: string, release: string) =>
+  api(world.token, 'POST', `/api/issues/${issueId}/comments`, {
+    body: [
+      'Judged on production as the app reports it.',
+      '',
+      `${FENCE}forge-record`,
+      'criterion: 1',
+      'verdict: pass',
+      `release: ${release}`,
+      `evidence: ${CLIP}`,
+      FENCE,
+      '',
+      '`forge-record: verdict · contract 1`',
+    ].join('\n'),
+    intent: 'note',
   });
 
 type Weighing = { earned: boolean | null; standing: string | null; reason: string };
@@ -232,5 +254,43 @@ describe('a project whose production reads the commit it serves refuses a releas
       code: 'VERDICT_RELEASE_UNUSED',
       path: '/identity/kind',
     });
+  });
+});
+
+describe('a comment fence carries a release, refused by the codes the REST door answers (ISS-900)', () => {
+  it('records `release: 0.76.0`, weighed on the issue as the REST door records it', async () => {
+    await agenfold();
+    const { issue } = await shippedAt076();
+    const res = await fenced(issue, 'v0.76.0');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const criteria = await ok(api(world.token, 'GET', `/api/issues/${issue}/criteria`));
+    const rows = criteria.criteria as Array<{ latest: Record<string, unknown> | null }>;
+    expect(rows[0]?.latest).toMatchObject({ identityKind: 'release', releaseVersion: '0.76.0' });
+    expect((await weighed(issue)).get(1)).toMatchObject({ earned: true, standing: 'stands' });
+  });
+
+  it('refuses a malformed version and one never shipped, by the REST codes, and writes nothing', async () => {
+    await agenfold();
+    const { issue } = await shippedAt076();
+    for (const [sent, code] of [
+      ['latest', 'VERDICT_RELEASE_SHAPE'],
+      ['0.80.0', 'VERDICT_RELEASE_UNKNOWN'],
+    ] as const) {
+      const res = await fenced(issue, sent);
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(JSON.stringify(res.body), sent).toContain(code);
+    }
+    const criteria = await ok(api(world.token, 'GET', `/api/issues/${issue}/criteria`));
+    const rows = criteria.criteria as Array<{ latest: unknown }>;
+    expect(rows[0]?.latest).toBeNull();
+  });
+
+  it('refuses a release where production reads the commit it serves, by the REST code', async () => {
+    await agenfold(true);
+    unplant = plantLiveBuild(F4);
+    const issue = await landedIssue(1, F4);
+    const res = await fenced(issue, '0.76.0');
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('VERDICT_RELEASE_UNUSED');
   });
 });

@@ -327,7 +327,7 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
 
 /**
  * The identity a comment fence's criterion block names, in the order the release hold prefers it
- * runtime, then commit, then design, then contract. A design written in
+ * runtime, then commit, then design, then contract, then release. A design written in
  * the wrong shape is kept as a malformed draft so its refusal names it.
  *
  */
@@ -352,6 +352,8 @@ function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
         }
       : { kind: 'contract', ref: block.contract, version: '' };
   }
+  // a release's shape and place are asked by the record door, by the codes REST answers (ISS-900)
+  if (block.release !== null) return { kind: 'release', version: block.release };
   return null;
 }
 
