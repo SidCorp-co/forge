@@ -15,13 +15,10 @@ import {
   FactsEmpty,
   FactsGroup,
   FactsRail,
-  type ListRowView,
   MarkStrip,
-  PeekHead,
-  PeekPanel,
-  type FullPage, type PeekState,
   ProjectLoader,
   StatusBadge,
+  StatusChip,
   Table,
   TBody,
   TD,
@@ -36,12 +33,12 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatApiError } from "@/lib/api/error";
-import { formatAge, formatDateTime, formatNumber, formatRelative, formatWhen } from "@/lib/i18n/format";
+import { formatAge, formatNumber, formatRelative, formatWhen } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { productCopy, type Copy } from "@/lib/i18n/product-copy";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
-import { MASTER_KEY, runHref } from "@/lib/routes/agents";
+import { runHref } from "@/lib/routes/agents";
 import type { MasterClosedPass, MasterPassView, MasterStanding, RunStanding } from "../types";
 import { leaseLeft, runName } from "../view";
 
@@ -110,19 +107,18 @@ function outdatedText(m: MasterStanding, language: string): string {
 /** Why core judges the pane outdated, in the reader's words where core said it. */
 const outdatedWhy = (o: NonNullable<MasterStanding["outdated"]>, language: string): string => (o.says ? said(o.says.why, language) : o.why);
 
-export const masterRow =
-  (href: string, t: Copy, language: string) =>
-  (m: MasterStanding): ListRowView => ({
-    key: MASTER_KEY,
-    keyLabel: t("agents.master.word"),
-    href,
-    title: `${masterName(m, language)} · ${doing(m, language)}`,
-    facts: [t("agents.master.slotsFact", { slots: slotsText(m, language) }), lastPassText(m, language), m.pass?.issueKey ? t("agents.master.onIssue", { key: m.pass.issueKey }) : null].filter((x): x is string => !!x),
-    state: <StatusBadge family="masterState" value={m.state} />,
-    waitingOn: <span className="text-13 text-subtle">—</span>,
-    owner: m.device?.name ?? t("agents.master.noBox"),
-    age: m.lastBeatAt ? { text: formatAge(m.lastBeatAt, language), title: t("agents.master.lastBeatAt", { at: formatDateTime(m.lastBeatAt, language) }) } : null,
-  });
+/** The master's one line: its name and what it is doing, and its state with its slots and last pass that state's hover. */
+export function MasterLine({ m }: { m: MasterStanding }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const reason = [t("agents.master.slotsFact", { slots: slotsText(m, language) }), lastPassText(m, language), m.lastBeatAt ? formatAge(m.lastBeatAt, language) : null].filter(Boolean).join(" · ");
+  return (
+    <>
+      <span className="min-w-0 flex-1 truncate">{`${masterName(m, language)} · ${doing(m, language)}`}</span>
+      <StatusChip family="masterState" value={m.state} reason={reason} />
+    </>
+  );
+}
 
 function MasterBanner({ m, className }: { m: MasterStanding; className?: string }) {
   const t = useCopy();
@@ -219,17 +215,21 @@ function MasterProperties({ m }: { m: MasterStanding }) {
   );
 }
 
-export function MasterPeek({ m, peek, full }: { m: MasterStanding; peek: PeekState; full: FullPage }) {
+/** What the master's line opens in place: what it waits on or is doing, its slots, its box, and its full page. */
+export function MasterDetail({ m, href }: { m: MasterStanding; href: string }) {
   const t = useCopy();
-  const language = useInterfaceLanguage();
   return (
-    <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("agents.master.title")} full={full} testId="master-peek">
-      <PeekHead noun={t("agents.master.title")} itemKey={t("agents.master.word")} badge={<StatusBadge family="masterState" value={m.state} />} title={masterName(m, language)} />
-      <MasterBanner m={m} className="px-4.5" />
-      <div className="px-4.5 pb-4 pt-4">
+    <div className="flex flex-col gap-3 pt-1" data-testid="master-detail">
+      <div className="flex items-center gap-3">
+        <MasterBanner m={m} className="min-w-0 flex-1" />
+        <Link href={href} className="text-13 font-medium text-link hover:underline" data-testid="master-open">
+          {t("agents.openPage")}
+        </Link>
+      </div>
+      <div className="grid gap-x-8 md:grid-cols-2">
         <MasterProperties m={m} />
       </div>
-    </PeekPanel>
+    </div>
   );
 }
 

@@ -6,14 +6,14 @@ import type { RunStanding } from "@forge/contracts/run-standing";
 import type { QueryKey } from "@tanstack/react-query";
 import { AgentsScreen } from "@/features/agents/components/agents-screen";
 import { MasterItemScreen, RunItemScreen } from "@/features/agents/components/agents-item-screens";
-import { MasterPeek } from "@/features/agents/components/master-views";
-import { RunPeek } from "@/features/agents/components/run-views";
+import { MasterDetail } from "@/features/agents/components/master-views";
+import { RunDetail } from "@/features/agents/components/run-views";
 import { IssueQuestions } from "@/features/questions/components/issue-questions";
 import type { AgentQuestion } from "@/features/questions/types";
 import { Seeded } from "./vi-chrome-requirements";
 
 // The Agents / Runs screens of the Development space for the vi walking test: the runs list in each
-// grouping, a run's peek and page in every state a run can stand in, the project master with its
+// grouping, a run's detail opened in place and its page in every state a run can stand in, the project master with its
 // passes, leased runs and charter, and the questions a master asked. Names and titles are
 // placeholder words; core's own rule, detail and failsBy sentences are the placeholder "r", and every
 // sentence core says is built from its registry key, as core sends it.
@@ -21,9 +21,7 @@ import { Seeded } from "./vi-chrome-requirements";
 const P = "p-agents";
 const AT = "2026-10-07T08:00:00.000Z";
 const NEAR = new Date(Date.now() + 5 * 60_000).toISOString();
-const noop = () => {};
 export const access = { projectId: P, slug: "hop", canWrite: true };
-const peek = { open: "x", position: { at: 1, of: 3 }, set: noop, move: noop };
 const device = { id: "d1", name: "may-1" };
 const RUN = say("issues.standing.who.run");
 const none = { source: "none", detail: "r", says: { detail: RULE } } as const;
@@ -84,6 +82,9 @@ export const RUNS: RunStanding[] = [
   run(12, { lane: "deploy", state: "running", issue: null, issues: [], step: { source: "run_column", step: "build", since: null } }),
   run(13, { state: "stuck", attentionGroup: "stuck", stuck: { ...stuckRule("disagreement"), disagreement: "box-live-core-terminal" } }),
 ] as RunStanding[];
+
+/** More runs at work, so the live list is drawn past the first view as a busy project's is (ISS-903's count rule: 20 rows at least). */
+const BUSY: RunStanding[] = Array.from({ length: 12 }, (_, i) => run(20 + i));
 
 const MASTER = {
   generatedAt: AT,
@@ -166,9 +167,9 @@ const voided = (id: string) => question(id, { status: "void", voidReason: "r", e
 
 /** Every read the Agents screens make, seeded. */
 export const data = (): [QueryKey, unknown][] => [
-  [["runs-standing", P, "list", "live"], list("live", RUNS.filter((r) => r.attentionGroup !== "finished"))],
+  [["runs-standing", P, "list", "live"], list("live", [...RUNS.filter((r) => r.attentionGroup !== "finished"), ...BUSY])],
   [["runs-standing", P, "list", "finished"], list("finished", RUNS.filter((r) => r.attentionGroup === "finished"), MASTERS_IDLE)],
-  [["runs-standing", P, "list", "all"], list("all" as never, RUNS)],
+  [["runs-standing", P, "list", "all"], list("all" as never, [...RUNS, ...BUSY])],
   ...RUNS.map((r) => [["runs-standing", P, "run", r.id], detail(r)] as [QueryKey, unknown]),
   [["runs-standing", P, "master"], MASTER],
   [["runs-standing", P, "passes"], { generatedAt: AT, projectId: P, items: [MASTER.pass, MASTER.lastPass, { ...(MASTER.lastPass as object), id: "pass-7", refused: { reason: "usage_limit", detail: "r" }, dispatched: [], skipped: [], parked: [], closeReason: "abandoned_quiet" }, { ...(MASTER.lastPass as object), id: "pass-6", recovers: { refusedSince: AT, refusedPasses: 2, reason: "usage_limit" }, closeReason: "session_gone" }], limit: 50, hasMore: true, next: "c" }],
@@ -192,8 +193,8 @@ export const SCREENS = [
   { name: "Agents · runs filtered", render: () => withUrl("?f=you,stuck&q=zzz", <AgentsScreen access={access} />) },
   { name: "Agents · sessions tab", render: () => withUrl("?tab=sessions", <AgentsScreen access={access} />) },
   ...RUNS.filter((_, i) => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12].includes(i)).map((r, i) => ({
-    name: `Run peek · ${r.state} ${i}`,
-    render: () => wrap(<RunPeek r={r} slug="hop" canWrite peek={peek} full={{ href: "/projects/hop", origin: null }} />),
+    name: `Run detail · ${r.state} ${i}`,
+    render: () => wrap(<RunDetail r={r} slug="hop" canWrite href="/projects/hop" />),
   })),
   ...[0, 1, 5, 7, 9, 10, 12].map((i) => ({
     name: `Run page · ${RUNS[i].state} ${i}`,
@@ -207,7 +208,7 @@ export const SCREENS = [
   { name: "Master page · passes", render: () => withUrl("", <MasterItemScreen access={access} />) },
   { name: "Master page · runs", render: () => withUrl("?tab=runs", <MasterItemScreen access={access} />) },
   { name: "Master page · charter", render: () => withUrl("?tab=charter", <MasterItemScreen access={access} />) },
-  { name: "Master peek", render: () => wrap(<MasterPeek m={MASTER} peek={peek} full={{ href: "/projects/hop", origin: null }} />) },
-  { name: "Master peek · none", render: () => wrap(<MasterPeek m={MASTERS_IDLE} peek={peek} full={{ href: "/projects/hop", origin: null }} />) },
+  { name: "Master detail", render: () => wrap(<MasterDetail m={MASTER} href="/projects/hop" />) },
+  { name: "Master detail · none", render: () => wrap(<MasterDetail m={MASTERS_IDLE} href="/projects/hop" />) },
   { name: "Issue decisions", render: () => wrap(<IssueQuestions issueId="i1" />) },
 ];

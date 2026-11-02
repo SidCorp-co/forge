@@ -14,21 +14,18 @@ import {
   FactsEmpty,
   FactsGroup,
   Input,
-  type ListRowView,
-  PeekHead,
-  PeekPanel,
-  type FullPage, type PeekState,
   StatusBadge,
+  StatusChip,
   StepBar,
   type StepView,
   WaitBanner,
-  WaitingOn,
 } from "@/design";
 import { enumLabel } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { formatAge, formatDateTime, formatWhen } from "@/lib/i18n/format";
+import { formatAge, formatWhen } from "@/lib/i18n/format";
+import { cn } from "@/lib/utils/cn";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said, saidOrNull, saidView } from "@/lib/i18n/said";
 import { parkRefusalText, useAbortRelease, useCancelRun } from "@/features/run-control";
@@ -53,24 +50,19 @@ function rowFacts(r: RunStanding, t: Copy, language: string): string[] {
   return parts;
 }
 
-export const runRow =
-  (hrefOf: (id: string) => string, t: Copy, language: string) =>
-  (r: RunStanding): ListRowView => {
-    const w = waitingView(r, language);
-    const at = r.finishedAt ?? r.since ?? r.startedAt;
-    return {
-      key: r.id,
-      keyLabel: runKey(r, language),
-      href: hrefOf(r.id),
-      title: said(r.says.title, language),
-      facts: rowFacts(r, t, language),
-      state: <StatusBadge family="runStanding" value={r.state} />,
-      waitingOn: w.kind === "none" ? <span className="text-13 text-subtle">—</span> : <WaitingOn w={w} />,
-      owner: r.holder.source === "held" ? said(r.holder.says.name, language) : t("runs.noHolder"),
-      age: { text: formatAge(at, language), title: t(r.finishedAt ? "runs.finishedAt" : "runs.sinceAt", { at: formatDateTime(at, language) }) },
-      dim: isFinal(r.state),
-    };
-  };
+/** A run's one line: its title, and its state with whom it waits on (and since when) that state's hover. */
+export function RunLine({ r }: { r: RunStanding }) {
+  const language = useInterfaceLanguage();
+  const w = waitingView(r, language);
+  const at = r.finishedAt ?? r.since ?? r.startedAt;
+  const reason = [w.kind === "none" ? null : `${w.who} · ${w.act}`, formatAge(at, language)].filter(Boolean).join(" · ");
+  return (
+    <>
+      <span className={cn("min-w-0 flex-1 truncate", isFinal(r.state) && "text-muted")}>{said(r.says.title, language)}</span>
+      <StatusChip family="runStanding" value={r.state} reason={reason} />
+    </>
+  );
+}
 
 export function RunBanner({ r, className, developer = false }: { r: RunStanding; className?: string; developer?: boolean }) {
   const language = useInterfaceLanguage();
@@ -345,38 +337,27 @@ export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string
   );
 }
 
-export function RunPeek({
-  r,
-  slug,
-  canWrite,
-  peek,
-  full,
-}: {
-  r: RunStanding;
-  slug: string;
-  canWrite: boolean;
-  peek: PeekState;
-  full: FullPage;
-}) {
+/** What a run's line opens in place: what it is, where it stands on its path, why, its acts and its facts, and its full page. */
+export function RunDetail({ r, slug, canWrite, href }: { r: RunStanding; slug: string; canWrite: boolean; href: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   return (
-    <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("runs.noun")} full={full} testId="run-peek">
-      <PeekHead
-        noun={t("runs.noun")}
-        itemKey={runKey(r, language)}
-        badge={<StatusBadge family="runStanding" value={r.state} />}
-        title={said(r.says.title, language)}
-        action={<RunActions r={r} slug={slug} canWrite={canWrite} />}
-      />
-      <div className="px-4.5 pb-3">
-        <RunPath r={r} />
+    <div className="flex flex-col gap-3 pt-1" data-testid="run-detail">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-mono text-12 text-subtle">{runKey(r, language)}</span>
+        <span>{rowFacts(r, t, language).join(" · ")}</span>
+        <span className="flex-1" />
+        <RunActions r={r} slug={slug} canWrite={canWrite} />
+        <Link href={href} className="text-13 font-medium text-link hover:underline" data-testid="run-open">
+          {t("agents.openPage")}
+        </Link>
       </div>
-      <RunBanner r={r} className="px-4.5" />
-      <div className="px-4.5 pb-4 pt-4">
+      <RunPath r={r} />
+      <RunBanner r={r} />
+      <div className="grid gap-x-8 md:grid-cols-2">
         <RunProperties r={r} slug={slug} />
       </div>
-    </PeekPanel>
+    </div>
   );
 }
 
