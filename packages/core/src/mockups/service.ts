@@ -18,7 +18,7 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { movedRow, transition } from '../lifecycle/index.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { mockupContent } from './content.js';
 import {
   chainIds,
@@ -121,7 +121,7 @@ export async function proposeMockup(input: {
   body: ProposeMockupRequest;
 }): Promise<MockupOutcome> {
   const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const loose = settlesWithoutRevisesRefusal(body);
   if (loose) return { ok: false, refusals: [loose] };
   const revised = body.revises ? await revisedRow(projectId, body.revises) : null;
@@ -196,7 +196,7 @@ async function decide(
   check: (row: MockupRow, key: string) => Promise<MockupRefusal | null>,
   set: { status: 'accepted' | 'returned' | 'withdrawn'; reason: string | null },
 ): Promise<MockupOutcome> {
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const first = await rowIn(db, projectId, ref);
   const refusals = await db.transaction(async (tx) => {
     await lockMockups(tx, projectId);

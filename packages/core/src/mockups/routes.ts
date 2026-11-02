@@ -13,6 +13,7 @@ import { sendBytes, setInertAttachmentHeaders } from '../lib/attachment-headers.
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { commentOnMockup, mockupCommentsAs } from './comments.js';
 import { getMockupAs, listMockupsAs, mockupBytes } from './list.js';
 import type { MockupActor } from './read.js';
@@ -43,6 +44,10 @@ const mockupParam = zValidator(
   invalid('invalid path: a project uuid and a mockup uuid or key (MK-n)'),
 );
 
+// each service checks again with requireDeclaredOn, so the MCP design door is held to the same
+const READ = requiresOnParam('project.read', 'id');
+const WRITE = requiresOnParam('project.write', 'id');
+
 const listQuery = zValidator(
   'query',
   listMockupsQuerySchema,
@@ -60,7 +65,7 @@ function answer(c: Context, outcome: MockupOutcome) {
   return c.json({ mockup: outcome.mockup }, outcome.created ? 201 : 200);
 }
 
-mockupRoutes.get('/:id/mockups', projectParam, listQuery, async (c) => {
+mockupRoutes.get('/:id/mockups', projectParam, READ, listQuery, async (c) => {
   const { id } = c.req.valid('param');
   return c.json(await listMockupsAs(actorOf(c), id, c.req.valid('query')));
 });
@@ -68,6 +73,7 @@ mockupRoutes.get('/:id/mockups', projectParam, listQuery, async (c) => {
 mockupRoutes.post(
   '/:id/mockups',
   projectParam,
+  WRITE,
   strictBody(proposeMockupRequestSchema, PROPOSE_MOCKUP_SHAPE),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -78,12 +84,12 @@ mockupRoutes.post(
   },
 );
 
-mockupRoutes.get('/:id/mockups/:mk', mockupParam, noQuery, async (c) => {
+mockupRoutes.get('/:id/mockups/:mk', mockupParam, READ, noQuery, async (c) => {
   const { id, mk } = c.req.valid('param');
   return c.json({ mockup: await getMockupAs(actorOf(c), id, mk) });
 });
 
-mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, noQuery, async (c) => {
+mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, READ, noQuery, async (c) => {
   const { id, mk } = c.req.valid('param');
   const file = await mockupBytes(actorOf(c), id, mk);
   if (!file.ok) return refused(c, [file.refusal], 'MOCKUP_REFUSED');
@@ -94,7 +100,7 @@ mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, noQuery, async (c) => 
 
 const decideBody = strictBody(decideMockupRequestSchema, DECIDE_MOCKUP_SHAPE);
 
-mockupRoutes.post('/:id/mockups/:mk/accept', mockupParam, decideBody, async (c) => {
+mockupRoutes.post('/:id/mockups/:mk/accept', mockupParam, WRITE, decideBody, async (c) => {
   const { id, mk } = c.req.valid('param');
   return answer(
     c,
@@ -107,7 +113,7 @@ mockupRoutes.post('/:id/mockups/:mk/accept', mockupParam, decideBody, async (c) 
   );
 });
 
-mockupRoutes.post('/:id/mockups/:mk/return', mockupParam, decideBody, async (c) => {
+mockupRoutes.post('/:id/mockups/:mk/return', mockupParam, WRITE, decideBody, async (c) => {
   const { id, mk } = c.req.valid('param');
   return answer(
     c,
@@ -123,6 +129,7 @@ mockupRoutes.post('/:id/mockups/:mk/return', mockupParam, decideBody, async (c) 
 mockupRoutes.post(
   '/:id/mockups/:mk/withdraw',
   mockupParam,
+  WRITE,
   strictBody(z.strictObject({}), '{} (no fields)'),
   async (c) => {
     const { id, mk } = c.req.valid('param');
@@ -130,7 +137,7 @@ mockupRoutes.post(
   },
 );
 
-mockupRoutes.get('/:id/mockups/:mk/comments', mockupParam, noQuery, async (c) => {
+mockupRoutes.get('/:id/mockups/:mk/comments', mockupParam, READ, noQuery, async (c) => {
   const { id, mk } = c.req.valid('param');
   return c.json(await mockupCommentsAs(actorOf(c), id, mk));
 });
@@ -138,6 +145,7 @@ mockupRoutes.get('/:id/mockups/:mk/comments', mockupParam, noQuery, async (c) =>
 mockupRoutes.post(
   '/:id/mockups/:mk/comments',
   mockupParam,
+  WRITE,
   strictBody(commentMockupRequestSchema, COMMENT_MOCKUP_SHAPE),
   async (c) => {
     const { id, mk } = c.req.valid('param');

@@ -6,7 +6,7 @@ import { db } from '../db/client.js';
 import { rowIn as feedbackRowIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
 import { getStorage } from '../integrations/index.js';
 import { egressAs } from '../lib/data-egress.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import {
   type MockupActor,
   type MockupDoor,
@@ -29,7 +29,7 @@ export async function listMockupsAs(
   },
   door: MockupDoor = {},
 ): Promise<MockupListResponse> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const named = [query.requirement, query.feedback, query.issue].filter(Boolean);
   if (named.length !== 1) {
     throw badRequest(
@@ -63,7 +63,7 @@ export async function getMockupAs(
   ref: string,
   door: MockupDoor = {},
 ) {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const [view] = await mockupViews(projectId, [await rowIn(db, projectId, ref)], viewer, door);
   return view;
 }
@@ -76,7 +76,7 @@ export async function mockupBytes(
   ref: string,
   door: MockupDoor = {},
 ) {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const row = await rowIn(db, projectId, ref);
   const gate = await egressAs(
     { agency: viewer.agency, providerBound: door.providerBound },

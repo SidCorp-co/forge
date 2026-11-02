@@ -16,7 +16,7 @@ import { db } from '../db/client.js';
 import { mockupComments, mockups } from '../db/schema-mockups.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import {
   chainIds,
   type MockupActor,
@@ -103,7 +103,7 @@ export async function mockupCommentsAs(
   ref: string,
   door: MockupDoor = {},
 ): Promise<MockupCommentsResponse> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const row = await rowIn(db, projectId, ref);
   const rows = await db
     .select()
@@ -122,7 +122,7 @@ export async function commentOnMockup(input: {
   body: CommentMockupRequest;
 }): Promise<CommentOutcome> {
   const { projectId, actor, body } = input;
-  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const first = await rowIn(db, projectId, input.ref);
   const written = await db.transaction(async (tx) => {
     await lockMockups(tx, projectId);
