@@ -1,1 +1,0 @@
-**More dependency advisories are patched.** Mail sending, the web router's state serializer and two lint and test helpers now run on fixed releases, leaving only advisories that no upstream release has fixed yet.

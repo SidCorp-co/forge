@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.452] - 2026-11-02
+
+Patched dependency advisories and declared permissions on channel, design and support tools
+
+### Security
+
+- **More dependency advisories are patched.** Mail sending, the web router's state serializer and two lint and test helpers now run on fixed releases, leaving only advisories that no upstream release has fixed yet.
+
 ## [0.4.0-dev.451] - 2026-11-02
 
 Patched releases for open critical and high dependency advisories
