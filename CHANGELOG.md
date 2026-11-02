@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.430] - 2026-11-02
+
+A served guide for linking a chat account, and files attach to feedback
+
+### Added
+
+- **A file attaches to an existing feedback item.** Over REST and MCP (`project_feedback attach`), with an optional approved-design label; the item lists each file with who attached it, and `forge_uploads` fetches it (ISS-879).
+
 ## [0.4.0-dev.429] - 2026-11-02
 
 One channel bot follows a product's several projects and hears each room its own way

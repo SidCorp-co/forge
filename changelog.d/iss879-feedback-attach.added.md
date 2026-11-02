@@ -1,1 +1,0 @@
-**A file attaches to an existing feedback item.** Over REST and MCP (`project_feedback attach`), with an optional approved-design label; the item lists each file with who attached it, and `forge_uploads` fetches it (ISS-879).
