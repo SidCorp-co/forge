@@ -15,10 +15,14 @@ export const dave: Member = { userId: 'u-dave', username: 'dave' };
 export const zed: Member = { userId: 'u-zed', username: 'zed' };
 export const OWNER_ID = 'u-alice';
 
-/** The agent's binding block; `deployTargets` is filled once the dev target exists. */
-export const agentBlock = (deployTargets: string[]) => ({
+/**
+ * The agent's binding block; `deployTargets` is filled once the dev target exists, and `ownerRoom`
+ * names the group the agent asks the owner in (ISS-872).
+ */
+export const agentBlock = (deployTargets: string[], ownerRoom: string) => ({
   product: 'Catalog, the shop back office',
   readers: 'team',
+  ownerRoom,
   grants: {
     abilities: ['file_items', 'deploy'],
     deployTargets,
@@ -52,7 +56,7 @@ export class AgentWorld extends ChannelWorld {
     });
     await this.bindTarget({
       rids: [this.stand.rid, this.stand.rid2],
-      agent: agentBlock([this.devTarget]),
+      agent: agentBlock([this.devTarget], this.stand.rid),
     });
     // the record a person sets on each group's page: carol is Technical, alice Product, bob a User
     this.rid = this.stand.rid;

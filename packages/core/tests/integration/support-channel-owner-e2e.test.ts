@@ -259,7 +259,7 @@ describe('REQ-77 BC-12: an agent asks the owner through the channel, and the ans
 
   it('hands the answer to the asking session though the room answers only mentions', async () => {
     const granted = await w.retarget({
-      agent: { ...agentBlock([w.devTarget]), answers: 'mentions' },
+      agent: { ...agentBlock([w.devTarget], chat.rid), answers: 'mentions' },
     });
     expect(granted.status, JSON.stringify(granted.body)).toBeLessThan(300);
     await w.settleWarm();
@@ -308,9 +308,9 @@ describe('REQ-77 BC-12: an agent asks the owner through the channel, and the ans
     // a binding that names no owner has no one to ask
     const bare = await w.retarget({
       agent: {
-        ...agentBlock([w.devTarget]),
+        ...agentBlock([w.devTarget], chat.rid),
         answers: 'every-message',
-        grants: { ...agentBlock([w.devTarget]).grants, owner: undefined },
+        grants: { ...agentBlock([w.devTarget], chat.rid).grants, owner: undefined },
       },
     });
     expect(bare.status, JSON.stringify(bare.body)).toBeLessThan(300);
