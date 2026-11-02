@@ -1,28 +1,31 @@
+// Stuck chains on Delivery overview: each chain an issue and what it waits on, each named by its title,
+// its key the title's tooltip, never text on the face (ISS-903).
 
 import { Link } from "@/lib/navigation/router";
 import { Fragment } from "react";
-import { StatusBadge, WaitingOn } from "@/design";
+import { StatusBadge, Tooltip, WaitingOn } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import type { OverviewChain, OverviewChainNode, OverviewStuck } from "../types";
 
+/** An issue in a stuck chain, named by its title opening its page; its key, and the rule it waits on, are that title's tooltip (ISS-903). */
 function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {
   const href = issueHref(slug, node.key);
   const language = useInterfaceLanguage();
+  const tip = node.waitingOn?.rule ? `${node.key} · ${said(node.waitingOn.says.rule, language)}` : node.key;
   return (
     <div className="min-w-0" data-testid="chain-node" data-key={node.key} data-held={node.held}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        <Link href={href} className="break-all font-mono text-12 font-semibold text-link no-underline hover:underline">
-          {node.key}
-        </Link>
+        <Tooltip label={tip} className="min-w-0 max-w-full">
+          <Link href={href} className="min-w-0 truncate text-13 font-medium text-fg no-underline hover:underline" data-testid="chain-node-title">
+            {node.title || node.key}
+          </Link>
+        </Tooltip>
         {node.status ? (
           <StatusBadge family="issue" value={node.status} step={node.step} {...(node.tone ? { tone: node.tone } : {})} />
         ) : null}
       </div>
-      <span className="block truncate text-13 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${said(node.waitingOn.says.rule, language)}` : node.title}>
-        {node.title}
-      </span>
       {node.waitingOn ? <WaitingOn w={node.waitingOn} /> : null}
     </div>
   );
