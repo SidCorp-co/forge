@@ -48,18 +48,24 @@ The lesson's lifecycle lives in `lessons`. Its text reaches agents through proje
   `last_applied_at`, `superseded_by`, the reason it was rejected or retired, and the check issue.
 - **Provenance** is the corrections linked to it (`corrections.lesson_id`).
 - **Knowledge.** On approval, the lesson writes a knowledge entry `lesson-<n>` of a new kind, `lesson`,
-  with `injection: always` and metadata `{lessonId, scope}`. On hold or retirement the entry turns to
-  `injection: none`. A proposed or rejected lesson has no entry, so no agent can read an unapproved
-  lesson. The knowledge doors refuse a write to a `lesson` entry, `KNOWLEDGE_LESSON_OWNED`, so the one
-  way to change one is the steward's decision.
-- **Injection.** The generic "Project rules" block leaves `lesson` entries out. A separate "Lessons"
-  block renders the scoped ones in four places:
-  - the job preamble (`prompt/facts/resolve.ts`);
-  - the checkout orientation (`prompt/checkout-orientation.ts`), which every master and box run reads;
-  - the assistant's system prompt (`assistant/external-chat.ts`);
-  - the steward's turn prompt (`steward/lessons-block.ts`).
+  with `injection: on_demand` and metadata `{lessonId, scope}`. On hold or retirement the entry turns to
+  `injection: none`: still readable by its slug, found by no knowledge search
+  (`knowledge/lesson-entries.ts:notAWithdrawnLesson`). A proposed or rejected lesson has no entry, so no
+  agent can read an unapproved lesson. The knowledge doors refuse a write to a `lesson` entry,
+  `KNOWLEDGE_LESSON_OWNED`, so the one way to change one is the steward's decision.
+- **Retrieval, never injection** (owner rule prompt-is-a-map, ISS-867; migration 0577 moved every
+  approved entry from `always` to `on_demand`). The generic "Project rules" block leaves `lesson`
+  entries out, and so does the guide index. No prompt carries a lesson's sentence: a "Lessons" map
+  (`lessons/block.ts:lessonsMapText`) names the slugs of the lessons in scope, the narrowest scope and
+  the newest first, within `LESSONS_MAP_MAX_CHARS`; past it the rest are counted and the list door
+  named. The agent reads the ones its work needs. The map is in four places, each with its own door:
+  - the job preamble (`prompt/facts/resolve.ts`) and the checkout orientation
+    (`prompt/checkout-orientation.ts`): `GET /api/projects/:id/knowledge/<slug>` and knowledge search;
+  - the assistant's system prompt (`assistant/external-chat.ts`): `forge_knowledge`;
+  - the steward's turn prompt (`steward/lessons-block.ts`): `steward_read_lesson` and
+    `steward_list_lessons`.
 
-  Each agent receives the `project` lessons, the `item_kind` lessons for the kinds it produces, and
+  Each agent's map names the `project` lessons, the `item_kind` lessons for the kinds it produces, and
   the `area` lessons for its subject's area. An agent with no subject gets every `area` lesson,
   labelled with its area.
 - **Retirement (BC-7).** The steward retires a lesson in two cases, each with its reason in the
@@ -123,10 +129,10 @@ applied once.
 - **Report.** Agents report one with `POST /api/projects/:id/lessons/:n/confusions` (`project.write`).
   A steward run reports one through its door tool `steward_raise_lesson_confusion`. The Assistant
   reports one with `forge_lesson_confusion`, which goes straight to the store: no confirm card holds
-  it, since no person agrees to it (`assistant/agreement/write-rule.ts`). The Lessons block says:
+  it, since no person agrees to it (`assistant/agreement/write-rule.ts`). The Lessons map says:
   stop, do not guess, report it, and go on without that lesson.
 - **Hold.** Raising moves the lesson approved → held in the same transaction, and its knowledge entry
-  turns to `injection: none`. From that moment no prompt carries it. A lesson that is already held
+  turns to `injection: none`. From that moment no map names it and no search finds it. A lesson already held
   takes the new confusion beside the open one.
 - **Settle.** The lessons pass settles each open confusion (`steward/lessons-review.ts`): the fast
   model reads both sides, the recommendation and the requirements and designs in the lesson's scope,
@@ -224,17 +230,17 @@ Each step is idempotent and runs under `lock_timeout`; the file's header carries
   judgement; a grouping that reads two corrections as one point proposes a lesson nobody meant, and
   only the steward's own review, a second model call per proposal, catches that. No person does.
 - **A model settles every lesson.** Each proposal and each confusion costs one fast-model call per
-  pass until it is settled, and a wrong settlement reaches every prompt in its scope until an agent
+  pass until it is settled, and a wrong settlement reaches every agent that reads it until one
   reports a confusion about it.
 - **A model can reject a real correction.** A rejection is final: nothing re-reads a rejected row,
   so a correction the steward misread as noise never feeds a lesson. Its reason is kept on the row,
   and the month counts rejections, so a rising count is visible to an agent reading the figures.
-- **Every prompt grows.** Each approved lesson is one more line in the run preamble, the checkout
-  orientation, the assistant's and the steward's prompts. Retiring unused lessons is the only brake.
+- **A lesson costs a read.** The map is bounded, so a prompt does not grow with the lessons; an agent
+  pays one read per lesson its work needs, and a lesson it does not read does not shape its output.
   The monthly figures add two slugs to the run preamble's on-demand list of a project with lesson
   work, never their text.
 - **A held lesson is absent until the steward settles it.** A confusion withdraws the lesson from
-  every prompt at once, so the error it fixed can come back while the gateway is down and the
+  every map and search at once, so the error it fixed can come back while the gateway is down and the
   confusion waits for the next pass.
 - **Agents report what they applied.** The `Lessons applied:` line is the agent's own claim; a lesson
   that shaped an output without being named is never counted, and an unused one may be retired.
