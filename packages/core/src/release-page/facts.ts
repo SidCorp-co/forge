@@ -54,6 +54,7 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
               identityKind: v.identityKind,
               commitSha: v.commitSha,
               runtimeRef: v.runtimeRef,
+              releaseVersion: v.releaseVersion ?? null,
               at: v.at,
               reason: v.reason,
               evidence: v.evidence,

@@ -1,3 +1,4 @@
+// @direct-test-of packages/contracts/src/release-page.ts
 import { describe, expect, it } from 'vitest';
 import {
   type CarriedCriterion,
@@ -391,5 +392,28 @@ describe('under an independent judge, only the judge proves a criterion on the p
     expect(untracedOf([], claims)?.proven).toEqual([
       expect.objectContaining({ n: 1, countedUnderCutover: true }),
     ]);
+  });
+});
+
+// ISS-900: where production names no commit it serves, a release is its agent's record by version and
+// names no build; a pass judged on that release is claimed on its own page, and on no other release's.
+describe('a release recorded by version alone claims a pass judged on that version', () => {
+  const onRelease = (version: string, at: string) =>
+    verdict('pass', null, at, { identityKind: 'release', releaseVersion: version });
+
+  it('claims a pass judged on its own version, with no build', () => {
+    const own = criterion(1, 'BC-1', [onRelease('0.76.0', '2026-11-02T10:00:00.000Z')]);
+    const [read] = readClaims([own], null, 'independent', null, '0.76.0');
+    expect(read?.claim).toEqual({ claimed: true, at: '2026-11-02T10:00:00.000Z' });
+    expect(read?.proven).toBe(true);
+  });
+
+  it('claims nothing on another release, and nothing from a release verdict on a build', () => {
+    const other = criterion(1, 'BC-1', [onRelease('0.75.0', '2026-11-02T10:00:00.000Z')]);
+    const [unbuilt] = readClaims([other], null, 'independent', null, '0.76.0');
+    expect(unbuilt?.claim.claimed).toBe(false);
+    expect(unbuilt?.proven).toBe(false);
+    const [built] = readClaims([other], BUILD, 'independent', null, '0.76.0');
+    expect(built?.claim.claimed).toBe(false);
   });
 });

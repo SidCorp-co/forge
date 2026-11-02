@@ -2,7 +2,7 @@ import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import {
-  judgedOnReleaseBuild,
+  countedOnRelease,
   notJudgedOnWhy,
   type ReleaseVerdictReading,
 } from '@forge/contracts/release-page';
@@ -110,6 +110,7 @@ export async function carriedVerdictsOf(
       identityKind: criterionVerdicts.identityKind,
       commitSha: criterionVerdicts.commitSha,
       runtimeRef: criterionVerdicts.runtimeRef,
+      releaseVersion: criterionVerdicts.releaseVersion,
       evidence: criterionVerdicts.evidence,
       agency: criterionVerdicts.authorAgency,
       createdAt: criterionVerdicts.createdAt,
@@ -132,6 +133,7 @@ export async function carriedVerdictsOf(
     identityKind: v.identityKind,
     commitSha: v.commitSha,
     runtimeRef: v.runtimeRef,
+    releaseVersion: v.releaseVersion,
     at: v.createdAt.toISOString(),
     reason: v.reason,
     evidence: v.evidence ?? [],
@@ -151,19 +153,18 @@ export async function carriedVerdictsOf(
  * reopen, its newest shown; one with a build reads only the verdicts judged on that build
  * (`judgedOnReleaseBuild`: on a project naming a testing environment, a runtime verdict at it and
  * never a commit one, REQ-36 BC-18), so a verdict on an earlier build never counts, and none on it
- * reads not judged — "Not judged on <environment>" where the project names one (BC-19).
+ * reads not judged — "Not judged on <environment>" where the project names one (BC-19). A verdict
+ * judged on a release counts on the release of the `version` it names alone (ISS-900).
  */
 export function criteriaAt(
   issue: IssueFact,
   build: string | null,
   { judge, judgedOn }: ReleaseProof,
+  version: string | null = null,
 ): ReleaseCriterionView[] {
   return issue.criteria.map((c) => {
     const newestFirst = [...(issue.verdicts.get(c.n) ?? [])].reverse();
-    const counted =
-      build === null
-        ? newestFirst
-        : newestFirst.filter((v) => judgedOnReleaseBuild(v, build, judgedOn));
+    const counted = newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, version));
     const read = verifiedOf(counted, judge);
     const stands = read.stands;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
@@ -178,9 +179,11 @@ export function criteriaAt(
           ? 'unresolved'
           : stands.verdict,
       identity: stands
-        ? judgedOn === null
-          ? commitIdentityPhrase(build)
-          : `runtime ${build.slice(0, 12)} on ${judgedOn}`
+        ? stands.identityKind === 'release'
+          ? `release ${stands.releaseVersion}`
+          : judgedOn === null
+            ? commitIdentityPhrase(build)
+            : `runtime ${build.slice(0, 12)} on ${judgedOn}`
         : null,
       reason: stands?.reason ?? null,
       judgedAt: stands?.at ?? null,

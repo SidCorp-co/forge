@@ -4,11 +4,11 @@
 // Everything else it says is a known issue. Design: docs/proposals/release-page.md.
 
 import { z } from "zod";
+import { releaseNoteReferences } from "./content-language.js";
 import {
 	CRITERION_STANDINGS,
 	type CriterionStanding,
 } from "./issue-vocabulary.js";
-import { releaseNoteReferences } from "./content-language.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 import {
 	type ReleaseNamer,
@@ -66,7 +66,9 @@ export function citesAttachment(
 	file: { id: string; name: string },
 ): boolean {
 	const line = cited.trim();
-	return line === file.name || citedAttachmentId(line) === file.id.toLowerCase();
+	return (
+		line === file.name || citedAttachmentId(line) === file.id.toLowerCase()
+	);
 }
 export const RELEASE_PICTURE_MIMES = [
 	"image/png",
@@ -145,6 +147,8 @@ export interface ReleaseVerdictReading {
 	commitSha: string | null;
 	/** The build a `runtime` verdict was judged on, as it served it; null on every other identity. */
 	runtimeRef: string | null;
+	/** The release a `release` verdict was judged on (ISS-900); absent or null on every other identity. */
+	releaseVersion?: string | null;
 	at: string;
 }
 
@@ -153,17 +157,44 @@ export interface ReleaseVerdictReading {
  * reads it (REQ-36 BC-18..BC-20): where the project names no testing environment (`judgedOn` null),
  * a verdict whose identity is that commit; where it names one, only a verdict judged on the running
  * build at that commit (`runtime`, whatever corroborated it), and never a commit verdict, which gates
- * the merge and proves no release criterion.
+ * the merge and proves no release criterion. A verdict judged on a release (ISS-900: where production
+ * names no commit it serves, a release is its agent's record by version) counts on the release whose
+ * `version` it names and on no other, whether or not that release names a build.
  */
 export function judgedOnReleaseBuild(
-	v: Pick<ReleaseVerdictReading, "identityKind" | "commitSha" | "runtimeRef">,
-	build: string,
+	v: Pick<
+		ReleaseVerdictReading,
+		"identityKind" | "commitSha" | "runtimeRef" | "releaseVersion"
+	>,
+	build: string | null,
 	judgedOn: string | null,
+	version: string | null = null,
 ): boolean {
+	if (v.identityKind === "release")
+		return version !== null && v.releaseVersion === version;
+	if (build === null) return false;
 	if (judgedOn === null) {
 		return v.identityKind === "commit" && v.commitSha === build;
 	}
 	return v.identityKind === "runtime" && v.runtimeRef?.toLowerCase() === build;
+}
+
+/**
+ * The verdicts a release reads a criterion by: those judged on it (`judgedOnReleaseBuild`), or, on a
+ * release with no build (a draft, or a release recorded by version alone), every one but a verdict on
+ * another release.
+ */
+export function countedOnRelease(
+	v: Pick<
+		ReleaseVerdictReading,
+		"identityKind" | "commitSha" | "runtimeRef" | "releaseVersion"
+	>,
+	build: string | null,
+	judgedOn: string | null,
+	version: string | null = null,
+): boolean {
+	if (build === null && v.identityKind !== "release") return true;
+	return judgedOnReleaseBuild(v, build, judgedOn, version);
 }
 
 /** Why a release criterion with no verdict on the running build is not proven, naming the environment (REQ-36 BC-19). */
@@ -186,18 +217,19 @@ export type ReleaseClaim =
  * Whether a release page may claim a criterion: only the newest verdict judged on `build`
  * (`judgedOnReleaseBuild`) counts, and only a pass is claimed. A short, a fail or a skip on the build is a known issue
  * as itself; a pass on any other commit, or no verdict on it, is `not_judged`. With no cut
- * build (`null`) nothing is claimed.
+ * build (`null`) only a verdict judged on the release's own version is claimed (ISS-900).
  */
 export function releaseClaimOf(
 	verdicts: readonly ReleaseVerdictReading[],
 	build: string | null,
 	judgedOn: string | null = null,
+	/** The release's version: a verdict judged on a release counts on its own (ISS-900). */
+	version: string | null = null,
 ): ReleaseClaim {
 	const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
-	const onBuild =
-		build === null
-			? undefined
-			: newestFirst.find((v) => judgedOnReleaseBuild(v, build, judgedOn));
+	const onBuild = newestFirst.find((v) =>
+		judgedOnReleaseBuild(v, build, judgedOn, version),
+	);
 	if (onBuild?.verdict === "pass") return { claimed: true, at: onBuild.at };
 	if (onBuild)
 		return { claimed: false, standing: onBuild.verdict, elsewhere: null };
@@ -805,7 +837,13 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 		}),
 		approval: z.strictObject({
 			required: z.boolean(),
-			state: z.enum(["not_asked", "pending", "approved", "returned", "unapproved"]),
+			state: z.enum([
+				"not_asked",
+				"pending",
+				"approved",
+				"returned",
+				"unapproved",
+			]),
 			by: PersonSchema.nullable(),
 			at: ISO.nullable(),
 		}),

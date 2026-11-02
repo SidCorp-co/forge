@@ -9,7 +9,7 @@
 
 import {
   citesAttachment,
-  judgedOnReleaseBuild,
+  countedOnRelease,
   notJudgedOnWhy,
   RELEASE_CLIP_MAX_BYTES,
   type ReleaseClaim,
@@ -82,28 +82,31 @@ function readAt(
   verdicts: readonly CarriedVerdict[],
   build: string | null,
   judgedOn: string | null,
+  version: string | null,
 ): CarriedVerdict[] {
   const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
-  return build === null
-    ? newestFirst
-    : newestFirst.filter((v) => judgedOnReleaseBuild(v, build, judgedOn));
+  return newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, version));
 }
 
-/** `judgedOn` is the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18), or null. */
+/**
+ * `judgedOn` is the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18), or null;
+ * `version` the release's, on which a verdict judged on a release counts (ISS-900).
+ */
 export function readClaims(
   criteria: readonly CarriedCriterion[],
   build: string | null,
   judge: VerifiedJudge | null,
   judgedOn: string | null,
+  version: string | null = null,
 ): ClaimReading[] {
   return criteria.map((criterion) => {
-    const read = verifiedOf(readAt(criterion.verdicts, build, judgedOn), judge);
+    const read = verifiedOf(readAt(criterion.verdicts, build, judgedOn, version), judge);
     const { stands, why } = read;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
-    const onBuild = build === null ? null : stands;
+    // a release with no build still stands on a verdict judged on its own version
+    const onBuild = build === null && stands?.identityKind !== 'release' ? null : stands;
     let claim: ReleaseClaim;
-    if (build === null || onBuild === null)
-      claim = releaseClaimOf(criterion.verdicts, build, judgedOn);
+    if (onBuild === null) claim = releaseClaimOf(criterion.verdicts, build, judgedOn, version);
     else if (proven) claim = { claimed: true, at: onBuild.at };
     else if (onBuild.verdict === 'pass')
       claim = { claimed: false, standing: 'not_judged', elsewhere: null };
