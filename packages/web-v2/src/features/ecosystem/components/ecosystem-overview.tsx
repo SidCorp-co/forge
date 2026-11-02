@@ -1,6 +1,6 @@
 import { Link } from "@/lib/navigation/router";
 import type { ReactNode } from "react";
-import { Badge, StatusBadge, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Badge, CountSection, StatusBadge, Table, TBody, TD, TH, THead, Tooltip, TR } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { contractHref } from "@/lib/routes/contracts";
@@ -103,32 +103,49 @@ function said(a: Attention, bus: Bus, mine: Names, t: Copy): Said {
   }
 }
 
-/** First on the page when anything is behind, breaking, unfound or outside its contract; one line when nothing is. */
+/**
+ * First on the page when anything is behind, breaking, unfound or outside its contract, open with how
+ * many, each item what is wrong and its next step, why the item's hover or focus; one line when nothing
+ * is (ISS-903: a fold with its count, like the parts under it).
+ */
 export function NeedsAttention({ bus, attention, mine }: { bus: Bus; attention: readonly Attention[]; mine: Names }) {
   const t = useCopy();
-  return (
-    <section aria-labelledby="needs-attention" className="grid gap-2" data-testid="needs-attention">
-      <h2 id="needs-attention" className="text-14 font-semibold text-fg">
-        {t("ecosystem.attention.title")}
-      </h2>
-      {attention.length === 0 ? (
+  if (attention.length === 0) {
+    return (
+      <section aria-labelledby="needs-attention" className="grid gap-2" data-testid="needs-attention">
+        <h2 id="needs-attention" className="text-14 font-semibold text-fg">
+          {t("ecosystem.attention.title")}
+        </h2>
         <p className="text-13 text-muted">{t("ecosystem.attention.none")}</p>
-      ) : (
+      </section>
+    );
+  }
+  return (
+    <section aria-label={t("ecosystem.attention.title")} data-testid="needs-attention">
+      <CountSection label={t("ecosystem.attention.title")} count={attention.length} defaultOpen testId="needs-attention-fold">
         <ul className="grid border-t border-line">
           {attention.map((a) => {
             const s = said(a, bus, mine, t);
             return (
               <li key={a.key} className="flex flex-wrap items-start justify-between gap-x-6 gap-y-1 border-b border-line-subtle py-2.5">
                 <span className="grid min-w-0 flex-1 basis-80 gap-0.5">
-                  <span className="text-13 text-fg">{s.what}</span>
-                  {s.why ? <span className="text-12 text-muted">{s.why}</span> : null}
+                  {s.why ? (
+                    <Tooltip label={s.why} multiline focusable className="min-w-0 max-w-full">
+                      <span className="text-13 text-fg">
+                        {s.what}
+                        <span className="sr-only"> {s.why}</span>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <span className="text-13 text-fg">{s.what}</span>
+                  )}
                 </span>
                 <NextStep href={s.action.href}>{s.action.label}</NextStep>
               </li>
             );
           })}
         </ul>
-      )}
+      </CountSection>
     </section>
   );
 }
@@ -180,20 +197,14 @@ function State({ c }: { c: Connection }) {
   );
 }
 
-/** Every connection, one consumer project and one contract a row, however many of its modules call it. */
+/** Every connection, one consumer project and one contract a row, however many of its modules call it; shut to its count (ISS-903). */
 export function ConnectionsTable({ bus, connections }: { bus: Bus; connections: readonly Connection[] }) {
   const t = useCopy();
   const names = new Map(bus.projects.map((p) => [p.id, p.slug]));
   const slug = (id: string) => names.get(id) ?? t("ecosystem.overview.aMember");
   return (
-    <section aria-labelledby="connections" className="grid gap-2" data-testid="connections">
-      <h2 id="connections" className="text-14 font-semibold text-fg">
-        {t("ecosystem.connections.title")}
-      </h2>
-      {connections.length === 0 ? (
-        <p className="text-13 text-muted">{t("ecosystem.connections.none")}</p>
-      ) : (
-        <>
+    <section aria-label={t("ecosystem.connections.title")} data-testid="connections">
+      <CountSection label={t("ecosystem.connections.title")} count={connections.length} testId="connections-fold">
           <div className="hidden sm:block">
             <Table aria-label={t("ecosystem.connections.title")}>
               <THead>
@@ -245,8 +256,7 @@ export function ConnectionsTable({ bus, connections }: { bus: Bus; connections: 
               </li>
             ))}
           </ul>
-        </>
-      )}
+      </CountSection>
     </section>
   );
 }

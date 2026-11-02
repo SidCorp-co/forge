@@ -4,7 +4,7 @@
 
 import { Link } from "@/lib/navigation/router";
 import { useEffect, useState } from "react";
-import { Badge, Disclosure, enumLabel, ProjectMark, sentenceCase, StatusBadge } from "@/design";
+import { Badge, CountSection, Disclosure, enumLabel, ProjectMark, sentenceCase, StatusBadge } from "@/design";
 import { readingOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { contractsHref } from "@/lib/routes/contracts";
@@ -222,13 +222,22 @@ function Technical({ bus, project }: { bus: Bus; project: BusProject }) {
   );
 }
 
+const linksToTechnical = () => window.location.hash.startsWith("#technical-");
+
+/** The member projects, shut to their count (ISS-903); a next step linking to one's Technical fold opens them. */
 export function MemberProjects({ bus, mine }: { bus: Bus; mine: Names }) {
   const t = useCopy();
+  const [open, setOpen] = useState(linksToTechnical);
+  useEffect(() => {
+    const follow = () => {
+      if (linksToTechnical()) setOpen(true);
+    };
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+  }, []);
   return (
-    <section aria-labelledby="projects" className="grid gap-2" data-testid="projects">
-      <h2 id="projects" className="text-14 font-semibold text-fg">
-        {t("ecosystem.projects.title")}
-      </h2>
+    <section aria-label={t("ecosystem.projects.title")} data-testid="projects">
+      <CountSection label={t("ecosystem.projects.title")} count={bus.projects.length} open={open} onOpenChange={setOpen} testId="projects-fold">
       <ul className="grid border-t border-line">
         {bus.projects.map((p) => {
           const publishes = bus.contracts.filter((c) => c.provider === p.id).map((c) => c.slug);
@@ -259,6 +268,7 @@ export function MemberProjects({ bus, mine }: { bus: Bus; mine: Names }) {
           );
         })}
       </ul>
+      </CountSection>
     </section>
   );
 }

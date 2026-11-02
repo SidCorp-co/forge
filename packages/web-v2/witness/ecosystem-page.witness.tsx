@@ -115,8 +115,17 @@ function foldsHonest(): string[] {
   });
 }
 
-function overview(): string[] {
+/** Opens a part shut to its count on the page's face (ISS-903), as a person does. */
+async function openPart(testId: string) {
+  document.querySelector<HTMLElement>(`[data-testid=${testId}] button[aria-expanded=false]`)?.click();
+  await settle(300);
+}
+
+async function overview(): Promise<string[]> {
   const wrong = [...sideways(), ...mapHolds(), ...withinWindow()];
+  // Connections and Projects are shut to their counts on the face; Needs attention stands open
+  if (all("[data-testid=connection-row], [data-testid=connection-item]").length > 0) wrong.push("Connections is open before anyone opened it");
+  await openPart("connections");
   const summary = text("[data-testid=ecosystem-summary]");
   const want = "3 projects · catalog-api declares epod's storefront-graphql, not found in code · catalog-fe uses catalog-api's admin-rest-v1 · 2 need attention";
   if (summary !== want) wrong.push(`the summary reads "${summary}"`);
@@ -166,6 +175,7 @@ async function technical(): Promise<string[]> {
 }
 
 async function guide(): Promise<string[]> {
+  await openPart("projects");
   const fold = document.querySelector<HTMLElement>("[data-testid=technical-catalog-fe]");
   const open = fold?.querySelector<HTMLButtonElement>("button");
   if (!open) return ["catalog-fe has no Technical fold"];
@@ -190,6 +200,7 @@ async function autoflow(): Promise<string[]> {
   await drawn();
   window.scrollTo(0, 0);
   const wrong = [...sideways(), ...mapHolds()];
+  await openPart("projects");
   const summary = text("[data-testid=ecosystem-summary]");
   if (summary !== "2 projects · no project uses another's contract yet") wrong.push(`the summary reads "${summary}"`);
   if (!text("[data-testid=needs-attention]").includes("All clear")) wrong.push("Needs attention does not say all clear in one line");
