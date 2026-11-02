@@ -12,6 +12,7 @@
 // @direct-test-of packages/core/src/questions/read.ts
 // @direct-test-of packages/core/src/steward/undo-rules.ts
 // @direct-test-of packages/core/src/steward/policy.ts
+// @direct-test-of packages/core/src/steward/read.ts
 
 import type { Said } from '@forge/contracts/said';
 import type { ItemStanding } from '@forge/contracts/steward';
