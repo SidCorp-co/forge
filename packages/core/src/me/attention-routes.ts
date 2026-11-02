@@ -6,6 +6,7 @@ import { readNeedsYouAcross } from '../development/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresSelf } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/index.js';
 import {
   type AttentionFailedJobRow,
@@ -124,74 +125,84 @@ meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
 const attentionQuery = zValidator('query', z.object({ orgId: z.uuid().optional() }).strict());
 
-meAttentionRoutes.get('/attention', attentionQuery, async (c) => {
-  const { orgId } = c.req.valid('query');
-  const userId = c.get('userId');
-  const agency = c.get('agency');
-  if (!agency) throw new Error('me/attention: a request reached its handler without an auth gate');
+meAttentionRoutes.get(
+  '/attention',
+  requiresSelf(
+    'what waits on the caller, across only the projects the caller can read; orgId narrows that set and admits nothing more',
+  ),
+  attentionQuery,
+  async (c) => {
+    const { orgId } = c.req.valid('query');
+    const userId = c.get('userId');
+    const agency = c.get('agency');
+    if (!agency)
+      throw new Error('me/attention: a request reached its handler without an auth gate');
 
-  const [
-    allNeedsYou,
-    mentionRows,
-    failedJobRows,
-    channelGateRows,
-    statusReportRows,
-    offlineDevices,
-    visible,
-  ] = await Promise.all([
-    readNeedsYouAcross(userId, agency),
-    selectMentions(userId),
-    selectFailedJobs(userId),
-    selectChannelGates(userId),
-    selectStatusReports(userId),
-    selectOfflineDevices(userId),
-    listVisibleProjectsWithRole(userId),
-  ]);
+    const [
+      allNeedsYou,
+      mentionRows,
+      failedJobRows,
+      channelGateRows,
+      statusReportRows,
+      offlineDevices,
+      visible,
+    ] = await Promise.all([
+      readNeedsYouAcross(userId, agency),
+      selectMentions(userId),
+      selectFailedJobs(userId),
+      selectChannelGates(userId),
+      selectStatusReports(userId),
+      selectOfflineDevices(userId),
+      listVisibleProjectsWithRole(userId),
+    ]);
 
-  // the active org's projects; a row with no project (a device alert) is always kept
-  const inScope = new Set(visible.filter((p) => inActiveOrg(p, orgId ?? null)).map((p) => p.slug));
-  const keep = (it: AttentionItem) => !it.projectSlug || inScope.has(it.projectSlug);
-  const needsYou = allNeedsYou.filter((n) => inScope.has(n.projectSlug));
-  const mentions = mentionRows.map(mentionItem).filter(keep);
-  const failedJobs = failedJobRows.map(failedJobItem).filter(keep);
-  const channelGates = channelGateRows.map(gateItem).filter(keep);
-  const statusReports = statusReportRows.map(statusReportItem).filter(keep);
-  const offlineRunners = offlineDevices.map(
-    (d): AttentionItem => ({
-      kind: 'runner_offline',
-      title: d.name,
-      deviceName: d.name,
-      link: '/runners',
-      since: (d.lastSeenAt ?? d.createdAt).toISOString(),
-      status: 'offline',
-    }),
-  );
+    // the active org's projects; a row with no project (a device alert) is always kept
+    const inScope = new Set(
+      visible.filter((p) => inActiveOrg(p, orgId ?? null)).map((p) => p.slug),
+    );
+    const keep = (it: AttentionItem) => !it.projectSlug || inScope.has(it.projectSlug);
+    const needsYou = allNeedsYou.filter((n) => inScope.has(n.projectSlug));
+    const mentions = mentionRows.map(mentionItem).filter(keep);
+    const failedJobs = failedJobRows.map(failedJobItem).filter(keep);
+    const channelGates = channelGateRows.map(gateItem).filter(keep);
+    const statusReports = statusReportRows.map(statusReportItem).filter(keep);
+    const offlineRunners = offlineDevices.map(
+      (d): AttentionItem => ({
+        kind: 'runner_offline',
+        title: d.name,
+        deviceName: d.name,
+        link: '/runners',
+        since: (d.lastSeenAt ?? d.createdAt).toISOString(),
+        status: 'offline',
+      }),
+    );
 
-  // every project the caller sees, whatever the active org: the Attention tab and the rail badge read it
-  const waitingOnYou = allNeedsYou.reduce((n, p) => n + p.total, 0);
-  const response: AttentionResponse = {
-    needsYou,
-    waitingOnYou,
-    mentions,
-    failedJobs,
-    channelGates,
-    statusReports,
-    offlineRunners,
-    counts: {
-      mentions: mentions.length,
-      failedJobs: failedJobs.length,
-      channelGates: channelGates.length,
-      statusReports: statusReports.length,
-      offlineRunners: offlineRunners.length,
-    },
-    total:
-      needsYou.reduce((n, p) => n + p.total, 0) +
-      mentions.length +
-      failedJobs.length +
-      channelGates.length +
-      statusReports.length +
-      offlineRunners.length,
-  };
+    // every project the caller sees, whatever the active org: the Attention tab and the rail badge read it
+    const waitingOnYou = allNeedsYou.reduce((n, p) => n + p.total, 0);
+    const response: AttentionResponse = {
+      needsYou,
+      waitingOnYou,
+      mentions,
+      failedJobs,
+      channelGates,
+      statusReports,
+      offlineRunners,
+      counts: {
+        mentions: mentions.length,
+        failedJobs: failedJobs.length,
+        channelGates: channelGates.length,
+        statusReports: statusReports.length,
+        offlineRunners: offlineRunners.length,
+      },
+      total:
+        needsYou.reduce((n, p) => n + p.total, 0) +
+        mentions.length +
+        failedJobs.length +
+        channelGates.length +
+        statusReports.length +
+        offlineRunners.length,
+    };
 
-  return c.json(response);
-});
+    return c.json(response);
+  },
+);

@@ -18763,6 +18763,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "what waits on the caller, across only the projects the caller can read; orgId narrows that set and admits nothing more"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -18951,6 +18954,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller’s pulse over only the projects the caller can read; orgId narrows that set and admits nothing more"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19045,6 +19051,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "what is new for the caller, read by the caller’s own mark"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19068,6 +19077,9 @@
           "requireAuth"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "what is new for the caller, read by the caller’s own mark"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -21861,6 +21873,9 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the caller’s own personal access tokens, listed by the caller"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -22047,6 +22062,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the caller revokes a token of their own; another’s answers not found"
+        },
         "x-forge-validated": [
           "param"
         ]

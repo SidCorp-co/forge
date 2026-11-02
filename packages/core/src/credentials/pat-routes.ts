@@ -8,6 +8,7 @@ import { declareGate } from '../middleware/declared-gate.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresSelf } from '../permissions/index.js';
 import { hasLivePatNamed, listPatsOf, mintPat, revokePat, setPatFence } from './pat.js';
 import { coreTokenNamePrefixOf } from './pat-format.js';
 import {
@@ -119,14 +120,19 @@ export const patRoutes = new Hono<{ Variables: AuthVars }>();
 patRoutes.use('/pat', requireAuth(), assertEmailVerified());
 patRoutes.use('/pat/*', requireAuth(), assertEmailVerified());
 
-patRoutes.get('/pat', noQuery, async (c) => {
-  const userId = c.get('userId');
-  const rows = await listPatsOf(userId);
-  return c.json({
-    tokens: rows.map(publicShape),
-    menu: patMenu(),
-  });
-});
+patRoutes.get(
+  '/pat',
+  requiresSelf('the caller’s own personal access tokens, listed by the caller'),
+  noQuery,
+  async (c) => {
+    const userId = c.get('userId');
+    const rows = await listPatsOf(userId);
+    return c.json({
+      tokens: rows.map(publicShape),
+      menu: patMenu(),
+    });
+  },
+);
 
 patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema), async (c) => {
   const userId = c.get('userId');
@@ -238,20 +244,25 @@ patRoutes.patch(
   },
 );
 
-patRoutes.delete('/pat/:id', zValidator('param', idParamSchema), async (c) => {
-  const userId = c.get('userId');
-  const { id } = c.req.valid('param');
-  const row = await revokePat(id, userId);
-  if (!row) throw notFound();
-  forgetPatThrottle(row.id);
-  await tokenChanged({
-    userId,
-    tokenId: row.id,
-    change: 'revoked',
-    ts: new Date().toISOString(),
-  });
-  return c.json(publicShape(row));
-});
+patRoutes.delete(
+  '/pat/:id',
+  requiresSelf('the caller revokes a token of their own; another’s answers not found'),
+  zValidator('param', idParamSchema),
+  async (c) => {
+    const userId = c.get('userId');
+    const { id } = c.req.valid('param');
+    const row = await revokePat(id, userId);
+    if (!row) throw notFound();
+    forgetPatThrottle(row.id);
+    await tokenChanged({
+      userId,
+      tokenId: row.id,
+      change: 'revoked',
+      ts: new Date().toISOString(),
+    });
+    return c.json(publicShape(row));
+  },
+);
 
 function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: AuthVars }> {
   return declareGate('requireFreshAuth', async (c, next) => {
