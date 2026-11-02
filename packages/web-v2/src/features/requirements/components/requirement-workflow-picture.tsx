@@ -70,7 +70,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
           />
         </div>
       ) : null}
-      <div className="flex h-115 min-w-0 overflow-hidden border border-line-subtle max-md:h-105" data-testid="picture-workflow" data-flow={w.flow}>
+      <div className="flex h-80 min-w-0 overflow-hidden border border-line-subtle max-md:h-90" data-testid="picture-workflow" data-flow={w.flow}>
         {canvas}
       </div>
     </Figure>

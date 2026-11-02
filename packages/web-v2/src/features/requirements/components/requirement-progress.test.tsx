@@ -157,7 +157,7 @@ describe("the criteria", () => {
     page("overview");
     expect(screen.getByTestId("criteria-filter")).toBeInTheDocument();
     const rows = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-row");
-    expect(rows.map((r) => [r.querySelector('[data-testid="verdict-dot"]') === r.firstElementChild?.firstElementChild, within(r).getByTestId("verdict-dot").textContent])).toEqual([
+    expect(rows.map((r) => [r.querySelector('[data-testid="verdict-dot"]') === within(r).getByTestId("criterion-line").firstElementChild?.firstElementChild, within(r).getByTestId("verdict-dot").textContent])).toEqual([
       [true, "✓"],
       [true, "×"],
       [true, "!"],

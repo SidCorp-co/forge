@@ -52,12 +52,22 @@ describe("a requirement page, top to bottom", () => {
     expect(follows(goal, criteria)).toBe(true);
     expect(overview.firstElementChild?.contains(goal)).toBe(true);
     expect(within(goal).getAllByRole("term").map((x) => x.textContent)).toEqual(["Problem", "Value", "Measured by"]);
+    expect(within(goal).getByTestId("goal-problem").querySelector("[title]")).toHaveClass("truncate");
     expect(within(goal).getAllByRole("definition").map((x) => x.textContent)).toEqual([
       "buyers leave at a slow checkout.",
       "a buyer pays in one step.",
       "checkouts finished per day.",
     ]);
-    expect(within(criteria).getAllByTestId("criterion-row")).toHaveLength(reqDetail.standing.coverage.length);
+    const rows = within(criteria).getAllByTestId("criterion-row");
+    expect(rows).toHaveLength(reqDetail.standing.coverage.length);
+    // the owner's face (2026-11-02): one short line a row, its code a tooltip, its detail behind the expand
+    rows.forEach((r, i) => {
+      const line = within(r).getByTestId("criterion-line");
+      expect(line).toHaveAttribute("title", reqDetail.standing.coverage[i]?.code);
+      expect(line.textContent).not.toContain("\n");
+      expect(within(r).getByTestId("criterion-detail")).not.toHaveAttribute("open");
+    });
+    expect(within(criteria).queryByTestId("criterion-code")).toBeNull();
     expect(within(screen.getByTestId("requirement-tabs")).queryByRole("tab", { name: /Criteria/ })).toBeNull();
     expect(await screen.findByRole("figure", { name: "The Checkout workflow, with the steps its criteria trace lit: Pay." })).toBeInTheDocument();
     expect(lastLit()).toEqual(["pay"]);

@@ -5,8 +5,9 @@
 // source, the standing. The full page's sticky rail and the peek draw this one component through the
 // shared FactsGroup/Fact rows, so the main column never repeats a fact and both surfaces read the same.
 
+import type { ReactNode } from "react";
 import { Link } from "@/lib/navigation/router";
-import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge } from "@/design";
+import { ActorChip, Fact, FactsEmpty, FactsGroup, Icon, LEGEND, StatusBadge } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref, linkedIssueHref } from "@/lib/routes/issues";
@@ -215,9 +216,12 @@ export function RequirementProperties({
   onOpenRevisions,
   projectId,
   developer = false,
+  more,
 }: {
   d: RequirementDetail;
   slug: string;
+  /** What else the page's rail holds, folded with the other links under More. */
+  more?: ReactNode;
   /** The developer view: the revision that stands, by number (BC-7); the dates line names when it was agreed. */
   developer?: boolean;
   /** The project its placement, promote and link acts write to. */
@@ -297,38 +301,48 @@ export function RequirementProperties({
         {s.attentionGroup !== "done" ? <LinkIssueControl projectId={projectId} reqKey={d.key} /> : null}
       </FactsGroup>
 
-      <LinkedFeedback items={d.feedback} slug={slug} />
-
       <RequirementDesigns projectId={projectId} slug={slug} d={d} editable={editable} />
-      <RequirementContracts projectId={projectId} slug={slug} d={d} editable={editable} />
+      {/* the owner's face (2026-11-02): status, delivery and design on it, every other link a click away */}
+      <details className="group border-t border-line-subtle pt-3" data-testid="facts-more">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-13 font-medium text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+          <Icon name="chevronRight" size={14} className="flex-none transition-transform group-open:rotate-90" />
+          {t("requirements.facts.more")}
+        </summary>
+        <div className="pt-2">
+        <LinkedFeedback items={d.feedback} slug={slug} />
 
-      <RequirementBindings d={d} slug={slug} />
+        <RequirementContracts projectId={projectId} slug={slug} d={d} editable={editable} />
 
-      {needs.length > 0 ? (
-        <FactsGroup title={t("requirements.facts.needs")}>
-          <ul className="grid gap-1">
-            {needs.map((p) => (
-              <li key={`${p.contractSlug}@${p.contractVersion}`} className="font-mono text-12" title={t("requirements.facts.pinned")}>
-                {p.contractSlug} ≥ {p.contractVersion}
-              </li>
-            ))}
-          </ul>
-        </FactsGroup>
-      ) : null}
+        <RequirementBindings d={d} slug={slug} />
 
-      <div className="border-t border-line-subtle pt-3 text-12 text-subtle" data-testid="facts-dates">
-        <span title={time.dateTime(d.createdAt)}>{t("requirements.facts.created", { when: time.relative(d.createdAt) })}</span>
-        {baseline ? (
-          <>
-            {" · "}
-            <span title={agreedTitle(t, time.dateTime(baseline.agreedAt), baseline.agreedByName)}>
-              {developer ? t("requirements.facts.agreedR", { r: baseline.revision, when: time.relative(baseline.agreedAt) }) : t("requirements.facts.agreed", { when: time.relative(baseline.agreedAt) })}
-            </span>
-          </>
+        {needs.length > 0 ? (
+          <FactsGroup title={t("requirements.facts.needs")}>
+            <ul className="grid gap-1">
+              {needs.map((p) => (
+                <li key={`${p.contractSlug}@${p.contractVersion}`} className="font-mono text-12" title={t("requirements.facts.pinned")}>
+                  {p.contractSlug} ≥ {p.contractVersion}
+                </li>
+              ))}
+            </ul>
+          </FactsGroup>
         ) : null}
-        {" · "}
-        <span title={time.dateTime(s.touchedAt)}>{t("requirements.facts.updated", { when: time.relative(s.touchedAt) })}</span>
-      </div>
+
+        <div className="border-t border-line-subtle pt-3 text-12 text-subtle" data-testid="facts-dates">
+          <span title={time.dateTime(d.createdAt)}>{t("requirements.facts.created", { when: time.relative(d.createdAt) })}</span>
+          {baseline ? (
+            <>
+              {" · "}
+              <span title={agreedTitle(t, time.dateTime(baseline.agreedAt), baseline.agreedByName)}>
+                {developer ? t("requirements.facts.agreedR", { r: baseline.revision, when: time.relative(baseline.agreedAt) }) : t("requirements.facts.agreed", { when: time.relative(baseline.agreedAt) })}
+              </span>
+            </>
+          ) : null}
+          {" · "}
+          <span title={time.dateTime(s.touchedAt)}>{t("requirements.facts.updated", { when: time.relative(s.touchedAt) })}</span>
+        </div>
+        {more}
+        </div>
+      </details>
     </div>
   );
 }

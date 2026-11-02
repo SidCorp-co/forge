@@ -7,7 +7,7 @@ import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, ty
 import type { RequirementKind } from "@forge/contracts/requirement-pictures";
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useState } from "react";
-import { ActorChip, FilterChip, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
+import { ActorChip, FilterChip, Icon, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -209,11 +209,20 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
         const crit = wording.get(c.code);
         const issues = byIssue(c.issues);
         return (
-          <li key={c.code} className="flex gap-x-2.5 border-b border-line-subtle py-3" data-testid="criterion-row" data-verdict={c.verdict}>
-            <span className="w-4 flex-none pt-0.5">
-              <VerdictDot verdict={c.verdict} />
-            </span>
-            <div className="min-w-0 flex-1">
+          <li key={c.code} className="border-b border-line-subtle" data-testid="criterion-row" data-verdict={c.verdict}>
+            <details className="group" data-testid="criterion-detail">
+              <summary
+                className="flex cursor-pointer list-none items-center gap-x-2.5 py-2 hover:bg-hover [&::-webkit-details-marker]:hidden"
+                title={c.code}
+                data-testid="criterion-line"
+              >
+                <span className="w-4 flex-none">
+                  <VerdictDot verdict={c.verdict} />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-14">{firstLine(c.body)}</span>
+                <Icon name="chevronRight" size={14} className="flex-none text-subtle transition-transform group-open:rotate-90" />
+              </summary>
+            <div className="min-w-0 pb-3 pl-6.5">
               {developer ? (
                 <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
                   <span className="font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined} data-testid="criterion-code">
@@ -291,6 +300,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 </details>
               ) : null}
             </div>
+            </details>
           </li>
         );
       })}
@@ -298,6 +308,9 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
     </>
   );
 }
+
+/** A criterion's face: its first line, a scenario's Given line among them; the rest is behind its expand. */
+const firstLine = (body: string) => body.split("\n").find((l) => l.trim())?.trim() ?? body;
 
 /** Every revision newest first, as rows: number, state, author, what it changed, when. */
 export function RevisionList({ d }: { d: RequirementDetail }) {
