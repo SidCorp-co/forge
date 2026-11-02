@@ -10,7 +10,7 @@ import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
 import { readGateChanges, readProjectGates, writeGates } from './gates.js';
@@ -99,9 +99,11 @@ function answer<T>(c: Context, outcome: WriteOutcome<T>) {
   return c.json({ ...serialise(outcome.held), created: outcome.created });
 }
 
-projectConfigRoutes.get('/:id/config', paramOf(idParam), noQuery, async (c) => {
+const READ = requiresOnParam('project.read', 'id');
+const ADMIN = requiresOnParam('project.admin', 'id');
+
+projectConfigRoutes.get('/:id/config', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await readProjectConfig(id);
   return c.json(held ? serialise(held) : UNDECLARED);
 });
@@ -109,11 +111,11 @@ projectConfigRoutes.get('/:id/config', paramOf(idParam), noQuery, async (c) => {
 projectConfigRoutes.put(
   '/:id/config',
   paramOf(idParam),
+  ADMIN,
   zValidator('json', z.unknown()),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     return answer(
       c,
@@ -129,9 +131,8 @@ const gatesBody = z.strictObject({
   reason: z.string(),
 });
 
-projectConfigRoutes.get('/:id/gates', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/gates', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const [gates, changes] = await Promise.all([readProjectGates(id), readGateChanges(id, 20)]);
   return c.json({ ...gates, changes });
 });
@@ -139,6 +140,7 @@ projectConfigRoutes.get('/:id/gates', paramOf(idParam), noQuery, async (c) => {
 projectConfigRoutes.put(
   '/:id/gates',
   paramOf(idParam),
+  ADMIN,
   zValidator(
     'json',
     gatesBody,
@@ -149,7 +151,6 @@ projectConfigRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const body = c.req.valid('json');
     const outcome = await writeGates({ projectId: id, userId, ...body });
     if (!outcome.ok) return refused(c, outcome.refusals, 'GATES_REFUSED');
@@ -157,9 +158,8 @@ projectConfigRoutes.put(
   },
 );
 
-projectConfigRoutes.get('/:id/gates/changes', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/gates/changes', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const changes = await readGateChanges(id, 200);
   return c.json({ changes, returned: changes.length });
 });
@@ -171,15 +171,13 @@ async function callingDevice(c: Context<{ Variables: AuthVars }>): Promise<strin
   return device?.id ?? null;
 }
 
-projectConfigRoutes.get('/:id/config/effective', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/config/effective', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(await buildEffectiveConfig({ projectId: id, deviceId: await callingDevice(c) }));
 });
 
-projectConfigRoutes.get('/:id/policy', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/policy', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await readPolicy(id);
   return c.json(held ? serialise(held) : UNDECLARED);
 });
@@ -187,19 +185,18 @@ projectConfigRoutes.get('/:id/policy', paramOf(idParam), noQuery, async (c) => {
 projectConfigRoutes.put(
   '/:id/policy',
   paramOf(idParam),
+  ADMIN,
   zValidator('json', z.unknown()),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     return answer(c, await writePolicy({ projectId: id, userId, baseRevision, raw: document }));
   },
 );
 
-projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const profiles = await listTestingProfiles(id);
   return c.json({
     profiles: profiles.map((p) => ({
@@ -214,10 +211,10 @@ projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), noQuery, asyn
 projectConfigRoutes.get(
   '/:id/testing-profiles/:profileId',
   paramOf(profileParam),
+  READ,
   noQuery,
   async (c) => {
     const { id, profileId } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     const held = await readTestingProfile(id, profileId);
     return c.json(
       held
@@ -231,10 +228,10 @@ projectConfigRoutes.get(
 projectConfigRoutes.get(
   '/:id/testing-profiles/:profileId/:part',
   paramOf(profileParam.extend({ part: z.string().regex(NAME) })),
+  READ,
   noQuery,
   async (c) => {
     const { id, profileId, part } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     const held = await readTestingProfile(id, profileId);
     const door = held
       ? profileValueDoor(profileId, held.document).route
@@ -249,11 +246,11 @@ projectConfigRoutes.get(
 projectConfigRoutes.put(
   '/:id/testing-profiles/:profileId',
   paramOf(profileParam),
+  ADMIN,
   zValidator('json', z.unknown()),
   async (c) => {
     const { id, profileId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     return answer(
       c,
@@ -262,23 +259,26 @@ projectConfigRoutes.put(
   },
 );
 
-projectConfigRoutes.delete('/:id/testing-profiles/:profileId', paramOf(profileParam), async (c) => {
-  const { id, profileId } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
-  const outcome = await deleteTestingProfile(id, profileId);
-  if (outcome.ok) return c.json({ deleted: true, profileId });
-  if (outcome.notFound) {
-    throw new HTTPException(404, {
-      message: `testing profile "${profileId}" is not declared on this project`,
-      cause: { code: 'TESTING_PROFILE_NOT_FOUND' },
-    });
-  }
-  return refused(c, outcome.refusals, 'CONFIG_REFUSED');
-});
+projectConfigRoutes.delete(
+  '/:id/testing-profiles/:profileId',
+  paramOf(profileParam),
+  ADMIN,
+  async (c) => {
+    const { id, profileId } = c.req.valid('param');
+    const outcome = await deleteTestingProfile(id, profileId);
+    if (outcome.ok) return c.json({ deleted: true, profileId });
+    if (outcome.notFound) {
+      throw new HTTPException(404, {
+        message: `testing profile "${profileId}" is not declared on this project`,
+        cause: { code: 'TESTING_PROFILE_NOT_FOUND' },
+      });
+    }
+    return refused(c, outcome.refusals, 'CONFIG_REFUSED');
+  },
+);
 
-projectConfigRoutes.get('/:id/secrets', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/secrets', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const [secrets, profiles] = await Promise.all([listSecretNames(id), listTestingProfiles(id)]);
   return c.json({
     secrets: secrets.map((s) => ({ ...secretView(s), valueAt: secretValueDoors(profiles, s.ref) })),
@@ -288,20 +288,24 @@ projectConfigRoutes.get('/:id/secrets', paramOf(idParam), noQuery, async (c) => 
 });
 
 // a value guessed at a secret's own path is refused naming the door each profile reads it at
-projectConfigRoutes.get('/:id/secrets/:scope/:name', paramOf(secretParam), noQuery, async (c) => {
-  const { id, scope, name } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const ref = secretRefOf(scope, name);
-  const [door] = secretValueDoors(await listTestingProfiles(id), ref);
-  throw secretValueElsewhere(
-    `GET /api/projects/${id}/secrets/${scope}/${name}`,
-    door ?? secretValueDoor('<profile naming it>', `ref=${ref}`),
-  );
-});
+projectConfigRoutes.get(
+  '/:id/secrets/:scope/:name',
+  paramOf(secretParam),
+  READ,
+  noQuery,
+  async (c) => {
+    const { id, scope, name } = c.req.valid('param');
+    const ref = secretRefOf(scope, name);
+    const [door] = secretValueDoors(await listTestingProfiles(id), ref);
+    throw secretValueElsewhere(
+      `GET /api/projects/${id}/secrets/${scope}/${name}`,
+      door ?? secretValueDoor('<profile naming it>', `ref=${ref}`),
+    );
+  },
+);
 
-projectConfigRoutes.get('/:id/test-credentials', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/test-credentials', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   throw secretValueElsewhere(
     `GET /api/projects/${id}/test-credentials`,
     secretValueDoor('<profile>', 'actor=<actor>'),
@@ -311,6 +315,7 @@ projectConfigRoutes.get('/:id/test-credentials', paramOf(idParam), noQuery, asyn
 projectConfigRoutes.put(
   '/:id/secrets/:scope/:name',
   paramOf(secretParam),
+  ADMIN,
   zValidator(
     'json',
     secretBody,
@@ -321,7 +326,6 @@ projectConfigRoutes.put(
   ),
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
     if (scope === VARIABLE_SECRET_SCOPE) {
       return refused(
         c,
@@ -357,10 +361,10 @@ projectConfigRoutes.put(
 projectConfigRoutes.delete(
   '/:id/secrets/:scope/:name',
   paramOf(secretParam),
+  ADMIN,
   noQuery,
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
     if (scope === VARIABLE_SECRET_SCOPE) {
       return refused(
         c,
@@ -392,9 +396,8 @@ projectConfigRoutes.delete(
   },
 );
 
-projectConfigRoutes.get('/:id/bindings', paramOf(idParam), noQuery, async (c) => {
+projectConfigRoutes.get('/:id/bindings', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const { held, unrepresentable } = await listBindings(id);
   return c.json({
     bindings: held.map((h) => ({ declared: true as const, ...h })),
@@ -403,35 +406,40 @@ projectConfigRoutes.get('/:id/bindings', paramOf(idParam), noQuery, async (c) =>
   });
 });
 
-projectConfigRoutes.get('/:id/bindings/:bindingId', paramOf(bindingParam), noQuery, async (c) => {
-  const { id, bindingId } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const read = await readBinding(id, bindingId);
-  if (!read) return c.json(UNDECLARED);
-  if (!read.ok) {
-    return refused(
-      c,
-      [
-        {
-          code: 'BINDING_NOT_REPRESENTABLE',
-          path: '',
-          detail: `binding ${bindingId} has no binding-document form: ${read.unrepresentable}`,
-        },
-      ],
-      'CONFIG_REFUSED',
-    );
-  }
-  return c.json({ declared: true as const, ...read.held });
-});
+projectConfigRoutes.get(
+  '/:id/bindings/:bindingId',
+  paramOf(bindingParam),
+  READ,
+  noQuery,
+  async (c) => {
+    const { id, bindingId } = c.req.valid('param');
+    const read = await readBinding(id, bindingId);
+    if (!read) return c.json(UNDECLARED);
+    if (!read.ok) {
+      return refused(
+        c,
+        [
+          {
+            code: 'BINDING_NOT_REPRESENTABLE',
+            path: '',
+            detail: `binding ${bindingId} has no binding-document form: ${read.unrepresentable}`,
+          },
+        ],
+        'CONFIG_REFUSED',
+      );
+    }
+    return c.json({ declared: true as const, ...read.held });
+  },
+);
 
 projectConfigRoutes.put(
   '/:id/bindings/:bindingId',
   paramOf(bindingParam),
+  ADMIN,
   zValidator('json', z.unknown()),
   async (c) => {
     const { id, bindingId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const { baseRevision, document } = envelopeOf(c.req.valid('json'));
     const outcome = await writeBinding({
       projectId: id,
@@ -455,10 +463,10 @@ const removeBody = z.strictObject({ baseRevision: z.number().int().positive() })
 projectConfigRoutes.delete(
   '/:id/bindings/:bindingId',
   paramOf(bindingParam),
+  ADMIN,
   zValidator('json', z.unknown()),
   async (c) => {
     const { id, bindingId } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));
     const body = removeBody.safeParse(c.req.valid('json'));
     if (!body.success) {
       throw new HTTPException(400, {

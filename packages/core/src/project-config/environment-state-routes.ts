@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { readEnvironmentState } from './environment-state.js';
 import { readProjectDocument } from './service.js';
 
@@ -34,10 +34,10 @@ environmentStateRoutes.use('/:id/environments/*', requireAuth(), assertEmailVeri
 environmentStateRoutes.get(
   '/:id/environments/state',
   zValidator('param', projectParam, refuseParam),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     const { revision, document } = await storedDocument(id);
     const environments = await Promise.all(
       Object.entries(document.environments).map(([name, declaration]) =>
@@ -51,10 +51,10 @@ environmentStateRoutes.get(
 environmentStateRoutes.get(
   '/:id/environments/:name/state',
   zValidator('param', environmentParam, refuseParam),
+  requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => {
     const { id, name } = c.req.valid('param');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     const { revision, document } = await storedDocument(id);
     const decl = Object.hasOwn(document.environments, name)
       ? document.environments[name]

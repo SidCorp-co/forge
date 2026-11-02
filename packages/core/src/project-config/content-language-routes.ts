@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { readContentLanguage } from './content-language.js';
 
 export const contentLanguageRoutes = new Hono<{ Variables: AuthVars }>();
@@ -21,8 +21,13 @@ const projectParam = zValidator(
   invalid('invalid path: the project id is a uuid'),
 );
 
-contentLanguageRoutes.get('/:id/content-language', projectParam, noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  return c.json(await readContentLanguage(id));
-});
+contentLanguageRoutes.get(
+  '/:id/content-language',
+  projectParam,
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(await readContentLanguage(id));
+  },
+);
