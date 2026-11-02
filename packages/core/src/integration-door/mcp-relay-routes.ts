@@ -15,6 +15,7 @@ import {
 } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
 import { noQuery, rawBody } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
@@ -27,38 +28,50 @@ const relayedMessage = rawBody(
   { required: false },
 );
 
-mcpRelayRoutes.on(['GET', 'POST', 'DELETE'], '/:bindingId', relayedMessage, noQuery, async (c) => {
-  const bearer = /^Bearer\s+(.+)$/i.exec(c.req.header('authorization') ?? '')?.[1];
-  const grant = bearer ? await readRelayTicket(bearer) : null;
-  if (!grant || grant.bindingId !== c.req.param('bindingId')) {
-    throw refuse(
-      'INTEGRATION_RELAY_FORBIDDEN',
-      "this relay is opened only by the relay ticket Forge put in the run's MCP config for this binding; it is missing, expired or for another binding, so start a new run to be handed a fresh one",
-      '/headers/authorization',
-    );
-  }
-  const pair = await relayedBinding(grant);
-  if (!pair) {
-    throw refuse(
-      'INTEGRATION_RELAY_FORBIDDEN',
-      `binding ${grant.bindingId} is no longer this project's, active and granted to agents, so nothing is relayed; a project admin turns agent access on beside the integration under Settings → Integrations`,
-    );
-  }
-  const upstream = await relayUpstreamOf(pair);
-  if (!upstream) {
-    throw refuse(
-      'INTEGRATION_RELAY_NO_CREDENTIAL',
-      `the ${pair.binding.provider} connection holds no usable credential (its health on Settings → Integrations names why), so nothing was sent`,
-    );
-  }
-  const method = c.req.method;
-  return relayToUpstream(upstream, {
-    method,
-    header: (name) => c.req.header(name),
-    paramHeaders: Array.from(c.req.raw.headers.entries()).filter(([name]) =>
-      name.startsWith('mcp-param-'),
-    ),
-    ...(method === 'POST' ? { body: await c.req.arrayBuffer() } : {}),
-    signal: c.req.raw.signal,
-  });
-});
+// no sign-in sits in front: the ticket, read and matched to the binding below, is the whole gate
+const TICKET_ADMITS = requiresNoPermission(
+  'the relay ticket core minted into the run’s MCP config for this binding admits the call; a missing, expired or other binding’s ticket is refused INTEGRATION_RELAY_FORBIDDEN',
+);
+
+mcpRelayRoutes.on(
+  ['GET', 'POST', 'DELETE'],
+  '/:bindingId',
+  TICKET_ADMITS,
+  relayedMessage,
+  noQuery,
+  async (c) => {
+    const bearer = /^Bearer\s+(.+)$/i.exec(c.req.header('authorization') ?? '')?.[1];
+    const grant = bearer ? await readRelayTicket(bearer) : null;
+    if (!grant || grant.bindingId !== c.req.param('bindingId')) {
+      throw refuse(
+        'INTEGRATION_RELAY_FORBIDDEN',
+        "this relay is opened only by the relay ticket Forge put in the run's MCP config for this binding; it is missing, expired or for another binding, so start a new run to be handed a fresh one",
+        '/headers/authorization',
+      );
+    }
+    const pair = await relayedBinding(grant);
+    if (!pair) {
+      throw refuse(
+        'INTEGRATION_RELAY_FORBIDDEN',
+        `binding ${grant.bindingId} is no longer this project's, active and granted to agents, so nothing is relayed; a project admin turns agent access on beside the integration under Settings → Integrations`,
+      );
+    }
+    const upstream = await relayUpstreamOf(pair);
+    if (!upstream) {
+      throw refuse(
+        'INTEGRATION_RELAY_NO_CREDENTIAL',
+        `the ${pair.binding.provider} connection holds no usable credential (its health on Settings → Integrations names why), so nothing was sent`,
+      );
+    }
+    const method = c.req.method;
+    return relayToUpstream(upstream, {
+      method,
+      header: (name) => c.req.header(name),
+      paramHeaders: Array.from(c.req.raw.headers.entries()).filter(([name]) =>
+        name.startsWith('mcp-param-'),
+      ),
+      ...(method === 'POST' ? { body: await c.req.arrayBuffer() } : {}),
+      signal: c.req.raw.signal,
+    });
+  },
+);

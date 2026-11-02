@@ -19,6 +19,7 @@ import { mintGitCredentialForDevice } from '../integrations/source-host/index.js
 import { logger } from '../lib/logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { requiresNoPermission } from '../permissions/index.js';
 
 export const deviceGitCredentialRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -33,6 +34,9 @@ const askBody = z
 deviceGitCredentialRoutes.post(
   '/me/git-credential',
   requireDevice(),
+  requiresNoPermission(
+    'a paired box’s device credential admits it, and the grant is computed from that device’s own runners and their project’s binding',
+  ),
   zValidator('json', askBody, invalid('host and path are required')),
   async (c) => {
     const device = c.get('device');
