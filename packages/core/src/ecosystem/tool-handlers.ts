@@ -1,5 +1,5 @@
 import { type McpContext, refusedAnswer } from '../lib/tool.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
 import type { ContractDecision } from './contract/approval.js';
 import { decideContractVersion, decidedView } from './contract/decide.js';
@@ -54,7 +54,7 @@ export const HANDLERS: Record<
   (ctx: McpContext, side: string, a: Args) => Promise<Answer>
 > = {
   interface: async (ctx, side) => {
-    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(side));
+    await requireDeclaredOn(side, ctx.principal.userId, 'project.read');
     return interfaceView(side, await loadInterface(side));
   },
   links: async (ctx, side) => {
@@ -68,7 +68,7 @@ export const HANDLERS: Record<
   },
   builder_run: async (ctx, side, a) => readBuilderRunAs(ctx.principal.userId, side, String(a.run)),
   context: async (ctx, side, a) => {
-    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(side));
+    await requireDeclaredOn(side, ctx.principal.userId, 'project.read');
     const session = typeof a.session === 'string' ? a.session : null;
     const read = await readContractContext(side, a.paths as string[], session);
     if (!read.ok) return refusedWith(read.refusals);

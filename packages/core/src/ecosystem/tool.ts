@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import type { ContextScopedMcpToolFactory, McpContext } from '../lib/tool.js';
+import { onResolved } from '../permissions/index.js';
 import { readBus } from './link-read.js';
 import {
   ACTIONS,
@@ -78,6 +79,23 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
   }
 }
 
+// the reads whose REST twins declare project.read on :id (project-routes.ts, link-routes.ts), on the
+// side the handler resolves (projectId, a token bound to one project, or the slug header), each
+// checked with requireDeclaredOn. The rest stay on the amnesty: link reads by the row
+// (assertLinkReadable), the writes by permissionFactsOf rules on the input or the row (the provider
+// writer, the commitments setter), and bus by the ecosystem's steward or member
+const THE_SIDE =
+  "the projectId argument, else the token's one project or the X-Forge-Project-Slug header";
+const PERMISSION = {
+  byAction: {
+    interface: onResolved('project.read', THE_SIDE),
+    links: onResolved('project.read', THE_SIDE),
+    builder_runs: onResolved('project.read', THE_SIDE),
+    builder_run: onResolved('project.read', THE_SIDE),
+    context: onResolved('project.read', THE_SIDE),
+  },
+} as const;
+
 const BUS_REACH = "an ecosystem's bus spans every member project, not the one a token reaches";
 // each action takes the permission its REST route takes: the project's records are projects:*, and the bus is the account-wide ecosystems:read a project-fenced token does not reach, on /mcp as on REST
 export const forgeEcosystemTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -99,6 +117,7 @@ export const forgeEcosystemTool: ContextScopedMcpToolFactory = (ctx) => ({
       bus: { account: BUS_REACH },
     } as Record<Action, 'project' | { account: string }>,
   },
+  permission: PERMISSION,
   handler: (raw) => run(ctx, raw),
 });
 export { forgeChannelTool } from './channel-tool.js';

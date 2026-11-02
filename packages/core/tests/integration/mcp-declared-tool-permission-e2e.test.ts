@@ -17,6 +17,8 @@
  * @direct-test-of packages/core/src/product-door/context.ts
  * @direct-test-of packages/core/src/mcp/feedback-tool.ts
  * @direct-test-of packages/core/src/mcp/requirements-tool.ts
+ * @direct-test-of packages/core/src/ecosystem/tool.ts
+ * @direct-test-of packages/core/src/ecosystem/tool-handlers.ts
  * @direct-test-of packages/core/src/permissions/declared.ts
  */
 
@@ -252,5 +254,36 @@ describe('forge_requirements (declared on the project the handler resolves)', ()
       }),
     );
     expect(read).toHaveProperty('status');
+  });
+});
+
+describe('forge_ecosystem reads (declared on the side the handler resolves)', () => {
+  it('refuses a caller holding no role the interface, naming project.read', async () => {
+    const refused = await mcp('outsider', 'forge_ecosystem', { action: 'interface', projectId });
+    expect(refused.isError, refused.text).toBe(true);
+    expect(refused.text).toContain('ECOSYSTEM_NOT_AUTHORISED');
+    expect(refused.text).toContain('project.read');
+  });
+
+  it('refuses a caller holding no role the contract context, naming project.read', async () => {
+    const refused = await mcp('outsider', 'forge_ecosystem', {
+      action: 'context',
+      projectId,
+      paths: ['src/checkout.ts'],
+    });
+    expect(refused.text).toContain('ECOSYSTEM_NOT_AUTHORISED');
+    expect(refused.text).toContain('project.read');
+  });
+
+  it('reads the interface for a viewer, on the slug header with no projectId sent', async () => {
+    const read = ok(
+      await mcp(
+        'viewer',
+        'forge_ecosystem',
+        { action: 'interface' },
+        { 'x-forge-project-slug': projectSlug },
+      ),
+    );
+    expect(read).toHaveProperty('declared', false);
   });
 });
