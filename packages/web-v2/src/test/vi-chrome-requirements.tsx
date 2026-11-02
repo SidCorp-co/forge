@@ -268,7 +268,7 @@ export const SCREENS: ChromeScreen[] = [
     ),
   },
   { name: "Requirement detail · Overview", render: () => <Seeded data={reqQueries()}><RequirementScreen projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" /></Seeded> },
-  ...(["criteria", "revisions", "activity"] as const).map((tab) => ({
+  ...(["revisions", "activity"] as const).map((tab) => ({
     name: `Requirement detail · ${tab}`,
     render: () => (
       <Seeded data={reqQueries()}>

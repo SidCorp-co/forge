@@ -188,8 +188,8 @@ describe("the strip at phone width, around it", () => {
 describe("the criteria checklist at phone width", () => {
   it("keeps each issue key on one line", () => {
     core();
-    const traced = { ...reqDetail, standing: { ...reqDetail.standing, coverage: reqDetail.standing.coverage } } as RequirementDetail;
-    page("criteria", traced);
+    const traced = { ...reqDetail, standing: { ...reqDetail.standing, coverage: reqDetail.standing.coverage } };
+    page("overview", traced);
     const keys = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-issue-key");
     expect(keys.length).toBeGreaterThan(0);
     for (const k of keys) {

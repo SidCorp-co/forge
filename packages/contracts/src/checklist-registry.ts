@@ -172,7 +172,7 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 	title: "Requirement ready",
 	gates: { machine: "requirement", from: ["draft"], to: "agreed" },
 	design: { flow: "requirement-lifecycle", revision: 15, step: "ready_check" },
-	shapes: ["3d9941e4", "2b100895"],
+	shapes: ["3d9941e4", "3c7adde3"],
 	questions: [
 		{
 			id: "problem",
@@ -260,7 +260,7 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 			// `workflows` question carries the gap alone: this one asks only over what is linked.
 			id: "traced",
 			prompt: "Does each criterion trace the workflow steps it touches?",
-			fix: "Trace each criterion to the steps or links of a linked workflow design it rests on.",
+			fix: "Trace each criterion to the workflow steps it touches.",
 			answer: text(2000),
 			answeredBy: {
 				by: "record",
