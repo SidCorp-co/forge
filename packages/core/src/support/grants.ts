@@ -117,11 +117,18 @@ export async function abilityRefusal(
   return null;
 }
 
+/**
+ * Whether the account the chat server signed is the owner the binding names (REQ-77 BC-12), by
+ * the user id it signed, never a name: owner mode or not, his instructions are channel rules
+ * (ISS-876).
+ */
+export function isNamedOwner(grants: SupportGrants, userId: string | null | undefined): boolean {
+  return Boolean(userId && grants.owner && grants.owner === userId);
+}
+
 /** Whether the account the chat server signed is the owner a channel agent's owner mode obeys (REQ-77 BC-20). */
 export function isOwner(grants: SupportGrants, userId: string | null | undefined): boolean {
-  return Boolean(
-    userId && grants.abilities.includes('owner_mode') && grants.owner && grants.owner === userId,
-  );
+  return grants.abilities.includes('owner_mode') && isNamedOwner(grants, userId);
 }
 
 /**

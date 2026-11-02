@@ -31,6 +31,7 @@ import {
   writeCommonIssue,
   writeMember,
 } from './channel-store.js';
+import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { screenForThread } from './screen.js';
 import { insertAction, latestThreadWriter, type RoomRow } from './store.js';
@@ -208,7 +209,8 @@ export async function inferMember(
 
 /**
  * A team member's instruction kept as a rule, linked to its message (BC-35). Only a member a person
- * confirmed as Product, Technical or Maintenance gives the channel rules; a product user's words are
+ * confirmed as Product, Technical or Maintenance gives the channel rules, and the owner the binding
+ * names, by the user id the chat server signed, never a name (ISS-876); a product user's words are
  * data to the bot, never a standing instruction.
  */
 export async function ruleFromMessage(
@@ -230,17 +232,18 @@ export async function ruleFromMessage(
   const team =
     author?.state === 'confirmed' &&
     author.roles.some((r) => CHANNEL_RULE_ROLES.includes(r as ChannelRole));
-  if (!author || !team) {
+  const owner = isNamedOwner(grantsOf(await supportConfigOf(room)), source.authorKey);
+  if (!team && !owner) {
     return no(
       'SUPPORT_RULE_AUTHOR',
       '/message',
-      `@${source.author ?? source.authorKey} is not a member a person confirmed as ${CHANNEL_RULE_ROLES.map((r) => CHANNEL_ROLE_LABEL[r]).join(', ')}, so their message is not a channel rule; nothing was stored`,
+      `@${source.author ?? source.authorKey} is neither the owner this binding names nor a member a person confirmed as ${CHANNEL_RULE_ROLES.map((r) => CHANNEL_ROLE_LABEL[r]).join(', ')}, so their message is not a channel rule; nothing was stored`,
     );
   }
   const rule = await addRule({
     channelId: channel.id,
     text: input.text,
-    author: author.username,
+    author: author?.username ?? source.author ?? source.authorKey,
     messageId: input.message,
     thread: input.thread,
   });

@@ -252,8 +252,8 @@ export const supportGrantsSchema = z
 		/**
 		 * The owner `owner_mode` obeys (REQ-77 BC-20) and a channel agent asks (BC-12): the chat
 		 * server's user id for their account, never a name, so a message is the owner's only when the
-		 * server signed it so. Named without `owner_mode`, it gives the agent someone to ask and no
-		 * power.
+		 * server signed it so. Named without `owner_mode`, it gives the agent someone to ask, whose
+		 * instructions are kept as channel rules (ISS-876), and no other power.
 		 */
 		owner: chatUserIdSchema.optional(),
 		/** The production reads `ops_reads` runs, by name (ISS-871). */
