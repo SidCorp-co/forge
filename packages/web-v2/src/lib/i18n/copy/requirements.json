@@ -369,9 +369,9 @@
     "requirements.unclear.askedHere": "Asked on this requirement",
     "requirements.unclear.askedOn": "Asked on",
     "requirements.unclear.blocksAgree": "Blocks the agree",
+    "requirements.unclear.blocksN": "{n} blocks the agree",
     "requirements.unclear.count": "{n} open",
     "requirements.unclear.heading": "Still unclear",
-    "requirements.unclear.none": "None",
     "requirements.unclear.whoAnswers": "Answered by {who}",
     "requirements.unknown": "Unknown",
     "requirements.verdict.fail": "Fail",
@@ -424,7 +424,7 @@
     "requirements.links.noneToLink": "None left",
     "requirements.links.pinsAt": "Version an agree pins",
     "requirements.links.noVersion": "No version",
-    "requirements.trace.heading": "Steps each criterion is served by",
+    "requirements.trace.heading": "Steps per criterion",
     "requirements.trace.stepsFor": "Steps of {design}"
   },
   "vi": {
@@ -699,6 +699,7 @@
     "requirements.unclear.askedHere": "Hỏi trên yêu cầu này",
     "requirements.unclear.askedOn": "Hỏi trên",
     "requirements.unclear.blocksAgree": "Chặn việc chốt",
+    "requirements.unclear.blocksN": "{n} chặn việc chốt",
     "requirements.unclear.count": "{n} câu còn mở",
     "requirements.unclear.heading": "Chưa rõ",
     "requirements.unclear.whoAnswers": "Người trả lời: {who}",
@@ -747,7 +748,7 @@
     "requirements.links.noneToLink": "Không còn gì",
     "requirements.links.pinsAt": "Phiên bản sẽ được ghim khi thống nhất",
     "requirements.links.noVersion": "Chưa có phiên bản",
-    "requirements.trace.heading": "Bước phục vụ từng tiêu chí",
+    "requirements.trace.heading": "Bước theo tiêu chí",
     "requirements.trace.stepsFor": "Các bước của {design}"
   }
 }

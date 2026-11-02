@@ -120,6 +120,9 @@
 .wfc-c4-label-line:only-child > .wfc-c4-more:first-child, .wfc-c4-label-line > .wfc-c4-more:only-child { margin-left: 0; }
 .wfc-c4-label:hover, .wfc-c4-label[data-on="true"] { color: var(--fg-default); }
 
+/* a compact pane (a requirement's picture) names its controls by tooltip, never in words over the drawing (ISS-903) */
+.wfc[data-compact="true"] .wfc-ib .wfc-t { display: none; }
+
 @media (max-width: 700px) {
   .wfc-tl { max-width: calc(100% - 24px); }
   .wfc-tr { top: auto; bottom: 58px; left: 12px; right: 12px; width: auto; }

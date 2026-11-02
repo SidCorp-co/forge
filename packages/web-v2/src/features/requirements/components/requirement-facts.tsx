@@ -278,12 +278,15 @@ export function RequirementProperties({
           <ul className="grid gap-1">
             {d.issues.map((i) => (
               <li key={i.issueId} className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-issue">
-                <Link href={linkedIssueHref(slug, i)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
-                  {i.displayId}
-                </Link>
-                <span className="min-w-0 flex-1 truncate" title={i.changedSincePlan ? t("requirements.facts.plannedOn", { title: i.title, r: i.plannedRevision ?? "—" }) : i.title}>
+                {/* title first, the key its tooltip (ISS-903) */}
+                <Link
+                  href={linkedIssueHref(slug, i)}
+                  className="min-w-0 flex-1 truncate text-link hover:underline"
+                  title={i.changedSincePlan ? `${i.displayId} · ${t("requirements.facts.plannedOn", { title: i.title, r: i.plannedRevision ?? "—" })}` : i.displayId}
+                  data-testid="rail-issue-title"
+                >
                   {i.title}
-                </span>
+                </Link>
                 {i.changedSincePlan ? (
                   <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-pill" style={{ background: LEGEND.you.dot }} />
                 ) : null}

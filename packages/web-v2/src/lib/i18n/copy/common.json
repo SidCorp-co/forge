@@ -50,6 +50,7 @@
     "common.decisions.unknownAuthor": "Unknown author",
     "common.decisions.why": "Why:",
     "common.decisions.withheld": "Content withheld under this project's data policy.",
+    "common.properties": "Properties",
     "common.questions.askedBy": "Asked by {who}",
     "common.questions.raised": "Questions raised here",
     "common.questions.someone": "someone",
@@ -471,6 +472,8 @@
     "common.stepNext": "{label} · not yet",
     "common.stepNow": "{label} · current step",
     "common.toast.open": "Open",
+    "common.viewCmd.developer": "Developer view",
+    "common.viewCmd.person": "Person view",
     "common.waffle.many": "{label}: {n} issues",
     "common.waffle.one": "{label}: {n} issue",
     "common.view.person": "Person",
@@ -736,6 +739,7 @@
     "common.peekPrevious": "{noun} trước (k)",
     "common.peekSummary": "Tóm tắt {noun} {key}",
     "common.preview": "Xem trước",
+    "common.properties": "Thuộc tính",
     "common.retry": "Thử lại",
     "common.role.admin": "quản trị",
     "common.role.member": "thành viên",
@@ -892,6 +896,8 @@
     "common.stepDone": "{label} · đã xong",
     "common.stepNext": "{label} · chưa tới",
     "common.stepNow": "{label} · bước hiện tại",
+    "common.viewCmd.developer": "Xem như nhà phát triển",
+    "common.viewCmd.person": "Xem như người dùng",
     "common.waffle.many": "{label}: {n} issue",
     "common.waffle.one": "{label}: {n} issue"
   }

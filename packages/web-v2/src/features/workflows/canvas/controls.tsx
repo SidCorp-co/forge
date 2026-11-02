@@ -44,7 +44,7 @@ export function ViewBar(p: {
 export function WalkStart({ onWalk }: { onWalk: () => void }) {
   const t = useCopy();
   return (
-    <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} data-testid="walk-start-bar">
+    <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={onWalk} data-testid="walk-start-bar" aria-label={t("workflows.canvas.walk")} title={t("workflows.canvas.walk")}>
       <Icon name="play" size={16} />
       <span className="wfc-t">{t("workflows.canvas.walk")}</span>
     </Button>

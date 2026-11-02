@@ -203,7 +203,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
   const wording = new Map(d.criteria.map((c) => [c.code, c]));
   return (
     <>
-    <VerdictFilter coverage={cov} value={filter} onChange={setFilter} />
+    {cov.length >= FILTER_FROM ? <VerdictFilter coverage={cov} value={filter} onChange={setFilter} /> : null}
     <ul className="border-t border-line-subtle" data-testid="criteria-checklist">
       {cov.filter((c) => filter === "all" || c.verdict === filter).map((c) => {
         const crit = wording.get(c.code);
@@ -230,11 +230,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                   </span>
                 </div>
               ) : null}
-              {crit?.form === "scenario" ? (
-                <pre className="whitespace-pre-wrap font-mono text-13 leading-relaxed">{c.body}</pre>
-              ) : (
-                <p className="text-14 leading-relaxed">{c.body}</p>
-              )}
+              <CriterionWording body={c.body} scenario={crit?.form === "scenario"} />
               {developer && c.counts ? (
                 <p className="mt-1 text-13 text-muted" data-testid="criterion-counts">
                   {c.counts.source === "issue"
@@ -262,10 +258,10 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 ) : (
                   issues.map(({ i, stale }) => (
                     <span key={i.issueId} className="inline-flex min-w-0 items-center gap-1.5">
-                      <Link href={linkedIssueHref(slug, i)} className="max-w-xs truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
+                      {/* the issue by its title; its key is the title's tooltip, never text on the row (ISS-903) */}
+                      <Link href={linkedIssueHref(slug, i)} className="max-w-xs truncate text-link hover:underline" title={i.displayId} data-testid="criterion-issue">
                         {i.title}
                       </Link>
-                      <span className="shrink-0 whitespace-nowrap font-mono text-12 text-subtle" data-testid="criterion-issue-key">{i.displayId}</span>
                       <StatusBadge family="issue" value={i.status} tone={i.tone} />
                       {stale ? <span className="text-subtle">{t("requirements.criteria.earlierWording")}</span> : null}
                     </span>
@@ -310,6 +306,23 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
 }
 
 /** A criterion's face: its first line, a scenario's Given line among them; the rest is behind its expand. */
+/** Fewer criteria than this read whole: their dots say each verdict, and a filter over them is noise (ISS-903). */
+const FILTER_FROM = 5;
+
+/** The short line cut to one row says no more than this many characters whole. */
+const LINE_WHOLE = 90;
+
+/** A criterion's full wording, opened under its line only where it says more than the line: a second line, or a line cut short. */
+function CriterionWording({ body, scenario }: { body: string; scenario: boolean }) {
+  const line = firstLine(body);
+  if (body.trim() === line && line.length <= LINE_WHOLE) return null;
+  return scenario ? (
+    <pre className="whitespace-pre-wrap font-mono text-13 leading-relaxed" data-testid="criterion-wording">{body}</pre>
+  ) : (
+    <p className="text-14 leading-relaxed" data-testid="criterion-wording">{body}</p>
+  );
+}
+
 const firstLine = (body: string) => body.split("\n").find((l) => l.trim())?.trim() ?? body;
 
 /** Every revision newest first, as rows: number, state, author, what it changed, when. */

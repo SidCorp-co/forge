@@ -12,7 +12,7 @@ import { BC_VERDICT_LABELS, type BcVerdict } from "@forge/contracts/requirements
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { core, hidingOf, mixed, page, peek, railRepeats, STEP_WORDS, strayInStrip } from "@/test/requirement-progress";
+import { core, hidingOf, mixed, page, peek, properties, railRepeats, STEP_WORDS, strayInStrip } from "@/test/requirement-progress";
 import { RULE, say, waitingOn } from "@/test/said";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 import type { RequirementDetail } from "../types";
@@ -69,19 +69,19 @@ describe("the top of a requirement page", () => {
     expect(hidingOf(strip)).toBeNull();
   });
 
-  it("is the only progress view: the rail repeats no step, waiting-on, state or verified count, and no phone-only copy stands", () => {
+  it("is the only progress view: the rail repeats no step, waiting-on, state or verified count, and no phone-only copy stands", async () => {
     core();
     page("overview");
-    expect(railRepeats(screen.getByTestId("relations-rail"))).toBeNull();
+    expect(railRepeats(await properties())).toBeNull();
     expect(screen.queryByTestId("phone-progress")).toBeNull();
     expect(screen.getAllByTestId("step-bar")).toHaveLength(1);
     expect(screen.getAllByTestId("wait-banner")).toHaveLength(1);
   });
 
-  it("goes red, naming it, on a step caption, a verified count, a criteria count, a waiting-on or the state planted in the rail", () => {
+  it("goes red, naming it, on a step caption, a verified count, a criteria count, a waiting-on or the state planted in the rail", async () => {
     core();
     page("overview");
-    const rail = screen.getByTestId("relations-rail");
+    const rail = await properties();
     const plant = (html: string) => {
       const el = document.createElement("p");
       el.innerHTML = html;
@@ -101,9 +101,10 @@ describe("the top of a requirement page", () => {
     expect(railRepeats(rail)).toBeNull();
   });
 
-  it("reads one waiting-on on the whole page, the strip's: a forecast paused on someone else is said nowhere", () => {
+  it("reads one waiting-on on the whole page, the strip's: a forecast paused on someone else is said nowhere", async () => {
     core();
     page("overview");
+    await properties();
     // how many issues shipped is the strip's wait and each row's status: the rail counts none (REQ-43 BC-5)
     expect(within(screen.getByTestId("facts-issues")).queryByText(/shipped ·/)).toBeNull();
     const strip = screen.getByTestId("requirement-progress");
@@ -152,10 +153,10 @@ describe("the verified count", () => {
 });
 
 describe("the criteria", () => {
-  it("read as a checklist under verdict pills, a glyph dot leading each criterion", () => {
+  it("read as a checklist, a glyph dot leading each criterion; three rows read whole, with no verdict pills over them", () => {
     core();
     page("overview");
-    expect(screen.getByTestId("criteria-filter")).toBeInTheDocument();
+    expect(screen.queryByTestId("criteria-filter")).toBeNull();
     const rows = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-row");
     expect(rows.map((r) => [r.querySelector('[data-testid="verdict-dot"]') === within(r).getByTestId("criterion-line").firstElementChild?.firstElementChild, within(r).getByTestId("verdict-dot").textContent])).toEqual([
       [true, "✓"],

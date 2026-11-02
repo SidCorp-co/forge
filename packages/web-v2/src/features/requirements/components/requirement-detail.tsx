@@ -1,6 +1,7 @@
 
-// A requirement's full page: a main column for reading and acting, beside a sticky rail of the
-// at-a-glance facts. The column opens on one strip (whose turn, where it stands on the lifecycle and
+// A requirement's full page: one column for reading and acting, its at-a-glance facts (owner, issues,
+// designs, contracts, mockups) a Properties drawer opened on demand, never an inline rail (ISS-903). The
+// column opens on one strip (whose turn, where it stands on the lifecycle and
 // what is next, k/n verified), then the requirement's picture above any text (REQ-35 BC-1,
 // `requirement-picture.tsx`), then its views by tabs: the Overview reads Problem, Value and Measured
 // by, then the criteria as short rows, then what is still unclear (REQ-65 BC-7, ISS-691,
@@ -15,16 +16,15 @@ import { Written } from "@/lib/i18n/written";
 import {
   ActorChip,
   AGENT_TINT,
+  DetailDrawer,
   Disclosure,
-  DetailLayout,
-  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
   FactsRail,
   type RecordView,
-  RecordViewSwitch,
   StatusBadge,
+  usePageCommands,
   useRecordView,
   useUrlTab,
   ViewHeading,
@@ -120,13 +120,11 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
   );
 }
 
-/** The person / developer switch, at the right above the tabs. */
-function ViewBar({ view, onView }: { view: RecordView; onView: (v: RecordView) => void }) {
-  return (
-    <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="requirement-view-bar">
-      <RecordViewSwitch view={view} onView={onView} />
-    </div>
-  );
+/** The person / developer switch is the palette's (⌘K): the face reads as a person's. */
+function useViewCommands(view: RecordView, onView: (v: RecordView) => void) {
+  const t = useCopy();
+  const other: RecordView = view === "developer" ? "person" : "developer";
+  usePageCommands([{ label: t(other === "developer" ? "common.viewCmd.developer" : "common.viewCmd.person"), icon: "keyboard", onRun: () => onView(other) }]);
 }
 
 export function RequirementPage({
@@ -145,6 +143,7 @@ export function RequirementPage({
   const t = useCopy();
   const [view, onView] = useRecordView();
   const developer = view === "developer";
+  useViewCommands(view, onView);
   const q = useRequirement(projectId, reqKey);
   const memories = useRequirementMemoryCount(projectId, reqKey);
   const mockupTarget = { type: "requirement" as const, key: reqKey };
@@ -164,28 +163,28 @@ export function RequirementPage({
         // memory is the developer view's: a person's view reading ?tab=memory opens on the Overview
         const shownTab = tabs.some((x) => x.value === tab) ? tab : "overview";
         return (
-          <DetailLayout
-            testId="requirement-detail"
-            dataKey={d.key}
-            rail={
-              <FactsRail testId="relations-rail">
-                <RequirementProperties
-                  d={d}
-                  slug={slug}
-                  onOpenRevisions={() => onTab("revisions")}
-                  projectId={projectId}
-                  developer={developer}
-                  more={<RequirementMockups projectId={projectId} slug={slug} reqKey={d.key} />}
-                />
-              </FactsRail>
-            }
-          >
-            <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
+          <article className="min-h-full bg-app" data-testid="requirement-detail" data-key={d.key}>
+            {/* the key is the title's tooltip, never text before it (ISS-903) */}
+            <DetailMobileTitle title={<span title={d.key}>{d.title}</span>} badge={<StatusBadge family="requirement" value={s.state} />} />
             <RequirementStandingHead projectId={projectId} reqKey={reqKey} standing={s} slug={slug} inset="px-8 max-md:px-4" />
             <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
-            <DetailLeadEnd />
-            <ViewBar view={view} onView={onView} />
-            <DetailTabs tabs={tabs} value={shownTab} onChange={onTab} testId="requirement-tabs" />
+            <div className="flex items-end justify-between gap-3 pr-8 pt-3 max-md:flex-col-reverse max-md:items-end max-md:gap-0 max-md:pr-4" data-testid="requirement-tabs-bar">
+              <div className="min-w-0 flex-1 max-md:w-full max-md:flex-none">
+                <DetailTabs tabs={tabs} value={shownTab} onChange={onTab} testId="requirement-tabs" />
+              </div>
+              <DetailDrawer label={t("common.properties")} testId="requirement-properties">
+                <FactsRail testId="relations-rail">
+                  <RequirementProperties
+                    d={d}
+                    slug={slug}
+                    onOpenRevisions={() => onTab("revisions")}
+                    projectId={projectId}
+                    developer={developer}
+                    more={<RequirementMockups projectId={projectId} slug={slug} reqKey={d.key} />}
+                  />
+                </FactsRail>
+              </DetailDrawer>
+            </div>
             <DetailPane label={tabs.find((x) => x.value === shownTab)?.label ?? t("requirements.tab.overview")}>
               {shownTab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} onRevise={() => onTab("revisions")} developer={developer} /> : null}
               {shownTab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
@@ -193,7 +192,7 @@ export function RequirementPage({
               {shownTab === "memory" ? <RequirementMemory projectId={projectId} slug={slug} reqKey={d.key} /> : null}
               {shownTab === "activity" ? <RequirementActivity projectId={projectId} slug={slug} d={d} /> : null}
             </DetailPane>
-          </DetailLayout>
+          </article>
         );
       }}
     </QueryBoundary>

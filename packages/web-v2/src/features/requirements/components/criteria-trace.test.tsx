@@ -40,6 +40,7 @@ function show(detail: RequirementDetail) {
 describe("a criterion's trace onto a linked design", () => {
   it("reads the held trace pressed and writes the whole trace on a pick, its lines kept", async () => {
     const calls = show(d);
+    fireEvent.click(within(screen.getByTestId("criteria-trace-fold")).getByRole("button", { name: /Steps per criterion/ }));
     fireEvent.click(within(screen.getByTestId("trace-design")).getByRole("button", { name: "Thanh toan" }));
     const first = (await screen.findAllByTestId("trace-criterion"))[0];
     expect(first).toHaveAttribute("data-code", "BC-1");

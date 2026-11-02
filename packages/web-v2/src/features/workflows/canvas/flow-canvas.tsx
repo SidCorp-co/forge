@@ -62,6 +62,32 @@ function openingView(el: HTMLElement, size: { width: number; height: number }, l
   return { x: (el.clientWidth - size.width * k) / 2, y: 64, zoom: k };
 }
 
+/** A compact pane's top row, where its walk-through button stands above the drawing. */
+const COMPACT_TOP = 56;
+const COMPACT_PAD = 16;
+/** The smallest zoom a compact pane draws at: a step's name stays readable, and a wider drawing scrolls sideways. */
+const COMPACT_READABLE = 0.8;
+
+/**
+ * Where a compact pane (a requirement's picture) opens, and how tall it is: the whole drawing fitted to
+ * the width, never above its own size nor below a readable zoom; a drawing wider than that starts at its
+ * first step, never cut at the pane's left edge, and scrolls sideways. The height follows the drawing,
+ * so no band stands empty above or below it (ISS-903).
+ */
+export function compactView(width: number, boxes: readonly Box[]): { viewport: Viewport; height: number } {
+  // the drawing's own bounds: a layout's size carries margins around its nodes, which drew as empty bands
+  const x0 = Math.min(...boxes.map((b) => b.x));
+  const y0 = Math.min(...boxes.map((b) => b.y));
+  const w = Math.max(...boxes.map((b) => b.x + b.width)) - x0;
+  const h = Math.max(...boxes.map((b) => b.y + b.height)) - y0;
+  const zoom = Math.min(1, Math.max(COMPACT_READABLE, (width - 2 * COMPACT_PAD) / w));
+  const drawn = w * zoom;
+  const room = width - 2 * COMPACT_PAD;
+  // wider than the pane: from the drawing's first step, the lit ones lit wherever they stand, and the rest a sideways scroll away
+  const left = drawn <= room ? (width - drawn) / 2 : COMPACT_PAD;
+  return { viewport: { x: left - x0 * zoom, y: COMPACT_TOP - y0 * zoom, zoom }, height: Math.ceil(COMPACT_TOP + h * zoom + COMPACT_PAD) };
+}
+
 /** What a relayout is keyed on: the language, and each node with whether a step shows in full. */
 const structureOf = (language: Language, view: View) => `${language}|${view.nodes.map((n) => (n.kind === "step" ? `${n.key}:${n.full ? 1 : 0}` : n.key)).join(",")}`;
 
@@ -100,12 +126,14 @@ function useDecoration({ step, edge, hits, walk, visited }: FocusMarks, lit: Lit
  * owns it, its lines saying what it leads to (REQ-10 BC-15); zoom and Fold all still fold it. A step or
  * stage the design gains while shown (the changes switch draws removed ones) opens too.
  */
-export function useOpenDesign(c: Canvas) {
+export function useOpenDesign(c: Canvas, compact = false) {
   const bands = c.bands.map((b) => b.id);
-  const steps = c.doc.steps.map((st) => st.id);
+  // a compact pane (a requirement's picture) draws each step by its title, its purpose the card's
+  // hover and a click away; the design's own page opens every step in full (ISS-903)
+  const steps = compact ? [] : c.doc.steps.map((st) => st.id);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(bands));
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(steps));
-  const drawn = `${bands.join(",")}|${steps.join(",")}`;
+  const drawn = `${bands.join(",")}|${c.doc.steps.map((st) => st.id).join(",")}`;
   const [drawnWas, setDrawnWas] = useState(drawn);
   if (drawnWas !== drawn) {
     setDrawnWas(drawn);
@@ -127,7 +155,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
   const [recordView] = useRecordView();
   const language: Language = recordView === "developer" ? "contract" : "business";
   const [lod, setLod] = useState<Lod>(1);
-  const { expanded, setExpanded, open, setOpen } = useOpenDesign(c);
+  const { expanded, setExpanded, open, setOpen } = useOpenDesign(c, props.compact ?? false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const view = useMemo(() => buildView(c, { lod, expanded, open }), [c, lod, expanded, open]);
@@ -144,8 +172,14 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     onToggleBand: toggleBand,
     onLaidOut: (first, size, positions) => {
       if (!first || !wrapRef.current) return;
-      const vp = openingView(wrapRef.current, size, [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []));
-      void rf.setViewport(vp);
+      const litBoxes = [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []);
+      if (props.compact && props.onFitted && positions.size > 0) {
+        const fitted = compactView(wrapRef.current.clientWidth, [...positions.values()]);
+        void rf.setViewport(fitted.viewport);
+        props.onFitted(fitted.height);
+        return;
+      }
+      void rf.setViewport(openingView(wrapRef.current, size, litBoxes));
     },
   });
 

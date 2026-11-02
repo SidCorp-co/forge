@@ -5,7 +5,7 @@
 
 import { BC_VERDICT_LABELS, BC_VERDICTS, type BcVerdict, criteriaCoverageOf, REQUIREMENT_LIFECYCLE, REQUIREMENT_STATE_LABELS, type RequirementState } from "@forge/contracts/requirements";
 import { QueryClient } from "@tanstack/react-query";
-import { within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { statusReading } from "@/design";
 import { RequirementPage } from "@/features/requirements/components/requirement-detail";
 import { RequirementPeek } from "@/features/requirements/components/requirement-peek";
@@ -55,6 +55,12 @@ export const client = (d: RequirementDetail = reqDetail) => {
 
 export function page(tab: "overview" | "revisions" | "activity" | "mockups" | "memory", d: RequirementDetail = reqDetail) {
   renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab={tab} onTab={() => {}} />, client(d));
+}
+
+/** Opens the page's Properties drawer, where its facts rail stands (ISS-903), and answers the rail. */
+export async function properties(): Promise<HTMLElement> {
+  fireEvent.click(screen.getByTestId("requirement-properties"));
+  return screen.findByTestId("relations-rail");
 }
 
 const row = (code: string, verdict: BcVerdict) => ({ code, body: `Tieu chi ${code}`, verdict, issues: [], verdicts: [], counts: null, why: null, uncoveredReason: null });

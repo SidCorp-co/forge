@@ -62,6 +62,8 @@ export interface WorkflowCanvasProps {
   focus?: CanvasFocus | null;
   changes?: CanvasChanges | null;
   highlight?: CanvasHighlight | null;
+  /** A compact pane told the height its drawing takes once laid out, so the pane is as tall as the graph and no taller. */
+  onFitted?: (height: number) => void;
 }
 
 /**

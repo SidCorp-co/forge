@@ -4,6 +4,7 @@
 // it named any, a quiet "more" control beside the button opens the palette on them.
 
 import { buttonVariants } from "@/components/ui/button";
+import type { ReactNode } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import type { IconName } from "../icons/icon";
@@ -14,22 +15,31 @@ import { TopBarActions } from "../primitives/top-bar-slot";
 import { usePageCommandsOpener } from "./page-commands";
 
 type NextActionProps = {
-  label: string;
   icon?: IconName;
   disabled?: boolean;
   loading?: boolean;
   testId?: string;
-} & ({ onClick: () => void; href?: undefined } | { href: string; onClick?: undefined } | { href?: undefined; onClick?: undefined });
+} & (
+  | { label: string; onClick: () => void; href?: undefined; children?: undefined }
+  | { label: string; href: string; onClick?: undefined; children?: undefined }
+  | { label: string; href?: undefined; onClick?: undefined; children?: undefined }
+  /** An act that carries its own confirm step or form (a sign-off with a reason), drawn as it is. */
+  | { children: ReactNode; label?: undefined; href?: undefined; onClick?: undefined }
+);
 
 const PRIMARY = buttonVariants({ variant: "default", size: "sm" });
 
-export function NextAction({ label, icon, disabled, loading, testId, ...act }: NextActionProps) {
+export function NextAction({ label, children, icon, disabled, loading, testId, ...act }: NextActionProps) {
   const t = useCopy();
   const more = usePageCommandsOpener();
   return (
     <TopBarActions>
       <span className="inline-flex items-center gap-1" data-next-action-bar="">
-        {act.href !== undefined ? (
+        {children ? (
+          <span className="contents" data-next-action="" data-testid={testId}>
+            {children}
+          </span>
+        ) : act.href !== undefined ? (
           <Link href={act.href} className={PRIMARY} data-next-action="" data-testid={testId}>
             {icon ? <Icon name={icon} size={15} /> : null}
             {label}

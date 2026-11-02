@@ -8,7 +8,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { WaitingOn } from "@/design";
-import { core, hidingOf, page, peek, secondProgress, strayInStrip } from "@/test/requirement-progress";
+import { core, hidingOf, page, peek, properties, secondProgress, strayInStrip } from "@/test/requirement-progress";
 import { RULE, say, waitingOn } from "@/test/said";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 import type { RequirementDetail } from "../types";
@@ -140,9 +140,10 @@ describe("one waiting-on and one verified count on the whole page", () => {
     expect(plantInto("requirement-facts", <WaitingOn w={reqDetail.standing.waitingOn} />)).toMatch(/^a second waiting-on: ".*You · accept r2"$/);
   });
 
-  it("goes red on a second count or waiting-on in words, on any tab and in the rail", () => {
+  it("goes red on a second count or waiting-on in words, on any tab and in the rail", async () => {
     core();
     page("activity");
+    await properties();
     expect(plantInto("relations-rail", <span>Passing 1 of 3</span>)).toBe('a second verified count: "Passing 1 of 3"');
     expect(plantInto("relations-rail", <span>1/3 verified</span>)).toBe('a second verified count: "1/3 verified"');
     expect(plantInto("requirement-tabs", <span>3 of 5 criteria proven</span>)).toMatch(/^a second verified count: "\d*3 of 5 criteria/);

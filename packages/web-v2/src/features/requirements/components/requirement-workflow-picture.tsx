@@ -3,7 +3,8 @@
 // step `picture`): that workflow on the canvas, the steps and links its live criteria trace lit and
 // the rest dimmed, opened on the lit steps, with the way to the workflow's own page. A traced step the
 // workflow's current design no longer has lights nothing and is named, so a trace left behind by a
-// design change never reads as a lit picture with nothing lit.
+// design change never reads as a lit picture with nothing lit. The pane is as tall as the drawing,
+// fitted to its width at a readable size; a wider drawing scrolls sideways (ISS-903).
 
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import { presentTrace } from "@/features/workflows";
 import { WorkflowCanvas } from "@/features/workflows";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { cn } from "@/lib/utils/cn";
 import { workflowHref } from "@/lib/routes/workflows";
 import type { TracedWorkflow } from "../picture-model";
 import { Figure } from "./picture-figure";
@@ -21,6 +23,8 @@ import { Figure } from "./picture-figure";
 export function WorkflowPicture({ projectId, slug, traced }: { projectId: string; slug: string; traced: TracedWorkflow[] }) {
   const t = useCopy();
   const [chosen, setChosen] = useState<string | null>(null);
+  // the pane is as tall as the drawing once laid out (ISS-903): no empty band, no tall box at phone width
+  const [fitted, setFitted] = useState<{ flow: string; height: number } | null>(null);
   const w = traced.find((x) => x.workflowId === chosen) ?? (traced[0]);
   const list = useWorkflows(projectId);
   const templates = useWorkflowTemplates(projectId);
@@ -52,7 +56,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   let canvas: ReactNode;
   if (record) {
     const template = templateFor(record.document, (templates.data?.templates ?? []).map((x) => x.template));
-    canvas = <WorkflowCanvas doc={record.document} template={template} highlight={highlight} compact />;
+    canvas = <WorkflowCanvas key={w.workflowId} doc={record.document} template={template} highlight={highlight} compact onFitted={(height) => setFitted({ flow: w.flow, height })} />;
   } else if (list.isError || list.isSuccess) {
     canvas = <p className="p-4 text-13 text-muted">{t("requirements.picture.workflow.unread", { flow: w.flow })}</p>;
   } else {
@@ -70,7 +74,13 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
           />
         </div>
       ) : null}
-      <div className="flex h-80 min-w-0 overflow-hidden border border-line-subtle max-md:h-90" data-testid="picture-workflow" data-flow={w.flow}>
+      <div
+        className={cn("flex min-w-0 overflow-hidden border border-line-subtle", fitted?.flow === w.flow ? null : "h-80 max-md:h-90")}
+        style={fitted?.flow === w.flow ? { height: fitted.height } : undefined}
+        data-testid="picture-workflow"
+        data-flow={w.flow}
+        data-fitted={fitted?.flow === w.flow ? "" : undefined}
+      >
         {canvas}
       </div>
     </Figure>

@@ -9,7 +9,7 @@
 
 import { Link } from "@/lib/navigation/router";
 import { useCallback, useState } from "react";
-import { AcceptStep, Button, Input, showToast, Tooltip, focusOnMount } from "@/design";
+import { AcceptStep, Button, type Command, showToast, Tooltip, usePageCommands } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { type DockDoor, useChatDock } from "@/features/chat-dock";
 import { formatApiError } from "@/lib/api/error";
@@ -22,6 +22,7 @@ import { useRequirementAction } from "../hooks";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { RequirementAction, RequirementDetail } from "../types";
 import { PromoteDrafts } from "./promote-drafts";
+import { AcceptByDecision, type Held, ReasonAct, ReasonForm } from "./reason-act";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */
 export function useAssistantDoor(projectId: string, reqKey: string): DockDoor {
@@ -129,6 +130,7 @@ export function PrimaryActions({
   d,
   inPeek,
   onReview,
+  sideActsInPalette = false,
 }: {
   projectId: string;
   slug: string;
@@ -136,6 +138,8 @@ export function PrimaryActions({
   inPeek?: boolean;
   /** On the full page, "Review proposal" opens the revisions view; in the peek it opens the full page there. */
   onReview?: () => void;
+  /** On the full page the side acts (accept by decision, defer, drop) are the palette's (⌘K), their form opened in place (ISS-903). */
+  sideActsInPalette?: boolean;
 }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
@@ -206,11 +210,33 @@ export function PrimaryActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {primary}
-      {decision ? <AcceptByDecision projectId={projectId} reqKey={d.key} revision={decision} /> : null}
+      <SideActs projectId={projectId} reqKey={d.key} decision={decision} deferrable={deferrable} droppable={droppable} inPalette={sideActsInPalette} />
+      <RefusalLine error={act.error} />
+    </div>
+  );
+}
+
+type SideAct = "decision" | "defer" | "drop";
+
+/** The acts beside the primary: as buttons, or, on the full page, as the palette's acts whose form opens in place. */
+function SideActs({ projectId, reqKey, decision, deferrable, droppable, inPalette }: { projectId: string; reqKey: string; decision: number | null; deferrable: boolean; droppable: boolean; inPalette: boolean }) {
+  const t = useCopy();
+  const [side, setSide] = useState<SideAct | null>(null);
+  const held = (a: SideAct): Held | undefined => (inPalette ? { open: side === a, onOpenChange: (o) => setSide(o ? a : null) } : undefined);
+  const named: [boolean, SideAct, Command][] = [
+    [decision !== null, "decision", { label: t("requirements.act.acceptByDecision"), icon: "check" }],
+    [deferrable, "defer", { label: t("requirements.act.defer"), icon: "pause" }],
+    [droppable, "drop", { label: t("requirements.act.drop"), icon: "x" }],
+  ];
+  usePageCommands(inPalette ? named.filter(([on]) => on).map(([, a, c]) => ({ ...c, onRun: () => setSide(a) })) : []);
+  return (
+    <>
+      {decision ? <AcceptByDecision projectId={projectId} reqKey={reqKey} revision={decision} held={held("decision")} /> : null}
       {deferrable ? (
         <ReasonAct
+          held={held("defer")}
           projectId={projectId}
-          reqKey={d.key}
+          reqKey={reqKey}
           label={t("requirements.act.defer")}
           whyLabel={t("requirements.act.deferWhyLabel")}
           whyHint={t("requirements.act.deferWhy")}
@@ -220,8 +246,9 @@ export function PrimaryActions({
       ) : null}
       {droppable ? (
         <ReasonAct
+          held={held("drop")}
           projectId={projectId}
-          reqKey={d.key}
+          reqKey={reqKey}
           label={t("requirements.act.drop")}
           submitVariant="danger"
           whyLabel={t("requirements.act.dropWhyLabel")}
@@ -229,8 +256,7 @@ export function PrimaryActions({
           build={(reason) => ({ kind: "drop", reason })}
         />
       ) : null}
-      <RefusalLine error={act.error} />
-    </div>
+    </>
   );
 }
 
@@ -278,21 +304,6 @@ function DeliveryMove({ projectId, d, kind }: { projectId: string; d: Requiremen
       consequence={t(`requirements.act.${words}Consequence`)}
       reasonLabel={t(`requirements.act.${words}WhyLabel`)}
       act={(reason) => ({ kind, reason })}
-    />
-  );
-}
-
-/** Accepts over an incomplete acceptance checklist, each unmet item recorded as waived (REQ-74). */
-function AcceptByDecision({ projectId, reqKey, revision }: { projectId: string; reqKey: string; revision: number }) {
-  const t = useCopy();
-  return (
-    <ReasonAct
-      projectId={projectId}
-      reqKey={reqKey}
-      label={t("requirements.act.acceptByDecision")}
-      whyLabel={t("requirements.act.acceptByDecisionWhyLabel")}
-      whyHint={t("requirements.act.acceptByDecisionWhy")}
-      build={(reason) => ({ kind: "accept-delivery", revision, reason, byDecision: true })}
     />
   );
 }
@@ -350,98 +361,6 @@ function SignOff({
       ) : null}
       <RefusalLine error={act.error} />
     </>
-  );
-}
-
-/** The reason an act must give, typed and sent: and, given `extra`, a second optional line beside it. */
-function ReasonForm({
-  whyLabel,
-  whyHint,
-  submit,
-  submitVariant,
-  extra,
-  busy,
-  error,
-  onSend,
-  onCancel,
-}: {
-  whyLabel: string;
-  whyHint: string;
-  submit: string;
-  submitVariant?: "primary" | "danger";
-  extra?: { label: string; hint: string };
-  busy: boolean;
-  /** The act's refusal, where no caller shows it. */
-  error?: unknown;
-  onSend: (reason: string, extra: string) => void;
-  onCancel: () => void;
-}) {
-  const t = useCopy();
-  const [reason, setReason] = useState("");
-  const [more, setMore] = useState("");
-  return (
-    <form
-      className="flex flex-wrap items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSend(reason.trim(), more.trim());
-      }}
-    >
-      <Input aria-label={whyLabel} placeholder={whyHint} value={reason} onChange={(e) => setReason(e.target.value)} className="min-w-64 flex-1" ref={focusOnMount} />
-      {extra ? <Input aria-label={extra.label} placeholder={extra.hint} value={more} onChange={(e) => setMore(e.target.value)} /> : null}
-      <Button type="submit" size="sm" variant={submitVariant} disabled={!reason.trim()} loading={busy}>
-        {submit}
-      </Button>
-      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
-        {t("common.cancel")}
-      </Button>
-      {error ? <RefusalLine error={error} /> : null}
-    </form>
-  );
-}
-
-/** An act that must say why: its button opens the reason form, which sends what `build` makes of it. */
-function ReasonAct({
-  projectId,
-  reqKey,
-  label,
-  tip,
-  primary = false,
-  build,
-  ...form
-}: {
-  projectId: string;
-  reqKey: string;
-  label: string;
-  tip?: string;
-  primary?: boolean;
-  build: (reason: string, extra: string) => RequirementAction;
-} & Pick<Parameters<typeof ReasonForm>[0], "whyLabel" | "whyHint" | "submitVariant" | "extra">) {
-  const act = useRequirementAction(projectId, reqKey);
-  const [open, setOpen] = useState(false);
-  if (open) {
-    return (
-      <ReasonForm
-        {...form}
-        submit={label}
-        busy={act.isPending}
-        error={act.error}
-        onSend={(reason, extra) => act.mutate(build(reason, extra), { onSuccess: () => setOpen(false) })}
-        onCancel={() => setOpen(false)}
-      />
-    );
-  }
-  const button = (
-    <Button type="button" size="sm" variant={primary ? "primary" : "ghost"} onClick={() => setOpen(true)}>
-      {label}
-    </Button>
-  );
-  return tip ? (
-    <Tooltip label={tip} multiline>
-      {button}
-    </Tooltip>
-  ) : (
-    button
   );
 }
 

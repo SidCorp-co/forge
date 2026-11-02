@@ -3,7 +3,7 @@
 // traces (`workflows/design-checklist-record.ts`), so a requirement linking a design traces its
 // criteria before that design is approved. The lines a trace already names go back as they are.
 
-import { ChoiceChips, Disclosure } from "@/design";
+import { ChoiceChips, CountSection, Disclosure } from "@/design";
 import { titleOf, useWorkflows } from "@/features/workflows";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -22,8 +22,9 @@ export function CriteriaTrace({ projectId, d }: { projectId: string; d: Requirem
   const criteria = tracedCriteria(d);
   if (d.workflows.length === 0 || criteria.length === 0) return null;
   return (
-    <section className="mt-8" data-testid="criteria-trace" aria-label={t("requirements.trace.heading")}>
-      <h3 className="fg-h3 mb-2">{t("requirements.trace.heading")}</h3>
+    <section className="mt-6" data-testid="criteria-trace" aria-label={t("requirements.trace.heading")}>
+      {/* shut to its label and how many criteria it traces: the pickers open on demand (ISS-903) */}
+      <CountSection label={t("requirements.trace.heading")} count={criteria.length} testId="criteria-trace-fold">
       {d.workflows.map((w) => {
         const design = designs.find((x) => x.document.id === w.workflowId);
         const steps = design?.document.steps ?? [];
@@ -51,6 +52,7 @@ export function CriteriaTrace({ projectId, d }: { projectId: string; d: Requirem
           </Disclosure>
         );
       })}
+      </CountSection>
       <RefusalLine error={trace.error} testid="trace-refusal" />
     </section>
   );

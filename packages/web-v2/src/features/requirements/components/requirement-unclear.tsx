@@ -1,10 +1,11 @@
 
 // What a requirement still leaves unclear (JU-6): the questions standing on it, open first, each with
-// who answers it and whether the agree waits for it, and the assumptions its revision takes as true.
+// who answers it and whether the agree waits for it, shut to one line until opened; and the
+// assumptions its revision takes as true.
 // Flat rows under hairline dividers; the counts and the blocking flag are core's.
 
 import { useState } from "react";
-import { Button, Textarea, ToneBadge, ViewHeading } from "@/design";
+import { Button, CountSection, Textarea, ToneBadge, ViewHeading } from "@/design";
 import { DecisionTarget } from "@/features/comments";
 import { IntakeSource } from "@/features/intake";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -79,7 +80,10 @@ function OpenQuestion({ q, projectId, reqKey, slug }: { q: RequirementQuestionVi
   );
 }
 
-/** "Still unclear · n": the questions standing on the requirement, open ones first. */
+/**
+ * "Still unclear": one line shut — how many questions stand, how many are open and how many block the
+ * agree — and the questions with their answer boxes opened on demand (ISS-903). Open ones first.
+ */
 export function OpenQuestions({
   questions,
   unclear,
@@ -94,18 +98,17 @@ export function OpenQuestions({
   slug: string;
 }) {
   const t = useCopy();
+  const blocking = questions.filter((q) => q.status === "open" && q.blocking).length;
+  const note = [unclear > 0 ? t("requirements.unclear.count", { n: unclear }) : null, blocking > 0 ? t("requirements.unclear.blocksN", { n: blocking }) : null].filter(Boolean).join(" · ");
   return (
     <section data-testid="requirement-unclear">
-      <ViewHeading right={<span className="text-13 text-muted">{t("requirements.unclear.count", { n: unclear })}</span>}>{t("requirements.unclear.heading")}</ViewHeading>
-      {questions.length === 0 ? (
-        <p className="text-13 text-subtle">{t("requirements.unclear.none")}</p>
-      ) : (
+      <CountSection label={t("requirements.unclear.heading")} count={questions.length} note={note || undefined} testId="unclear-fold">
         <ul className="grid">
           {questions.map((q) => (
             <OpenQuestion key={q.id} q={q} projectId={projectId} reqKey={reqKey} slug={slug} />
           ))}
         </ul>
-      )}
+      </CountSection>
     </section>
   );
 }

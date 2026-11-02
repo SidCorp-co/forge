@@ -3,7 +3,7 @@
 // Decisions tab rolls up the decisions on its issues beside the answers, and a person links an issue
 // that already exists to it, with core's refusal shown by its name.
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RequirementQuestionView } from "@forge/contracts/requirements";
@@ -33,6 +33,14 @@ const refusal = (code: string, detail: string) => ({
 });
 
 describe("what a requirement still leaves unclear", () => {
+  it("is one line shut, saying how many stand, how many are open and how many block the agree (ISS-903)", () => {
+    renderWithQuery(<OpenQuestions questions={[question({}), question({ id: "q2", blocking: false })]} unclear={2} projectId="p1" reqKey="REQ-14" slug="hop" />);
+    const fold = within(screen.getByTestId("requirement-unclear")).getByRole("button");
+    expect(fold).toHaveTextContent(/^Still unclear22 open · 1 blocks the agree$/);
+    expect(fold).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryAllByTestId("unclear-question")).toHaveLength(0);
+  });
+
   it("counts the open questions, flags the one the agree waits for, and says who answers and where it was asked", () => {
     renderWithQuery(
       <OpenQuestions
@@ -50,6 +58,7 @@ describe("what a requirement still leaves unclear", () => {
     const section = screen.getByTestId("requirement-unclear");
     expect(section).toHaveTextContent("Still unclear");
     expect(section).toHaveTextContent("2 open");
+    fireEvent.click(within(section).getByRole("button", { name: /Still unclear/ }));
     const [first, second, third] = screen.getAllByTestId("unclear-question");
     expect(first).toHaveTextContent("Blocks the agree");
     // the retired REQUIREMENT_OPEN_QUESTIONS is named nowhere: a blocking question is the ready checklist's gap
@@ -67,6 +76,7 @@ describe("what a requirement still leaves unclear", () => {
     const calls = fakeCore(() => ({ body: { id: "q1", status: "answered" } }));
     const user = userEvent.setup();
     renderWithQuery(<OpenQuestions questions={[question({ round: 2 })]} unclear={1} projectId="p1" reqKey="REQ-14" slug="hop" />);
+    await user.click(screen.getByRole("button", { name: /Still unclear/ }));
     await user.type(screen.getByRole("textbox", { name: "Your answer" }), "Only the owner");
     await user.click(screen.getByRole("button", { name: "Answer" }));
     await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/questions/q1/answer", body: { text: "Only the owner", round: 2 } }));
