@@ -5,6 +5,9 @@ import postgres from 'postgres';
 
 export const IMAGE = 'pgvector/pgvector:pg17';
 
+/** The container's /dev/shm, where Postgres keeps the shared memory its parallel queries take. */
+export const SHM_SIZE = '1g';
+
 /** Host ports a run never binds: the long-lived databases on a shared box answer there. */
 export const RESERVED_PORTS: ReadonlySet<number> = new Set([5432, 5433, 3306, 3307, 3317]);
 
@@ -80,6 +83,11 @@ export async function startPostgres(timeoutMs = 60_000): Promise<StartedPostgres
     '--rm',
     '--name',
     name,
+    // docker's default /dev/shm is 64 MB, and four files at once run parallel queries whose shared
+    // memory outgrows it: whole-suite run 41493299208 died on "could not resize shared memory
+    // segment … No space left on device", and every file after it met a database in recovery
+    '--shm-size',
+    SHM_SIZE,
     '-p',
     `127.0.0.1:${port}:5432`,
     '-e',
