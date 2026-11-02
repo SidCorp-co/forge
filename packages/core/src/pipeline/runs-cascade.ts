@@ -165,7 +165,8 @@ function failureMetadata(close: RunClose, at: Date): TransitionArgs<'run', never
 
 /** How the actor that closed a run reads in a sentence. */
 function actorWords(actor: KernelActor): string {
-  if (actor.type === 'user') return actor.id ? ` (${actor.agency} ${actor.id})` : ` (${actor.agency})`;
+  if (actor.type === 'user')
+    return actor.id ? ` (${actor.agency} ${actor.id})` : ` (${actor.agency})`;
   return actor.id ? ` (${actor.type} ${actor.id})` : ` (${actor.type})`;
 }
 

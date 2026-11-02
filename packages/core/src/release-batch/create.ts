@@ -128,7 +128,10 @@ async function enqueueReleaseJob(args: {
       });
       const refused = blockerRefusal('BATCH_IN_FLIGHT');
       // the cut already wears its version: it ends `failed` naming the refusal (ISS-761)
-      await closeRunIfOneShot(runId, 'failed', { code: 'BATCH_IN_FLIGHT', detail: reasonOf(refused) });
+      await closeRunIfOneShot(runId, 'failed', {
+        code: 'BATCH_IN_FLIGHT',
+        detail: reasonOf(refused),
+      });
       throw refused;
     }
     throw err;

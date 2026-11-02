@@ -20,8 +20,8 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
-import { readReleaseRepair, readRunFailure, repairViewOf } from './release-repair.js';
 import type { Part } from './release-read-views.js';
+import { readReleaseRepair, readRunFailure, repairViewOf } from './release-repair.js';
 import { carriersIn, carriersOf, type Lineage, type LineageRun } from './version-rule.js';
 import { versionStatus } from './versions.js';
 

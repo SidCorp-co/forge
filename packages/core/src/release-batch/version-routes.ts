@@ -1,3 +1,4 @@
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { ReleaseNamingSchema } from '@forge/contracts/release-notes';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -124,8 +125,8 @@ const repairBody = zValidator(
   z
     .object({
       outcome: z.literal('shipped'),
-      reason: z.string().trim().min(1).max(2000),
-      evidence: z.string().trim().min(1).max(2000),
+      reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX),
+      evidence: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX),
     })
     .strict(),
   invalid(

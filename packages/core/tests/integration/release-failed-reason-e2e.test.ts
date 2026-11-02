@@ -33,7 +33,11 @@ import {
   seedLandedWorld,
   world,
 } from '../helpers/landed-world.js';
-import { declareProductionDocument, releaseWorld, seedProduction } from '../helpers/release-world.js';
+import {
+  declareProductionDocument,
+  releaseWorld,
+  seedProduction,
+} from '../helpers/release-world.js';
 
 type Cut = {
   runId: string;
@@ -219,10 +223,15 @@ describe('a release batch run closed without a ship or an abort', () => {
   it('aborted by a person keeps that person and the reason they gave, and no failure', async () => {
     const { runId, version } = await cut();
     const reason = 'The deploy target is down for maintenance; re-cut tomorrow.';
-    const r = await api(token, 'POST', `/api/projects/${projectId}/release-batches/${runId}/abort`, {
-      reason,
-      pushed: false,
-    });
+    const r = await api(
+      token,
+      'POST',
+      `/api/projects/${projectId}/release-batches/${runId}/abort`,
+      {
+        reason,
+        pushed: false,
+      },
+    );
     expect(r.status, JSON.stringify(r.body)).toBe(200);
 
     // the roster went back to the gate unpushed, so the page reads the draft that re-cuts it
