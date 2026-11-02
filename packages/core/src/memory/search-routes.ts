@@ -6,7 +6,7 @@ import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn, requiresOnResolved } from '../permissions/index.js';
 import { memorySearchInputSchema, runMemorySearch } from './search-service.js';
 
 export const memorySearchRoutes = new Hono<{ Variables: AuthVars }>();
@@ -16,31 +16,36 @@ memorySearchRoutes.use(
   assertEmailVerified(),
   rateLimit(() => RULES.memorySearch, { name: 'memory-search' }),
 );
-memorySearchRoutes.post('/search', zValidator('json', memorySearchInputSchema), async (c) => {
-  const body = c.req.valid('json');
-  const userId = c.get('userId');
+memorySearchRoutes.post(
+  '/search',
+  zValidator('json', memorySearchInputSchema),
+  requiresOnResolved('project.read', 'the project the body names as projectId'),
+  async (c) => {
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
 
-  await requireCan(actorFor(userId), 'project.read', projectResource(body.projectId));
+    await requireDeclaredOn(body.projectId, userId, 'project.read');
 
-  let result: Awaited<ReturnType<typeof runMemorySearch>>;
-  try {
-    result = await runMemorySearch({
-      projectId: body.projectId,
-      query: body.query,
-      topK: body.topK,
-      sourceFilter: body.sourceFilter,
-      strategy: body.strategy,
-      surface: 'web',
-      reader: requestReader(userId),
-    });
-  } catch (err) {
-    if (err instanceof EmbeddingUnavailableError) {
-      throw new HTTPException(503, {
-        message: 'embeddings service unavailable',
-        cause: { code: EMBEDDING_UNAVAILABLE },
+    let result: Awaited<ReturnType<typeof runMemorySearch>>;
+    try {
+      result = await runMemorySearch({
+        projectId: body.projectId,
+        query: body.query,
+        topK: body.topK,
+        sourceFilter: body.sourceFilter,
+        strategy: body.strategy,
+        surface: 'web',
+        reader: requestReader(userId),
       });
+    } catch (err) {
+      if (err instanceof EmbeddingUnavailableError) {
+        throw new HTTPException(503, {
+          message: 'embeddings service unavailable',
+          cause: { code: EMBEDDING_UNAVAILABLE },
+        });
+      }
+      throw err;
     }
-    throw err;
-  }
-  return c.json(result);
-});
+    return c.json(result);
+  },
+);

@@ -19204,6 +19204,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19277,6 +19283,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the body names as projectId"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -19378,6 +19390,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19448,6 +19466,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the body names as projectId"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -19542,6 +19566,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19622,6 +19652,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the body names as projectId"
+          },
+          "permission": "project.read"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -19681,6 +19717,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
@@ -19727,6 +19769,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -19799,6 +19847,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",
@@ -19866,6 +19920,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId"
+          },
+          "permission": "project.write"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "json",

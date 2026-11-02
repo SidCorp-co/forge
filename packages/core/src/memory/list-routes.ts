@@ -6,7 +6,7 @@ import { requestReader } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn, requiresOnResolved } from '../permissions/index.js';
 import { memoryCitesSchema, memoryEntriesInputSchema, readMemoryEntries } from './entries.js';
 import { runMemoryGet, runMemoryGetOne } from './get-service.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
@@ -28,41 +28,51 @@ const revisionsQuerySchema = memoryRevisionsInputSchema
 export const memoryListRoutes = new Hono<{ Variables: AuthVars }>();
 memoryListRoutes.use('*', requireAuth(), assertEmailVerified());
 
-memoryListRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
-  const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+memoryListRoutes.get(
+  '/',
+  zValidator('query', listQuerySchema),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
+    const userId = c.get('userId');
+    await requireDeclaredOn(projectId, userId, 'project.read');
 
-  const { rows, total } = await runMemoryGet({
-    projectId,
-    ...(source ? { source } : {}),
-    ...(sourceRef ? { sourceRef } : {}),
-    includeArchived,
-    limit,
-    offset,
-    orderBy: 'createdAt',
-    orderDir: 'desc',
-  });
+    const { rows, total } = await runMemoryGet({
+      projectId,
+      ...(source ? { source } : {}),
+      ...(sourceRef ? { sourceRef } : {}),
+      includeArchived,
+      limit,
+      offset,
+      orderBy: 'createdAt',
+      orderDir: 'desc',
+    });
 
-  return c.json(listResponse(c, rows, total, { limit, offset }));
-});
+    return c.json(listResponse(c, rows, total, { limit, offset }));
+  },
+);
 
-memoryListRoutes.get('/revisions', zValidator('query', revisionsQuerySchema), async (c) => {
-  const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+memoryListRoutes.get(
+  '/revisions',
+  zValidator('query', revisionsQuerySchema),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
+    const userId = c.get('userId');
+    await requireDeclaredOn(projectId, userId, 'project.read');
 
-  const { rows, total } = await runMemoryRevisions({
-    projectId,
-    ...(memoryId ? { memoryId } : {}),
-    ...(source ? { source } : {}),
-    ...(sourceRef ? { sourceRef } : {}),
-    limit,
-    offset,
-  });
+    const { rows, total } = await runMemoryRevisions({
+      projectId,
+      ...(memoryId ? { memoryId } : {}),
+      ...(source ? { source } : {}),
+      ...(sourceRef ? { sourceRef } : {}),
+      limit,
+      offset,
+    });
 
-  return c.json(listResponse(c, rows, total, { limit, offset }));
-});
+    return c.json(listResponse(c, rows, total, { limit, offset }));
+  },
+);
 
 const entriesQuerySchema = paginationSchema
   .extend({
@@ -92,25 +102,30 @@ const entriesQuerySchema = paginationSchema
 // cites and which of those no longer resolve, why it needs a check, and every person's correction
 // or retirement; `counts` sizes each list by the same rule. `cites` keeps the rows naming one
 // requirement, issue or workflow: the read its own page shows (REQ-33 BC-4).
-memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async (c) => {
-  const { projectId, sources, state, cites, uncited, limit, offset } = c.req.valid('query');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+memoryListRoutes.get(
+  '/entries',
+  zValidator('query', entriesQuerySchema),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId, sources, state, cites, uncited, limit, offset } = c.req.valid('query');
+    const userId = c.get('userId');
+    await requireDeclaredOn(projectId, userId, 'project.read');
 
-  const { rows, total, counts } = await readMemoryEntries(
-    memoryEntriesInputSchema.parse({
-      projectId,
-      ...(sources ? { sources } : {}),
-      ...(state ? { state } : {}),
-      ...(cites ? { cites } : {}),
-      uncited,
-      limit,
-      offset,
-    }),
-    requestReader(userId),
-  );
-  return c.json({ ...listResponse(c, rows, total, { limit, offset }), counts });
-});
+    const { rows, total, counts } = await readMemoryEntries(
+      memoryEntriesInputSchema.parse({
+        projectId,
+        ...(sources ? { sources } : {}),
+        ...(state ? { state } : {}),
+        ...(cites ? { cites } : {}),
+        uncited,
+        limit,
+        offset,
+      }),
+      requestReader(userId),
+    );
+    return c.json({ ...listResponse(c, rows, total, { limit, offset }), counts });
+  },
+);
 
 const entryParamSchema = z.object({ memoryId: z.uuid() });
 const entryQuerySchema = z.object({ projectId: z.uuid() });
@@ -120,10 +135,11 @@ memoryListRoutes.get(
   '/:memoryId',
   zValidator('param', entryParamSchema),
   zValidator('query', entryQuerySchema),
+  requiresOnResolved('project.read', 'the project the query names as projectId'),
   async (c) => {
     const { memoryId } = c.req.valid('param');
     const { projectId } = c.req.valid('query');
-    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
+    await requireDeclaredOn(projectId, c.get('userId'), 'project.read');
     return c.json(await runMemoryGetOne(projectId, memoryId));
   },
 );
