@@ -107,14 +107,14 @@ function DenseQuestion({ d, href }: { d: NeedsYouDecision; href: string | null }
     </>
   );
   return (
-    <p className="fg-body-sm flex min-w-0 text-fg" title={hoverOf(d, t)} data-testid="needs-you-decision-question" data-item={name}>
+    <p className="fg-body-sm flex min-w-0 overflow-hidden text-fg" title={hoverOf(d, t)} data-testid="needs-you-decision-question" data-item={name}>
       <Tooltip label={name} focusable={!href} className="min-w-0 max-w-full">
         {href ? (
-          <Link href={href} className="truncate underline-offset-2 hover:underline" data-testid="needs-you-decision-open">
+          <Link href={href} className="min-w-0 truncate underline-offset-2 hover:underline" data-testid="needs-you-decision-open">
             {said}
           </Link>
         ) : (
-          <span className="truncate">{said}</span>
+          <span className="min-w-0 truncate">{said}</span>
         )}
       </Tooltip>
     </p>
