@@ -1,0 +1,1 @@
+**No daily cap on handing a chat bot work.** The per-member daily change limit is gone; a binding still naming it is refused. The binding's owner, recognised by his chat account id, now sets channel rules.
