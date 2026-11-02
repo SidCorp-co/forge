@@ -2,7 +2,6 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { requireAdmin } from '../middleware/require-admin.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { listAllDeadDeliveries } from './read.js';
 import { type ReplayOutcome, replayAnyDelivery } from './service.js';
@@ -26,7 +25,9 @@ function answer(c: Context, outcome: ReplayOutcome) {
 
 /** Every dead delivery, project-less events' included, for platform admins. */
 export const outboxAdminRoutes = new Hono<{ Variables: AuthVars }>();
-outboxAdminRoutes.use('/outbox/*', requireAuth(), assertEmailVerified(), requireAdmin());
+// only an instance admin reaches these: outbox sits below permissions, so route-registry.ts mounts
+// the declaration in front of this router (mounted-declarations.ts:OUTBOX_IS_INSTANCE_ADMIN)
+outboxAdminRoutes.use('/outbox/*', requireAuth(), assertEmailVerified());
 
 outboxAdminRoutes.get('/outbox/dead', pageQuery, async (c) => {
   const { limit, offset } = c.req.valid('query');

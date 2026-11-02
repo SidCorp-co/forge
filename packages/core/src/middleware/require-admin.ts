@@ -1,11 +1,10 @@
 import { and, inArray, isNotNull, sql } from 'drizzle-orm';
-import type { Context, MiddlewareHandler } from 'hono';
+import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { env } from '../lib/env.js';
 import { type AuthVars, authUserRow, readAuthUser } from './auth.js';
-import { declareGate } from './declared-gate.js';
 
 export function parseAdminList(): string[] {
   const raw = env.ADMIN_EMAILS;
@@ -75,11 +74,4 @@ function refuseUnlessAdmin(row: { email: string } | null): void {
       cause: { code: 'ADMIN_ONLY' },
     });
   }
-}
-
-export function requireAdmin(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return declareGate('requireAdmin', async (c, next) => {
-    await assertPlatformAdmin(c);
-    await next();
-  });
 }

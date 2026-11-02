@@ -14,9 +14,8 @@ import { z } from 'zod';
 import { carryAgentReports } from '../feedback/index.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { requireAdmin } from '../middleware/require-admin.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresNoPermission, requiresSelf } from '../permissions/index.js';
+import { requiresInstanceAdmin, requiresNoPermission, requiresSelf } from '../permissions/index.js';
 import {
   type Answer,
   claimForgeAnswers,
@@ -176,7 +175,9 @@ forgeFeedbackAdminRoutes.use(
   '/forge-feedback/*',
   requireAuth(),
   assertEmailVerified(),
-  requireAdmin(),
+  requiresInstanceAdmin(
+    "a carry of every project's retired agent reports into Forge's home project, an operator's act",
+  ),
 );
 
 forgeFeedbackAdminRoutes.post(

@@ -8,7 +8,6 @@ export const AUTH_GATES = {
   requirePat: 'a personal or agent access token only',
   requireDevice: 'a paired device credential only',
   assertEmailVerified: 'a person whose email address is verified (a device passes)',
-  requireAdmin: 'a platform administrator',
   requireFreshAuth: 'a caller who re-authenticated within the window the route sets',
 } as const;
 

@@ -9,8 +9,9 @@ import {
   authUserRow,
   requireAuth,
 } from '../middleware/auth.js';
-import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
+import { onAdminList } from '../middleware/require-admin.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresInstanceAdmin, requiresSelf } from '../permissions/index.js';
 import { computeAlerts } from './alert-queries.js';
 import { listAdminDevices, listAdminProjects } from './read.js';
 
@@ -24,29 +25,52 @@ const devicesQuerySchema = paginationSchema.extend({
 export const adminRoutes = new Hono<{ Variables: AuthVars }>();
 
 const adminProtected = new Hono<{ Variables: AuthVars }>();
-adminProtected.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
+adminProtected.use('*', requireAuth(), assertEmailVerified());
 
-adminProtected.get('/projects', zValidator('query', searchQuerySchema), async (c) => {
-  const { limit, offset, q } = c.req.valid('query');
-  const { rows, total } = await listAdminProjects({ limit, offset, q });
-  return c.json(listResponse(c, rows, total, { limit, offset }));
-});
+// what only an operator of this Forge reads: every tenant's rows, no project's in particular
+const INSTANCE_ADMIN_READ =
+  'a read across every tenant of this Forge instance, no project in particular';
 
-adminProtected.get('/devices', zValidator('query', devicesQuerySchema), async (c) => {
-  const { limit, offset, status } = c.req.valid('query');
-  const { rows, total } = await listAdminDevices({ limit, offset, status });
-  return c.json(listResponse(c, rows, total, { limit, offset }));
-});
+adminProtected.get(
+  '/projects',
+  requiresInstanceAdmin(INSTANCE_ADMIN_READ),
+  zValidator('query', searchQuerySchema),
+  async (c) => {
+    const { limit, offset, q } = c.req.valid('query');
+    const { rows, total } = await listAdminProjects({ limit, offset, q });
+    return c.json(listResponse(c, rows, total, { limit, offset }));
+  },
+);
+
+adminProtected.get(
+  '/devices',
+  requiresInstanceAdmin(INSTANCE_ADMIN_READ),
+  zValidator('query', devicesQuerySchema),
+  async (c) => {
+    const { limit, offset, status } = c.req.valid('query');
+    const { rows, total } = await listAdminDevices({ limit, offset, status });
+    return c.json(listResponse(c, rows, total, { limit, offset }));
+  },
+);
 
 const whoamiRoutes = new Hono<{ Variables: AuthVars }>();
 whoamiRoutes.use('*', requireAuth(), assertEmailVerified());
-whoamiRoutes.get('/whoami', noQuery, async (c) => {
-  const row = await authUserRow(c, c.get('userId'));
-  if (!row) {
-    throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
-  }
-  return c.json({ isAdmin: onAdminList(row.email), email: row.email });
-});
+// whether the caller is on the admin list is the caller's own standing, answered to anyone signed in
+whoamiRoutes.get(
+  '/whoami',
+  requiresSelf("the caller's own address and whether it is on this instance's admin list"),
+  noQuery,
+  async (c) => {
+    const row = await authUserRow(c, c.get('userId'));
+    if (!row) {
+      throw new HTTPException(401, {
+        message: 'user not found',
+        cause: { code: 'UNAUTHENTICATED' },
+      });
+    }
+    return c.json({ isAdmin: onAdminList(row.email), email: row.email });
+  },
+);
 
 adminRoutes.route('/', whoamiRoutes);
 adminRoutes.route('/', adminProtected);
@@ -58,10 +82,15 @@ const alertsQuerySchema = z.object({
 });
 
 export const adminAlertRoutes = new Hono<{ Variables: AuthVars }>();
-adminAlertRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
+adminAlertRoutes.use('*', requireAuth(), assertEmailVerified());
 
-adminAlertRoutes.get('/alerts', zValidator('query', alertsQuerySchema), async (c) => {
-  const { staleSeconds } = c.req.valid('query');
-  const alerts = await computeAlerts(staleSeconds === undefined ? {} : { staleSeconds });
-  return c.json(listResponse(c, alerts, alerts.length, { limit: alerts.length, offset: 0 }));
-});
+adminAlertRoutes.get(
+  '/alerts',
+  requiresInstanceAdmin(INSTANCE_ADMIN_READ),
+  zValidator('query', alertsQuerySchema),
+  async (c) => {
+    const { staleSeconds } = c.req.valid('query');
+    const alerts = await computeAlerts(staleSeconds === undefined ? {} : { staleSeconds });
+    return c.json(listResponse(c, alerts, alerts.length, { limit: alerts.length, offset: 0 }));
+  },
+);

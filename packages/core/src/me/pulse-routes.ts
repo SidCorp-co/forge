@@ -5,7 +5,7 @@
  * executing, where is the work piling up, what needs a person, which way is the
  * flow going, does the output hold. None of them had an organization-scoped
  * answer: `/api/projects/:id/pipeline-runs` is fenced to one project and the
- * cross-tenant rollups in `admin/` are behind `requireAdmin()`, so a client
+ * cross-tenant rollups in `admin/` declare `requiresInstanceAdmin`, so a client
  * would have had to fan out over every project it can see.
  */
 

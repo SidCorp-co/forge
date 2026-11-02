@@ -130,6 +130,7 @@ import {
   DISCOVERY_IS_PUBLIC,
   declareCredentialRoutes,
   INSTALL_IS_PUBLIC,
+  OUTBOX_IS_INSTANCE_ADMIN,
 } from './mounted-declarations.js';
 import { notificationVolumeRoutes } from './notifications/index.js';
 import { notificationRoutes } from './notifications/routes.js';
@@ -441,6 +442,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/admin', adminRoutes);
   app.route('/api/admin', adminAggregateRoutes);
   app.route('/api/admin', adminAlertRoutes);
+  app.use('/api/admin/outbox/*', OUTBOX_IS_INSTANCE_ADMIN);
   app.route('/api/admin', outboxAdminRoutes);
   app.route('/api/admin', instanceSettingsRoutes);
   app.route('/api/admin', forgeFeedbackAdminRoutes);

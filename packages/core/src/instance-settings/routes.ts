@@ -4,8 +4,8 @@ import {
 } from '@forge/contracts/instance-settings';
 import { Hono } from 'hono';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { requireAdmin } from '../middleware/require-admin.js';
 import { noQuery, strictBody } from '../middleware/zod-validator.js';
+import { requiresInstanceAdmin } from '../permissions/index.js';
 import { readInstanceSettings, writeInstanceSettings } from './service.js';
 
 /** `/api/admin/instance-settings`: an instance admin reads and sets what the instance says of itself. */
@@ -14,7 +14,7 @@ instanceSettingsRoutes.use(
   '/instance-settings',
   requireAuth(),
   assertEmailVerified(),
-  requireAdmin(),
+  requiresInstanceAdmin('what this Forge instance says of itself, owned by no project'),
 );
 
 instanceSettingsRoutes.get('/instance-settings', noQuery, async (c) =>

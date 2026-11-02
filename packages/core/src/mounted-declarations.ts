@@ -4,7 +4,7 @@
 
 import type { Hono } from 'hono';
 import type { RequestIdVars } from './middleware/request-id.js';
-import { requiresPublic, requiresSelf } from './permissions/index.js';
+import { requiresInstanceAdmin, requiresPublic, requiresSelf } from './permissions/index.js';
 
 export const INSTALL_IS_PUBLIC = requiresPublic(
   'a box with no credential yet fetches the installer and the published runner build; nothing a project owns',
@@ -18,6 +18,12 @@ export const DISCOVERY_IS_PUBLIC = requiresPublic(
 const MCP_SIGN_IN_IS_PUBLIC = requiresPublic(
   'an MCP client with no token registers itself, or trades the code a signed-in person granted, or its refresh token; the registered client, its redirect and the PKCE verifier are the checks',
 );
+// outbox sits below permissions: its admin routes' declaration is mounted ahead of outboxAdminRoutes,
+// after the admin routers whose credential gates already cover /api/admin/*
+export const OUTBOX_IS_INSTANCE_ADMIN = requiresInstanceAdmin(
+  "every project's dead deliveries, and those of project-less events, read and replayed by an operator of this instance",
+);
+
 export const CONTRACT_IS_PUBLIC = requiresPublic(
   'a published contract describes shapes and gates, never a row or a secret, and is read with no credential',
 );
