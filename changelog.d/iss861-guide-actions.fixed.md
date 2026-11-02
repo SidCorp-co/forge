@@ -1,0 +1,1 @@
+**MCP guides and refusals point to what a client can do.** The issue guide names project_feedback.submit, every action a guide names is checked to exist, and a read-only OAuth sign-in is told to allow write on consent (ISS-861).

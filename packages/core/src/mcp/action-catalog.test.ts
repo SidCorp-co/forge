@@ -5,13 +5,14 @@
 //
 // @direct-test-of packages/core/src/mcp/action-catalog.ts
 
+import { PERMISSIONS } from '@forge/contracts/permissions';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
 import type { McpContext, McpTool } from '../lib/tool.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { actionCatalog, findActions } from './action-catalog.js';
-import { mcpTools, toolListing } from './server.js';
+import { forgeMcpInstructions, mcpTools, toolListing } from './server.js';
 
 const principal = {
   kind: 'pat',
@@ -61,6 +62,26 @@ describe('the catalog of every served action', () => {
     );
     expect([...catalog.keys()].sort()).toEqual(expected.sort());
     expect(expected.length).toBeGreaterThan(100);
+  });
+
+  // the ISS-538 judge (2026-11-02): issues.create's guide sent a caller to project_feedback.create,
+  // which answers MCP_ACTION_UNKNOWN; a guide naming an action a client cannot call is a dead end
+  it('names, in every door guide and in the server instructions, only actions it serves', () => {
+    // a permission reads the same way (`releases.approve`), and a guide names it as one
+    const permissionNames = new Set<string>(PERMISSIONS);
+    const doors = new Set([...catalog.keys()].map((id) => id.split('.')[0] as string));
+    const named = new RegExp(`\\b(${[...doors].join('|')})\\.([a-z][a-z_]*)\\b`, 'g');
+    const texts = [
+      ...tools.map((t) => [t.name, t.description] as const),
+      ['instructions', forgeMcpInstructions()] as const,
+    ];
+    const dead = texts.flatMap(([where, text]) =>
+      [...text.matchAll(named)]
+        .map((m) => `${m[1]}.${m[2]}`)
+        .filter((id) => !catalog.has(id) && !permissionNames.has(id))
+        .map((id) => `${where}: ${id}`),
+    );
+    expect(dead).toEqual([]);
   });
 
   it("gives each action its own guide, but where the door judges each action's own input", () => {

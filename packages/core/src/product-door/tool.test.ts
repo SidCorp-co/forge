@@ -100,7 +100,7 @@ describe('forge_issues create', () => {
   it('points the caller to the product first and names when to file directly and when to ask', () => {
     const d = issues.description;
     expect(d).toContain('start from the product');
-    expect(d).toContain('project_feedback.create');
+    expect(d).toContain('project_feedback.submit');
     expect(d).toContain('requirements.create');
     expect(d).toContain('File one here directly when');
     expect(d).toContain('ask them before filing');
