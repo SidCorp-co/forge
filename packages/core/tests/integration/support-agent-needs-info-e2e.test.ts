@@ -9,7 +9,12 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import type { QuestionOption } from '../../src/db/schema-questions.js';
-import { addProjectMember, createTestIssue, createTestProject, rows } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestIssue,
+  createTestProject,
+  rows,
+} from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.js';
 
@@ -36,8 +41,20 @@ const OUTSIDE = `elsewhere-${tag}`;
 const OWNER_NAME = 'Hùng Trần';
 const PROMPT = 'Which onboarding tour should new workspaces see first?';
 const OPTIONS: QuestionOption[] = [
-  { id: 'short', label: 'The short tour', authority: 'writer', bindsTo: 'session', executedBy: 'agent' },
-  { id: 'full', label: 'The full tour', authority: 'writer', bindsTo: 'session', executedBy: 'agent' },
+  {
+    id: 'short',
+    label: 'The short tour',
+    authority: 'writer',
+    bindsTo: 'session',
+    executedBy: 'agent',
+  },
+  {
+    id: 'full',
+    label: 'The full tour',
+    authority: 'writer',
+    bindsTo: 'session',
+    executedBy: 'agent',
+  },
 ];
 const CHECK = {
   name: 'morning',
@@ -63,7 +80,7 @@ async function onCheckTurn(fire: () => Promise<unknown>, model: (act: Act) => Pr
 }
 
 type Row = { key: string; status: string; waiting?: Record<string, unknown> };
-const issuesOf = (body: Record<string, unknown>) => (body.issues ?? []) as Row[];
+const issuesOf = (body: Record<string, unknown> | undefined) => (body?.issues ?? []) as Row[];
 
 /** Every read the agent makes in one check turn, by name. */
 async function readAll(day: string): Promise<Record<string, Record<string, unknown>>> {
@@ -190,7 +207,7 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
     });
   });
 
-  it("reads every issue of a followed project, and only a waiting one carries what it waits on", async () => {
+  it('reads every issue of a followed project, and only a waiting one carries what it waits on', async () => {
     const out = await readAll('2026-11-04');
     expect(out.fe).toMatchObject({ project: FE, total: 2 });
     const byKey = new Map(issuesOf(out.fe).map((r) => [r.key.split('-').pop(), r]));
@@ -201,7 +218,9 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
 
   it('refuses a project the agent does not follow', async () => {
     const out = await readAll('2026-11-05');
-    expect(refusalCodes(out.outside), JSON.stringify(out.outside)).toContain('OPS_OUT_OF_SCOPE');
+    expect(refusalCodes(out.outside ?? {}), JSON.stringify(out.outside)).toContain(
+      'OPS_OUT_OF_SCOPE',
+    );
     expect(JSON.stringify(out.outside)).toContain(`follows ${HOME}, ${FE}`);
   });
 
