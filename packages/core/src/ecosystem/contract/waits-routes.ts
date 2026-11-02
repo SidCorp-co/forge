@@ -11,12 +11,12 @@ import {
 } from '@forge/contracts/contract-waits';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { resolveIssueRouteRef } from '../../issues/index.js';
+import { ISSUE_PROJECT, resolveIssueRouteRef } from '../../issues/index.js';
 import { refused } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { notFound } from '../../middleware/route-errors.js';
 import { strictBody, zValidator } from '../../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
+import { requiresOnResolved } from '../../permissions/index.js';
 import {
   addContractWait,
   contractWaitViews,
@@ -39,6 +39,7 @@ contractWaitRoutes.use('/:id/contract-waits/*', requireAuth(), assertEmailVerifi
 contractWaitRoutes.get(
   '/:id/contract-waits',
   zValidator('param', issueParam),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   async (c) => {
     const { projectId, live } = c.req.valid('query');
@@ -51,16 +52,17 @@ contractWaitRoutes.get(
 contractWaitRoutes.post(
   '/:id/contract-waits',
   zValidator('param', issueParam),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   strictBody(addContractWaitRequestSchema, ADD_CONTRACT_WAIT_SHAPE),
   async (c) => {
     const userId = c.get('userId');
+    // resolving the issue checks the declared project.write on its project (issue-route-ref.ts)
     const issue = await resolveIssueRouteRef(
       c.req.valid('param').id,
       c.req.valid('query').projectId,
       userId,
     );
-    await requireCan(actorFor(userId), 'project.write', projectResource(issue.projectId));
     const body = c.req.valid('json');
     const out = await addContractWait({
       issue: { id: issue.id, projectId: issue.projectId, status: issue.status },
@@ -80,13 +82,14 @@ contractWaitRoutes.post(
 contractWaitRoutes.post(
   '/:id/contract-waits/:waitId/retract',
   zValidator('param', waitParam),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('query', scopeQuery),
   strictBody(retractContractWaitRequestSchema, RETRACT_CONTRACT_WAIT_SHAPE),
   async (c) => {
     const userId = c.get('userId');
     const { id, waitId } = c.req.valid('param');
+    // resolving the issue checks the declared project.write on its project (issue-route-ref.ts)
     const issue = await resolveIssueRouteRef(id, c.req.valid('query').projectId, userId);
-    await requireCan(actorFor(userId), 'project.write', projectResource(issue.projectId));
     const out = await retractContractWait({
       issueId: issue.id,
       waitId,
