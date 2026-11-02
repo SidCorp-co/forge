@@ -119,7 +119,7 @@ export { SettingsGroup, SettingRow, FormActions } from "./patterns/settings-form
 export { useUrlChoice, useUrlFlags, useUrlParams } from "./hooks/use-url-params";
 export { useIdSet } from "./hooks/use-id-set";
 export { useListPage, type ListPageSpec, type ListPageState } from "./hooks/use-list-page";
-export { RECORD_VIEWS, RecordViewSwitch, type RecordView, useRecordView } from "./patterns/record-view";
+export { RECORD_VIEWS, RecordViewSwitch, type RecordView, useRecordView, useRecordViewCommands } from "./patterns/record-view";
 export { pageShown, useReportShown, useShownKeys } from "./hooks/use-page-shown";
 export { highlightOnPage, highlightStore, useHighlight, type HighlightState } from "./hooks/use-highlight";
 

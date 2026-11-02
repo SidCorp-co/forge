@@ -158,7 +158,8 @@ describe("every page on the detail layout", () => {
   const pages = sources(join(WEB, "src")).filter((f) => f !== "src/design/patterns/detail-tabs.tsx" && readFileSync(join(WEB, f), "utf8").includes("<DetailLayout"));
 
   it("is found", () => {
-    expect(pages.length).toBeGreaterThanOrEqual(12);
+    // ten stand on it since ISS-903 moved the requirement, master and feedback pages' facts into a drawer
+    expect(pages.length).toBeGreaterThanOrEqual(10);
   });
 
   // a page whose rail only lists its contents folds nothing: it owes the menu that stands in for the rail instead

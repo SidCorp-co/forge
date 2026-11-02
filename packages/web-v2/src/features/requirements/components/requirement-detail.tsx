@@ -21,10 +21,9 @@ import {
   DetailMobileTitle,
   DetailPane,
   FactsRail,
-  type RecordView,
   StatusBadge,
-  usePageCommands,
   useRecordView,
+  useRecordViewCommands,
   useUrlTab,
   ViewHeading,
 } from "@/design";
@@ -120,13 +119,6 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
   );
 }
 
-/** The person / developer switch is the palette's (⌘K): the face reads as a person's. */
-function useViewCommands(view: RecordView, onView: (v: RecordView) => void) {
-  const t = useCopy();
-  const other: RecordView = view === "developer" ? "person" : "developer";
-  usePageCommands([{ label: t(other === "developer" ? "common.viewCmd.developer" : "common.viewCmd.person"), icon: "keyboard", onRun: () => onView(other) }]);
-}
-
 export function RequirementPage({
   projectId,
   slug,
@@ -143,7 +135,7 @@ export function RequirementPage({
   const t = useCopy();
   const [view, onView] = useRecordView();
   const developer = view === "developer";
-  useViewCommands(view, onView);
+  useRecordViewCommands(view, onView);
   const q = useRequirement(projectId, reqKey);
   const memories = useRequirementMemoryCount(projectId, reqKey);
   const mockupTarget = { type: "requirement" as const, key: reqKey };

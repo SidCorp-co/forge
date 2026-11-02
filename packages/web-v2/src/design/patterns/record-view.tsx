@@ -7,6 +7,7 @@
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useUrlChoice } from "../hooks/use-url-params";
 import { SegmentedControl } from "../primitives/segmented-control";
+import { usePageCommands } from "./page-commands";
 
 export const RECORD_VIEWS = ["person", "developer"] as const;
 export type RecordView = (typeof RECORD_VIEWS)[number];
@@ -23,4 +24,11 @@ export function RecordViewSwitch({ view, onView }: { view: RecordView; onView: (
       <SegmentedControl options={RECORD_VIEWS.map((v) => ({ value: v, label: t(`common.view.${v}`) }))} value={view} onChange={onView} />
     </span>
   );
+}
+
+/** The switch as the palette's act (⌘K, ISS-903), where the page's face reads as a person's. */
+export function useRecordViewCommands(view: RecordView, onView: (v: RecordView) => void) {
+  const t = useCopy();
+  const other: RecordView = view === "developer" ? "person" : "developer";
+  usePageCommands([{ label: t(other === "developer" ? "common.viewCmd.developer" : "common.viewCmd.person"), icon: "keyboard", onRun: () => onView(other) }]);
 }
