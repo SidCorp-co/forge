@@ -21,6 +21,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { argumentRefusal, need, zodArgumentRefusal } from '../lib/tool-args.js';
+import { onResolved, requireDeclaredOn } from '../permissions/index.js';
 import { issuesOfRequirements, liveRunsByIssue, runsOn } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import { ANSWER_SHAPE, answerBody, answerWithToken } from '../questions/index.js';
@@ -136,6 +137,27 @@ const GRANT = {
   },
 } as const;
 
+// What each action needs, as its REST twin declares it on :id (requirements/routes.ts,
+// revision-routes.ts); the project is the projectId argument, else the slug header or the token's
+// one project, so the handler resolves it and each service checks with requireDeclaredOn. similar
+// has no twin and its service checks nothing, so its handler checks project.read itself. answer
+// stays on the amnesty: readRequirementAs and the question-not-on-this-requirement NOT_FOUND come
+// before the project.write its twin declares, which a resolved declaration would check first
+const THE_PROJECT =
+  "the projectId argument, else the X-Forge-Project-Slug header or the token's one project";
+const PERMISSION = {
+  byAction: {
+    list: onResolved('project.read', THE_PROJECT),
+    get: onResolved('project.read', THE_PROJECT),
+    progress: onResolved('project.read', THE_PROJECT),
+    similar: onResolved('project.read', THE_PROJECT),
+    create: onResolved('project.write', THE_PROJECT),
+    revise: onResolved('project.write', THE_PROJECT),
+    propose: onResolved('project.write', THE_PROJECT),
+    withdraw: onResolved('project.write', THE_PROJECT),
+  },
+} as const;
+
 const actorOf = (ctx: McpContext) => ({
   userId: ctx.principal.userId,
   agency: principalAgency(ctx.principal),
@@ -209,8 +231,9 @@ async function progress(ctx: McpContext, projectId: string, input: Input) {
   return { key: one.key, title: one.title, state: one.state, progress: one.progress };
 }
 
-async function similar(_ctx: McpContext, projectId: string, input: Input) {
+async function similar(ctx: McpContext, projectId: string, input: Input) {
   const { text } = need(input, input.action, 'text');
+  await requireDeclaredOn(projectId, ctx.principal.userId, 'project.read');
   return similarRequirements(projectId, text, 'conversation');
 }
 
@@ -347,6 +370,7 @@ export const forgeRequirementsMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: ['/api/projects', '/api/questions'],
   grant: GRANT,
+  permission: PERMISSION,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {

@@ -7,7 +7,7 @@
  * own refusal. A holder of the permission passes the door and reaches the handler.
  *
  * An action whose project the handler resolves (project_feedback: the projectId argument, else the
- * slug header or the token's one project) declares it `onResolved`, and its service checks with
+ * slug header or the token's one project; forge_requirements alike) declares it `onResolved`, and its service checks with
  * requireDeclaredOn: there the declaration answers wherever the service's own floor is lower, so
  * lowering that floor leaves the refusal standing, and lowering the declaration too turns it.
  *
@@ -16,6 +16,7 @@
  * @direct-test-of packages/core/src/product-door/releases-tool.ts
  * @direct-test-of packages/core/src/product-door/context.ts
  * @direct-test-of packages/core/src/mcp/feedback-tool.ts
+ * @direct-test-of packages/core/src/mcp/requirements-tool.ts
  * @direct-test-of packages/core/src/permissions/declared.ts
  */
 
@@ -206,5 +207,50 @@ describe('project_feedback (declared on the project the handler resolves)', () =
     const refused = await mcp('outsider', 'project_feedback', { action: 'list', projectId });
     expect(codeOf(refused)).toContain('not a member of this project');
     expect(refused.text).toContain('project.read');
+  });
+});
+
+describe('forge_requirements (declared on the project the handler resolves)', () => {
+  it("refuses a viewer's create, naming project.write", async () => {
+    const refused = await mcp('viewer', 'forge_requirements', {
+      action: 'create',
+      projectId,
+      title: 'Receipts show the tax line',
+    });
+    expect(codeOf(refused)).toBe('PERMISSION_FORBIDDEN');
+    expect(refused.text).toContain('project.write');
+  });
+
+  it("drafts a member's create on the slug header's project, with no projectId sent", async () => {
+    const drafted = ok(
+      await mcp(
+        'member',
+        'forge_requirements',
+        { action: 'create', title: 'Receipts show the tax line' },
+        { 'x-forge-project-slug': projectSlug },
+      ),
+    );
+    expect((drafted.requirement as Json).key).toMatch(/^REQ-\d+$/);
+  });
+
+  it('refuses a caller holding no role a similar, naming project.read', async () => {
+    const refused = await mcp('outsider', 'forge_requirements', {
+      action: 'similar',
+      projectId,
+      text: 'receipt tax line',
+    });
+    expect(codeOf(refused)).toContain('not a member of this project');
+    expect(refused.text).toContain('project.read');
+  });
+
+  it('answers a similar for a viewer', async () => {
+    const read = ok(
+      await mcp('viewer', 'forge_requirements', {
+        action: 'similar',
+        projectId,
+        text: 'receipt tax line',
+      }),
+    );
+    expect(read).toHaveProperty('status');
   });
 });
