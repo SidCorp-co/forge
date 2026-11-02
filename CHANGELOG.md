@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.439] - 2026-11-02
+
+Releases claim every landing they ship; leftover holds name what to record
+
+### Fixed
+
+- **A late-marked landing no longer waits unnamed at the release gate.** The release that holds it records it as shipped; an already-shipped abort waits on its agent, not a person; and the master is told every hold it owes.
+
 ## [0.4.0-dev.438] - 2026-11-02
 
 The steward stops re-asking a dependent while a dated decision stands
