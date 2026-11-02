@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.451] - 2026-11-02
+
+Patched releases for open critical and high dependency advisories
+
+### Changed
+
+- **MCP tool actions declare their permission as REST routes do**, published per action in the MCP contract; both doors enforce that one declaration before the handler. Route modules and `forge_issues` move their checks into it (ISS-824).
+
+### Fixed
+
+- **A room no longer shows a finished Agent turn without its reply.** A room's messages and Agent turns are read from one moment, so a turn never reads as ended before its reply shows.
+- **A web Agent reply the room never got reads as not delivered.** When its room message cannot be stored, the turn says the reply could not be delivered to this room instead of reading as delivered with nothing shown.
+- **Dependencies with known critical and high advisories are patched.** The diagram drawing, contract pattern checks and lint and test tools now run on fixed releases, so a dependency audit reports no critical or high advisory.
+
 ## [0.4.0-dev.450] - 2026-11-02
 
 Screens show only what you act on; detail opens on click

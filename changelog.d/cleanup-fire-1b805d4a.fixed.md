@@ -1,1 +1,0 @@
-**A web Agent reply the room never got reads as not delivered.** When its room message cannot be stored, the turn says the reply could not be delivered to this room instead of reading as delivered with nothing shown.
