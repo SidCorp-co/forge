@@ -11,6 +11,7 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import type { ReleaseDetail } from "../types";
 import { GateLine } from "./release-bits";
 import { ReleaseHistory } from "./release-checks";
+import { ReleaseCorrections } from "./release-corrections";
 import { FeedbackAnswered } from "./release-feedback";
 import { ApprovedDesigns, DemoNotesWarning, NotesAttention } from "./release-note-reads";
 
@@ -18,6 +19,7 @@ const ANCHOR = {
   way: "release-way",
   designs: "release-designs",
   feedback: "release-feedback-answered",
+  corrections: "release-corrections",
   history: "release-history",
 } as const;
 
@@ -30,6 +32,7 @@ export function recordContents(r: ReleaseDetail, t: Copy): ContentsItem[] {
     ...(r.gates.length > 0 ? [{ id: ANCHOR.way, label: wayTitle(r, t) }] : []),
     ...(r.notes.designs.length > 0 ? [{ id: ANCHOR.designs, label: t("releases.designsApproved") }] : []),
     ...(r.feedbackAnswered.length > 0 ? [{ id: ANCHOR.feedback, label: t("releases.feedbackAnswered") }] : []),
+    ...(r.corrections.length > 0 ? [{ id: ANCHOR.corrections, label: t("releases.corrections") }] : []),
     ...(hasHistory(r) ? [{ id: ANCHOR.history, label: t("releases.attempts") }] : []),
   ];
 }
@@ -64,6 +67,9 @@ export function ReleaseRecord({ r, slug }: { r: ReleaseDetail; slug: string }) {
       </div>
       <div id={ANCHOR.feedback} className="scroll-mt-24 empty:hidden">
         <FeedbackAnswered r={r} slug={slug} />
+      </div>
+      <div id={ANCHOR.corrections} className="scroll-mt-24 empty:hidden">
+        <ReleaseCorrections r={r} slug={slug} />
       </div>
       {hasHistory(r) ? (
         <div id={ANCHOR.history} className="scroll-mt-24">

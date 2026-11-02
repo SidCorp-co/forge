@@ -48,6 +48,7 @@ import {
 } from './release-read-views.js';
 import { releaseTagOf } from './release-tag-record.js';
 import type { ViewerFacts } from './release-view.js';
+import { correctionsIn, correctionViews } from './shipped-in-correct.js';
 import { parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
 import type { LineageRun } from './version-rule.js';
 import { currentReleaseVersion, decideRosterVersion, readLineage } from './version-store.js';
@@ -101,6 +102,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       unapproved: null,
       tag: null,
       draftApproval,
+      corrections: [],
     },
   };
 }
@@ -176,6 +178,7 @@ function runPart(
     unapproved: unapprovedOf(run.metadata),
     tag: releaseTagOf(run.metadata),
     draftApproval: null,
+    corrections: correctionsIn(run.metadata),
   };
 }
 
@@ -400,13 +403,17 @@ export async function readRelease(
     part.state === 'draft'
       ? await draftPromotionViewOf(projectId, part.issueIds, keyOf)
       : await promotionViewOf(part.runId, keyOf);
-  return detailOf(
-    part,
-    shared,
-    prod ? { name: prod.name, url: prod.declaration.url ?? null } : null,
-    landings,
-    feedbackAnswered,
-    verifiedBy,
-    promotion,
-  );
+  const corrections = await correctionViews(projectId, part.corrections);
+  return {
+    ...detailOf(
+      part,
+      shared,
+      prod ? { name: prod.name, url: prod.declaration.url ?? null } : null,
+      landings,
+      feedbackAnswered,
+      verifiedBy,
+      promotion,
+    ),
+    corrections,
+  };
 }

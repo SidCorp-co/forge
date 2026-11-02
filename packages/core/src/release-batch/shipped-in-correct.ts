@@ -14,11 +14,13 @@
  * under `issue.shippedInCorrected`, and a notice names both versions and the reason.
  */
 
+import type { ReleaseShippedInCorrection } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { filingAnsweredBy, recordActivityTx } from '../issues/index.js';
+import { filingAnsweredBy, issueKeysAndTitles, recordActivityTx } from '../issues/index.js';
+import { peopleOf } from '../lib/people.js';
 import { runWearingVersion, shippedReleasesOf, writeRunMetadata } from '../pipeline/index.js';
 import { refuseRelease } from './refuse.js';
 import { readShippedInRow, shippableRelease } from './shipped-in.js';
@@ -49,7 +51,7 @@ export interface CorrectShippedInResult {
 }
 
 /** One correction, as both releases keep it: append-only, never edited away. */
-interface CorrectionEntry {
+export interface CorrectionEntry {
   issueId: string;
   /** `superseded` on the release that no longer lists the issue, `corrected` on the one that now does. */
   role: 'superseded' | 'corrected';
@@ -211,6 +213,54 @@ export async function correctShippedIn(
     closed: true,
     corrected: { version: current.version, runId: from.id },
   };
+}
+
+/** The corrections a release run keeps (`metadata.shippedInCorrections`), each one whole. */
+export function correctionsIn(metadata: Record<string, unknown>): CorrectionEntry[] {
+  const list = metadata.shippedInCorrections;
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (e): e is CorrectionEntry =>
+      typeof e === 'object' &&
+      e !== null &&
+      (e.role === 'superseded' || e.role === 'corrected') &&
+      ['issueId', 'from', 'to', 'reason', 'evidence', 'by', 'at'].every(
+        (k) => typeof (e as Record<string, unknown>)[k] === 'string',
+      ),
+  );
+}
+
+/**
+ * The corrections a release keeps, as its read shows them: the issue by key and title, who made
+ * each by name, and whether it moved the issue off this release (`out`) or onto it (`in`).
+ */
+export async function correctionViews(
+  projectId: string,
+  entries: readonly CorrectionEntry[],
+): Promise<ReleaseShippedInCorrection[]> {
+  if (entries.length === 0) return [];
+  const [named, people] = await Promise.all([
+    issueKeysAndTitles(
+      projectId,
+      entries.map((e) => e.issueId),
+    ),
+    peopleOf(entries.map((e) => e.by)),
+  ]);
+  return entries.map((e) => ({
+    direction: e.role === 'superseded' ? 'out' : 'in',
+    key: named.get(e.issueId)?.key ?? 'unknown issue',
+    title: named.get(e.issueId)?.title ?? '',
+    from: e.from,
+    to: e.to,
+    by: {
+      id: e.by,
+      name: people.get(e.by)?.name ?? 'Unknown',
+      kind: people.get(e.by)?.kind ?? 'human',
+    },
+    at: e.at,
+    reason: e.reason,
+    evidence: e.evidence,
+  }));
 }
 
 const idsIn = (list: unknown): string[] =>

@@ -163,6 +163,39 @@ describe('a shipped-in record that named the wrong release', () => {
     expect(notice?.body).toContain(REASON);
   });
 
+  it('reads on both releases: moved off 0.38.0 to 0.37.0, and onto 0.37.0 from 0.38.0', async () => {
+    const { id } = await agenfold();
+    const fixed = await record({
+      issueId: id,
+      version: '0.37.0',
+      corrects: '0.38.0',
+      reason: REASON,
+      evidence: EVIDENCE,
+    });
+    expect(fixed.status, codeOf(fixed.body)).toBe(201);
+    const issue = (await api(token, 'GET', `/api/issues/${id}`)).body as {
+      displayId: string;
+      title: string;
+    };
+    const correctionsOf = async (version: string) => {
+      const read = await api(token, 'GET', `/api/projects/${projectId}/releases/${version}`);
+      expect(read.status, codeOf(read.body)).toBe(200);
+      return (read.body as { release: { corrections: unknown[] } }).release.corrections;
+    };
+    const entry = {
+      key: issue.displayId,
+      title: issue.title,
+      from: '0.38.0',
+      to: '0.37.0',
+      by: expect.objectContaining({ id: ownerId, name: expect.any(String) }),
+      at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      reason: REASON,
+      evidence: EVIDENCE,
+    };
+    expect(await correctionsOf('0.38.0')).toEqual([{ direction: 'out', ...entry }]);
+    expect(await correctionsOf('0.37.0')).toEqual([{ direction: 'in', ...entry }]);
+  });
+
   it('can be corrected back, the newest correction deciding which release lists it', async () => {
     const { v38, id } = await agenfold();
     await record({

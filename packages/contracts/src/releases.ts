@@ -779,7 +779,26 @@ export function releaseTagName(version: string): string {
 	return /^v\d/.test(version) ? version : `v${version}`;
 }
 
+/**
+ * A shipped-in correction that touched this release (ISS-846): `out` where a wrong record had named
+ * it and the issue moved to `to`, `in` where the issue moved onto it from `from`. The record that
+ * named the old release is kept on it, superseded; this is that record and why it changed.
+ */
+export interface ReleaseShippedInCorrection {
+	direction: "in" | "out";
+	key: string;
+	title: string;
+	from: string;
+	to: string;
+	by: ReleasePerson;
+	at: string;
+	reason: string;
+	evidence: string;
+}
+
 export interface ReleaseDetail extends ReleaseSummary {
+	/** Every shipped-in correction moving an issue onto or off this release, oldest first (ISS-846). */
+	corrections: ReleaseShippedInCorrection[];
 	/** The feedback this release answers, by key: what the people who asked are waiting to hear. */
 	feedbackAnswered: ReleaseFeedbackView[];
 	/** `feedbackAnswered` counted by whether each reporter was told. */

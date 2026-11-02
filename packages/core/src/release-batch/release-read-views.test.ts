@@ -108,6 +108,7 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     shippedFailing: null,
     tag: null,
     draftApproval: null,
+    corrections: [],
   };
 }
 
