@@ -7,6 +7,7 @@
 //
 //   pnpm --filter web-v2 witness witness/shot-fallback.witness.tsx --out <dir>
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ReactNode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { TopBarSlotProvider } from "@/design";
@@ -168,4 +169,10 @@ window.__witness = {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("the witness page has no #root to mount into");
-createRoot(root).render(<Shell />);
+// the shell's top bar reads core through react-query, as the workspace's does: its client is the page's,
+// a page's own seeded client nested inside it
+createRoot(root).render(
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <Shell />
+  </QueryClientProvider>,
+);
