@@ -26,6 +26,7 @@ import {
   releaseVerifiedBy,
   resolveReleaseChannels,
 } from './channel.js';
+import { draftNotApprovableWhy, standingDraftApproval } from './draft-approval.js';
 import { draftVersionOf } from './draft-version.js';
 import { readFinishRecord } from './finish-record.js';
 import { landingRecordsOf } from './landing-records.js';
@@ -73,6 +74,10 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
     holderNames('project.admin', projectId),
   ]);
   const version = draftVersionOf(decision);
+  const [naming, draftApproval] = await Promise.all([
+    draftNaming(projectId, version),
+    standingDraftApproval(projectId, version, ids),
+  ]);
   return {
     recutOf: 'recutOf' in decision ? decision.recutOf.id : null,
     part: {
@@ -89,12 +94,13 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       commit: null,
       cuts: [],
       continuedAs: null,
-      naming: await draftNaming(projectId, version),
+      naming,
       mergeSteps: null,
       landedOn: null,
       shippedFailing: null,
       unapproved: null,
       tag: null,
+      draftApproval,
     },
   };
 }
@@ -169,6 +175,7 @@ function runPart(
     shippedFailing: shippedFailingOf(run.metadata),
     unapproved: unapprovedOf(run.metadata),
     tag: releaseTagOf(run.metadata),
+    draftApproval: null,
   };
 }
 
@@ -218,8 +225,8 @@ async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language, channels, changeRequestLinks, doc] = await Promise.all(
-    [
+  const [facts, approvers, admins, language, channels, changeRequestLinks, doc, draftsNot] =
+    await Promise.all([
       loadReleaseFacts(
         projectId,
         parts.flatMap((p) => p.issueIds),
@@ -234,11 +241,12 @@ async function sharedFor(
         parts.flatMap((p) => p.issueIds),
       ),
       readProjectDocument(projectId),
-    ],
-  );
+      draftNotApprovableWhy(projectId),
+    ]);
   return {
     projectId,
     ownerDeploys: releaseThroughChangeRequests(doc?.document),
+    draftsDecided: draftsNot === null,
     current,
     required,
     viewer,

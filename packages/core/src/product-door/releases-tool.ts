@@ -51,7 +51,7 @@ const DESCRIPTION = `A project's releases: what shipped, what is drafted, what w
 - action=get { projectId, version }: one release in full: what users get (notes by section), the requirements it completes, its issues with their proof, what stands in the way, the approval, every attempt at it.
 - action=page { projectId, version, view? }: the release page a reader reads (user view, or developer for the technical notes).
 - action=name { projectId, version, name, summary }: name a drafted or cut release. Needs project admin, as cutting does.
-- action=decide { projectId, version, decision: approve | return, reason? }: decide the approval request the release run is waiting on. This is a person's act: it needs releases.approve on the project, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). A return must say why. Read the release (get) before you decide, and decide only when the person asked you to.`;
+- action=decide { projectId, version, decision: approve | return, reason? }: decide the approval request the release run is waiting on, or, on a project that declares no production and so cuts no run, the drafted release itself (an agent's token is refused RELEASE_APPROVAL_IS_A_PERSONS). This is a person's act: it needs releases.approve on the project, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). A return must say why. Read the release (get) before you decide, and decide only when the person asked you to.`;
 
 async function viewerFactsOf(ctx: McpContext, projectId: string): Promise<ViewerFacts> {
   const access = await readAccess(ctx, projectId);
@@ -172,7 +172,7 @@ async function decide(ctx: McpContext, i: Input) {
   const approval = await decideApprovalOfVersion({
     projectId: i.projectId,
     version,
-    userId: ctx.principal.userId,
+    ...actorOf(ctx),
     decision,
   });
   return { act: decision.decision, version, approval };

@@ -1,6 +1,11 @@
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { gateSays } from '@forge/contracts/gate-profiles';
-import { type ReleaseApprovalView, releaseThroughChangeRequests } from '@forge/contracts/releases';
+import type { ActorAgency } from '@forge/contracts/permissions';
+import {
+  type ReleaseApprovalView,
+  type ReleaseDraftApprovalView,
+  releaseThroughChangeRequests,
+} from '@forge/contracts/releases';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -20,6 +25,7 @@ import {
   readReleasePath,
 } from '../project-config/index.js';
 import { approvalChecklistRefusals } from './approval-checklist.js';
+import { decideDraftApproval, draftNotApprovableWhy } from './draft-approval.js';
 import { runCutAs } from './naming.js';
 import { refuseRelease } from './refuse.js';
 import { recordUnapproved } from './unapproved.js';
@@ -298,16 +304,20 @@ export async function decideApproval(input: {
 /**
  * The approval request waiting on the release cut as `version`, decided: the door that names a
  * release by its version, where a person reads it, rather than by its run and request ids. A version
- * nobody cut, or one with no request waiting, is refused by name.
+ * nobody cut, or one with no request waiting, is refused by name; on a project that declares no
+ * production, the draft itself is decided (`draft-approval.ts`).
  */
 export async function decideApprovalOfVersion(input: {
   projectId: string;
   version: string;
   userId: string;
+  agency: ActorAgency;
   decision: Decision;
-}): Promise<ApprovalView> {
+}): Promise<ApprovalView | ReleaseDraftApprovalView> {
   const { projectId, version } = input;
   const run = await runCutAs(projectId, version);
+  // a project declaring no production cuts no run: its draft is what a listed approver decides (ISS-869)
+  if (!run && (await draftNotApprovableWhy(projectId)) === null) return decideDraftApproval(input);
   if (!run) {
     throw refuseRelease(
       'RELEASE_VERSION_UNKNOWN',

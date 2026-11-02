@@ -12,6 +12,7 @@ import {
   type ReleaseContinuation,
   type ReleaseCutView,
   type ReleaseDetail,
+  type ReleaseDraftApprovalView,
   type ReleaseFeedbackView,
   type ReleaseGateView,
   type ReleaseIssueView,
@@ -79,12 +80,16 @@ export interface Part {
   unapproved: { at: string } | null;
   /** Its tag on the source host (`release-tag-record.ts`); null on a draft and until its commit is known. */
   tag: ReleaseTag | null;
+  /** A listed approver's standing decision on the draft, by its version (`draft-approval.ts`); null elsewhere. */
+  draftApproval: ReleaseDraftApprovalView | null;
 }
 
 export interface Shared {
   projectId: string;
   /** The project releases by merging its change requests and its owner deploys, so a release ends at its last merge (REQ-71 BC-6). */
   ownerDeploys: boolean;
+  /** The project declares no production, so its draft is what a listed approver decides (ISS-869). */
+  draftsDecided: boolean;
   current: string | null;
   required: boolean;
   viewer: ViewerFacts | null;
@@ -315,7 +320,11 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
         p.state === 'draft' &&
         s.viewer?.isAdmin === true &&
         !p.gates.some((g) => g.kind === 'blocker'),
-      decide: s.viewer?.mayApprove === true && approvalFacts(p)?.decision === null,
+      decide:
+        s.viewer?.mayApprove === true &&
+        (p.state === 'draft'
+          ? s.draftsDecided && s.viewer.agency === 'human'
+          : approvalFacts(p)?.decision === null),
       split: split !== null,
     },
     split,
@@ -324,6 +333,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     at: lastChange(p, s),
     cutCount: p.cuts.length,
     continuedAs: p.continuedAs,
+    draftApproval: p.draftApproval,
   };
 }
 

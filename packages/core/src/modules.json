@@ -1021,6 +1021,7 @@
       "owns": [
         "releaseApprovals",
         "releaseAttempts",
+        "releaseDraftApprovals",
         "releaseDraftNamings",
         "releaseHolds",
         "servedAncestry"

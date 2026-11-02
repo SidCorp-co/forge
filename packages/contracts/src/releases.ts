@@ -336,9 +336,16 @@ export interface ReleaseSummary
 	ownerAct: string | null;
 	/**
 	 * `split`: the draft is refused for one reason only, RELEASE_ROSTER_OVERSIZE, and the viewer is
-	 * an admin — the act that gate names, cutting `split.issueIds` as this release.
+	 * an admin — the act that gate names, cutting `split.issueIds` as this release. `decide`: a request
+	 * waits on the viewer's decision, or the viewer, a person holding releases.approve, may decide the
+	 * draft of a project that declares no production, keyed on its version (ISS-869).
 	 */
 	can: { cut: boolean; decide: boolean; split: boolean };
+	/**
+	 * A person's standing decision on this draft, on a project that declares no production (ISS-869);
+	 * null on every other release, and on a draft no listed approver decided for its roster.
+	 */
+	draftApproval: ReleaseDraftApprovalView | null;
 	/** What a split cuts: the oldest RELEASE_ROSTER_LIMIT merged issues; `rest` stay at the gate. */
 	split: ReleaseSplit | null;
 	openedAt: string | null;
@@ -657,6 +664,20 @@ export interface ReleaseApprovalView {
 	reason: string | null;
 }
 
+/**
+ * A person's decision on a drafted release, keyed on its version, on a project that declares no
+ * production and so cuts no run to ask approval on (ISS-869). It stands for the roster it was given
+ * on: a draft whose roster changed since reads no decision. It rests on no reading and names no commit.
+ */
+export interface ReleaseDraftApprovalView {
+	id: string;
+	version: string;
+	decision: "approved" | "returned";
+	decidedBy: ReleasePerson;
+	decidedAt: string;
+	reason: string | null;
+}
+
 /** Who owes the act that clears a release hold. */
 export const RELEASE_HOLD_OWERS = ["agent", "human"] as const;
 export type ReleaseHoldOwer = (typeof RELEASE_HOLD_OWERS)[number];
@@ -862,6 +883,10 @@ const RELEASE_APPROVAL_REFUSAL_CODES = [
 	"RELEASE_APPROVAL_RETURNED",
 	"RELEASE_APPROVAL_REQUIRED",
 	"RELEASE_VERSION_SHAPE",
+	/** A draft's approval asked where a draft is not what is approved: production is declared, or a run is cut (ISS-869). */
+	"RELEASE_DRAFT_NOT_APPROVABLE",
+	/** A draft's approval from an agent's token: its approvers are the people who hold releases.approve (ISS-869). */
+	"RELEASE_APPROVAL_IS_A_PERSONS",
 ] as const;
 /** Every code a release door refuses with, in the one refusal envelope; `RELEASE_REFUSED` when several differ. */
 export const RELEASE_REFUSAL_CODES = [
@@ -943,6 +968,7 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_RANGE_NO_BASE: 409,
 	RELEASE_RANGE_BASE_MOVED: 409,
 	RELEASE_VERSION_UNKNOWN: 404,
+	RELEASE_APPROVAL_IS_A_PERSONS: 403,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
 /** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */

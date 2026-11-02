@@ -121,6 +121,47 @@ export const releaseApprovals = pgTable(
 export type ReleaseApprovalRow = InferSelectModel<typeof releaseApprovals>;
 
 /**
+ * A person's decision on a drafted release, keyed on its version (ISS-869): on a project that declares
+ * no production no run is cut, so there is no request to decide, and a listed approver decides the
+ * draft itself. `issue_ids` is the roster it was given on; the decision stands for that roster only.
+ * It rests on no reading and names no commit (owner ruling release-is-the-agents-record).
+ */
+export const releaseDraftApprovals = pgTable(
+  'release_draft_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    version: text('version').notNull(),
+    issueIds: jsonb('issue_ids').$type<string[]>().notNull(),
+    decision: text('decision').$type<ReleaseApprovalDecision>().notNull(),
+    decidedByUser: uuid('decided_by_user')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+    reason: text('reason'),
+  },
+  (t) => ({
+    versionIdx: index('release_draft_approvals_version_idx').on(
+      t.projectId,
+      t.version,
+      t.decidedAt,
+    ),
+    decisionChk: check(
+      'release_draft_approvals_decision_chk',
+      sql`${t.decision} IN ('approved', 'returned')`,
+    ),
+    reasonChk: check(
+      'release_draft_approvals_reason_chk',
+      sql`${t.decision} <> 'returned' OR ${t.reason} IS NOT NULL`,
+    ),
+  }),
+);
+
+export type ReleaseDraftApprovalRow = InferSelectModel<typeof releaseDraftApprovals>;
+
+/**
  * Why the automatic release is not taking an issue waiting at its gate. One standing row per
  * issue (`cleared_at IS NULL`); a changed reason clears the standing row and adds its successor,
  * so the rows are the history of what held it.

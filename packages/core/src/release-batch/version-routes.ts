@@ -12,6 +12,7 @@ import {
   parseDecision,
   requestApproval,
 } from './approvals.js';
+import { decideDraftApproval } from './draft-approval.js';
 import { nameReleaseAs } from './naming.js';
 import { findReleaseBatchRun } from './queries.js';
 import { listReleases, readRelease } from './release-read.js';
@@ -94,6 +95,24 @@ releaseVersionRoutes.put(
   async (c) => {
     const { projectId, version } = c.req.valid('param');
     return c.json(await nameReleaseAs(projectId, version, c.req.valid('json'), c.get('userId')));
+  },
+);
+
+// A drafted release decided by a listed approver, keyed on its version, on a project that declares no
+// production and so cuts no run to ask approval on (ISS-869): `{ decision, reason? }`, as a run's.
+releaseVersionRoutes.post(
+  '/:projectId/releases/:version/approval',
+  versionParam,
+  decisionBody,
+  async (c) => {
+    const { projectId, version } = c.req.valid('param');
+    const userId = c.get('userId');
+    const agency = c.get('agency');
+    if (!agency)
+      throw new Error('release-batch: a draft decision reached its handler without an auth gate');
+    requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
+    const decision = parseDecision(c.req.valid('json'));
+    return c.json(await decideDraftApproval({ projectId, version, userId, agency, decision }), 201);
   },
 );
 

@@ -33,10 +33,7 @@ function projectHolders(projectId: string): Promise<ProjectHolders> {
         })
         .sort((a, b) => a.name.localeCompare(b.name));
     return Object.fromEntries(
-      Object.entries(byPermission).map(([permission, ids]) => [
-        permission,
-        named(ids),
-      ]),
+      Object.entries(byPermission).map(([permission, ids]) => [permission, named(ids)]),
     ) as ProjectHolders;
   });
 }
