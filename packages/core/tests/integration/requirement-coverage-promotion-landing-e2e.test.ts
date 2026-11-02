@@ -10,6 +10,7 @@
  *
  * @direct-test-of packages/core/src/release-batch/criteria-basis.ts
  * @direct-test-of packages/core/src/release-batch/landed-build-holds.ts
+ * @direct-test-of packages/core/src/release-batch/landing-records.ts
  * @direct-test-of packages/core/src/requirements/standing-facts.ts
  * @direct-test-of packages/core/src/requirements/standing-coverage.ts
  */
