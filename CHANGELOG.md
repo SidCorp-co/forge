@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.441] - 2026-11-02
+
+A requirement page opens on its picture, goal and one line per criterion
+
+### Changed
+
+- **A requirement page now opens on its picture, then Problem, Value and Measured by, then one line per criterion.** The touched workflow steps light for every kind, and agree names each criterion tracing no step.
+
 ## [0.4.0-dev.440] - 2026-11-02
 
 Agents get goals instead of scripted rituals; release-judged requirement verdicts

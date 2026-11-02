@@ -1,1 +1,0 @@
-**A requirement page now opens on its picture, then Problem, Value and Measured by, then one line per criterion.** The touched workflow steps light for every kind, and agree names each criterion tracing no step.
