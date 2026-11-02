@@ -227,16 +227,22 @@ A requirement agreed over a capability that already shipped owes no issue whose 
 it (REQ-45 r3 BC-8). Judge each criterion on the running build at the requirement itself instead:
 **verdicts** \`{ criterion: 'BC-n', verdict, reason?, identity: { kind: 'commit', sha }, evidence, run? }\`
 (\`project.write\`), the commit the live build serves and what the verdict was taken from (a link, or a
-repository path at that commit). A run sends its \`run\` as it does on an issue verdict, and the
+repository path at that commit). Where production declares no source probe, its releases are its
+agent's record by version and no commit is matched: name the release the app reported instead,
+\`identity: { kind: 'release', version: '0.76.0' }\`, one the project recorded as shipped. It counts
+while that release, or a later one at no lower a version, is the newest the record holds. A run sends its \`run\` as it does on an issue verdict, and the
 verdict and its list name that run. Such a judge is declared over the requirement and no issue:
 \`forge-runner run declare --requirement REQ-n --role qa\`; any other role, or an issue beside it, is
 \`RUN_REQUIREMENT_NOT_JUDGED\`, and a requirement the project lacks \`RUN_REQUIREMENT_UNKNOWN\`. A \`run\` that is no live run of the calling box on this project,
 or sent on a person's credential, is \`VERDICT_RUN_UNKNOWN\`, and one core has not admitted
 \`VERDICT_SESSION_NOT_ADMITTED\`. Refused by name: \`REQUIREMENT_VERDICT_NOT_DELIVERING\` (not agreed, in
 delivery or delivered), \`REQUIREMENT_VERDICT_CRITERION_UNKNOWN\` (no live wording of that code, naming
-each one), \`REQUIREMENT_VERDICT_UNCITED\` (a pass, short or fail citing nothing) and the \`VERDICT_*\`
+each one), \`REQUIREMENT_VERDICT_UNCITED\` (a pass, short or fail citing nothing),
+\`REQUIREMENT_VERDICT_RELEASE_SHAPE\` (no release version), \`REQUIREMENT_VERDICT_RELEASE_UNUSED\` (a release
+where production reads its commit, or there is none), \`REQUIREMENT_VERDICT_RELEASE_UNKNOWN\` (no release
+recorded as shipped under it) and the \`VERDICT_*\`
 rules every verdict meets. The answer is the criterion's coverage, so you see at once whether it counts:
-only where the live build holds the commit, and a short never does. Each verdict reads on its BC in the
+only where the live build holds the commit (or the record carries the release), and a short never does. Each verdict reads on its BC in the
 standing's \`coverage[].verdicts\`; \`GET …/verdicts\` lists them, newest first. With no live issue and one
 such verdict the requirement rests on its shipped capability and owes no breakdown: every BC passing, it
 waits on its accept, which its checklist takes; a BC with no counted pass waits on the project's judge;

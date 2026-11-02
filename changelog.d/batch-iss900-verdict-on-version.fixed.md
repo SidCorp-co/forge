@@ -1,0 +1,1 @@
+**A requirement judged on a release version now counts.** Where production reports only a version, a criterion judged at the requirement on a recorded release counts, and the standing asks for that judgement once instead of again and again.
