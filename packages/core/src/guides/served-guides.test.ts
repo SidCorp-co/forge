@@ -149,3 +149,28 @@ describe('the index an agent reads first (llms.txt)', () => {
     }
   });
 });
+
+describe('the chat-link guide a channel agent reads (ISS-878)', () => {
+  it('is served and names the real act, the real refusals and the person-only rule', async () => {
+    const guide = await served('link-chat-account');
+    for (const part of [
+      '`support.link { thread, member }`',
+      '`POST /api/projects/:id/speaker-links`',
+      '`SPEAKER_NOT_THE_TARGET`',
+      '`SPEAKER_ADDRESS_DIFFERS`',
+      '`SPEAKER_EMAIL_ABSENT`',
+      '`SPEAKER_ALREADY_LINKED`',
+      'An administrator cannot confirm it for them',
+      'Known gap',
+    ]) {
+      expect(guide, `the link guide no longer says ${part}`).toContain(part);
+    }
+  });
+
+  it('is named by the support brief by its slug, as one pointer', async () => {
+    const { supportBrief } = await import('../support/prompt.js');
+    const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
+    expect(brief).toContain('GET /api/guides/link-chat-account.md');
+    expect(brief).not.toContain('Known gap');
+  });
+});

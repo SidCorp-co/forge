@@ -27,6 +27,7 @@ const GUIDE_SLUGS = [
   'mockups',
   'release-tags',
   'fast-delivery',
+  'link-chat-account',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
