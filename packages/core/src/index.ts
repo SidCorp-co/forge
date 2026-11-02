@@ -147,6 +147,7 @@ import {
   liveBuildHolds,
   registerDeployWorker,
   registerReleaseBatchFinish,
+  releasedLineReads,
   releaseVersionsAmong,
 } from './release-batch/index.js';
 import { releaseShareSource } from './release-page/index.js';
@@ -344,6 +345,7 @@ provideRequirementDependents({
   releaseLeg: releaseLegFor,
   liveBuildHolds,
   ...landingReads,
+  ...releasedLineReads,
 });
 provideKeptPreviewWriter({ write: writeKeptPreview });
 provideRoomSettleWriter(roomSettleWriter);

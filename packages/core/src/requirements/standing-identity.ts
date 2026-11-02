@@ -65,11 +65,29 @@ export interface LiveBuildHolds {
    */
   recordedLandings?: RecordedLandings;
   /**
+   * Where the project's production names no commit it serves (no source probe: its releases are its
+   * agent's record by version, ISS-900), what that record says is live
+   * (`release-batch/released-line.ts:releasedLineOf`): a verdict naming a release is weighed there,
+   * and a commit is never matched. Absent on any other project.
+   */
+  released?: ReleasedLine;
+  /**
    * Per issue id (lower case) of another project delivering the requirement, what that project's own
    * build holds of its verdicts: a sibling project ships on its own build, so its issue's verdicts are
    * weighed there and never on the requirement project's (`holdsFor`). Null where nothing was asked.
    */
   foreign?: ReadonlyMap<string, LiveBuildHolds | null>;
+}
+
+/**
+ * A project's shipped releases as its record carries them, where its production names no commit it
+ * serves (ISS-900): `why` says so, `live` is the newest shipped, the one the record says is live (null
+ * where none shipped), and per shipped version when it shipped and whether the live one carries it.
+ */
+export interface ReleasedLine {
+  why: string;
+  live: { version: string; at: Date } | null;
+  shipped: ReadonlyMap<string, { at: Date; carried: boolean }>;
 }
 
 /** The build an issue's verdicts are weighed on: its own project's where it is another project's issue. */
@@ -392,4 +410,59 @@ export function atRecordedLanding(
     }
   }
   return { commit, inLiveBuild: null, notCounted: null };
+}
+
+/**
+ * A verdict judged on release `version` (ISS-900), on a project whose production names no commit it
+ * serves: the owner's rule (`release-is-the-agents-record`) makes the agent's release record what says
+ * what is live, so the verdict counts while that release, or a later one the record carries, is the
+ * one the record says is live (`ReleasedLine.shipped[].carried`). Nothing reads production and no
+ * commit is matched. On a project whose production does read the commit it serves no version is
+ * placed, so it does not count, saying why: there a verdict names the commit judged.
+ */
+export function atRelease(version: string, line: ReleasedLine | undefined): Resolved {
+  const judged = `judged on release ${version}`;
+  const none = (inLiveBuild: boolean | null, why: string): Resolved => ({
+    commit: null,
+    inLiveBuild,
+    notCounted: `${judged}, ${why}`,
+  });
+  if (!line) {
+    return none(
+      null,
+      'and this project reads the commit its production serves, so a verdict there names the commit judged',
+    );
+  }
+  if (!line.live) return none(null, `and no release is recorded as shipped: ${line.why}`);
+  const shipped = line.shipped.get(version);
+  if (!shipped) {
+    return none(
+      null,
+      `which no release this project recorded as shipped names; release ${line.live.version} is what its record says is live`,
+    );
+  }
+  if (!shipped.carried) {
+    return none(
+      false,
+      `and release ${line.live.version}, recorded after it at a lower version, is what the record says is live, so nothing says it carries ${version}: judge it again on release ${line.live.version}`,
+    );
+  }
+  if (version === line.live.version) return { commit: null, inLiveBuild: true, notCounted: null };
+  return {
+    commit: null,
+    inLiveBuild: true,
+    notCounted: null,
+    countedAs: `release ${version}, carried by live release ${line.live.version}`,
+  };
+}
+
+/**
+ * Where a commit judged on a project whose production names no commit (ISS-900) does not count, the
+ * act that can count: a judgement on the release the record says is live, or, with none recorded,
+ * the record itself.
+ */
+export function releaseHint(line: ReleasedLine | undefined): string | null {
+  if (!line) return null;
+  if (!line.live) return `${line.why}, and none is recorded yet: record the release first`;
+  return `${line.why}: judge it on release ${line.live.version}, naming \`{ kind: 'release', version: '${line.live.version}' }\` at the requirement`;
 }

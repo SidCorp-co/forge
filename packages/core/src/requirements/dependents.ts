@@ -6,6 +6,7 @@ import type { ReadDoor } from '../feedback/index.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { ProposeDuplicate } from './near-duplicate.js';
 import type { LiveBuildHolds } from './standing.js';
+import type { ReleasedLine } from './standing-identity.js';
 
 /**
  * What feedback and suggestions answer for, and file on, a requirement, what the release owes the
@@ -44,6 +45,14 @@ export interface RequirementDependents {
     issueIds: readonly string[],
     judged: ReadonlyMap<string, readonly { kind: string; value: string }[]>,
   ): Promise<LiveBuildHolds | null>;
+  /**
+   * On a project whose production names no commit it serves (no source probe), its shipped releases
+   * and the one its record says is live, which a verdict naming a release is weighed on
+   * (`release-batch/released-line.ts:releasedLineOf`, ISS-900); null on any other project.
+   */
+  releasedLine(projectId: string): Promise<ReleasedLine | null>;
+  /** A release version as the record stores it (`v0.76.0` → `0.76.0`); null where the text is none. */
+  releaseVersionOf(text: string): string | null;
   /**
    * The questions holding the requirement's value check, each unanswered and blocking (REQ-65 BC-4,
    * `intake/value-held.ts`): an agree waits for them as for any blocking question.

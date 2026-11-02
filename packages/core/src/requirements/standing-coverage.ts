@@ -20,12 +20,14 @@ import { liveAt } from './rules.js';
 import {
   atLiveCommit,
   atRecordedLanding,
+  atRelease,
   type CoverageIdentity,
   holdsFor,
   identityWords,
   type LandedHolds,
   type LiveBuildHolds,
   type Resolved,
+  releaseHint,
   resolve,
   short,
 } from './standing-identity.js';
@@ -75,8 +77,13 @@ export interface StandingRequirementVerdict {
   verdictAt: Date;
   note: string | null;
   evidence: readonly string[];
-  /** The whole commit it was judged at; null for a skip. */
+  /** The whole commit it was judged at; null for a skip, and for one judged on a release. */
   commit: string | null;
+  /**
+   * The release version it was judged on, where its project's production names no commit it serves
+   * (ISS-900); null for a skip and for one judged at a commit. Absent reads as none.
+   */
+  release?: string | null;
   /** Whether it names who recorded it, an account or a box. */
   authored: boolean;
 }
@@ -141,8 +148,11 @@ export function coverageOf(
         input.judge,
       );
       const judged = verdictExercised(ic.verdict);
-      const r =
-        ic.verdict === null ? null : resolve(ic.identity, build, traced.issueId, ic.covers ?? null);
+      const r = withReleaseHint(
+        ic.verdict === null ? null : resolve(ic.identity, build, traced.issueId, ic.covers ?? null),
+        ic.identity?.kind === 'commit' || ic.identity?.kind === 'runtime',
+        build,
+      );
       return [
         {
           issueId: issue.id,
@@ -186,6 +196,10 @@ export function coverageOf(
 // build: it counts only where the live build is read to hold its commit, on a promotion project too,
 // whose issues count on their own landings (ISS-849). A project with no production environment has
 // no running build to hold it, so there it counts on a landing Forge recorded (`atRecordedLanding`).
+// A project whose production names no commit it serves (no source probe, ISS-900) holds its running
+// build by the release its agent recorded, so there a verdict names the release it was judged on and
+// counts while the record carries it (`atRelease`); a commit there is never matched, and says what
+// can count instead (`releaseHint`).
 // Of those on the current wording the one it stands on is read as an issue criterion's is
 // (`judgesOf`): the newest a judge recorded; every other is kept on the line, naming the one that
 // replaced it. One on an earlier wording is stale and never counts for this one.
@@ -217,12 +231,19 @@ function requirementVerdictsOn(
   return mine.map((v) => {
     const stale = v.requirementCriterionId !== bc.id;
     const judged = verdictExercised(v.verdict);
-    const r: Resolved | null =
-      !judged || v.commit === null
-        ? null
-        : live?.landed && !live.promoted
-          ? atRecordedLanding(v.commit, traced, live.recordedLandings)
-          : atLiveCommit(v.commit, `commit ${short(v.commit)}`, live);
+    const r: Resolved | null = !judged
+      ? null
+      : v.release
+        ? atRelease(v.release, live?.released)
+        : v.commit === null
+          ? null
+          : live?.landed && !live.promoted
+            ? atRecordedLanding(v.commit, traced, live.recordedLandings)
+            : withReleaseHint(
+                atLiveCommit(v.commit, `commit ${short(v.commit)}`, live),
+                true,
+                live,
+              );
     const replaced =
       !stale && stands !== undefined && stands.id !== v.id
         ? `replaced by the newer verdict recorded at ${stands.verdictAt.toISOString()}`
@@ -231,7 +252,7 @@ function requirementVerdictsOn(
       verdictId: v.id,
       verdict: v.verdict,
       verdictAt: v.verdictAt.toISOString(),
-      identity: v.commit === null ? null : `commit ${short(v.commit)}`,
+      identity: r?.countedAs ?? requirementIdentityWords(v),
       note: v.note,
       evidence: [...v.evidence],
       commit: r?.commit ?? null,
@@ -244,6 +265,28 @@ function requirementVerdictsOn(
       stale,
     };
   });
+}
+
+/** What a verdict at the requirement names, in words: its release or its commit; null for a skip. */
+function requirementIdentityWords(v: StandingRequirementVerdict): string | null {
+  if (v.release) return `release ${v.release}`;
+  return v.commit === null ? null : `commit ${short(v.commit)}`;
+}
+
+/**
+ * A commit or runtime that does not count on a project whose production names no commit it serves
+ * (ISS-900), weighed on the live build rather than at a landing: the reason says what can count there,
+ * a judgement on the release its record says is live, so the judge is never sent back to the same
+ * commit. Anywhere else, the reading as it stands.
+ */
+function withReleaseHint(
+  r: Resolved | null,
+  atCommit: boolean,
+  live: LiveBuildHolds | null,
+): Resolved | null {
+  const hint = atCommit && !live?.landed ? releaseHint(live?.released) : null;
+  if (!r || r.notCounted === null || hint === null) return r;
+  return { ...r, notCounted: `${r.notCounted}; ${hint}` };
 }
 
 // With no production environment a commit names the build exactly, so a reopen voids nothing a

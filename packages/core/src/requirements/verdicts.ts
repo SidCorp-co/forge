@@ -21,6 +21,7 @@ import { issueDisplayIds, requirementRecordingSessionOf } from '../issues/index.
 import { peopleOf } from '../lib/people.js';
 import { emitEvents } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requirementDependents } from './dependents.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { liveAt, type RequirementRefusal } from './rules.js';
 import { requirementVerdictsOf } from './standing-facts.js';
@@ -138,6 +139,12 @@ export function routeFail(
   });
 }
 
+/** The whole commit a judgement names, lower case; null for a skip and for one judged on a release. */
+function commitOf(body: RecordRequirementVerdictRequest): string | null {
+  if (body.verdict === 'skipped' || body.identity?.kind !== 'commit') return null;
+  return body.identity.sha.toLowerCase();
+}
+
 /**
  * Records one judgement of a business criterion on the running build, as its writer (project.write,
  * like a verdict on an issue criterion), and answers the criterion's coverage as the standing now
@@ -157,11 +164,14 @@ export async function recordRequirementVerdict(input: {
     .select()
     .from(requirementCriteria)
     .where(eq(requirementCriteria.requirementId, row.id));
+  const dependents = requirementDependents();
   const judged = requirementVerdictRefusals({
     key: requirementKey(row.reqSeq),
     status: row.status,
     live: row.currentRevision === null ? [] : liveAt(criteria, row.currentRevision),
     body,
+    line: body.identity?.kind === 'release' ? await dependents.releasedLine(projectId) : null,
+    versionOf: dependents.releaseVersionOf,
   });
   if ('refusals' in judged) return { ok: false, refusals: judged.refusals };
   const key = requirementKey(row.reqSeq);
@@ -191,7 +201,8 @@ export async function recordRequirementVerdict(input: {
         verdict: body.verdict as RequirementVerdictRow['verdict'],
         reason: body.reason?.trim() || null,
         evidence: [...(body.evidence ?? [])],
-        commitSha: body.verdict === 'skipped' ? null : (body.identity?.sha.toLowerCase() ?? null),
+        commitSha: commitOf(body),
+        releaseVersion: judged.release,
         authorUserId: actor.userId,
         authorDeviceId: input.deviceId,
         authorAgency: actor.agency,
@@ -216,7 +227,7 @@ export async function recordRequirementVerdict(input: {
           projectId,
           issueId: r.issueId,
           verdictId: inserted.id,
-          commitSha: body.identity?.sha.toLowerCase() ?? null,
+          commitSha: commitOf(body),
           failed: {
             criterion: null,
             requirement: bc,
@@ -268,6 +279,7 @@ export async function listRequirementVerdicts(input: {
     reason: v.note,
     evidence: [...v.evidence],
     commit: v.commit,
+    release: v.release ?? null,
     run: v.runSession,
     by: v.authorUserId
       ? {

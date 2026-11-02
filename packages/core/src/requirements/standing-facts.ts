@@ -274,10 +274,27 @@ async function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string,
   return new Map(rows.map((r) => [r.id, r.projectId]));
 }
 
+/**
+ * The build a project's verdicts are weighed on, and, where its production names no commit it serves
+ * (no source probe), the releases its agent recorded (`released`, ISS-900): a verdict naming a release
+ * is weighed there, and the standing names that release as the one to judge on.
+ */
 async function projectBuildOf(
   projectId: string,
   rows: readonly StandingIssueCriterion[],
   own: readonly Pick<StandingRequirementVerdict, 'commit'>[] = [],
+): Promise<LiveBuildHolds | null> {
+  const [released, build] = await Promise.all([
+    requirementDependents().releasedLine(projectId),
+    commitBuildOf(projectId, rows, own),
+  ]);
+  return released ? { ...(build ?? NOTHING_ASKED), released } : build;
+}
+
+async function commitBuildOf(
+  projectId: string,
+  rows: readonly StandingIssueCriterion[],
+  own: readonly Pick<StandingRequirementVerdict, 'commit'>[],
 ): Promise<LiveBuildHolds | null> {
   const judged = rows
     .flatMap((r) => [r, ...(r.earlier ?? [])])
@@ -548,6 +565,7 @@ export function verdictReadOf(r: RequirementVerdictRow): RequirementVerdictRead 
     note: r.reason,
     evidence: r.evidence,
     commit: r.commitSha,
+    release: r.releaseVersion,
     authored: r.authorUserId !== null || r.authorDeviceId !== null,
     authorUserId: r.authorUserId,
     authorAgency: r.authorAgency,
