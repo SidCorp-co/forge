@@ -6,6 +6,7 @@ import {
   supportDeployRequestSchema,
   supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
+  supportProjectSlugSchema,
   supportProposeFixRequestSchema,
   supportReadRequestSchema,
   supportRecordRequestSchema,
@@ -78,6 +79,16 @@ const ridQuery = zValidator(
   invalid('invalid query: rid is a Rocket.Chat group id'),
 );
 
+/** A project document read: the group as `rid`, and a project the agent follows as `project` (ISS-874). */
+const ridProjectQuery = zValidator(
+  'query',
+  z.strictObject({
+    rid: z.string().min(1).max(200).optional(),
+    project: supportProjectSlugSchema.optional(),
+  }),
+  invalid('invalid query: rid is a Rocket.Chat group id, project a project slug you follow'),
+);
+
 /** One act of the room's session; `rid` names the group where the act names no thread of it. */
 async function act(
   c: Context<{ Variables: AuthVars }>,
@@ -95,12 +106,13 @@ async function act(
 }
 
 const SHAPES = {
-  search: '{ query }',
+  search: '{ query, project? }',
   thread: '{ thread }',
   reply: '{ thread, text }',
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
-  record: '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker? }',
+  record:
+    '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker?, project? }',
   agree: '{ thread, proposal, message, decision?: agree | decline }',
   link: '{ thread, member }',
   issues: '{ project, status?, key? }',
@@ -242,9 +254,10 @@ supportRoutes.post(
 // an operations room's acts (REQ-75 BC-20..BC-24): read the scope, move delivery, draft direction, research;
 // a channel agent reads its own project through the same reads (ISS-844)
 // the project document, read by a channel agent (ISS-775)
-supportRoutes.get('/:id/support/session/project', projectParam, ridQuery, (c) =>
-  act(c, c.req.valid('param').id, { action: 'project' }, c.req.valid('query').rid),
-);
+supportRoutes.get('/:id/support/session/project', projectParam, ridProjectQuery, (c) => {
+  const { rid, project } = c.req.valid('query');
+  return act(c, c.req.valid('param').id, { action: 'project', project }, rid);
+});
 supportRoutes.get('/:id/support/session/projects', projectParam, noQuery, (c) =>
   act(c, c.req.valid('param').id, { action: 'projects' }),
 );

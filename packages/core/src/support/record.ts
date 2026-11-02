@@ -7,6 +7,7 @@ import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
 import type { SupportRecordKind } from '@forge/contracts/support';
 import { type ExternalReporter, fileExternalFeedback } from '../feedback/index.js';
 import { buildMessagePermalink } from '../integrations/rocketchat/index.js';
+import { namedProject } from './ops-scope.js';
 import { knownThread, type Outcome, threadUnknown } from './outcome.js';
 import { refusalOf } from './refusals.js';
 import { FEEDBACK_KIND_OF, visitorIdOf } from './rules.js';
@@ -20,6 +21,8 @@ export interface RecordRequest {
   title: string;
   summary: string;
   whereSeen?: string | undefined;
+  /** The project whose master it is for: one the channel agent follows; the home project when omitted (ISS-874). */
+  project?: string | undefined;
 }
 
 /** The thread's link in Rocket.Chat, or the room and thread ids where the server gives none. */
@@ -39,9 +42,14 @@ export async function threadLink(room: RoomRow, thread: string): Promise<string>
 export async function fileRecord(
   room: RoomRow,
   input: RecordRequest & { reporter: { key: string; label: string | null } },
-): Promise<Outcome<{ feedbackKey: string; created: boolean }>> {
+): Promise<Outcome<{ feedbackKey: string; created: boolean; project: string }>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
+  // the project it names is read again at filing: one dropped from the set since is refused, never
+  // filed to the home project instead (ISS-874)
+  const target = await namedProject(room, input.project);
+  if (!target.ok) return target;
+  const projectId = target.value.id;
   const { reporter } = input;
   const { auth, namespace } = await roomAuth(room);
   const permalink = await buildMessagePermalink(auth, room.rid, input.thread).catch(() => null);
@@ -72,7 +80,7 @@ export async function fileRecord(
     .digest('hex')
     .slice(0, 16);
   const filed = await fileExternalFeedback({
-    projectId: room.projectId,
+    projectId,
     filedAs: room.principalUserId,
     request: {
       kind: FEEDBACK_KIND_OF[input.kind],
@@ -88,7 +96,8 @@ export async function fileRecord(
           {
             feedbackId: item.id,
             roomId: room.id,
-            projectId: room.projectId,
+            // the item's project, whose phases the result follow-up reads (`result.ts`)
+            projectId,
             thread: input.thread,
             lastPhase: 'new',
           },
@@ -113,10 +122,13 @@ export async function fileRecord(
       thread: input.thread,
       kind: 'feedback_recorded',
       actorKind: 'session',
-      input: { kind: input.kind, title: input.title },
+      input: { kind: input.kind, title: input.title, project: target.value.slug },
       output: { feedbackKey: filed.key },
       feedbackId: filed.id,
     });
   }
-  return { ok: true, value: { feedbackKey: filed.key, created: filed.created } };
+  return {
+    ok: true,
+    value: { feedbackKey: filed.key, created: filed.created, project: target.value.slug },
+  };
 }

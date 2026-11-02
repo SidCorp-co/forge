@@ -12,6 +12,7 @@ import { supportActions, supportRooms } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
+import { projectsInScope } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
 import { checkThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
@@ -25,10 +26,15 @@ function utcParts(now: Date): { day: string; time: string } {
 }
 
 /**
- * What the agent is handed when a check fires: the tracker reads, and the production reads the
- * room's grant declares (ISS-871), by name only.
+ * What the agent is handed when a check fires: the tracker reads over every project it follows
+ * (ISS-874), and the production reads the room's grant declares (ISS-871), by name only.
  */
-export function checkNote(check: SupportCheck, thread: string, grants: SupportGrants): string {
+export function checkNote(
+  check: SupportCheck,
+  thread: string,
+  grants: SupportGrants,
+  projects: readonly string[],
+): string {
   const reads = grants.abilities.includes('ops_reads') ? (grants.reads ?? []) : [];
   const production = reads.length
     ? ` Read production with support.read { name, args?, check: "${thread}" }, through the reads this room is granted: ${reads.map((r) => r.name).join(', ')} (your brief lists what each takes).`
@@ -36,7 +42,7 @@ export function checkNote(check: SupportCheck, thread: string, grants: SupportGr
   return [
     `Scheduled check \`${check.name}\` for channel ${check.rid}:`,
     check.ask,
-    `Answer it with support.check_result { check: "${thread}", finding }: the one finding to post in the channel when something is wrong, or finding null when nothing is, and nothing is posted. Write the finding as the persona speaks, its language and its length. Read the tracker with support.issues, support.releases and support.requirements.${production} Post nothing else for this check.`,
+    `Answer it with support.check_result { check: "${thread}", finding }: the one finding to post in the channel when something is wrong, or finding null when nothing is, and nothing is posted. Write the finding as the persona speaks, its language and its length. Read the tracker with support.issues, support.releases and support.requirements { project }, for each project you follow: ${projects.join(', ')}.${production} Post nothing else for this check.`,
   ].join('\n\n');
 }
 
@@ -66,7 +72,10 @@ export async function fireDueChecks(now = new Date()): Promise<number> {
   for (const room of rooms) {
     const config = await supportConfigOf(room);
     const checks = config?.checks ?? [];
-    for (const { check, thread } of dueChecks(checks, room.rid, now)) {
+    const due = dueChecks(checks, room.rid, now);
+    if (due.length === 0) continue;
+    const projects = (await projectsInScope(room)).map((p) => p.slug);
+    for (const { check, thread } of due) {
       const row = await insertAction({
         roomId: room.id,
         projectId: room.projectId,
@@ -74,7 +83,10 @@ export async function fireDueChecks(now = new Date()): Promise<number> {
         thread,
         kind: 'message_in',
         actorKind: 'core',
-        input: { note: checkNote(check, thread, grantsOf(config)), check: check.name },
+        input: {
+          note: checkNote(check, thread, grantsOf(config), projects),
+          check: check.name,
+        },
         externalId: thread,
       });
       if (!row) continue;

@@ -48,7 +48,7 @@ type ToolCall = { thread: string; tool: string; args?: SupportCallArgs | undefin
 
 export type SupportActInput =
   | OperationsActInput
-  | { action: 'search'; query: string }
+  | { action: 'search'; query: string; project?: string | undefined }
   | { action: 'thread'; thread: string }
   | { action: 'tools' }
   | { action: 'reply'; thread: string; text: string }
@@ -62,6 +62,7 @@ export type SupportActInput =
       summary: string;
       whereSeen?: string | undefined;
       asker?: string | undefined;
+      project?: string | undefined;
     }
   | {
       action: 'move_issue';
@@ -73,7 +74,7 @@ export type SupportActInput =
   | { action: 'build'; thread: string; branch: string; title: string; summary: string }
   | { action: 'deploy'; thread: string; target: string }
   | { action: 'deployment'; target: string }
-  | { action: 'project' }
+  | { action: 'project'; project?: string | undefined }
   | { action: 'command'; thread: string; host: string; command: string }
   | { action: 'channel' }
   | {
@@ -237,7 +238,7 @@ type SupportOnlyInput = Exclude<SupportActInput, OperationsActInput>;
 async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<unknown>> {
   switch (input.action) {
     case 'search':
-      return search(room, input.query);
+      return search(room, input.query, input.project);
     case 'thread':
       return readThread(room, input.thread);
     case 'tools':
@@ -280,7 +281,7 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     case 'deployment':
       return readDeployment(room, { target: input.target });
     case 'project':
-      return readProjectFacts(room);
+      return readProjectFacts(room, input.project);
     case 'command':
       return runCommand(room, { thread: input.thread, host: input.host, command: input.command });
     case 'channel':

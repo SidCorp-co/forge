@@ -14,11 +14,18 @@ import { requireCheckoutScoping } from './chat-device.js';
  * `base` under `key`, reaching `hosts` besides the model and core (the repository's git and API
  * hosts).
  */
-export type CheckoutView =
+export type CheckoutView = (
   | { mode: 'read' }
   | { mode: 'none' }
   | { mode: 'build'; base: string; key: string }
-  | { mode: 'own'; base: string; key: string; hosts: string[] };
+  | { mode: 'own'; base: string; key: string; hosts: string[] }
+) & {
+  /**
+   * The box's checkouts of the projects a channel agent follows besides its home (ISS-874), each
+   * shown read-only at its own path, whatever the mode.
+   */
+  siblings?: string[];
+};
 
 /** The box capability an owner-mode agent's own clone needs (ISS-765). */
 const OWNER_CHECKOUT_CAPABILITY = SUPPORT_BOX_CAPABILITIES.owner;
@@ -41,19 +48,24 @@ export async function requireCheckoutView(
       `dispatchChatTurn: a checkout view (${view.mode}) is a confined session's, and session ${turn.sessionId} is not confined`,
     );
   }
-  await requireCheckoutScoping(turn.deviceId, CHECKOUT_VIEW_NEEDS[view.mode]);
+  await requireCheckoutScoping(turn.deviceId, [
+    ...CHECKOUT_VIEW_NEEDS[view.mode],
+    ...(view.siblings?.length ? [SUPPORT_BOX_CAPABILITIES.siblings] : []),
+  ]);
 }
 
 /** The turn frame's checkout fields: none for a writable checkout, which is what a box does unasked. */
 export function checkoutFields(view: CheckoutView | null): Record<string, string | string[]> {
   if (!view) return {};
+  const siblings = view.siblings?.length ? { siblingCheckouts: view.siblings } : {};
   if (view.mode === 'build' || view.mode === 'own') {
     return {
       checkout: view.mode,
       buildBase: view.base,
       buildKey: view.key,
       ...(view.mode === 'own' ? { ownHosts: view.hosts } : {}),
+      ...siblings,
     };
   }
-  return { checkout: view.mode };
+  return { checkout: view.mode, ...siblings };
 }

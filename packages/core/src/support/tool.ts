@@ -13,6 +13,7 @@ import {
   supportDeployRequestSchema,
   supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
+  supportProjectRequestSchema,
   supportProposeFixRequestSchema,
   supportReadRequestSchema,
   supportRecordRequestSchema,
@@ -90,7 +91,7 @@ const REQUESTS = {
   build: supportBuildRequestSchema,
   deploy: supportDeployRequestSchema,
   deployment: supportDeploymentRequestSchema,
-  project: z.strictObject({}),
+  project: supportProjectRequestSchema,
   command: supportCommandRequestSchema,
   projects: operationsProjectsRequestSchema,
   issues: operationsIssuesRequestSchema,
@@ -151,18 +152,18 @@ const inputSchema = z.strictObject({
 });
 
 const SHAPE = [
-  'search { query }',
+  'search { query, project? }',
   'thread { thread }',
   'tools {}',
   'reply { thread, text }',
   'run { thread, tool, args? }',
   'propose_fix { thread, tool, args?, asker }',
-  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker? }`,
+  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker?, project? }`,
   'move_issue { thread, issue, to, reason? }',
   'build { thread, branch, title, summary }',
   'deploy { thread, target }',
   'deployment { target }',
-  'project {}',
+  'project { project? }',
   'command { thread, host, command }',
   'projects {}',
   'issues { project, status?, key? }',
@@ -185,6 +186,7 @@ const SHAPE = [
   'link { thread, member }',
   'read { name, args?, thread?, check? }',
   'any action may add rid: the group, where you answer several and the act names no thread',
+  'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements; its home when omitted',
 ].join('; ');
 
 const DESCRIPTION = [

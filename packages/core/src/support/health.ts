@@ -17,6 +17,7 @@ import {
   fetchBotMembership,
 } from '../integrations/rocketchat/index.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import { agentProjectSlugs } from './ops-scope.js';
 import { bindingNamesRoom } from './rooms.js';
 import type { RoomRow } from './store.js';
 import { roomAuth } from './thread.js';
@@ -57,6 +58,8 @@ async function capabilitiesNeeded(room: RoomRow): Promise<string[]> {
   if (grants.abilities.includes('build')) need.push(SUPPORT_BOX_CAPABILITIES.build);
   if (grants.abilities.includes('run_commands')) need.push(SUPPORT_BOX_CAPABILITIES.commands);
   if (grants.abilities.includes('ops_reads')) need.push(SUPPORT_BOX_CAPABILITIES.reads);
+  // a channel agent following sibling projects reads their checkouts on its box (ISS-874)
+  if ((await agentProjectSlugs(room)).length > 0) need.push(SUPPORT_BOX_CAPABILITIES.siblings);
   return need;
 }
 

@@ -354,6 +354,19 @@ export type SupportCheck = z.infer<typeof supportCheckSchema>;
  * The `support` block of a `rocketchat` binding: present, the binding's one room is a support group
  * answered by the session; absent, the room is the team assistant's, as before.
  */
+/** The most sibling projects one channel agent follows (ISS-874). */
+export const SUPPORT_AGENT_PROJECTS_MAX = 10;
+
+/** A project a support session names, by slug: a channel agent's home when omitted (ISS-874). */
+export const supportProjectSlugSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(100)
+	.describe(
+		"a project you follow, by slug; your home project when omitted",
+	);
+
 export const supportRoomConfigSchema = z.strictObject({
 	/** What the product is, in a sentence or two, for the session's brief. */
 	product: z.string().trim().min(3).max(600).optional(),
@@ -376,6 +389,18 @@ export const supportRoomConfigSchema = z.strictObject({
 	 * `readers` says of the others.
 	 */
 	ownerRoom: z.string().min(1).max(200).optional(),
+	/**
+	 * The sibling projects a channel agent follows besides its home project (`agent` block only,
+	 * ISS-874), by slug, each of the home project's organization: it reads each one's tracker,
+	 * knowledge and code, and files a record to the one it names. The home project is always in the
+	 * set and is not named here.
+	 */
+	projects: z
+		.array(supportProjectSlugSchema)
+		.min(1)
+		.max(SUPPORT_AGENT_PROJECTS_MAX)
+		.refine((p) => new Set(p).size === p.length, "a project is named once")
+		.optional(),
 	/** Scheduled checks: a channel agent's (`agent` block) only (REQ-77 BC-13). */
 	checks: z
 		.array(supportCheckSchema)
@@ -658,6 +683,11 @@ export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
 export const supportSearchRequestSchema = z.strictObject({
 	query: z.string().trim().min(2).max(300),
+	project: supportProjectSlugSchema.optional(),
+});
+/** A channel agent's read of a project document (ISS-775): its home's, or a project it follows. */
+export const supportProjectRequestSchema = z.strictObject({
+	project: supportProjectSlugSchema.optional(),
 });
 export const supportThreadRequestSchema = z.strictObject({ thread: threadId });
 export const supportReplyRequestSchema = z.strictObject({
@@ -689,6 +719,8 @@ export const supportRecordRequestSchema = z.strictObject({
 	whereSeen: z.string().trim().min(1).max(300).optional(),
 	/** The member who confirms the filing: their account id; the thread's first writer when omitted. */
 	asker: z.string().min(1).max(64).optional(),
+	/** The project whose master it is for (ISS-874): a project you follow; your home when omitted. */
+	project: supportProjectSlugSchema.optional(),
 });
 
 /**
@@ -905,6 +937,11 @@ export const SUPPORT_BOX_CAPABILITIES = {
 	 * with a credential for that repository alone (ISS-765).
 	 */
 	owner: "ownerCheckouts",
+	/**
+	 * The box shows a channel agent the checkouts of the projects it follows, read-only, beside its
+	 * own (`siblingCheckouts` on a turn frame, ISS-874).
+	 */
+	siblings: "siblingCheckouts",
 } as const;
 
 export interface SupportRoomView {

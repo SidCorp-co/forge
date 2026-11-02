@@ -23,6 +23,7 @@ import type { agentSessions } from '../db/schema.js';
 import { findBindingWithConnectionById, forgeReads } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
+import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
 import { briefChannel, channelNews } from './channel-read.js';
@@ -87,6 +88,7 @@ export const toolsKey = (tools: readonly SupportTool[], config: SupportRoomConfi
     config?.readers ?? null,
     config?.answers ?? null,
     config?.grants ?? null,
+    config?.projects ?? null,
   ]);
 export function toldTools(roomId: string): string | undefined {
   return briefedTools.get(roomId);
@@ -145,7 +147,11 @@ export async function roomWithSession(roomId: string): Promise<RoomRow | null> {
  * room's (its role's persona and grants, its reach). An operations room whose bot has no role it can
  * read is not briefed at all: the turn throws, naming why, and its messages wait.
  */
-async function briefOf(room: RoomRow, projectName: string): Promise<string> {
+async function briefOf(
+  room: RoomRow,
+  projectName: string,
+  followed: readonly FollowedCheckout[],
+): Promise<string> {
   if (room.kind === 'operations') {
     const role = await roleOfRoom(room);
     if (!role.ok) throw new Error(`support: ${role.refusals[0]?.detail ?? 'no role'}`);
@@ -162,7 +168,9 @@ async function briefOf(room: RoomRow, projectName: string): Promise<string> {
   const api = await activeSupportApi(room.projectId);
   const config = await supportConfigOf(room);
   noteTools(room.id, api?.tools ?? [], config);
-  if (room.kind === 'agent') return agentBriefOf(room, projectName, api?.tools ?? [], config);
+  if (room.kind === 'agent') {
+    return agentBriefOf(room, projectName, api?.tools ?? [], config, followed);
+  }
   return supportBrief({
     projectName,
     product: config?.product ?? null,
@@ -181,6 +189,7 @@ async function agentBriefOf(
   projectName: string,
   tools: readonly SupportTool[],
   config: SupportRoomConfig | null,
+  followed: readonly FollowedCheckout[],
 ): Promise<string> {
   const rooms = room.sessionId ? await roomsOfSession(room.sessionId) : [room];
   for (const r of rooms) noteTools(r.id, tools, config);
@@ -197,8 +206,37 @@ async function agentBriefOf(
       channels: rooms.map((r) => r.rid),
       ownerMode: Boolean(config?.grants?.abilities.includes('owner_mode')),
       ownerRoom: config?.ownerRoom ?? null,
+      followed,
     }),
   });
+}
+
+/** A project a channel agent follows besides its home (ISS-874), and its checkout on the turn's box. */
+export interface FollowedCheckout {
+  slug: string;
+  name: string;
+  /** The box's checkout of it, which the session reads read-only; null where the box holds none. */
+  path: string | null;
+}
+
+/**
+ * The checkouts, on `deviceId`, of the projects a channel agent follows besides its home: each
+ * project's own checkout on that box, as the box registered it for that project. A project the box
+ * holds no checkout of is named with none, so the brief says its code is not there.
+ */
+export async function followedCheckouts(
+  room: RoomRow,
+  deviceId: string | null,
+): Promise<FollowedCheckout[]> {
+  if (room.kind !== 'agent') return [];
+  const followed = (await projectsInScope(room)).filter((p) => p.id !== room.projectId);
+  return Promise.all(
+    followed.map(async (p) => ({
+      slug: p.slug,
+      name: p.name,
+      path: await resolveSessionRepoPathForDevice(p.id, deviceId),
+    })),
+  );
 }
 
 /**
@@ -209,8 +247,18 @@ async function agentBriefOf(
  * BC-2), or builds in a copy when granted build; in owner mode it works in its own clone of the
  * repository, confined like every other session (ISS-765, `owner-git.ts`).
  */
-export async function checkoutViewOf(room: RoomRow): Promise<CheckoutView | null> {
+export async function checkoutViewOf(
+  room: RoomRow,
+  followed: readonly FollowedCheckout[] = [],
+): Promise<CheckoutView | null> {
   if (room.kind === 'operations') return null;
+  const view = await homeViewOf(room);
+  // the projects a channel agent follows are read-only in every mode, owner mode's included (ISS-874)
+  const siblings = followed.flatMap((f) => (f.path ? [f.path] : []));
+  return siblings.length > 0 ? { ...view, siblings } : view;
+}
+
+async function homeViewOf(room: RoomRow): Promise<CheckoutView> {
   const grants = grantsOf(await supportConfigOf(room));
   if (room.kind === 'agent' && (await ownerModeSession(room))) return ownViewOf(room);
   if (grants.abilities.includes('build')) {
@@ -246,8 +294,9 @@ export async function handTurn(
   const [project] = await forgeReads().projectsByIds([room.projectId]);
   if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
   const parts: string[] = [];
+  const followed = await followedCheckouts(room, client.deviceId);
   if (startsCold(session, client)) {
-    parts.push(await briefOf(room, project.name));
+    parts.push(await briefOf(room, project.name, followed));
     // a channel agent re-reads every group it answers, each thread naming its channel
     const rooms = room.kind === 'agent' ? await roomsOfSession(session.id) : [room];
     for (const r of rooms) {
@@ -268,7 +317,7 @@ export async function handTurn(
     projectId: room.projectId,
     permissions: SUPPORT_SESSION_GRANT,
   });
-  const checkout = await checkoutViewOf(room);
+  const checkout = await checkoutViewOf(room, followed);
   await dispatchChatTurn({
     session,
     project: { id: project.id, slug: project.slug },

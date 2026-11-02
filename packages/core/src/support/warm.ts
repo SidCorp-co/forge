@@ -12,6 +12,7 @@ import { deviceProjectIds } from '../runners/index.js';
 import { hasUndelivered, roomsOfProjects, roomsToWarm } from './delivery.js';
 import {
   deliverWaiting,
+  followedCheckouts,
   handTurn,
   noteRole,
   noteTools,
@@ -26,7 +27,7 @@ import { grantsOf, supportConfigOf } from './grants.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
-import { grantsLine, toolsLine } from './prompt.js';
+import { followedLine, grantsLine, toolsLine } from './prompt.js';
 import { declareSupportRooms, roomIsBound } from './rooms.js';
 import { type RoomRow, roomById, roomsOfSession } from './store.js';
 
@@ -89,7 +90,7 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
   const box = { ...client, deviceId: client.deviceId };
   if (resident && why === 'sweep') return 'resident';
   if (resident && why === 'bindings') {
-    const retell = await retellOf(room);
+    const retell = await retellOf(room, box.deviceId);
     if (!retell) return 'resident';
     noteTurn(room.id, new Date());
     await handTurn(room, session, box, { warmUp: `${retell}\n\n${WARM_UP_LINE}` });
@@ -106,7 +107,7 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
  * What a resident session is told after a binding or connection change, noted as told; null when
  * it already holds it. A support group is told its granted tools; an operations room, its role.
  */
-async function retellOf(room: RoomRow): Promise<string | null> {
+async function retellOf(room: RoomRow, deviceId: string): Promise<string | null> {
   if (room.kind === 'operations') {
     const role = await roleOfRoom(room);
     if (!role.ok || toldTools(room.id) === roleKey(role.value)) return null;
@@ -124,9 +125,11 @@ async function retellOf(room: RoomRow): Promise<string | null> {
   const told =
     room.kind === 'agent' && room.sessionId ? await roomsOfSession(room.sessionId) : [room];
   for (const r of told) noteTools(r.id, tools, config);
+  const followed = await followedCheckouts(room, deviceId);
   return [
     'This room was changed; from now on:',
     ...(config?.persona ? [config.persona] : []),
+    ...(followed.length ? [followedLine(followed)] : []),
     toolsLine(tools),
     grantsLine(grantsOf(config)),
   ].join('\n\n');

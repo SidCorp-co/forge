@@ -40,7 +40,7 @@ export async function tellProjectResults(projectId: string): Promise<number> {
     const conversationId = await threadConversation(room.id, link.thread);
     await insertAction({
       roomId: room.id,
-      projectId,
+      projectId: room.projectId,
       conversationId,
       thread: link.thread,
       kind: 'message_in',
@@ -51,7 +51,7 @@ export async function tellProjectResults(projectId: string): Promise<number> {
     });
     await insertAction({
       roomId: room.id,
-      projectId,
+      projectId: room.projectId,
       conversationId,
       thread: link.thread,
       kind: 'result_told',

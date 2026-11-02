@@ -4,6 +4,7 @@
 import { db } from '../db/client.js';
 import { keywordSearchKnowledge } from '../knowledge/index.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
+import { namedProject } from './ops-scope.js';
 import type { Outcome } from './outcome.js';
 import type { RoomRow } from './store.js';
 import { scrubbedForRoom } from './thread.js';
@@ -63,15 +64,28 @@ async function openApiHits(projectId: string, query: string): Promise<SearchHit[
     .map((h) => h.hit);
 }
 
-/** The project's knowledge and published API, for a how-to answer that cites its sources. */
-export async function search(room: RoomRow, query: string): Promise<Outcome<SearchHit[]>> {
+/**
+ * The project's knowledge and published API, for a how-to answer that cites its sources: the home
+ * project's, or a project a channel agent follows that `project` names (ISS-874), whose hits cite it.
+ */
+export async function search(
+  room: RoomRow,
+  query: string,
+  project?: string,
+): Promise<Outcome<SearchHit[]>> {
+  const named = await namedProject(room, project);
+  if (!named.ok) return named;
+  const { id: projectId } = named.value;
+  const from = projectId === room.projectId ? '' : `${named.value.slug}/`;
   // any of the words, not all of them: a member's question rarely repeats a page's every word
   const anyWord = words(query).join(' or ');
-  const knowledge = anyWord ? await keywordSearchKnowledge(room.projectId, anyWord, 6) : [];
-  const api = await openApiHits(room.projectId, query);
+  const knowledge = anyWord ? await keywordSearchKnowledge(projectId, anyWord, 6) : [];
+  const api = (await openApiHits(projectId, query)).map((h) =>
+    from ? { ...h, cite: h.cite.replace(/^openapi:/, `openapi:${from}`) } : h,
+  );
   const hits = [
     ...knowledge.map((k) => ({
-      cite: `knowledge:${k.slug}`,
+      cite: `knowledge:${from}${k.slug}`,
       title: k.title,
       excerpt: k.body.slice(0, 1200),
     })),

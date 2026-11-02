@@ -11,6 +11,7 @@ import {
 } from '../integrations/support-api/index.js';
 import { changeWaitsOnRole, whoConfirms } from './confirm-role.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import { namedProject } from './ops-scope.js';
 import { knownThread, threadUnknown } from './outcome.js';
 import type { RecordRequest } from './record.js';
 import { type Refusal, refusalOf } from './refusals.js';
@@ -203,6 +204,9 @@ export async function proposeRecord(
 ): Promise<ProposeOutcome> {
   const asked = await askerOf(room, input.thread, input.asker);
   if (!asked.ok) return asked;
+  // a project outside the agent's set is refused now, before the asker is asked anything (ISS-874)
+  const target = await namedProject(room, input.project);
+  if (!target.ok) return target;
   const { asker: _asker, ...request } = input;
   return offerChange({
     room,
