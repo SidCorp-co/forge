@@ -8,7 +8,7 @@ import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { cancelJob, settleConfirmedCancel } from './cancel-job.js';
 import { readJobGate } from './job-queries.js';
 import { salvageSchema } from './prior-attempts.js';
@@ -196,11 +196,12 @@ jobLifecycleUserRoutes.post(
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema),
   zValidator('json', cancelBodySchema),
+  requiresOnResolved('project.write', 'the project of the job the path names'),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const job = await loadJob(id);
-    requireHeld(await loadProjectAccess(job.projectId, userId), 'project.write');
+    requireDeclared(await loadProjectAccess(job.projectId, userId));
     const result = await resumeHeldJob(id, {
       actorUserId: userId,
       actor: restActor(c),

@@ -7,7 +7,7 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld, requiresOnParam } from '../permissions/index.js';
+import { requireDeclared, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/index.js';
 import { readJob } from './job-queries.js';
 import { noPromptMessage, poolPrompt } from './pool-served.js';
@@ -40,6 +40,10 @@ const jobListFiltersSchema = paginationSchema.extend({
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const jobIdParamSchema = z.object({ id: z.uuid() });
+
+// the handler loads the job first, so its own `job not found` answer stands, then checks the
+// declared permission on the job's project
+const JOB_PROJECT = 'the project of the job the path names';
 
 async function assertIssueInProject(projectId: string, issueId: string): Promise<void> {
   const issueProject = await issueProjectId(issueId);
@@ -138,13 +142,13 @@ jobRoutes.get(
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema),
   noQuery,
+  requiresOnResolved('project.read', JOB_PROJECT),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
     const job = await loadJob(id);
-    const access = await loadProjectAccess(job.projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(job.projectId, userId));
 
     const device = job.deviceId ? await jobDeviceSummary(job.deviceId) : null;
 
@@ -158,14 +162,14 @@ jobRoutes.patch(
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema),
   zValidator('json', jobPatchSchema),
+  requiresOnResolved('project.write', JOB_PROJECT),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
     const job = await loadJob(id);
-    const access = await loadProjectAccess(job.projectId, userId);
-    requireHeld(access, 'project.write');
+    requireDeclared(await loadProjectAccess(job.projectId, userId));
 
     if (job.status !== 'queued') {
       throw refuseJob('JOB_NOT_QUEUED', 'jobs can only be patched while queued');

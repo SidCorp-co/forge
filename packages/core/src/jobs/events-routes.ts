@@ -15,7 +15,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { CLAIM_MIN_RUNNER } from '../runners/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { jobEphemeralTarget } from './job-push.js';
@@ -57,6 +57,7 @@ jobEventsListRoutes.get(
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema),
   zValidator('query', eventsListQuerySchema),
+  requiresOnResolved('project.read', 'the project of the job the path names'),
   async (c) => {
     const { id: jobId } = c.req.valid('param');
     const { sinceSeq, limit } = c.req.valid('query');
@@ -65,8 +66,7 @@ jobEventsListRoutes.get(
     const job = await readJobGate(jobId);
     if (!job) throw notFound('job not found');
 
-    const access = await loadProjectAccess(job.projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(job.projectId, userId));
 
     const items = await listJobEvents(jobId, sinceSeq, limit);
 
