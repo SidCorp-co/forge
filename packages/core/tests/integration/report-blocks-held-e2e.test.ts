@@ -1,3 +1,7 @@
+/**
+ * A session's audience: who may read a held report block and the session it came from.
+ * @direct-test-of packages/core/src/agent-sessions/declarations.ts
+ */
 import { randomUUID } from 'node:crypto';
 import { ReportRunSchema } from '@forge/contracts/report-queries';
 import { eq, sql } from 'drizzle-orm';

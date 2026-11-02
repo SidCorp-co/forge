@@ -12,6 +12,8 @@
  * @direct-test-of packages/core/src/permissions/declared.ts
  * @direct-test-of packages/core/src/release-batch/routes.ts
  * @direct-test-of packages/core/src/ecosystem/channel-routes.ts
+ * @direct-test-of packages/core/src/release-batch/declarations.ts
+ * @direct-test-of packages/core/src/middleware/declared-gate.ts
  */
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
