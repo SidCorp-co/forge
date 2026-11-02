@@ -7,7 +7,12 @@ import { type AgentSessionKind, agentSessions } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
-import { holdersOf, holds, type ProjectPermission, requireHeld } from '../permissions/index.js';
+import {
+  holdersOf,
+  holds,
+  type ProjectPermission,
+  requireDeclaredHeld,
+} from '../permissions/index.js';
 import { refuseSession } from './refusals.js';
 import { readTranscript } from './turns-helpers.js';
 
@@ -64,7 +69,7 @@ export async function loadSessionOr404(sessionId: string) {
 export async function ensureSessionMember(sessionId: string, userId: string) {
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
-  requireHeld(access, 'project.read');
+  requireDeclaredHeld(access, 'project.read');
   return { session, access };
 }
 
@@ -75,7 +80,7 @@ export async function ensureSessionRole(
 ) {
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
-  requireHeld(access, permission);
+  requireDeclaredHeld(access, permission);
   return { session, access };
 }
 

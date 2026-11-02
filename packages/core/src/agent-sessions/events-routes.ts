@@ -20,6 +20,7 @@ import { terminalAgentSessionStatuses } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { DEVICE_OWN } from './declarations.js';
 import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
 import { appendChatLines } from './service.js';
@@ -94,6 +95,7 @@ export const agentSessionEventsRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionEventsRoutes.post(
   '/:id/events',
   zValidator('param', idParamSchema),
+  DEVICE_OWN,
   zValidator('json', eventBatchSchema),
   async (c) => {
     const { id: sessionId } = c.req.valid('param');

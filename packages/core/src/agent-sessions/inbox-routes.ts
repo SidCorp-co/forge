@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { DEVICE_PLACED } from './declarations.js';
 import { sessionPlacement } from './read.js';
 import { confirmSessionSend, markSessionSendApplied } from './session-send.js';
 
@@ -10,7 +11,7 @@ export const agentSessionInboxRoutes = new Hono<{ Variables: AuthVars }>();
 
 const paramSchema = z.object({ id: z.uuid(), seq: z.coerce.number().int().positive() });
 
-async function assertOwnsSession(sessionId: string, c: { get: (k: 'deviceId') => unknown }) {
+export async function assertOwnsSession(sessionId: string, c: { get: (k: 'deviceId') => unknown }) {
   const row = await sessionPlacement(sessionId);
   if (!row || row.deviceId !== c.get('deviceId')) throw forbidden('session is not on this device');
 }
@@ -18,6 +19,7 @@ async function assertOwnsSession(sessionId: string, c: { get: (k: 'deviceId') =>
 agentSessionInboxRoutes.post(
   '/:id/inbox/:seq/ack',
   zValidator('param', paramSchema),
+  DEVICE_PLACED,
   zValidator('json', z.object({ outcome: z.enum(['delivered', 'gone']) })),
   async (c) => {
     const { id, seq } = c.req.valid('param');
@@ -30,6 +32,7 @@ agentSessionInboxRoutes.post(
 agentSessionInboxRoutes.post(
   '/:id/inbox/:seq/applied',
   zValidator('param', paramSchema),
+  DEVICE_PLACED,
   zValidator('json', z.object({ turn: z.number().int().nonnegative() })),
   async (c) => {
     const { id, seq } = c.req.valid('param');

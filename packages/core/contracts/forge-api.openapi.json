@@ -1037,6 +1037,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/interactive-credential.ts:assertMayRunSession",
+          "why": "the project the body names, and whether this kind of caller may run a session there"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -1080,6 +1084,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:ensureSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -1219,6 +1227,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:ensureSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -1294,6 +1306,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:ensureSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -1326,6 +1342,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertAgentChatOwner",
+          "why": "a paired device only the session dispatched to it; a person project.read on the session's project, and a person's private chat only its owner or a holder of project.admin (AGENT_CHAT_OWNER_FORBIDDEN)"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -1455,6 +1475,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertSessionOwnerOrAdmin",
+          "why": "a paired device only the session dispatched to it; a person project.write on the session's project, then its owner or a holder of project.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -1490,6 +1514,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertDeviceOwnsSession",
+          "why": "a paired device, on the session dispatched to it alone"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -1524,6 +1552,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:ensureSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -1558,6 +1590,12 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the session's project"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -1647,6 +1685,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertDeviceOwnsSession",
+          "why": "a paired device, on the session dispatched to it alone"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -1708,6 +1750,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertAgentChatOwner",
+          "why": "a paired device only the session dispatched to it; a person project.write on the session's project, and a person's private chat only its owner or a holder of project.admin (AGENT_CHAT_OWNER_FORBIDDEN)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -1775,6 +1821,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/inbox-routes.ts:assertOwnsSession",
+          "why": "a paired device, on the session placed on it alone"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -1840,6 +1890,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/inbox-routes.ts:assertOwnsSession",
+          "why": "a paired device, on the session placed on it alone"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -1875,6 +1929,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:ensureSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -1909,6 +1967,12 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the session's project"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -1963,6 +2027,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertAgentChatOwner",
+          "why": "a paired device only the session dispatched to it; a person project.read on the session's project, and a person's private chat only its owner or a holder of project.admin (AGENT_CHAT_OWNER_FORBIDDEN)"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -2042,6 +2110,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -2087,6 +2159,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertSessionOwnerOrAdmin",
+          "why": "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN)"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -2130,6 +2206,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertAgentChatOwner",
+          "why": "a paired device only the session dispatched to it; a person project.write on the session's project, and a person's private chat only its owner or a holder of project.admin (AGENT_CHAT_OWNER_FORBIDDEN)"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -2174,6 +2254,10 @@
           "requireUserOrDevice",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "agent-sessions/session-access.ts:assertAgentChatOwner",
+          "why": "a paired device only the session dispatched to it; a person project.write on the session's project, and a person's private chat only its owner or a holder of project.admin (AGENT_CHAT_OWNER_FORBIDDEN)"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",

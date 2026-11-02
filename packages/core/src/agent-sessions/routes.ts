@@ -22,6 +22,14 @@ import { holds, requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { assertCoreKeysKept } from './core-owned-metadata.js';
+import {
+  CHAT_READ,
+  DEVICE_OWN,
+  OWNER_OR_ADMIN,
+  PATCH_OWNER_OR_ADMIN,
+  SESSION_READ,
+  SESSION_WRITE,
+} from './declarations.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionInteractiveRoutes } from './interactive-routes.js';
@@ -107,54 +115,65 @@ agentSessionRoutes.route('/', agentSessionOpsRoutes);
 
 // A retry offers the issue to the project's masters again; while a job is still
 // active for it, or no box serves the project, it is refused by name.
-agentSessionRoutes.post('/:id/retry', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+agentSessionRoutes.post(
+  '/:id/retry',
+  zValidator('param', idParamSchema),
+  SESSION_WRITE,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const { session } = await ensureSessionRole(id, userId, 'project.write');
+    const { session } = await ensureSessionRole(id, userId, 'project.write');
 
-  const meta = (session.metadata ?? {}) as { issueId?: string };
-  if (!isPipelineSessionKind(session.kind)) {
-    throw new HTTPException(400, {
-      message: 'retry only supported for pipeline sessions',
-      cause: { code: 'NOT_PIPELINE_SESSION' },
+    const meta = (session.metadata ?? {}) as { issueId?: string };
+    if (!isPipelineSessionKind(session.kind)) {
+      throw new HTTPException(400, {
+        message: 'retry only supported for pipeline sessions',
+        cause: { code: 'NOT_PIPELINE_SESSION' },
+      });
+    }
+    if (!meta.issueId) {
+      throw new HTTPException(400, {
+        message: 'session has no linked issue',
+        cause: { code: 'NO_ISSUE_LINK' },
+      });
+    }
+
+    const issue = await linkedIssueOf(meta.issueId);
+    if (!issue) {
+      throw new HTTPException(404, {
+        message: 'linked issue not found',
+        cause: { code: 'ISSUE_NOT_FOUND' },
+      });
+    }
+
+    // Lazy-import breaks the agent-sessions ↔ pipeline import cycle.
+    const { retryIssueDispatch } = await import('../pipeline/index.js');
+    const offered = await retryIssueDispatch({
+      projectId: issue.projectId,
+      issueId: issue.id,
+      status: issue.status,
     });
-  }
-  if (!meta.issueId) {
-    throw new HTTPException(400, {
-      message: 'session has no linked issue',
-      cause: { code: 'NO_ISSUE_LINK' },
-    });
-  }
 
-  const issue = await linkedIssueOf(meta.issueId);
-  if (!issue) {
-    throw new HTTPException(404, {
-      message: 'linked issue not found',
-      cause: { code: 'ISSUE_NOT_FOUND' },
-    });
-  }
+    return c.json({ ok: true, issueId: issue.id, ...offered });
+  },
+);
 
-  // Lazy-import breaks the agent-sessions ↔ pipeline import cycle.
-  const { retryIssueDispatch } = await import('../pipeline/index.js');
-  const offered = await retryIssueDispatch({
-    projectId: issue.projectId,
-    issueId: issue.id,
-    status: issue.status,
-  });
+agentSessionRoutes.get(
+  '/:id/cost',
+  zValidator('param', idParamSchema),
+  SESSION_READ,
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  return c.json({ ok: true, issueId: issue.id, ...offered });
-});
+    const { session } = await ensureSessionMember(id, userId);
 
-agentSessionRoutes.get('/:id/cost', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
-
-  const { session } = await ensureSessionMember(id, userId);
-
-  const { totals, models } = await sessionCost(id);
-  return c.json({ sessionId: id, projectId: session.projectId, ...totals, models });
-});
+    const { totals, models } = await sessionCost(id);
+    return c.json({ sessionId: id, projectId: session.projectId, ...totals, models });
+  },
+);
 
 agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
   const { projectId, deviceId, status, metadataType, issueId, archived, page, pageSize } =
@@ -194,29 +213,35 @@ agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
   return c.json(listResponse(c, items, total, fromPage(page, pageSize)));
 });
 
-agentSessionRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+agentSessionRoutes.get(
+  '/:id',
+  zValidator('param', idParamSchema),
+  CHAT_READ,
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const row = await loadSessionOr404(id);
+    const row = await loadSessionOr404(id);
 
-  // A CLI runner reads its own session back with a device token to use the
-  // returned `messages` as the baseline its PATCH appends onto (ISS-462). The
-  // PATCH path already honors the device principal; GET must too, or the
-  // baseline fetch 403s, the runner falls back to an EMPTY baseline, and every
-  // turn's PATCH overwrites the whole array — dropping the user turn + all
-  // prior history. Scope a device to ONLY the session dispatched to it; users
-  // keep the project-membership check.
-  if (c.get('principal') === 'device') {
-    assertDeviceOwnsSession(c, row);
-  } else {
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.read');
-    assertAgentChatOwner(row, access, userId);
-  }
+    // A CLI runner reads its own session back with a device token to use the
+    // returned `messages` as the baseline its PATCH appends onto (ISS-462). The
+    // PATCH path already honors the device principal; GET must too, or the
+    // baseline fetch 403s, the runner falls back to an EMPTY baseline, and every
+    // turn's PATCH overwrites the whole array — dropping the user turn + all
+    // prior history. Scope a device to ONLY the session dispatched to it; users
+    // keep the project-membership check.
+    if (c.get('principal') === 'device') {
+      assertDeviceOwnsSession(c, row);
+    } else {
+      const access = await loadProjectAccess(row.projectId, userId);
+      requireHeld(access, 'project.read');
+      assertAgentChatOwner(row, access, userId);
+    }
 
-  return c.json(await withTranscript(row));
-});
+    return c.json(await withTranscript(row));
+  },
+);
 
 // ISS-584 (C) — runner ack. A CLI runner POSTs this the moment it receives an
 // `agent:start`/`agent:send` frame (before claude starts), stamping
@@ -224,7 +249,7 @@ agentSessionRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, asyn
 // ACKed but never produced a claudeSessionId (claude died on startup) without
 // waiting the full heartbeat timeout. Device-token only + own-session scoped;
 // idempotent; only flips a still-`running` session (never resurrects a terminal one).
-agentSessionRoutes.post('/:id/ack', zValidator('param', idParamSchema), async (c) => {
+agentSessionRoutes.post('/:id/ack', zValidator('param', idParamSchema), DEVICE_OWN, async (c) => {
   const { id } = c.req.valid('param');
   if (c.get('principal') !== 'device') {
     throw forbidden('ack is a runner-only signal');
@@ -259,6 +284,7 @@ async function assertMayPatchSession(
 agentSessionRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
+  PATCH_OWNER_OR_ADMIN,
   zValidator('json', patchSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -458,7 +484,7 @@ agentSessionRoutes.patch(
   },
 );
 
-agentSessionRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+agentSessionRoutes.delete('/:id', zValidator('param', idParamSchema), OWNER_OR_ADMIN, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 

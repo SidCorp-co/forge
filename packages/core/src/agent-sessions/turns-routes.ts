@@ -12,6 +12,7 @@ import {
   broadcastTurnTruncated,
 } from './broadcast.js';
 import { createChatSessionRow } from './chat-turn.js';
+import { CHAT_READ, CHAT_WRITE, OWNER_OR_ADMIN, TURN_OWNER_OR_ADMIN } from './declarations.js';
 import {
   authorizeInteractiveTurn,
   dispatchInteractiveTurn,
@@ -69,6 +70,7 @@ export const agentSessionTurnsRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionTurnsRoutes.get(
   '/:id/turns',
   zValidator('param', idParamSchema),
+  CHAT_READ,
   zValidator('query', turnsQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -93,6 +95,7 @@ agentSessionTurnsRoutes.get(
 agentSessionTurnsRoutes.patch(
   '/:id/turns/:turnId',
   zValidator('param', turnIdParamSchema),
+  TURN_OWNER_OR_ADMIN,
   zValidator('json', editTurnBodySchema),
   async (c) => {
     const { id, turnId } = c.req.valid('param');
@@ -153,6 +156,7 @@ agentSessionTurnsRoutes.patch(
 agentSessionTurnsRoutes.post(
   '/:id/turns/:turnId/regenerate',
   zValidator('param', turnIdParamSchema),
+  TURN_OWNER_OR_ADMIN,
   async (c) => {
     const { id, turnId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -221,6 +225,7 @@ agentSessionTurnsRoutes.post(
 agentSessionTurnsRoutes.post(
   '/:id/fork',
   zValidator('param', idParamSchema),
+  CHAT_WRITE,
   zValidator('json', forkBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -280,53 +285,58 @@ agentSessionTurnsRoutes.post(
   },
 );
 
-agentSessionTurnsRoutes.post('/:id/rerun', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+agentSessionTurnsRoutes.post(
+  '/:id/rerun',
+  zValidator('param', idParamSchema),
+  OWNER_OR_ADMIN,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const { session } = await ensureSessionOwnerOrAdmin(id, userId);
-  if (session.status === 'running' || session.status === 'queued') {
-    throw refuseSession('SESSION_RUNNING', 'wait for the in-flight turn before rerunning');
-  }
+    const { session } = await ensureSessionOwnerOrAdmin(id, userId);
+    if (session.status === 'running' || session.status === 'queued') {
+      throw refuseSession('SESSION_RUNNING', 'wait for the in-flight turn before rerunning');
+    }
 
-  const firstUser = (await readTranscript(id)).find(isUserEntry) as
-    | { content?: unknown }
-    | undefined;
-  const prompt = extractPromptString(firstUser?.content);
-  if (!prompt) {
-    throw refuseSession('NO_PROMPT', 'no user prompt to rerun');
-  }
+    const firstUser = (await readTranscript(id)).find(isUserEntry) as
+      | { content?: unknown }
+      | undefined;
+    const prompt = extractPromptString(firstUser?.content);
+    if (!prompt) {
+      throw refuseSession('NO_PROMPT', 'no user prompt to rerun');
+    }
 
-  const client = await resolveInteractiveClient(session, { scope: 'session' });
-  const authority = await authorizeInteractiveTurn({
-    client,
-    projectId: session.projectId,
-    asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
-  });
+    const client = await resolveInteractiveClient(session, { scope: 'session' });
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: session.projectId,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
 
-  const project = await projectHandle(session.projectId);
-  if (!project) throw notFound('project not found');
+    const project = await projectHandle(session.projectId);
+    if (!project) throw notFound('project not found');
 
-  const inserted = await createChatSessionRow({
-    projectId: session.projectId,
-    userId,
-    title: session.title ? `${session.title} (rerun)` : null,
-    parentSessionId: id,
-    metadata: {
-      ...((session.metadata ?? {}) as Record<string, unknown>),
-      rerunOfSessionId: id,
-    },
-  });
-  const updated = await dispatchInteractiveTurn({
-    session: inserted,
-    project,
-    client,
-    authority,
-    message: prompt,
-    broadcastEvent: 'agent-session.created',
-  });
+    const inserted = await createChatSessionRow({
+      projectId: session.projectId,
+      userId,
+      title: session.title ? `${session.title} (rerun)` : null,
+      parentSessionId: id,
+      metadata: {
+        ...((session.metadata ?? {}) as Record<string, unknown>),
+        rerunOfSessionId: id,
+      },
+    });
+    const updated = await dispatchInteractiveTurn({
+      session: inserted,
+      project,
+      client,
+      authority,
+      message: prompt,
+      broadcastEvent: 'agent-session.created',
+    });
 
-  await recordSessionCreatedActivity(updated, restActor(c));
+    await recordSessionCreatedActivity(updated, restActor(c));
 
-  return c.json(await withTranscript(updated), 201);
-});
+    return c.json(await withTranscript(updated), 201);
+  },
+);

@@ -9,6 +9,7 @@ import { forbidden, notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { loadSessionAttachment, persistSessionAttachment } from './attachment-service.js';
+import { CHAT_WRITE } from './declarations.js';
 import { agentSessionsPorts } from './ports.js';
 import { sessionPlacement } from './read.js';
 import { assertAgentChatOwner } from './session-access.js';
@@ -52,6 +53,7 @@ agentSessionAttachmentRoutes.post(
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', sessionIdParamSchema, invalid('invalid sessionId')),
+  CHAT_WRITE,
   rawBody(
     'multipart/form-data',
     'One file in the `file` field, attached to the chat of the agent session; its name and media type come from the part.',
@@ -85,6 +87,7 @@ agentSessionAttachmentRoutes.post(
 agentSessionAttachmentRoutes.get(
   '/:sessionId/attachments/:id/download',
   zValidator('param', downloadParamSchema, invalid('invalid params')),
+  CHAT_WRITE,
   noQuery,
   async (c) => {
     const { sessionId, id } = c.req.valid('param');
