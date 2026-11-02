@@ -3,7 +3,8 @@
 // the triage funnel, then the shared GroupedList — the same columns as Requirements and Issues — by
 // whose turn it is or by what each item is about. A row leads with its title: the key and the
 // target's key are tooltips, and the reporter is the owner column, never a fact beside it (REQ-11). Whose turn comes from core's read model
-// (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
+// (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`). ISS-903: the funnel is one
+// line shut to its name, and a row's kind, subject and severity are its phase chip's hover.
 
 import { Written } from "@/lib/i18n/written";
 import { countsAsReport, FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
@@ -17,6 +18,7 @@ import {
   Button,
   EmptyState,
   enumLabel,
+  Disclosure,
   GroupedList,
   ListPage,
   ListSearch,
@@ -26,7 +28,7 @@ import {
   useListPage,
   PageTitle,
   sortGroupsBy,
-  StatusBadge,
+  StatusChip,
   standingGroups,
   statusReading,
   useViewMode,
@@ -58,10 +60,9 @@ function Funnel({ rows, untold }: { rows: FeedbackSummary[]; untold: FeedbackLis
   const n = (p: string) => rows.filter((r) => r.phase === p && countsAsReport(r)).length;
   const total = Math.max(1, ...FUNNEL.map((p) => n(p)));
   return (
-    <div className="grid gap-2 border-b border-line-subtle bg-app px-5 py-3 max-md:px-3" data-testid="feedback-funnel">
-      <p className="text-12 text-muted">
-        <span className="font-semibold text-fg">{t("feedback.funnel.title")}</span>
-      </p>
+    <div className="border-b border-line-subtle bg-app px-5 max-md:px-3" data-testid="feedback-funnel">
+      <Disclosure title={t("feedback.funnel.title")} testId="feedback-funnel-fold">
+      <div className="grid gap-2">
       <div className="grid grid-cols-5 gap-3">
         {FUNNEL.map((p) => {
           const r = statusReading("feedbackPhase", p, language);
@@ -97,6 +98,8 @@ function Funnel({ rows, untold }: { rows: FeedbackSummary[]; untold: FeedbackLis
             .join(" · ")}
         </p>
       ) : null}
+      </div>
+      </Disclosure>
     </div>
   );
 }
@@ -163,16 +166,23 @@ const rowOf =
         // the steward's current line 1 leads the secondary line (REQ-48 BC-7)
         ...(notes.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : []),
         ...(r.snoozed ? [t("feedback.row.snoozedUntil", { date: time.dateTime(r.snoozed.until) })] : []),
-        enumLabel("feedbackKind", r.kind, language),
-        <span key="about" title={r.target.key}>
-          {t("feedback.row.about", { about: aboutLine(r, t, language) })}
-        </span>,
         ...(r.origin?.project ? [t("feedback.row.from", { project: r.origin.project.name })] : []),
         ...(r.origin && r.origin.occurrences > 1 ? [t("feedback.row.reports", { n: r.origin.occurrences })] : []),
-        t("feedback.row.severity", { severity: statusReading("severity", r.severity, language).label }),
       ],
       eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
-      state: <StatusBadge family="feedbackPhase" value={r.phase} />,
+      // what it is, what it is about and how bad: the phase chip's hover and focus, never a line on the face
+      state: (
+        <StatusChip
+          family="feedbackPhase"
+          value={r.phase}
+          reason={[
+            enumLabel("feedbackKind", r.kind, language),
+            t("feedback.row.about", { about: aboutLine(r, t, language) }),
+            t("feedback.row.severity", { severity: statusReading("severity", r.severity, language).label }),
+          ].join(" · ")}
+          testId="feedback-row-state"
+        />
+      ),
       waitingOn: <WaitingOn w={r.waitingOn} />,
       owner: <ActorChip name={reporter} kind={r.reporter.agency} size={20} />,
       age: { text: time.age(r.updatedAt), title: t("feedback.row.ageTitle", { sent: time.dateTime(r.createdAt), changed: time.dateTime(r.updatedAt) }) },

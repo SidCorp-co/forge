@@ -40,10 +40,13 @@ describe("Feedback leads with titles, never keys (REQ-11 BC-19)", () => {
     expect(row.querySelector(`[title='${row.dataset.key}']`)?.textContent).toBe("Login loops");
   });
 
-  it("says what an item is about by the target's title, its key the tooltip", () => {
-    feedback();
-    const about = screen.getAllByTitle("REQ-1")[0];
-    expect(about.textContent).toBe("About Requirement Dang nhap");
+  it("says what an item is, what it is about by the target's title, and how bad on its phase chip's hover (ISS-903)", () => {
+    const { container } = feedback();
+    const chip = screen.getAllByTestId("feedback-row-state")[0];
+    expect(chip).toHaveAttribute("data-reason", expect.stringContaining("About Requirement Dang nhap"));
+    expect(chip.dataset.reason).toMatch(/Severity/);
+    for (const facts of screen.getAllByTestId("row-facts")) expect(facts.textContent).not.toMatch(/About|Severity/);
+    expect(container.textContent).not.toContain("REQ-1");
   });
 
   it("names the reporter once per row, as its owner, never again in the facts line", () => {
