@@ -1,7 +1,7 @@
 // The steward's record surfaces, witnessed as drawn (REQ-48 lane A): the requirements list and a
 // requirement page (the stuck banner in core's sentence and the steward's note), the feedback list and
 // a feedback page (the FB-74 shape: triaged and stuck), and the issues table (last write beside the
-// stuck reason). At 390 px nothing scrolls sideways.
+// stuck reason and who acts on it). At 390 px nothing scrolls sideways.
 //
 //   pnpm --filter web-v2 witness witness/steward-records.witness.tsx --out <dir>
 
@@ -63,7 +63,14 @@ const SURFACES: Surface[] = [
     name: "issues-table",
     path: "/projects/hop/issues",
     render: issueScreen("Issues table"),
-    check: () => (document.querySelector(`[data-testid=issue-last-write][data-stuck=true][title="${ISSUE_STUCK.reason}"]`) ? [] : ["no row's last write is marked stuck with core's sentence"]),
+    // the mark reads core's sentence, then who acts and what (REQ-74 BC-5, ISS-684): "<reason> · <who>: <act>"
+    check: () => {
+      const marked = [...document.querySelectorAll<HTMLElement>("[data-testid=issue-last-write][data-stuck=true]")].map((el) => el.title);
+      if (marked.length === 0) return ["no row's last write is marked stuck"];
+      return marked.some((line) => new RegExp(`^${ISSUE_STUCK.reason} · [^:]+: .+$`).test(line))
+        ? []
+        : [`no row's last write reads core's sentence and who acts: ${marked.map((m) => `"${m}"`).join(", ")}`];
+    },
   },
 ];
 
