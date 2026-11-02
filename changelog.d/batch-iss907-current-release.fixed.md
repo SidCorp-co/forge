@@ -1,1 +1,0 @@
-**The serving release is the highest version shipped, not the record written last.** A backfill recorded for an older version no longer becomes current on the releases list or in requirement standings, and `0.4.0-dev.10` outranks `0.4.0-dev.9` (ISS-907).

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.448] - 2026-11-02
+
+The current release follows the newest shipped version, not the latest record
+
+### Fixed
+
+- **The serving release is the highest version shipped, not the record written last.** A backfill recorded for an older version no longer becomes current on the releases list or in requirement standings, and `0.4.0-dev.10` outranks `0.4.0-dev.9` (ISS-907).
+
 ## [0.4.0-dev.447] - 2026-11-02
 
 Agents can correct a closed issue's wrong shipped-in release, keeping the old record
