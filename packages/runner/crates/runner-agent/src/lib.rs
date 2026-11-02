@@ -4,6 +4,7 @@
 //! `Runner` impl + a stream parser.
 
 pub mod chat;
+mod chat_attachments;
 pub mod chat_checkout;
 #[cfg(test)]
 mod chat_checkout_test_repo;
