@@ -2,7 +2,7 @@ import type { VersionStatus } from '@forge/contracts/releases';
 import { asc, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type ReleaseAttemptRow, releaseAttempts } from '../db/schema-release-ledger.js';
-import { type ReleaseRunRow, releaseRunsByVersion } from '../pipeline/index.js';
+import { type ReleaseRunRow, releaseRunsByVersion, supersededIdsIn } from '../pipeline/index.js';
 import type { ApprovalView } from './approvals.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { LANDED_VERIFICATION } from './landed-build.js';
@@ -37,13 +37,17 @@ const idsIn = (list: unknown): string[] =>
 /**
  * The issues a release carries: the roster it was cut with, then each it closed afterwards
  * (`metadata.rosterClosed`), less each its finish could not close (`rosterUnclosed`) — the row its agent recorded that release as shipping
- * (`shipped-in.ts`) is that release's, though it was never on its roster.
+ * (`shipped-in.ts`) is that release's, though it was never on its roster, until a correction moves it
+ * to the release that truly shipped it (`rosterSuperseded`, `shipped-in-correct.ts`, ISS-846).
  */
 export const issueIdsOf = (meta: Record<string, unknown>): string[] => {
   const closed = idsIn(meta.rosterClosed);
   // a roster issue the finish could not close was not carried by that release (ISS-811)
   const unclosed = new Set(idsIn(meta.rosterUnclosed).filter((id) => !closed.includes(id)));
-  return [...new Set([...idsIn(meta.issueIds).filter((id) => !unclosed.has(id)), ...closed])];
+  const superseded = supersededIdsIn(meta);
+  return [
+    ...new Set([...idsIn(meta.issueIds).filter((id) => !unclosed.has(id)), ...closed]),
+  ].filter((id) => !superseded.has(id));
 };
 
 /**

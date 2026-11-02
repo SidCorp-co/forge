@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { type IssueFlow, readIssueFlow } from '../issues/index.js';
 import { bucketBoundaries } from '../lib/time-buckets.js';
 import { badRequest } from '../middleware/route-errors.js';
-import { runWearingVersion } from '../pipeline/index.js';
+import { runWearingVersion, supersededIdsIn } from '../pipeline/index.js';
 import { listRequirementsAs } from '../requirements/index.js';
 import { checkedFrame, defineAdapter } from './adapter.js';
 import { dayOf, isDroppedStatus, isResolvedStatus, movesByIssue, statusAt } from './flow-fold.js';
@@ -74,13 +74,15 @@ export function burndownFrame(
   return checkedFrame(descriptor.id, { fields: [...descriptor.output], rows });
 }
 
-/** The release run's roster: the issues it carried, and those it closed afterwards. */
+/** The release run's roster: the issues it carried, and those it closed afterwards, less any a
+ *  shipped-in correction moved to another release (ISS-846). */
 function rosterOf(metadata: Record<string, unknown>): string[] {
   const listed = (key: string) => {
     const v = metadata[key];
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
   };
-  return [...listed('issueIds'), ...listed('rosterClosed')];
+  const superseded = supersededIdsIn(metadata);
+  return [...listed('issueIds'), ...listed('rosterClosed')].filter((id) => !superseded.has(id));
 }
 
 export const burndown = defineAdapter({

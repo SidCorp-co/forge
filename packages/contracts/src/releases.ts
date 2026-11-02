@@ -959,6 +959,18 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_SHIPPED_IN_NOT_CONTAINED",
 	/** A filing's shipped-in record whose containment the repository could not answer, so nothing is recorded. */
 	"RELEASE_SHIPPED_IN_UNVERIFIED",
+	/** A shipped-in correction on an issue no shipped-in record closed: it takes the record without `corrects` (ISS-846). */
+	"RELEASE_SHIPPED_IN_NOT_CORRECTABLE",
+	/** A shipped-in correction whose `corrects` is not the version the issue ships in now (ISS-846). */
+	"RELEASE_SHIPPED_IN_CORRECTS_MISMATCH",
+	/** A shipped-in correction naming the version the issue already ships in (ISS-846). */
+	"RELEASE_SHIPPED_IN_CORRECTION_SAME",
+	/** A shipped-in correction naming no release (`version: null`) (ISS-846). */
+	"RELEASE_SHIPPED_IN_CORRECTION_NONE",
+	/** A shipped-in correction with no `reason` (ISS-846). */
+	"RELEASE_SHIPPED_IN_REASON_MISSING",
+	/** A shipped-in record carrying `reason` without `corrects` (ISS-846). */
+	"RELEASE_SHIPPED_IN_REASON_UNUSED",
 	"RELEASE_ALL_DESIGN_ONLY",
 	"RELEASE_CARRIED_CONTRADICTS",
 	"RELEASE_CARRIED_SHAPE",

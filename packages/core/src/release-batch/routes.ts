@@ -32,6 +32,7 @@ import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
 import { recordLanding } from './recorded-landing.js';
 import { refuseRelease } from './refuse.js';
 import { recordShippedIn } from './shipped-in.js';
+import { correctShippedIn } from './shipped-in-correct.js';
 import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
 import { readReleaseRunState } from './state.js';
 import { RELEASE_VERSION_SHAPE } from './version.js';
@@ -463,11 +464,16 @@ const shippedInBodySchema = z
     version: z.string().trim().min(1).max(100).nullable(),
     /** What the agent read to say so: the git command and its answer. */
     evidence: z.string().trim().min(10).max(2_000),
+    /** The version a closed issue's shipped-in record names now, which this record replaces (ISS-846). */
+    corrects: z.string().trim().min(1).max(100).optional(),
+    /** Why the record `corrects` replaces was wrong; required with it, refused without it. */
+    reason: z.string().trim().max(2_000).optional(),
   })
   .strict();
 
 // ISS-774 — which earlier release shipped an issue marked merged after that release was cut, as its
 // agent read it with git. Forge infers none of it; it refuses only what its own rows contradict.
+// ISS-846 — with `corrects`, the same record moves a closed issue off the release a wrong record named.
 releaseBatchRoutes.post(
   '/:projectId/shipped-in-records',
   zValidator('param', projectParamSchema),
@@ -477,7 +483,18 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.write');
-    const result = await recordShippedIn({ projectId, userId, ...c.req.valid('json') });
+    const { corrects, reason, ...sent } = c.req.valid('json');
+    if (corrects !== undefined) {
+      return c.json(await correctShippedIn({ projectId, userId, ...sent, corrects, reason }), 201);
+    }
+    if (reason !== undefined) {
+      throw refuseRelease(
+        'RELEASE_SHIPPED_IN_REASON_UNUSED',
+        '`reason` says why a corrected record was wrong, and this record corrects none: send it without `reason`, or name the version it replaces in `corrects`.',
+        '/reason',
+      );
+    }
+    const result = await recordShippedIn({ projectId, userId, ...sent });
     return c.json(result, 201);
   },
 );

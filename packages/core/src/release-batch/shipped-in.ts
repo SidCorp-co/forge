@@ -384,7 +384,9 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
             ? `ISS-${row.issSeq} holds no merged mark, so there is no landing a release could have shipped: mark it merged first.`
             : row.status === 'draft'
               ? `ISS-${row.issSeq} is \`draft\`, and its landing is no merge this project owed a filing for: only such a draft, marked merged at that merge's commit and answering it alone, is recorded on the release that shipped it from \`draft\`.`
-              : `ISS-${row.issSeq} is \`${row.status}\`; only an issue waiting at \`${RELEASE_GATE_STATUS}\`, or a draft filed for a merge its project owed a filing for, can be recorded as shipped by an earlier release.`,
+              : row.status === 'closed'
+                ? `ISS-${row.issSeq} is \`closed\`, so it already ships in a release: where a shipped-in record named the wrong one, correct it with the same call carrying \`corrects: "<the version it names now>"\` and a \`reason\`.`
+                : `ISS-${row.issSeq} is \`${row.status}\`; only an issue waiting at \`${RELEASE_GATE_STATUS}\`, or a draft filed for a merge its project owed a filing for, can be recorded as shipped by an earlier release.`,
       '/issueId',
     );
   }
@@ -405,21 +407,12 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
     await clearReleaseHolds([row.id]);
     return { issueId: row.id, version: null, closed: false };
   }
-  const releases = await shippedReleaseRuns(args.projectId);
-  const release = releases.find((r) => r.version === args.version);
-  if (!release) {
-    const shipped = releases
-      .slice(-5)
-      .map((r) => r.version)
-      .join(', ');
-    throw refuseRelease(
-      'RELEASE_SHIPPED_IN_UNKNOWN',
-      `No release ${args.version} shipped on this project${shipped ? `; the newest that did are ${shipped}` : ''}. Name a shipped release, or send \`version: null\` where none holds the landing.`,
-      '/version',
-    );
-  }
-  refuseCutBeforeLanding(row.issSeq, row.landedAt, release);
-  if (filing) await refuseUncontained(args.projectId, filing, release);
+  const release = await shippableRelease(
+    args.projectId,
+    { issSeq: row.issSeq, landedAt: row.landedAt },
+    args.version,
+    filing,
+  );
   await shipInto({
     projectId: args.projectId,
     row,
@@ -436,6 +429,36 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
         `it is closed into ${release.version}, which was verified serving \`${release.commit}\`.`,
   });
   return { issueId: row.id, version: release.version, runId: release.runId, closed: true };
+}
+
+/**
+ * The shipped release `version` names, held to every check a shipped-in record is: a release of this
+ * project that shipped (`RELEASE_SHIPPED_IN_UNKNOWN`), cut no earlier than the issue landed
+ * (`refuseCutBeforeLanding`), and for a filing, one whose commit contains the merge it was filed for
+ * (`refuseUncontained`). A first record and a correction (`shipped-in-correct.ts`) both pass here.
+ */
+export async function shippableRelease(
+  projectId: string,
+  row: { issSeq: number; landedAt: Date },
+  version: string,
+  filing: { number: number; commit: string } | null,
+): Promise<ShippedReleaseRun> {
+  const releases = await shippedReleaseRuns(projectId);
+  const release = releases.find((r) => r.version === version);
+  if (!release) {
+    const shipped = releases
+      .slice(-5)
+      .map((r) => r.version)
+      .join(', ');
+    throw refuseRelease(
+      'RELEASE_SHIPPED_IN_UNKNOWN',
+      `No release ${version} shipped on this project${shipped ? `; the newest that did are ${shipped}` : ''}. Name a shipped release, or send \`version: null\` where none holds the landing.`,
+      '/version',
+    );
+  }
+  refuseCutBeforeLanding(row.issSeq, row.landedAt, release);
+  if (filing) await refuseUncontained(projectId, filing, release);
+  return release;
 }
 
 /**

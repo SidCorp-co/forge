@@ -68,6 +68,17 @@ export async function runWearingVersion(
   return (await releaseRunsByVersion(projectId, version))[0] ?? null;
 }
 
+/**
+ * The issues a shipped-in record put on a release and a correction has since moved to the release
+ * that truly shipped them (`release-batch/shipped-in-correct.ts`, ISS-846): the run keeps the record
+ * under `metadata.shippedInCorrections`, and lists the issue no longer. Every reader of what a release
+ * carries subtracts these.
+ */
+export const supersededIdsIn = (meta: Record<string, unknown>): Set<string> => {
+  const list = meta.rosterSuperseded;
+  return new Set(Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []);
+};
+
 /** The release that shipped an issue, by the version it wears and when it shipped. */
 export interface ShippedRelease {
   version: string;
@@ -76,7 +87,8 @@ export interface ShippedRelease {
 
 /**
  * The release that shipped each of `issueIds`: a shipped release-batch run whose roster names it,
- * or that closed it afterwards (`metadata.rosterClosed`, `release-batch/versions.ts:issueIdsOf`) —
+ * or that closed it afterwards (`metadata.rosterClosed`, `release-batch/versions.ts:issueIdsOf`), less
+ * one a shipped-in correction moved off it (`rosterSuperseded`) —
  * the latest ship where several carried it. An issue no shipped release carries is absent, and so is
  * one moved out of `closed` since it last closed (`issues/release-evidence.ts:shipsWithdrawnOf`): the
  * work those releases shipped is what its reopen rejected, so none of them is where its work is.
@@ -101,6 +113,7 @@ export async function shippedReleasesOf(
          AND m.issue_id IN (${idList(issueIds)})
          AND (NOT coalesce(r.metadata -> 'rosterUnclosed', '[]'::jsonb) @> to_jsonb(m.issue_id::text)
               OR coalesce(r.metadata -> 'rosterClosed', '[]'::jsonb) @> to_jsonb(m.issue_id::text))
+         AND NOT coalesce(r.metadata -> 'rosterSuperseded', '[]'::jsonb) @> to_jsonb(m.issue_id::text)
        ORDER BY m.issue_id, r.release_released_at DESC`),
   );
   const withdrawn = await shipsWithdrawnOf(db, issueIds);

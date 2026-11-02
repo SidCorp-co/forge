@@ -58,6 +58,7 @@ export {
   runWearingVersion,
   type ShippedRelease,
   shippedReleasesOf,
+  supersededIdsIn,
 } from './release-runs.js';
 export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 export { resolvedWindowDaysFor } from './retention/policy.js';
