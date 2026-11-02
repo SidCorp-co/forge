@@ -32,6 +32,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { ArgumentRefusal, keyArgument, need, zodArgumentRefusal } from '../lib/tool-args.js';
+import { onResolved } from '../permissions/index.js';
 import {
   type FeedbackReads,
   feedbackDetail,
@@ -97,6 +98,24 @@ const GRANT = {
     submit: 'projects:write',
     clarify: 'projects:write',
     attach: 'projects:write',
+  },
+} as const;
+
+// What each action needs, as its REST twin declares it on :id (feedback/routes.ts); the project is
+// the projectId argument, else the slug header or the token's one project, so the handler resolves
+// it and each service checks with requireDeclaredOn. attach stays on the amnesty: addAttachment
+// answers NOT_FOUND for the item, then FEEDBACK_REFUSED naming project.write, both before the
+// write a declaration would check
+const THE_PROJECT =
+  "the projectId argument, else the X-Forge-Project-Slug header or the token's one project";
+const PERMISSION = {
+  byAction: {
+    list: onResolved('project.read', THE_PROJECT),
+    get: onResolved('project.read', THE_PROJECT),
+    progress: onResolved('project.read', THE_PROJECT),
+    similar: onResolved('project.read', THE_PROJECT),
+    submit: onResolved('project.write', THE_PROJECT),
+    clarify: onResolved('project.write', THE_PROJECT),
   },
 } as const;
 
@@ -286,6 +305,7 @@ export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: GRANT,
+  permission: PERMISSION,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {

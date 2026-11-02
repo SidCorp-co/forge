@@ -307,12 +307,6 @@
     "forge_support.search",
     "forge_support.thread",
     "forge_support.tools",
-    "project_feedback.attach",
-    "project_feedback.clarify",
-    "project_feedback.get",
-    "project_feedback.list",
-    "project_feedback.progress",
-    "project_feedback.similar",
-    "project_feedback.submit"
+    "project_feedback.attach"
   ]
 }

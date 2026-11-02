@@ -2308,8 +2308,46 @@
         ],
         "type": "object"
       },
-      "name": "project_feedback"
+      "name": "project_feedback",
+      "x-forge-permission": {
+        "clarify": {
+          "on": {
+            "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"
+          },
+          "permission": "project.write"
+        },
+        "get": {
+          "on": {
+            "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"
+          },
+          "permission": "project.read"
+        },
+        "list": {
+          "on": {
+            "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"
+          },
+          "permission": "project.read"
+        },
+        "progress": {
+          "on": {
+            "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"
+          },
+          "permission": "project.read"
+        },
+        "similar": {
+          "on": {
+            "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"
+          },
+          "permission": "project.read"
+        },
+        "submit": {
+          "on": {
+            "resolved": "the projectId argument, else the X-Forge-Project-Slug header or the token's one project"
+          },
+          "permission": "project.write"
+        }
+      }
     }
   ],
-  "version": "3.10.4"
+  "version": "3.10.5"
 }

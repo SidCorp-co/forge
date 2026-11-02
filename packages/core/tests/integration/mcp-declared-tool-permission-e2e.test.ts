@@ -6,9 +6,16 @@
  * declaration, or lowering it to a permission the caller holds, turns the answer into the handler's
  * own refusal. A holder of the permission passes the door and reaches the handler.
  *
+ * An action whose project the handler resolves (project_feedback: the projectId argument, else the
+ * slug header or the token's one project) declares it `onResolved`, and its service checks with
+ * requireDeclaredOn: there the declaration answers wherever the service's own floor is lower, so
+ * lowering that floor leaves the refusal standing, and lowering the declaration too turns it.
+ *
  * @direct-test-of packages/core/src/project-config/tool.ts
  * @direct-test-of packages/core/src/product-door/questions-tool.ts
  * @direct-test-of packages/core/src/product-door/releases-tool.ts
+ * @direct-test-of packages/core/src/product-door/context.ts
+ * @direct-test-of packages/core/src/mcp/feedback-tool.ts
  * @direct-test-of packages/core/src/permissions/declared.ts
  */
 
@@ -26,8 +33,9 @@ type Json = Record<string, unknown>;
 type Answer = { isError: boolean; text: string; json: Json };
 
 let projectId: string;
+let projectSlug: string;
 let ownerId: string;
-const tokens = { owner: '', member: '', viewer: '' };
+const tokens = { owner: '', member: '', viewer: '', outsider: '' };
 
 beforeAll(async () => {
   testEnv();
@@ -41,7 +49,9 @@ afterAll(async () => {
 beforeEach(async () => {
   await settleOutbox();
   ownerId = (await createTestUser({ verified: true })).id;
-  projectId = (await createTestProject(ownerId)).id;
+  const project = await createTestProject(ownerId);
+  projectId = project.id;
+  projectSlug = project.slug;
   tokens.owner = await patToken(ownerId, [projectId], 'decl-owner');
   const memberId = (await createTestUser({ verified: true })).id;
   await addProjectMember(projectId, memberId, 'member');
@@ -49,15 +59,22 @@ beforeEach(async () => {
   const viewerId = (await createTestUser({ verified: true })).id;
   await addProjectMember(projectId, viewerId, 'viewer');
   tokens.viewer = await patToken(viewerId, [projectId], 'decl-viewer');
+  const outsiderId = (await createTestUser({ verified: true })).id;
+  tokens.outsider = await patToken(outsiderId, [projectId], 'decl-outsider');
 });
 
-async function mcp(who: keyof typeof tokens, name: string, args: Json): Promise<Answer> {
+async function mcp(
+  who: keyof typeof tokens,
+  name: string,
+  args: Json,
+  headers: Record<string, string> = {},
+): Promise<Answer> {
   const res = await api(
     tokens[who],
     'POST',
     '/mcp',
     { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
-    { accept: 'application/json, text/event-stream' },
+    { accept: 'application/json, text/event-stream', ...headers },
   );
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   const result = res.body.result as { content: { text: string }[]; isError?: boolean };
@@ -147,5 +164,47 @@ describe('forge_releases name', () => {
     });
     expect(codeOf(reached)).not.toBe('PERMISSION_FORBIDDEN');
     expect(reached.text).toContain('summary');
+  });
+});
+
+describe('forge_releases list (readAccess, product-door/context.ts)', () => {
+  it('refuses a caller holding no role on the project, naming project.read', async () => {
+    const refused = await mcp('outsider', 'forge_releases', { action: 'list', projectId });
+    expect(codeOf(refused)).toContain('not a member of this project');
+    expect(refused.text).toContain('project.read');
+  });
+
+  it('lists the releases for a viewer, whose access readAccess loads and checks', async () => {
+    const read = ok(await mcp('viewer', 'forge_releases', { action: 'list', projectId }));
+    expect(read).toHaveProperty('releases');
+    expect(read).toHaveProperty('draft');
+  });
+});
+
+describe('project_feedback (declared on the project the handler resolves)', () => {
+  const report = {
+    action: 'submit',
+    kind: 'bug',
+    title: 'The receipt total is wrong',
+    screen: '/checkout',
+  };
+
+  const bySlug = () => ({ 'x-forge-project-slug': projectSlug });
+
+  it("refuses a viewer's submit on the slug header's project, naming project.write", async () => {
+    const refused = await mcp('viewer', 'project_feedback', report, bySlug());
+    expect(codeOf(refused)).toBe('PERMISSION_FORBIDDEN');
+    expect(refused.text).toContain('project.write');
+  });
+
+  it("files a member's submit on the slug header's project, with no projectId sent", async () => {
+    const filed = ok(await mcp('member', 'project_feedback', report, bySlug()));
+    expect((filed.feedback as Json).key).toMatch(/^FB-\d+$/);
+  });
+
+  it('refuses a caller holding no role a list, naming project.read', async () => {
+    const refused = await mcp('outsider', 'project_feedback', { action: 'list', projectId });
+    expect(codeOf(refused)).toContain('not a member of this project');
+    expect(refused.text).toContain('project.read');
   });
 });
