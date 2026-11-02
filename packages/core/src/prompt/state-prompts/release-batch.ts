@@ -64,6 +64,10 @@ a step you could not complete, a procedure that does not fit what you actually f
   The roster then stays at the gate held for that person, and no automatic release or schedule cuts
   it again until they act (\`heldForPerson\`). Leave it out only when a later run could get past
   what stopped you, and the next cut takes the roster again.
+→ When there is nothing to release because an earlier release already shipped this roster's work,
+  name it instead of a blocker: \`"shippedIn":{"version":"<that release>","evidence":"<the git
+  command and its answer>"}\`. Each issue is recorded as shipped there and closes (\`shippedInRecorded\`);
+  one that cannot waits on its agent's shipped-in record, never on a person (\`shippedInOwed\`).
 → Say what now carries this release's version outside Forge: \`"carried":[{"kind":"tag","name":"v1.4.0"}]\`,
   one entry per pushed tag, release commit (\`commit\`), published artifact (\`artifact\`) or notice
   sent to people (\`notice\`), by the name it goes by there; \`"carried":[]\` when NOTHING left the
