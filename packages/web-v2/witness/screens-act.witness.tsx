@@ -142,7 +142,8 @@ const PAGES = [
   { name: "requirements", path: "/projects/hop/requirements", render: () => <Seeded data={REQUIREMENTS_TITLED}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
   { name: "feedback", path: "/projects/hop/feedback", render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
   { name: "releases", path: "/projects/hop/releases", render: () => <Seeded data={releaseSeed()}><ReleasesScreen projectId={REL_P} slug="hop" /></Seeded> },
-  { name: "ops", path: "/ops?tab=runs", pattern: "/ops", render: () => <Seeded data={OPS_SEED}><OpsMonitor /></Seeded> },
+  // Ops opens on its Monitor tab; the stage then opens Runs, the tab whose rows this change reads
+  { name: "ops", path: "/ops", pattern: "/ops", render: () => <Seeded data={OPS_SEED}><OpsMonitor /></Seeded>, tab: "Runs" },
 ] as const;
 
 const Home = HomeRoute.options.component as () => ReactNode;
@@ -217,6 +218,12 @@ window.__witness = {
         at.show(i);
         theme(t);
         await pause(900);
+        if ("tab" in p) {
+          const tab = [...document.querySelectorAll<HTMLElement>("[role=tab],button")].find((b) => b.textContent?.trim() === p.tab);
+          if (!tab) return [`the ${p.name} page has no ${p.tab} tab to open`];
+          tab.click();
+          await pause(500);
+        }
         if (!q(`[data-witness=page][data-witness-page=${p.name}]`)) return [`the ${p.name} page is not the one drawn`];
         const threw = q("[data-witness=threw]");
         if (threw) return [`the ${p.name} page threw: ${threw.innerText.slice(0, 300)}`];
