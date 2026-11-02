@@ -5,6 +5,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
   createEcosystem,
@@ -164,20 +165,39 @@ async function move(c: Context, membershipId: string, verb: MembershipVerb, reas
   );
 }
 
-membershipRoutes.post('/:id/accept', idParam, (c) =>
-  move(c, c.req.valid('param').id, 'accept', null),
+// the member's side acts on the membership's project, the steward's on the ecosystem's steward org;
+// `transition` finds either from the membership row and checks what the route declares
+const ON_MEMBER_PROJECT = "the membership's project, found from the membership";
+const ON_STEWARD_ORG = "the ecosystem's steward organization, found from the membership";
+
+membershipRoutes.post(
+  '/:id/accept',
+  idParam,
+  requiresOnResolved('project.admin', ON_MEMBER_PROJECT),
+  (c) => move(c, c.req.valid('param').id, 'accept', null),
 );
 
-membershipRoutes.post('/:id/decline', idParam, (c) =>
-  move(c, c.req.valid('param').id, 'decline', null),
+membershipRoutes.post(
+  '/:id/decline',
+  idParam,
+  requiresOnResolved('project.admin', ON_MEMBER_PROJECT),
+  (c) => move(c, c.req.valid('param').id, 'decline', null),
 );
 
-membershipRoutes.post('/:id/leave', idParam, reasonBody, (c) =>
-  move(c, c.req.valid('param').id, 'leave', c.req.valid('json').reason),
+membershipRoutes.post(
+  '/:id/leave',
+  idParam,
+  requiresOnResolved('project.admin', ON_MEMBER_PROJECT),
+  reasonBody,
+  (c) => move(c, c.req.valid('param').id, 'leave', c.req.valid('json').reason),
 );
 
-membershipRoutes.post('/:id/remove', idParam, reasonBody, (c) =>
-  move(c, c.req.valid('param').id, 'remove', c.req.valid('json').reason),
+membershipRoutes.post(
+  '/:id/remove',
+  idParam,
+  requiresOnResolved('org.admin', ON_STEWARD_ORG),
+  reasonBody,
+  (c) => move(c, c.req.valid('param').id, 'remove', c.req.valid('json').reason),
 );
 
 const registerQuery = zValidator(

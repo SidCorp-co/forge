@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { loadOrgRole } from '../lib/authz.js';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { assertStewardAdmin, forbidden, notFound, readerProjects } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';
@@ -89,7 +89,7 @@ async function assertSide(
     await assertStewardAdmin(eco.stewardOrgId, userId);
     return;
   }
-  await requireCan(actorFor(userId), 'project.admin', projectResource(row.projectId));
+  await requireDeclaredOn(row.projectId, userId, 'project.admin');
 }
 
 export async function transition(input: {
