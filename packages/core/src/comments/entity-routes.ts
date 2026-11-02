@@ -14,6 +14,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { decisionCommentWarnings } from './decision-answers.js';
 import { deleteEntityComment } from './entity-delete.js';
 import { type EntityCommentActor, listEntityCommentsAs } from './entity-read.js';
@@ -152,18 +153,24 @@ async function editFor(
   );
 }
 
+// project.read on the path's project is every comment act's floor; who may post, edit or take one
+// back is each act's own rule on the comment and its target (entity-service.ts, entity-delete.ts)
+const READ = requiresOnParam('project.read', 'id');
+
 const createBody = strictBody(createEntityCommentRequestSchema, CREATE_ENTITY_COMMENT_SHAPE);
 const editBody = strictBody(editEntityCommentRequestSchema, EDIT_ENTITY_COMMENT_SHAPE);
 
 entityCommentRoutes.get(
   '/:id/requirements/:req/comments',
   targetParam(REQUIREMENT),
+  READ,
   intentQuery,
   (c) => listFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('query').intent),
 );
 entityCommentRoutes.post(
   '/:id/requirements/:req/comments',
   targetParam(REQUIREMENT),
+  READ,
   createBody,
   holdChatWrite('comment'),
   (c) => postFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
@@ -171,6 +178,7 @@ entityCommentRoutes.post(
 entityCommentRoutes.patch(
   '/:id/requirements/:req/comments/:comment',
   commentParam(REQUIREMENT),
+  READ,
   editBody,
   (c) => editFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
 );
@@ -178,6 +186,7 @@ entityCommentRoutes.patch(
 entityCommentRoutes.delete(
   '/:id/requirements/:req/comments/:comment',
   commentParam(REQUIREMENT),
+  READ,
   async (c) => {
     const params = c.req.valid('param') as Params;
     const outcome = await deleteEntityComment({
@@ -195,12 +204,14 @@ entityCommentRoutes.delete(
 entityCommentRoutes.get(
   '/:id/workflows/:workflow/comments',
   targetParam(WORKFLOW),
+  READ,
   intentQuery,
   (c) => listFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('query').intent),
 );
 entityCommentRoutes.post(
   '/:id/workflows/:workflow/comments',
   targetParam(WORKFLOW),
+  READ,
   createBody,
   holdChatWrite('comment'),
   (c) => postFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('json')),
@@ -208,16 +219,22 @@ entityCommentRoutes.post(
 entityCommentRoutes.patch(
   '/:id/workflows/:workflow/comments/:comment',
   commentParam(WORKFLOW),
+  READ,
   editBody,
   (c) => editFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('json')),
 );
 
-entityCommentRoutes.get('/:id/feedback/:fb/comments', targetParam(FEEDBACK), intentQuery, (c) =>
-  listFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('query').intent),
+entityCommentRoutes.get(
+  '/:id/feedback/:fb/comments',
+  targetParam(FEEDBACK),
+  READ,
+  intentQuery,
+  (c) => listFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('query').intent),
 );
 entityCommentRoutes.post(
   '/:id/feedback/:fb/comments',
   targetParam(FEEDBACK),
+  READ,
   createBody,
   holdChatWrite('comment'),
   (c) => postFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('json')),
@@ -225,6 +242,7 @@ entityCommentRoutes.post(
 entityCommentRoutes.patch(
   '/:id/feedback/:fb/comments/:comment',
   commentParam(FEEDBACK),
+  READ,
   editBody,
   (c) => editFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('json')),
 );
@@ -234,6 +252,7 @@ entityCommentRoutes.patch(
 entityCommentRoutes.get(
   '/:id/issues/:issue/comments',
   targetParam(ISSUE),
+  READ,
   zValidator(
     'query',
     z.strictObject({ intent: z.literal('decision') }),

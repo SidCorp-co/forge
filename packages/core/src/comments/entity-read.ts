@@ -29,7 +29,7 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan, requireDeclaredOn } from '../permissions/index.js';
 import { datedAhead } from './dated-ahead.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
 import { feedbackRowIn, requirementRowIn } from './ports.js';
@@ -228,7 +228,7 @@ export async function listEntityCommentsAs(
   query: { intent?: CommentIntent | undefined } = {},
   door: ReadDoor = {},
 ): Promise<EntityCommentListResponse> {
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const target = await readTargetIn(db, projectId, scope, ref);
   const rows = await db
     .select(entityCommentColumns)
