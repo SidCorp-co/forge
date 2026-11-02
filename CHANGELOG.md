@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.449] - 2026-11-02
+
+A wrong shipped-in release can be corrected, and both releases show the move
+
+### Fixed
+
+- **A corrected release shows the move.** When an issue's shipped-in release is corrected, both releases now list the change with who made it, when, and why. (ISS-846)
+
 ## [0.4.0-dev.448] - 2026-11-02
 
 The current release follows the newest shipped version, not the latest record
