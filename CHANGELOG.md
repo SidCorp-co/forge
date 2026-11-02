@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.446] - 2026-11-02
+
+A requirement revision can rename the requirement when accepted
+
+### Added
+
+- **A requirement is retitled by a revision a person accepts.** A revision takes an optional title, applied on accept; until then the title stands. Its changes name the old and new title, and a blank one is refused by name.
+
 ## [0.4.0-dev.445] - 2026-11-02
 
 Verdicts judged on a release count where production reports only a version
