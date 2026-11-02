@@ -125,7 +125,10 @@ describe('0580: a support group counts no changes a day', () => {
   });
 
   it('leaves a document whose limits are no object, or hold no key, as it is', async () => {
-    const odd = await binding('odd', { rids: ['GROUP4'], support: { limits: 'fixesPerUserPerDay' } });
+    const odd = await binding('odd', {
+      rids: ['GROUP4'],
+      support: { limits: 'fixesPerUserPerDay' },
+    });
     const bare = await binding('bare', { rids: ['GROUP5'] });
     await m.migrate();
     expect(await stored(odd)).toEqual({
