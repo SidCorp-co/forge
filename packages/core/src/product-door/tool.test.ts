@@ -95,6 +95,19 @@ describe('forge_issues create', () => {
     expect(issues.description).toContain('files an issue as you');
   });
 
+  // owner, 2026-10-16: where an MCP client may file an issue, the tool says how, and when to step in,
+  // because an issue filed straight from a wish skips the product (Feedback, a Requirement)
+  it('points the caller to the product first and names when to file directly and when to ask', () => {
+    const d = issues.description;
+    expect(d).toContain('start from the product');
+    expect(d).toContain('project_feedback.create');
+    expect(d).toContain('requirements.create');
+    expect(d).toContain('File one here directly when');
+    expect(d).toContain('ask them before filing');
+    // the door model names its actions; the retired per-surface tool name finds nothing in forge_find
+    expect(d).not.toContain('forge_requirements');
+  });
+
   it('refuses a create with no title by the argument it lacks', async () => {
     const err = await issues
       .handler({ action: 'create', projectId: '00000000-0000-4000-8000-000000000009' })
