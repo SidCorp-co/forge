@@ -187,7 +187,81 @@
         ],
         "type": "object"
       },
-      "name": "forge_channel"
+      "name": "forge_channel",
+      "x-forge-permission": {
+        "draft": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.write"
+        },
+        "edit": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.write"
+        },
+        "inbox": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.read"
+        },
+        "outbox": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.read"
+        },
+        "read": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.read"
+        },
+        "register": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.read"
+        },
+        "reply": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.write"
+        },
+        "submit": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.write"
+        },
+        "supersede": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.write"
+        },
+        "thread": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.read"
+        },
+        "unanswered": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.read"
+        },
+        "withdraw": {
+          "on": {
+            "resolved": "the projectId argument, else the token's one project or the X-Forge-Project-Slug header"
+          },
+          "permission": "project.write"
+        }
+      }
     },
     {
       "description": "A project's document, read and written whole: its environments, their URLs, promotions and the testing profile each names (a testing profile holds secret:// references, never a credential).\n- get { projectId }: the document with the revision it is at, or declared: false where the project has none.\n- write { projectId, baseRevision, document }: the whole document, as PUT /api/projects/:id/config writes it; it takes project.admin. baseRevision is the revision you read, or null for a first write. { base, patch } is refused CONFIG_WRITE_SHAPE: get the document, change it, and write it back whole. A baseRevision the document has moved past is refused by name: get it again.",
@@ -2431,5 +2505,5 @@
       }
     }
   ],
-  "version": "3.10.5"
+  "version": "3.10.6"
 }

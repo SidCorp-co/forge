@@ -19,9 +19,11 @@
  * @direct-test-of packages/core/src/mcp/requirements-tool.ts
  * @direct-test-of packages/core/src/ecosystem/tool.ts
  * @direct-test-of packages/core/src/ecosystem/tool-handlers.ts
+ * @direct-test-of packages/core/src/ecosystem/channel-tool.ts
  * @direct-test-of packages/core/src/permissions/declared.ts
  */
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { api, patToken } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -285,5 +287,36 @@ describe('forge_ecosystem reads (declared on the side the handler resolves)', ()
       ),
     );
     expect(read).toHaveProperty('declared', false);
+  });
+});
+
+describe('forge_channel (declared on the side the handler resolves, after the role rule)', () => {
+  it("refuses a viewer's submit, naming project.write, before the document is looked up", async () => {
+    const refused = await mcp('viewer', 'forge_channel', {
+      action: 'submit',
+      projectId,
+      ref: randomUUID(),
+    });
+    expect(refused.isError, refused.text).toBe(true);
+    expect(refused.text).toContain('PERMISSION_FORBIDDEN');
+    expect(refused.text).toContain('project.write');
+  });
+
+  it('keeps CHANNEL_NO_ROLE for a caller holding no role, which the declaration does not replace', async () => {
+    const refused = await mcp('outsider', 'forge_channel', { action: 'inbox', projectId });
+    expect(refused.isError, refused.text).toBe(true);
+    expect(refused.text).toContain('CHANNEL_NO_ROLE');
+  });
+
+  it('reads the inbox for a viewer, on the slug header with no projectId sent', async () => {
+    const read = ok(
+      await mcp(
+        'viewer',
+        'forge_channel',
+        { action: 'inbox' },
+        { 'x-forge-project-slug': projectSlug },
+      ),
+    );
+    expect(read).toHaveProperty('documents');
   });
 });

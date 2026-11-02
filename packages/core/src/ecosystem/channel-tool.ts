@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from '../lib/tool.js';
+import { onResolved, requireDeclaredOn, toolPermissionFor } from '../permissions/index.js';
 import { ecosystemReadFence } from './access.js';
 import { readApiPage } from './api-page.js';
 import type { ChannelOutcome } from './channel-act.js';
@@ -253,6 +254,10 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
   const { principal } = ctx;
   const role = await channelRoleRefusal(principal.userId, side, roleNeeded(call.action));
   if (role) return refusedWith([role]);
+  // after the role rule, so its CHANNEL_NO_ROLE stands: what the action declares is held on the side too
+  if (toolPermissionFor(PERMISSION, call.action)) {
+    await requireDeclaredOn(side, principal.userId, 'project.read', `forge_channel.${call.action}`);
+  }
   if (isWrite(call.action) && !principal.scopes.includes('write')) {
     return one(
       'CHANNEL_WRITE_NOT_AUTHORISED',
@@ -291,6 +296,32 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
   }
 }
 
+// each action's permission on the side the handler resolves, checked once channelRoleRefusal has
+// answered, so its CHANNEL_NO_ROLE is never replaced: the reads project.read, the writes that
+// channelRoleRefusal holds to project.write the same. The rest stay on the amnesty: contracts reads
+// the API page of the project its input names (counterparty access), hold and release are decided by
+// the hold rule (HOLD_NOT_AUTHORISED), and gate by the gate option's admin check
+const THE_SIDE =
+  "the projectId argument, else the token's one project or the X-Forge-Project-Slug header";
+const READ = onResolved('project.read', THE_SIDE);
+const WRITE = onResolved('project.write', THE_SIDE);
+const PERMISSION = {
+  byAction: {
+    register: READ,
+    inbox: READ,
+    outbox: READ,
+    unanswered: READ,
+    read: READ,
+    thread: READ,
+    draft: WRITE,
+    reply: WRITE,
+    edit: WRITE,
+    submit: WRITE,
+    withdraw: WRITE,
+    supersede: WRITE,
+  } satisfies Partial<Record<ChannelAction, unknown>>,
+} as const;
+
 const grantOf = (action: ChannelAction) => (isWrite(action) ? 'projects:write' : 'projects:read');
 
 // every action takes the permission its REST route takes; the register is read fenced to this side, the same rows its inbox and outbox hold, so it is a project read and not the account-wide ecosystems:read
@@ -312,5 +343,6 @@ export const forgeChannelTool: ContextScopedMcpToolFactory = (ctx) => ({
       'project'
     >,
   },
+  permission: PERMISSION,
   handler: (raw) => run(ctx, raw),
 });
