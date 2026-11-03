@@ -36,7 +36,7 @@ const idsIn = (list: unknown): string[] =>
 
 /**
  * The issues a release carries: the roster it was cut with, then each it closed afterwards
- * (`metadata.rosterClosed`), less each its finish could not close (`rosterUnclosed`) — the row its agent recorded that release as shipping
+ * (`metadata.rosterClosed`), less each its finish or record could not close (`rosterUnclosed`, its residue) — the row its agent recorded that release as shipping
  * (`shipped-in.ts`) is that release's, though it was never on its roster, until a correction moves it
  * to the release that truly shipped it (`rosterSuperseded`, `shipped-in-correct.ts`, ISS-846).
  */

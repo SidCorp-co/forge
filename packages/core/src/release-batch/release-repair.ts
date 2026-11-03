@@ -3,7 +3,9 @@
 // deploy healthy). The act writes who, when, why and the evidence they name beside the failure it
 // settles, which stays on the run: nothing is rewritten, so the release reads `shipped` and says
 // how it came to. Forge reads no probe and no deployment record here: the evidence is the person's
-// word, kept (owner rule `release-is-the-agents-record`).
+// word, kept (owner rule `release-is-the-agents-record`). Since ISS-928 a release that closed any of
+// its roster, or whose promotion merged and deploy was recorded, ships with the rest as its residue
+// (`residue.ts`), so what this act still settles is a release that closed none of its roster.
 
 import type { ReleaseRepairView } from '@forge/contracts/releases';
 import { and, isNull, sql } from 'drizzle-orm';
