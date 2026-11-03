@@ -29,6 +29,7 @@
  * @direct-test-of packages/core/src/ecosystem/contract/routes.ts
  * @direct-test-of packages/core/src/ecosystem/standing/routes.ts
  * @direct-test-of packages/core/src/orgs/routes.ts
+ * @direct-test-of packages/core/src/skills/crud-routes.ts
  * @direct-test-of packages/core/src/projects/routes.ts
  * @direct-test-of packages/core/src/status-reports/routes.ts
  */
@@ -318,5 +319,35 @@ describe("a project's settings routes, declared org.admin resolved on its organi
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
     const answered = await api(await userToken(owner.id), 'POST', `/api/projects/${id}/archive`);
     expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+  });
+});
+
+describe("a project skill's routes, declared resolved on the skill's project", () => {
+  it('refuses a stranger the list, a viewer the change (project.admin), and answers the owner', async () => {
+    const owner = await createTestUser({ verified: true });
+    const viewer = await createTestUser({ verified: true });
+    const { id: projectId } = await createTestProject(owner.id);
+    await addProjectMember(projectId, viewer.id, 'viewer');
+    const ownerToken = await userToken(owner.id);
+
+    const stranger = await api(tokens.person, 'GET', `/api/skills?projectId=${projectId}`);
+    expect(stranger.status, JSON.stringify(stranger.body)).toBe(403);
+
+    const created = await api(ownerToken, 'POST', '/api/skills', {
+      name: 'declared-skill',
+      description: 'one skill',
+      skillMd: '# declared',
+      projectId,
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const skillId = created.body.id as string;
+
+    const read = await api(await userToken(viewer.id), 'GET', `/api/skills/${skillId}`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const change = await api(await userToken(viewer.id), 'PUT', `/api/skills/${skillId}`, {
+      description: 'changed',
+    });
+    expect(change.status, JSON.stringify(change.body)).toBe(403);
+    expect(JSON.stringify(change.body)).toContain('project.admin');
   });
 });

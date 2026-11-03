@@ -1,6 +1,5 @@
 {
   "routes": [
-    "DELETE /api/skills/:id",
     "GET /api/agent-reports",
     "GET /api/git/:host/:rest{.+}",
     "GET /api/me/devices",
@@ -15,8 +14,6 @@
     "GET /api/recordings/:id",
     "GET /api/recordings/:id/events",
     "GET /api/runners",
-    "GET /api/skills",
-    "GET /api/skills/:id",
     "GET /api/workflow-templates",
     "GET /api/workflow-templates/:templateId/:version",
     "PATCH /api/pat/:id",
@@ -45,10 +42,8 @@
     "POST /api/questions",
     "POST /api/questions/:id/void",
     "POST /api/recordings/:id/stop",
-    "POST /api/skills",
     "POST /api/webhooks/github/app",
-    "POST /api/webhooks/in/:slug",
-    "PUT /api/skills/:id"
+    "POST /api/webhooks/in/:slug"
   ],
   "actions": []
 }

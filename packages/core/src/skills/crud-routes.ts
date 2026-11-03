@@ -5,7 +5,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireDeclared, requireHeld, requiresOnResolved } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { MANAGED_META_SKILLS } from './effective.js';
 import { listSkills, skillById, skillScopeById } from './read.js';
 import { refuse } from './refuse.js';
@@ -75,9 +75,28 @@ const globalReadOnly = (act: string) =>
   );
 
 export const skillCrudRoutes = new Hono<{ Variables: AuthVars }>();
+
+// a skill is its project's, found from the row or the input, and checked with `requireDeclared`; a
+// global skill is read by anyone signed in and changed here by nobody (SKILL_GLOBAL_READ_ONLY)
+const READ_LISTED = requiresOnResolved(
+  'project.read',
+  'the project the query names as projectId, where sent; the global list otherwise',
+);
+const READ_ONE = requiresOnResolved(
+  'project.read',
+  "the skill's project; a global skill is read by anyone signed in",
+);
+const ADMIN_CREATE = requiresOnResolved(
+  'project.admin',
+  'the project the body names as projectId; a global skill is refused SKILL_GLOBAL_READ_ONLY first',
+);
+const ADMIN_ROW = requiresOnResolved(
+  'project.admin',
+  "the skill's project; a global skill is refused SKILL_GLOBAL_READ_ONLY",
+);
 skillCrudRoutes.use('*', requireAuth(), assertEmailVerified());
 
-skillCrudRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
+skillCrudRoutes.get('/', zValidator('query', listQuerySchema), READ_LISTED, async (c) => {
   const { projectId, scope } = c.req.valid('query');
   const userId = c.get('userId');
 
@@ -86,12 +105,10 @@ skillCrudRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
     rows = await listSkills({ kind: 'global' });
   } else if (scope === 'project') {
     if (!projectId) throw badRequest({ projectId: 'required when scope=project' });
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(projectId, userId));
     rows = await listSkills({ kind: 'project', projectId });
   } else if (projectId) {
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(projectId, userId));
     rows = await listSkills({ kind: 'global-and-project', projectId });
   } else {
     rows = await listSkills({ kind: 'global' });
@@ -104,7 +121,7 @@ skillCrudRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
   const metaNames = new Set<string>(MANAGED_META_SKILLS);
   return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
 });
-skillCrudRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
+skillCrudRoutes.get('/:id', zValidator('param', idParamSchema), READ_ONE, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 
@@ -112,14 +129,13 @@ skillCrudRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (
   if (!row) throw notFound('skill not found');
 
   if (row.scope === 'project' && row.projectId) {
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.read');
+    requireDeclared(await loadProjectAccess(row.projectId, userId));
   }
 
   return c.json(row);
 });
 
-skillCrudRoutes.post('/', zValidator('json', skillCreateSchema), async (c) => {
+skillCrudRoutes.post('/', zValidator('json', skillCreateSchema), ADMIN_CREATE, async (c) => {
   const input = c.req.valid('json');
   const userId = c.get('userId');
 
@@ -136,8 +152,7 @@ skillCrudRoutes.post('/', zValidator('json', skillCreateSchema), async (c) => {
     throw badRequest({ projectId: 'required when isGlobal=false' });
   }
 
-  const access = await loadProjectAccess(input.projectId, userId);
-  requireHeld(access, 'project.admin');
+  requireDeclared(await loadProjectAccess(input.projectId, userId));
 
   const inserted = await createProjectSkill({
     projectId: input.projectId,
@@ -154,6 +169,7 @@ skillCrudRoutes.post('/', zValidator('json', skillCreateSchema), async (c) => {
 skillCrudRoutes.put(
   '/:id',
   zValidator('param', idParamSchema),
+  ADMIN_ROW,
   zValidator('json', skillUpdateSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -164,8 +180,7 @@ skillCrudRoutes.put(
     if (!row) throw notFound('skill not found');
 
     if (row.projectId) {
-      const access = await loadProjectAccess(row.projectId, userId);
-      requireHeld(access, 'project.admin');
+      requireDeclared(await loadProjectAccess(row.projectId, userId));
     } else {
       // Global skills: only allow CEO/admin via existing admin route.
       throw globalReadOnly('updated');
@@ -176,7 +191,7 @@ skillCrudRoutes.put(
   },
 );
 
-skillCrudRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+skillCrudRoutes.delete('/:id', zValidator('param', idParamSchema), ADMIN_ROW, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 
@@ -184,8 +199,7 @@ skillCrudRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => 
   if (!row) throw notFound('skill not found');
 
   if (row.projectId) {
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.admin');
+    requireDeclared(await loadProjectAccess(row.projectId, userId));
   } else {
     throw globalReadOnly('deleted');
   }
