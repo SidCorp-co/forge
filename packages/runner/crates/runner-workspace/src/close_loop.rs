@@ -408,6 +408,15 @@ mod tests {
     /// under `$TMPDIR`; a run still owed its checkout keeps its own (ISS-920).
     #[tokio::test]
     async fn a_run_the_loop_closes_loses_its_judge_login_and_an_open_one_keeps_it() {
+        /// What the test made under `$TMPDIR`, gone when it ends, passed or failed.
+        struct Made(Vec<PathBuf>);
+        impl Drop for Made {
+            fn drop(&mut self) {
+                for p in &self.0 {
+                    let _ = std::fs::remove_dir_all(p);
+                }
+            }
+        }
         let dir = std::env::temp_dir().join(format!("forge-iss920-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
@@ -420,6 +429,7 @@ mod tests {
             d
         };
         let (ended_login, open_login) = (plant(&ended), plant(&open));
+        let _made = Made(vec![dir.clone(), ended_login.clone(), open_login.clone()]);
         declare(&mut led, &ended, "ISS-1");
         led.attach_session(&ended, "session-ended").unwrap();
         // a pane that ended over a tree that is gone: the reap's shape
@@ -445,7 +455,5 @@ mod tests {
             open_login.join("x.json").exists(),
             "an open run's login was removed"
         );
-        let _ = std::fs::remove_dir_all(&open_login);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

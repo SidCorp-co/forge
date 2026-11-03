@@ -328,7 +328,22 @@ fn declared_id(job_id: Option<String>) -> anyhow::Result<String> {
 mod tests {
     use super::*;
 
-    fn ledger_with(name: &str, ids: &[&str]) -> Ledger {
+    /// A test ledger whose directory goes with it: before ISS-920 each run of these tests left a
+    /// `forge-run-named-*` directory in `$TMPDIR` for good.
+    struct HeldLedger(Ledger, std::path::PathBuf);
+    impl std::ops::Deref for HeldLedger {
+        type Target = Ledger;
+        fn deref(&self) -> &Ledger {
+            &self.0
+        }
+    }
+    impl Drop for HeldLedger {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.1);
+        }
+    }
+
+    fn ledger_with(name: &str, ids: &[&str]) -> HeldLedger {
         let dir =
             std::env::temp_dir().join(format!("forge-run-named-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -346,7 +361,7 @@ mod tests {
             })
             .unwrap();
         }
-        led
+        HeldLedger(led, dir)
     }
 
     #[test]
