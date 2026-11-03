@@ -3774,6 +3774,13 @@
       "when": 1834185600000,
       "tag": "0593_a_beta_issue_is_ported_once_and_its_status_mirrored",
       "breakpoints": true
+    },
+    {
+      "idx": 594,
+      "version": "7",
+      "when": 1834272000000,
+      "tag": "0594_a_beta_pair_records_what_beta_took",
+      "breakpoints": true
     }
   ]
 }

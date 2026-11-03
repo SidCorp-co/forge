@@ -40,6 +40,10 @@ export const BETA_PORT_SECRET_NAMES = {
 export const BETA_PORT_FIRE_REFUSALS = [
 	"BETA_PORT_SECRET_MISSING",
 	"BETA_PORT_BETA_UNREADABLE",
+	/** The owner's ruling, whose time is the cutoff, is not in the org's knowledge. */
+	"BETA_PORT_CUTOFF_MISSING",
+	/** Another fire of a beta port in this project is still running. */
+	"BETA_PORT_FIRE_LIVE",
 ] as const;
 export type BetaPortFireRefusal = (typeof BETA_PORT_FIRE_REFUSALS)[number];
 
