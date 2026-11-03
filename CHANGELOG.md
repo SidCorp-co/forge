@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.456] - 2026-11-03
+
+Project pages fit a phone's main scroller; detail overviews stay inside their column
+
+### Fixed
+
+- **A phone no longer scrolls a project page sideways.** The live bar's tooltip, a requirement's overview, a feedback item, a contract and a module now fit 390 px, and a long decision answer wraps.
+
 ## [0.4.0-dev.455] - 2026-11-03
 
 MCP sign-in names the server the client registered with
