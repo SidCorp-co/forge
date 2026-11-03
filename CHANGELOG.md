@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.471] - 2026-11-03
+
+Issues stay the agents' work, and your home says when a list is cut
+
+### Changed
+
+- **A person never acts on an issue.** Needs you asks no one to admit a draft, chat offers no issue button, triage names no issue, and a stuck issue's decision is asked on the requirement or feedback item it serves.
+- **Needs you lists no issue.** A run's question on an issue, and a mockup, suggestion or preview on one, is a decision on the requirement or feedback item it serves; the MCP issues door files drafts and admits none.
+- **No product page asks a person to act on an issue.** Requirements lose promote and link, feedback triage routes a fix without naming an issue, the master admits drafts, and workflows read their step, waiter and next act.
+
 ## [0.4.0-dev.470] - 2026-11-03
 
 Core drains in-flight requests on a deploy, so a landed write no longer reads 502
