@@ -301,7 +301,8 @@ describe('snooze: parked out of New until a date, returned by the clock', () => 
     `);
     const back = await read(fb);
     expect(back.snoozed, 'a snooze that ran out reads as none').toBeNull();
-    expect(back.attentionGroup).toBe('waiting');
+    // back in New, the triage is the viewer's again, so it is back on their Needs you (ISS-924)
+    expect(back.attentionGroup).toBe('needs_you');
     expect(back.waitingOn).toMatchObject({ kind: 'you', act: 'triage it' });
     expect((await owedTriages(projectId)).map((o) => o.key)).toContain(fb);
   });

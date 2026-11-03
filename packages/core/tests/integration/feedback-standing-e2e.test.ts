@@ -130,12 +130,12 @@ async function owedTriages(): Promise<string[]> {
 }
 
 describe('with no live master, an untriaged item waits on a holder of feedback.approve', () => {
-  it('is the owner’s own act, off their Needs you, and its filing still wakes the bound box', async () => {
+  it('is the owner’s own act, on their Needs you (ISS-924), and its filing still wakes the bound box', async () => {
     await settleOutbox();
     publish.mockClear();
     ids.low = await file('low', 'The board drops a column on resize');
     expect(await standingAs('owner', ids.low)).toEqual({
-      attentionGroup: 'waiting',
+      attentionGroup: 'needs_you',
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act: 'triage it' }),
     });
     expect(await feedbackWakes()).toEqual([
@@ -159,7 +159,7 @@ describe('with no live master, an untriaged item waits on a holder of feedback.a
   it('does not name an absent master even for a high item', async () => {
     ids.high = await file('high', 'Saving the board loses every card');
     expect(await standingAs('owner', ids.high)).toEqual({
-      attentionGroup: 'waiting',
+      attentionGroup: 'needs_you',
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act: 'triage it' }),
     });
   });
@@ -236,9 +236,9 @@ describe('a carrier at the release gate waits on whoever makes that release', ()
   it('names the project writers to release it by hand where no release model is declared', async () => {
     await seedIssueStatus(ids.carrier, 'awaiting_release');
     const act = `release ${ids.carrierKey} by hand and close it`;
-    // releasing by hand is the writer's own work, not a decision: off Needs you (REQ-48 BC-11)
+    // releasing by hand is no decision, but it is the writer's own act: on their Needs you (ISS-924)
     expect(await standingAs('member', ids.high)).toEqual({
-      attentionGroup: 'waiting',
+      attentionGroup: 'needs_you',
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act }),
     });
     expect(await standingAs('viewer', ids.high)).toEqual({

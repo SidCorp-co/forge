@@ -214,21 +214,26 @@ describe('GET /api/projects/:id/needs-you/decisions (REQ-41 BC-1)', () => {
       ['ISS-1', 'ISS-2', 'ISS-3', 'REQ-1', ids.detached].sort(),
     );
     expect(r.total).toBe(5);
-    // the owner's own draft and the draft issue nobody took on are no person's decision, so their
-    // slices never group them needs_you (REQ-48 BC-11, `lib/standing-times.ts:withTimes`): neither
-    // reaches Needs you, so neither is counted as left out of it
-    expect(r.notDecisions).toEqual([]);
+    // the owner's own drafts and the draft issue nobody took on are no person's decision, but their
+    // standings name the viewer, so Needs you lists them as theirs, each by why and its next step
+    // (ISS-924, `lib/standing-times.ts:withTimes`), never as a decision
+    const left = Object.fromEntries(
+      r.notDecisions.map((n) => [n.reason, n.items.map((i) => `${i.key}: ${i.next}`).sort()]),
+    );
+    expect(left).toEqual({
+      own_work: ['REQ-2: propose r1', 'REQ-3: write a revision', 'REQ-4: write a revision'],
+      awaiting_proposal: ['ISS-4: take on or drop'],
+    });
     // the Needs you read lists exactly what the needs-me read answers: nothing is dropped in silence
     const needs = await api(token, 'GET', `/api/projects/${projectId}/needs-you`);
     const asks = (needs.body.items as { key: string; space: string }[]).filter(
       (i) => i.space === 'asks',
     );
-    expect(asks.map((i) => i.key)).not.toContain('REQ-2');
-    expect(asks.map((i) => i.key)).not.toContain('ISS-4');
+    expect(asks.map((i) => i.key)).toEqual(expect.arrayContaining(['REQ-2', 'ISS-4']));
     // a draft with no current revision is its owner's to write, never "agree it": both reads say so
     // (REQ-48 BC-11; it read "agree it" here while the decisions read classed it as work)
     for (const key of ['REQ-3', 'REQ-4']) {
-      expect(asks.map((i) => i.key)).not.toContain(key);
+      expect(asks.map((i) => i.key)).toContain(key);
       expect(byKey(r.decisions, key)).toBeUndefined();
     }
     // what the agent takes is the master's, listed on neither read (REQ-68 BC-3)

@@ -239,9 +239,10 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
         rule: { key: 'feedback.rule.verifyHeld' },
       },
     });
-    expect(held.attentionGroup, 'a holder of feedback.approve owes the answer, off Needs you').toBe(
-      'waiting',
-    );
+    expect(
+      held.attentionGroup,
+      'a holder of feedback.approve owes the answer: their own act, on their Needs you (ISS-924)',
+    ).toBe('needs_you');
 
     const first = await heldAt();
     expect(first).not.toBeNull();
