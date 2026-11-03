@@ -1,7 +1,8 @@
 // `forge_issues`: delivery work as a person following it reads it — what is being built, how far it
 // has got, whether an agent is on it now and when it is likely done — and the filing of one, by the
 // same create every other door takes (ISS-861: the client judges where a record belongs, and the
-// kernel's own refusals still hold: project.write, the admission an `open` birth asks, the edges).
+// kernel's own refusals still hold: project.write, the edges). An issue filed here is born at `draft`
+// and the master admits it: no person admits an issue (REQ-68 BC-6), so the door takes no `admit`.
 
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import { ISSUES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
@@ -51,22 +52,16 @@ const input = z.strictObject({
   relations: issueCreateSchema.shape.relations.describe(
     "create: edges filed with it, e.g. [{ kind: 'blocks', dependsOnId }], committed before it can dispatch",
   ),
-  admit: z
-    .boolean()
-    .optional()
-    .describe(
-      'create: true files it asking `open`, which the project admission gate decides; left out, it is born at `draft`',
-    ),
 });
 type Input = z.infer<typeof input>;
 
 const SHAPE =
-  '{ action, projectId, issue?, status?, statusNot?, search?, limit?, offset?, title?, description?, priority?, category?, relations?, admit? }';
+  '{ action, projectId, issue?, status?, statusNot?, search?, limit?, offset?, title?, description?, priority?, category?, relations? }';
 
 const DESCRIPTION = `Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none), and the filing of one.
 - action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and \`progress\`. \`pause\` names a wait that holds the whole project, such as no runner online.
 - action=get { projectId, issue }: one issue with its description, the questions it waits on, \`progress\`, and \`requirement\`: the requirement it delivers, whichever project of its organization holds it (\`otherProject\` names a sibling's), at its current revision with its spec, its criteria (code and body) and its latest agreed baseline; null where it delivers none.
-- action=create { projectId, title, description?, priority?, category?, relations?, admit? }: files an issue as you, the way any other door does: it needs project.write, is born at \`draft\` unless \`admit: true\` asks \`open\` (the project's admission gate decides, and \`admission\` says where it stands), and answers its key. An issue is the delivery side, so start from the product: a problem or idea a person reports goes to Feedback (project_feedback.submit), and new or changed behaviour to a Requirement (requirements.create, or requirements.revise for one that exists); their triage and delivery file the issues. File one here directly when it is delivery work someone will build that an agreed requirement or a triaged feedback item already covers, or a defect found while building, and name in its description what it delivers. When the person asks for an issue and the work has no requirement or feedback behind it, or you cannot tell which it is, ask them before filing.`;
+- action=create { projectId, title, description?, priority?, category?, relations? }: files an issue as you, the way any other door does: it needs project.write, is born at \`draft\`, where the project's master admits it (no person admits an issue), and answers its key. An issue is the delivery side, so start from the product: a problem or idea a person reports goes to Feedback (project_feedback.submit), and new or changed behaviour to a Requirement (requirements.create, or requirements.revise for one that exists); their triage and delivery file the issues. File one here directly when it is delivery work someone will build that an agreed requirement or a triaged feedback item already covers, or a defect found while building, and name in its description what it delivers. When the person asks for an issue and the work has no requirement or feedback behind it, or you cannot tell which it is, ask them before filing.`;
 
 async function list(ctx: McpContext, i: Input) {
   const access = await projectAccess(ctx, i.projectId);
@@ -175,7 +170,6 @@ async function create(ctx: McpContext, i: Input) {
       priority: i.priority,
       category: i.category,
       relations: i.relations,
-      status: i.admit ? 'open' : undefined,
     },
     {
       createdById: actor.userId,
@@ -193,7 +187,6 @@ async function create(ctx: McpContext, i: Input) {
     id: result.issue.id,
     title: result.issue.title,
     status: result.issue.status,
-    admission: result.admission,
     relations: result.relations,
     warnings: result.bodyWarnings,
   };

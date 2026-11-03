@@ -4,7 +4,8 @@
 // files an issue; Needs you lists no issue and no decision opens or moves one; the chat offers no
 // button on an issue; and no product MCP door moves one. A stuck issue reaches a person only as a
 // decision on its item (`steward/decision-ask.ts`). Planted red by putting one back: the `issue.admit`
-// act in `DECISION_ACTS`, an `issuesApi.transition` call on the requirement page.
+// act in `DECISION_ACTS`, an `issuesApi.transition` call on the requirement page, the `issues` area in
+// `NEEDS_YOU_AREAS`, the `admit` field on the `forge_issues` door.
 //
 // @direct-test-of packages/contracts/src/needs-you.ts
 // @direct-test-of packages/contracts/src/needs-you-decisions.ts
@@ -12,6 +13,8 @@
 // @direct-test-of packages/core/src/assistant/agreement/write-rule.ts
 // @direct-test-of packages/core/src/assistant/prompt/door-web.ts
 // @direct-test-of packages/core/src/mcp/registry.ts
+// @direct-test-of packages/core/src/mcp/server.ts
+// @direct-test-of packages/core/src/product-door/issues-tool.ts
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -26,7 +29,7 @@ import { WEB_DOOR_LAYER } from '../assistant/prompt/door-web.js';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
 import type { McpContext } from '../lib/tool.js';
 import { actionCatalog } from '../mcp/action-catalog.js';
-import { mcpTools } from '../mcp/server.js';
+import { forgeMcpInstructions, mcpTools } from '../mcp/server.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '../../../web-v2/src');
@@ -168,5 +171,33 @@ describe('no product MCP door moves an issue', () => {
   it('reads issues, and files one only by the create every door takes (ISS-861)', () => {
     const issues = catalog.filter((a) => a.tool === 'forge_issues').map((a) => a.action);
     expect(issues.sort()).toEqual(['create', 'get', 'list']);
+  });
+
+  // the master admits a draft (REQ-68 BC-6): the person's create files one at draft and asks nothing
+  // more of it, and an `admit` sent anyway is refused by name, never dropped
+  const door = mcpTools({ principal, projectSlug: null } as unknown as McpContext).find(
+    (t) => t.name === 'forge_issues',
+  );
+
+  it("takes no admit on the issues door's create, and refuses one sent by name", async () => {
+    if (!door) throw new Error('the product MCP server lists no forge_issues door');
+    const props = (door.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+    expect(Object.keys(props)).not.toContain('admit');
+    expect(door.description).not.toMatch(/\badmit\b/);
+    expect(door.description).toContain("born at `draft`, where the project's master admits it");
+    const sent = door.handler({
+      action: 'create',
+      projectId: '00000000-0000-4000-8000-000000000687',
+      title: 'A draft',
+      admit: true,
+    });
+    await expect(sent).rejects.toThrow(/admit/);
+    await expect(sent).rejects.toMatchObject({ name: 'RefusalError', fallbackCode: 'BAD_REQUEST' });
+  });
+
+  it('says in the server instructions that the issues door admits, moves and links no issue', () => {
+    const text = forgeMcpInstructions();
+    expect(text).toContain('no door here admits, moves or links an issue');
+    expect(text).not.toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
   });
 });
