@@ -1,1 +1,0 @@
-**Refusals tell the truth.** A refused read says `refused:`, not that nothing was written; a lessons window refusal answers 400 every time; and a master post to a bound room nobody declared says so (ISS-867, ISS-862).

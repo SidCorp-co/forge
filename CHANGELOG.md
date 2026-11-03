@@ -9,6 +9,26 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.454] - 2026-11-03
+
+Stalls counted by cause on each release, room correction reads and phone-width fixes
+
+### Added
+
+- **Stalls by cause.** Each delivery stall is recorded against the requirement, feedback item or issue that caused it, with the question it raised, and each release page counts its stalls: unclear item, defect, or waiting on a person.
+- **Kept corrections can be read.** GET /api/projects/:id/lessons/corrections lists a window's corrections, newest first and filterable by source, so a room or chat correction is visible before it becomes a lesson (ISS-867).
+
+### Changed
+
+- **Room replies teach lessons.** A member's message correcting the bot in a bound room's thread is now a correction, read like a chat reply and counted under its own source, even when the writer has no Forge account.
+
+### Fixed
+
+- **MCP guides and refusals point to what a client can do.** The issue guide names project_feedback.submit, every action a guide names is checked to exist, and a read-only OAuth sign-in is told to allow write on consent (ISS-861).
+- **Refusals tell the truth.** A refused read says `refused:`, not that nothing was written; a lessons window refusal answers 400 every time; and a master post to a bound room nobody declared says so (ISS-867, ISS-862).
+- **The live bar fits a phone.** A long title in the bar on every project page truncates inside the screen instead of pushing the page sideways at phone width (ISS-856).
+- **The feedback guide names actions a client can call.** It sends a client to requirements.similar, uploads.fetch and the feedback door, not to tool names no client lists, and a test refuses such a name (ISS-861).
+
 ## [0.4.0-dev.453] - 2026-11-02
 
 Judges read test secrets when two environments deploy one branch

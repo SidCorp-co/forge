@@ -1,1 +1,0 @@
-**The feedback guide names actions a client can call.** It sends a client to requirements.similar, uploads.fetch and the feedback door, not to tool names no client lists, and a test refuses such a name (ISS-861).
