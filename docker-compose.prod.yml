@@ -107,6 +107,12 @@ services:
         VITE_WS_URL: ${VITE_WS_URL:-}
         WEB_V2_BASE_PATH: ${WEB_V2_BASE_PATH:-}
     restart: unless-stopped
+    # cm:guard over core's shutdown budget (packages/core/src/shutdown.ts:SHUTDOWN_LIMITS, 25 s): a
+    # write in flight at the stop finishes before the kill. Docker's default is 10 s.
+    # Coolify's deploy and stop pass their own grace (`docker stop --time`, 30 s unless the
+    # application sets one), so on forge-dev that grace is the one that has to stay over the budget.
+    # cm:edge lockstep -> packages/core/src/shutdown-grace.test.ts reads this value (ISS-930).
+    stop_grace_period: 40s
     depends_on:
       postgres:
         condition: service_healthy

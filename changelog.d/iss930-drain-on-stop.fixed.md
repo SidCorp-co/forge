@@ -1,0 +1,1 @@
+**A deploy no longer answers 502 for a write that committed.** On stop, core finishes requests in flight, answers new ones and `/health` 503 with Retry-After, closes its database last, and its 25 s budget sits under the stop grace.
