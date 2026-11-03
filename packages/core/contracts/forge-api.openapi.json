@@ -98,7 +98,7 @@
   "info": {
     "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-query-closed` marks a read whose query refuses a key it does not take; every GET carries it, or carries `x-forge-query-open` naming why a third party chooses its keys. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
-    "version": "11.1.0",
+    "version": "11.2.0",
     "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
@@ -10541,6 +10541,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "forge-door/service.ts:getForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -10661,6 +10665,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "forge-door/service.ts:settleForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -10712,6 +10720,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "forge-door/service.ts:replyForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -10763,6 +10775,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "forge-door/service.ts:settleForgeFeedback",
+          "why": "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -11718,6 +11734,10 @@
         "x-forge-auth": [
           "requireAuthOrLand"
         ],
+        "x-forge-permission": {
+          "rule": "integration-door/github-callback-rules.ts:installCallbackStrand",
+          "why": "the person the signed state names, then org.admin on the state's organization or project.admin on the project it lands on; else stranded naming why"
+        },
         "x-forge-query-open": "GitHub redirects here after an app install and chooses the keys it appends (setup_action, …) beside installation_id, code and state",
         "x-forge-validated": [
           "query"
@@ -11758,6 +11778,10 @@
         "x-forge-auth": [
           "requireAuthOrLand"
         ],
+        "x-forge-permission": {
+          "rule": "integration-door/github-callback-rules.ts:manifestCallbackStrand",
+          "why": "the person the signed state names, while it is fresh, and a Forge operator; else stranded naming why"
+        },
         "x-forge-query-open": "GitHub redirects here after an app manifest is created and chooses the keys it appends beside code and state",
         "x-forge-validated": [
           "query"
@@ -21300,6 +21324,9 @@
           "assertEmailVerified"
         ],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "self": "the caller's own organizations and their role in each"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -21348,6 +21375,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "a team organization the caller creates, and owns"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -22383,6 +22413,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "orgs/routes.ts:assertMayAddOrgMember",
+          "why": "org.admin on the organization, and org.own to grant owner (the body)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -22428,6 +22462,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "orgs/routes.ts:assertMayDropOrgMember",
+          "why": "the member themself leaving (org.read), else org.admin, and org.own to remove an owner (the row)"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -22504,6 +22542,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "orgs/routes.ts:assertMayChangeOrgMember",
+          "why": "org.admin on the organization, and org.own where a role change grants owner or touches one (the row)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -23949,6 +23991,9 @@
         "x-forge-auth": [
           "requireDevice"
         ],
+        "x-forge-permission": {
+          "none": "the box's device credential; a preview its device does not hold is not found (PREVIEW_NOT_FOUND)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -24022,6 +24067,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "self": "the projects the caller sees: a role on them, or org owner or admin on their organization"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -24055,6 +24103,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "projects/routes.ts:createTargetOrg",
+          "why": "org.read on the organization the body names, else the caller's personal organization; refused to a project-fenced token"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -24116,6 +24168,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project's organization"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -24200,6 +24258,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project's organization"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -24495,6 +24559,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/api-page.ts:readApiPage",
+          "why": "the project's API page, read by its members and by its counterparties in a shared ecosystem"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -24531,6 +24599,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project's organization"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -24989,6 +25063,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/link-service.ts:createBuilderRun",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row (ECOSYSTEM_REFUSED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -25092,6 +25170,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/link-service.ts:updateBuilderRun",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row (ECOSYSTEM_REFUSED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -25145,6 +25227,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/builder-supersede.ts:supersedeBuilderRun",
+          "why": "the project's own agent, or an org admin of the steward or of the project's org"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -26059,6 +26145,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/contract/party-read.ts:consumedContract",
+          "why": "a role on the consuming project, read only through a live consumption edge the provider publishes to"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -26797,6 +26887,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/standing/routes.ts:assertStandingReader",
+          "why": "a role on the project, not a permission: an org admin with none is refused"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -26851,6 +26945,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/standing/routes.ts:assertStandingReader",
+          "why": "a role on the project, not a permission: an org admin with none is refused"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -26896,6 +26994,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/contract/party-read.ts:contractReader",
+          "why": "its members every version; an active member of an ecosystem the contract is published to, its approved ones"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -27005,6 +27107,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/contract/publish.ts:publishContractVersion",
+          "why": "the provider writer rule of interface_write (contracts.write), on the project that publishes"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -27059,6 +27165,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/contract/party-read.ts:contractReader",
+          "why": "its members every version; an active member of an ecosystem the contract is published to, its approved ones"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -27114,6 +27224,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/contract/party-read.ts:contractReader",
+          "why": "its members every version; an active member of an ecosystem the contract is published to, its approved ones"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -27196,6 +27310,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/contract/decide.ts:decideContractVersion",
+          "why": "a holder of contracts.approve on the publishing project, person or agent"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -29346,6 +29464,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "previews/recordings.ts:recordingsOfFeedback",
+          "why": "a signed-in member of the recording's project; anyone else is refused RECORDING_FORBIDDEN"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -31042,6 +31164,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/provider-writer-rules.ts:providerWriterRefusal",
+          "why": "a holder of contracts.write, and commitments.write to change windows already set (ECOSYSTEM_REFUSED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -31117,6 +31243,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/adopt-service.ts:adoptVersion",
+          "why": "project.write on the consuming project, refused by name in the ecosystem envelope (ECOSYSTEM_REFUSED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -33687,6 +33817,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/link-service.ts:createLink",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row (ECOSYSTEM_REFUSED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -33732,6 +33866,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/link-service.ts:retireLink",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row (ECOSYSTEM_REFUSED)"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -33776,6 +33914,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/link-read.ts:readLinkAs",
+          "why": "the link's row decides: its provider or consumer side, or a member of its ecosystem"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -33828,6 +33970,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/link-service.ts:updateLink",
+          "why": "the consuming project's own agent writes its record, decided on the input and the row (ECOSYSTEM_REFUSED)"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -36015,6 +36161,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project's organization"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -36387,6 +36539,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "previews/subjects.ts:openSubjectPreview",
+          "why": "the body's kind decides: an idea needs project.write, a reproduce project.read"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -42204,6 +42360,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "previews/rooms.ts:listRooms",
+          "why": "any role on the project; anyone else is answered ROOM_NOT_FOUND, never told the project exists"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -42264,6 +42424,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "previews/rooms.ts:openRoom",
+          "why": "the idea preview's own rule (openIdeaPreview): the subject, the site and the writer, each refused by name"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -43419,6 +43583,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.write"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -44642,6 +44812,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "suggestions/accept-gate.ts:acceptGateOf",
+          "why": "the suggestion's kind decides: suggestions.approve, or the person a breakdown waits on"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -44707,6 +44881,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "suggestions/service.ts:rejectSuggestion",
+          "why": "suggestions.approve, refused by name in the SUGGESTION_REFUSED envelope"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -44774,6 +44952,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "suggestions/propose.ts:reviseSuggestion",
+          "why": "the suggestion's producer (project.write), or a holder of suggestions.approve"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -48853,6 +49035,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project's organization"
+          },
+          "permission": "org.admin"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -50570,6 +50758,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "workflows/design-service.ts:approverRefusalFor",
+          "why": "the design's approver rule decides who approves, returns or re-pins onto a revision"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -50789,6 +50981,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "workflows/design-service.ts:approverRefusalFor",
+          "why": "the design's approver rule decides who approves, returns or re-pins onto a revision"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -51691,6 +51887,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "workflows/observations.ts:writeObservation",
+          "why": "workflow-observations.write, refused by name in the WORKFLOW_REFUSED envelope"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -57316,6 +57516,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "questions/read.ts:accessOn",
+          "why": "the projects the caller has a role in; another answers not found, as does a question it cannot read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -57527,6 +57731,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "questions/ask.ts:askAs",
+          "why": "project.write on the project the body names, or its issue's; one the caller has no role on is not found"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -57559,6 +57767,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "questions/read.ts:readQuestionFor",
+          "why": "the question's row decides who reads it; another answers not found"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -57703,6 +57915,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "questions/void-door.ts:voidQuestionAs",
+          "why": "project.write on the question's project, then the question's own named refusals"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -57737,6 +57953,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "previews/recordings.ts:readRecording",
+          "why": "a signed-in member of the recording's project; anyone else is refused RECORDING_FORBIDDEN"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -57773,6 +57993,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "previews/recordings.ts:recordingEvents",
+          "why": "a signed-in member of the recording's project; anyone else is refused RECORDING_FORBIDDEN"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -57809,6 +58033,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "previews/recordings.ts:stopRecording",
+          "why": "a signed-in member of the recording's project; anyone else is refused RECORDING_FORBIDDEN; stopping is the recorder's own or a project writer's (the row)"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -59185,6 +59413,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the query names as projectId, where sent; the global list otherwise"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -59293,6 +59527,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the body names as projectId; a global skill is refused SKILL_GLOBAL_READ_ONLY first"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -59388,6 +59628,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the skill's project; a global skill is refused SKILL_GLOBAL_READ_ONLY"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "param"
         ]
@@ -59420,6 +59666,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the skill's project; a global skill is read by anyone signed in"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -59534,6 +59786,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the skill's project; a global skill is refused SKILL_GLOBAL_READ_ONLY"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
