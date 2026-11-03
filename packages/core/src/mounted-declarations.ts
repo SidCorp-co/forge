@@ -4,7 +4,12 @@
 
 import type { Hono } from 'hono';
 import type { RequestIdVars } from './middleware/request-id.js';
-import { requiresInstanceAdmin, requiresPublic, requiresSelf } from './permissions/index.js';
+import {
+  requiresInstanceAdmin,
+  requiresNoPermission,
+  requiresPublic,
+  requiresSelf,
+} from './permissions/index.js';
 
 export const INSTALL_IS_PUBLIC = requiresPublic(
   'a box with no credential yet fetches the installer and the published runner build; nothing a project owns',
@@ -26,6 +31,11 @@ export const OUTBOX_IS_INSTANCE_ADMIN = requiresInstanceAdmin(
 
 export const CONTRACT_IS_PUBLIC = requiresPublic(
   'a published contract describes shapes and gates, never a row or a secret, and is read with no credential',
+);
+
+/** `POST /api/body/preview`, mounted ahead of `bodyRoutes`: body sits below permissions. */
+export const BODY_PREVIEW_NEEDS_NO_PERMISSION = requiresNoPermission(
+  'renders the text the caller sent as a stored body would be; it reads and writes no row',
 );
 
 /** The caller's own tokens and the MCP sign-in, mounted ahead of `patRoutes` and `mcpOauthRoutes`. */

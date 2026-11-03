@@ -32,6 +32,9 @@
  * @direct-test-of packages/core/src/skills/crud-routes.ts
  * @direct-test-of packages/core/src/projects/routes.ts
  * @direct-test-of packages/core/src/status-reports/routes.ts
+ * @direct-test-of packages/core/src/workflows/template-routes.ts
+ * @direct-test-of packages/core/src/workflows/route-declarations.ts
+ * @direct-test-of packages/core/src/mounted-declarations.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -349,5 +352,33 @@ describe("a project skill's routes, declared resolved on the skill's project", (
     });
     expect(change.status, JSON.stringify(change.body)).toBe(403);
     expect(JSON.stringify(change.body)).toContain('project.admin');
+  });
+});
+
+describe('the singles of part 18: public, credential-only and resolved on the path', () => {
+  it('answers the built-in workflow templates with no credential, and the retired reports door too', async () => {
+    const catalogue = await api(null, 'GET', '/api/workflow-templates');
+    expect(catalogue.status, JSON.stringify(catalogue.body)).toBe(200);
+    const retired = await api(null, 'GET', '/api/agent-reports');
+    expect(retired.status, JSON.stringify(retired.body)).toBe(404);
+    expect(codeOf(retired.body)).toBe('AGENT_REPORT_RETIRED');
+  });
+
+  it('previews a body for anyone signed in, and refuses no credential', async () => {
+    const shown = await api(tokens.person, 'POST', '/api/body/preview', { raw: '**hi**' });
+    expect(shown.status, JSON.stringify(shown.body)).toBe(200);
+    const none = await api(null, 'POST', '/api/body/preview', { raw: '**hi**' });
+    expect(none.status).toBe(401);
+  });
+
+  it("reads a project's template to a member only, refusing a stranger by project.read", async () => {
+    const owner = (await createTestUser({ verified: true })).id;
+    const project = await createTestProject(owner);
+    const route = `/api/projects/${project.id}/workflow-templates/operational-flow/1`;
+    const refused = await api(tokens.person, 'GET', route);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('project.read');
+    const answered = await api(await userToken(owner), 'GET', route);
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
   });
 });

@@ -7,6 +7,8 @@
  * Driven through the doors a box uses — the credential helper's ask, the provision and assignment
  * reads, and git's own smart-HTTP requests at `/api/git/…` — against real Postgres. The GitLab
  * host is a planted `fetch` that records what reached it.
+ *
+ * @direct-test-of packages/core/src/integration-door/git-relay-routes.ts
  */
 
 import { sql } from 'drizzle-orm';

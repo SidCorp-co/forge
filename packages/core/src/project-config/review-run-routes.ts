@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requiresOnParam } from '../permissions/index.js';
 import { declareReviewRun } from './review-run.js';
 
 export const reviewRunRoutes = new Hono<{ Variables: AuthVars }>();
@@ -35,16 +35,11 @@ reviewRunRoutes.post(
   assertEmailVerified(),
   zValidator('param', idParamSchema),
   strictBody(reviewRunBody, REVIEW_RUN_SHAPE),
+  requiresOnParam('project.admin', 'id'),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan(
-      actorFor(userId),
-      'project.admin',
-      projectResource(projectId),
-      'Declaring a review run',
-    );
     const declared = await declareReviewRun({
       projectId,
       userId,

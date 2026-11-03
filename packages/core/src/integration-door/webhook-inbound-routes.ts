@@ -28,6 +28,7 @@ import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
 import { emitEvents } from '../outbox/index.js';
+import { requiresPublic } from '../permissions/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 
 const unauthorized = (code: string) =>
@@ -102,6 +103,11 @@ function providerHeaderMap(): ProviderRoute[] {
 
 export const webhookInboundRoutes = new Hono();
 
+// a provider calls with no Forge credential: its signature, against the secret it was given, is the check
+const DELIVERY_IS_PUBLIC = requiresPublic(
+  "a provider's delivery carries no Forge credential; its signature against the App's or the binding's secret is checked before anything routes",
+);
+
 /** What a routed App delivery answers: 200 with what became of it, 500 when a handler threw. */
 async function answerAppDelivery(
   c: Context,
@@ -133,6 +139,7 @@ const GITHUB_SIGNATURE = 'x-hub-signature-256';
  */
 webhookInboundRoutes.post(
   '/github/app',
+  DELIVERY_IS_PUBLIC,
   rawBody(
     'application/json',
     "The instance GitHub App's webhook payload, read as the exact bytes x-hub-signature-256 signs and parsed as JSON only after it verifies.",
@@ -182,6 +189,7 @@ webhookInboundRoutes.post(
 
 webhookInboundRoutes.post(
   '/in/:slug',
+  DELIVERY_IS_PUBLIC,
   rawBody(
     'application/json',
     "A provider's webhook payload, read as the exact bytes its signature header signs and parsed as JSON only after the signature verifies; an empty body is {}.",

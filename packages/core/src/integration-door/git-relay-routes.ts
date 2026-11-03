@@ -19,6 +19,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { requiresByRule } from '../permissions/index.js';
 
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
 
@@ -63,6 +64,10 @@ function challenge(detail: string): Response {
 gitRelayRoutes.on(
   ['GET', 'POST'],
   '/:host/:rest{.+}',
+  requiresByRule(
+    'integrations/source-host/host-credential.ts:relayedGitUpstream',
+    "git's Basic credential carries a relay ticket naming a device and a binding, no Forge session; whether that device may still reach the repository is decided on every request (GIT_RELAY_FORBIDDEN)",
+  ),
   zValidator('query', gitQuery),
   gitBody,
   async (c) => {

@@ -2,8 +2,16 @@ import { BUILTIN_WORKFLOW_TEMPLATES, findTemplate } from '@forge/contracts/workf
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import type { AuthVars } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { templateNotFound, templateSummary, templateView } from './template-service.js';
+import { CATALOGUE_IS_PUBLIC, READ, READ_ON_PATH_PROJECT } from './route-declarations.js';
+import {
+  listProjectTemplatesAs,
+  readProjectTemplateAs,
+  templateNotFound,
+  templateSummary,
+  templateView,
+} from './template-service.js';
 
 /**
  * The kernel's built-in diagram templates, public like the schemas: they are the vocabulary a
@@ -18,7 +26,7 @@ const catalogueQuery = zValidator(
   invalid('invalid query: the catalogue takes no parameters (a projectId is refused by name)'),
 );
 
-workflowTemplateCatalogueRoutes.get('/', catalogueQuery, (c) => {
+workflowTemplateCatalogueRoutes.get('/', CATALOGUE_IS_PUBLIC, catalogueQuery, (c) => {
   const { projectId } = c.req.valid('query');
   if (projectId !== undefined) {
     throw new HTTPException(400, {
@@ -33,7 +41,7 @@ workflowTemplateCatalogueRoutes.get('/', catalogueQuery, (c) => {
   });
 });
 
-workflowTemplateCatalogueRoutes.get('/:templateId/:version', noQuery, (c) => {
+workflowTemplateCatalogueRoutes.get('/:templateId/:version', CATALOGUE_IS_PUBLIC, noQuery, (c) => {
   const { templateId, version } = c.req.param();
   const found = /^[1-9][0-9]*$/.test(version)
     ? findTemplate(BUILTIN_WORKFLOW_TEMPLATES, { id: templateId, version: Number(version) })
@@ -42,3 +50,40 @@ workflowTemplateCatalogueRoutes.get('/:templateId/:version', noQuery, (c) => {
   c.header('Cache-Control', 'public, max-age=300');
   return c.json(templateView(found, 'builtin'));
 });
+
+/** A project's templates, the built-ins merged with its own; the auth gate is workflowRoutes'. */
+export const projectTemplateRoutes = new Hono<{ Variables: AuthVars }>();
+
+const idParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
+
+projectTemplateRoutes.get('/:id/workflow-templates', idParam, READ, noQuery, async (c) => {
+  const templates = await listProjectTemplatesAs(c.get('userId'), c.req.valid('param').id);
+  return c.json({ templates, returned: templates.length });
+});
+
+projectTemplateRoutes.get(
+  '/:id/workflow-templates/:templateId/:version',
+  noQuery,
+  READ_ON_PATH_PROJECT,
+  async (c) => {
+    const id = z.uuid().safeParse(c.req.param('id'));
+    if (!id.success) {
+      throw new HTTPException(400, {
+        message: 'invalid path: the project id is a uuid',
+        cause: { code: 'BAD_REQUEST' },
+      });
+    }
+    return c.json(
+      await readProjectTemplateAs(
+        c.get('userId'),
+        id.data,
+        c.req.param('templateId'),
+        c.req.param('version'),
+      ),
+    );
+  },
+);

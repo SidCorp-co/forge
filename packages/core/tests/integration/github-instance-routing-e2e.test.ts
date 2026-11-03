@@ -3,6 +3,8 @@
  * the App's installations, every account's, is never read as a grant. A delivery is routed by the
  * installation and repository it names, and an App made before this keeps working exactly as it did
  * until an operator hands it to the instance (S1, S3, S4).
+ *
+ * @direct-test-of packages/core/src/integration-door/webhook-inbound-routes.ts
  */
 
 import { sql } from 'drizzle-orm';

@@ -8,6 +8,7 @@ import {
 } from '@forge/contracts/mcp-tools';
 import { Hono } from 'hono';
 import { type Refusal, refused } from '../lib/refusal.js';
+import { requiresPublic } from '../permissions/index.js';
 
 const NEW_DOOR = {
   rest: 'POST /api/forge/feedback { kind, title, whereSeen, body?, signalKey?, clientVersion? }',
@@ -73,7 +74,10 @@ const answer = (c: Parameters<typeof refused>[0]) =>
  * route takes none. The read's open query is a priced amnesty in `api-contract/open-queries.ts`.
  */
 export const agentReportsRetiredRoutes = new Hono();
-agentReportsRetiredRoutes.get('/', answer);
-agentReportsRetiredRoutes.post('/', answer);
-agentReportsRetiredRoutes.post('/triage', answer);
-agentReportsRetiredRoutes.post('/:id/triage', answer);
+const RETIRED_IS_PUBLIC = requiresPublic(
+  'a retired door answers anyone the refusal naming its replacement; it reads and writes nothing',
+);
+agentReportsRetiredRoutes.get('/', RETIRED_IS_PUBLIC, answer);
+agentReportsRetiredRoutes.post('/', RETIRED_IS_PUBLIC, answer);
+agentReportsRetiredRoutes.post('/triage', RETIRED_IS_PUBLIC, answer);
+agentReportsRetiredRoutes.post('/:id/triage', RETIRED_IS_PUBLIC, answer);

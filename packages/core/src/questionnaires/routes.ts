@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
+import { requiresByRule, requiresOnParam } from '../permissions/index.js';
 import { afterSubmit, onSubmittedIn } from './ports.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
 import { submitAnswers } from './submit.js';
@@ -58,6 +58,10 @@ questionnaireRoutes.get(
 questionnaireRoutes.post(
   '/:id/questionnaires/:bid/answers',
   batchParam,
+  requiresByRule(
+    'questionnaires/rules.ts:submitterRefusal',
+    'questionnaires.answer on the project, refused by name in the ONBOARDING_REFUSED envelope',
+  ),
   strictBody(submitAnswersRequestSchema, SUBMIT_ANSWERS_SHAPE),
   async (c) => {
     const { id, bid } = c.req.valid('param');

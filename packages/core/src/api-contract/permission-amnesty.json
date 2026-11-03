@@ -1,31 +1,17 @@
 {
   "routes": [
-    "GET /api/agent-reports",
-    "GET /api/git/:host/:rest{.+}",
     "GET /api/me/devices",
     "GET /api/memberships/:id",
     "GET /api/projects/:id/executions/:executionId",
     "GET /api/projects/:id/report-runs/:runId",
-    "GET /api/projects/:id/workflow-templates/:templateId/:version",
     "GET /api/runners",
-    "GET /api/workflow-templates",
-    "GET /api/workflow-templates/:templateId/:version",
     "PATCH /api/pat/:id",
-    "POST /api/agent-reports",
-    "POST /api/agent-reports/:id/triage",
-    "POST /api/agent-reports/triage",
-    "POST /api/body/preview",
     "POST /api/devices/login/approve",
-    "POST /api/git/:host/:rest{.+}",
     "POST /api/mcp-auth/authorize",
     "POST /api/pat",
-    "POST /api/projects/:id/questionnaires/:bid/answers",
     "POST /api/projects/:id/report-queries/:queryId/runs",
     "POST /api/projects/:id/report-templates/:templateId/narrative",
-    "POST /api/projects/:id/report-templates/:templateId/runs",
-    "POST /api/projects/:id/review-runs",
-    "POST /api/webhooks/github/app",
-    "POST /api/webhooks/in/:slug"
+    "POST /api/projects/:id/report-templates/:templateId/runs"
   ],
   "actions": []
 }

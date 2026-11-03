@@ -3,7 +3,6 @@ import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import { WORKFLOW_STEP_ID } from '@forge/contracts/workflow-health';
 import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
@@ -42,7 +41,7 @@ import {
   workflowView,
 } from './service.js';
 import { readSystemGraphAs } from './system-graph-read.js';
-import { listProjectTemplatesAs, readProjectTemplateAs } from './template-service.js';
+import { projectTemplateRoutes } from './template-routes.js';
 import { viewerActs } from './viewer-acts.js';
 
 export const workflowRoutes = new Hono<{ Variables: AuthVars }>();
@@ -56,8 +55,8 @@ for (const path of [
   workflowRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
-const badRequest = (message: string) =>
-  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
+// a project's own templates, merged with the built-ins, behind its access (template-routes.ts)
+workflowRoutes.route('/', projectTemplateRoutes);
 
 const idParam = zValidator(
   'param',
@@ -391,24 +390,6 @@ workflowRoutes.post(
     );
   },
 );
-
-workflowRoutes.get('/:id/workflow-templates', idParam, READ, noQuery, async (c) => {
-  const templates = await listProjectTemplatesAs(c.get('userId'), c.req.valid('param').id);
-  return c.json({ templates, returned: templates.length });
-});
-
-workflowRoutes.get('/:id/workflow-templates/:templateId/:version', noQuery, async (c) => {
-  const id = z.uuid().safeParse(c.req.param('id'));
-  if (!id.success) throw badRequest('invalid path: the project id is a uuid');
-  return c.json(
-    await readProjectTemplateAs(
-      c.get('userId'),
-      id.data,
-      c.req.param('templateId'),
-      c.req.param('version'),
-    ),
-  );
-});
 
 const workflowRefParam = zValidator(
   'param',

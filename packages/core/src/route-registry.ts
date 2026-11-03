@@ -131,6 +131,7 @@ import { requirePat } from './middleware/require-pat.js';
 import { noQuery } from './middleware/zod-validator.js';
 import { mockupRoutes } from './mockups/routes.js';
 import {
+  BODY_PREVIEW_NEEDS_NO_PERMISSION,
   CONTRACT_IS_PUBLIC,
   DISCOVERY_IS_PUBLIC,
   declareCredentialRoutes,
@@ -408,6 +409,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/previews', previewRoutes);
   app.route('/api/recordings', recordingRoutes);
   app.route('/api/rooms', roomRoutes);
+  app.on('POST', '/api/body/preview', BODY_PREVIEW_NEEDS_NO_PERMISSION);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);

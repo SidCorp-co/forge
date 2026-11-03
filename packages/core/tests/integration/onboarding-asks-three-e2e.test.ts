@@ -6,6 +6,8 @@
  * recorded as answered, a round asks the recommended questions it needs (no count since r7,
  * ISS-904), a recommendation is a
  * suggestion on its own, and onboarding is done on its assumptions with a question still open.
+ *
+ * @direct-test-of packages/core/src/questionnaires/routes.ts
  */
 
 import { readFileSync } from 'node:fs';
