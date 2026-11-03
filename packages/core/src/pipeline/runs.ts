@@ -12,18 +12,17 @@ import { logger } from '../lib/logger.js';
 import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
 import {
   closeRunsInTx,
+  type RunEnd,
   type RunFailureCause,
   reasonForOutcome,
   requestKillsForCascade,
+  runEndOf,
 } from './runs-cascade.js';
 
 type RunOutcome = 'completed' | 'failed' | 'cancelled';
 
 /** The close a gated outcome resolves to: a deploy gate that failed names its own cause. */
-interface ResolvedClose {
-  to: RunOutcome;
-  cause: RunFailureCause | undefined;
-}
+type ResolvedClose = RunEnd;
 
 type OpenIssueRun = { id: string; startedAt: Date };
 
@@ -141,12 +140,12 @@ async function gatedOutcome(
   outcome: RunOutcome,
   cause: RunFailureCause | undefined,
 ): Promise<ResolvedClose | null> {
-  if (outcome !== 'completed') return { to: outcome, cause };
-  if (Object.keys(await readDeployHolds(runId)).length === 0) return { to: 'completed', cause };
+  if (outcome !== 'completed') return runEndOf(outcome, cause, 'runs');
+  if (Object.keys(await readDeployHolds(runId)).length === 0) return { to: 'completed' };
 
   await markCloseDeferred(runId);
   const gate = resolveDeployGate(await readDeployHolds(runId));
-  if (gate.verdict === 'clear') return { to: 'completed', cause };
+  if (gate.verdict === 'clear') return { to: 'completed' };
   if (gate.verdict === 'failed') {
     logger.warn(
       { runId, detail: gate.detail },
@@ -196,7 +195,7 @@ export async function closeRun(
   if (resolved === null) return 'deferred';
   const { cascades } = await db.transaction((tx) =>
     closeRunsInTx(tx, {
-      to: resolved.to,
+      ...resolved,
       where: and(
         eq(pipelineRuns.id, runId),
         inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
@@ -204,18 +203,12 @@ export async function closeRun(
       reason: reasonForOutcome(resolved.to),
       actor: { type: 'system' },
       source: 'runs',
-      cause: failedCause(resolved),
     }),
   );
   for (const c of cascades) {
     await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(resolved.to));
   }
   return 'settled';
-}
-
-/** The cause a close carries: a failed one's own, and none on any other outcome. */
-function failedCause(close: ResolvedClose): RunFailureCause | undefined {
-  return close.to === 'failed' ? close.cause : undefined;
 }
 
 /**
@@ -273,7 +266,7 @@ async function closeOneShotInTx(
   cause: RunFailureCause | undefined,
 ): Promise<boolean> {
   const { rows, cascades } = await closeRunsInTx(tx, {
-    to: outcome,
+    ...runEndOf(outcome, cause, 'runs'),
     where: and(
       eq(pipelineRuns.id, runId),
       inArray(pipelineRuns.kind, ['interactive', 'system']),
@@ -282,7 +275,6 @@ async function closeOneShotInTx(
     reason: reasonForOutcome(outcome),
     actor: { type: 'system' },
     source: 'runs',
-    cause: failedCause({ to: outcome, cause }),
   });
   for (const c of cascades) {
     afterCommit(() => {
@@ -357,7 +349,7 @@ export async function closeOpenRunForIssue(
   if (resolved === null) return 'deferred';
   const { cascades } = await db.transaction((tx) =>
     closeRunsInTx(tx, {
-      to: resolved.to,
+      ...resolved,
       where: and(
         eq(pipelineRuns.kind, 'issue'),
         eq(pipelineRuns.issueId, issueId),
@@ -366,7 +358,6 @@ export async function closeOpenRunForIssue(
       reason: reasonForOutcome(resolved.to),
       actor: { type: 'system' },
       source: 'runs',
-      cause: failedCause(resolved),
     }),
   );
   for (const c of cascades) {

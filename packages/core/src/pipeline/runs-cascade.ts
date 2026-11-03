@@ -127,8 +127,30 @@ async function runTreeInLockOrder(tx: Tx | Db, roots: string[]): Promise<string[
   return rows.map((r) => String(r.run_id));
 }
 
-export interface RunClose {
-  to: 'completed' | 'failed' | 'cancelled';
+/**
+ * Where a close ends a run, and why: a `failed` end carries its cause and no other end carries one.
+ * The compiler holds the pair, so no writer can end a run `failed` with nothing on record (ISS-928).
+ */
+export type RunEnd =
+  | { to: 'failed'; cause: RunFailureCause }
+  | { to: 'completed' | 'cancelled'; cause?: undefined };
+
+/** The end a writer asked for, as a {@link RunEnd}; a `failed` one without its cause is refused here. */
+export function runEndOf(
+  to: 'completed' | 'failed' | 'cancelled',
+  cause: RunFailureCause | undefined,
+  source: string,
+): RunEnd {
+  if (to !== 'failed') return { to };
+  if (!cause) {
+    throw new Error(
+      `${source} ends a run \`failed\` without naming why; pass a cause so the run records what failed it`,
+    );
+  }
+  return { to, cause };
+}
+
+export type RunClose = RunEnd & {
   /** Which runs, and the statuses each may close from. */
   where: SQL | undefined;
   /** Columns written beside `finishedAt` and `updatedAt`. */
@@ -136,23 +158,24 @@ export interface RunClose {
   reason: CascadeReason;
   actor: KernelActor;
   source: string;
-  /** Required when `to` is `failed`, and refused otherwise. */
-  cause?: RunFailureCause | undefined;
-}
+};
 
 /** The record a failed close leaves on its run, merged over whatever `set.metadata` writes. */
 function failureMetadata(close: RunClose, at: Date): TransitionArgs<'run', never>['set'] {
+  // the type holds the pair; a cast around it is still refused here, never written silent
+  const { source, to } = close;
+  const cause: RunFailureCause | undefined = close.cause;
   if (close.to !== 'failed') {
-    if (close.cause) {
+    if (cause !== undefined) {
       throw new Error(
-        `closeRunsInTx: ${close.source} named a failure cause (${close.cause.code}) on a close to \`${close.to}\`; only a failed close carries one`,
+        `closeRunsInTx: ${source} named a failure cause on a close to \`${to}\`; only a failed close carries one`,
       );
     }
     return {};
   }
-  if (!close.cause) {
+  if (!cause) {
     throw new Error(
-      `closeRunsInTx: ${close.source} closes runs \`failed\` without naming why; pass \`cause\` so the run records what failed it`,
+      `closeRunsInTx: ${source} closes runs \`failed\` without naming why; pass \`cause\` so the run records what failed it`,
     );
   }
   const failure = JSON.stringify({ ...close.cause, source: close.source, at });
