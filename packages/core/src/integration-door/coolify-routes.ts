@@ -49,6 +49,7 @@ import {
   runCoolifyRollback,
 } from '../release-batch/index.js';
 import { coolifyRefusal, given } from './coolify-access.js';
+import { registerCoolifyEnvRoutes } from './coolify-env-routes.js';
 import { coolifyDeploymentLogs, coolifyRuntimeLogs } from './coolify-logs.js';
 
 const deployBodySchema = z
@@ -136,9 +137,10 @@ export function registerCoolifyDeployRoutes(routes: Routes): void {
   registerSetupRoutes(routes);
 }
 
-/** Deploy, cancel and roll back, and the reads that show where they stand. */
+/** Deploy, cancel and roll back, the env door, and the reads that show where they stand. */
 function registerCommandRoutes(routes: Routes): void {
   registerLogRoutes(routes);
+  registerCoolifyEnvRoutes(routes, answer);
   routes.get(
     '/:projectId/integrations/coolify/status',
     projectMember,

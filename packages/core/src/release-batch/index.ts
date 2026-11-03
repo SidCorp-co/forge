@@ -26,6 +26,7 @@ export {
   runCoolifyCancel,
   runCoolifyRollback,
 } from './coolify-controls.js';
+export { deleteCoolifyEnv, listCoolifyEnv, setCoolifyEnv } from './coolify-env.js';
 export { confirmPendingProdDeploy } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
 export { criteriaWeighingOf } from './criteria-weighing.js';

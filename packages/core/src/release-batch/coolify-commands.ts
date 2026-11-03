@@ -140,8 +140,9 @@ export async function runCoolifyDeploy(input: {
   integrationId?: string | undefined;
   /**
    * The labels of the binding's targets to deploy, and no others: a web-only deploy (REQ-39 BC-7),
-   * which only the fast lane's guard sends (`fast-lane/deploy.ts:deployWebOnly`), never with a
-   * release run. Absent, every target of each binding deploys.
+   * which the fast lane's guard sends (`fast-lane/deploy.ts:deployWebOnly`), and the redeploy of
+   * the one application an env write changed (`coolify-env.ts`); never with a release run. Absent,
+   * every target of each binding deploys.
    */
   targetLabels?: readonly string[] | undefined;
 }) {

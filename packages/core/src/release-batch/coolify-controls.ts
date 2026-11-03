@@ -92,7 +92,7 @@ function requireRow(rows: CoolifyIntegrationRow[], input: { integrationId?: stri
   return row;
 }
 
-async function requireIntegration(input: {
+export async function requireIntegration(input: {
   projectId: string;
   integrationId?: string | undefined;
 }) {
@@ -108,7 +108,7 @@ function targetsOf(row: CoolifyIntegrationRow): CoolifyTarget[] {
  * target. Several targets and no name is ambiguous — a rollback picked for the
  * caller is a rollback of the wrong application.
  */
-function requireTarget(row: CoolifyIntegrationRow, resourceUuid?: string): CoolifyTarget {
+export function requireTarget(row: CoolifyIntegrationRow, resourceUuid?: string): CoolifyTarget {
   const targets = targetsOf(row);
   if (targets.length === 0) {
     throw refuseCoolify(

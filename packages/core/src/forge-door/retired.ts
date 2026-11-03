@@ -42,6 +42,7 @@ const DELIVERY_ROUTES: Readonly<Record<McpRetiredDeliveryTool, readonly string[]
   ],
   forge_coolify_deploy: [
     'every action: /api/projects/:id/integrations/coolify/ (status, deploy, cancel, logs, runtime-logs, applications, targets, rollback-images, rollback)',
+    'env: GET /api/projects/:id/integrations/coolify/env; PUT /api/projects/:id/integrations/coolify/env/:key { value, redeploy? }; DELETE /api/projects/:id/integrations/coolify/env/:key { redeploy? }',
   ],
   forge_sentry: [
     'list: GET /api/projects/:id/integrations/sentry/issues',
