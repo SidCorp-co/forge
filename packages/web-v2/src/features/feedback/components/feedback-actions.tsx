@@ -1,7 +1,6 @@
 
 import { useState } from "react";
 import { Button, enumLabel, Input, Radio, RadioGroup, Textarea } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
@@ -15,17 +14,11 @@ import { DropItem, TriageVerbs } from "./feedback-verbs";
 import { answersOf, type TriageAnswerDraft, TriageAnswerFields } from "./triage-answers";
 import type { FeedbackDedup, FeedbackTriage, FeedbackView } from "../types";
 
-type Choice = "link_issue" | "file_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
+// "fix" routes the item to the agents, who file or find the issue that carries it: a person names no
+// issue and titles none (REQ-68 BC-6)
+type Choice = "fix" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
 
-const CHOICES = ["file_issue", "link_issue", "revision", "new_requirement", "answer", "duplicate", "decline"] as const satisfies readonly Choice[];
-
-const OPTIONAL: readonly Choice[] = ["file_issue"];
-
-/** The issues a person picked, by key: one stays one, several become a list. */
-export function issueKeysOf(picked: readonly IssuePick[]): string | string[] {
-  const keys = picked.map((p) => p.key);
-  return keys.length === 1 ? (keys[0]) : keys;
-}
+const CHOICES = ["fix", "revision", "new_requirement", "answer", "duplicate", "decline"] as const satisfies readonly Choice[];
 
 /** The reopen or reply a reopened item stands on, which its answer names: its latest such decision. */
 export function standingReplyOf(f: FeedbackView): string | undefined {
@@ -36,14 +29,12 @@ export function standingReplyOf(f: FeedbackView): string | undefined {
 /** The triage a choice sends; an answer to a reopened item names the reopen or reply it answers. */
 function triageOf(
   choice: Choice,
-  given: { text: string; linked: readonly IssuePick[]; original: FeedbackPick | null; inReplyTo: string | undefined },
+  given: { text: string; original: FeedbackPick | null; inReplyTo: string | undefined },
 ): FeedbackTriage {
   const value = given.text.trim();
   switch (choice) {
-    case "file_issue":
-      return { route: "issue", createIssue: value ? { title: value } : {} };
-    case "link_issue":
-      return { route: "issue", issue: issueKeysOf(given.linked) };
+    case "fix":
+      return { route: "issue", createIssue: {} };
     case "revision":
       return { route: "revision", suggestion: value };
     case "new_requirement":
@@ -60,19 +51,17 @@ function triageOf(
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
   const act = useFeedbackAction(projectId, f.key);
-  const [choice, setChoice] = useState<Choice>("file_issue");
+  const [choice, setChoice] = useState<Choice>("fix");
   const [text, setText] = useState("");
-  const [linked, setLinked] = useState<IssuePick[]>([]);
   const [original, setOriginal] = useState<FeedbackPick | null>(null);
   const [draft, setDraft] = useState<TriageAnswerDraft>({ severity: f.severity });
-  const ready =
-    choice === "duplicate" ? original !== null : choice === "link_issue" ? linked.length > 0 : OPTIONAL.includes(choice) || text.trim() !== "";
+  const ready = choice === "duplicate" ? original !== null : choice === "fix" || text.trim() !== "";
   const submit = () => {
-    const triage = triageOf(choice, { text, linked, original, inReplyTo: standingReplyOf(f) });
+    const triage = triageOf(choice, { text, original, inReplyTo: standingReplyOf(f) });
     // a decline is an act, not a route: it carries its reason and no checklist answers
     act.mutate({ kind: "triage", triage: choice === "decline" ? triage : { ...triage, answers: answersOf(draft) } });
   };
-  const placeholder = (c: Exclude<Choice, "duplicate" | "link_issue">) => t(`feedback.placeholder.${c}`);
+  const placeholder = (c: Exclude<Choice, "duplicate" | "fix">) => t(`feedback.placeholder.${c}`);
   return (
     <section className="grid gap-3" data-testid="feedback-triage">
       <h3 className="text-12 font-semibold text-muted">{f.can.snooze ? t("feedback.triage.orRoute") : t("feedback.triage.yours")}</h3>
@@ -87,9 +76,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
       </RadioGroup>
       {choice === "duplicate" ? (
         <FeedbackPicker projectId={projectId} self={f.key} value={original} onChange={setOriginal} />
-      ) : choice === "link_issue" ? (
-        <IssuePicker projectId={projectId} value={linked} onChange={setLinked} ariaLabel={t("feedback.triage.issuesAria")} />
-      ) : choice === "answer" || choice === "decline" ? (
+      ) : choice === "fix" ? null : choice === "answer" || choice === "decline" ? (
         <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={placeholder(choice)} />
       ) : (
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder(choice)} />

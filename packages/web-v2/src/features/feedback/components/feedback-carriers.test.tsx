@@ -1,13 +1,12 @@
 // ISS-265: an item delivered by several issues names every one. Its page lists each carrier with its
-// own status, and linking issues in the triage sends every issue picked, never a key typed blind.
+// own status.
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
-import { FeedbackActions, issueKeysOf } from "./feedback-actions";
+import { FeedbackActions } from "./feedback-actions";
 import { LinkedFeedback } from "./feedback-facts";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -75,39 +74,25 @@ describe("the issues that carry an item", () => {
   });
 });
 
-describe("linking issues in the triage", () => {
-  it("reads one pick as one issue and several as a list", () => {
-    expect(issueKeysOf([{ key: "ISS-4", title: "a" }])).toBe("ISS-4");
-    expect(issueKeysOf([{ key: "ISS-4", title: "a" }, { key: "ISS-7", title: "b" }])).toEqual(["ISS-4", "ISS-7"]);
-  });
-
-  it("picks the issues by key or title and sends every one picked, offering no box to type keys into", async () => {
-    const rows = [
-      { id: "i4", displayId: "ISS-4", title: "Cards vanish on drag" },
-      { id: "i7", displayId: "ISS-7", title: "Cards vanish on reload" },
-    ];
+// REQ-68 BC-6 (ISS-687): a person triages the item and names no issue: "Fix it" hands it to the agents,
+// who file or find the issue that carries it, so the triage offers no issue picker and no issue title.
+describe("routing an item to a fix in the triage", () => {
+  it("offers no issue to link or title, and sends the fix route with nothing of an issue named", async () => {
     const calls = fakeCore((c) =>
-      c.method === "POST"
-        ? { body: { feedback: view() } }
-        : c.path.startsWith("/projects/p1/issues/search")
-          ? { body: { items: rows, total: rows.length } }
-          : { body: { suggestions: [], feedback: [], counts: {}, sensitive: false } },
+      c.method === "POST" ? { body: { feedback: view() } } : { body: { suggestions: [], feedback: [], counts: {}, sensitive: false } },
     );
     renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "new", status: "new", can: { ...NONE, triage: true } })} />);
-    fireEvent.click(screen.getByRole("radio", { name: /Bug: link issues/ }));
-    expect(screen.queryByPlaceholderText("ISS-12, ISS-14")).toBeNull();
-    expect(screen.getByRole("button", { name: "Route it" })).toBeDisabled();
-    const picker = screen.getByRole("combobox", { name: "Issues that carry it" });
-    await userEvent.type(picker, "vanish");
-    await userEvent.click(await screen.findByRole("option", { name: /ISS-4/ }));
-    await userEvent.type(picker, "vanish");
-    await userEvent.click(await screen.findByRole("option", { name: /ISS-7/ }));
+    const triage = screen.getByTestId("feedback-triage");
+    expect(within(triage).queryByRole("radio", { name: /link issues|draft issue/i })).toBeNull();
+    expect(within(triage).queryByRole("combobox", { name: "Issues that carry it" })).toBeNull();
+    fireEvent.click(within(triage).getByRole("radio", { name: "Fix it" }));
+    expect(within(triage).queryByPlaceholderText(/Issue title/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Route it" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.method === "POST")).toEqual({
       method: "POST",
       path: "/projects/p1/feedback/FB-1/triage",
-      body: { route: "issue", issue: ["ISS-4", "ISS-7"], answers: { severity: "medium" } },
+      body: { route: "issue", createIssue: {}, answers: { severity: "medium" } },
     });
   });
 });

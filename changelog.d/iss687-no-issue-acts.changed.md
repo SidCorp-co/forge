@@ -1,0 +1,1 @@
+**No product page asks a person to act on an issue.** Requirements lose promote and link, feedback triage routes a fix without naming an issue, the master admits drafts, and workflows read their step, waiter and next act.
