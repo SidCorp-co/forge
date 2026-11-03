@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.455] - 2026-11-03
+
+MCP sign-in names the server the client registered with
+
+### Fixed
+
+- **An MCP sign-in names the issuer the client registered at.** The consent redirect's `iss` is no longer the web's origin; a client registered before this is told to register again (ISS-913).
+
 ## [0.4.0-dev.454] - 2026-11-03
 
 Stalls counted by cause on each release, room correction reads and phone-width fixes
