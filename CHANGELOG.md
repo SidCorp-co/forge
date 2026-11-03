@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.467] - 2026-11-03
+
+A shipped release reads shipped even when one issue cannot close yet
+
+### Fixed
+
+- **A release that shipped no longer ends failed over one refused close.** The issue it could not close waits as its residue, and a later release-record against that version closes it there, without the repair.
+
 ## [0.4.0-dev.466] - 2026-11-03
 
 A judge's test login is removed from the box when its run closes

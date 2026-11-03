@@ -1,1 +1,0 @@
-**A release that shipped no longer ends failed over one refused close.** The issue it could not close waits as its residue, and a later release-record against that version closes it there, without the repair.
