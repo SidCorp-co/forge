@@ -197,7 +197,7 @@ export function FeedbackPage({
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("feedback.tab.overview")}>
               {tab === "mockups" ? <MockupList projectId={projectId} slug={slug} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
               {tab === "overview" ? (
-                <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
+                <div className="grid grid-cols-1 gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
                   <ValueCheck projectId={projectId} slug={slug} itemKey={f.key} />
                   {acts ? null : <Proposals projectId={projectId} f={f} />}

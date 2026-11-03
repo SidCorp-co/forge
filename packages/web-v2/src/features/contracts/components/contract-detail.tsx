@@ -21,7 +21,7 @@ function Overview({ d }: { d: ContractStandingDetail }) {
   const t = useCopy();
   const c = d.contract;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
+    <div className="grid grid-cols-1 gap-8" data-testid="view-overview">
       {c.summary ? <p className="max-w-prose text-15 leading-relaxed text-fg">{c.summary}</p> : null}
       <section>
         <ViewHeading right={<AdoptionStrip consumers={d.consumers} latest={c.current?.version ?? null} />}>{t("contracts.pcc.consumers")}</ViewHeading>

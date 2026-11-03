@@ -67,7 +67,7 @@ function Overview({ d }: { d: ModuleDetail }) {
   const first = d.activity.days[0]?.date;
   const last = d.activity.days.at(-1)?.date;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
+    <div className="grid grid-cols-1 gap-8" data-testid="view-overview">
       <section>
         <ViewHeading right={<span className="text-12 text-subtle">{t("modules.openCount", { n: s.open })}</span>}>{t("modules.openByState")}</ViewHeading>
         {s.open === 0 ? <p className="text-13 text-subtle">{t("modules.nothingOpen")}</p> : <CoverageBar segments={openSegments(s, language)} />}
