@@ -41,6 +41,7 @@ import { type IssueNaming, issueNamingOf, linkedIssuesOf, namedIssue } from './i
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
+import type { RequirementViewer } from './standing-draft.js';
 import {
   acceptanceDecisionsOf,
   issueCriteriaOf,
@@ -62,14 +63,6 @@ interface StandingRow {
   currentRevision: number | null;
   ownerId: string | null;
   updatedAt: Date;
-}
-
-interface StandingViewer {
-  userId: string;
-  canWrite: boolean;
-  canSignOff: boolean;
-  canAdmit: boolean;
-  canApproveBreakdown?: boolean;
 }
 
 /** Rows a caller already holds for these requirements (the detail does), so they are not read twice. */
@@ -206,7 +199,7 @@ async function workFactsOf(
   projectId: string,
   rows: readonly StandingRow[],
   linked: readonly { requirementId: string | null; id: string; status: string }[],
-  viewer: StandingViewer | null,
+  viewer: RequirementViewer | null,
   now: Date,
 ) {
   const unshipped = linked.filter((i) => i.status !== 'closed' && i.status !== 'dropped');
@@ -296,7 +289,7 @@ const runnerBoundIn = async (projectId: string): Promise<boolean> =>
 export async function standingsOf(
   projectId: string,
   rows: readonly StandingRow[],
-  viewer: StandingViewer | null,
+  viewer: RequirementViewer | null,
   held?: StandingPreload,
   /**
    * Facts about the project the caller read in a statement it sends anyway; absent, read here.

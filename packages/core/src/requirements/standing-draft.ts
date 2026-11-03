@@ -20,6 +20,21 @@ export interface StandingRevision {
   returned?: boolean;
 }
 
+/** What a requirement's reader may take on it (`viewer.ts:standingViewer`). */
+export interface RequirementViewer {
+  userId: string;
+  /** project.write: what the owner's own move and a draft revision's author ask (ISS-926). */
+  canWrite: boolean;
+  canSignOff: boolean;
+  /**
+   * What the admit gate asks (issues.admit where enforced, project.write where not), which the
+   * promote of a draft needs (REQ-76 / ISS-640).
+   */
+  canAdmit: boolean;
+  /** suggestions.approve: what a breakdown's accept asks where its switch is on. */
+  canApproveBreakdown?: boolean;
+}
+
 const RULE = say('requirements.rule.draftAuthor');
 
 const turn = (
@@ -37,7 +52,7 @@ const turn = (
  *  whichever account the agent wrote it under; a person's draft is its author's. */
 export function draftTurn(
   draft: StandingRevision,
-  viewer: { userId: string; canWrite: boolean } | null,
+  viewer: Pick<RequirementViewer, 'userId' | 'canWrite'> | null,
 ) {
   const returned = draft.returned === true;
   const r = draft.revision;

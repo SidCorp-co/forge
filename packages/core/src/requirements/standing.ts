@@ -34,7 +34,12 @@ import {
   type StandingIssueCriterion,
   type StandingRequirementVerdict,
 } from './standing-coverage.js';
-import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
+import {
+  designTurn,
+  draftTurn,
+  type RequirementViewer,
+  type StandingRevision,
+} from './standing-draft.js';
 import {
   reviseForDesignAct,
   type TracedChange,
@@ -92,20 +97,8 @@ export interface StandingIssue {
 export interface StandingInput {
   status: RequirementStatus;
   owner: RequirementStanding['owner'];
-  /**
-   * Null for a reader with no person behind it; nothing then reads as theirs. `canAdmit` is
-   * what the admit gate asks (issues.admit where enforced, project.write where not), which the
-   * promote of a draft needs (REQ-76 / ISS-640).
-   */
-  viewer: {
-    userId: string;
-    /** project.write: what the owner's own move and a draft revision's author ask (ISS-926). */
-    canWrite: boolean;
-    canSignOff: boolean;
-    canAdmit: boolean;
-    /** suggestions.approve: what a breakdown's accept asks where its switch is on. */
-    canApproveBreakdown?: boolean;
-  } | null;
+  /** Null for a reader with no person behind it; nothing then reads as theirs. */
+  viewer: RequirementViewer | null;
   /**
    * The project document's `approvals` (`@forge/contracts/person-gates`): which steps ask a
    * person. Absent or null reads every switch off, the default.
