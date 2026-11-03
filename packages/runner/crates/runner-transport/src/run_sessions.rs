@@ -61,7 +61,7 @@ pub fn fit(text: &str, max: usize) -> String {
 ///
 /// An empty slice names an empty run and gets an empty name, which core
 /// refuses by `min(1)`. That is the honest answer and not a gap:
-/// `open_declared_runs` refuses a run carrying no issues before it reaches
+/// `open_declared_runs_at` refuses a run carrying no issues before it reaches
 /// here, and a name invented for one would be this box naming a run after
 /// nothing.
 pub fn session_name(keys: &[String]) -> String {

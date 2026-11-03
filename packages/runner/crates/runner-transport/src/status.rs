@@ -270,9 +270,38 @@ pub(crate) fn refusal(what: &str, status: u16, text: &str) -> Error {
         }
     }
     match held_code(status, text) {
-        Some(code) => Error::Held { said, code },
+        Some(code) => Error::Held {
+            said,
+            code,
+            holders: lease_holders(text),
+        },
         None => Error::Other(said),
     }
+}
+
+/// The holders an `ISSUE_LEASE_HELD` refusal names under `details.holders`
+/// (`issues/issue-lease.ts:takeIssueLeases`), each by its run session and, where core has it,
+/// the id the declaring box knows the run by. A holder naming no session is not one this box
+/// can match, so it is left out rather than guessed.
+fn lease_holders(body: &str) -> Vec<runner_platform::error::LeaseHolder> {
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    parsed
+        .pointer("/details/holders")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|h| {
+            Some(runner_platform::error::LeaseHolder {
+                session_id: h.get("sessionId")?.as_str()?.to_string(),
+                box_run_id: h
+                    .get("boxRunId")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+            })
+        })
+        .collect()
 }
 
 /// The refusal core answers for a run over an issue at rest (`issues/issue-resting.ts`), which
@@ -388,7 +417,7 @@ mod held_tests {
     #[test]
     fn a_422_naming_a_hold_is_held_with_its_code() {
         match refusal("run-session open", 422, BLOCKED) {
-            Error::Held { code, said } => {
+            Error::Held { code, said, .. } => {
                 assert_eq!(code, "ISSUE_BLOCKED");
                 assert!(said.contains("ISS-46"), "{said}");
             }
@@ -400,7 +429,7 @@ mod held_tests {
     fn a_scope_hold_and_a_lease_held_by_another_run_are_held() {
         let scope = r#"{"error":{"code":"ISSUE_SCOPE_HELD","refusals":[{"code":"ISSUE_SCOPE_HELD","path":"","detail":"a run session over these issues is refused. ISS-454 shares module issues with ISS-453, held by live run r1. It waits until that run ends."}]}}"#;
         match refusal("run-session preflight", 422, scope) {
-            Error::Held { code, said } => {
+            Error::Held { code, said, .. } => {
                 assert_eq!(code, "ISSUE_SCOPE_HELD");
                 assert!(said.contains("ISS-454 shares module issues"), "{said}");
             }
@@ -411,6 +440,33 @@ mod held_tests {
             refusal("run-session open", 409, lease),
             Error::Held { code, .. } if code == "ISSUE_LEASE_HELD"
         ));
+    }
+
+    /// ISS-929: a lease refusal carries its holders as data, so a box tells its own ended run
+    /// from another box's without reading core's sentence; a refusal naming none reads empty.
+    #[test]
+    fn a_lease_refusal_names_its_holders_from_its_details() {
+        let lease = r#"{"error":{"code":"ISSUE_LEASE_HELD","refusals":[{"code":"ISSUE_LEASE_HELD","path":"","detail":"issue lease held"}]},"details":{"holders":[{"issueKey":"ISS-1","deviceId":"d1","sessionId":"s1","runId":"r1","acquiredAt":"2026-11-03T11:44:35.000Z","boxRunId":"b1"},{"issueKey":"ISS-2","deviceId":"d1","sessionId":"s2","runId":"r2","acquiredAt":"2026-11-03T11:44:35.000Z","boxRunId":null}]}}"#;
+        match refusal("run-session open", 409, lease) {
+            Error::Held { holders, .. } => assert_eq!(
+                holders,
+                vec![
+                    runner_platform::error::LeaseHolder {
+                        session_id: "s1".into(),
+                        box_run_id: Some("b1".into()),
+                    },
+                    runner_platform::error::LeaseHolder {
+                        session_id: "s2".into(),
+                        box_run_id: None,
+                    },
+                ]
+            ),
+            other => panic!("a lease refusal was read as {other:?}"),
+        }
+        match refusal("run-session open", 422, BLOCKED) {
+            Error::Held { holders, .. } => assert!(holders.is_empty(), "{holders:?}"),
+            other => panic!("a held refusal was read as {other:?}"),
+        }
     }
 
     #[test]

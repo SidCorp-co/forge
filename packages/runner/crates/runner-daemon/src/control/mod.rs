@@ -545,7 +545,7 @@ async fn serve_request(
             session_id,
         ),
         Request::RunClose { run_id, reason, .. } => {
-            run_close(ctl, &run_id, reason.as_deref(), session_id)
+            run_close(ctl, &run_id, reason.as_deref(), session_id).await
         }
         Request::CredentialRefused { code, detail, .. } => {
             credential_refused(ctl, &code, &detail, session_id)

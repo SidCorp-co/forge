@@ -90,20 +90,24 @@ fn said_of(run: &runner_core::ledger::Run) -> run_sessions::Said<'_> {
     }
 }
 
-pub async fn open_declared_runs(
-    opener: &impl SessionOpener,
+/// One sweep's account to core of this box's runs: the ended ones closed, THEN the declared ones
+/// opened, answering `(opened, closed)`.
+///
+/// Close first, because a run this box just ended may hold the very lease its successor's open
+/// asks for. Opened first, the successor was refused `ISSUE_LEASE_HELD` by its predecessor's
+/// still-open session, backed off five minutes, and the predecessor's close went out 344 ms
+/// later in the same sweep: the reviewer run over adminhub-fe ISS-123 waited six minutes behind a
+/// run the box had already printed `closed` for (ISS-929).
+pub async fn settle_at_core<S: SessionOpener + SessionCloser>(
+    core: &S,
     ledger: &mut Option<Ledger>,
     boot_id: &str,
     gate: Option<&runner_proto::gate::Condition>,
-) -> usize {
-    open_declared_runs_at(
-        opener,
-        ledger,
-        boot_id,
-        gate,
-        runner_core::agent_activity::now_ms(),
-    )
-    .await
+    now_ms: i64,
+) -> (usize, usize) {
+    let closed = close_ended_runs(core, ledger, boot_id).await;
+    let opened = open_declared_runs_at(core, ledger, boot_id, gate, now_ms).await;
+    (opened, closed)
 }
 
 pub async fn open_declared_runs_at(
@@ -212,9 +216,20 @@ pub async fn open_declared_runs_at(
             // behind this refusal, which is where the master reads it (`runs/standing`,
             // `waiting_gate`), so the box names it once, here, and then asks again only
             // when `SESSION_RETRY_MS` has gone, which also keeps that queued row alive.
-            Err(runner_platform::error::Error::Held { said, code }) => {
-                note_session_held(led, &run, &code, &said, now_ms);
-            }
+            Err(runner_platform::error::Error::Held {
+                said,
+                code,
+                holders,
+            }) => match held_by_our_ended_run(led, boot_id, &code, &holders) {
+                // The holder is a run this box ended and has not yet closed at core: the close
+                // leg sends that close on this sweep or the next, and the lease goes with it, so
+                // waiting five minutes for it is waiting on ourselves (ISS-929).
+                Some(ours) => tracing::info!(
+                    "[run-record] run {}: core would not open a session ({code}) while run {ours} still holds the issue; this box ended {ours} and its close at core is owed, so the open is sent again next sweep",
+                    run.run_id
+                ),
+                None => note_session_held(led, &run, &code, &said, now_ms),
+            },
             Err(e) => tracing::warn!(
                 "[run-record] run {}: core would not open a session: {e} — the row stands and the next sweep tries again",
                 run.run_id
@@ -233,6 +248,42 @@ fn end_refused(led: &Ledger, run_id: &str, said: &str, why: &str) {
             "[run-record] run {run_id}: the refusal could not be written onto the row: {e} — the next sweep will send it again"
         );
     }
+}
+
+/// The code core answers when a live run session holds an issue an open asks for.
+const LEASE_HELD: &str = "ISSUE_LEASE_HELD";
+
+/// The run of this box's own that holds every issue a lease refusal names, where each holder is
+/// a run this box has ended and whose close at core is still owed (`close_ended_runs` sends it).
+/// `None` for any other hold, a holder that is another box's or a live run's, and a refusal
+/// naming no holder (a core before ISS-929): those keep `SESSION_RETRY_MS`.
+fn held_by_our_ended_run(
+    led: &Ledger,
+    boot_id: &str,
+    code: &str,
+    holders: &[runner_platform::error::LeaseHolder],
+) -> Option<String> {
+    if code != LEASE_HELD || holders.is_empty() {
+        return None;
+    }
+    let owed = match led.ended_with_open_session(boot_id) {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("[run-record] cannot read ended runs to tell a lease's holder: {e}");
+            return None;
+        }
+    };
+    let mut ours = Vec::new();
+    for h in holders {
+        let run = owed.iter().find(|r| {
+            r.session_id.as_deref() == Some(h.session_id.as_str())
+                || h.box_run_id.as_deref() == Some(r.run_id.as_str())
+        })?;
+        if !ours.contains(&run.run_id) {
+            ours.push(run.run_id.clone());
+        }
+    }
+    Some(ours.join(", "))
 }
 
 /// A run's open core refused over a hold, written onto the row. Core has already recorded the
@@ -281,59 +332,110 @@ pub async fn close_ended_runs(
     };
     let mut closed = 0;
     for run in ended {
-        let Some(session_id) = run.session_id.clone() else {
+        if run.session_id.is_none() {
             continue;
-        };
-        // Built to what `closeBodySchema` states rather than sent and refused:
-        // an operator's `run close --reason` writes this field and nothing
-        // bounded it on this side, and a close core refuses is retried on every
-        // sweep the same way a declaration was (ISS-1284).
-        let detail = run_sessions::fit(
-            &run.ended_reason.clone().unwrap_or_default(),
-            run_sessions::MAX_DETAIL_CODE_UNITS,
-        );
-        let checkpoint = Some(checkpoint::reconstruct_within_budget(&run).await.to_json());
+        }
         let standing = led
             .open_run_at_tree(&run.worktree_path)
             .ok()
             .flatten()
             .map(|next| next.run_id);
-        let holders = claim_holders(&run, standing.as_deref()).await;
-        match closer.close(&session_id, &detail, checkpoint, &holders).await {
-            Ok(()) => match led.mark_session_terminal_observed(&run.run_id) {
-                Ok(()) => {
-                    tracing::info!("[run-record] run {} is closed at core", run.run_id);
-                    closed += 1;
-                }
-                Err(e) => tracing::warn!(
-                    "[run-record] run {} closed at core and the mark did not land: {e} — it will be reported again",
-                    run.run_id
-                ),
-            },
-            // The close's bytes are the row's and nothing between sweeps changes
-            // them, so a constraint answer is final for them. Core has no door
-            // for a device to report this through, so it is recorded on the
-            // row (which takes it out of this sweep) and named here once.
-            Err(runner_platform::error::Error::Malformed { said, named }) => {
-                let why = named.join("; ");
-                match led.mark_close_refused(&run.run_id, &why) {
-                    Ok(()) => tracing::error!(
-                        "[run-record] run {}: {said} — core refused this close as malformed and will refuse it again unchanged ({why}). The close is not re-sent; the run's session stays open at core until core closes it",
-                        run.run_id
-                    ),
-                    Err(e) => tracing::warn!(
-                        "[run-record] run {}: {said}; the refusal could not be written onto the row: {e} — the next sweep sends it again",
-                        run.run_id
-                    ),
-                }
-            }
-            Err(e) => tracing::warn!(
-                "[run-record] run {}: core would not take the close: {e} — the next sweep tries again",
-                run.run_id
-            ),
+        let sent = send_close(closer, &run, standing.as_deref()).await;
+        if record_close(led, &run.run_id, sent) == CloseAtCore::Closed {
+            closed += 1;
         }
     }
     closed
+}
+
+/// What one ended run's close at core came to, once recorded on its row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloseAtCore {
+    /// Core closed the session; the row says so.
+    Closed,
+    /// Core refused this close as malformed and will refuse it again unchanged; the row says so
+    /// and no sweep re-sends it.
+    Refused(String),
+    /// Core did not take it now (unreachable, a 5xx, a mark that did not land); the next sweep
+    /// sends it again.
+    Owed(String),
+    /// The run has no core session to close.
+    NoSession,
+}
+
+/// Send one ended run's close to core: its reason, its checkpoint and the claim holders its
+/// master's close gives back. `standing` is the run now standing in its tree, if any. The one
+/// sender of a close, for the sweep and for `run close` alike (ISS-929).
+pub async fn send_close(
+    closer: &impl SessionCloser,
+    run: &runner_core::ledger::Run,
+    standing: Option<&str>,
+) -> runner_platform::error::Result<()> {
+    let Some(session_id) = run.session_id.as_deref() else {
+        return Ok(());
+    };
+    // Built to what `closeBodySchema` states rather than sent and refused:
+    // an operator's `run close --reason` writes this field and nothing
+    // bounded it on this side, and a close core refuses is retried on every
+    // sweep the same way a declaration was (ISS-1284).
+    let detail = run_sessions::fit(
+        &run.ended_reason.clone().unwrap_or_default(),
+        run_sessions::MAX_DETAIL_CODE_UNITS,
+    );
+    let checkpoint = Some(checkpoint::reconstruct_within_budget(run).await.to_json());
+    let holders = claim_holders(run, standing).await;
+    closer
+        .close(session_id, &detail, checkpoint, &holders)
+        .await
+}
+
+/// Write what core answered a close onto the run's row, and say it once.
+pub fn record_close(
+    led: &Ledger,
+    run_id: &str,
+    sent: runner_platform::error::Result<()>,
+) -> CloseAtCore {
+    match sent {
+        Ok(()) => match led.mark_session_terminal_observed(run_id) {
+            Ok(()) => {
+                tracing::info!("[run-record] run {run_id} is closed at core");
+                CloseAtCore::Closed
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[run-record] run {run_id} closed at core and the mark did not land: {e} — it will be reported again"
+                );
+                CloseAtCore::Owed(format!("core closed it and the mark did not land: {e}"))
+            }
+        },
+        // The close's bytes are the row's and nothing between sweeps changes
+        // them, so a constraint answer is final for them. Core has no door
+        // for a device to report this through, so it is recorded on the
+        // row (which takes it out of this sweep) and named here once.
+        Err(runner_platform::error::Error::Malformed { said, named }) => {
+            let why = named.join("; ");
+            match led.mark_close_refused(run_id, &why) {
+                Ok(()) => {
+                    tracing::error!(
+                        "[run-record] run {run_id}: {said} — core refused this close as malformed and will refuse it again unchanged ({why}). The close is not re-sent; the run's session stays open at core until core closes it"
+                    );
+                    CloseAtCore::Refused(format!("{said} ({why})"))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[run-record] run {run_id}: {said}; the refusal could not be written onto the row: {e} — the next sweep sends it again"
+                    );
+                    CloseAtCore::Owed(format!("{said}; the refusal could not be written: {e}"))
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                "[run-record] run {run_id}: core would not take the close: {e} — the next sweep tries again"
+            );
+            CloseAtCore::Owed(e.to_string())
+        }
+    }
 }
 
 /// The file beside a tree's git directory naming the id a run standing in it holds its issue
@@ -737,6 +839,7 @@ mod session_hold_tests {
                 Err(Error::Held {
                     said: "run-session open 422 ISSUE_BLOCKED: ISS-46: a live blocks edge holds it, ISS-44 is at awaiting_release".into(),
                     code: "ISSUE_BLOCKED".into(),
+                    holders: Vec::new(),
                 })
             } else {
                 Ok(("session-1".into(), "run-1".into()))
@@ -882,6 +985,228 @@ mod session_hold_tests {
         let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
         assert_eq!(run.ended_by.as_deref(), Some("run-record"));
         assert!(run.ended_reason.unwrap().contains("back in work"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+/// ISS-929: a run this box ended holds its issue's lease at core until its close lands, so the
+/// sweep closes before it opens, and a lease refusal whose holder is that run is not backed off.
+#[cfg(test)]
+mod settle_tests {
+    use super::*;
+    use runner_core::ledger::NewRun;
+    use runner_platform::error::{Error, LeaseHolder};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    const SWEEP_MS: i64 = 30_000;
+    const T0: i64 = 1_000_000_000;
+
+    /// A core holding ISS-1's lease under `session-1` until that session is closed, refusing every
+    /// other open over ISS-1 the way `issue-lease.ts:takeIssueLeases` does, naming the holder as
+    /// `holders` says.
+    struct Core {
+        session_one_open: AtomicBool,
+        /// Closes answered 503 before one is taken.
+        closes_down: AtomicUsize,
+        holders: Vec<LeaseHolder>,
+        said: Mutex<Vec<String>>,
+    }
+
+    impl Core {
+        fn new(holders: Vec<LeaseHolder>, closes_down: usize) -> Self {
+            Core {
+                session_one_open: AtomicBool::new(true),
+                closes_down: AtomicUsize::new(closes_down),
+                holders,
+                said: Mutex::new(Vec::new()),
+            }
+        }
+        fn said(&self) -> Vec<String> {
+            self.said.lock().unwrap().clone()
+        }
+    }
+
+    impl SessionOpener for Core {
+        async fn open(
+            &self,
+            _project_id: &str,
+            run_id: &str,
+            _issue_keys: &[String],
+            _name: &str,
+            _gate: Option<&runner_proto::gate::Condition>,
+            _said: run_sessions::Said<'_>,
+        ) -> runner_platform::error::Result<(String, String)> {
+            self.said.lock().unwrap().push(format!("open {run_id}"));
+            if self.session_one_open.load(Ordering::SeqCst) {
+                return Err(Error::Held {
+                    said: "run-session open 409 ISSUE_LEASE_HELD: ISS-1 is held".into(),
+                    code: "ISSUE_LEASE_HELD".into(),
+                    holders: self.holders.clone(),
+                });
+            }
+            Ok(("session-2".into(), "core-run-2".into()))
+        }
+    }
+
+    impl SessionCloser for Core {
+        async fn close(
+            &self,
+            session_id: &str,
+            _detail: &str,
+            _checkpoint: Option<serde_json::Value>,
+            _claim_holders: &[String],
+        ) -> runner_platform::error::Result<()> {
+            self.said.lock().unwrap().push(format!("close {session_id}"));
+            if self
+                .closes_down
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                .is_ok()
+            {
+                return Err(Error::Other(
+                    "run-session close 503 Service Unavailable".into(),
+                ));
+            }
+            if session_id == "session-1" {
+                self.session_one_open.store(false, Ordering::SeqCst);
+            }
+            Ok(())
+        }
+    }
+
+    fn ours() -> LeaseHolder {
+        LeaseHolder {
+            session_id: "session-1".into(),
+            box_run_id: Some("run-1".into()),
+        }
+    }
+
+    fn new_run(dir: &std::path::Path, run_id: &str) -> NewRun {
+        NewRun {
+            run_id: run_id.into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: dir.join(run_id),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+            role: None,
+            requirement: None,
+        }
+    }
+
+    /// run-1 over ISS-1 opened at core as `session-1` and ended by its master; run-2 then
+    /// declared over ISS-1, not yet opened.
+    fn ended_then_declared() -> (Option<Ledger>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("forge-settle-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+        led.create_run_group(new_run(&dir, "run-1")).unwrap();
+        led.attach_session("run-1", "session-1").unwrap();
+        led.end_run("run-1", "master", "done").unwrap();
+        led.create_run_group(new_run(&dir, "run-2")).unwrap();
+        (Some(led), dir)
+    }
+
+    fn row(led: &Option<Ledger>, run_id: &str) -> runner_core::ledger::Run {
+        led.as_ref().unwrap().run(run_id).unwrap().unwrap()
+    }
+
+    /// (a) One sweep: the ended run's close goes to core before the successor's open, so the
+    /// open meets a lease already given back and the successor opens in that same sweep.
+    #[tokio::test]
+    async fn a_sweep_closes_the_ended_run_before_it_opens_its_successor() {
+        let (mut led, dir) = ended_then_declared();
+        let core = Core::new(vec![ours()], 0);
+        let (opened, closed) = settle_at_core(&core, &mut led, "boot-1", None, T0).await;
+        assert_eq!(
+            core.said(),
+            vec!["close session-1".to_string(), "open run-2".to_string()],
+            "the sweep sent the successor's open before the ended run's close"
+        );
+        assert_eq!((opened, closed), (1, 1));
+        assert_eq!(row(&led, "run-2").session_id.as_deref(), Some("session-2"));
+        assert!(row(&led, "run-1").session_terminal_at.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// (b) The ended run's close meets a 503, so its lease still stands when the successor's
+    /// open is refused naming it. That holder is this box's own owed close: the open is sent
+    /// again on the very next sweep and opens there, not five minutes on.
+    #[tokio::test]
+    async fn a_lease_held_by_a_run_this_box_ended_is_asked_again_next_sweep() {
+        for holder in [
+            ours(),
+            // Matched by its session alone, as a core that has no box run id for it names it.
+            LeaseHolder {
+                session_id: "session-1".into(),
+                box_run_id: None,
+            },
+        ] {
+            let (mut led, dir) = ended_then_declared();
+            let core = Core::new(vec![holder.clone()], 1);
+            let (opened, _) = settle_at_core(&core, &mut led, "boot-1", None, T0).await;
+            assert_eq!(opened, 0, "{holder:?}");
+            let run = row(&led, "run-2");
+            assert!(
+                run.session_retry_at.is_none(),
+                "a refusal held by this box's own ended run started the {} minute wait: {holder:?}",
+                SESSION_RETRY_MS / 60_000
+            );
+            let (opened, closed) =
+                settle_at_core(&core, &mut led, "boot-1", None, T0 + SWEEP_MS).await;
+            assert_eq!((opened, closed), (1, 1), "{holder:?}");
+            assert_eq!(
+                core.said(),
+                vec![
+                    "close session-1".to_string(),
+                    "open run-2".to_string(),
+                    "close session-1".to_string(),
+                    "open run-2".to_string(),
+                ]
+            );
+            assert_eq!(row(&led, "run-2").session_id.as_deref(), Some("session-2"));
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// (c) A lease held by another box's run, or by a refusal from a core that names no holder,
+    /// keeps today's wait: the open is not sent again inside `SESSION_RETRY_MS`.
+    #[tokio::test]
+    async fn a_lease_held_by_another_boxs_run_keeps_the_wait() {
+        let elsewhere = LeaseHolder {
+            session_id: "session-elsewhere".into(),
+            box_run_id: Some("run-elsewhere".into()),
+        };
+        for holders in [vec![elsewhere.clone()], vec![], vec![ours(), elsewhere]] {
+            let (mut led, dir) = ended_then_declared();
+            // run-1's close never lands, so its lease stands for the whole test.
+            let core = Core::new(holders.clone(), usize::MAX);
+            for n in 0..3 {
+                settle_at_core(&core, &mut led, "boot-1", None, T0 + n * SWEEP_MS).await;
+            }
+            let opens = core.said().iter().filter(|s| *s == "open run-2").count();
+            assert_eq!(opens, 1, "the open was re-sent inside the wait: {holders:?}");
+            assert_eq!(row(&led, "run-2").session_retry_at, Some(T0), "{holders:?}");
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// A holder that is this box's run but whose close core refused as malformed is not owed
+    /// by any sweep, so waiting on it next sweep would loop: it keeps the wait.
+    #[tokio::test]
+    async fn a_holder_whose_close_core_refused_keeps_the_wait() {
+        let (led, dir) = ended_then_declared();
+        let l = led.as_ref().unwrap();
+        l.mark_close_refused("run-1", "checkpoint: too big").unwrap();
+        assert_eq!(
+            held_by_our_ended_run(l, "boot-1", "ISSUE_LEASE_HELD", &[ours()]),
+            None
+        );
+        assert_eq!(
+            held_by_our_ended_run(l, "boot-1", "ISSUE_BLOCKED", &[ours()]),
+            None,
+            "a hold that is not a lease was read as one"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

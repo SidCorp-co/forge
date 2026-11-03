@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
+import { RefusalError } from '../../src/lib/refusal.js';
 import {
   issueWorkInFlightSql,
   releaseIssueLeaseRow,
@@ -40,12 +41,14 @@ interface Box {
 }
 
 /** A box with a live run session over this project, as a run session opens one. */
-async function box(project = projectId): Promise<Box> {
+async function box(project = projectId, boxRunId?: string): Promise<Box> {
   const deviceId = await createTestDevice(ownerId);
   const runId = randomUUID();
   const sessionId = randomUUID();
+  const metadata = JSON.stringify(boxRunId ? { boxRunId } : {});
   await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${project}, 'interactive', 'running')
+    INSERT INTO pipeline_runs (id, project_id, kind, status, metadata)
+    VALUES (${runId}, ${project}, 'interactive', 'running', ${metadata}::jsonb)
   `);
   await db.execute(sql`
     INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status, device_id)
@@ -117,7 +120,52 @@ describe('taking a group of issues', () => {
     expect(refused).toContain(
       `ISS-1 is held by this same box (device ${a.deviceId}), under run session ${a.sessionId}`,
     );
-    expect(refused).toContain('Close that run session before opening another over the same issues');
+    // A session opened without a box run id has no command to name, and says so (ISS-929).
+    expect(refused).toContain('was opened without a box run id');
+    expect(refused).toContain(`GET /api/agent-sessions/${a.sessionId}`);
+  });
+
+  it('names the command that ends its own holder and where the session reads, and carries the holders as data', async () => {
+    const boxRunId = randomUUID();
+    const a = await box(projectId, boxRunId);
+    await take(a, ['ISS-1']);
+    const again = { ...(await box(projectId, randomUUID())), deviceId: a.deviceId };
+
+    const err = await take(again, ['ISS-1']).then(
+      () => null,
+      (e: unknown) => e as RefusalError,
+    );
+
+    expect(err).toBeInstanceOf(RefusalError);
+    const said = String(err?.message);
+    expect(said).toContain(`forge-runner run close ${boxRunId}`);
+    expect(said).toContain(`GET /api/agent-sessions/${a.sessionId}`);
+    expect(err?.refusals.map((r) => r.code)).toEqual(['ISSUE_LEASE_HELD']);
+    expect(err?.details).toEqual({
+      holders: [
+        expect.objectContaining({
+          issueKey: 'ISS-1',
+          deviceId: a.deviceId,
+          sessionId: a.sessionId,
+          runId: a.runId,
+          boxRunId,
+        }),
+      ],
+    });
+  });
+
+  it('tells a box another box holds names no close command, since the holder is not its own', async () => {
+    const a = await box(projectId, randomUUID());
+    const b = await box();
+    await take(a, ['ISS-1']);
+
+    const said = await take(b, ['ISS-1']).then(
+      () => '',
+      (e: unknown) => String((e as Error).message),
+    );
+
+    expect(said).toContain('the holder above is the box to ask');
+    expect(said).not.toContain('forge-runner run close');
   });
 
   it('takes a key whose holder’s session has ended', async () => {

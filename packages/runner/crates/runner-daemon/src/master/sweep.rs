@@ -259,8 +259,14 @@ async fn settle_runs(
     let gate = runner_platform::config::config_dir().map(|dir| {
         runner_core::degraded::report(&dir, runner_core::agent_activity::now_ms()).degraded
     });
-    let opened = run_record::open_declared_runs(&sessions, ledger, &boot, gate.as_ref()).await;
-    let closed = run_record::close_ended_runs(&sessions, ledger, &boot).await;
+    let (opened, closed) = run_record::settle_at_core(
+        &sessions,
+        ledger,
+        &boot,
+        gate.as_ref(),
+        runner_core::agent_activity::now_ms(),
+    )
+    .await;
     let choices_said = say_resume_choices(&CoreChoice(client), ledger, &boot).await;
     if choices_said > 0 {
         tracing::info!("[master] {choices_said} resume choice(s) said on their issues");

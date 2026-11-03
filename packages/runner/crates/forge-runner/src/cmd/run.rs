@@ -292,7 +292,12 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
             println!(
                 "{}",
                 closed(recorded_logins(run_id), &judge_dir::root(), run_id)
-            )
+            );
+            // What core did with the run's session, as the daemon's close found it (ISS-929):
+            // `closed` is this box's record, and the session's own line says whether core's is.
+            if let Some(at_core) = reply.reason.as_deref() {
+                println!("at core: {at_core}");
+            }
         }
         Command::Release(_) | Command::Brief(_) => {
             unreachable!("answered above, before the socket is opened")

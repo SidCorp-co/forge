@@ -31,15 +31,25 @@ export class RefusalError extends Error {
     super(refusals.map((r) => `${r.code}: ${r.detail}`).join('; '));
     this.name = 'RefusalError';
   }
+
+  /** Data a client acts on beside the sentence, answered as the envelope's `details`. */
+  details?: unknown;
+
+  /** This refusal carrying `details`, for a thrower whose client reads more than the sentence. */
+  withDetails(details: unknown): this {
+    this.details = details;
+    return this;
+  }
 }
 
 /** The envelope a thrown refusal answers with, its own sentence kept where it carries one. */
 export function thrownEnvelope(err: RefusalError): RefusalEnvelope {
-  return refusalEnvelope(
+  const envelope = refusalEnvelope(
     err.refusals,
     err.fallbackCode,
     err.detail === undefined ? {} : { detail: err.detail },
   );
+  return err.details === undefined ? envelope : { ...envelope, details: err.details };
 }
 
 export function jsonPointer(segments: readonly PropertyKey[]): string {

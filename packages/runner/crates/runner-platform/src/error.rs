@@ -1,5 +1,15 @@
 use thiserror::Error;
 
+/// One holder of an issue lease, as core names it on an `ISSUE_LEASE_HELD` refusal
+/// (`issues/issue-lease.ts:LeaseRefusalHolder`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeaseHolder {
+    /// The holding run session at core.
+    pub session_id: String,
+    /// The id the box that declared the holding run knows it by, where core has one.
+    pub box_run_id: Option<String>,
+}
+
 /// Crate-wide error type.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -44,6 +54,9 @@ pub enum Error {
         said: String,
         /// Core's refusal code, such as `ISSUE_BLOCKED`.
         code: String,
+        /// Who core says holds the issues, where it names them (`details.holders` on an
+        /// `ISSUE_LEASE_HELD`); empty for every other hold, and from a core before ISS-929.
+        holders: Vec<LeaseHolder>,
     },
 
     /// Core refused the run because an issue it names is at rest: over, or parked on a person

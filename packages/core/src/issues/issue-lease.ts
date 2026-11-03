@@ -181,8 +181,16 @@ export interface IssueLeaseHolder {
 
 const refuse = refuser<IssueTakeRefusalCode>('ISSUE_TAKE_REFUSED');
 
+/**
+ * A holder as a refusal names it: with the id the box that declared the run knows it by
+ * (`pipeline_runs.metadata.boxRunId`), null for a session opened without one.
+ */
+export interface LeaseRefusalHolder extends IssueLeaseHolder {
+  boxRunId: string | null;
+}
+
 /** What a refused box is told, which differs by who holds. */
-function refusalText(holders: IssueLeaseHolder[], askingDeviceId: string): string {
+function refusalText(holders: LeaseRefusalHolder[], askingDeviceId: string): string {
   const lines = holders.map((h) => {
     const whose =
       h.deviceId === askingDeviceId
@@ -191,29 +199,43 @@ function refusalText(holders: IssueLeaseHolder[], askingDeviceId: string): strin
     return `  ${h.issueKey} is held by ${whose}, taken at ${h.acquiredAt}`;
   });
   const ownOnly = holders.every((h) => h.deviceId === askingDeviceId);
-  const advice = ownOnly
-    ? 'Close that run session before opening another over the same issues, or wait for it to be reaped.'
-    : 'Open a run session over issues no live run session holds; the holder above is the box to ask.';
   return [
     `issue lease held: ${holders.length} of the issues asked for are already being worked.`,
     ...lines,
-    advice,
+    ...(ownOnly ? holders.map(ownHolderWayOut) : [ELSEWHERE_ADVICE]),
   ].join('\n');
+}
+
+const ELSEWHERE_ADVICE =
+  'Open a run session over issues no live run session holds; the holder above is the box to ask.';
+
+/**
+ * The way out of a lease this same box holds: the command that ends the holding run, and where its
+ * session reads. A box ends a closed run's session at core when the close is sent, or on its next
+ * sweep where core could not take it then (ISS-929).
+ */
+function ownHolderWayOut(h: LeaseRefusalHolder): string {
+  const reads = `GET /api/agent-sessions/${h.sessionId}`;
+  return h.boxRunId
+    ? `Close that run with \`forge-runner run close ${h.boxRunId}\` before opening another over ${h.issueKey}; its session reads at ${reads}, and the lease goes once it is terminal.`
+    : `Run session ${h.sessionId} was opened without a box run id, so no \`forge-runner run close\` names it: wait for it to be reaped; it reads at ${reads}.`;
 }
 
 /** The holders of these keys, whoever they are, for a refusal or a read. */
 async function holdersOf(
   executor: Tx,
   args: { projectId: string; issueKeys: string[] },
-): Promise<IssueLeaseHolder[]> {
+): Promise<LeaseRefusalHolder[]> {
   if (args.issueKeys.length === 0) return [];
   const keyList = sql.join(
     args.issueKeys.map((k) => sql`${k}`),
     sql`, `,
   );
   const rows = (await executor.execute(sql`
-    SELECT l.issue_key, l.device_id, l.session_id, l.run_id, l.acquired_at
+    SELECT l.issue_key, l.device_id, l.session_id, l.run_id, l.acquired_at,
+           r.metadata ->> 'boxRunId' AS box_run_id
       FROM ${liveIssueLeasesSql()} l
+      LEFT JOIN pipeline_runs r ON r.id = l.run_id
      WHERE l.project_id = ${args.projectId}
        AND l.issue_key IN (${keyList})
      ORDER BY l.issue_key
@@ -224,6 +246,7 @@ async function holdersOf(
     sessionId: String(r.session_id),
     runId: String(r.run_id),
     acquiredAt: new Date(String(r.acquired_at)).toISOString(),
+    boxRunId: typeof r.box_run_id === 'string' ? r.box_run_id : null,
   }));
 }
 
@@ -290,7 +313,9 @@ export async function takeIssueLeases(
     if (lost.length === 0) return;
     holders = await holdersOf(executor, { projectId: args.projectId, issueKeys: lost });
   }
-  throw refuse('ISSUE_LEASE_HELD', refusalText(holders, args.deviceId));
+  // The holders ride the refusal as data too, so a box tells its own ended run from another's
+  // without reading the sentence (ISS-929).
+  throw refuse('ISSUE_LEASE_HELD', refusalText(holders, args.deviceId)).withDetails({ holders });
 }
 
 /** What a give-back did, or why it did nothing. */

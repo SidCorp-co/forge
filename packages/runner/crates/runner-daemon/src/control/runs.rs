@@ -431,15 +431,72 @@ pub(crate) fn is_issue_key(s: &str) -> bool {
     !body.is_empty() && body.len() <= 10 && body.chars().all(|c| c.is_ascii_digit())
 }
 
-pub(crate) fn run_close(
+/// A master's close: the run is ended on this box, and then its core session is closed through
+/// the closer the sweep uses (`run_record::send_close`), so the lease it holds goes before the
+/// close answers rather than a sweep later (ISS-929). The reply's `reason` says what core did: a
+/// close core did not take now is owed, recorded the way the sweep records it, and the next
+/// sweep sends it again.
+pub(crate) async fn run_close(
     ctl: &Arc<Control>,
     run_id: &str,
     reason: Option<&str>,
     session_id: &str,
 ) -> ClaimReply {
+    match ctl.core.as_deref() {
+        Some(core) => {
+            run_close_with(
+                ctl,
+                run_id,
+                reason,
+                session_id,
+                Some(&crate::run_record::CoreSessions(core)),
+            )
+            .await
+        }
+        None => {
+            run_close_with::<crate::run_record::CoreSessions<'_>>(
+                ctl, run_id, reason, session_id, None,
+            )
+            .await
+        }
+    }
+}
+
+pub(crate) async fn run_close_with<C: crate::run_record::SessionCloser>(
+    ctl: &Arc<Control>,
+    run_id: &str,
+    reason: Option<&str>,
+    session_id: &str,
+    closer: Option<&C>,
+) -> ClaimReply {
+    let (run, standing) = match end_by_master(ctl, run_id, reason, session_id) {
+        Ok(ended) => ended,
+        Err(refused) => return refused,
+    };
+    let at_core = close_at_core_now(ctl, closer, &run, standing.as_deref()).await;
+    ClaimReply {
+        ok: true,
+        job_id: Some(run_id.to_string()),
+        agent_session_id: Some(session_id.to_string()),
+        issue_key: None,
+        reason: Some(at_core),
+        deny: false,
+    }
+}
+
+/// End the run on this box as its master's close, answering the row as it now reads and the run
+/// standing in its tree, if any; or the refusal the pane is told.
+fn end_by_master(
+    ctl: &Arc<Control>,
+    run_id: &str,
+    reason: Option<&str>,
+    session_id: &str,
+) -> Result<(runner_core::ledger::Run, Option<String>), ClaimReply> {
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else {
-        return ClaimReply::refused("this daemon has no ledger open, so it can record nothing");
+        return Err(ClaimReply::refused(
+            "this daemon has no ledger open, so it can record nothing",
+        ));
     };
     match led.run(run_id) {
         Ok(Some(run)) if run.master_session_id == session_id => {
@@ -447,10 +504,10 @@ pub(crate) fn run_close(
             // wrote its own reason over the first, so the row said whatever
             // the last caller typed (ISS-1312).
             if let Some(by) = run.ended_by.as_deref() {
-                return ClaimReply::refused(format!(
+                return Err(ClaimReply::refused(format!(
                     "run {run_id} is already ended by {by}: \u{ab}{}\u{bb}. An ending is recorded once, so this close changed nothing",
                     run.ended_reason.as_deref().unwrap_or("no reason recorded")
-                ));
+                )));
             }
             // The id its claims were taken under, read before anything else
             // can stand in its tree: the next run's brief writes its own
@@ -461,21 +518,66 @@ pub(crate) fn run_close(
                 }
             }
             if let Err(e) = led.end_run(run_id, "master", reason.unwrap_or("the master said so")) {
-                return ClaimReply::refused(e.to_string());
+                return Err(ClaimReply::refused(e.to_string()));
             }
             tracing::info!("[control] run {run_id} closed by its master");
-            ClaimReply {
-                ok: true,
-                job_id: Some(run_id.to_string()),
-                agent_session_id: Some(session_id.to_string()),
-                issue_key: None,
-                reason: None,
-                deny: false,
-            }
+            let ended = match led.run(run_id) {
+                Ok(Some(ended)) => ended,
+                _ => run,
+            };
+            let standing = led
+                .open_run_at_tree(&ended.worktree_path)
+                .ok()
+                .flatten()
+                .map(|next| next.run_id)
+                .filter(|next| next != run_id);
+            Ok((ended, standing))
         }
-        Ok(Some(_)) => ClaimReply::refused(format!("run {run_id} belongs to another master")),
-        Ok(None) => ClaimReply::refused(format!("no run {run_id} on this box")),
-        Err(e) => ClaimReply::refused(e.to_string()),
+        Ok(Some(_)) => Err(ClaimReply::refused(format!(
+            "run {run_id} belongs to another master"
+        ))),
+        Ok(None) => Err(ClaimReply::refused(format!("no run {run_id} on this box"))),
+        Err(e) => Err(ClaimReply::refused(e.to_string())),
+    }
+}
+
+/// Close an ended run's core session now, the ledger unlocked while core answers, and say what
+/// came of it in a line the pane prints under `closed`.
+async fn close_at_core_now<C: crate::run_record::SessionCloser>(
+    ctl: &Arc<Control>,
+    closer: Option<&C>,
+    run: &runner_core::ledger::Run,
+    standing: Option<&str>,
+) -> String {
+    use crate::run_record::CloseAtCore;
+    let Some(session) = run.session_id.as_deref() else {
+        return "it never opened a session at core, so no core session holds its issues".into();
+    };
+    let Some(closer) = closer else {
+        return format!(
+            "its core session {session} is still open: this daemon has no core client, so the sweep sends its close"
+        );
+    };
+    let sent = crate::run_record::send_close(closer, run, standing).await;
+    let mut held = ctl.ledger.lock().expect("ledger poisoned");
+    let Some(led) = held.as_mut() else {
+        return format!(
+            "its core session {session} is still open: the ledger closed under this close, so the sweep sends it again"
+        );
+    };
+    match crate::run_record::record_close(led, &run.run_id, sent) {
+        CloseAtCore::Closed => {
+            format!("its core session {session} is closed, and the issue leases it held with it")
+        }
+        CloseAtCore::Owed(why) => format!(
+            "its core session {session} is still open: core did not take the close ({why}). The next sweep sends it again; until core takes it, the session holds its issue leases"
+        ),
+        CloseAtCore::Refused(why) => format!(
+            "its core session {session} is still open: core refused the close as malformed ({why}) and will refuse it again unchanged, so it stays open until core reaps it"
+        ),
+        CloseAtCore::NoSession => {
+            "it never opened a session at core, so no core session holds its issues".into()
+        }
     }
 }
 
@@ -876,7 +978,7 @@ mod tree_tests {
         assert!(first.ok, "a live worktree was refused: {first:?}");
         // The master closes the run, and the close gives its worktree back.
         let run_id = first.job_id.unwrap();
-        assert!(run_close(&ctl, &run_id, Some("done"), MASTER).ok);
+        assert!(run_close(&ctl, &run_id, Some("done"), MASTER).await.ok);
         git(&repo, &["worktree", "remove", tree.to_str().unwrap()]);
         let reply = declare(&ctl, &tree).await;
         assert!(
