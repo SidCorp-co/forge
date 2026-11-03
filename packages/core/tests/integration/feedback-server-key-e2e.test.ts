@@ -13,6 +13,8 @@
  * @direct-test-of packages/core/src/feedback/service.ts
  * @direct-test-of packages/core/src/feedback/read.ts
  * @direct-test-of packages/contracts/src/feedback-server-keys.ts
+ * @direct-test-of packages/core/src/db/schema-feedback-server-keys.ts
+ * @direct-test-of packages/core/src/lib/advisory-lock.ts
  */
 
 import { randomBytes } from 'node:crypto';
