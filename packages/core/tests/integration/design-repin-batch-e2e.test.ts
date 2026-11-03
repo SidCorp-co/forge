@@ -1,3 +1,5 @@
+// @direct-test-of packages/core/src/workflows/routes.ts
+// @direct-test-of packages/core/src/workflows/route-declarations.ts
 /**
  * The HOP shape (2026-10-07/08): approving access at a new revision left six approved designs on its
  * old revision, and each was re-proposed and approved one by one though only its pin moved. One act

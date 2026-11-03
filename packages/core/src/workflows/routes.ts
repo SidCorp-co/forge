@@ -16,7 +16,6 @@ import {
   strictBody,
   zValidator,
 } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
 import { DESIGN_DECISIONS } from './design.js';
 import { readRepinPlanAs, repinAs } from './design-repin-service.js';
 import {
@@ -33,6 +32,7 @@ import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-s
 import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designReadOf, workflowSummaryOf } from './projection.js';
 import { type IgnoredField, ignoredByWrite, readBackOf } from './read-back.js';
+import { DESIGN, DESIGN_APPROVER, OBSERVATION_WRITE, READ, WRITE } from './route-declarations.js';
 import {
   createWorkflow,
   readWorkflowAs,
@@ -121,10 +121,6 @@ function answer(c: Context, outcome: WorkflowOutcome, readBack?: readonly Ignore
     outcome.created ? 201 : 200,
   );
 }
-
-const READ = requiresOnParam('project.read', 'id');
-const WRITE = requiresOnParam('project.write', 'id');
-const DESIGN = requiresOnParam('workflow-designs.write', 'id');
 
 workflowRoutes.post('/:id/workflows', idParam, DESIGN, envelope, async (c) => {
   const { baseRevision, document } = envelopeOf(c.req.valid('json'));
@@ -270,6 +266,7 @@ workflowRoutes.post(
 workflowRoutes.post(
   '/:id/workflows/:workflow/design/decision',
   workflowParam,
+  DESIGN_APPROVER,
   strictBody(
     z.strictObject({
       revision: z.number().int().min(1),
@@ -340,6 +337,7 @@ workflowRoutes.get(
 workflowRoutes.post(
   '/:id/workflows/:workflow/design/repins',
   workflowParam,
+  DESIGN_APPROVER,
   strictBody(
     z.strictObject({
       revision: z.number().int().min(1),
@@ -421,6 +419,7 @@ const workflowRefParam = zValidator(
 workflowRoutes.post(
   '/:id/workflows/:workflow/observations',
   workflowRefParam,
+  OBSERVATION_WRITE,
   strictBody(writeObservationSchema, WRITE_OBSERVATION_SHAPE),
   async (c) => {
     const { id, workflow } = c.req.valid('param');
@@ -438,7 +437,7 @@ workflowRoutes.post(
 workflowRoutes.get(
   '/:id/workflows/:workflow/observations',
   workflowRefParam,
-  requiresOnParam('project.read', 'id'),
+  READ,
   noQuery,
   async (c) => {
     const { id, workflow } = c.req.valid('param');
@@ -459,7 +458,7 @@ workflowRoutes.get(
       'invalid path: a project uuid, a workflow uuid or flow, and latest, a commit sha or an observation id',
     ),
   ),
-  requiresOnParam('project.read', 'id'),
+  READ,
   noQuery,
   async (c) => {
     const { id, workflow, at } = c.req.valid('param');
