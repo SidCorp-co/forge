@@ -11,12 +11,12 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
-import { RefusalError } from '../../src/lib/refusal.js';
 import {
   issueWorkInFlightSql,
   releaseIssueLeaseRow,
   takeIssueLeases,
 } from '../../src/issues/issue-lease.js';
+import { RefusalError } from '../../src/lib/refusal.js';
 import {
   createTestDevice,
   createTestProject,
