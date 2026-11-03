@@ -3788,6 +3788,13 @@
       "when": 1834358400000,
       "tag": "0595_a_beta_pair_records_its_body_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 596,
+      "version": "7",
+      "when": 1834444800000,
+      "tag": "0596_a_beta_pair_records_its_close_in_the_landing_shape",
+      "breakpoints": true
     }
   ]
 }

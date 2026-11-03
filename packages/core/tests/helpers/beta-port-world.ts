@@ -1,7 +1,9 @@
 /**
  * forge-beta as the beta port reads and writes it (ISS-923), for `beta-port-e2e.test.ts`: a stub HTTP
- * server holding projects, issues, comments, activity and merge marks, answering a transition the way
- * beta's issue machine does where a test asks it to, and counting every request it took.
+ * server holding projects, their project documents, issues, comments, activity and merge marks,
+ * answering a transition the way beta's issue machine does where a test asks it to, refusing a mark
+ * whose shape is not the project's the way beta's mark writer does (`landingMarkRefusal`), and
+ * counting every request it took.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -23,6 +25,10 @@ export interface StubIssue {
   createdAt: string;
   /** Left off a row to stand for a beta whose rows carry no count. */
   reopenCount?: number;
+  /** Beta's merge mark on the row, as its list and issue reads carry it. */
+  mergedAt?: string | null;
+  mergedCommitSha?: string | null;
+  mergedLanding?: string | null;
 }
 
 export interface StubActivity {
@@ -47,7 +53,14 @@ export const beta = {
   closeNeedsMark: false,
   /** The code a close of an issue is refused with once its mark is recorded (beta's release rule). */
   closeAfterMark: new Map<string, string>(),
-  marks: new Map<string, { landing: string; note: string }>(),
+  /** Each project's document, as `GET /api/projects/:id/config` answers it; unset is undeclared. */
+  configs: new Map<string, Record<string, unknown>>(),
+  /** How many times each project's document was read. */
+  configReads: new Map<string, number>(),
+  /** Every mark beta took, by issue, as the body that was sent. */
+  marks: new Map<string, Record<string, unknown>>(),
+  /** Every mark beta refused, with its code. */
+  refusedMarks: [] as { issueId: string; code: string; body: Record<string, unknown> }[],
   transitions: [] as { issueId: string; toStatus: string; reason: string }[],
   /** How long the project list takes to answer: a slow beta. */
   delayMs: 0,
@@ -69,6 +82,33 @@ function closeRefusal(id: string, toStatus: string): string | null {
   if (toStatus !== 'closed' || !beta.closeNeedsMark) return null;
   if (!beta.marks.has(id)) return 'CLOSE_REQUIRES_SHIPPED';
   return beta.closeAfterMark.get(id) ?? null;
+}
+
+const projectOf = (issueId: string) => {
+  for (const [projectId, list] of beta.issues) {
+    if (list.some((i) => i.id === issueId)) return projectId;
+  }
+  return undefined;
+};
+
+/**
+ * Beta's mark writer, as far as a port's mark meets it: the project's landing shape read from its
+ * document, `landingMarkRefusal` over it, and a git mark naming no target refused as beta's
+ * `markTargetRequired` does. A mark taken is stamped on the row; the first stamp wins.
+ */
+async function markRefusal(issueId: string, body: Record<string, unknown>): Promise<string | null> {
+  const { landingMarkRefusal, landingShapeOf } = await import(
+    '../../src/issues/landing-evidence.js'
+  );
+  const document = beta.configs.get(projectOf(issueId) ?? '');
+  const source = document?.source as { type?: string } | undefined;
+  const shape = landingShapeOf(source?.type ?? null);
+  if (shape === null) return 'SOURCE_UNDECLARED';
+  const landing = typeof body.landing === 'string' ? body.landing : null;
+  const refusal = landingMarkRefusal({ shape, landing, observed: false });
+  if (refusal) return refusal.code;
+  if (shape === 'git' && !landing && typeof body.target !== 'string') return 'VALIDATION_FAILED';
+  return null;
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -98,6 +138,16 @@ export function startBeta(): Promise<string> {
       if (beta.delayMs > 0) await new Promise((r) => setTimeout(r, beta.delayMs));
       return send(200, beta.projects);
     }
+    if (req.method === 'GET' && parts[1] === 'projects' && parts[3] === 'config') {
+      const document = beta.configs.get(parts[2] as string);
+      beta.configReads.set(parts[2] as string, (beta.configReads.get(parts[2] as string) ?? 0) + 1);
+      return send(
+        200,
+        document
+          ? { declared: true, revision: 1, document }
+          : { declared: false, revision: null, document: null },
+      );
+    }
     if (req.method === 'GET' && parts[1] === 'projects' && parts[3] === 'issues') {
       const items = (beta.issues.get(parts[2] as string) ?? []).map((i) => {
         if (!beta.bare.has(i.id)) return i;
@@ -119,12 +169,23 @@ export function startBeta(): Promise<string> {
       return send(200, { items, nextBefore: null });
     }
     if (req.method === 'POST' && parts[1] === 'issues' && parts[3] === 'merge') {
+      const id = parts[2] as string;
       const body = await readBody(req);
-      beta.marks.set(parts[2] as string, {
-        landing: String(body.landing),
-        note: String(body.note),
-      });
-      return send(200, { id: parts[2], action: 'merged', mark: 'landing' });
+      const refusal = await markRefusal(id, body);
+      if (refusal) {
+        beta.refusedMarks.push({ issueId: id, code: refusal, body });
+        return send(422, { code: refusal, message: 'refused, nothing was marked' });
+      }
+      beta.marks.set(id, body);
+      const issue = findIssue(id);
+      if (issue && !issue.mergedAt) {
+        issue.mergedAt =
+          typeof body.mergedAt === 'string' ? body.mergedAt : new Date().toISOString();
+        issue.mergedCommitSha = typeof body.commit === 'string' ? body.commit : null;
+        issue.mergedLanding = typeof body.landing === 'string' ? body.landing : null;
+      }
+      const mark = typeof body.landing === 'string' ? 'landed' : 'asserted';
+      return send(200, { id, action: 'merged', mark });
     }
     if (parts[1] === 'issues' && parts[3] === 'comments') {
       const id = parts[2] as string;
@@ -224,3 +285,36 @@ export async function writeRuling(projectId: string, at: Date) {
                 'Issues filed on forge-beta are worked on forge-dev from now on.', 'always', ${at.toISOString()}::timestamptz, now())`,
   );
 }
+
+/** A beta project document whose work lands outside git: a mark there names its `landing`. */
+export const outsideGitDocument = (): Record<string, unknown> => ({
+  source: { type: 'none' },
+  environments: {},
+  promotions: [],
+});
+
+/** A beta project document whose work lands in git on `defaultBranch`, production deploying it. */
+export const gitDocument = (defaultBranch: string): Record<string, unknown> => ({
+  source: { type: 'git', git: { defaultBranch } },
+  environments: {
+    production: {
+      tier: 'production',
+      deploysFrom: defaultBranch,
+      deployment: { binding: 'prod', trigger: 'on-land' },
+    },
+  },
+  promotions: [],
+});
+
+/** A git project whose release promotes `from` into `to`, the branch production deploys from. */
+export const promotedDocument = (from: string, to: string): Record<string, unknown> => ({
+  source: { type: 'git', git: { defaultBranch: from } },
+  environments: {
+    production: {
+      tier: 'production',
+      deploysFrom: to,
+      deployment: { binding: 'prod', trigger: 'on-request' },
+    },
+  },
+  promotions: [{ from, to, via: 'merge' }],
+});

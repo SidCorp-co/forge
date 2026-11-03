@@ -1,9 +1,11 @@
 // @direct-test-of packages/core/src/beta-port/markers.ts
 // @direct-test-of packages/core/src/beta-port/report.ts
 // @direct-test-of packages/core/src/schedules/cron.ts
+// @direct-test-of packages/core/src/integrations/peer-forge/landing.ts
 
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import { describe, expect, it } from 'vitest';
+import { peerLandingOf } from '../integrations/peer-forge/landing.js';
 import { validateCron } from '../schedules/cron.js';
 import {
   DEV_TO_BETA_STATUS,
@@ -11,6 +13,7 @@ import {
   firstLineNamesBetaIssue,
   firstLineOf,
   isPortedMarker,
+  landingMark,
   markerDevKey,
   mirrorTarget,
   owesTry,
@@ -112,27 +115,36 @@ describe('the fire report', () => {
 });
 
 describe('a mirror try', () => {
-  const fresh = { lastMirroredStatus: 'open', lastTriedStatus: 'open' };
-  const old = { lastMirroredStatus: 'closed', lastTriedStatus: null };
+  const shaped = new Date('2026-11-03T12:00:00.000Z');
+  const fresh = { lastMirroredStatus: 'open', lastTriedStatus: 'open', closeShapeTriedAt: null };
+  const old = { lastMirroredStatus: 'closed', lastTriedStatus: null, closeShapeTriedAt: null };
 
   it('is owed once per dev status under this rule', () => {
     expect(owesTry(fresh, 'open', 'open')).toBeNull();
     expect(owesTry(fresh, 'closed', 'open')).toBe('try');
     expect(
-      owesTry({ ...fresh, lastTriedStatus: 'closed' }, 'closed', 'awaiting_release'),
+      owesTry(
+        { ...fresh, lastTriedStatus: 'closed', closeShapeTriedAt: shaped },
+        'closed',
+        'awaiting_release',
+      ),
     ).toBeNull();
+  });
+
+  it('retries once a close tried before its mark took the beta landing shape, until beta closes it', () => {
+    const held = { ...fresh, lastTriedStatus: 'closed' };
+    expect(owesTry(held, 'closed', 'awaiting_release')).toBe('retry-shape');
+    expect(owesTry(held, 'closed', 'closed')).toBeNull();
+    expect(owesTry({ ...held, closeShapeTriedAt: shaped }, 'closed', 'open')).toBeNull();
+    expect(owesTry({ ...fresh, lastTriedStatus: 'dropped' }, 'dropped', 'open')).toBeNull();
   });
 
   it('retries once a status the old rule recorded as mirrored where beta does not stand at it', () => {
     expect(owesTry(old, 'closed', 'in_progress')).toBe('retry-old');
     expect(owesTry(old, 'closed', 'closed')).toBeNull();
     expect(owesTry(old, 'dropped', 'closed')).toBe('try');
-    expect(
-      owesTry({ lastMirroredStatus: 'draft', lastTriedStatus: null }, 'draft', 'open'),
-    ).toBeNull();
-    expect(owesTry({ lastMirroredStatus: null, lastTriedStatus: null }, 'open', 'open')).toBe(
-      'try',
-    );
+    expect(owesTry({ ...old, lastMirroredStatus: 'draft' }, 'draft', 'open')).toBeNull();
+    expect(owesTry({ ...old, lastMirroredStatus: null }, 'open', 'open')).toBe('try');
   });
 
   it("names where the dev issue's work landed: its landing, else its commit", () => {
@@ -144,6 +156,90 @@ describe('a mirror try', () => {
       'forge-dev SD-5 at commit 0123456789ab',
     );
     expect(devLanding(dev)).toBe('forge-dev SD-5');
+  });
+});
+
+describe("beta's merge mark in its project's landing shape (ISS-923 fix forward)", () => {
+  const SHA = 'b7c393812cd5a0f1e2d3c4b5a6978877665544aa';
+  const dev = {
+    key: 'SD-5',
+    mergedLanding: null,
+    mergedCommitSha: SHA,
+    mergedAt: new Date('2026-11-03T07:45:47.000Z'),
+  };
+  const git = { shape: 'git', target: 'master', from: 'deploysFrom' } as const;
+
+  it('names the commit and target in git, never a landing', () => {
+    const built = landingMark(dev, git);
+    expect(built).toMatchObject({
+      ok: true,
+      mark: { commit: SHA, target: 'master', mergedAt: '2026-11-03T07:45:47.000Z' },
+      says: 'its landing recorded as commit b7c393812cd5 on master',
+    });
+    expect(built.ok && built.mark).not.toHaveProperty('landing');
+    expect(built.ok && 'note' in built.mark && built.mark.note).toContain('SD-5');
+  });
+
+  it('names the landing outside git, and refuses a git mark with no commit by name', () => {
+    const outside = landingMark(
+      { ...dev, mergedLanding: 'https://x.example/a' },
+      {
+        shape: 'outside_git',
+      },
+    );
+    expect(outside).toMatchObject({
+      ok: true,
+      mark: { landing: 'forge-dev SD-5 at https://x.example/a' },
+    });
+    expect(outside.ok && outside.mark).not.toHaveProperty('commit');
+    const none = landingMark({ ...dev, mergedCommitSha: null }, git);
+    expect(none).toEqual({
+      ok: false,
+      refusal: expect.stringContaining('BETA_PORT_NO_MERGED_COMMIT: SD-5'),
+    });
+  });
+
+  it('reads the landing from the beta project document: base branch, or deploysFrom where a release promotes into it', () => {
+    const doc = (document: unknown) => peerLandingOf({ declared: true, revision: 1, document });
+    const source = { type: 'git', git: { defaultBranch: 'dev' } };
+    const production = (deploysFrom: string) => ({
+      production: { tier: 'production', deploysFrom, deployment: {} },
+    });
+    expect(doc({ source, environments: {}, promotions: [] })).toEqual({
+      ok: true,
+      landing: { shape: 'git', target: 'dev', from: 'defaultBranch' },
+    });
+    expect(
+      doc({
+        source,
+        environments: production('master'),
+        promotions: [{ from: 'dev', to: 'master' }],
+      }),
+    ).toEqual({ ok: true, landing: { shape: 'git', target: 'master', from: 'deploysFrom' } });
+    // no promotion reaches it: not release-promoted, the base branch
+    expect(doc({ source, environments: production('master'), promotions: [] })).toMatchObject({
+      landing: { target: 'dev' },
+    });
+    for (const type of ['none', 'storefront']) {
+      expect(doc({ source: { type } })).toEqual({ ok: true, landing: { shape: 'outside_git' } });
+    }
+  });
+
+  it('refuses by name a document it cannot read the landing from', () => {
+    expect(peerLandingOf({ declared: false, revision: null, document: null })).toMatchObject({
+      ok: false,
+      code: 'PEER_FORGE_LANDING_UNDECLARED',
+    });
+    for (const answer of [
+      null,
+      { declared: true, document: { source: { type: 'svn' } } },
+      { declared: true, document: { source: { type: 'git', git: {} } } },
+    ]) {
+      expect(peerLandingOf(answer)).toMatchObject({
+        ok: false,
+        code: 'PEER_FORGE_LANDING_UNREADABLE',
+      });
+    }
   });
 });
 

@@ -239,7 +239,7 @@ async function portProject(ctx: FireContext, betaProjectId: string, twin: DevTwi
     ctx.report.beforeRuling.push(`${twin.slug}: ${before} (not ported${unread})`);
   }
 
-  await mirrorProject(ctx, twin, betaIssues, pairs);
+  await mirrorProject(ctx, { betaProjectId, twin }, betaIssues, pairs);
 }
 
 /**
@@ -308,6 +308,7 @@ async function adopt(beta: PeerIssue, twin: DevTwin, devIssueId: string): Promis
     lastMirroredStatus: null,
     lastTriedStatus: null,
     betaReached: null,
+    closeShapeTriedAt: null,
   };
   await recordPair({ ...pair, betaProjectSlug: twin.slug });
   return pair;
@@ -367,6 +368,7 @@ async function portOne(ctx: FireContext, beta: PeerIssue, twin: DevTwin): Promis
     lastMirroredStatus: issue.status,
     lastTriedStatus: issue.status,
     betaReached: beta.status,
+    closeShapeTriedAt: null,
     betaProjectSlug: twin.slug,
   });
   const held = issue.status === 'open' ? '' : ` (held at ${issue.status})`;

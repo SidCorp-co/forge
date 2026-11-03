@@ -31,6 +31,12 @@ export const betaPortPairs = pgTable(
      * beta's body empty; null where no backfill was made (ISS-923: the first fire read no bodies).
      */
     bodyBackfilledAt: timestamp('body_backfilled_at', { withTimezone: true }),
+    /**
+     * When a close was last tried with beta's merge mark in the beta project's landing shape (commit
+     * and target in git, landing outside it); null on a pair whose close was tried only with the old
+     * landing-only mark, which beta refused in git, so it owes one more try (ISS-923 fix forward).
+     */
+    closeShapeTriedAt: timestamp('close_shape_tried_at', { withTimezone: true }),
     /** The fire that made that backfill. */
     bodyBackfillFireId: uuid('body_backfill_fire_id').references(() => scheduleRuns.id, {
       onDelete: 'set null',

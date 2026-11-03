@@ -26,6 +26,7 @@ export interface DevIssue {
 export interface MirroredDevIssue extends DevIssue {
   mergedLanding: string | null;
   mergedCommitSha: string | null;
+  mergedAt: Date | null;
 }
 
 export interface Pair {
@@ -38,6 +39,8 @@ export interface Pair {
   lastTriedStatus: string | null;
   /** The beta status beta stood at after that try. */
   betaReached: string | null;
+  /** When a close was last tried with beta's mark in its project's landing shape; null before. */
+  closeShapeTriedAt: Date | null;
 }
 
 /** The slug of the org knowledge entry holding the owner's ruling: its creation is the cutoff. */
@@ -98,6 +101,7 @@ export async function devIssuesById(
       status: issues.status,
       mergedLanding: issues.mergedLanding,
       mergedCommitSha: issues.mergedCommitSha,
+      mergedAt: issues.mergedAt,
     })
     .from(issues)
     .where(inArray(issues.id, [...ids]));
@@ -117,6 +121,7 @@ export async function pairsOf(betaIssueIds: readonly string[]): Promise<Map<stri
       lastMirroredStatus: betaPortPairs.lastMirroredStatus,
       lastTriedStatus: betaPortPairs.lastTriedStatus,
       betaReached: betaPortPairs.betaReached,
+      closeShapeTriedAt: betaPortPairs.closeShapeTriedAt,
     })
     .from(betaPortPairs)
     .where(inArray(betaPortPairs.betaIssueId, [...betaIssueIds]));
@@ -134,17 +139,21 @@ export async function recordPair(pair: Pair & { betaProjectSlug: string }): Prom
 /**
  * One try of a dev status onto a pair's beta issue: the status tried, the beta status beta stood at
  * after it, and, where beta took the move, that status as mirrored. A try beta did not take leaves
- * the mirrored status as it was, unless it named this same dev status, which beta never took.
+ * the mirrored status as it was, unless it named this same dev status, which beta never took. A
+ * close whose mark question was settled in the beta project's landing shape says so (`shapeSettled`),
+ * so it is not tried again for it.
  */
 export async function recordTry(args: {
   betaIssueId: string;
   tried: string;
   reached: string;
   taken: boolean;
+  shapeSettled?: boolean;
 }): Promise<void> {
   await db
     .update(betaPortPairs)
     .set({
+      ...(args.shapeSettled ? { closeShapeTriedAt: new Date() } : {}),
       lastTriedStatus: args.tried,
       betaReached: args.reached,
       lastMirroredStatus: args.taken

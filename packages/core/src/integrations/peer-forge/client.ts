@@ -5,6 +5,7 @@
 // token is added here and scrubbed out of every detail that leaves.
 
 import { scrubLogText } from '@forge/observability';
+import { type PeerLanding, peerLandingOf } from './landing.js';
 
 /** Where the peer is, and the token it is read and written with. */
 export interface PeerForge {
@@ -42,6 +43,8 @@ export interface PeerIssue {
   createdAt: Date;
   /** How many times it moved into `reopen`; null where the peer's row carries no count. */
   reopenCount: number | null;
+  /** Whether the peer holds a merge mark on it; null where its row carries no merge fields. */
+  marked: boolean | null;
 }
 
 const CALL_TIMEOUT_MS = 15_000;
@@ -204,6 +207,7 @@ function issueOf(row: unknown): PeerIssue | null {
       typeof row.reopenCount === 'number' && Number.isInteger(row.reopenCount)
         ? row.reopenCount
         : null,
+    marked: 'mergedAt' in row ? str(row.mergedAt) !== null : null,
   };
 }
 
@@ -325,17 +329,43 @@ export async function peerMovedIntoSince(
   );
 }
 
+/**
+ * A peer merge mark, in the shape the peer project's landing takes: `commit` and `target` where its
+ * work lands in git, `landing` where it lands outside git (`landing-evidence.ts:landingMarkRefusal`).
+ */
+export type PeerMergeMark =
+  | { commit: string; target: string; mergedAt: string | null; note: string }
+  | { landing: string; note: string };
+
+/** How a peer project's work lands, read from its project document; refused by name where unread. */
+export async function readPeerLanding(
+  peer: PeerForge,
+  projectId: string,
+): Promise<PeerAnswer<PeerLanding>> {
+  const route = `/projects/${encodeURIComponent(projectId)}/config`;
+  const got = await call(peer, 'GET', route);
+  if (!got.ok) return got;
+  const read = peerLandingOf(got.value);
+  if (!read.ok) return refuse(read.code, 200, `GET /api${route}: ${read.detail}`);
+  return { ok: true, value: read.landing };
+}
+
 /** Record on a peer issue that its work landed, naming where: the peer's merge mark. */
 export async function markPeerIssueLanded(
   peer: PeerForge,
   issueId: string,
-  landing: string,
-  note: string,
+  mark: PeerMergeMark,
 ): Promise<PeerAnswer<null>> {
-  const got = await call(peer, 'POST', `/issues/${encodeURIComponent(issueId)}/merge`, {
-    landing,
-    note,
-  });
+  const body: Record<string, unknown> =
+    'landing' in mark
+      ? { landing: mark.landing, note: mark.note }
+      : {
+          commit: mark.commit,
+          target: mark.target,
+          ...(mark.mergedAt ? { mergedAt: mark.mergedAt } : {}),
+          note: mark.note,
+        };
+  const got = await call(peer, 'POST', `/issues/${encodeURIComponent(issueId)}/merge`, body);
   return got.ok ? { ok: true, value: null } : got;
 }
 

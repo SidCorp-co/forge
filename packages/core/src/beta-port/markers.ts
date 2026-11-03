@@ -2,6 +2,7 @@
 // marks a beta issue ported, how either is recognised, and which beta status a dev status mirrors to.
 
 import { ISSUE_TERMINAL_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
+import type { PeerLanding, PeerMergeMark } from '../integrations/peer-forge/index.js';
 
 /** The beta statuses that are never ported: the issue is finished there. */
 export const UNPORTED_BETA_STATUSES: ReadonlySet<string> = new Set<string>(ISSUE_TERMINAL_STATUSES);
@@ -133,6 +134,48 @@ export function landedNote(devKey: string): string {
   return `Worked and shipped on forge-dev as ${devKey}; beta records its status (owner ruling beta-issues-are-worked-on-dev).`;
 }
 
+/**
+ * Beta's merge mark for a dev issue, in the shape the beta twin project's landing takes, and how the
+ * report words it. In git: the dev issue's merged commit, on the branch the beta project lands on,
+ * at the dev issue's merged time, never a `landing`, which beta refuses there (LANDING_NOT_THIS_SHAPE).
+ * Outside git: the `landing` naming the dev key and where its work landed. A git twin's dev issue
+ * holding no merged commit is refused by name: a commit is never guessed.
+ */
+export function landingMark(
+  dev: {
+    key: string;
+    mergedLanding: string | null;
+    mergedCommitSha: string | null;
+    mergedAt: Date | null;
+  },
+  landing: PeerLanding,
+): { ok: true; mark: PeerMergeMark; says: string } | { ok: false; refusal: string } {
+  const note = landedNote(dev.key);
+  if (landing.shape === 'outside_git') {
+    return {
+      ok: true,
+      mark: { landing: devLanding(dev), note },
+      says: `its landing recorded as ${devLanding(dev)}`,
+    };
+  }
+  if (!dev.mergedCommitSha) {
+    return {
+      ok: false,
+      refusal: `BETA_PORT_NO_MERGED_COMMIT: ${dev.key} holds no merged commit, and the beta project lands in git, so a mark names a commit and none was sent`,
+    };
+  }
+  return {
+    ok: true,
+    mark: {
+      commit: dev.mergedCommitSha,
+      target: landing.target,
+      mergedAt: dev.mergedAt?.toISOString() ?? null,
+      note,
+    },
+    says: `its landing recorded as commit ${dev.mergedCommitSha.slice(0, 12)} on ${landing.target}`,
+  };
+}
+
 /** The reason a move to the nearest legal status toward closed carries on beta. */
 export function nearestReason(devKey: string, refused: string): string {
   return `Mirrored from forge-dev ${devKey}, which moved to closed; forge-beta refused closed (${refused}), and this is the nearest status toward it that it takes.`;
@@ -142,14 +185,25 @@ export function nearestReason(devKey: string, refused: string): string {
  * Whether a pair owes beta a try of the dev status. A pair tried under this rule is tried once per dev
  * status. One tried under the old rule (no `lastTriedStatus`) recorded the dev status as mirrored
  * whether beta took it or not; where beta does not stand at that status's target, beta refused it,
- * and it is tried once more under this rule.
+ * and it is tried once more under this rule. A close tried before the mark took the beta project's
+ * landing shape (no `closeShapeTriedAt`) that beta has not taken is tried once more under it
+ * (`retry-shape`); so is one whose shape could not be read, until it is.
  */
 export function owesTry(
-  pair: { lastMirroredStatus: string | null; lastTriedStatus: string | null },
+  pair: {
+    lastMirroredStatus: string | null;
+    lastTriedStatus: string | null;
+    closeShapeTriedAt: Date | null;
+  },
   devStatus: string,
   betaStatus: string,
-): 'try' | 'retry-old' | null {
-  if (pair.lastTriedStatus !== null) return devStatus === pair.lastTriedStatus ? null : 'try';
+): 'try' | 'retry-old' | 'retry-shape' | null {
+  if (pair.lastTriedStatus !== null) {
+    if (devStatus !== pair.lastTriedStatus) return 'try';
+    const shapeOwed =
+      devStatus === 'closed' && betaStatus !== 'closed' && pair.closeShapeTriedAt === null;
+    return shapeOwed ? 'retry-shape' : null;
+  }
   if (devStatus !== pair.lastMirroredStatus) return 'try';
   const target = mirrorTarget(devStatus);
   return target !== null && target !== betaStatus ? 'retry-old' : null;

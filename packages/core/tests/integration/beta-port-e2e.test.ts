@@ -35,6 +35,7 @@ import {
   beta,
   betaIssue,
   fireRow,
+  outsideGitDocument,
   RULING_AT,
   type StubIssue,
   settledFire,
@@ -72,6 +73,7 @@ beforeAll(async () => {
   twin = { id: t.id, slug: t.slug };
   say = requester(app, { owner: await signUserToken(ownerId) }) as typeof say;
   betaProjectId = randomUUID();
+  beta.configs.set(betaProjectId, outsideGitDocument());
   beta.projects = [
     { id: betaProjectId, slug: twin.slug },
     { id: randomUUID(), slug: `no-twin-${randomUUID().slice(0, 8)}` },
@@ -381,10 +383,13 @@ describe('a beta port close (ISS-923)', () => {
     expect(movesOf(closes)).toEqual(['closed', 'closed']);
     expect(movesOf(releases)).toEqual(['closed', 'closed', 'awaiting_release']);
     expect(movesOf(legacy)).toEqual(['closed', 'closed']);
+    // (b) the twin lands outside git, so its mark names the landing and no commit or target
     for (const b of [closes, releases, legacy]) {
       expect(beta.marks.get(b.id)?.landing).toBe(
         `forge-dev ${keys.get(b.id)} at https://dev.example/landed`,
       );
+      expect(beta.marks.get(b.id)).not.toHaveProperty('commit');
+      expect(beta.marks.get(b.id)).not.toHaveProperty('target');
     }
     expect([closes.status, releases.status, legacy.status]).toEqual([
       'closed',

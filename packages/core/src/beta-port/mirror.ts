@@ -1,19 +1,21 @@
 // The mirror half of a beta port fire (ISS-923): each ported pair's dev status, tried onto its beta
 // issue once. A move beta takes is reported; a close beta refuses for want of a shipped record is
-// finished the nearest legal way (`finishClose`); a move beta refuses outright is commented there
-// once. Each try is recorded on the pair with the status beta stood at after it, so nothing repeats
-// and nothing claims a status beta never took.
+// finished the nearest legal way (`finishClose`), its merge mark in the beta project's landing shape;
+// a move beta refuses outright is commented there once. Each try is recorded on the pair with the
+// status beta stood at after it, so nothing repeats and nothing claims a status beta never took.
 
 import {
   markPeerIssueLanded,
+  type PeerAnswer,
   type PeerForge,
   type PeerIssue,
+  type PeerLanding,
   postPeerComment,
+  readPeerLanding,
   transitionPeerIssue,
 } from '../integrations/peer-forge/index.js';
 import {
-  devLanding,
-  landedNote,
+  landingMark,
   mirrorReason,
   mirrorRefusedComment,
   mirrorTarget,
@@ -36,12 +38,33 @@ export interface MirrorContext {
   budget: { mirrors: number };
 }
 
+/** One beta project and its dev twin, with its landing shape read at most once per fire. */
+interface MirrorProject {
+  twin: DevTwin;
+  landing: () => Promise<PeerAnswer<PeerLanding>>;
+}
+
+/** One try's outcome: the beta status after it, and whether its close's mark question was settled. */
+interface Tried {
+  reached: string;
+  shapeSettled: boolean;
+}
+
 export async function mirrorProject(
   ctx: MirrorContext,
-  twin: DevTwin,
+  where: { betaProjectId: string; twin: DevTwin },
   betaIssues: readonly PeerIssue[],
   pairs: ReadonlyMap<string, Pair>,
 ): Promise<void> {
+  const { twin } = where;
+  let landing: Promise<PeerAnswer<PeerLanding>> | null = null;
+  const project: MirrorProject = {
+    twin,
+    landing: () => {
+      landing ??= readPeerLanding(ctx.peer, where.betaProjectId);
+      return landing;
+    },
+  };
   const betaById = new Map(betaIssues.map((i) => [i.id, i]));
   const live = [...pairs.values()].filter((p) => betaById.has(p.betaIssueId));
   const devs = await devIssuesById(
@@ -69,13 +92,14 @@ export async function mirrorProject(
       continue;
     }
     ctx.budget.mirrors -= 1;
-    const reached = await mirrorOne(ctx, twin, beta, dev, target, owed === 'retry-old');
+    const tried = await mirrorOne(ctx, project, beta, dev, target, owed !== 'try');
     // recorded whatever beta answered, so the same try is never made or commented twice
     await recordTry({
       betaIssueId: beta.id,
       tried: dev.status,
-      reached,
-      taken: reached === target,
+      reached: tried.reached,
+      taken: tried.reached === target,
+      shapeSettled: target === 'closed' && tried.shapeSettled,
     });
   }
 }
@@ -83,12 +107,13 @@ export async function mirrorProject(
 /** One mirror move onto beta; the beta status beta stands at after it. */
 async function mirrorOne(
   ctx: MirrorContext,
-  twin: DevTwin,
+  project: MirrorProject,
   beta: PeerIssue,
   dev: MirroredDevIssue,
   target: string,
   commentedBefore: boolean,
-): Promise<string> {
+): Promise<Tried> {
+  const { twin } = project;
   const line = (to: string, how = '') =>
     `${twin.slug}: ${dev.key}: ${beta.status} → ${to} (beta ${beta.key})${how}`;
   const moved = await transitionPeerIssue(
@@ -99,14 +124,16 @@ async function mirrorOne(
   );
   if (moved.ok) {
     ctx.report.mirrored.push(line(target));
-    return target;
+    return { reached: target, shapeSettled: true };
   }
   const refused = [moved.refusal.code];
+  let shapeSettled = true;
   if (target === 'closed') {
-    const finished = await finishClose(ctx, beta, dev, moved.refusal.code, refused);
-    if (finished) {
+    const finished = await finishClose(ctx, project, beta, dev, moved.refusal.code, refused);
+    shapeSettled = finished.shapeSettled;
+    if (finished.reached) {
       ctx.report.mirrored.push(line(finished.reached, finished.how));
-      return finished.reached;
+      return { reached: finished.reached, shapeSettled };
     }
   }
   const codes = refused.join(', ');
@@ -123,41 +150,46 @@ async function mirrorOne(
       );
     }
   }
-  return beta.status;
+  return { reached: beta.status, shapeSettled };
 }
 
 /**
  * A close beta refused, finished the nearest legal way: where it was refused for want of a shipped
- * record, beta's merge mark records where the work landed (the dev key and the dev issue's landing)
- * and the close is tried again; where beta still refuses it, beta moves to `awaiting_release`, the
- * status a close is taken from. Null where beta took neither; every refusal met is added to `refused`.
+ * record, beta's merge mark records where the work landed, in the shape the beta project's landing
+ * takes (`landingMark`), and the close is tried again; where beta still refuses it, beta moves to
+ * `awaiting_release`, the status a close is taken from. No mark is sent where beta already holds one,
+ * where the dev issue holds no commit a git twin's mark names, or where the beta project's shape
+ * cannot be read; the last leaves the close owed (`shapeSettled` false), so the next fire tries it
+ * again. `reached` is null where beta took neither move; every refusal met is added to `refused`.
  */
 async function finishClose(
   ctx: MirrorContext,
+  project: MirrorProject,
   beta: PeerIssue,
   dev: MirroredDevIssue,
   code: string,
   refused: string[],
-): Promise<{ reached: string; how: string } | null> {
-  let marked = false;
-  if (code === 'CLOSE_REQUIRES_SHIPPED') {
-    const mark = await markPeerIssueLanded(ctx.peer, beta.id, devLanding(dev), landedNote(dev.key));
-    if (mark.ok) {
-      marked = true;
+): Promise<{ reached: string | null; how: string; shapeSettled: boolean }> {
+  let recorded = '';
+  let shapeSettled = true;
+  if (code === 'CLOSE_REQUIRES_SHIPPED' && beta.marked === true) {
+    refused.push('beta already holds a merge mark on it, so no second one was sent');
+  } else if (code === 'CLOSE_REQUIRES_SHIPPED') {
+    const sent = await sendMark(ctx, project, beta, dev, refused);
+    shapeSettled = sent.shapeSettled;
+    if (sent.says) {
+      recorded = `, ${sent.says}`;
       const closed = await transitionPeerIssue(
         ctx.peer,
         beta.id,
         'closed',
         mirrorReason(dev.key, dev.status),
       );
-      if (closed.ok)
-        return { reached: 'closed', how: `, its landing recorded as ${devLanding(dev)}` };
+      if (closed.ok) return { reached: 'closed', how: recorded, shapeSettled };
       refused.push(`after the landing was recorded: ${closed.refusal.code}`);
-    } else {
-      refused.push(`recording the landing: ${mark.refusal.code}`);
     }
   }
-  if (beta.status === 'awaiting_release') return null;
+  if (beta.status === 'awaiting_release') return { reached: null, how: '', shapeSettled };
   const nearest = await transitionPeerIssue(
     ctx.peer,
     beta.id,
@@ -165,12 +197,40 @@ async function finishClose(
     nearestReason(dev.key, refused.join(', ')),
   );
   if (nearest.ok) {
-    const landed = marked ? `, its landing recorded as ${devLanding(dev)}` : '';
     return {
       reached: 'awaiting_release',
-      how: `${landed}; closed refused (${refused.join(', ')}), the nearest status beta takes`,
+      how: `${recorded}; closed refused (${refused.join(', ')}), the nearest status beta takes`,
+      shapeSettled,
     };
   }
   refused.push(`awaiting_release: ${nearest.refusal.code}`);
-  return null;
+  return { reached: null, how: '', shapeSettled };
+}
+
+/** Beta's merge mark for a dev issue, sent in its project's landing shape; how the report words it. */
+async function sendMark(
+  ctx: MirrorContext,
+  project: MirrorProject,
+  beta: PeerIssue,
+  dev: MirroredDevIssue,
+  refused: string[],
+): Promise<{ says: string | null; shapeSettled: boolean }> {
+  const landing = await project.landing();
+  if (!landing.ok) {
+    const named = `${project.twin.slug}: beta landing shape: ${landing.refusal.code} (${landing.refusal.detail})`;
+    if (!ctx.report.refused.includes(named)) ctx.report.refused.push(named);
+    refused.push(`the beta project's landing shape: ${landing.refusal.code}`);
+    return { says: null, shapeSettled: false };
+  }
+  const built = landingMark(dev, landing.value);
+  if (!built.ok) {
+    refused.push(built.refusal);
+    return { says: null, shapeSettled: true };
+  }
+  const mark = await markPeerIssueLanded(ctx.peer, beta.id, built.mark);
+  if (!mark.ok) {
+    refused.push(`recording the landing: ${mark.refusal.code}`);
+    return { says: null, shapeSettled: true };
+  }
+  return { says: built.says, shapeSettled: true };
 }
