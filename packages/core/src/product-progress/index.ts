@@ -5,6 +5,7 @@ export {
   feedbackRow,
   routedRequirements,
 } from './feedback-views.js';
+export { meHomeRoutes } from './home-routes.js';
 export {
   issuesOfRequirements,
   liveRunsByIssue,
@@ -16,4 +17,3 @@ export {
   runsOn,
   type WorkIssue,
 } from './progress.js';
-export { meHomeRoutes } from './home-routes.js';

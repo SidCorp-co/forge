@@ -3,8 +3,8 @@
 // the feedback page, the issue list and the board already serve; nothing here computes a date.
 
 import type { FeedbackSummary } from '@forge/contracts/feedback';
-import type { ActorAgency } from '@forge/contracts/permissions';
 import type { HomeMovingItem } from '@forge/contracts/owner-home';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { listFeedbackAs } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
 import { issueDisplayIds, issueWaitsOf, listIssues } from '../issues/index.js';

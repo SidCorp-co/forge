@@ -119,7 +119,6 @@ import { lessonRoutes } from './lessons/index.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpMethodNotAllowed, mcpRequestClass } from './mcp/index.js';
 import { meAttentionRoutes, mePulseRoutes } from './me/index.js';
-import { meHomeRoutes } from './product-progress/index.js';
 import { memoryListRoutes, memorySearchRoutes, memoryWriteRoutes } from './memory/routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';
@@ -156,6 +155,7 @@ import {
   recordingRoutes,
   roomRoutes,
 } from './previews/routes.js';
+import { meHomeRoutes } from './product-progress/index.js';
 import {
   contentLanguageRoutes,
   environmentStateRoutes,

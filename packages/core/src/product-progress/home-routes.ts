@@ -21,7 +21,13 @@ import { holds, requiresSelf } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/index.js';
 import { findIn, rankFound } from './home-find.js';
 import { liveOf, releasesOf } from './home-live.js';
-import { carriersOf, type HomeProject, type HomeViewer, movingOf, readHomeProject } from './home-moving.js';
+import {
+  carriersOf,
+  type HomeProject,
+  type HomeViewer,
+  movingOf,
+  readHomeProject,
+} from './home-moving.js';
 
 /** Projects read at once: each reads its feedback list, forecasts, runs and releases. */
 const HOME_CONCURRENCY = 2;
@@ -32,13 +38,18 @@ async function readableProjects(userId: string, orgId: string | null): Promise<H
   const checked = await Promise.all(
     visible.map(async (p) => {
       const access = await effectiveProjectRole(userId, p.id);
-      return access && holds(access, 'project.read') ? { id: p.id, slug: p.slug, name: p.name } : null;
+      return access && holds(access, 'project.read')
+        ? { id: p.id, slug: p.slug, name: p.name }
+        : null;
     }),
   );
   return checked.filter((p): p is HomeProject => p !== null);
 }
 
-function viewerOf(c: { get(key: 'userId'): string; get(key: 'agency'): AuthVars['agency'] }): HomeViewer {
+function viewerOf(c: {
+  get(key: 'userId'): string;
+  get(key: 'agency'): AuthVars['agency'];
+}): HomeViewer {
   const agency = c.get('agency');
   if (!agency) throw new Error('me/home: a request reached its handler without an auth gate');
   return { userId: c.get('userId'), agency };
@@ -66,7 +77,10 @@ meHomeRoutes.get(
     const parts = await Promise.all(
       projects.map((p) =>
         limiter.run(async () => {
-          const [part, releases] = await Promise.all([readHomeProject(viewer, p.id), releasesOf(p.id)]);
+          const [part, releases] = await Promise.all([
+            readHomeProject(viewer, p.id),
+            releasesOf(p.id),
+          ]);
           const mine = new Set([
             ...part.issues.map((i) => i.key),
             ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
@@ -104,7 +118,10 @@ meHomeRoutes.get(
     const found = await Promise.all(
       projects.map((p) =>
         limiter.run(async () => {
-          const [part, releases] = await Promise.all([readHomeProject(viewer, p.id), releasesOf(p.id)]);
+          const [part, releases] = await Promise.all([
+            readHomeProject(viewer, p.id),
+            releasesOf(p.id),
+          ]);
           return findIn(p, part, releases, q);
         }),
       ),
