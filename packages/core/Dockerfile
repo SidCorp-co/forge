@@ -42,7 +42,11 @@ RUN VITE_SENTRY_DSN=$VITE_SENTRY_DSN VITE_WS_URL=$VITE_WS_URL WEB_V2_BASE_PATH=$
 # `files` field in packages/core/package.json so only dist + skills +
 # drizzle + public + contracts ship (contracts/ is what GET /api/openapi.json
 # and GET /api/mcp-tools.json serve, byte for byte).
-RUN pnpm deploy --filter=@forge/core --prod /prod/core
+# The root's patchedDependencies patch web-v2's packages, which core's deploy never installs, and
+# pnpm 9 refuses a patch it did not apply (ERR_PNPM_PATCH_NOT_APPLIED). It reads the allowance only
+# from the root manifest, so it is written here, for this step: the install above stays strict.
+RUN node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('package.json','utf8'));m.pnpm.allowNonAppliedPatches=true;fs.writeFileSync('package.json',JSON.stringify(m,null,2)+'\n')" \
+    && pnpm deploy --filter=@forge/core --prod /prod/core
 
 # ----- Runtime stage: minimal node + the deployed app -----
 FROM node:22-alpine AS runtime
