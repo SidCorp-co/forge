@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/feedback/rules.ts
  * @direct-test-of packages/core/src/feedback/triage.ts
  * @direct-test-of packages/core/src/feedback/list-read.ts
+ * @direct-test-of packages/core/src/lib/standing-times.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -90,14 +91,26 @@ async function ship(issueId: string): Promise<void> {
 }
 
 /** Every count a person reads it through: Needs you, the project status, the feedback list. */
-async function personCounts(fb: string) {
+/** What the owner's Needs you counts in feedback now, every item of the project together. */
+async function ownerFeedbackOwed(): Promise<number> {
+  const needs = ok(await say('owner', 'GET', at('/needs-you')));
+  return needs.areas.feedback.you as number;
+}
+
+/**
+ * The person counts of one item. The feedback area's count is the project's, and since ISS-924 an
+ * item an earlier block resolved stays on the owner's Needs you while it names them (FB-7 here, its
+ * reporter to tell), so it is read against the count `before` the block filed its own items: what
+ * this item adds, never what the project already owed.
+ */
+async function personCounts(fb: string, before: number) {
   const needs = ok(await say('owner', 'GET', at('/needs-you')));
   const status = ok(await say('owner', 'GET', at('/status')));
   const list = ok(await say('member', 'GET', at('/feedback')));
   const row = list.feedback.find((f: Doc) => f.key === fb);
   return {
     needsYou: needs.items.filter((i: Doc) => i.key === fb).length,
-    needsYouFeedback: needs.areas.feedback.you as number,
+    needsYouFeedback: (needs.areas.feedback.you as number) - before,
     statusWaits: status.waits.people.filter((w: Doc) => w.key === fb).length,
     listGroup: row.attentionGroup as string,
     listNeedsYou: list.counts.needs_you as number,
@@ -134,7 +147,10 @@ describe('an item carried by a draft issue waits on the master, not a person (FB
   let fb = '';
   let carrier: Issue;
 
+  let before = 0;
+
   beforeAll(async () => {
+    before = await ownerFeedbackOwed();
     fb = await file('A release waits behind onboarding jobs');
     carrier = await issue('Give releases a slot of their own');
     await routedTo(fb, carrier);
@@ -157,7 +173,7 @@ describe('an item carried by a draft issue waits on the master, not a person (FB
   });
 
   it('is counted for no person anywhere', async () => {
-    expect(await personCounts(fb)).toEqual(NOBODY_PERSON);
+    expect(await personCounts(fb, before)).toEqual(NOBODY_PERSON);
   });
 });
 
@@ -165,7 +181,10 @@ describe('an item whose carrier is parked at needs_info waits on the master (FB-
   let fb = '';
   let carrier: Issue;
 
+  let before = 0;
+
   beforeAll(async () => {
+    before = await ownerFeedbackOwed();
     fb = await file('Wedge reset sends landed issues back to open');
     carrier = await issue('Keep landed issues out of the wedge reset');
     await routedTo(fb, carrier);
@@ -185,7 +204,7 @@ describe('an item whose carrier is parked at needs_info waits on the master (FB-
   });
 
   it('is counted for no person anywhere', async () => {
-    expect(await personCounts(fb)).toEqual(NOBODY_PERSON);
+    expect(await personCounts(fb, before)).toEqual(NOBODY_PERSON);
   });
 });
 
@@ -334,7 +353,10 @@ describe('a duplicate of an item held on a draft carrier reads its original (K61
   let dup = '';
   let carrier: Issue;
 
+  let before = 0;
+
   beforeAll(async () => {
+    before = await ownerFeedbackOwed();
     root = await file('Secret detector reads prose token: as a credential');
     dup = await file('Verdict refused for the words token: 503');
     carrier = await issue('Read only real credentials as secrets');
@@ -364,7 +386,7 @@ describe('a duplicate of an item held on a draft carrier reads its original (K61
   });
 
   it('is counted for no person anywhere', async () => {
-    expect(await personCounts(dup)).toEqual(NOBODY_PERSON);
+    expect(await personCounts(dup, before)).toEqual(NOBODY_PERSON);
   });
 });
 
