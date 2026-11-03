@@ -47,7 +47,6 @@ export const NEEDS_YOU_DECISION_GROUP_LABELS: Record<
  * Why a row the Needs you read lists for the viewer is not one of their decisions, so the reply can
  * say what it left out and why rather than drop it in silence. `own_work`: the viewer's own draft or
  * revision to finish. `work`: a task to carry out (criteria to check), not a choice.
- * `awaiting_proposal`: a draft the assistant has not yet proposed merging or dropping (BC-12).
  * `unreadable`: a record waiting on the viewer that no decision could be made of, named so it is
  * opened on its own page rather than dropped (the log says what broke). `agent_takes`: a decision the
  * project's agent may take itself, so it is not a person's (REQ-68 BC-3). `triage`: a feedback item
@@ -57,7 +56,6 @@ export const NEEDS_YOU_NOT_DECISION_REASONS = [
 	"own_work",
 	"triage",
 	"work",
-	"awaiting_proposal",
 	"unreadable",
 	"agent_takes",
 ] as const;

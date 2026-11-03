@@ -54,15 +54,11 @@ const OWN_WORK: ReadonlySet<string> = new Set([
   'standing.act.reviseReturned',
   'standing.act.finishDraft',
   'standing.act.reviseThenProposeOrDrop',
-  'issues.standing.act.reviseDesign',
   'standing.act.writeRevision',
 ]);
 
 /** A feedback item's triage the viewer holds: their choice, made on the item's page, no one-click answer (ISS-924). */
 const TRIAGE: ReadonlySet<string> = new Set(FEEDBACK_TRIAGE_ACTS);
-
-/** A draft nobody has asked to merge, drop or keep yet (BC-12): not a decision until the steward asks it. */
-const AWAITING_PROPOSAL: ReadonlySet<string> = new Set(['issues.standing.act.takeOnOrDrop']);
 
 /** A requirement holding a question a person owes, the steward's decision or any other (REQ-48 BC-5, REQ-68 BC-9): its question is the decision. */
 const REQUIREMENT_ASKED = new Set(['standing.act.answerSteward', 'standing.act.answerQuestion']);
@@ -174,7 +170,6 @@ function itemOfQuestion(q: OpenPersonQuestion): DecisionOpens | null {
 function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classified {
   const act = actOf(row);
   if (OWN_WORK.has(act.key)) return { reason: 'own_work' };
-  if (AWAITING_PROPOSAL.has(act.key)) return { reason: 'awaiting_proposal' };
   if (row.entity === 'feedback' && TRIAGE.has(act.key)) return { reason: 'triage' };
   // a row the viewer owes whose act no person decides by one press: theirs to carry out on its page
   if (row.entity !== 'question' && !isDecisionActOn(row.entity, row.standing.waitingOn.says.act)) {

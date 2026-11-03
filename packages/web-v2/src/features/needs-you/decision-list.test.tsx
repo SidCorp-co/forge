@@ -66,7 +66,7 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
     },
   ],
   notDecisions: [
-    { reason: "awaiting_proposal", count: 37, items: [{ key: "ISS-4", title: "ISS-4", next: null, opens: null }] },
+    { reason: "work", count: 37, items: [{ key: "REQ-4", title: "REQ-4", next: null, opens: null }] },
     { reason: "own_work", count: 2, items: [{ key: "REQ-2", title: "REQ-2", next: null, opens: null }, { key: "REQ-3", title: "REQ-3", next: null, opens: null }] },
   ],
 });
@@ -87,7 +87,7 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     // the item's title leads its link; its key sits behind it (ISS-865)
     expect(within(first).getByRole("link", { name: "Export" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-1");
     expect(screen.getByTestId("needs-you-left-out")).toHaveTextContent(
-      "Left out, not decisions: 37 drafts nobody has proposed merging or dropping yet, 2 of your own drafts to finish.",
+      "Left out, not decisions: 37 tasks to carry out, 2 of your own drafts to finish.",
     );
   });
 
@@ -250,7 +250,7 @@ describe("a dense list", () => {
   it("says on its more line, as its hover, what the read left out", () => {
     renderWithQuery(<DecisionList read={READ} slug="hop" dense cap={1} moreHref="/projects/hop/approvals" />);
     expect(screen.queryByTestId("needs-you-left-out")).toBeNull();
-    expect(screen.getByTestId("needs-you-more")).toHaveAttribute("title", expect.stringContaining("37 drafts nobody has proposed merging or dropping yet"));
+    expect(screen.getByTestId("needs-you-more")).toHaveAttribute("title", expect.stringContaining("37 tasks to carry out"));
   });
 
   // ISS-903: the page has one primary, its own next act; a row's recommended answer is marked, never coloured as one
