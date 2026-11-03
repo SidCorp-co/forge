@@ -11,6 +11,33 @@ export function portedFirstLine(betaKey: string, betaIssueId: string): string {
   return `Ported from forge-beta ${betaKey} (${betaIssueId}).`;
 }
 
+/**
+ * A ported dev issue's description: the provenance line first, which the "never twice" guard reads
+ * (`firstLineNamesBetaIssue`), then a blank line and the beta body as its reporter wrote it; the
+ * provenance line alone where beta's body is empty.
+ */
+export function portedDescription(
+  betaKey: string,
+  betaIssueId: string,
+  body: string | null | undefined,
+): string {
+  const text = body?.trim();
+  return [portedFirstLine(betaKey, betaIssueId), ...(text ? ['', text] : [])].join('\n');
+}
+
+/**
+ * Whether a dev description is the provenance line and nothing else, trailing whitespace aside:
+ * what a port wrote when it read no body. Anything else may be a person's edit and is never
+ * backfilled.
+ */
+export function isPortStub(
+  description: string | null,
+  betaKey: string,
+  betaIssueId: string,
+): boolean {
+  return (description ?? '').trimEnd() === portedFirstLine(betaKey, betaIssueId);
+}
+
 /** The comment written on beta once its issue is ported. */
 export function portedComment(devKey: string): string {
   return `Ported to forge-dev: ${devKey}`;

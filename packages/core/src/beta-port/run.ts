@@ -29,12 +29,13 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { readProjectSecrets } from '../project-config/index.js';
+import { backfillBodies } from './backfill.js';
 import {
   firstLineNamesBetaIssue,
   isPortedMarker,
   markerDevKey,
   portedComment,
-  portedFirstLine,
+  portedDescription,
   UNPORTED_BETA_STATUSES,
 } from './markers.js';
 import { mirrorProject } from './mirror.js';
@@ -147,6 +148,8 @@ async function runBetaPort(args: {
     report: emptyReport(cutoff),
     budget: { ports: MAX_PORTS_PER_FIRE, mirrors: MAX_MIRRORS_PER_FIRE },
   };
+  // the bodies the first fire never read come before any new port (ISS-923 backfill)
+  await backfillBodies(ctx);
   const betaProjects = [...listed.value].sort((a, b) => a.slug.localeCompare(b.slug));
   const twins = await devTwinsBySlug(betaProjects.map((p) => p.slug));
   for (const project of betaProjects) {
@@ -185,6 +188,9 @@ function scrubReport(report: BetaPortReport, scrub: (t: string) => string): Beta
     noTwin: report.noTwin.map(scrub),
     beforeRuling: report.beforeRuling.map(scrub),
     waiting: report.waiting,
+    backfilled: report.backfilled.map(scrub),
+    backfillEmpty: report.backfillEmpty.map(scrub),
+    backfillOwed: report.backfillOwed.map(scrub),
   };
 }
 
@@ -322,14 +328,13 @@ async function portOne(ctx: FireContext, beta: PeerIssue, twin: DevTwin): Promis
     }
     description = read.value;
   }
-  const body = description?.trim();
   let created: Awaited<ReturnType<typeof createIssue>>;
   try {
     created = await createIssue(
       {
         projectId: twin.id,
         title: beta.title,
-        description: [portedFirstLine(beta.key, beta.id), ...(body ? ['', body] : [])].join('\n'),
+        description: portedDescription(beta.key, beta.id, description),
         ...(priority ? { priority } : {}),
         category: beta.category,
         status: 'open',

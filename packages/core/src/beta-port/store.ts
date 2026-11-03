@@ -2,7 +2,7 @@
 // and the dev side it reads: the twin projects by slug, and the issues a pair or a first line names.
 // Nothing beta answers is stored here but the pair's own bookkeeping.
 
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { betaPortPairs, issues, projects } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
@@ -153,4 +153,77 @@ export async function recordTry(args: {
       at: new Date(),
     })
     .where(eq(betaPortPairs.betaIssueId, args.betaIssueId));
+}
+
+/** A pair whose dev issue may hold only its provenance line, with what its backfill writes as. */
+export interface StubPair {
+  betaIssueId: string;
+  betaKey: string;
+  betaProjectSlug: string;
+  devIssueId: string;
+  devKey: string;
+  devProjectId: string;
+  /** Whose project the dev issue is in: the port's actor on create, and the backfill's. */
+  devProjectOwner: string;
+  title: string;
+  description: string | null;
+}
+
+/**
+ * Every pair owing no recorded backfill whose dev description is one line opening with the
+ * provenance prefix, oldest pair first: the candidates `isPortStub` then decides on exactly. A
+ * description of more than one line was written with a body or edited, and is never read here.
+ */
+export async function stubPairCandidates(): Promise<StubPair[]> {
+  const trimmed = sql`rtrim(coalesce(${issues.description}, ''), E' \t\r\n')`;
+  const rows = await db
+    .select({
+      betaIssueId: betaPortPairs.betaIssueId,
+      betaKey: betaPortPairs.betaKey,
+      betaProjectSlug: betaPortPairs.betaProjectSlug,
+      devIssueId: betaPortPairs.devIssueId,
+      issSeq: issues.issSeq,
+      devProjectId: issues.projectId,
+      devProjectOwner: projects.createdBy,
+      title: issues.title,
+      description: issues.description,
+    })
+    .from(betaPortPairs)
+    .innerJoin(issues, eq(issues.id, betaPortPairs.devIssueId))
+    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(
+      and(
+        isNull(betaPortPairs.bodyBackfilledAt),
+        like(issues.description, 'Ported from forge-beta %'),
+        sql`strpos(${trimmed}, E'\n') = 0`,
+      ),
+    )
+    .orderBy(asc(betaPortPairs.createdAt), asc(betaPortPairs.betaIssueId));
+  const prefixes = new Map<string, string | null>();
+  const out: StubPair[] = [];
+  for (const { issSeq, ...row } of rows) {
+    if (!prefixes.has(row.devProjectId)) {
+      prefixes.set(row.devProjectId, await activeIssuePrefix(row.devProjectId));
+    }
+    out.push({ ...row, devKey: formatIssueRef(prefixes.get(row.devProjectId) ?? null, issSeq) });
+  }
+  return out;
+}
+
+/** A dev issue's description as it stands now: read again right before a backfill writes over it. */
+export async function devDescriptionOf(issueId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ description: issues.description })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return row?.description ?? null;
+}
+
+/** Record a pair's body backfill as made by `fireId`, so it is never made again. */
+export async function recordBackfill(betaIssueId: string, fireId: string): Promise<void> {
+  await db
+    .update(betaPortPairs)
+    .set({ bodyBackfilledAt: new Date(), bodyBackfillFireId: fireId, at: new Date() })
+    .where(eq(betaPortPairs.betaIssueId, betaIssueId));
 }

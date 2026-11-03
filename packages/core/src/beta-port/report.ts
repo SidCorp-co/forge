@@ -18,6 +18,12 @@ export interface BetaPortReport {
   beforeRuling: string[];
   /** Beta issues left for the next fire by this fire's bound, all filed or reopened after the ruling. */
   waiting: number;
+  /** `twin: DEV-KEY ← beta BETA-KEY`: a dev issue ported with only its first line, given beta's body. */
+  backfilled: string[];
+  /** The same, where beta's body is empty: recorded as backfilled with nothing written. */
+  backfillEmpty: string[];
+  /** The same, left for the next fire by the backfill's bound. */
+  backfillOwed: string[];
 }
 
 export const REPORT_LIST_CAP = 20;
@@ -32,7 +38,23 @@ export function emptyReport(cutoff: Date): BetaPortReport {
     noTwin: [],
     beforeRuling: [],
     waiting: 0,
+    backfilled: [],
+    backfillEmpty: [],
+    backfillOwed: [],
   };
+}
+
+/** The backfill's sections, said only where it did or owes something: it ends once every pair is. */
+function backfillSections(report: BetaPortReport, cap: number): string[] {
+  return [
+    ...(report.backfilled.length > 0 ? section('backfilled', report.backfilled, cap) : []),
+    ...(report.backfillEmpty.length > 0
+      ? section('backfilled with no beta body to write', report.backfillEmpty, cap)
+      : []),
+    ...(report.backfillOwed.length > 0
+      ? section('bodies owed to the next fire', report.backfillOwed, cap)
+      : []),
+  ];
 }
 
 function section(title: string, rows: readonly string[], cap: number): string[] {
@@ -45,6 +67,7 @@ function section(title: string, rows: readonly string[], cap: number): string[] 
 export function renderReport(report: BetaPortReport, cap = REPORT_LIST_CAP): string {
   return [
     `cutoff: the owner's ruling beta-issues-are-worked-on-dev, ${report.cutoff}`,
+    ...backfillSections(report, cap),
     ...section('ported', report.ported, cap),
     ...section('mirrored', report.mirrored, cap),
     ...section('refused', report.refused, cap),
@@ -62,6 +85,9 @@ export function reportSaysSomething(report: BetaPortReport): boolean {
     report.mirrored.length > 0 ||
     report.refused.length > 0 ||
     report.noTwin.length > 0 ||
-    report.waiting > 0
+    report.waiting > 0 ||
+    report.backfilled.length > 0 ||
+    report.backfillEmpty.length > 0 ||
+    report.backfillOwed.length > 0
   );
 }

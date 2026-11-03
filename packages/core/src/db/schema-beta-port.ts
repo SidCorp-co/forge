@@ -1,5 +1,6 @@
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { issues } from './schema-issues.js';
+import { scheduleRuns } from './schema-schedule-runs.js';
 
 /**
  * One forge-beta issue and the forge-dev issue it was ported to (ISS-923), with the dev status last
@@ -25,6 +26,15 @@ export const betaPortPairs = pgTable(
     lastTriedStatus: text('last_tried_status'),
     /** The beta status beta stood at after that try: its target, the nearest legal one, or unmoved. */
     betaReached: text('beta_reached'),
+    /**
+     * When a fire wrote beta's body onto a dev issue ported with only its provenance line, or found
+     * beta's body empty; null where no backfill was made (ISS-923: the first fire read no bodies).
+     */
+    bodyBackfilledAt: timestamp('body_backfilled_at', { withTimezone: true }),
+    /** The fire that made that backfill. */
+    bodyBackfillFireId: uuid('body_backfill_fire_id').references(() => scheduleRuns.id, {
+      onDelete: 'set null',
+    }),
     at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

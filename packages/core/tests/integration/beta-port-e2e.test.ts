@@ -23,11 +23,17 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  betaPortScheduleOn,
+  devIssuesOf,
+  fireOnce,
+  putBetaSecret,
+  type Say,
+} from '../helpers/beta-port-harness.js';
+import {
   afterRuling,
   beforeRuling,
   beta,
   betaIssue,
-  type FireRow,
   fireRow,
   RULING_AT,
   type StubIssue,
@@ -37,18 +43,11 @@ import {
   TOKEN,
   writeRuling,
 } from '../helpers/beta-port-world.js';
-import {
-  closeWorld,
-  ok,
-  type Reply,
-  requester,
-  startQueue,
-  testEnv,
-} from '../helpers/ecosystem-world.js';
+import { closeWorld, ok, requester, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
 
 let baseUrl = '';
-let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
+let say: Say;
 let ownerId = '';
 let scheduleProjectId = '';
 let twin = { id: '', slug: '' };
@@ -85,55 +84,11 @@ afterAll(async () => {
   await closeWorld();
 });
 
-async function betaPortSchedule(): Promise<string> {
-  const created = ok(
-    await say('owner', 'POST', '/api/schedules', {
-      projectId: scheduleProjectId,
-      name: 'Beta port',
-      cron: '*/15 * * * *',
-      kind: 'beta_port',
-    }),
-    201,
-  );
-  return created.id as string;
-}
-
-async function setSecret(name: string, value: string) {
-  ok(
-    await say('owner', 'PUT', `/api/projects/${scheduleProjectId}/secrets/integration/${name}`, {
-      value,
-    }),
-  );
-}
-
-async function fire(scheduleId: string) {
-  const run = await say('owner', 'POST', `/api/schedules/${scheduleId}/run`);
-  if (run.status === 202) {
-    const fireId = (run.json as { fireId: string }).fireId;
-    return { http: run.status, body: run.json, ...(await settledFire(fireId)) };
-  }
-  const [settled] = await rows<FireRow>(
-    sql`SELECT id, status, reason, refusal, output, error FROM schedule_runs WHERE schedule_id = ${scheduleId} ORDER BY started_at DESC LIMIT 1`,
-  );
-  if (!settled) throw new Error('the run pressed recorded no fire');
-  return { http: run.status, body: run.json, ...settled };
-}
-
-const devIssues = () =>
-  rows<{
-    id: string;
-    iss_seq: number;
-    status: string;
-    description: string | null;
-    title: string;
-    priority: string;
-    category: string | null;
-    created_via: string;
-    created_by_id: string;
-    schedule_run_id: string | null;
-  }>(
-    sql`SELECT id, iss_seq, status, description, title, priority, category, created_via, created_by_id, schedule_run_id FROM issues WHERE project_id = ${twin.id} ORDER BY iss_seq`,
-  );
+const betaPortSchedule = () => betaPortScheduleOn(say, scheduleProjectId);
+const setSecret = (name: string, value: string) =>
+  putBetaSecret(say, scheduleProjectId, name, value);
+const fire = (id: string) => fireOnce(say, id);
+const devIssues = () => devIssuesOf(twin.id);
 
 let scheduleId = '';
 

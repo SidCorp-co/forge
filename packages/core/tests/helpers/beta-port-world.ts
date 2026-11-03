@@ -39,6 +39,8 @@ export const beta = {
   activity: new Map<string, StubActivity[]>(),
   /** Issues whose list row carries no description (a projection), read from the issue instead. */
   bare: new Set<string>(),
+  /** Issues whose own read (`GET /api/issues/:id`) is refused, by code. */
+  refuseRead: new Map<string, string>(),
   /** The statuses a transition is refused into, by code. */
   refuseInto: new Map<string, string>(),
   /** A close is refused CLOSE_REQUIRES_SHIPPED until a merge mark is recorded, as beta's machine does. */
@@ -105,6 +107,8 @@ export function startBeta(): Promise<string> {
       return send(200, { items, returned: items.length, total: items.length, hasMore: false });
     }
     if (req.method === 'GET' && parts[1] === 'issues' && parts.length === 3) {
+      const refusal = beta.refuseRead.get(parts[2] as string);
+      if (refusal) return send(503, { code: refusal, message: 'beta cannot read it now' });
       const issue = findIssue(parts[2] as string);
       return issue ? send(200, issue) : send(404, { code: 'NOT_FOUND', message: 'no issue' });
     }

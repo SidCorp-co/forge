@@ -281,6 +281,7 @@ export {
   runSecretRefsOfSession,
 } from './testing-secret-audit.js';
 export { emitIssueFieldUpdate } from './update-hook.js';
+export { updateIssueFields } from './update-service.js';
 export {
   type Carriage,
   type ChangedPaths,
