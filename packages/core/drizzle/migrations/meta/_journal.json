@@ -3739,6 +3739,13 @@
       "when": 1833753600000,
       "tag": "0588_a_room_reply_is_a_correction",
       "breakpoints": true
+    },
+    {
+      "idx": 589,
+      "version": "7",
+      "when": 1833840000000,
+      "tag": "0589_each_stall_is_recorded_against_its_cause",
+      "breakpoints": true
     }
   ]
 }

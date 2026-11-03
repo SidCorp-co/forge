@@ -581,7 +581,8 @@
         "issuePrefixAliases",
         "issueWorkState",
         "issues",
-        "projectIssCounters"
+        "projectIssCounters",
+        "stalls"
       ],
       "serves": [
         "REQ-2",
