@@ -121,7 +121,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   requireDeclared(await loadProjectAccess(input.projectId, actorUserId));
 
   assertTimeZone(input.timeZone);
-  const validation = validateCron(input.cron, input.timeZone);
+  const validation = validateCron(input.cron, input.timeZone, input.kind ?? 'prompt');
   if (!validation.ok) {
     throw new HTTPException(400, {
       message: validation.error ?? 'invalid cron',
@@ -259,15 +259,16 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   const cron = patch.cron ?? row.cron;
   const enabled = patch.enabled ?? row.enabled;
 
-  if (patch.cron !== undefined) {
-    const validation = validateCron(patch.cron, timeZone);
+  // a kind change re-reads the cron too: a 15-minute beta port turned into a prompt is held to the hour
+  if (patch.cron !== undefined || patch.kind !== undefined) {
+    const validation = validateCron(cron, timeZone, effectiveKind);
     if (!validation.ok) {
       throw new HTTPException(400, {
         message: validation.error ?? 'invalid cron',
         cause: { code: 'INVALID_CRON' },
       });
     }
-    updates.cron = patch.cron;
+    if (patch.cron !== undefined) updates.cron = patch.cron;
   }
   if (patch.enabled !== undefined) updates.enabled = patch.enabled;
 

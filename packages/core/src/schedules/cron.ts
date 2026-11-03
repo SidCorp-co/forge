@@ -1,3 +1,4 @@
+import type { ScheduleKind } from '@forge/contracts/schedules';
 import { type CronExpression, CronExpressionParser } from 'cron-parser';
 
 interface CronValidationResult {
@@ -7,6 +8,16 @@ interface CronValidationResult {
 }
 
 const MIN_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * A kind core runs inline, cheaply, and whose lag a person waits on may fire more often than the
+ * hour every session-starting kind is held to: a beta port (ISS-923) every 15 minutes.
+ */
+const MIN_INTERVAL_MS_OF: Partial<Record<ScheduleKind, number>> = {
+  beta_port: 15 * 60 * 1000,
+};
+
+const minutes = (ms: number) => Math.round(ms / 60_000);
 
 function asDate(result: unknown): Date {
   return (result as { toDate(): Date }).toDate();
@@ -27,7 +38,11 @@ export function isTimeZone(timeZone: string): boolean {
   }
 }
 
-export function validateCron(cron: string, timeZone?: string | null): CronValidationResult {
+export function validateCron(
+  cron: string,
+  timeZone?: string | null,
+  kind: ScheduleKind = 'prompt',
+): CronValidationResult {
   let interval: CronExpression;
   try {
     interval = CronExpressionParser.parse(cron, readIn(timeZone));
@@ -37,12 +52,11 @@ export function validateCron(cron: string, timeZone?: string | null): CronValida
   const t1 = asDate(interval.next()).getTime();
   const t2 = asDate(interval.next()).getTime();
   const diffMs = t2 - t1;
-  if (diffMs < MIN_INTERVAL_MS) {
+  const min = MIN_INTERVAL_MS_OF[kind] ?? MIN_INTERVAL_MS;
+  if (diffMs < min) {
     return {
       ok: false,
-      error: `Minimum schedule interval is 1 hour. This cron runs every ${Math.round(
-        diffMs / 60_000,
-      )} minutes.`,
+      error: `Minimum schedule interval is ${min === MIN_INTERVAL_MS ? '1 hour' : `${minutes(min)} minutes for a ${kind} schedule`}. This cron runs every ${minutes(diffMs)} minutes.`,
     };
   }
   return { ok: true };
