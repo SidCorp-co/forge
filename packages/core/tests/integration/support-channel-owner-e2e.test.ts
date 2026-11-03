@@ -7,7 +7,7 @@ vi.hoisted(() => {
 });
 
 import { rows } from '../helpers/factories.js';
-import { AgentWorld, agentBlock, dave, zed } from '../helpers/support-agent-world.js';
+import { AgentWorld, agentBlock, dave, OWNER_ID, zed } from '../helpers/support-agent-world.js';
 import { carol, code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import type { Member } from '../helpers/support-world.js';
@@ -18,6 +18,8 @@ import type { Member } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/ability-run.ts
 // @direct-test-of packages/core/src/support/propose.ts
 // @direct-test-of packages/core/src/support/fixes.ts
+//
+// ISS-915: under owner mode the owner's own request, cited with agree, is his consent.
 //
 // REQ-77 r1 part 2 (ISS-764), what the channel agent may change and hand over: a change to a running
 // system runs only on the word of a member whose role allows it (BC-10); confirmed work and anything
@@ -328,6 +330,152 @@ describe('REQ-77 BC-12: an agent asks the owner through the channel, and the ans
     );
     expect(code(none)).toBe('SUPPORT_OWNER_NOT_NAMED');
     expect(JSON.stringify(none)).toContain('names no owner');
+  });
+});
+
+describe('ISS-915: the owner’s own request is his consent; everyone else agrees after the proposal', () => {
+  const filings = async () =>
+    (
+      await rows<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM feedback WHERE project_id = ${w.projectId}::uuid`,
+      )
+    )[0]?.n ?? 0;
+  const deploys = async () =>
+    (
+      await rows<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM pgboss_v12.job
+         WHERE name = 'forge.integrations' AND data->>'bindingId' = ${w.devTarget}
+           AND data->>'jobKind' = 'coolify.dispatch'`)
+    )[0]?.n ?? 0;
+
+  /** `who` asks; in that turn the session records it and cites `cite` (the request by default) with agree. */
+  async function fileAndCite(
+    who: Member,
+    text: string,
+    cite?: (request: { message: string; thread: string }) => { message: string; thread?: string },
+    thread?: string,
+  ): Promise<{
+    thread: string;
+    proposed: Record<string, unknown>;
+    agreed: Record<string, unknown>;
+  }> {
+    let proposed: Record<string, unknown> = {};
+    let agreed: Record<string, unknown> = {};
+    const asked = await w.hear(
+      () => chat.say(who, text, thread),
+      async (_t, act, message) => {
+        const m = message();
+        proposed = await act({
+          action: 'record',
+          thread: m.thread,
+          kind: 'request',
+          title: `Asked: ${text.slice(0, 40)}`,
+          summary: text,
+          asker: who.userId,
+        });
+        const cited = cite
+          ? cite({ message: String(m.message), thread: m.thread })
+          : { message: String(m.message), thread: m.thread };
+        agreed = await act({
+          action: 'agree',
+          thread: cited.thread ?? m.thread,
+          proposal: String(proposed.proposal),
+          message: cited.message,
+        });
+      },
+    );
+    expect(proposed, JSON.stringify(proposed)).toMatchObject({ pending: true });
+    return { thread: asked.id, proposed, agreed };
+  }
+
+  it('files the owner’s own request at once, recorded as consented by that message', async () => {
+    const granted = await w.retarget({
+      agent: {
+        ...agentBlock([w.devTarget], chat.rid),
+        answers: 'every-message',
+        grants: {
+          ...agentBlock([w.devTarget], chat.rid).grants,
+          abilities: ['file_items', 'deploy', 'owner_mode'],
+        },
+      },
+    });
+    expect(granted.status, JSON.stringify(granted.body)).toBeLessThan(300);
+    await w.settleWarm();
+    const before = await filings();
+    const own = await fileAndCite(
+      chat.alice,
+      'please record that the export times out on big shops',
+    );
+    // the session is told his request is his agreement, and asks him nothing
+    expect(String(own.proposed.next)).toContain('his own request is his agreement');
+    expect(own.agreed, JSON.stringify(own.agreed)).toMatchObject({
+      recorded: true,
+      feedbackKey: expect.stringMatching(/^FB-\d+$/),
+    });
+    expect(await filings()).toBe(before + 1);
+    const [consent] = await rows<{
+      actor_key: string;
+      input: { message: string };
+      output: unknown;
+    }>(sql`
+      SELECT actor_key, input, output FROM support_actions
+       WHERE project_id = ${w.projectId}::uuid AND thread = ${own.thread} AND kind = 'fix_confirmed'`);
+    expect(consent).toMatchObject({
+      actor_key: OWNER_ID,
+      input: { message: own.thread },
+      output: { consent: 'own_request' },
+    });
+    expect(w.threadLines(chat.rid, own.thread)).toEqual([]);
+  });
+
+  it('runs a deploy the owner asked for on his own request, as the confirmer owner mode makes him', async () => {
+    const before = await deploys();
+    let out: Record<string, unknown> = {};
+    await w.hear(
+      () => chat.say(chat.alice, 'deploy dev now please'),
+      async (_t, act, message) => {
+        const m = message();
+        const proposed = await act({ action: 'deploy', thread: m.thread, target: w.devTarget });
+        out = await act({
+          action: 'agree',
+          thread: m.thread,
+          proposal: String(proposed.proposal),
+          message: m.message,
+        });
+      },
+    );
+    expect(out, JSON.stringify(out)).toMatchObject({ ran: true });
+    expect(await deploys()).toBe(before + 1);
+  });
+
+  it('still refuses a member’s earlier message as SUPPORT_AGREEMENT_BEFORE_PROPOSAL', async () => {
+    const before = await filings();
+    const bob = await fileAndCite(chat.bob, 'please record that my invoices show the wrong VAT');
+    expect(String(bob.proposed.next)).not.toContain('his own request');
+    expect(code(bob.agreed), JSON.stringify(bob.agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
+    expect(await filings()).toBe(before);
+  });
+
+  it('refuses by name, filing nothing, another writer’s message or one from another thread', async () => {
+    const before = await filings();
+    // bob writes first in a thread; the owner asks there; the session cites bob's line as his consent
+    const bobSaid = await w.hear(() => chat.say(chat.bob, 'the shop page is slow today'));
+    const other = await fileAndCite(
+      chat.alice,
+      'please record the slow shop page',
+      () => ({ message: bobSaid.id }),
+      bobSaid.id,
+    );
+    expect(code(other.agreed), JSON.stringify(other.agreed)).toBe(
+      'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
+    );
+    // the owner's own words, but from another thread than the proposal's
+    const elsewhere = await w.hear(() => chat.say(chat.alice, 'and record the cart bug too'));
+    const moved = await fileAndCite(chat.alice, 'please record the cart bug', () => ({
+      message: elsewhere.id,
+    }));
+    expect(code(moved.agreed), JSON.stringify(moved.agreed)).toBe('SUPPORT_AGREEMENT_OTHER_THREAD');
+    expect(await filings()).toBe(before);
   });
 });
 

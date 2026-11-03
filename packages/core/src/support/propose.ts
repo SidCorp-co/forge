@@ -1,7 +1,8 @@
 // Proposing a change its asker agrees to (REQ-75 BC-13, BC-14; ISS-845): a fix through the product
 // API, a filing of Feedback, or a build, a deploy or a host command. Core records the proposal and
 // posts nothing: the session asks the person in its own words, and what becomes of it once they
-// answer is `fixes.ts:agreeTo`'s.
+// answer is `fixes.ts:agreeTo`'s. The owner is never asked about his own request (ISS-915): the
+// session cites it with agree at once.
 
 import { SUPPORT_FIX_TTL_MS } from '@forge/contracts/support';
 import {
@@ -10,7 +11,7 @@ import {
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
 import { changeWaitsOnRole, whoConfirms } from './confirm-role.js';
-import { grantsOf, supportConfigOf } from './grants.js';
+import { grantsOf, isOwner, supportConfigOf } from './grants.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, threadUnknown } from './outcome.js';
 import type { RecordRequest } from './record.js';
@@ -128,7 +129,9 @@ export async function offerChange(input: {
       proposal: fix.code,
       waitsOn,
       expiresAt: fix.expiresAt.toISOString(),
-      next: `Nothing was posted. Ask ${waitsOn} in your own words, in this thread. When they answer, call agree { thread, proposal: "${fix.code}", message: <their message id>, decision?: "decline" }.`,
+      next: isOwner(grantsOf(await supportConfigOf(room)), asker.key)
+        ? `Nothing was posted. The owner asked for this himself, and his own request is his agreement: call agree { thread, proposal: "${fix.code}", message: <the id of his message asking for it> } now, and ask him nothing.`
+        : `Nothing was posted. Ask ${waitsOn} in your own words, in this thread. When they answer, call agree { thread, proposal: "${fix.code}", message: <their message id>, decision?: "decline" }.`,
     },
   };
 }

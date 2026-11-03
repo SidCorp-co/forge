@@ -2,11 +2,13 @@
 // through the product API, a filing of Feedback, or a build, a deploy or a host command — and asks
 // that person in its own words. Their plain answer ("ok", "yes", "no", in any language) is the consent: the session
 // cites the message it is in, and core checks the citation against what the chat server signed —
-// who wrote it, in which thread, and that it came after the proposal — before anything runs. Core
+// who wrote it, in which thread, and that it came after the proposal — before anything runs. The
+// owner's own request is his consent (ISS-915): cited, it runs the change he asked for at once. Core
 // makes the call or the filing, never the session, and hands what came of it back to the session
 // as the act's answer; nothing of it is posted in the room by core. A filing waits in
 // `support_proposals` as kind `filing`.
 
+import type { SupportGrants } from '@forge/contracts/support';
 import {
   activeSupportApi,
   callGranted,
@@ -16,7 +18,7 @@ import {
 import { runConfirmed } from './ability-run.js';
 import { memberMessage } from './channel-store.js';
 import { changeWaitsOnRole, mayConfirmChange, whoConfirms } from './confirm-role.js';
-import { grantsOf, supportConfigOf } from './grants.js';
+import { grantsOf, isOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
 import { fileRecord, type RecordRequest } from './record.js';
@@ -57,7 +59,8 @@ export type Agreed =
  * The person's answer to a proposal, as the session cites it: the message `message` of thread
  * `thread`, agreeing or declining (`decision`). Refused, by name and to the session alone, when no
  * proposal waits under the handle, the message is no member's message of this room, it is in another
- * thread than the proposal's, it was written before the proposal, or its writer may not agree to
+ * thread than the proposal's, it was written before the proposal (unless it is the owner's own
+ * request, `ownRequestOf`), or its writer may not agree to
  * it: the asker for a fix or a filing, a confirmer the room allows for a build, a deploy or a host
  * change (the asker may still decline one). The writer is the chat server's attribution of the
  * message, never what it says.
@@ -121,18 +124,20 @@ export async function agreeTo(
       `${input.proposal} was proposed in thread ${fix.thread}, and message ${input.message} is in thread ${said.thread}: only an answer in the proposal's own thread counts. Nothing was done.`,
     );
   }
-  if (said.at.getTime() <= fix.createdAt.getTime()) {
-    await audit('refused', fix, writer, { reason: 'before the proposal' });
-    return no(
-      'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
-      '/message',
-      `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Nothing was done.`,
-    );
-  }
   // the grant as the binding holds it now: a confirmer taken off the room since the proposal agrees to nothing
   const gated = waitsOnConfirmer(room, fix);
   const config = await supportConfigOf(room);
   const grants = grantsOf(config);
+  // the owner's own request is his consent (ISS-915): he asked for it, so he is never asked again
+  const ownRequest = ownRequestOf(grants, fix, writer, decision);
+  if (!ownRequest && said.at.getTime() <= fix.createdAt.getTime()) {
+    await audit('refused', fix, writer, { reason: 'before the proposal' });
+    return no(
+      'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
+      '/message',
+      `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Only the owner's own request counts as his agreement. Nothing was done.`,
+    );
+  }
   const allowed = gated
     ? (await mayConfirmChange(room, grants, writer)) ||
       (decision === 'decline' && writer.key === fix.askerKey)
@@ -171,13 +176,29 @@ export async function agreeTo(
   }
   // the claim: of two agreements racing, one moves the row and runs it
   if (!(await decideFix(fix.id, 'ran', now))) return gone(input.proposal);
-  await audit('fix_confirmed', fix, writer, null);
+  // the audit fact: who consented, by which message, and whether it was his own request
+  await audit('fix_confirmed', fix, writer, ownRequest ? { consent: 'own_request' } : null);
   if (fix.kind === 'filing') return recordAgreed(room, fix, conversationId);
   if (CONFIRMER_KINDS.has(fix.kind)) {
     const out = await runConfirmed(room, fix, conversationId, writer);
     return { ok: true, value: { ran: out.state === 'ran', what: out.what, result: out.result } };
   }
   return runFix(room, fix, limitsOf(config).responseMaxBytes, conversationId);
+}
+
+/**
+ * Whether the cited message is the owner's own request for this change (ISS-915): written by the
+ * owner a channel agent's owner mode obeys (`isOwner`, by the user id the chat server signed), who is
+ * the change's asker, agreeing. Such a message consents whenever it was written; every other writer
+ * agrees only after the proposal. Who may confirm a gated change is still `mayConfirmChange`'s.
+ */
+function ownRequestOf(
+  grants: SupportGrants,
+  fix: ProposalRow,
+  writer: { key: string },
+  decision: 'agree' | 'decline',
+): boolean {
+  return decision === 'agree' && writer.key === fix.askerKey && isOwner(grants, writer.key);
 }
 
 const gone = (proposal: string): Outcome<never> =>

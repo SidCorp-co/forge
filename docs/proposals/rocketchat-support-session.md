@@ -120,7 +120,9 @@ its own words. When the person answers in plain words ("ok", "yes", "no"), the s
 citing that message's id (`support/fixes.ts:agreeTo`). Core checks the citation against what the
 chat server signed: the message is a member's message this room received, in the proposal's
 thread, written after the proposal, by the asker (a fix, a filing) or a confirmer the room allows
-(a build, a deploy, a host change, and any fix in a channel agent's group). Anything else is refused
+(a build, a deploy, a host change, and any fix in a channel agent's group). The owner's own request
+is his consent whenever he wrote it (ISS-915, `fixes.ts:ownRequestOf`): he is the asker and owner
+mode obeys him, so the session cites it at once and never asks him. Anything else is refused
 to the session by name (`SUPPORT_MESSAGE_UNKNOWN`, `SUPPORT_AGREEMENT_OTHER_THREAD`,
 `SUPPORT_AGREEMENT_BEFORE_PROPOSAL`, `SUPPORT_NOT_A_CONFIRMER`, `SUPPORT_PROPOSAL_EXPIRED`,
 `SUPPORT_PROPOSAL_UNKNOWN`), never posted. What the change came to is the act's answer, which the
