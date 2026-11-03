@@ -68,7 +68,8 @@ async function readyDraft(seq: number) {
   const issue = await draftIssue(seq);
   reqSeq += 1;
   await completeIssueReadyRecord(projectId, ownerId, issue.id, reqSeq);
-  return issue;
+  // the requirement it delivers: the item its decision is asked on (REQ-68 BC-4)
+  return { ...issue, req: `REQ-${reqSeq}` };
 }
 
 const decide = (key: string, recommended: string, serious = false) => ({
@@ -335,8 +336,11 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     const issue = await readyDraft(88);
     const q = await underStrict(projectId, ownerId, () => asked(issue, 'open', true));
     const read = ok(await say('owner', 'GET', at('/needs-you/decisions')));
-    const decision = (read.decisions as Doc[]).find((d) => d.key === issue.key);
-    if (!decision) throw new Error(`${issue.key} is not in Needs you`);
+    // a decision on the requirement the draft delivers, never one on the issue (REQ-68 BC-4, BC-6)
+    expect((read.decisions as Doc[]).map((d) => d.key)).not.toContain(issue.key);
+    const decision = (read.decisions as Doc[]).find((d) => d.id === `question:${q.id}`);
+    if (!decision) throw new Error(`${issue.key}'s decision is not in Needs you`);
+    expect(decision.opens).toEqual({ kind: 'requirement', key: issue.req });
     expect(decision.recommended).toMatchObject({ answerId: IDS.open, by: 'steward' });
     // the reason once, the question one sentence from the options, the evidence read from the records
     expect((decision.recommended as Doc).why).toBe(
@@ -344,10 +348,11 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     );
     expect(decision.question).toBe('Open it, keep it as a draft, or drop it?');
     expect(decision.evidence).toMatchObject({
-      requirement: { key: expect.stringMatching(/^REQ-\d+$/), revision: 1 },
+      requirement: { key: issue.req, revision: 1 },
       criteria: { count: 1, codes: ['BC-1'] },
     });
-    expect(typeof (decision.evidence as Doc).plan).toBe('boolean');
+    // the evidence is the item's: the issue's plan is the agent's, never shown to a person
+    expect(decision.evidence as Doc).not.toHaveProperty('plan');
     const answers = decision.answers as Doc[];
     expect(answers.map((a) => [a.id, a.needsReason])).toEqual([
       [IDS.open, false],
@@ -428,9 +433,9 @@ describe('a draft that leaves draft by another route takes its steward decision 
     const issue = await readyDraft(190);
     const q = await underStrict(projectId, ownerId, () => asked(issue, 'open', true));
     expect(
-      await decisionOn(issue.key),
-      'the decision is listed while the issue is a draft',
-    ).toBeDefined();
+      await decisionOn(issue.req),
+      'the decision is listed on its requirement while the issue is a draft',
+    ).toMatchObject({ id: `question:${q.id}` });
     const moved = await transition(issue.id, { toStatus: 'open' });
     expect(moved.status, JSON.stringify(moved.json)).toBe(200);
     const [row] = await rows<{
@@ -445,7 +450,7 @@ describe('a draft that leaves draft by another route takes its steward decision 
     );
     expect(row?.ended_by).toBe(ownerId);
     expect(
-      await decisionOn(issue.key),
+      await decisionOn(issue.req),
       'Needs you no longer lists a decision whose item moved on',
     ).toBeUndefined();
   });

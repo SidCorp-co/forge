@@ -6,6 +6,8 @@
 // - A round holding up no requirement proposes its own drop, recommended with why and its reason
 //   prefilled, so it is one press.
 // - A decision that is no question is reminded on day 3 and its decline proposed on day 14, once each.
+// A decision on an issue is read on the item the issue serves (REQ-68 BC-4): the question row opens
+// the requirement, and a mockup on the issue is listed and reminded under that requirement.
 //
 // @direct-test-of packages/core/src/questions/decision-age.ts
 // @direct-test-of packages/core/src/steward/decision-upkeep.ts
@@ -132,7 +134,10 @@ describe('on day 14 the agent proposes a defer or a decline for every decision (
     await upkeep();
     expect(await escalatedAt(q)).not.toBeNull();
     expect(await told(`${req.key}: defer or drop proposed`)).toHaveLength(1);
-    const d = (await decisionsNow()).decisions.find((x) => x.key === issue.key);
+    const { decisions } = await decisionsNow();
+    expect(decisions.map((x) => x.key)).not.toContain(issue.key);
+    const d = decisions.find((x) => x.id === `question:${q}`);
+    expect(d?.opens).toEqual({ kind: 'requirement', key: req.key });
     expect(d?.recommended).toMatchObject({ answerId: 'escalation.defer', by: 'rule' });
     expect(d?.answers[0]).toMatchObject({
       act: 'requirement.defer',
@@ -184,10 +189,14 @@ describe('on day 14 the agent proposes a defer or a decline for every decision (
   });
 
   it('a decision that is no question is reminded on day 3 and its decline proposed on day 14, once each', async () => {
+    const req = await createTestRequirement(projectId, 940, 'Exports read as a page');
     const issue = await createTestIssue(projectId, ownerId, 940, {
       status: 'open',
       createdAt: new Date(),
     });
+    await rows(
+      sql`UPDATE issues SET requirement_id = ${req.id} WHERE id = ${issue.id} RETURNING id`,
+    );
     ok(
       await say('member', 'POST', `/api/projects/${projectId}/mockups`, {
         target: { issue: issue.key },
@@ -202,14 +211,17 @@ describe('on day 14 the agent proposes a defer or a decline for every decision (
     const mockup = () =>
       decisionsNow().then((r) => r.decisions.find((x) => x.title === 'export.html'));
     expect((await mockup())?.recommended?.why ?? '').not.toContain('No answer in');
+    // the mockup on the issue is the requirement's decision, never the issue's
+    expect((await mockup())?.opens).toEqual({ kind: 'requirement', key: req.key });
 
     await rows(
       sql`UPDATE mockups SET created_at = now() - interval '4 days' WHERE name = 'export.html' RETURNING id`,
     );
     await aged(new Date(), [projectId]);
     await aged(new Date(), [projectId]);
-    expect(await told(`${issue.key}: a decision has waited 3 days`)).toHaveLength(1);
-    expect(await told(`${issue.key}: "`)).toHaveLength(0);
+    expect(await told(`${req.key}: a decision has waited 3 days`)).toHaveLength(1);
+    expect(await told(`${req.key}: "`)).toHaveLength(0);
+    expect(await told(`${issue.key}:`)).toHaveLength(0);
 
     await rows(
       sql`UPDATE mockups SET created_at = now() - interval '15 days' WHERE name = 'export.html' RETURNING id`,
@@ -220,6 +232,6 @@ describe('on day 14 the agent proposes a defer or a decline for every decision (
     expect(d?.recommended?.why).toContain('No answer in 14 days');
     await aged(new Date(), [projectId]);
     await aged(new Date(), [projectId]);
-    expect(await told(`${issue.key}: "${decline?.label}" proposed after 14 days`)).toHaveLength(1);
+    expect(await told(`${req.key}: "${decline?.label}" proposed after 14 days`)).toHaveLength(1);
   });
 });

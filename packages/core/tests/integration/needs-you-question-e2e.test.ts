@@ -2,6 +2,8 @@
 // A question a run asked that no issue, requirement or feedback holds can be answered only on the
 // Agents screen, which nothing pointed to. It is a Questions row of Needs you for whoever may answer
 // it, through the real read (needs-you-list.ts readNeedsYou over readDetachedOpenQuestions), and on no one else's.
+// Needs you lists no issue (REQ-68 BC-6), so a run's question on an issue is a Questions row too.
+// @direct-test-of packages/core/src/development/needs-you-question.ts
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -83,8 +85,9 @@ describe('readNeedsYou with a question attached to nothing', () => {
     }
   });
 
-  it('leaves out a question on an issue, a machine-owned one, and a settled one', async () => {
-    await free(randomUUID(), { issueId });
+  it('lists a question on an issue as its own Questions row, and leaves out a machine-owned one and a settled one', async () => {
+    const onIssue = randomUUID();
+    await free(onIssue, { issueId });
     await free(randomUUID(), { blockerKind: 'machine' });
     const { db } = await import('../../src/db/client.js');
     const { agentQuestions } = await import('../../src/db/schema-questions.js');
@@ -95,10 +98,16 @@ describe('readNeedsYou with a question attached to nothing', () => {
     await withKernelMarker(db, (tx) =>
       tx.update(agentQuestions).set({ status: 'void' }).where(eq(agentQuestions.id, settled)),
     );
-    const rows = (await readNeedsYou(projectId, viewer(ownerId, true))).items.filter(
-      (i) => i.area === 'questions',
-    );
-    expect(rows).toHaveLength(1);
+    const read = await readNeedsYou(projectId, viewer(ownerId, true));
+    const rows = read.items.filter((i) => i.area === 'questions');
+    // the detached one from the first case, and the one on the issue; never the issue itself
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.key)).toContain(onIssue);
+    expect(rows.find((r) => r.key === onIssue)).toMatchObject({
+      entity: 'question',
+      waitingOn: { kind: 'you', act: 'answer a question' },
+    });
+    expect(read.items.map((i) => i.entity as string)).not.toContain('issue');
   });
 
   it('is not a reader own row: someone who cannot answer it is not told it waits on them', async () => {

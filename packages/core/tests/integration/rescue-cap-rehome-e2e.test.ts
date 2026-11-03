@@ -4,7 +4,8 @@
  * master. Seeds the old park through the kernel exactly as the old cap wrote it (a `needs_info`
  * agent park, `needs_decision`, a question minted), plus a person's own park and an issue carrying a
  * person's question beside the cap's; runs the boot re-home; reads the needs-me read and the
- * standing. A row whose park cannot be read is refused by name and leaves the marker unset.
+ * standing. A row whose park cannot be read is refused by name and leaves the marker unset. Needs you
+ * lists no issue (REQ-68 BC-6): a park's question is a decision keyed by the question.
  */
 
 import { sql } from 'drizzle-orm';
@@ -71,6 +72,8 @@ let capped = { id: '', key: '' };
 let cappedBeside = { id: '', key: '' };
 let personal = { id: '', key: '' };
 let ownQuestion = '';
+/** Each park's minted question, read before the re-home voids the cap's. */
+const parkQuestion: Record<string, string> = {};
 
 beforeAll(async () => {
   testEnv();
@@ -94,6 +97,13 @@ beforeAll(async () => {
     answer: { shape: 'free_text', needed: 'the width rule', recommended: 'Half of the page.' },
   });
   personal = await parkTheOldWay(803, 'Needs the owner to say which staging URL the run checks.');
+  for (const issue of [capped, cappedBeside, personal]) {
+    const minted = (await openQuestions(issue.id))
+      .map((q) => q.id)
+      .filter((id) => id !== ownQuestion);
+    expect(minted).toHaveLength(1);
+    parkQuestion[issue.key] = minted[0] as string;
+  }
   await db.execute(sql`DELETE FROM backfill_markers WHERE key = 'rescue-cap-rehome'`);
 }, 120_000);
 
@@ -103,7 +113,11 @@ describe('BC-11: a rescue-cap park made before the master park waits on the mast
   it('plants the red: before the re-home the parks sit at needs_info and wait on a person', async () => {
     expect(await statusOf(capped.id)).toBe('needs_info');
     expect(await standingOf(capped.key)).toMatchObject({ kind: 'you' });
-    expect(await decisionKeys()).toEqual(expect.arrayContaining([capped.key, cappedBeside.key]));
+    const keys = await decisionKeys();
+    expect(keys).toEqual(
+      expect.arrayContaining([parkQuestion[capped.key], parkQuestion[cappedBeside.key]]),
+    );
+    expect(keys).not.toContain(capped.key);
   });
 
   it('refuses by name a needs_info row whose park cannot be read, and leaves the marker unset', async () => {
@@ -130,7 +144,8 @@ describe('BC-11: a rescue-cap park made before the master park waits on the mast
     expect(await statusOf(cappedBeside.id)).toBe('on_hold');
     expect(await standingOf(capped.key)).toMatchObject({ kind: 'master' });
     const keys = await decisionKeys();
-    expect(keys).not.toContain(capped.key);
+    expect(keys).not.toContain(parkQuestion[capped.key]);
+    expect(keys).not.toContain(parkQuestion[cappedBeside.key]);
     const [move] = await rows<{ from_status: string; to_status: string; reason: string }>(sql`
       SELECT from_status, to_status, reason FROM kernel_transitions
        WHERE entity = 'issue' AND entity_id = ${capped.id} ORDER BY created_at DESC, id DESC LIMIT 1`);
@@ -142,12 +157,12 @@ describe('BC-11: a rescue-cap park made before the master park waits on the mast
 
   it("leaves another question on a re-homed issue open: it is somebody's own", async () => {
     expect((await openQuestions(cappedBeside.id)).map((q) => q.id)).toEqual([ownQuestion]);
-    expect(await decisionKeys()).toContain(cappedBeside.key);
+    expect(await decisionKeys()).toContain(ownQuestion);
   });
 
   it("leaves a person's own needs_info where it is", async () => {
     expect(await statusOf(personal.id)).toBe('needs_info');
-    expect(await decisionKeys()).toContain(personal.key);
+    expect(await decisionKeys()).toContain(parkQuestion[personal.key]);
   });
 
   it('is done once the refusal is settled: the next run moves nothing and sets the marker', async () => {

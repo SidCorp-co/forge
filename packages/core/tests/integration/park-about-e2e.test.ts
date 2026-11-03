@@ -184,10 +184,14 @@ describe('a park names the requirement its question is about', () => {
     const issue = await plantIssue(req.id);
     ok(await park(issue.id, { about: { requirement: null } }));
     await settleOutbox();
+    const { asked } = await readsOf(issue.id);
     const read = ok(await say('owner', 'GET', `/api/projects/${projectId}/needs-you/decisions`));
-    const decision = (read.decisions as Doc[]).find((d) => d.opens?.key === issue.key);
+    const decision = (read.decisions as Doc[]).find((d) => d.id === `question:${asked.id}`);
     expect(decision, JSON.stringify(read.decisions.map((d: Doc) => d.id))).toBeDefined();
     expect(decision?.subject).toEqual({ kind: 'requirement', key: req.key, title: req.title });
+    // the decision opens the requirement, never the parked issue (REQ-68 BC-4, BC-6)
+    expect(decision?.opens).toEqual({ kind: 'requirement', key: req.key });
+    expect((read.decisions as Doc[]).map((d) => d.opens?.key)).not.toContain(issue.key);
   });
 });
 

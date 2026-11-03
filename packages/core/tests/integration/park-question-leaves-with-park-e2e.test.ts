@@ -7,6 +7,8 @@
  * the park return a person presses (to `awaiting_release`, the status it left, and to `open`), and
  * reads the three surfaces: the issue's questions, Needs you's decisions, and `forge_needs_you` from
  * a chat turn's own toolset. A question somebody else asked while the issue stood parked stays theirs.
+ * Needs you lists no issue (REQ-68 BC-6): each park question is a decision of its own, keyed by the
+ * question, and no decision is keyed by an issue.
  */
 
 import { sql } from 'drizzle-orm';
@@ -133,15 +135,20 @@ afterAll(closeWorld);
 
 describe('BC-11: a park question leaves with its park', () => {
   it('stands the parks: each waits on a person on all three surfaces', async () => {
+    const parkQuestions: string[] = [];
     for (const issue of [released, reopened, asked]) {
-      expect(await openOn(issue.id)).not.toEqual([]);
+      const open = await openOn(issue.id);
+      expect(open).not.toEqual([]);
+      parkQuestions.push(...open);
     }
-    expect(await homeDecisionKeys()).toEqual(
-      expect.arrayContaining([released.key, reopened.key, asked.key]),
-    );
-    expect(await chatDecisionKeys()).toEqual(
-      expect.arrayContaining([released.key, reopened.key, asked.key]),
-    );
+    const home = await homeDecisionKeys();
+    const chatKeys = await chatDecisionKeys();
+    expect(home).toEqual(expect.arrayContaining(parkQuestions));
+    expect(chatKeys).toEqual(expect.arrayContaining(parkQuestions));
+    for (const issue of [released, reopened, asked]) {
+      expect(home).not.toContain(issue.key);
+      expect(chatKeys).not.toContain(issue.key);
+    }
   });
 
   it('withdraws the question in the move back to awaiting_release, naming why', async () => {
@@ -154,8 +161,8 @@ describe('BC-11: a park question leaves with its park', () => {
     expect(shown?.voidReason).toContain('Needs info');
     expect(shown?.voidReason).toContain('Awaiting release');
     expect(shown?.voidReason).toContain('Released by hand; nothing waits on a person.');
-    expect(await homeDecisionKeys()).not.toContain(released.key);
-    expect(await chatDecisionKeys()).not.toContain(released.key);
+    expect(await homeDecisionKeys()).not.toContain(parkQuestion);
+    expect(await chatDecisionKeys()).not.toContain(parkQuestion);
   });
 
   it('records the withdrawal as a question move in the same transaction as the issue move', async () => {
@@ -173,15 +180,17 @@ describe('BC-11: a park question leaves with its park', () => {
   });
 
   it("withdraws ISS-439's case: Move anyway back to open", async () => {
+    const [parkQuestion] = await openOn(reopened.id);
+    expect(await homeDecisionKeys()).toContain(parkQuestion);
     await moveOn(reopened.id, 'open', 'Design decisions recorded; nothing waits on a person.');
     expect(await openOn(reopened.id)).toEqual([]);
-    expect(await homeDecisionKeys()).not.toContain(reopened.key);
-    expect(await chatDecisionKeys()).not.toContain(reopened.key);
+    expect(await homeDecisionKeys()).not.toContain(parkQuestion);
+    expect(await chatDecisionKeys()).not.toContain(parkQuestion);
   });
 
   it('leaves a question somebody else asked during the park open: it is theirs', async () => {
     await moveOn(asked.id, 'open', 'Resumed by hand.');
     expect(await openOn(asked.id)).toEqual([ownQuestion]);
-    expect(await homeDecisionKeys()).toContain(asked.key);
+    expect(await homeDecisionKeys()).toContain(ownQuestion);
   });
 });

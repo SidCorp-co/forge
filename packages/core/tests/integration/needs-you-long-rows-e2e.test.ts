@@ -4,7 +4,9 @@
 // answered the whole list 500. The business rules under test (REQ-48 BC-11): each decision is titled
 // by its record's title, never by a prose field; a title over the cap is cut at a word boundary with
 // an ellipsis; a record no decision can be made of is named, never the read's failure; and the number
-// of statements the read spends does not grow with the number of rows.
+// of statements the read spends does not grow with the number of rows. A suggestion, a mockup or a
+// preview on an issue is listed on the requirement the issue delivers, titled and opened by it
+// (REQ-68 BC-4, BC-6), so the long title a person reads there is the requirement's.
 //
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
 // @direct-test-of packages/core/src/development/needs-you-decisions.ts
@@ -77,18 +79,40 @@ function expectCutAtWord(title: string, source: string) {
   expect(source.charAt(kept.length)).toBe(' ');
 }
 
-/** `n` issues, each with a suggestion leading with prose, a mockup and a live preview, and `n` proposed requirement revisions. */
+/**
+ * `n` proposed requirement revisions, each delivered by an issue with a suggestion leading with
+ * prose, a mockup and a live preview.
+ */
 async function world(n: number, opts: { longTitles: boolean }) {
   const { id: projectId } = await createTestProject(ownerId);
   await addProjectMember(projectId, memberId, 'member');
   const at = (p: string) => `/api/projects/${projectId}${p}`;
   const deviceId = await createTestDevice(ownerId);
   const issues: { id: string; key: string }[] = [];
+  const reqs: string[] = [];
   for (let i = 1; i <= n; i++) {
+    const req = expectOk(
+      await api(owner, 'POST', at('/requirements'), {
+        title: `The case reaches its owner ${i}`,
+        reason: 'the case has to reach its owner',
+        criteria: [{ body: 'The case reaches its owner.' }],
+      }),
+      201,
+    ).key as string;
+    expectOk(await api(owner, 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
+    if (opts.longTitles && i === 1) {
+      await db.execute(sql`
+        UPDATE requirements SET title = ${LONG_REQUIREMENT_TITLE}
+         WHERE project_id = ${projectId} AND req_seq = ${Number(req.slice(4))}`);
+    }
+    reqs.push(req);
     const issue = await createTestIssue(projectId, ownerId, i, {
       status: 'open',
       createdAt: new Date(Date.now() - 5 * 86_400_000),
     });
+    await db.execute(sql`
+      UPDATE issues SET requirement_id = (SELECT id FROM requirements
+        WHERE project_id = ${projectId} AND req_seq = ${Number(req.slice(4))}) WHERE id = ${issue.id}`);
     if (opts.longTitles && i === 1) {
       await db.execute(sql`UPDATE issues SET title = ${LONG_ISSUE_TITLE} WHERE id = ${issue.id}`);
     }
@@ -122,20 +146,6 @@ async function world(n: number, opts: { longTitles: boolean }) {
       SELECT ${previewId}, ${projectId}, 'issue', ${issue.id}, s.id, ${deviceId}, ${`p-${slugOf(previewId)}`},
              'live', 'pnpm dev', 30, ${memberId}, now() - interval '1 day'
         FROM agent_sessions s WHERE s.pipeline_run_id = ${runId}`);
-    const req = expectOk(
-      await api(owner, 'POST', at('/requirements'), {
-        title: `The case reaches its owner ${i}`,
-        reason: 'the case has to reach its owner',
-        criteria: [{ body: 'The case reaches its owner.' }],
-      }),
-      201,
-    ).key as string;
-    expectOk(await api(owner, 'POST', at(`/requirements/${req}/revisions/1/propose`), {}));
-    if (opts.longTitles && i === 1) {
-      await db.execute(sql`
-        UPDATE requirements SET title = ${LONG_REQUIREMENT_TITLE}
-         WHERE project_id = ${projectId} AND req_seq = ${Number(req.slice(4))}`);
-    }
     const made = expectOk(
       await api(owner, 'POST', at('/workflows'), {
         baseRevision: null,
@@ -157,7 +167,7 @@ async function world(n: number, opts: { longTitles: boolean }) {
       201,
     );
   }
-  return { projectId, issues };
+  return { projectId, issues, reqs };
 }
 
 beforeAll(async () => {
@@ -188,10 +198,16 @@ describe('a decision is titled by its record’s title, and one long title never
       expect(d.title, `${d.id} reads prose`).not.toContain('because');
     }
 
-    // a suggestion reads the title of the record it is on, never its payload's note
-    expectCutAtWord(byId(read, 'suggestion:')[0]?.title, LONG_ISSUE_TITLE);
-    // the preview reads the same issue's title, cut the same way
-    expectCutAtWord(byId(read, 'preview:')[0]?.title, LONG_ISSUE_TITLE);
+    // a suggestion on the issue reads the title of the item it is listed on, never its payload's note
+    // and never the issue's
+    expectCutAtWord(byId(read, 'suggestion:')[0]?.title, LONG_REQUIREMENT_TITLE);
+    // the preview reads the same item's title, cut the same way
+    expectCutAtWord(byId(read, 'preview:')[0]?.title, LONG_REQUIREMENT_TITLE);
+    for (const d of read.decisions as Doc[]) {
+      expect(d.title, `${d.id} reads the issue`).not.toContain('checkout0');
+      expect(d.opens?.kind, d.id).not.toBe('issue');
+    }
+    expect(byId(read, 'suggestion:')[0]?.opens).toEqual({ kind: 'requirement', key: w.reqs[0] });
     // a mockup reads its name, never its caption
     expect(byId(read, 'mockup:')[0]?.title).toBe('checkout-1.html');
     // the note is the proposal's object, read beside the title and never in its place, cut at a word
@@ -222,10 +238,10 @@ describe('a decision is titled by its record’s title, and one long title never
       count: 1,
       items: [
         {
-          key: w.issues[0]?.key,
-          title: 'issue 1',
+          key: w.reqs[0],
+          title: 'The case reaches its owner 1',
           next: 'open it on its own page',
-          opens: { kind: 'issue', key: w.issues[0]?.key },
+          opens: { kind: 'requirement', key: w.reqs[0] },
         },
       ],
     });

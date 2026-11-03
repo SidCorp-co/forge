@@ -274,6 +274,7 @@ describe("an issue's act on a person's Needs you", () => {
   let decided = '';
   let decidedSlug = '';
   const keys = ['ISS-1', 'ISS-2', 'ISS-3'];
+  const questionId = randomUUID();
 
   beforeAll(async () => {
     const { app } = await import('../../src/index.js');
@@ -299,7 +300,7 @@ describe("an issue's act on a person's Needs you", () => {
     });
     await createTestIssue(decided, writer, 3, { status: 'draft', createdAt: now });
     await askQuestion({
-      id: randomUUID(),
+      id: questionId,
       projectId: decided,
       issueId: asked.id,
       prompt: 'Keep the old export format or move to the new one?',
@@ -353,7 +354,8 @@ describe("an issue's act on a person's Needs you", () => {
     expect((items.items as Doc[]).map((i) => i.key)).toEqual(expect.not.arrayContaining(keys));
   });
 
-  it('keeps each on the Needs you of the writer who owes it and can take it, the question a decision', async () => {
+  // REQ-68 BC-6: Needs you lists no issue; the run's question on ISS-1 is a decision of its own
+  it('keeps each owed by the writer who can take it, and the question on ISS-1 a decision of their Needs you', async () => {
     const standing = await standingOf('writer');
     for (const key of keys) {
       expect(standing.get(key), key).toMatchObject({
@@ -362,7 +364,9 @@ describe("an issue's act on a person's Needs you", () => {
       });
     }
     const part = await attentionOf('writer');
-    expect(((part?.decisions as Doc[] | undefined) ?? []).map((d) => d.key)).toContain('ISS-1');
+    const decisions = (part?.decisions as Doc[] | undefined) ?? [];
+    expect(decisions.map((d) => d.key)).toContain(questionId);
+    for (const key of keys) expect(decisions.map((d) => d.key)).not.toContain(key);
     expect(part?.total as number).toBeGreaterThanOrEqual(1);
   });
 });

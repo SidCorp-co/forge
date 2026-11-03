@@ -28,6 +28,7 @@ const question = (over: Record<string, unknown>) =>
     feedbackId: null,
     aboutFeedback: null,
     subject: null,
+    issueItem: null,
     at: '2026-10-25T09:00:00.000Z',
     escalated: null,
     suggestion: null,

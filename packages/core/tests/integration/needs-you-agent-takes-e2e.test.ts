@@ -1,19 +1,23 @@
 // REQ-68 BC-3, judged red on 0.4.0-dev.325 (K98): Needs you lists only decisions the agent may not
 // take. The decisions read left the master's out as `agent_takes`, but `GET /needs-you`, which
 // Development's Needs you list and the menu badges draw, still listed every one of them as the
-// person's. Both reads now list one set: what the agent takes is in neither.
+// person's. Both reads now list one set: what the agent takes is in neither. A mockup on an issue
+// is listed on the requirement the issue delivers, never as the issue's (REQ-68 BC-4, BC-6).
 //
 // @direct-test-of packages/core/src/development/needs-you-list.ts
 // @direct-test-of packages/core/src/development/needs-you-decisions.ts
 // @direct-test-of packages/core/src/master-accounts.ts
 
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { closeWorld, type Doc, ok, requester, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
   createTestIssue,
   createTestProject,
+  createTestRequirement,
   createTestUser,
+  rows,
 } from '../helpers/factories.js';
 
 /** The project's master: the agent account its panes write under, when the test pairs one. */
@@ -45,7 +49,10 @@ afterAll(async () => {
   await closeWorld();
 });
 
-/** A project where the member proposed a mockup on an issue, which the owner approves or declines. */
+/**
+ * A project where the member proposed a mockup on an issue delivering REQ-1, which the owner approves
+ * or declines on REQ-1.
+ */
 async function proposed() {
   const { id: projectId } = await createTestProject(ownerId);
   await addProjectMember(projectId, memberId, 'member');
@@ -54,6 +61,8 @@ async function proposed() {
     status: 'open',
     createdAt: new Date(),
   });
+  const req = await createTestRequirement(projectId, 1, 'Checkout takes one page');
+  await rows(sql`UPDATE issues SET requirement_id = ${req.id} WHERE id = ${issue.id} RETURNING id`);
   const say = (who: 'owner' | 'member', method: string, path: string, body?: unknown) =>
     requester(app, tokens)(who, method, `/api/projects/${projectId}${path}`, body);
   ok(
@@ -67,7 +76,7 @@ async function proposed() {
     }),
     201,
   );
-  return { say, issueKey: issue.key };
+  return { say, issueKey: issue.key, reqKey: req.key };
 }
 
 const asks = (needs: Doc) => (needs.items as Doc[]).filter((i) => i.space === 'asks');
@@ -75,11 +84,15 @@ const asks = (needs: Doc) => (needs.items as Doc[]).filter((i) => i.space === 'a
 describe('Needs you lists only decisions the agent may not take (REQ-68 BC-3)', () => {
   it('lists the mockup as the owner’s on both reads while no master may take it', async () => {
     master.id = null;
-    const { say } = await proposed();
+    const { say, issueKey, reqKey } = await proposed();
     const read = ok(await say('owner', 'GET', '/needs-you/decisions'));
-    expect(read.decisions.map((d: Doc) => d.title)).toContain('checkout.html');
+    const mockup = (read.decisions as Doc[]).find((d) => d.title === 'checkout.html');
+    expect(mockup?.area).toBe('requirements');
+    expect(mockup?.opens).toEqual({ kind: 'requirement', key: reqKey });
+    expect(JSON.stringify(read.decisions)).not.toContain('"kind":"issue"');
     const needs = ok(await say('owner', 'GET', '/needs-you'));
     expect(asks(needs).map((i) => i.title)).toContain('checkout.html');
+    expect(asks(needs).map((i) => i.key)).not.toContain(issueKey);
   });
 
   it('lists it on neither read once the project’s master holds the approve, and counts one set', async () => {
@@ -92,10 +105,12 @@ describe('Needs you lists only decisions the agent may not take (REQ-68 BC-3)', 
 
     const needs = ok(await say('owner', 'GET', '/needs-you'));
     expect(asks(needs).map((i) => i.title)).not.toContain('checkout.html');
-    // the menu badges count `areas`: the issues area counts no row the master takes
-    expect((needs.areas as Record<string, { you: number }>).issues?.you).toBe(
-      asks(needs).filter((i) => i.area === 'issues').length,
+    // the menu badges count `areas`: the requirements area counts no row the master takes, and
+    // there is no issues area to count
+    expect((needs.areas as Record<string, { you: number }>).requirements?.you).toBe(
+      asks(needs).filter((i) => i.area === 'requirements').length,
     );
+    expect(Object.keys(needs.areas as Doc)).not.toContain('issues');
     const counted =
       read.total +
       (read.notDecisions as Doc[])

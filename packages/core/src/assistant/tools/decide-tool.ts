@@ -24,7 +24,7 @@ import { type ChatToolset, thrownMessage, toolError } from './mcp-adapter.js';
 const DESCRIPTION = [
   'Make the Needs-you decisions this conversation agreed, as the person and with their own access, when their CURRENT message tells you to (e.g. "open them for me", "mở giúp tôi đi").', // i18n-allow: the Vietnamese instruction the model must recognise
   'word: their instruction, quoted exactly from their latest message; the call is refused unless it is there.',
-  'decisions: exactly the decisions agreed, each by its forge_needs_you id or the key it opens (ISS-603), with answer (an answer id; left out, the recommended one) and reason where the answer takes one. Never add one they did not agree to.',
+  'decisions: exactly the decisions agreed, each by its forge_needs_you id or the requirement or feedback key it opens (REQ-12, FB-7), with answer (an answer id; left out, the recommended one) and reason where the answer takes one. Never add one they did not agree to.',
   'Each result is read back: done with the item state, already_done with who moved it and when, or refused with why. Report every one as it says.',
   'Without their word in this message, do not call it: the decision cards under your reply are theirs to press.',
 ].join(' ');

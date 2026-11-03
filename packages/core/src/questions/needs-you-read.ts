@@ -78,6 +78,12 @@ export interface OpenPersonQuestion {
   aboutFeedback: string | null;
   /** What it is about, as the person answering reads it (ISS-583); null where it names nothing. */
   subject: QuestionSubject | null;
+  /**
+   * The product item the issue it is asked on serves: the requirement it delivers, else the oldest
+   * feedback item it carries; null off an issue or on one serving neither. A person reads a question
+   * on an issue on that item (REQ-68 BC-4).
+   */
+  issueItem: { kind: 'requirement' | 'feedback'; key: string } | null;
   /** The round being asked, as written; null only on a row with no steps, which the read refuses. */
   current: QuestionStep;
   /** The assistant's record for a round, or null; the round it was drafted for decides whether it stands. */
@@ -108,6 +114,11 @@ function openPersonRowsOf(projectIds: readonly string[]) {
         WHERE ${agentQuestions.about} ->> 'kind' = 'feedback'
           AND f.id = (${agentQuestions.about} ->> 'feedbackId')::uuid)`,
       about: agentQuestions.about,
+      issueRequirement: sql<string | null>`(SELECT 'REQ-' || r.req_seq FROM issues i
+        JOIN requirements r ON r.id = i.requirement_id WHERE i.id = "agent_questions"."issue_id")`,
+      issueFeedback: sql<string | null>`(SELECT 'FB-' || f.fb_seq FROM feedback_route_issues ri
+        JOIN feedback f ON f.id = ri.feedback_id WHERE ri.issue_id = "agent_questions"."issue_id"
+        ORDER BY f.fb_seq LIMIT 1)`,
       createdAt: agentQuestions.createdAt,
       suggestion: agentQuestions.suggestion,
       current: sql<QuestionStep | null>`${agentQuestions.steps} -> -1`,
@@ -167,6 +178,11 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       feedbackId: r.feedbackId,
       aboutFeedback: r.aboutFeedback,
       subject: subjects[i] ?? null,
+      issueItem: r.issueRequirement
+        ? { kind: 'requirement', key: r.issueRequirement }
+        : r.issueFeedback
+          ? { kind: 'feedback', key: r.issueFeedback }
+          : null,
       current: r.current,
       suggestion: r.suggestion,
       at,

@@ -1,7 +1,8 @@
 // REQ-41 BC-25, BC-27 and BC-24 against the real Needs-you read, the real answer route and the real
 // kernel: the chat makes the drafts' steward decisions the person agreed, on their word, as them; an
 // item they already moved is named done with who and when; and a card pressed under a reply is
-// answered in the room with the item read back.
+// answered in the room with the item read back. A draft's decision is asked on the requirement it
+// delivers (REQ-68 BC-4), so the person names it by that item, and the card opens it, never the issue.
 //
 // @direct-test-of packages/core/src/assistant/tools/decide-tool.ts
 // @direct-test-of packages/core/src/assistant/item-state.ts
@@ -41,7 +42,10 @@ let ownerId = '';
 let reqSeq = 900;
 let ask: (issue: { id: string; key: string }) => Promise<void>;
 
-/** A draft its issue-ready record completes, sixteen days old so the steward finds it stuck. */
+/**
+ * A draft its issue-ready record completes, sixteen days old so the steward finds it stuck, with the
+ * requirement it delivers: the item its decision is asked on.
+ */
 async function readyDraft(seq: number) {
   const issue = await createTestIssue(projectId, ownerId, seq, {
     status: 'draft',
@@ -49,7 +53,7 @@ async function readyDraft(seq: number) {
   });
   reqSeq += 1;
   await completeIssueReadyRecord(projectId, ownerId, issue.id, reqSeq);
-  return issue;
+  return { ...issue, req: `REQ-${reqSeq}` };
 }
 
 const questionsOn = (issueId: string) =>
@@ -139,10 +143,6 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
       body: JSON.parse((r.content[0] as { text: string }).text) as Doc,
     };
   };
-  const ownerName = async () => {
-    const { userNames } = await import('../../src/lib/people.js');
-    return (await userNames([ownerId])).get(ownerId) ?? null;
-  };
 
   it('refuses the earlier message as the word, and leaves every draft and its decision as it was', async () => {
     const issue = await readyDraft(194);
@@ -157,7 +157,7 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
     expect((await questionsOn(issue.id)).find((x) => x.id === q.id)?.status).toBe('open');
   });
 
-  it('opens the agreed drafts as the owner, names the one they opened by hand done with who and when, and reads each back', async () => {
+  it('opens the agreed drafts as the owner by the requirement each is asked on, names the one opened by hand done, and reads each back', async () => {
     const a = await readyDraft(195);
     const b = await readyDraft(196);
     const byHand = await readyDraft(197);
@@ -165,33 +165,30 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
     await asked(b);
     await asked(byHand);
     ok(await say('owner', 'POST', `/api/issues/${byHand.id}/transition`, { toStatus: 'open' }));
-    const [move] = await rows<{ created_at: Date }>(sql`
-      SELECT created_at FROM kernel_transitions WHERE entity = 'issue' AND entity_id = ${byHand.id}
+    const [move] = await rows<{ actor_id: string }>(sql`
+      SELECT actor_id FROM kernel_transitions WHERE entity = 'issue' AND entity_id = ${byHand.id}
        ORDER BY created_at DESC LIMIT 1`);
-
+    expect(move?.actor_id).toBe(ownerId);
+    // the person names what they see: the requirement each decision is asked on, never the issue
     const { isError, body } = await call(LATEST, {
       word: WORD,
-      decisions: [{ decision: byHand.key }, { decision: a.key }, { decision: b.key }],
+      decisions: [{ decision: byHand.req }, { decision: a.req }, { decision: b.req }],
     });
     expect(isError, JSON.stringify(body)).toBe(false);
-    const name = await ownerName();
     const results = body.results as Doc[];
-    expect(results[0]).toEqual({
+    // its decision left Needs you when the draft moved (REQ-68 BC-7): the item reads back as it is
+    expect(results[0]).toMatchObject({
       outcome: 'already_done',
-      decision: byHand.key,
-      state: {
-        key: byHand.key,
-        status: 'open',
-        movedBy: name,
-        movedAt: new Date(String(move?.created_at)).toISOString(),
-      },
+      decision: byHand.req,
+      // read as it is, never as meant: the requirement itself has not moved
+      state: { key: byHand.req, status: 'agreed', movedBy: null, movedAt: null },
     });
     for (const [i, issue] of [a, b].entries()) {
       expect(results[i + 1]).toMatchObject({
         outcome: 'done',
-        decision: issue.key,
+        decision: issue.req,
         answer: expect.stringContaining('Open'),
-        state: { key: issue.key, status: 'open', movedBy: name },
+        state: { key: issue.req, status: 'agreed', movedBy: null, movedAt: null },
       });
       expect(await statusOf(issue.id)).toBe('open');
       const [moved] = await rows<{ actor_id: string; from_status: string }>(sql`
@@ -216,8 +213,8 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
     const outcome = (body: Doc) =>
       say('owner', 'POST', `/api/conversations/${roomId}/decision-outcomes`, body);
     const pressed = {
-      decision: `issue:${issue.key}:question.answer`,
-      opens: { kind: 'issue', key: issue.key },
+      decision: `question:${q.id}:question.answer`,
+      opens: { kind: 'requirement', key: issue.req },
       ok: true,
     };
 
@@ -228,17 +225,19 @@ describe("the chat makes the agreed decisions on the person's word, as them (REQ
       INSERT INTO conversation_windows (conversation_id, project_id, adapter, first_seq, last_seq)
       VALUES (${roomId}, ${projectId}, 'web', 1, 1)`);
     const told = ok(await outcome(pressed));
-    expect(told.content).toMatch(
-      new RegExp(
-        `^Your answer on ${issue.key} was sent\\. ${issue.key} is open; last moved by .+ at \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC\\.$`,
-      ),
-    );
+    // the requirement is read back as it is: agreed, with no move recorded since its seeding
+    expect(told.content).toBe(`Your answer on ${issue.req} was sent. ${issue.req} is agreed.`);
     const [said] = await rows<{ role: string; content: string }>(sql`
       SELECT role, content FROM conversation_messages WHERE conversation_id = ${roomId} ORDER BY seq DESC LIMIT 1`);
     expect(said).toEqual({ role: 'assistant', content: told.content });
 
-    const bad = await outcome({ ...pressed, opens: { kind: 'issue', key: 'ISS-1 OR 1=1' } });
+    expect(await statusOf(issue.id), 'the answer opened the draft').toBe('open');
+
+    const bad = await outcome({ ...pressed, opens: { kind: 'requirement', key: 'REQ-1 OR 1=1' } });
     expect(bad.status).toBe(400);
+    // a card opens a product item, never an issue (REQ-68 BC-6)
+    const onIssue = await outcome({ ...pressed, opens: { kind: 'issue', key: issue.key } });
+    expect(onIssue.status).toBe(400);
     const stranger = await outcome({ ...pressed, ok: false, extra: 'Done: everything' });
     expect(stranger.status).toBe(400);
   });

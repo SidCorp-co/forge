@@ -158,12 +158,13 @@ function questionOf(
 
 /**
  * The product item a question row opens: the feedback item it is about, else the requirement it is
- * about; null where it names neither (a run's question attached to nothing).
+ * about, else the item the issue it is asked on serves; null where it names none (a run's question
+ * attached to nothing, or on an issue serving no item).
  */
 function itemOfQuestion(q: OpenPersonQuestion): DecisionOpens | null {
   if (q.aboutFeedback) return { kind: 'feedback', key: q.aboutFeedback };
   if (q.subject?.kind === 'requirement') return { kind: 'requirement', key: q.subject.key };
-  return null;
+  return q.issueItem;
 }
 
 /** What one row the viewer owes is: a decision built from its record, or the reason it is not one. */
