@@ -41,6 +41,19 @@ export async function roomIsBound(room: Pick<RoomRow, 'bindingId' | 'rid'>): Pro
   return bindingNamesRoom(pair.binding.config, room.rid);
 }
 
+/**
+ * Whether an active binding of the project names `rid` while no room is declared for it: a room is
+ * declared when its binding is saved (`warm.ts:warmProjectRooms`) or its first message arrives, so a
+ * room bound before either has none.
+ */
+export async function boundButUndeclared(projectId: string, rid: string): Promise<boolean> {
+  for (const { binding } of await listActiveBindingsForProjectProvider(projectId, 'rocketchat')) {
+    if (!bindingNamesRoom(binding.config, rid)) continue;
+    if (!(await roomOfBinding(binding.id, rid))) return true;
+  }
+  return false;
+}
+
 /** Whether a rocketchat binding's config names the group `rid`. */
 export function bindingNamesRoom(config: unknown, rid: string): boolean {
   return ((config as RocketChatBindingConfig | null)?.rids ?? []).includes(rid);

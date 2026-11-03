@@ -9,7 +9,7 @@ import type { SupportMasterPostRequest } from '@forge/contracts/support-channel'
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readersOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
-import { roomIsBound } from './rooms.js';
+import { boundButUndeclared, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import {
   insertAction,
@@ -36,6 +36,24 @@ async function postableRoomsOf(projectId: string): Promise<Postable[]> {
     ),
   );
   return bound.filter((r): r is Postable => r !== null);
+}
+
+/**
+ * The refusal for a room a binding names but nobody declared: the truth is "bound, not yet declared",
+ * not "no bound room" (the forge daily review, 2026-11-03, refused on Forge-Communicate).
+ */
+async function undeclaredRefusal(
+  projectId: string,
+  rid: string | undefined,
+  rooms: readonly Postable[],
+): Promise<Outcome<never> | null> {
+  if (!rid || rooms.some((r) => r.room.rid === rid)) return null;
+  if (!(await boundButUndeclared(projectId, rid))) return null;
+  return no(
+    'SUPPORT_ROOM_UNDECLARED',
+    '/rid',
+    `${rid} is named by this project's binding, but its room was never declared: a room is declared when its binding is saved or its first message arrives. A project admin saves the binding again, which declares and warms it. Nothing was posted.`,
+  );
 }
 
 const doorOf = (p: Postable): SessionDoor => (p.team ? 'operations-reply' : 'support-reply');
@@ -115,7 +133,10 @@ async function postInAskersThread(
   actor: { userId: string; projectId: string },
   input: SupportMasterPostRequest & { thread: string },
 ): Promise<Outcome<{ rid: string; messageId: string | null; thread?: string }>> {
-  const found = await roomOfThread(await postableRoomsOf(actor.projectId), input.rid, input.thread);
+  const rooms = await postableRoomsOf(actor.projectId);
+  const undeclared = await undeclaredRefusal(actor.projectId, input.rid, rooms);
+  if (undeclared) return undeclared;
+  const found = await roomOfThread(rooms, input.rid, input.thread);
   if (!found.ok) return found;
   const { at, conversationId } = found.value;
   const room = at.room;
@@ -159,7 +180,10 @@ export async function postAsMaster(
 ): Promise<Outcome<{ rid: string; messageId: string | null; thread?: string }>> {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
   if (input.thread) return postInAskersThread(actor, { ...input, thread: input.thread });
-  const chosen = topLevelRoomOf(await postableRoomsOf(actor.projectId), input.rid);
+  const rooms = await postableRoomsOf(actor.projectId);
+  const undeclared = await undeclaredRefusal(actor.projectId, input.rid, rooms);
+  if (undeclared) return undeclared;
+  const chosen = topLevelRoomOf(rooms, input.rid);
   if (!chosen.ok) return chosen;
   const room = chosen.value.room;
   const text = await scrubbedForRoom(room, input.text);

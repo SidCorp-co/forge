@@ -360,9 +360,7 @@ export const supportProjectSlugSchema = z
 	.trim()
 	.min(1)
 	.max(100)
-	.describe(
-		"a project you follow, by slug; your home project when omitted",
-	);
+	.describe("a project you follow, by slug; your home project when omitted");
 
 export const supportRoomConfigSchema = z.strictObject({
 	/** What the product is, in a sentence or two, for the session's brief. */
@@ -987,6 +985,7 @@ export interface SupportRoomView {
 export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_REFUSED",
 	"SUPPORT_ROOM_UNKNOWN",
+	"SUPPORT_ROOM_UNDECLARED",
 	"SUPPORT_NOT_THE_ROOM_SESSION",
 	"SUPPORT_THREAD_UNKNOWN",
 	"SUPPORT_ASKER_NOT_IN_THREAD",
@@ -1112,6 +1111,8 @@ export interface SupportRefusal {
 
 export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_ROOM_UNKNOWN: 404,
+	// a binding names the room, but no message or binding save has declared it yet
+	SUPPORT_ROOM_UNDECLARED: 409,
 	SUPPORT_NOT_THE_ROOM_SESSION: 403,
 	SUPPORT_THREAD_UNKNOWN: 404,
 	SUPPORT_ASKER_NOT_IN_THREAD: 409,

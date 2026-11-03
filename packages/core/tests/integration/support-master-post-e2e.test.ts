@@ -13,6 +13,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/master-post.ts
 // @direct-test-of packages/core/src/support/routes.ts
+// @direct-test-of packages/core/src/support/rooms.ts
 //
 // ISS-862: the project's master posts its daily review, in its own words, at the top level of the
 // project's team room. Core writes none of the words: it picks the room, screens, posts and records
@@ -48,6 +49,34 @@ describe("the master's post in its project's room (ISS-862)", () => {
   it('refuses a room the project does not bind, by name', async () => {
     const res = await post(owner, { text: REVIEW, rid: 'not-a-room' });
     expect([res.status, codeOf(res)]).toEqual([404, 'SUPPORT_ROOM_UNKNOWN']);
+  });
+
+  // the forge daily review (2026-11-03) was refused "no bound room" on a room its binding names but
+  // nobody had declared: the refusal says what is true, and what declares it
+  it('refuses a room its binding names but nobody declared, saying so, and posts nothing', async () => {
+    const UNDECLARED = 'room-bound-not-declared';
+    const widen = (rid: string | null) =>
+      rows(sql`
+        UPDATE integration_bindings
+           SET config = jsonb_set(config, '{rids}', ${
+             rid === null
+               ? sql`(config->'rids') - ${UNDECLARED}`
+               : sql`(config->'rids') || to_jsonb(${rid}::text)`
+           })
+         WHERE project_id = ${w.projectId}::uuid AND provider = 'rocketchat'`);
+    await widen(UNDECLARED);
+    try {
+      const before = (await chat.botLines()).length;
+      const res = await post(owner, { text: REVIEW, rid: UNDECLARED });
+      expect([res.status, codeOf(res)]).toEqual([409, 'SUPPORT_ROOM_UNDECLARED']);
+      expect(JSON.stringify(res.body)).toContain('saves the binding again');
+      expect((await chat.botLines()).length, 'nothing was posted').toBe(before);
+      // a room no binding names stays unknown
+      const unknown = await post(owner, { text: REVIEW, rid: 'not-a-room' });
+      expect(codeOf(unknown)).toBe('SUPPORT_ROOM_UNKNOWN');
+    } finally {
+      await widen(null);
+    }
   });
 
   it('refuses a caller who cannot write the project', async () => {
