@@ -315,6 +315,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     credentials/mcp-oauth-shape.ts URL.toString in redirectWith
     integrations/inbound-door.ts URL.search in sameEndpoint
     integrations/llm/embeddings-client.ts URL handed to @types/node:fetchFn in timedFetch
+    integrations/peer-forge/client.ts URL handed to @types/node:fetch in call
     integrations/rocketchat/rest-client.ts URLSearchParams.toString in fetchBotMembership
     integrations/rocketchat/rest-client.ts URLSearchParams.toString in rcGet
     integrations/sentry/endpoints.ts URLSearchParams.toString in sentryOrgIssuesUrl
