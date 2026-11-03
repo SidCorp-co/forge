@@ -28,6 +28,11 @@ function app() {
     c.json({}),
   );
   a.get('/auth', requireAuth(), (c) => c.json({}));
+  a.post('/detailed', () => {
+    throw refuse('SESSION_CONTEXT_MISMATCH', 'held', '').withDetails({
+      holders: [{ sessionId: 's1' }],
+    });
+  });
   a.get('/kernel', () => {
     throw refuse('SESSION_CONTEXT_MISMATCH', 'the issue moved under this read', '/sessionContext');
   });
@@ -112,6 +117,18 @@ describe('one problem envelope at every door', () => {
       'refused: SESSION_CONTEXT_MISMATCH at /sessionContext: the issue moved under this read',
     );
     expect(body.error.message).toBe(body.message);
+  });
+
+  // ISS-929: a thrown refusal carrying data answers it as `details`, beside the unchanged envelope
+  it('a thrown refusal carrying details answers them beside its code and refusals', async () => {
+    const { body } = await answer('POST', '/detailed');
+    expect((body as Body & { details?: unknown }).details).toEqual({
+      holders: [{ sessionId: 's1' }],
+    });
+    expect(body.code).toBe('SESSION_CONTEXT_MISMATCH');
+    expect(body.error.refusals.map((r) => r.code)).toEqual(['SESSION_CONTEXT_MISMATCH']);
+    const plain = await answer('POST', '/kernel');
+    expect('details' in plain.body).toBe(false);
   });
 
   it("a schema refusal's message names the failing field", async () => {

@@ -185,7 +185,7 @@ const refuse = refuser<IssueTakeRefusalCode>('ISSUE_TAKE_REFUSED');
  * A holder as a refusal names it: with the id the box that declared the run knows it by
  * (`pipeline_runs.metadata.boxRunId`), null for a session opened without one.
  */
-export interface LeaseRefusalHolder extends IssueLeaseHolder {
+interface LeaseRefusalHolder extends IssueLeaseHolder {
   boxRunId: string | null;
 }
 
