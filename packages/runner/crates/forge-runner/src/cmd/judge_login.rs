@@ -34,7 +34,8 @@ pub struct Args {
     #[arg(long, default_value = "self")]
     pub run: String,
     /// Directory to write the file into (created 0700); default a `forge-judge-<run>` directory
-    /// under the system temp dir, outside every checkout, which `run close <run>` removes.
+    /// under the system temp dir, outside every checkout. The directory is recorded on the run and
+    /// its close removes it; an `--out-dir` is recorded only when it is named `forge-judge-<run>`.
     #[arg(long)]
     pub out_dir: Option<PathBuf>,
 }
