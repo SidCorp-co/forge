@@ -87,11 +87,6 @@ export function waitingRows(view: AttentionView): WaitingRow[] {
   return [...decisions, ...gates, ...mentions];
 }
 
-/** The decisions waiting beyond those the read listed, so the section says more wait. */
-export function waitingBeyond(view: AttentionView): number {
-  return view.needsYou.reduce((n, p) => n + Math.max(0, p.total - p.decisions.length), 0);
-}
-
 /** The page an item opens on: an issue in the list's peek, a feedback item on its page. */
 export function itemHref(item: Pick<HomeMovingItem, "kind" | "key" | "projectSlug">): string {
   return item.kind === "issue"
@@ -107,3 +102,6 @@ export const STAGE_TONE: Record<HomeStage, LegendTone> = {
   landed: "done",
   releasing: "run",
 };
+
+/** Rows a section shows before its "show more": the first screen stays within the page's word budget. */
+export const HOME_ROWS = 3;

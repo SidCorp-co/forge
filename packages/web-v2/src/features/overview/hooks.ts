@@ -22,7 +22,7 @@ export const homeKeys = {
   find: (text: string, orgId: string | null) => ["home", "find", text, orgId] as const,
 };
 
-/** What is moving for what the person gave and what is live, across the projects they read. */
+/** What is moving for what the person gave and what is live, across the projects they read; asked once the active org is resolved, as the pulse is. */
 export function useHome(orgId: string | null) {
   return useQuery({ queryKey: homeKeys.get(orgId), queryFn: () => homeApi.get(orgId), enabled: orgId !== null });
 }

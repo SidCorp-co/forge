@@ -6,7 +6,9 @@ import { useAttention } from "@/features/attention";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link, useRouter } from "@/lib/navigation/router";
-import { type WaitingRow, waitingBeyond, waitingRows } from "../home-rows";
+import { useState } from "react";
+import { HOME_ROWS, type WaitingRow, waitingRows } from "../home-rows";
+import { ShowMore } from "./show-more";
 
 export function WaitingOnYou() {
   const t = useCopy();
@@ -17,13 +19,9 @@ export function WaitingOnYou() {
       <QueryBoundary query={{ ...q, data: q.view }} loadingLabel={t("overview.home.loading")} height="inline">
         {(view) => {
           const rows = waitingRows(view);
-          const more = waitingBeyond(view);
           if (rows.length === 0) return <p className="fg-body-sm text-muted">{t("overview.home.waiting.empty")}</p>;
           return (
-            <>
-              <WaitingTable rows={rows} />
-              {more > 0 ? <p className="fg-caption text-muted">{t("overview.home.waiting.more", { n: more })}</p> : null}
-            </>
+<WaitingTable rows={rows} />
           );
         }}
       </QueryBoundary>
@@ -34,9 +32,12 @@ export function WaitingOnYou() {
 function WaitingTable({ rows }: { rows: WaitingRow[] }) {
   const t = useCopy();
   const router = useRouter();
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, HOME_ROWS);
   return (
+    <>
     <Table aria-labelledby="home-waiting">
-      <THead>
+      <THead className="sr-only">
         <TR>
           <TH>{t("overview.home.col.item")}</TH>
           <TH className="max-sm:hidden">{t("overview.home.col.project")}</TH>
@@ -45,10 +46,10 @@ function WaitingTable({ rows }: { rows: WaitingRow[] }) {
         </TR>
       </THead>
       <TBody>
-        {rows.map((r) => (
-          <TR key={r.id} data-testid="home-waiting-row">
-            <TD>
-              <Link href={r.href} title={r.tip ?? undefined} className="line-clamp-2 hover:underline">
+        {shown.map((r) => (
+          <TR key={r.id} data-testid="home-waiting-row" className="max-sm:flex max-sm:flex-wrap max-sm:items-center">
+            <TD className="max-sm:basis-full max-sm:pb-0">
+              <Link href={r.href} title={r.tip ? `${r.tip} · ${r.title}` : r.title} className="line-clamp-1 sm:max-w-48 hover:underline">
                 {r.title}
               </Link>
             </TD>
@@ -65,5 +66,7 @@ function WaitingTable({ rows }: { rows: WaitingRow[] }) {
         ))}
       </TBody>
     </Table>
+    <ShowMore hidden={rows.length - shown.length} onShow={() => setAll(true)} />
+    </>
   );
 }
