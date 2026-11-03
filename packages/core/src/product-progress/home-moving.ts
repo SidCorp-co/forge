@@ -143,7 +143,7 @@ export function carriersOf(s: FeedbackSummary, reads: FeedbackReads): string[] {
   return [];
 }
 
-/** A Moving row before the cut, and a Waiting row with the move it is ranked by. */
+/** A Waiting row with the last move it is ranked by, which the reply leaves out. */
 export type HomeWaitingRanked = HomeWaitingItem & { lastMovedAt: string };
 
 /** One project's items split by who owes the next move: someone else or nobody (Moving), or the viewer (Waiting). */
