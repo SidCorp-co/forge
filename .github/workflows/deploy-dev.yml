@@ -12,10 +12,9 @@ name: Deploy dev
 # one it serves (`sourceCommit` on /api/version), so a deploy that was asked for and never served
 # is red by name.
 #
-# One secret, which only a person can make: COOLIFY_DEV_DEPLOY_TOKEN, a Coolify API token with the
-# `deploy` permission alone (manage.musetools.com, Keys & Tokens), set with
-# `gh secret set COOLIFY_DEV_DEPLOY_TOKEN -R SidCorp-co/forge`. Without it every run is red,
-# naming it.
+# One secret: COOLIFY_DEV_DEPLOY_TOKEN, a Coolify API token that may deploy the app above, set with
+# `gh secret set COOLIFY_DEV_DEPLOY_TOKEN -R SidCorp-co/forge` (set 2026-11-03 from an existing
+# deploy-capable token). Without it every run is red, naming it.
 on:
   push:
     branches: [dev]
