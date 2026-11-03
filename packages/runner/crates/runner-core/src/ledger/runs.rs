@@ -695,6 +695,39 @@ impl Ledger {
         Ok(())
     }
 
+    /// Record the directory `judge-login` wrote a run's test login into, so every close removes
+    /// that path rather than one rebuilt from the closer's own `$TMPDIR` (ISS-920). The path is
+    /// checked by `judge_dir::record` before it reaches here; a run this box never declared is
+    /// refused by name.
+    pub fn note_judge_dir(&self, run_id: &str, path: &Path) -> Result<()> {
+        if self.run(run_id)?.is_none() {
+            return Err(Error::Other(format!(
+                "no run {run_id} on this box, so the judge login at {} is recorded on nothing",
+                path.display()
+            )));
+        }
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO run_judge_dirs (run_id, path, recorded_at) VALUES (?1, ?2, ?3)",
+                params![run_id, path.to_string_lossy(), runner_platform::clock::now_secs()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Every directory `judge-login` recorded for `run_id`, oldest first.
+    pub fn judge_dirs(&self, run_id: &str) -> Result<Vec<PathBuf>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM run_judge_dirs WHERE run_id = ?1 ORDER BY recorded_at, path")
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![run_id], |r| r.get::<_, String>(0))
+            .map_err(sql_err)?;
+        rows.map(|r| r.map(PathBuf::from).map_err(sql_err))
+            .collect()
+    }
+
     pub fn end_run(&self, run_id: &str, ended_by: &str, reason: &str) -> Result<()> {
         self.conn
             .execute(

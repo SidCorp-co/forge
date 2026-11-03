@@ -177,24 +177,46 @@ pub(crate) fn write_private(
 
 /// The one line printed: where the file is, the names of its fields, never a value, and who
 /// removes it.
-pub(crate) fn said(path: &Path, body: &Value, closed_by: Option<&str>) -> String {
+pub(crate) fn said(path: &Path, body: &Value, removed: &str) -> String {
     let mut fields: Vec<&str> = body
         .as_object()
         .map(|o| o.keys().map(String::as_str).collect())
         .unwrap_or_default();
     fields.sort_unstable();
-    let removed = match closed_by {
-        Some(run) => format!("`run close {run}` removes it"),
-        None => format!(
-            "no run's close removes it, so delete {} once the judging is done",
-            path.parent().unwrap_or(path).display()
-        ),
-    };
     format!(
         "wrote {} (0600), fields: {}; read the value from the file, and keep it out of every comment, commit and transcript; {removed}",
         path.display(),
         fields.join(", ")
     )
+}
+
+/// Who removes the directory just written, after recording it on `run` where there is one: the
+/// line closing [`said`].
+pub(crate) fn who_removes(
+    dir: &Path,
+    run: Result<&str, &str>,
+    record: impl FnOnce(&str, &Path) -> Result<PathBuf, String>,
+) -> String {
+    match run.map(|r| (r, record(r, dir))) {
+        Ok((r, Ok(at))) => format!("recorded on run {r}, whose close removes {}", at.display()),
+        Ok((r, Err(why))) => format!(
+            "not recorded on run {r} ({why}), so only a `run close {r}` typed under this same \
+             $TMPDIR finds it — delete {} once the judging is done",
+            dir.display()
+        ),
+        Err(why) => format!(
+            "no run's close removes it ({why}), so delete {} once the judging is done",
+            dir.display()
+        ),
+    }
+}
+
+/// Record `dir` on `run` in this box's ledger, where every close of the run reads it (ISS-920).
+fn record_on(run: &str, dir: &Path) -> Result<PathBuf, String> {
+    let led = Ledger::default_path()
+        .and_then(|p| Ledger::open(&p))
+        .map_err(|e| format!("this box's ledger cannot be opened: {e}"))?;
+    judge_dir::record(&led, run, dir)
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
@@ -245,32 +267,53 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Ok(b) => b,
         Err(why) => return refuse(&why),
     };
-    let (dir, closed_by) = where_to_write(args.out_dir, &run_label, &answer);
+    let (dir, run) = where_to_write(args.out_dir, &run_label, &answer);
     let written = write_private(&dir, &args.profile, &what, &body)?;
-    println!("{}", said(&written, &body, closed_by.as_deref()));
+    let removed = who_removes(&dir, run.as_deref().map_err(String::as_str), record_on);
+    println!("{}", said(&written, &body, &removed));
     Ok(())
 }
 
-/// Where the file goes, and the run whose `run close` removes it (ISS-920): `forge-judge-<run>`
-/// under [`judge_dir::root`], named by [`judge_dir::dir`] exactly as the close names it. A `self`
-/// this checkout could not name is taken from the run core answered for; a read that names no run,
-/// or an `--out-dir`, is written where asked and said to be nobody's close to remove.
+/// Where the file goes, and the run it is recorded on so that run's close removes it (ISS-920):
+/// `forge-judge-<run>` under [`judge_dir::root`], named by [`judge_dir::dir`]. A `self` this
+/// checkout could not name is taken from the run core answered for. An `--out-dir` is recorded only
+/// where it is itself named `forge-judge-<run>`: a close removes nothing else, so a mistyped
+/// `--out-dir` can never take a directory of the judge's with it. Otherwise the line says why
+/// nothing is recorded.
 pub(crate) fn where_to_write(
     out_dir: Option<PathBuf>,
     run_label: &str,
     answer: &Value,
-) -> (PathBuf, Option<String>) {
-    if let Some(d) = out_dir {
-        return (d, None);
-    }
+) -> (PathBuf, Result<String, String>) {
     let run = Some(run_label)
         .filter(|r| judge_dir::is_run_id(r))
         .or_else(|| answer.get("jobId").and_then(Value::as_str))
         .filter(|r| judge_dir::is_run_id(r));
+    let unnamed =
+        || format!("the read named no run: `{run_label}`, and core answered no run id for it");
+    if let Some(d) = out_dir {
+        let Some(r) = run else {
+            return (d, Err(unnamed()));
+        };
+        let named = d.file_name() == judge_dir::dir(Path::new("/"), r).unwrap().file_name();
+        return if named {
+            (d, Ok(r.to_string()))
+        } else {
+            let why = format!(
+                "--out-dir {} is not named {}{r}, and a close removes only a directory of that name",
+                d.display(),
+                judge_dir::PREFIX
+            );
+            (d, Err(why))
+        };
+    }
     let root = judge_dir::root();
     match run.map(|r| (judge_dir::dir(&root, r), r)) {
-        Some((Ok(d), r)) => (d, Some(r.to_string())),
-        _ => (root.join(format!("{}{run_label}", judge_dir::PREFIX)), None),
+        Some((Ok(d), r)) => (d, Ok(r.to_string())),
+        _ => (
+            root.join(format!("{}{run_label}", judge_dir::PREFIX)),
+            Err(unnamed()),
+        ),
     }
 }
 
@@ -378,7 +421,7 @@ mod tests {
                 & 0o777;
             assert_eq!((file, dir), (0o600, 0o700));
         }
-        let line = said(&path, &body, None);
+        let line = said(&path, &body, "");
         assert!(!line.contains(VALUE), "{line}");
         assert!(!line.contains("Corr3ct"), "{line}");
         assert!(
@@ -392,34 +435,54 @@ mod tests {
         let run = "53077902-cb16-408f-904c-e0e4b762a1c9";
         let root = judge_dir::root();
         let none = json!({ "jobId": null });
+        let ours = || Ok(run.to_string());
         assert_eq!(
             where_to_write(None, run, &none),
-            (judge_dir::dir(&root, run).unwrap(), Some(run.to_string()))
+            (judge_dir::dir(&root, run).unwrap(), ours())
         );
         // a `self` this checkout could not name is the run core answered for
         let core = json!({ "jobId": run });
         assert_eq!(
             where_to_write(None, "self", &core),
-            (judge_dir::dir(&root, run).unwrap(), Some(run.to_string()))
+            (judge_dir::dir(&root, run).unwrap(), ours())
         );
-        // a read naming no run, or a directory asked for, is nobody's close to remove, and says so
+        // a read naming no run is nobody's close to remove, and says why
         let (unnamed, by) = where_to_write(None, "self", &none);
-        assert_eq!((unnamed, by), (root.join("forge-judge-self"), None));
-        let asked = PathBuf::from("/somewhere/else");
+        assert_eq!(unnamed, root.join("forge-judge-self"));
+        assert!(by.unwrap_err().contains("named no run"));
+        // an --out-dir named for the run is recorded on it; any other is not, and says why
+        let named = PathBuf::from(format!("/somewhere/forge-judge-{run}"));
         assert_eq!(
-            where_to_write(Some(asked.clone()), run, &core),
-            (asked, None)
+            where_to_write(Some(named.clone()), run, &core),
+            (named, ours())
+        );
+        let asked = PathBuf::from("/somewhere/else");
+        let (d, by) = where_to_write(Some(asked.clone()), run, &core);
+        assert_eq!(d, asked);
+        assert!(by.unwrap_err().contains("is not named forge-judge-"));
+    }
+
+    #[test]
+    fn the_line_says_where_the_login_is_recorded_or_why_it_is_not() {
+        let run = "53077902-cb16-408f-904c-e0e4b762a1c9";
+        let dir = PathBuf::from(format!("/t/forge-judge-{run}"));
+        let recorded = who_removes(&dir, Ok(run), |_, d| Ok(d.to_path_buf()));
+        assert_eq!(
+            recorded,
+            format!(
+                "recorded on run {run}, whose close removes {}",
+                dir.display()
+            )
+        );
+        let unrecorded = who_removes(&dir, Ok(run), |_, _| Err("no ledger".into()));
+        assert!(unrecorded.contains("not recorded on run") && unrecorded.contains("no ledger"));
+        let nobody = who_removes(&dir, Err("no run"), |_, _| unreachable!());
+        assert!(
+            nobody.contains("no run's close removes it (no run)"),
+            "{nobody}"
         );
         let body = file_body(&answer(), "stg", &Named::Actor("admin".into())).unwrap();
-        let file = judge_dir::dir(&root, run)
-            .unwrap()
-            .join("stg-actor-admin.json");
-        let line = said(&file, &body, Some(run));
-        assert!(
-            line.ends_with(&format!("`run close {run}` removes it")),
-            "{line}"
-        );
-        let line = said(&file, &body, None);
-        assert!(line.contains("no run's close removes it"), "{line}");
+        let line = said(&dir.join("stg-actor-admin.json"), &body, &recorded);
+        assert!(line.ends_with(&recorded), "{line}");
     }
 }

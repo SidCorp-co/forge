@@ -287,13 +287,13 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
             reply.job_id.as_deref().unwrap_or(&c.run_id),
             c.choice
         ),
-        Command::Close(c) => println!(
-            "{}",
-            closed(
-                &judge_dir::root(),
-                reply.job_id.as_deref().unwrap_or(&c.run_id)
+        Command::Close(c) => {
+            let run_id = reply.job_id.as_deref().unwrap_or(&c.run_id);
+            println!(
+                "{}",
+                closed(recorded_logins(run_id), &judge_dir::root(), run_id)
             )
-        ),
+        }
         Command::Release(_) | Command::Brief(_) => {
             unreachable!("answered above, before the socket is opened")
         }
@@ -301,15 +301,31 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The judge logins `judge-login` recorded on `run_id` in this box's ledger, or why they could
+/// not be read.
+fn recorded_logins(run_id: &str) -> Result<Vec<std::path::PathBuf>, String> {
+    Ledger::default_path()
+        .and_then(|p| Ledger::open_read_only(&p))
+        .and_then(|led| led.judge_dirs(run_id))
+        .map_err(|e| e.to_string())
+}
+
 /// What `run close` says once the daemon has ended the run: that it is closed, and what became of
-/// the test login `judge-login` wrote for it under `root` (ISS-920). The run is closed whatever the
-/// removal came to; a refused or failed removal is said beside it, naming the path and the error,
-/// and a run that never logged in has nothing said about it.
-fn closed(root: &std::path::Path, run_id: &str) -> String {
+/// each test login `judge-login` recorded on it — or, for a run with none recorded, of
+/// `forge-judge-<run>` under `root` (ISS-920). The run is closed whatever the removal came to; a
+/// refused or failed removal is said beside it, naming the path and the error, and a run that
+/// never logged in has nothing said about it.
+fn closed(
+    recorded: Result<Vec<std::path::PathBuf>, String>,
+    root: &std::path::Path,
+    run_id: &str,
+) -> String {
     let mut said = format!("run {run_id} closed");
-    if let Some(line) = judge_dir::remove(root, run_id).said() {
-        said.push('\n');
-        said.push_str(&line);
+    for removal in judge_dir::remove_for_run(recorded, root, run_id) {
+        if let Some(line) = removal.said() {
+            said.push('\n');
+            said.push_str(&line);
+        }
     }
     said
 }
@@ -458,7 +474,7 @@ mod tests {
         let theirs = root.plant(NEIGHBOUR);
         // closed by the short id a master types, named whole as the daemon answers it
         let run_id = full_id(&led, "f1b18bd5").unwrap();
-        let said = closed(&root.0, &run_id);
+        let said = closed(Ok(vec![]), &root.0, &run_id);
         assert!(!mine.exists(), "{said}");
         assert_eq!(
             said,
@@ -474,7 +490,10 @@ mod tests {
     #[test]
     fn a_run_that_never_logged_in_closes_with_nothing_said_about_it() {
         let root = TmpRoot::new("never");
-        assert_eq!(closed(&root.0, JUDGED), format!("run {JUDGED} closed"));
+        assert_eq!(
+            closed(Ok(vec![]), &root.0, JUDGED),
+            format!("run {JUDGED} closed")
+        );
     }
 
     #[test]
@@ -493,7 +512,7 @@ mod tests {
             "/etc",
             &format!("{JUDGED}/.."),
         ] {
-            let said = closed(&inner, hostile);
+            let said = closed(Ok(vec![]), &inner, hostile);
             assert!(
                 said.starts_with(&format!("run {hostile} closed\n")),
                 "{said}"
@@ -515,7 +534,7 @@ mod tests {
             // root ignores the mode, so there is no failure to plant here
             return;
         }
-        let said = closed(&root.0, JUDGED);
+        let said = closed(Ok(vec![]), &root.0, JUDGED);
         let mut lines = said.lines();
         assert_eq!(lines.next(), Some(format!("run {JUDGED} closed").as_str()));
         let why = lines.next().unwrap();

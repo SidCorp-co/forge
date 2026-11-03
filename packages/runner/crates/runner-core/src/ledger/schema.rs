@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS run_issues (
   lease_returned_at INTEGER,
   PRIMARY KEY (run_id, issue_key)
 );
+CREATE TABLE IF NOT EXISTS run_judge_dirs (
+  run_id      TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+  path        TEXT NOT NULL,
+  recorded_at INTEGER NOT NULL,
+  PRIMARY KEY (run_id, path)
+);
 CREATE TABLE IF NOT EXISTS masters (
   project_id      TEXT PRIMARY KEY,
   pane_name       TEXT NOT NULL,

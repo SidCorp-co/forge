@@ -163,6 +163,20 @@ pub async fn close(
     sessions: &dyn SessionReader,
     leases: &dyn LeaseKeeper,
 ) -> Result<CloseState> {
+    let judge_root = runner_core::judge_dir::root();
+    close_under(ledger, run_id, repo, sessions, leases, &judge_root).await
+}
+
+/// [`close`] for a daemon whose `$TMPDIR` is `judge_root`: where a closed run with no judge login
+/// recorded on it is looked for.
+pub(crate) async fn close_under(
+    ledger: &mut Ledger,
+    run_id: &str,
+    repo: Option<&Path>,
+    sessions: &dyn SessionReader,
+    leases: &dyn LeaseKeeper,
+    judge_root: &Path,
+) -> Result<CloseState> {
     let Some(run) = ledger.run(run_id)? else {
         return state(ledger, run_id);
     };
@@ -263,22 +277,25 @@ pub async fn close(
 
     let closed = state(ledger, run_id)?;
     if closed.is_closed() {
-        remove_judge_login(&runner_core::judge_dir::root(), run_id);
+        remove_judge_login(ledger, judge_root, run_id);
     }
     Ok(closed)
 }
 
 /// Every ending reaches this loop — a master's close, a pane that ended, a reap of a run whose
-/// tree is gone, a run core said is over — so a closed run's `forge-judge-<run>` goes here, named
-/// by the same rule `judge-login` and `run close` use (ISS-920). It reads this daemon's `$TMPDIR`;
-/// a pane started with another one is covered by its master's `run close`, which reads the pane's.
-pub(crate) fn remove_judge_login(root: &Path, run_id: &str) {
-    use runner_core::judge_dir::Removal;
-    let removal = runner_core::judge_dir::remove(root, run_id);
-    match (&removal, removal.said()) {
-        (Removal::Absent, _) | (_, None) => {}
-        (Removal::Removed(_), Some(line)) => tracing::info!("[close] run={run_id}: {line}"),
-        (_, Some(line)) => tracing::warn!("[close] run={run_id}: {line}"),
+/// tree is gone, a run core said is over, a release refused for good — so a closed run's judge
+/// logins go here (ISS-920): each directory `judge-login` recorded on the run, wherever the pane's
+/// `$TMPDIR` put it, and for a run with none recorded `forge-judge-<run>` under `root`, this
+/// daemon's own `$TMPDIR`.
+pub(crate) fn remove_judge_login(ledger: &Ledger, root: &Path, run_id: &str) {
+    use runner_core::judge_dir::{remove_for_run, Removal};
+    let recorded = ledger.judge_dirs(run_id).map_err(|e| e.to_string());
+    for removal in remove_for_run(recorded, root, run_id) {
+        match (&removal, removal.said()) {
+            (Removal::Absent, _) | (_, None) => {}
+            (Removal::Removed(_), Some(line)) => tracing::info!("[close] run={run_id}: {line}"),
+            (_, Some(line)) => tracing::warn!("[close] run={run_id}: {line}"),
+        }
     }
 }
 
@@ -454,6 +471,155 @@ mod tests {
         assert!(
             open_login.join("x.json").exists(),
             "an open run's login was removed"
+        );
+    }
+    /// The two roots ISS-920's follow-up measured on forge-dev: the daemon's `$TMPDIR`
+    /// (`forge-tmp-dev`) and the pane's (`forge-tmp`, from `~/.zshenv`), as two sibling directories
+    /// under this test's own `$TMPDIR`, with a ledger beside them. All of it goes when the test ends.
+    struct TwoRoots {
+        top: PathBuf,
+        daemon: PathBuf,
+        pane: PathBuf,
+        led: Ledger,
+    }
+    impl TwoRoots {
+        fn new() -> Self {
+            let top = std::env::temp_dir().join(format!("forge-iss920-{}", uuid::Uuid::new_v4()));
+            let (daemon, pane) = (top.join("forge-tmp-dev"), top.join("forge-tmp"));
+            std::fs::create_dir_all(&daemon).unwrap();
+            std::fs::create_dir_all(&pane).unwrap();
+            let led = Ledger::open(&top.join("ledger.db")).unwrap();
+            Self {
+                top,
+                daemon,
+                pane,
+                led,
+            }
+        }
+        /// A run declared, ended over a tree that is gone, its session terminal: one the loop closes.
+        fn ended_run(&mut self) -> String {
+            let run = uuid::Uuid::new_v4().to_string();
+            declare(&mut self.led, &run, "ISS-1");
+            self.led.attach_session(&run, "session-1").unwrap();
+            self.led
+                .mark_checkout_returned_observed(&run, CheckoutReturn::Gone)
+                .unwrap();
+            self.led
+                .end_run(&run, "recovery", "its pane ended")
+                .unwrap();
+            run
+        }
+        /// What `judge-login` leaves under `root` for `run`.
+        fn login(root: &Path, run: &str) -> PathBuf {
+            let d = runner_core::judge_dir::dir(root, run).unwrap();
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("dev-actor-member.json"), "{}").unwrap();
+            d
+        }
+        async fn close(&mut self, run: &str) -> CloseState {
+            let core = Core {
+                rows: Mutex::new(vec![]),
+                released: Mutex::new(vec![]),
+            };
+            let daemon = self.daemon.clone();
+            close_under(&mut self.led, run, None, &core, &core, &daemon)
+                .await
+                .unwrap()
+        }
+    }
+    impl Drop for TwoRoots {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.top);
+        }
+    }
+
+    /// The mismatch itself: the judge's login is written under the pane's `$TMPDIR` and recorded
+    /// on its run, and the close loop, running under the daemon's, removes it from where it is.
+    #[tokio::test]
+    async fn a_login_written_under_the_panes_tmpdir_goes_with_the_daemons_close() {
+        let mut t = TwoRoots::new();
+        let run = t.ended_run();
+        let login = TwoRoots::login(&t.pane, &run);
+        let recorded = runner_core::judge_dir::record(&t.led, &run, &login).unwrap();
+        assert_eq!(t.led.judge_dirs(&run).unwrap(), vec![recorded]);
+
+        let closed = t.close(&run).await;
+
+        assert!(closed.is_closed(), "{closed:?}");
+        assert!(
+            !login.exists(),
+            "the login under the pane's $TMPDIR outlived a close under the daemon's"
+        );
+    }
+
+    /// A recorded path that breaks the rule removes nothing, and the `$TMPDIR` rule does not stand
+    /// in for it.
+    #[tokio::test]
+    async fn a_recorded_path_that_breaks_the_rule_is_refused_and_removes_nothing() {
+        let mut t = TwoRoots::new();
+        let run = t.ended_run();
+        // another run's login, a path with `..`, a relative path and a symlink, each recorded on
+        // this run as a writer that skipped `judge_dir::record` might
+        let other = TwoRoots::login(&t.pane, &uuid::Uuid::new_v4().to_string());
+        let outside = t.top.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep.json"), "{}").unwrap();
+        let link = runner_core::judge_dir::dir(&t.pane, &run).unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let dotted = t
+            .pane
+            .join("..")
+            .join("forge-tmp")
+            .join(format!("forge-judge-{run}"));
+        let daemons = TwoRoots::login(&t.daemon, &run);
+        for bad in [
+            other.clone(),
+            dotted,
+            PathBuf::from(format!("forge-judge-{run}")),
+            link.clone(),
+        ] {
+            t.led.note_judge_dir(&run, &bad).unwrap();
+        }
+
+        assert!(t.close(&run).await.is_closed());
+
+        assert!(other.join("dev-actor-member.json").exists());
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(outside.join("keep.json").exists());
+        assert!(
+            daemons.exists(),
+            "a run with a record had its daemon $TMPDIR guessed at"
+        );
+        for bad in runner_core::judge_dir::remove_for_run(
+            t.led.judge_dirs(&run).map_err(|e| e.to_string()),
+            &t.daemon,
+            &run,
+        ) {
+            assert!(
+                matches!(bad, runner_core::judge_dir::Removal::Refused(_)),
+                "{bad:?}"
+            );
+        }
+    }
+
+    /// A run with nothing recorded — a login written by a judge-login from before the record —
+    /// falls back to `forge-judge-<run>` under the daemon's own `$TMPDIR`.
+    #[tokio::test]
+    async fn a_run_with_no_recorded_login_falls_back_to_the_daemons_tmpdir() {
+        let mut t = TwoRoots::new();
+        let run = t.ended_run();
+        let daemons = TwoRoots::login(&t.daemon, &run);
+        let panes = TwoRoots::login(&t.pane, &run);
+
+        assert!(t.close(&run).await.is_closed());
+
+        assert!(!daemons.exists());
+        assert!(
+            panes.exists(),
+            "with nothing recorded only the daemon's $TMPDIR is read"
         );
     }
 }

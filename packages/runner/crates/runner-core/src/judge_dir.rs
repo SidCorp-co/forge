@@ -82,6 +82,123 @@ pub fn remove(root: &Path, run_id: &str) -> Removal {
     }
 }
 
+/// Whether `path` may stand as `run_id`'s recorded judge login: absolute, no `.` or `..`
+/// component, its last component `forge-judge-<run_id>` for a run id of a uuid's shape, and no
+/// symlink anywhere in its parent chain (the parent reads back as itself through
+/// `canonicalize`). The line refusing it otherwise.
+pub fn check_recorded(path: &Path, run_id: &str) -> Result<(), String> {
+    use std::path::Component;
+    let want = dir(Path::new("/"), run_id)?;
+    let shown = path.display();
+    if !path.is_absolute() {
+        return Err(format!(
+            "the recorded judge login {shown} is not an absolute path"
+        ));
+    }
+    if path
+        .components()
+        .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+    {
+        return Err(format!(
+            "the recorded judge login {shown} carries a `.` or `..` component"
+        ));
+    }
+    if path.file_name() != want.file_name() {
+        return Err(format!(
+            "the recorded judge login {shown} is not named {PREFIX}{run_id}, the run it was recorded on"
+        ));
+    }
+    let parent = path.parent().unwrap_or(Path::new("/"));
+    match std::fs::canonicalize(parent) {
+        Ok(real) if real == parent => Ok(()),
+        Ok(real) => Err(format!(
+            "the recorded judge login {shown} stands under a symlink: its parent is really {}",
+            real.display()
+        )),
+        // a parent that is gone holds nothing to remove; the removal reads it as absent
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!(
+            "the parent of the recorded judge login {shown} cannot be read ({e})"
+        )),
+    }
+}
+
+/// Record `written`, the directory `judge-login` just wrote for `run_id`, on that run in the
+/// ledger, as the real path it is. Answers the path recorded, or the line saying why nothing was.
+pub fn record(
+    ledger: &crate::ledger::Ledger,
+    run_id: &str,
+    written: &Path,
+) -> Result<PathBuf, String> {
+    let real = std::fs::canonicalize(written)
+        .map_err(|e| format!("{} cannot be read back ({e})", written.display()))?;
+    check_recorded(&real, run_id)?;
+    ledger
+        .note_judge_dir(run_id, &real)
+        .map_err(|e| e.to_string())?;
+    Ok(real)
+}
+
+/// Remove a recorded judge login under [`check_recorded`]'s rule. A path that breaks it, or that
+/// is itself a symlink or no directory, is refused by name and nothing is removed.
+pub fn remove_recorded(path: &Path, run_id: &str) -> Removal {
+    if let Err(why) = check_recorded(path, run_id) {
+        return Removal::Refused(why);
+    }
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Removal::Absent,
+        Err(error) => {
+            return Removal::Failed {
+                path: path.to_path_buf(),
+                error,
+            }
+        }
+    };
+    if !meta.is_dir() {
+        return Removal::Refused(format!(
+            "the recorded judge login {} is {}, not the directory judge-login wrote",
+            path.display(),
+            if meta.file_type().is_symlink() {
+                "a symlink"
+            } else {
+                "a file"
+            }
+        ));
+    }
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => Removal::Removed(path.to_path_buf()),
+        Err(error) => Removal::Failed {
+            path: path.to_path_buf(),
+            error,
+        },
+    }
+}
+
+/// Every removal a close of `run_id` owes: each directory recorded on the run, or, for a run with
+/// none recorded (a login written before ISS-920's record, or none at all), `forge-judge-<run_id>`
+/// under `root`. A record that could not be read is said, and the `root` rule still runs.
+pub fn remove_for_run(
+    recorded: std::result::Result<Vec<PathBuf>, String>,
+    root: &Path,
+    run_id: &str,
+) -> Vec<Removal> {
+    match recorded {
+        Ok(paths) if !paths.is_empty() => {
+            paths.iter().map(|p| remove_recorded(p, run_id)).collect()
+        }
+        Ok(_) => vec![remove(root, run_id)],
+        Err(why) => vec![
+            Removal::Refused(format!(
+                "the judge logins recorded on run {run_id} could not be read ({why}), so only \
+                 {PREFIX}{run_id} under {} was looked for",
+                root.display()
+            )),
+            remove(root, run_id),
+        ],
+    }
+}
+
 impl Removal {
     /// The line a close says about it, or `None` where there was nothing to say.
     pub fn said(&self) -> Option<String> {
