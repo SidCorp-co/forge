@@ -174,6 +174,20 @@ describe("the project bar (REQ-15 BC-10)", () => {
     expect((await tip()).textContent).toBe("ISS-5 · build · box-a");
   });
 
+  // the ISS-691 judge (2026-11-03): at 390 wide the bar's linked title, capped at 28rem alone, pushed
+  // every requirement page sideways; jsdom lays nothing out, so this pins the bounds a browser obeys
+  it("bounds each item and its link by the bar, never by the title's length, capping at 28rem from sm up", async () => {
+    core({ live: list([run({ issue: { key: "ISS-5", title: "A".repeat(200), status: "in_progress" } })]), recent: list([]), rooms: turns([]) });
+    mount();
+    await waitFor(() => expect(bar().dataset.state).toBe("busy"));
+    const [item] = screen.getAllByTestId("live-bar-item");
+    if (!item) throw new Error("no item");
+    expect(item.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "max-w-full"]));
+    const link = item.querySelector("a");
+    expect(link?.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "max-w-full", "truncate", "sm:max-w-md"]));
+    expect(link?.className.split(" ")).not.toContain("max-w-md");
+  });
+
   it("says the master's work once when a run carries the issue it works", async () => {
     core({
       live: list([run({})], master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-5", trigger: "nudge" } })),

@@ -121,10 +121,12 @@ function rowsOf(now: ProjectNow, t: Copy, label: Label, language: Language, slug
   return now.items.map(rowOf).filter((r): r is Row => r !== null);
 }
 
+// an item and its link are bounded by the bar, never by their text: a long issue title at phone
+// width truncated inside the screen instead of pushing every page sideways (the ISS-691 judge, 2026-11-03)
 function RowLine({ row, at }: { row: Row; at: number }) {
   const language = useInterfaceLanguage();
   const link = (
-    <Link href={row.href} className="block max-w-md truncate font-medium text-link hover:underline">
+    <Link href={row.href} className="block min-w-0 max-w-full truncate font-medium text-link hover:underline sm:max-w-md">
       {row.text}
     </Link>
   );
@@ -175,7 +177,7 @@ export function LiveBar({ projectId, slug }: { projectId: string; slug: string }
           </span>
         ) : null}
         {line.map((row) => (
-          <span key={row.key} className="inline-flex items-center gap-1.5" data-testid="live-bar-item">
+          <span key={row.key} className="inline-flex min-w-0 max-w-full items-center gap-1.5" data-testid="live-bar-item">
             <RowLine row={row} at={at} />
           </span>
         ))}
@@ -189,7 +191,7 @@ export function LiveBar({ projectId, slug }: { projectId: string; slug: string }
       {open ? (
         <ul data-testid="live-bar-list" className="border-t border-line px-4 py-1">
           {rows.map((row) => (
-            <li key={row.key} className="flex flex-wrap items-center gap-x-3 py-0.5">
+            <li key={row.key} className="flex min-w-0 flex-wrap items-center gap-x-3 py-0.5">
               <RowLine row={row} at={at} />
             </li>
           ))}
