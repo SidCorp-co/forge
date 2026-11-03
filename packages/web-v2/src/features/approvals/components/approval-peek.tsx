@@ -10,6 +10,7 @@ import { QuestionSubjectLine } from "@/features/questions";
 import { ChangeRequestList } from "@/features/releases";
 import { Link } from "@/lib/navigation/router";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { PeekMockup } from "./approval-mockup";
 import { DecisionTags } from "./approval-row";
@@ -76,15 +77,23 @@ function RequirementFact({ e, slug }: { e: DecisionEvidence; slug: string }) {
 }
 
 /** What the decision rests on (REQ-48 r3 BC-15): the requirement and revision, the plan, the criteria, each a link. */
-function Evidence({ e, slug }: { e: DecisionEvidence; slug: string }) {
+function Evidence({ d, e, slug }: { d: NeedsYouDecision; e: DecisionEvidence; slug: string }) {
   const t = useCopy();
-  const criteriaHref = e.requirement ? requirementHref(slug, e.requirement.key) : null;
+  const issue = d.opens?.kind === "issue" ? issueHref(slug, d.opens.key) : null;
+  const criteriaHref = issue ? `${issue}#criteria` : e.requirement ? requirementHref(slug, e.requirement.key) : null;
   const criteria = e.criteria.codes.length > 0 ? t("approvals.evidence.criteriaTraced", { n: e.criteria.count, codes: e.criteria.codes.join(", ") }) : t("approvals.evidence.criteriaCount", { n: e.criteria.count });
   return (
     <section data-testid="approval-peek-evidence">
       <Heading>{t("approvals.peek.evidence")}</Heading>
       <dl className="divide-y divide-line-subtle border-y border-line-subtle text-13">
         <RequirementFact e={e} slug={slug} />
+        {e.plan !== null && issue ? (
+          <Fact name={t("approvals.evidence.plan")}>
+            <Link href={`${issue}?view=developer`} className={linkClass}>
+              {t(e.plan ? "approvals.evidence.planWritten" : "approvals.evidence.planNone")}
+            </Link>
+          </Fact>
+        ) : null}
         <Fact name={t("approvals.evidence.criteria")}>
           {criteriaHref ? (
             <Link href={criteriaHref} className={linkClass}>
@@ -221,7 +230,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
         <PeekMockup d={d} itemHref={full.href} />
         <DecisionTags d={d} />
         <Reasons d={d} />
-        {d.evidence ? <Evidence e={d.evidence} slug={slug} /> : null}
+        {d.evidence ? <Evidence d={d} e={d.evidence} slug={slug} /> : null}
         {d.changeRequests && d.changeRequests.length > 0 ? (
           <section data-testid="approval-peek-merges">
             <Heading>{t("approvals.peek.merges")}</Heading>

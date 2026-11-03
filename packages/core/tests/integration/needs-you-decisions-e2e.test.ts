@@ -210,28 +210,26 @@ afterAll(closeWorld);
 describe('GET /api/projects/:id/needs-you/decisions (REQ-41 BC-1)', () => {
   it('answers only the decisions a person must make, and counts the rest by reason', async () => {
     const r = await read();
-    // a run's question on an issue is a question row, keyed by its id: no Needs you row is an issue
-    // (REQ-68 BC-6), and the draft issue nobody took on is the master's, listed nowhere
     expect(r.decisions.map((d) => d.key).sort()).toEqual(
-      [ids.choice, ids.freeRecommended, ids.freeBare, 'REQ-1', ids.detached].sort(),
+      ['ISS-1', 'ISS-2', 'ISS-3', 'REQ-1', ids.detached].sort(),
     );
     expect(r.total).toBe(5);
-    // the owner's own drafts are no person's decision, but their standings name the viewer, so Needs
-    // you lists them as theirs, each by why and its next step (ISS-924,
-    // `lib/standing-times.ts:withTimes`), never as a decision
+    // the owner's own drafts and the draft issue nobody took on are no person's decision, but their
+    // standings name the viewer, so Needs you lists them as theirs, each by why and its next step
+    // (ISS-924, `lib/standing-times.ts:withTimes`), never as a decision
     const left = Object.fromEntries(
       r.notDecisions.map((n) => [n.reason, n.items.map((i) => `${i.key}: ${i.next}`).sort()]),
     );
     expect(left).toEqual({
       own_work: ['REQ-2: propose r1', 'REQ-3: write a revision', 'REQ-4: write a revision'],
+      awaiting_proposal: ['ISS-4: take on or drop'],
     });
     // the Needs you read lists exactly what the needs-me read answers: nothing is dropped in silence
     const needs = await api(token, 'GET', `/api/projects/${projectId}/needs-you`);
     const asks = (needs.body.items as { key: string; space: string }[]).filter(
       (i) => i.space === 'asks',
     );
-    expect(asks.map((i) => i.key)).toContain('REQ-2');
-    expect(asks.map((i) => i.key)).not.toContain('ISS-4');
+    expect(asks.map((i) => i.key)).toEqual(expect.arrayContaining(['REQ-2', 'ISS-4']));
     // a draft with no current revision is its owner's to write, never "agree it": both reads say so
     // (REQ-48 BC-11; it read "agree it" here while the decisions read classed it as work)
     for (const key of ['REQ-3', 'REQ-4']) {
@@ -254,11 +252,10 @@ describe('GET /api/projects/:id/needs-you/decisions (REQ-41 BC-1)', () => {
 
 describe('each decision shows its question, a recommended answer and a button (REQ-41 BC-2)', () => {
   it('a choice question: every option a button, the asker’s recommended one marked', async () => {
-    const d = byKey((await read()).decisions, ids.choice);
+    const d = byKey((await read()).decisions, 'ISS-1');
     expect(d).toMatchObject({
       group: 'answer',
-      // ISS-1 serves no requirement or feedback item, so its question opens none (REQ-68 BC-4)
-      opens: null,
+      opens: { kind: 'issue', key: 'ISS-1' },
       question: 'Keep the old export format or move to the new one?',
       recommended: { answerId: 'move', by: 'asker' },
       noRecommendation: null,
@@ -270,14 +267,14 @@ describe('each decision shows its question, a recommended answer and a button (R
   });
 
   it('a free-text question sends its recommended answer as it stands, or a typed one', async () => {
-    const d = byKey((await read()).decisions, ids.freeRecommended);
+    const d = byKey((await read()).decisions, 'ISS-2');
     expect(d?.recommended?.answerId).toBe('recommended');
     expect(d?.answers[0]?.body).toEqual({ round: 1, text: 'https://staging.example.test' });
     expect(d?.answers[1]).toMatchObject({ id: 'write', needsReason: true });
   });
 
   it('a question asked with no recommendation says why there is none', async () => {
-    const d = byKey((await read()).decisions, ids.freeBare);
+    const d = byKey((await read()).decisions, 'ISS-3');
     expect(d?.recommended).toBeNull();
     expect(d?.noRecommendation).toContain('The run that asked gave no recommended answer');
   });
@@ -299,14 +296,14 @@ describe('each decision shows its question, a recommended answer and a button (R
 
   it('pressing each recommended button as the viewer is taken by its route, and the decision leaves', async () => {
     const before = await read();
-    for (const key of [ids.choice, ids.freeRecommended, ids.detached, 'REQ-1']) {
+    for (const key of ['ISS-1', 'ISS-2', ids.detached, 'REQ-1']) {
       const d = byKey(before.decisions, key);
       const a = d?.answers.find((x) => x.recommended);
       expect(a, `${key} has a recommended button`).toBeDefined();
       const res = await api(token, 'POST', a?.path ?? '', a?.body ?? {});
       expect(res.status, `${key}: ${JSON.stringify(res.body).slice(0, 300)}`).toBeLessThan(300);
     }
-    const typed = byKey(before.decisions, ids.freeBare)?.answers[0];
+    const typed = byKey(before.decisions, 'ISS-3')?.answers[0];
     const res = await api(token, 'POST', typed?.path ?? '', { ...typed?.body, text: 'acct-778' });
     expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBeLessThan(300);
     const after = await read();

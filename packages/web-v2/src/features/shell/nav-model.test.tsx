@@ -49,11 +49,10 @@ describe("the nav model", () => {
     expect(PROJECT_ITEMS.map((it) => it.label)).not.toContain("Development");
   });
 
-  it("badges a grouped row from the needs-you read, and never Issues, which waits on no person (REQ-68 BC-6)", () => {
-    const needsYou = { areas: { contracts: { you: 2, total: 2, acts: [] } } } as never;
+  it("badges a grouped row from the needs-you read", () => {
+    const needsYou = { areas: { issues: { you: 2, total: 2, acts: [] } } } as never;
     const delivery = projectMenu({ needsYou }).filter(isNavGroup).find((g) => g.key === "delivery");
-    expect(delivery?.items.find((it) => it.key === "proj-contracts")).toMatchObject({ badge: 2 });
-    expect(delivery?.items.find((it) => it.key === "proj-issues")?.badge).toBeUndefined();
+    expect(delivery?.items.find((it) => it.key === "proj-issues")).toMatchObject({ badge: 2 });
     expect(delivery?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
   });
 

@@ -10,8 +10,8 @@ import type { AttentionRow } from './needs-you.js';
 import { clipAtWord, questionDecision } from './needs-you-decision-builders.js';
 
 const row = {
-  entity: 'requirement',
-  key: 'REQ-67',
+  entity: 'issue',
+  key: 'ISS-673',
   title: 'Trace advice',
   touchedAt: null,
 } as unknown as AttentionRow;
@@ -48,7 +48,7 @@ const served = (q: OpenPersonQuestion) =>
     dueAt: null,
     topic: 'question',
     proposal: null,
-    ...questionDecision(row, 'requirements', q, { kind: 'requirement', key: 'REQ-67' }).decision,
+    ...questionDecision(row, 'issues', q, { kind: 'issue', key: 'ISS-673' }).decision,
   });
 
 describe("a free-text round's decision states the asker's options in its question", () => {

@@ -34,11 +34,11 @@ const answer = (id: string, label: string, recommended: boolean) => ({
 });
 const decision = (key: string, group: "answer" | "approve", question: string) => ({
   group,
-  area: "requirements",
-  entity: "requirement",
+  area: "issues",
+  entity: "issue",
   key,
   title: key,
-  opens: { kind: "requirement", key },
+  opens: { kind: "issue", key },
   question,
   changes: "What happens next on it",
   impact: "It waits on this until it is decided.",

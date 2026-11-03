@@ -2,8 +2,7 @@
  * What waits on the viewer in one project, the one needs-you read model: each area calls the read
  * model its list calls, with the viewer that list's route builds, and keeps the rows that model
  * groups `needs_you` (`@forge/contracts/standing:needsViewer`). A second derivation is how a menu
- * count and the list it opens come to disagree (REQ-11 BC-10, BC-12). No area lists an issue: the
- * agents work issues, and a question one holds reaches a person on its item (REQ-68 BC-6).
+ * count and the list it opens come to disagree (REQ-11 BC-10, BC-12).
  */
 
 import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
@@ -138,6 +137,14 @@ export async function readAttention(
       standing: f,
       touchedAt: f.updatedAt,
       due: dueOf(f.times),
+    })),
+    issues: issues.issues.map((i) => ({
+      entity: 'issue',
+      key: i.key,
+      ...writtenTitle(i.title, i.writtenLang),
+      standing: i.standing,
+      touchedAt: i.standing.touchedAt,
+      due: dueOf(i.standing.times),
     })),
     contracts: contracts.contracts.map((c) => ({
       entity: 'contract',

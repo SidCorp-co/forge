@@ -47,8 +47,8 @@ describe("the Approvals page", () => {
     fireEvent.change(search, { target: { value: "system-context" } });
     expect(within(rowOf("system-context")).getByTestId("approval-proposal")).toHaveTextContent("Follow r17 2 designs built on it move to its approved revision");
     // a person's question reads as asked, with no proposal tag
-    fireEvent.change(search, { target: { value: "REQ-141" } });
-    expect(within(rowOf("REQ-141")).getByTestId("approval-proposal")).toHaveTextContent("Should the export keep the old column order");
+    fireEvent.change(search, { target: { value: "ISS-41" } });
+    expect(within(rowOf("ISS-41")).getByTestId("approval-proposal")).toHaveTextContent("Should the export keep the old column order");
     expect(screen.queryByTestId("approvals-cap-more")).toBeNull();
 
     const text = screen.getByTestId("approvals-screen").textContent ?? "";
@@ -146,13 +146,13 @@ describe("the Approvals page", () => {
 describe("what each row's ✓ and ✕ send", () => {
   it("names on a question row the answer its ✓ sends, and opens its other answers in the peek", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    openAt("?q=REQ-141");
+    openAt("?q=ISS-41");
     const calls = core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    const row = rowOf("REQ-141");
+    const row = rowOf("ISS-41");
     expect(within(row).getByTestId("approval-approve")).toHaveTextContent("Keep the old order");
-    expect(within(row).getByTestId("approval-approve")).toHaveAccessibleName("Send “Keep the old order” for REQ-141");
+    expect(within(row).getByTestId("approval-approve")).toHaveAccessibleName("Send “Keep the old order” for ISS-41");
     fireEvent.click(within(row).getByTestId("approval-other-answers"));
     const peek = await screen.findByTestId("approval-peek");
     expect(within(peek).getAllByTestId("approval-peek-answer-label").map((b) => b.textContent)).toEqual(["Keep the old order", "Use the new order"]);
@@ -167,7 +167,7 @@ describe("what each row's ✓ and ✕ send", () => {
     fakeCore(({ path, method }) => (method === "GET" && path === DECISIONS ? { body: { ...READ, total: 1, decisions: [STEWARD_DECISION] } } : undefined));
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    fireEvent.click(within(rowOf("REQ-7")).getByTestId("approval-open"));
+    fireEvent.click(within(rowOf("ISS-7")).getByTestId("approval-open"));
     const peek = await screen.findByTestId("approval-peek");
     const buttons = within(peek).getAllByTestId("approval-peek-answer");
     expect(buttons.map((e) => e.dataset.answer)).toEqual(STEWARD_DECISION.answers.map((a) => a.id));
@@ -206,11 +206,11 @@ describe("what each row's ✓ and ✕ send", () => {
 
   it("presses the answer a digit names, as the peek shows it on that answer", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    openAt("?q=REQ-141");
+    openAt("?q=ISS-41");
     const calls = core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    fireEvent.click(within(rowOf("REQ-141")).getByTestId("approval-open"));
+    fireEvent.click(within(rowOf("ISS-41")).getByTestId("approval-open"));
     const peek = await screen.findByTestId("approval-peek");
     expect(answerIn(peek, "new").querySelector("kbd")).toHaveTextContent("2");
     expect(within(peek).getByTestId("approval-peek-keys")).not.toHaveTextContent(/approve/);
@@ -290,7 +290,7 @@ describe("what each row's ✓ and ✕ send", () => {
       return within(rowOf(key)).queryByTestId("approval-decline");
     };
     for (const key of ["FB-135", "REQ-41", "REQ-49", "0.4.0-dev.270"]) expect(declines(key)).toBeTruthy();
-    for (const key of ["system-context", "REQ-141"]) expect(declines(key)).toBeNull();
+    for (const key of ["system-context", "ISS-41"]) expect(declines(key)).toBeNull();
   });
 });
 
@@ -436,7 +436,7 @@ describe("bulkSummary", () => {
     // recommended by nobody, take words (REQ-4 BC-16), so a bulk approve leaves them for their peek
     expect(s.noApprove).toBe(2);
     // a question with two plain answers and none recommended is answered in its peek, never guessed
-    const open = READ.decisions.filter((d) => d.key === "REQ-141").map((d) => ({ ...d, answers: d.answers.map((a) => ({ ...a, recommended: false })) }));
+    const open = READ.decisions.filter((d) => d.key === "ISS-41").map((d) => ({ ...d, answers: d.answers.map((a) => ({ ...a, recommended: false })) }));
     expect(bulkSummary(open)).toEqual({ yields: [], checkFirst: 0, noApprove: 1 });
   });
 });
@@ -444,8 +444,8 @@ describe("bulkSummary", () => {
 // ISS-583 c3: the peek a person answers a parked business question from names the requirement it is
 // about, its key opening the requirement; a question about nothing names nothing.
 describe("what a question decision is about", () => {
-  const asked = READ.decisions.find((d) => d.key === "REQ-141");
-  if (!asked) throw new Error("the read holds no REQ-141 question");
+  const asked = READ.decisions.find((d) => d.key === "ISS-41");
+  if (!asked) throw new Error("the read holds no ISS-41 question");
   const readWith = (decision: typeof asked) => ({ ...READ, total: 1, decisions: [decision] });
 
   it("names the requirement in the peek, its key opening the requirement's page", async () => {
@@ -454,7 +454,7 @@ describe("what a question decision is about", () => {
     );
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    fireEvent.click(within(rowOf("REQ-141")).getByTestId("approval-other-answers"));
+    fireEvent.click(within(rowOf("ISS-41")).getByTestId("approval-other-answers"));
     const peek = await screen.findByTestId("approval-peek");
     const line = within(peek).getByTestId("question-subject");
     expect(line).toHaveTextContent("About REQ-74 · Delivery moves on by itself");
@@ -465,7 +465,7 @@ describe("what a question decision is about", () => {
     fakeCore(({ path, method }) => (method === "GET" && path === DECISIONS ? { body: readWith(asked) } : undefined));
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
-    fireEvent.click(within(rowOf("REQ-141")).getByTestId("approval-other-answers"));
+    fireEvent.click(within(rowOf("ISS-41")).getByTestId("approval-other-answers"));
     const peek = await screen.findByTestId("approval-peek");
     expect(within(peek).queryByTestId("question-subject")).toBeNull();
   });

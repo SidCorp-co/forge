@@ -58,6 +58,7 @@ export async function needsYouListOf(
   if (taken.length > 0) left.set('agent_takes', taken.map(agentTakesItem));
   const decisions = all.filter((d) => !agentTakes(d));
   const ids: EvidenceGroup['ids'] = {
+    issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
     requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
   };
   // the rows of what the agent takes: `/needs-you` lists none of them, as this read lists none (REQ-68 BC-3)

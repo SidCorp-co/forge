@@ -17,6 +17,7 @@
     "needsYou.decisions.reason.own_work": "{n} of your own drafts to finish",
     "needsYou.decisions.reason.triage": "{n} feedback items to triage",
     "needsYou.decisions.reason.work": "{n} tasks to carry out",
+    "needsYou.decisions.reason.awaiting_proposal": "{n} drafts nobody has proposed merging or dropping yet",
     "needsYou.decisions.reason.unreadable": "{n} not readable here, each opens on its own page",
     "needsYou.decisions.reason.agent_takes": "{n} the agent takes itself",
     "needsYou.decisions.changes": "Changes",

@@ -235,14 +235,9 @@ describe('a question a run asked on nothing', () => {
     expect(JSON.stringify(d).split('naming it takes')).toHaveLength(2);
   });
 
-  it('keeps the title of the item a question is asked on', () => {
+  it('keeps the title of the issue a question is asked on', () => {
     const d = served(
-      questionDecision(
-        row('requirement', 'REQ-9', 'Export drops a column'),
-        'requirements',
-        q,
-        null,
-      ),
+      questionDecision(row('issue', 'ISS-9', 'Export drops a column'), 'issues', q, null),
     );
     expect(d.title).toBe('Export drops a column');
   });

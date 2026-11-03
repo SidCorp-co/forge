@@ -353,7 +353,7 @@ describe("the read", () => {
 			total: 1,
 			notDecisions: [
 				{
-					reason: "work",
+					reason: "awaiting_proposal",
 					count: 11,
 					items: [
 						{

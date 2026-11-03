@@ -151,8 +151,7 @@ function stewardDecision(
     : q.requirementId
       ? 'requirement'
       : 'feedback';
-  // a decision on an issue is listed on the item it serves, and its buttons still name the issue they move
-  const itemKey = kind === 'issue' && q.issueKey ? q.issueKey : (base.opens?.key ?? base.key);
+  const itemKey = base.opens?.key ?? base.key;
   const offered = step.options.filter((o) => !stewardMergeOf(o.id) || o.shares?.trim());
   const recommended = offered.find((o) => o.id === step.recommendedOptionId);
   if (!recommended && !step.options.some((o) => o.id === step.recommendedOptionId)) {

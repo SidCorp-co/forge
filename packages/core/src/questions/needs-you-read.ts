@@ -70,8 +70,6 @@ export async function readDetachedOpenQuestions(projectId: string): Promise<Deta
 export interface OpenPersonQuestion {
   id: string;
   issueId: string | null;
-  /** The issue it is asked on, by key: a steward decision's buttons name the issue they move. */
-  issueKey: string | null;
   requirementId: string | null;
   feedbackId: string | null;
   /** The feedback item a steward decision is about (`about`), by key: it stands on no item itself. */
@@ -99,9 +97,6 @@ function openPersonRowsOf(projectIds: readonly string[]) {
       id: agentQuestions.id,
       projectId: agentQuestions.projectId,
       issueId: agentQuestions.issueId,
-      // the display key `issues/display-ids.ts:issueDisplayIds` writes: the project's prefix, else ISS
-      issueKey: sql<string | null>`(SELECT coalesce(p.issue_prefix, 'ISS') || '-' || i.iss_seq
-        FROM issues i JOIN projects p ON p.id = i.project_id WHERE i.id = ${agentQuestions.issueId})`,
       requirementId: agentQuestions.requirementId,
       feedbackId: agentQuestions.feedbackId,
       aboutFeedback: sql<string | null>`(SELECT 'FB-' || f.fb_seq FROM feedback f
@@ -162,7 +157,6 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
     return {
       id: r.id,
       issueId: r.issueId,
-      issueKey: r.issueKey,
       requirementId: r.requirementId,
       feedbackId: r.feedbackId,
       aboutFeedback: r.aboutFeedback,
