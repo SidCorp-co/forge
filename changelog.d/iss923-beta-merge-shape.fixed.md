@@ -1,1 +1,0 @@
-**Beta closes take the project's landing shape.** The beta port marks a git twin with the dev commit and its landing branch, an outside-git twin with its landing, and retries pairs the old landing-only mark held once.

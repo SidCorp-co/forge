@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.466] - 2026-11-03
+
+A judge's test login is removed from the box when its run closes
+
+### Fixed
+
+- **Closing a run removes the test login its judge was handed.** `run close`, and the close of a run ended any other way, deletes its `forge-judge-<run>` directory and says so; a failed removal names the path and error.
+- **Beta closes take the project's landing shape.** The beta port marks a git twin with the dev commit and its landing branch, an outside-git twin with its landing, and retries pairs the old landing-only mark held once.
+
 ## [0.4.0-dev.465] - 2026-11-03
 
 Decisions you cannot take no longer wait on you

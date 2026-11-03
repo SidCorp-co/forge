@@ -1,1 +1,0 @@
-**Closing a run removes the test login its judge was handed.** `run close`, and the close of a run ended any other way, deletes its `forge-judge-<run>` directory and says so; a failed removal names the path and error.
