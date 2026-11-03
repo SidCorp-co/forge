@@ -259,6 +259,19 @@ export class StandInRocketChat implements ChatServer {
     return id;
   }
 
+  /** The stream carrying message `id` again, as a reconnect replays a frame core already took. */
+  async resend(id: string, who: Member, text: string, tmid?: string): Promise<void> {
+    await expect.poll(() => this.subs.size, { timeout: 15_000 }).toBeGreaterThan(0);
+    this.push({
+      _id: id,
+      rid: this.rid,
+      msg: text,
+      ...(tmid ? { tmid } : {}),
+      mentions: this.mentionsIn(text),
+      u: { _id: who.userId, username: who.username },
+    });
+  }
+
   /** The users a message names with `@`, as Rocket.Chat parses them onto the message. */
   private mentionsIn(text: string): { _id: string; username: string }[] {
     const known = [

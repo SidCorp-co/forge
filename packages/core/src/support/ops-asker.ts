@@ -7,8 +7,9 @@
 import { resolveSpeaker } from '../assistant/index.js';
 import { verifiedUserIdByEmail } from '../auth/index.js';
 import { fetchUserProfile } from '../integrations/rocketchat/index.js';
+import { logger } from '../lib/logger.js';
 import { no, type Outcome } from './outcome.js';
-import { latestThreadWriter, type RoomRow } from './store.js';
+import { latestThreadWriter, type RoomRow, roomById } from './store.js';
 import { roomAuth } from './thread.js';
 
 export interface Asker {
@@ -32,6 +33,14 @@ export async function askerOf(room: RoomRow, thread: string): Promise<Outcome<As
   if (!writer) {
     return no('SUPPORT_THREAD_UNKNOWN', '/thread', `no member has written in thread ${thread}`);
   }
+  return forgeUserOfWriter(room, writer);
+}
+
+/** The Forge user one of the room's writers is, or the refusal saying they are nobody Forge knows. */
+export async function forgeUserOfWriter(
+  room: RoomRow,
+  writer: { key: string; label: string | null },
+): Promise<Outcome<Asker>> {
   const who = writer.label ? `@${writer.label}` : `account ${writer.key}`;
   const { auth, namespace } = await roomAuth(room);
   const linked = await resolveSpeaker({
@@ -50,4 +59,22 @@ export async function askerOf(room: RoomRow, thread: string): Promise<Outcome<As
   const userId = await verifiedUserIdByEmail(profile.email);
   if (!userId) return unmapped(who, `no Forge account holds ${profile.email}, verified`);
   return { ok: true, value: { ...writer, userId, via: 'email' } };
+}
+
+/**
+ * The Forge user a room's writer is, for a correction they said (REQ-50 BC-1): null where they are
+ * nobody Forge knows, or the room is gone; a correction is kept either way.
+ */
+export async function roomWriterUserId(
+  roomId: string,
+  writer: { key: string; label: string | null },
+): Promise<string | null> {
+  const room = await roomById(roomId);
+  if (!room) return null;
+  // a room whose bot credential is gone names nobody; the correction is still kept
+  const named = await forgeUserOfWriter(room, writer).catch((err: unknown) => {
+    logger.warn({ err, roomId }, 'support: a room writer could not be named for a correction');
+    return null;
+  });
+  return named?.ok ? named.value.userId : null;
 }

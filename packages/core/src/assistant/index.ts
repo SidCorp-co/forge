@@ -36,6 +36,7 @@ export { provideNeedsYouDecisionRead } from './tools/decide-tool.js';
 export { type ChatToolset, toolError } from './tools/mcp-adapter.js';
 export { provideChatTools } from './tools/registry.js';
 export type { WidgetDraftParams } from './tools/widget-draft-tool.js';
+export { noteAppliedLessons, noteRoomReplies } from './turn-lessons.js';
 export { fenceToolsetToOrigin } from './turn-origin.js';
 export {
   runWidgetTurn,

@@ -1,8 +1,9 @@
 /**
- * The two corrections that reach lessons through the outbox (REQ-50 BC-1; the others are recorded in
+ * The corrections that reach lessons through the outbox (REQ-50 BC-1; the others are recorded in
  * their act's own transaction): a mockup accepted or returned with a reason, read through the
- * mockup's own contract view, and a person's chat reply to the assistant, which the fast model reads
- * and which is kept only at `CHAT_CORRECTION_THRESHOLD` or above. A gateway miss keeps nothing: a
+ * mockup's own contract view, and a person's reply to the assistant in a project chat or to the bot
+ * in a bound room's thread, which the fast model reads and which is kept only at
+ * `CHAT_CORRECTION_THRESHOLD` or above. A gateway miss keeps nothing: a
  * reply is never a correction because the model was unreachable.
  */
 
@@ -61,18 +62,32 @@ export async function classifyChatReply(
 export const keepsCorrection = (v: ChatVerdict | null): v is ChatVerdict =>
   v?.correction === true && v.confidence >= CHAT_CORRECTION_THRESHOLD && v.what.trim() !== '';
 
-export async function correctionFromChat(p: {
-  projectId: string;
-  conversationId: string;
-  assistantMessageId: string;
-  personMessageId: string;
-}): Promise<string | null> {
+/** Where a reply was said: a project chat, or a bound room's thread (the room its route resolved). */
+type ReplyVenue = { source: 'chat' } | { source: 'room'; room: { id: string; rid: string } };
+
+/**
+ * One person's reply to an assistant message, read for a correction: a chat's and a room's alike,
+ * through the one classifier and threshold. A chat writer is a Forge user; a room writer is a chat
+ * account, recorded as the Forge user it resolves to, or with no user where it resolves to none
+ * (the owner is often a chat-only identity): who said it stays on the message `sourceRef` names.
+ */
+export async function correctionFromReply(
+  p: {
+    projectId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    personMessageId: string;
+  },
+  venue: ReplyVenue,
+): Promise<string | null> {
   const rows = await db
     .select({
       id: conversationMessages.id,
       role: conversationMessages.role,
       content: conversationMessages.content,
       author: conversationMessages.authorUserId,
+      authorKey: conversationMessages.authorKey,
+      authorLabel: conversationMessages.authorLabel,
     })
     .from(conversationMessages)
     .where(
@@ -86,18 +101,32 @@ export async function correctionFromChat(p: {
   if (!assistant || !person) return null;
   const verdict = await classifyChatReply(p.projectId, assistant.content, person.content);
   if (!keepsCorrection(verdict)) return null;
-  const [room] = await db
+  const [thread] = await db
     .select({ title: conversations.title })
     .from(conversations)
     .where(eq(conversations.id, p.conversationId));
+  const userId =
+    venue.source === 'chat'
+      ? person.author
+      : person.authorKey
+        ? await lessonsPorts().roomWriterOf(venue.room.id, {
+            key: person.authorKey,
+            label: person.authorLabel,
+          })
+        : null;
   return db.transaction((tx) =>
     recordCorrection(tx, {
       projectId: p.projectId,
-      source: 'chat',
+      source: venue.source,
       sourceRef: person.id,
-      item: { kind: 'conversation', id: p.conversationId, key: 'Chat', title: room?.title ?? null },
+      item: {
+        kind: 'conversation',
+        id: p.conversationId,
+        key: venue.source === 'chat' ? 'Chat' : `Room ${venue.room.rid}`,
+        title: thread?.title ?? null,
+      },
       reason: verdict.what,
-      by: { userId: person.author, agency: 'human' },
+      by: { userId, agency: 'human' },
       score: verdict.confidence,
     }),
   );
@@ -132,7 +161,13 @@ export function registerLessonCorrections(): void {
   consume('chat.replied', {
     name: 'lessons-chat',
     handle: async (p) => {
-      await correctionFromChat(p);
+      await correctionFromReply(p, { source: 'chat' });
+    },
+  });
+  consume('room.replied', {
+    name: 'lessons-room',
+    handle: async ({ room, ...p }) => {
+      await correctionFromReply(p, { source: 'room', room });
     },
   });
 }

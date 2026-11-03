@@ -34,6 +34,7 @@ import { agentSwitchGate } from './switches.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
 export { forgetMemberships } from './health.js';
+export { roomWriterUserId } from './ops-asker.js';
 export { supportRoutes } from './routes.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
 /** What a recorded item or a release came to, handed on to the sessions owed it (a process timer). */

@@ -12,6 +12,12 @@ interface LessonsPorts {
     mockupId: string,
     viewer: { userId: string; agency: 'human' | 'agent' },
   ): Promise<MockupView | null>;
+  /** The Forge user a room's writer is (a confirmed speaker link, or the chat server's verified
+   *  address matching a Forge account's), or null where they are nobody Forge knows. */
+  roomWriterOf(
+    roomId: string,
+    writer: { key: string; label: string | null },
+  ): Promise<string | null>;
 }
 
 const slot = portSlot<LessonsPorts>('lessons', 'provideLessonsPorts');

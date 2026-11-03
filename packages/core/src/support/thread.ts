@@ -3,6 +3,7 @@
 // credential the room's tools hold, then recorded as the room's own row (REQ-75 BC-17, BC-18).
 
 import { scrubLogText } from '@forge/observability';
+import { noteAppliedLessons } from '../assistant/index.js';
 import { appendMessages, type ConversationRow, openConversation } from '../conversations/index.js';
 import {
   FIXED_REPLY_CONSTANT,
@@ -87,7 +88,7 @@ export async function postInThread(input: {
     text,
     input.proof ?? FIXED_REPLY_CONSTANT,
   );
-  await appendMessages({
+  const written = await appendMessages({
     conversationId: conversation.id,
     messages: [
       {
@@ -106,6 +107,8 @@ export async function postInThread(input: {
       },
     ],
   });
+  // the session's line keeps its `Lessons applied:` as a chat answer does (REQ-50 BC-4)
+  await noteAppliedLessons(input.room.projectId, written);
   return { messageId, conversationId: conversation.id, text };
 }
 
@@ -136,7 +139,7 @@ export async function postTopLevel(input: {
     input.text,
     input.proof,
   );
-  await appendMessages({
+  const written = await appendMessages({
     conversationId: conversation.id,
     messages: [
       {
@@ -148,5 +151,6 @@ export async function postTopLevel(input: {
       },
     ],
   });
+  await noteAppliedLessons(input.room.projectId, written);
   return { messageId, conversationId: conversation.id };
 }

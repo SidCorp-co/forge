@@ -22,6 +22,7 @@ import { deliverWaiting } from './dispatch.js';
 import { answersOfConfig } from './grants.js';
 import { tellLastResort } from './last-resort.js';
 import { settleOwnerAnswer } from './owner-ask.js';
+import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
 import { insertAction, memberMessagesSince, type RoomRow } from './store.js';
@@ -181,7 +182,7 @@ async function recordInbound(
     await meetRoomConfirmWaits(tx, room.projectId, new Date());
     // the bar on the project's pages reads the room's waiting message (REQ-15 BC-10)
     await pushProjectNow(tx, room.projectId, 'rooms');
-    await appendMessagesIn(tx, {
+    const written = await appendMessagesIn(tx, {
       conversationId,
       messages: [
         {
@@ -195,6 +196,11 @@ async function recordInbound(
         },
       ],
     });
+    // a message handed to the session, and not for others, that follows the bot's answer is read
+    // for a correction (REQ-50 BC-1, room source); its text is the scrubbed text stored here
+    if (opts.deliver && opts.addressed !== 'others') {
+      await noteRoomMessage(tx, room, conversationId, written);
+    }
     return true;
   });
 }
