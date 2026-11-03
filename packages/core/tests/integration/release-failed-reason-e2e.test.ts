@@ -3,7 +3,7 @@
  * (2026-10-29) read failed with no refusal and no abort reason, though its verify attempt read ok:
  * the close that failed it wrote its cause onto the run (`metadata.failure`), and the release read
  * only the finish refusal and the abort stamp. Planted here through the app's own doors against real
- * Postgres: a recorded release one of whose issues will not close, a release run closed `completed`
+ * Postgres: a recorded release none of whose issues will close, a release run closed `completed`
  * with no ship, one cancelled with no abort; the person's abort, which keeps its person and reason;
  * and the admin's repair of a failed release that did ship, kept beside the failure it settles.
  *
@@ -89,13 +89,14 @@ const runStatus = async (runId: string) => {
 
 const PLANTED = 'iss761_refuse_close';
 
-/** The issue that will not close: every write moving it to `closed` raises, as a refused close does. */
-async function plantRefusedClose(issueId: string): Promise<void> {
+/** The issues that will not close: every write moving one to `closed` raises, as a refused close does. */
+async function plantRefusedClose(...issueIds: string[]): Promise<void> {
+  const ids = issueIds.map((id) => `'${id}'::uuid`).join(', ');
   await db.execute(
     sql.raw(`CREATE OR REPLACE FUNCTION ${PLANTED}() RETURNS trigger AS $$
       BEGIN
-        IF NEW.status = 'closed' AND NEW.id = '${issueId}'::uuid THEN
-          RAISE EXCEPTION 'planted: issue ${issueId} will not close';
+        IF NEW.status = 'closed' AND NEW.id IN (${ids}) THEN
+          RAISE EXCEPTION 'planted: issue % will not close', NEW.id;
         END IF;
         RETURN NEW;
       END $$ LANGUAGE plpgsql`),
@@ -112,22 +113,28 @@ afterEach(async () => {
   await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${PLANTED}()`));
 });
 
-describe('a recorded release one of whose issues will not close (catalog-api 0.4.0)', () => {
+// A record that closed none of its roster stands on nothing but the agent's word, so it ends `failed`
+// naming each refusal, and the repair is that release's way to shipped. One that closed any of its
+// roster ships, the rest its residue (ISS-928, `release-shipped-residue-e2e.test.ts`).
+describe('a recorded release none of whose issues will close (catalog-api 0.4.0, as ISS-928 leaves it)', () => {
   beforeEach(async () => {
     await seedLandedWorld();
     await seedProduction({ projectId: world.projectId, ownerId: world.ownerId, probes: 'none' });
   });
 
-  async function failedRecord(): Promise<{ runId: string; stuck: string }> {
+  async function failedRecord(): Promise<{ runId: string; done: string; stuck: string }> {
     const done = await landedIssue(1, F4);
     const stuck = await landedIssue(2, F4);
     await judgedAll(done, F4);
     await judgedAll(stuck, F4);
-    await plantRefusedClose(stuck);
+    await plantRefusedClose(done, stuck);
     const res = await record([done, stuck], F4, { version: '0.4.0' });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.failed).toEqual([expect.objectContaining({ id: stuck })]);
-    return { runId: String(res.body.runId), stuck };
+    expect(res.body.failed).toEqual([
+      expect.objectContaining({ id: done }),
+      expect.objectContaining({ id: stuck }),
+    ]);
+    return { runId: String(res.body.runId), done, stuck };
   }
 
   it('reads failed naming the close that failed it, its verify attempt kept as recorded', async () => {
@@ -209,7 +216,7 @@ describe('a recorded release one of whose issues will not close (catalog-api 0.4
     });
 
   it('closes its roster issue into the repaired release, as the finish would have', async () => {
-    const { stuck } = await failedRecord();
+    const { done: first, stuck } = await failedRecord();
     // what would not close is cleared, as catalog-api's was by the time it was repaired
     await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${PLANTED} ON issues`));
     expect((await issueRead(stuck)).status).toBe('awaiting_release');
@@ -218,7 +225,7 @@ describe('a recorded release one of whose issues will not close (catalog-api 0.4
 
     const done = await repaired();
     expect(done.status, JSON.stringify(done.body)).toBe(201);
-    expect(done.body.roster).toEqual({ closed: [stuck], heldForAgent: [] });
+    expect(done.body.roster).toEqual({ closed: [first, stuck], heldForAgent: [] });
     expect(await issueRead(stuck)).toMatchObject({
       status: 'closed',
       shippedIn: { version: '0.4.0' },
@@ -226,7 +233,7 @@ describe('a recorded release one of whose issues will not close (catalog-api 0.4
   });
 
   it('holds what it cannot close for its agent, named, and the same repair asked again closes it', async () => {
-    const { stuck } = await failedRecord();
+    const { done: first, stuck } = await failedRecord();
     const done = await repaired();
     expect(done.status, JSON.stringify(done.body)).toBe(201);
     const roster = done.body.roster as {
@@ -234,7 +241,10 @@ describe('a recorded release one of whose issues will not close (catalog-api 0.4
       heldForAgent: Array<{ issueId: string }>;
     };
     expect(roster.closed).toEqual([]);
-    expect(roster.heldForAgent).toEqual([expect.objectContaining({ issueId: stuck })]);
+    expect(roster.heldForAgent).toEqual([
+      expect.objectContaining({ issueId: first }),
+      expect.objectContaining({ issueId: stuck }),
+    ]);
     expect((await issueRead(stuck)).status).toBe('awaiting_release');
 
     // ISS-34's shape: the release reads shipped, the issue waits. The same repair, asked again,
@@ -244,7 +254,7 @@ describe('a recorded release one of whose issues will not close (catalog-api 0.4
     expect(again.status, JSON.stringify(again.body)).toBe(200);
     expect(again.body).toMatchObject({
       repeated: true,
-      roster: { closed: [stuck], heldForAgent: [] },
+      roster: { closed: [first, stuck], heldForAgent: [] },
     });
     expect((again.body.repair as { at: string }).at).toBe((done.body.repair as { at: string }).at);
     expect(await issueRead(stuck)).toMatchObject({
@@ -266,7 +276,8 @@ describe('a landing repaired by the earlier act, asked again (catalog-api ISS-34
   it('settles its roster on the repeat: 200, repeated, the issue closed into 0.4.0', async () => {
     const done = await landedIssue(1, F4);
     const stuck = await landedIssue(2, F4);
-    await plantRefusedClose(stuck);
+    // closing none, the landing ends failed as 0.4.0 did; one closing any would ship (ISS-928)
+    await plantRefusedClose(done, stuck);
     const res = await record([done, stuck], F4, { version: '0.4.0' });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const runId = String(res.body.runId);
@@ -305,7 +316,7 @@ describe('a landing repaired by the earlier act, asked again (catalog-api ISS-34
     expect(again.body).toMatchObject({
       repeated: true,
       repair: { at: earlier.at },
-      roster: { closed: [stuck], heldForAgent: [] },
+      roster: { closed: [done, stuck], heldForAgent: [] },
     });
     const after = await api(world.token, 'GET', `/api/issues/${stuck}`);
     expect(after.body).toMatchObject({ status: 'closed', shippedIn: { version: '0.4.0' } });

@@ -246,6 +246,10 @@ describe('adminhub-api 0.9.0: approved, merged, deployed, 12 of 13 closed, one h
     expect(hold?.code).toBe('RELEASE_UNCLOSED_QUESTION');
     expect(hold?.reason).toContain('question');
     expect(hold?.waiting_for).toContain(questionId);
+    // the run's own read names the residue, and no failure
+    const state = await call('GET', `/release-batches/${runId}/state`);
+    expect(state.status, JSON.stringify(state.body)).toBe(200);
+    expect(state.body).toMatchObject({ runStatus: 'completed', failure: null, residue: [held] });
   });
 
   it('(c) closes the 13th into that release by a release-record once the question is answered, no repair', async () => {
@@ -303,6 +307,13 @@ describe('(e) a promotion release that fails before its promotion merges', () =>
     expect(run?.metadata.failure).toMatchObject({
       code: 'release_not_shipped',
       detail: expect.any(String),
+    });
+    // and the run's own read says why, where it once showed `failed` and nothing more
+    const state = await call('GET', `/release-batches/${runId}/state`);
+    expect(state.body).toMatchObject({
+      runStatus: 'failed',
+      failure: { code: 'release_not_shipped', detail: expect.any(String) },
+      residue: [],
     });
   });
 });

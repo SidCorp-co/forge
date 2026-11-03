@@ -8,6 +8,8 @@ import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
+import { readRunFailure } from './release-repair.js';
+import { residueOf } from './residue.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 import { attemptsOf } from './versions.js';
 
@@ -15,6 +17,10 @@ interface ReleaseRunState {
   runId: string;
   projectId: string;
   runStatus: string;
+  /** Why a run that ended `failed` failed, as its close recorded it; null on every other run (ISS-928). */
+  failure: ReturnType<typeof readRunFailure>;
+  /** The roster issues a release that shipped could not close, waiting to close into it (ISS-928). */
+  residue: string[];
   /** The version this release cut. `null` only on a release row nothing versioned. */
   version: string | null;
   roster: ReleaseRoster;
@@ -102,6 +108,8 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     runId,
     projectId: run.projectId,
     runStatus: run.status,
+    failure: readRunFailure(meta),
+    residue: residueOf(meta),
     version: run.releaseVersion,
     roster,
     attempts,
