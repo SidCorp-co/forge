@@ -4,7 +4,7 @@
 // agent. The agent answers it from the record (`answer_question` with `source`), and nothing is
 // posted; or, only where the owner is truly needed, asks once with `ask_owner` from that thread,
 // which posts inside the owner's room's one thread for the day's questions. The owner's message
-// there is cited back with `answer_question` and `message`, and recorded as theirs.
+// there, or in any thread, is cited back with `answer_question` and `message`, and recorded as theirs.
 
 import type { SupportAnswerQuestionRequest } from '@forge/contracts/support-channel';
 import { and, asc, eq, inArray } from 'drizzle-orm';
@@ -18,6 +18,7 @@ import { answerAs } from '../questions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
+import { ownerOwedQuestion } from './owner-owed.js';
 import type { Refusal } from './refusals.js';
 import { questionThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
@@ -115,7 +116,7 @@ export const questionUnknown = <T>(thread: string): Outcome<T> =>
   no(
     'SUPPORT_QUESTION_UNKNOWN',
     '/thread',
-    `${thread} names no parked question handed to this group; answer the question thread you were handed. Nothing was recorded or posted.`,
+    `${thread} names no parked question handed to this group; answer the question thread you were handed, or name an open question you were shown as \`forgeQuestion\`. Nothing was recorded or posted.`,
   );
 
 /** The owner's message in this room, by the id the chat server signed, or null. */
@@ -202,13 +203,24 @@ async function answerAsOwner(
 
 /**
  * A channel agent answers the question it was handed: from the record, citing `source`, or with the
- * owner's message `message`. Nothing is posted either way.
+ * owner's message `message`. A person-owed question it was shown, named as `forgeQuestion`, takes the
+ * owner's message from any thread of the group (ISS-916). Nothing is posted either way.
  */
 export async function answerHandedQuestion(
   room: RoomRow,
   input: SupportAnswerQuestionRequest,
 ): Promise<Outcome<{ recorded: true }>> {
-  const handed = await handedQuestion(room, input.thread);
+  if (input.forgeQuestion && !input.message) {
+    return no(
+      'SUPPORT_ANSWER_SOURCE',
+      '/message',
+      "a question named by `forgeQuestion` is answered only by the owner's own words: cite his `message`. Nothing was recorded.",
+    );
+  }
+  // a person-owed question named by id takes the owner's message from any thread (ISS-916)
+  const owed = input.forgeQuestion ? await ownerOwedQuestion(room, input.forgeQuestion) : null;
+  if (owed && !owed.ok) return owed;
+  const handed = owed ? owed.value : await handedQuestion(room, input.thread);
   if (!handed) return questionUnknown(input.thread);
   if (Boolean(input.source) === Boolean(input.message)) {
     return no(

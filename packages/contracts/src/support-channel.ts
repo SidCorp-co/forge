@@ -249,11 +249,18 @@ export const supportAskOwnerRequestSchema = z.strictObject({
 /**
  * A parked Forge question handed to a channel agent (ISS-873), answered by it: from the record,
  * citing where (`source`), or with the owner's message in the owner's room that answers it
- * (`message`). Nothing is posted.
+ * (`message`). A person-owed question the agent was shown, named as `forgeQuestion`, takes the owner's
+ * message from any thread (ISS-916). Nothing is posted.
  */
 export const supportAnswerQuestionRequestSchema = z.strictObject({
-	/** The `question:` thread the question was handed in. */
+	/** The `question:` thread the question was handed in; with `forgeQuestion`, the owner's message's thread. */
 	thread: supportThreadIdSchema,
+	forgeQuestion: z
+		.uuid()
+		.optional()
+		.describe(
+			"an open Forge question the owner owes, by the id you were shown: his `message` answers it from any thread",
+		),
 	source: z
 		.string()
 		.trim()

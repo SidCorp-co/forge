@@ -19,6 +19,7 @@ import type { FollowedCheckout } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
 import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-ask.js';
+import { ownerOwedNote } from './owner-owed.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
 
@@ -269,12 +270,18 @@ export async function roomMessages(room: RoomRow, rows: readonly ActionRow[]): P
   const roles = await writerRoles(room.projectId, room.rid);
   if (room.kind !== 'agent') return turnMessages(rows, roles);
   const grants = grantsOf(await supportConfigOf(room));
-  return turnMessages(rows, roles, {
+  const messages = turnMessages(rows, roles, {
     channel: room.rid,
     owner: grants.abilities.includes('owner_mode') ? (grants.owner ?? null) : null,
     technicalAnswered: await technicalAnsweredBefore(room, rows, roles),
     answers: await answersOf(room, rows),
   });
+  // a turn holding the owner's words is shown what he owes, so an answer is not filed as a request (ISS-916)
+  const owners = rows.filter((r) => r.actorKind === 'member' && r.actorKey === grants.owner);
+  const last = grants.owner ? owners.at(-1) : undefined;
+  const owed = last ? await ownerOwedNote(room) : null;
+  if (!last || !owed) return messages;
+  return `${messages}\n\n${JSON.stringify({ thread: last.thread, channel: room.rid, from: 'forge' })}\n${owed}`;
 }
 
 /**

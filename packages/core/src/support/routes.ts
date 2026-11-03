@@ -135,7 +135,7 @@ const SHAPES = {
   route: '{ thread, to: forge | technical | product, member?, title?, text }',
   announce: '{ text }',
   askOwner: '{ thread, question, record?, forgeQuestion?, opener? }',
-  answerQuestion: '{ thread, source | message, option? | answer? }',
+  answerQuestion: '{ thread, forgeQuestion?, source | message, option? | answer? }',
   checkResult: '{ check, finding: string | null }',
   gitCredential: '{ host, path }',
 } as const;

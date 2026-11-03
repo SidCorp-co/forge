@@ -29,9 +29,13 @@ import { type Act, carol, code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/question-task.ts
+// @direct-test-of packages/core/src/support/owner-owed.ts
+// @direct-test-of packages/core/src/support/prompt.ts
 // @direct-test-of packages/core/src/support/owner-ask.ts
 // @direct-test-of packages/core/src/support/screen.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/project-room.ts
+//
+// ISS-916: an owner's message answers a person-owed question he was shown, from any thread.
 //
 // ISS-873 (owner, agenfold 2026-11-02): a run's parked question in a project whose rooms a channel
 // agent answers is never posted into a room by core. It is handed to the agent as a task in the
@@ -298,5 +302,103 @@ describe('ISS-873: a team room shows a code only in a reply inside a member own 
     expect(JSON.stringify(outs[1])).toContain('top level');
     expect(code(outs[2])).toBe('SUPPORT_INTERNAL_CODE');
     expect(topLevel().some((l) => l.text.includes(w.issueKey))).toBe(false);
+  });
+});
+
+describe('ISS-916: an owner’s answer reaches a question he owes, wherever he writes it', () => {
+  /** The `question.answered` events written for a question: what wakes the master who asked. */
+  const answeredEvents = async (id: string) =>
+    (
+      await rows<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM pipeline_outbox
+         WHERE type = 'question.answered' AND payload ->> 'questionId' = ${id}`)
+    )[0]?.n ?? 0;
+  const owedNote = (turn: { messages: { from: unknown; text: string }[] }) =>
+    turn.messages.find((m) => m.from === 'forge' && m.text.includes('the owner owes'))?.text ?? '';
+
+  it('shows the owner the open questions he owes, capped, and records his top-level answer as his', async () => {
+    // the owner is linked to his Forge account, as the first ISS-873 case has him (run alone, too)
+    await db.execute(sql`
+      INSERT INTO assistant_speaker_links (source, external_namespace, external_id, user_id, confirmed_via)
+      SELECT 'rocketchat', ${namespaceFromServerUrl(chat.serverUrl)}, ${OWNER_ID}, ${w.ownerId}, 'channel_email_match'
+       WHERE NOT EXISTS (SELECT 1 FROM assistant_speaker_links WHERE external_id = ${OWNER_ID})`);
+    const { id } = await parked('Which workspace key should Mộc use?');
+    for (let i = 0; i < 5; i++) await parked(`Filler question ${i} for the cap?`);
+    const [open] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM agent_questions
+       WHERE project_id = ${w.projectId}::uuid AND status = 'open' AND blocker_kind = 'human'
+         AND batch_id IS NULL`);
+    let note = '';
+    let recorded: Record<string, unknown> = {};
+    // the owner writes at the top level of his room, in no thread any question was asked in
+    const said = await w.hear(
+      () => chat.say(chat.alice, 'Bạn có toàn quyền rồi, tự làm đi'),
+      async (turn, act, message) => {
+        note = owedNote(turn);
+        recorded = await act({
+          action: 'answer_question',
+          thread: message().thread,
+          forgeQuestion: id,
+          message: message().message ?? '',
+        });
+      },
+    );
+    expect(note).toContain(`question ${id}`);
+    expect(note).toContain('Which workspace key should Mộc use?');
+    expect(note).toContain(`- and ${(open?.n ?? 0) - 5} more`);
+    expect(recorded.isError, JSON.stringify(recorded)).toBe(false);
+    const q = await question(id);
+    expect(q?.status).toBe('answered');
+    expect(q?.steps.at(-1)).toMatchObject({
+      answerText: 'Bạn có toàn quyền rồi, tự làm đi',
+      answeredBy: w.ownerId,
+    });
+    expect(await answeredEvents(id)).toBe(1);
+    expect(w.threadLines(chat.rid, said.id)).toEqual([]);
+  });
+
+  it('answers nothing with anyone else’s message, and shows them no owed questions', async () => {
+    const { id } = await parked('May the nightly import run at noon?');
+    let note = 'unset';
+    let refused: Record<string, unknown> = {};
+    await w.hear(
+      () => chat.say(chat.bob, 'yes, run it at noon'),
+      async (turn, act, message) => {
+        note = owedNote(turn);
+        refused = await act({
+          action: 'answer_question',
+          thread: message().thread,
+          forgeQuestion: id,
+          message: message().message ?? '',
+        });
+      },
+    );
+    expect(note).toBe('');
+    expect(code(refused), JSON.stringify(refused)).toBe('SUPPORT_ANSWER_NOT_THE_OWNER');
+    expect((await question(id))?.status).toBe('open');
+    expect(await answeredEvents(id)).toBe(0);
+  });
+
+  it('refuses a question that is no person’s, or one named with no message of his', async () => {
+    const outs: Record<string, unknown>[] = [];
+    await w.hear(
+      () => chat.say(chat.alice, 'ok'),
+      async (_turn, act, message) => {
+        const m = message();
+        outs.push(
+          await act({
+            action: 'answer_question',
+            thread: m.thread,
+            forgeQuestion: randomUUID(),
+            message: m.message ?? '',
+          }),
+        );
+        outs.push(
+          await act({ action: 'answer_question', thread: m.thread, forgeQuestion: randomUUID() }),
+        );
+      },
+    );
+    expect(code(outs[0])).toBe('SUPPORT_OWNER_QUESTION_UNKNOWN');
+    expect(code(outs[1])).toBe('SUPPORT_ANSWER_SOURCE');
   });
 });
