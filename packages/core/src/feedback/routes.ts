@@ -61,6 +61,7 @@ import {
 } from './service.js';
 import { tellShippedNow } from './tell-shipped.js';
 import { triageFeedback } from './triage.js';
+import { personIssueActsOf } from './triage-person-gate.js';
 import { snoozeFeedback } from './verbs.js';
 
 // each route's floor on the project :id names; a service keeps its act's decide rule
@@ -201,6 +202,8 @@ feedbackRoutes.post(
   strictBody(feedbackTriageSchema, FEEDBACK_TRIAGE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
+    const named = c.get('sessionCookie') ? personIssueActsOf(c.req.valid('json')) : [];
+    if (named.length > 0) return refused(c, named, 'FEEDBACK_ISSUE_ACT_FORBIDDEN');
     return answer(
       c,
       await triageFeedback({

@@ -298,6 +298,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_REOPEN_REASON_REQUIRED",
 	/** The item is already back with the triager since a reopen or reply: one reply per answer (REQ-47 BC-12). */
 	"FEEDBACK_REPLY_SPENT",
+	/** A person's web session names or titles no issue in a triage: the agents file and link it (REQ-68 BC-6). */
+	"FEEDBACK_ISSUE_ACT_FORBIDDEN",
 	/** A reply answers an answer; the item's standing route is none (REQ-47 BC-12). */
 	"FEEDBACK_REPLY_NO_ANSWER",
 	/** An answer to a reopened item names the reopen or reply it answers in `inReplyTo` (REQ-47 BC-13). */

@@ -117,6 +117,10 @@ reporter's confirm in the fix's preview does as theirs (below).
   a draft, or \`title\` to start one) and \`answer\` (the text the reporter reads, \`FEEDBACK_ANSWER_MISSING\`
   without it). A carrier of another route is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`; two alternatives at once,
   or a route that needs a carrier and names none, \`FEEDBACK_ROUTE_INCOMPLETE\`.
+- **A person names no issue.** On a person's web session a triage carrying \`issue\`, \`createIssue.title\` or
+  \`createIssue.description\` is refused \`FEEDBACK_ISSUE_ACT_FORBIDDEN\` at that field, nothing written: the
+  person routes the item to a fix (\`{ route: "issue", createIssue: {} }\`) and the project's agents file or
+  link the issue on their own tokens (REQ-68 BC-6).
 - **An answer to a reopened item names what it answers**: \`inReplyTo\`, the id of the reopen or reply the
   item stands on (its latest; each decision in \`decisions\` carries its \`id\`). Without it the answer is
   \`FEEDBACK_ANSWER_UNADDRESSED\`, which quotes what that reopen or reply said and names its id; naming any
