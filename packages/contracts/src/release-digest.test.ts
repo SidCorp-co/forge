@@ -41,6 +41,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 		shipped: { state: "unread", why: "no build" },
 		knownIssues: [],
 		technical: null,
+		stalls: null,
 		can: { share: false, export: false, approve: false },
 		...over,
 	};

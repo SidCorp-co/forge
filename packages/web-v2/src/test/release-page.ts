@@ -89,6 +89,7 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
       { issueKey: "ISS-4", requirementKey: "REQ-40", bc: "BC-9", statement: "A developer view adds notes.", standing: "not_judged", reason: null, elsewhere: { verdict: "pass", commitSha: "b".repeat(40) } },
     ],
     technical: null,
+    stalls: { counts: { unclear_item: 0, defect: 0, waiting_on_person: 0 }, stalls: [] },
     can: { share: true, export: true, approve: false },
     ...over,
   };

@@ -25,6 +25,7 @@ import {
 	type ReleaseState,
 	type ReleaseVerified,
 } from "./releases.js";
+import type { ReleaseStalls } from "./stalls.js";
 import {
 	digestWordCount,
 	WHATS_NEW_KINDS,
@@ -794,6 +795,11 @@ export interface ReleasePage {
 	knownIssues: ReleaseKnownIssue[];
 	/** Null on the user view. */
 	technical: ReleaseTechnicalNotes | null;
+	/**
+	 * What stalled delivery of this release's issues, counted by cause (REQ-67 BC-7). Null on a frozen
+	 * share: a stall is the team's record, not the reader's, so a share neither carries nor denies one.
+	 */
+	stalls: ReleaseStalls | null;
 	can: { share: boolean; export: boolean; approve: boolean };
 }
 
@@ -975,7 +981,7 @@ export type ReleasePageSnapshot = z.infer<typeof ReleasePageSnapshotSchema>;
 export function releasePageOfSnapshot(
 	snapshot: ReleasePageSnapshot,
 ): ReleasePage {
-	return snapshot;
+	return { ...snapshot, stalls: null };
 }
 
 /** Where a reader's client reads one release page. */

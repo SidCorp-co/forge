@@ -110,8 +110,10 @@ async function freeze(input: {
   }
   // a share names no person: who names the release is the live page's alone
   const { namer: _namer, ...header } = page.header;
+  // what stalled delivery is the team's record, not the reader's: a share carries no stall
+  const { stalls: _stalls, ...shown } = page;
   const frozen = {
-    ...page,
+    ...shown,
     header,
     view: 'user' as const,
     technical: null,

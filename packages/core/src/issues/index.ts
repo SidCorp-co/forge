@@ -259,6 +259,7 @@ export {
   leaseShowsHolderGone,
 } from './session-claim.js';
 export { type StallStart, startStall } from './stalls.js';
+export { stallsOfRoster } from './stalls-read.js';
 export { LIVE_BLOCKER_ACT_KEYS } from './standing-held.js';
 export { issueWaitsOf, listIssueStanding } from './standing-read.js';
 export {

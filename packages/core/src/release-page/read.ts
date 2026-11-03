@@ -16,6 +16,7 @@ import {
 import { versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
+import { stallsOfRoster } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
 import { readVerifiedJudge } from '../project-config/index.js';
 import {
@@ -205,6 +206,11 @@ export async function readReleasePage(args: {
     shipped,
     knownIssues: userKnownIssues(knownIssuesOf(page.claims), view),
     technical: view === 'developer' ? technicalOf(detail, range, map) : null,
+    stalls: await stallsOfRoster(
+      projectId,
+      detail.issues.map((i) => i.id),
+      detail.releasedAt,
+    ),
     can: { share: viewer?.mayShare ?? false, export: true, approve: detail.can.decide },
   };
 }

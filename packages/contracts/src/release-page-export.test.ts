@@ -160,6 +160,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 			},
 		],
 		technical: null,
+		stalls: null,
 		can: { share: true, export: true, approve: false },
 		...over,
 	};
