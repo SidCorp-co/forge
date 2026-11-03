@@ -7,8 +7,6 @@
     "GET /api/projects/:id/executions/:executionId",
     "GET /api/projects/:id/report-runs/:runId",
     "GET /api/projects/:id/workflow-templates/:templateId/:version",
-    "GET /api/questions",
-    "GET /api/questions/:id",
     "GET /api/runners",
     "GET /api/workflow-templates",
     "GET /api/workflow-templates/:templateId/:version",
@@ -26,8 +24,6 @@
     "POST /api/projects/:id/report-templates/:templateId/narrative",
     "POST /api/projects/:id/report-templates/:templateId/runs",
     "POST /api/projects/:id/review-runs",
-    "POST /api/questions",
-    "POST /api/questions/:id/void",
     "POST /api/webhooks/github/app",
     "POST /api/webhooks/in/:slug"
   ],

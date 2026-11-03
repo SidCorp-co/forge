@@ -22,7 +22,7 @@ import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { fieldShape, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnResolved } from '../permissions/index.js';
+import { requiresByRule, requiresOnResolved } from '../permissions/index.js';
 import { assertTokenMayAnswer } from './answer-door.js';
 import { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
 import { askAs } from './ask.js';
@@ -139,10 +139,29 @@ function questionId(c: { req: { param: (k: string) => string } }): string {
 }
 
 export const questionRoutes = new Hono<{ Variables: AuthVars }>();
+
+// a question is reached through its project or its issue, and a caller with no role there is
+// answered not found, never refused, so these are declared by the rule that reads it; no floor
+const LISTED = requiresByRule(
+  'questions/read.ts:accessOn',
+  'the projects the caller has a role in; another answers not found, as does a question it cannot read',
+);
+const READ_ONE = requiresByRule(
+  'questions/read.ts:readQuestionFor',
+  "the question's row decides who reads it; another answers not found",
+);
+const ASK = requiresByRule(
+  'questions/ask.ts:askAs',
+  "project.write on the project the body names, or its issue's; one the caller has no role on is not found",
+);
+const VOID = requiresByRule(
+  'questions/void-door.ts:voidQuestionAs',
+  "project.write on the question's project, then the question's own named refusals",
+);
 questionRoutes.use('/', requireAuth(), assertEmailVerified());
 questionRoutes.use('*', requireAuth(), assertEmailVerified());
 
-questionRoutes.get('/', zValidator('query', listQuery), async (c) => {
+questionRoutes.get('/', zValidator('query', listQuery), LISTED, async (c) => {
   const { issueId, projectId, issue: issueScope, status, limit, cursor } = c.req.valid('query');
   if (!issueId && !projectId) throw badRequest('issueId or projectId is required');
   if (issueId && !isUuid(issueId)) {
@@ -180,6 +199,7 @@ async function issueQuestions(issueId: string, userId: string, agency: AuthVars[
 
 questionRoutes.post(
   '/',
+  ASK,
   zValidator(
     'json',
     askSchema,
@@ -205,7 +225,7 @@ questionRoutes.post(
   },
 );
 
-questionRoutes.get('/:id', noQuery, async (c) => {
+questionRoutes.get('/:id', READ_ONE, noQuery, async (c) => {
   const seen = await readQuestionFor(questionId(c), c.get('userId'));
   if (!seen) throw notFound();
   return c.json(await shown(readerOf(c.get('agency')), seen));
@@ -246,6 +266,7 @@ questionRoutes.post(
 
 questionRoutes.post(
   '/:id/void',
+  VOID,
   strictBody(
     z.strictObject({ reason: z.string().trim().min(1).max(REASON_TEXT_MAX) }),
     '{ reason } says why the question no longer needs its answer',
