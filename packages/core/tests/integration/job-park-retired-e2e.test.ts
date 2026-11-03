@@ -3,6 +3,8 @@
  * `working` or `starting` for a pool job. A batch reporting `awaiting_input` for one is refused
  * `JOB_SESSION_PARK_RETIRED`, rather than storing a park that every clock exempts. Through the
  * app, against Postgres.
+ *
+ * @direct-test-of packages/core/src/jobs/events-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';

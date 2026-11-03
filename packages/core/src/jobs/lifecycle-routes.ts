@@ -4,11 +4,16 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { assertPlatformAdmin } from '../middleware/require-admin.js';
+import { assertInstanceAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireDeclared, requiresOnResolved } from '../permissions/index.js';
+import {
+  holds,
+  requireDeclared,
+  requiresByRule,
+  requiresOnResolved,
+} from '../permissions/index.js';
 import { cancelJob, settleConfirmedCancel } from './cancel-job.js';
 import { readJobGate } from './job-queries.js';
 import { salvageSchema } from './prior-attempts.js';
@@ -47,6 +52,22 @@ async function loadJob(jobId: string) {
   return row;
 }
 
+/** A paired device reaches only the job dispatched to it. */
+export function assertJobOnDevice(job: { deviceId: string | null }, deviceId: string): void {
+  if (job.deviceId !== deviceId) throw forbidden('job is not dispatched to this device');
+}
+
+/** A person cancels a job holding project.write on its project, or as a Forge operator. */
+export async function assertMayCancelJob(projectId: string, userId: string): Promise<void> {
+  if (holds(await loadProjectAccess(projectId, userId), 'project.write')) return;
+  await assertInstanceAdmin(userId);
+}
+
+const ON_DEVICE = requiresByRule(
+  'jobs/lifecycle-routes.ts:assertJobOnDevice',
+  'a paired device, on the job dispatched to it alone',
+);
+
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
 
 // ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
@@ -59,6 +80,7 @@ export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
 jobLifecycleDeviceRoutes.post(
   '/:id/ack',
   requireDevice(),
+  ON_DEVICE,
   zValidator('param', jobIdParamSchema),
   zValidator('json', ackBodySchema),
   async (c) => {
@@ -67,7 +89,7 @@ jobLifecycleDeviceRoutes.post(
     const device = c.get('device');
 
     const job = await loadJob(id);
-    if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
+    assertJobOnDevice(job, device.id);
 
     if (job.ackedAt) {
       return c.json({
@@ -101,6 +123,7 @@ jobLifecycleDeviceRoutes.post(
 jobLifecycleDeviceRoutes.post(
   '/:id/fail',
   requireDevice(),
+  ON_DEVICE,
   zValidator('param', jobIdParamSchema),
   zValidator('json', failBodySchema),
   async (c) => {
@@ -109,7 +132,7 @@ jobLifecycleDeviceRoutes.post(
     const device = c.get('device');
 
     const job = await loadJob(id);
-    if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
+    assertJobOnDevice(job, device.id);
     if (!OCCUPYING_JOB_STATUSES.includes(job.status)) {
       throw refuseJob('INVALID_STATE', 'job is not in a runnable state');
     }
@@ -135,6 +158,7 @@ jobLifecycleDeviceRoutes.post(
 jobLifecycleDeviceRoutes.post(
   '/:id/kill-ack',
   requireDevice(),
+  ON_DEVICE,
   zValidator('param', jobIdParamSchema),
   zValidator('json', killAckBodySchema),
   async (c) => {
@@ -143,7 +167,7 @@ jobLifecycleDeviceRoutes.post(
     const device = c.get('device');
 
     const job = await loadJob(id);
-    if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
+    assertJobOnDevice(job, device.id);
 
     const recorded = job.killRequestedAt !== null;
     await confirmJobKill(id, outcome, device.id, recorded);
@@ -169,14 +193,17 @@ jobLifecycleUserRoutes.post(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema),
+  requiresByRule(
+    'jobs/lifecycle-routes.ts:assertMayCancelJob',
+    "project.write on the job's project, or a Forge operator (ADMIN_ONLY)",
+  ),
   zValidator('json', cancelBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
     const job = await loadJob(id);
-    const access = await loadProjectAccess(job.projectId, userId);
-    if (!holds(access, 'project.write')) await assertPlatformAdmin(c);
+    await assertMayCancelJob(job.projectId, userId);
 
     const body = c.req.valid('json');
 

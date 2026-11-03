@@ -4,6 +4,8 @@
  * is closed, or a failure report, sent as the box closes it. Until then the job stays `dispatched` and its heartbeat is refused
  * `JOB_CANCEL_REQUESTED`, the channel a lost `job.cancel` frame cannot take with it. Through the
  * app, against Postgres.
+ *
+ * @direct-test-of packages/core/src/jobs/lifecycle-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';

@@ -13,14 +13,15 @@ import { publishEphemeral } from '../lib/ephemeral.js';
 import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { forbidden, notFound } from '../middleware/route-errors.js';
+import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
+import { requireDeclared, requiresByRule, requiresOnResolved } from '../permissions/index.js';
 import { CLAIM_MIN_RUNNER } from '../runners/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { jobEphemeralTarget } from './job-push.js';
 import { readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
+import { assertJobOnDevice } from './lifecycle-routes.js';
 import { listJobEvents } from './read.js';
 import { refuseJob } from './refusals.js';
 import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
@@ -171,6 +172,10 @@ async function syncLinkedSession(
 jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
+  requiresByRule(
+    'jobs/lifecycle-routes.ts:assertJobOnDevice',
+    'a paired device, on the job dispatched to it alone',
+  ),
   zValidator('param', jobIdParamSchema),
   zValidator('json', eventBatchSchema),
   async (c) => {
@@ -180,9 +185,7 @@ jobEventsRoutes.post(
 
     const job = await readJobGate(jobId);
     if (!job) throw notFound('job not found');
-    if (job.deviceId !== device.id) {
-      throw forbidden('job is not dispatched to this device');
-    }
+    assertJobOnDevice(job, device.id);
     if (TERMINAL_STATUSES.has(job.status)) {
       throw refuseJob('JOB_TERMINATED', 'job is in a terminal state');
     }

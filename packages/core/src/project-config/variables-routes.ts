@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
+import { requiresByRule, requiresOnParam } from '../permissions/index.js';
 import { jobCredential } from './testing-secrets-routes.js';
 import {
   decideVariableProposal,
@@ -182,6 +182,10 @@ jobVariableRoutes.get(
       key: z.union([z.string().regex(KEY), z.array(z.string().regex(KEY)).min(1)]).optional(),
     }),
     invalid('the only query is key, repeated as needed, each an environment variable name'),
+  ),
+  requiresByRule(
+    'project-config/variables-run-door.ts:deliverRunVariables',
+    "the run's own credential, on the run it runs (`self`) alone, and the environments its project declares",
   ),
   async (c) => {
     const { id, environment } = c.req.valid('param');

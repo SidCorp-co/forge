@@ -11,6 +11,7 @@
  * @direct-test-of packages/core/src/project-config/variables-proposals.ts
  * @direct-test-of packages/core/src/project-config/variables-run-door.ts
  * @direct-test-of packages/core/src/project-config/testing-secret-values.ts
+ * @direct-test-of packages/core/src/project-config/variables-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
