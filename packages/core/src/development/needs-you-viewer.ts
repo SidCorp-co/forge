@@ -38,7 +38,8 @@ export const NEEDS_YOU_ACROSS_CONCURRENCY = 2;
 /**
  * The viewer's decisions across every project they can see, each project's the one Needs you read
  * (`needs-you-decisions-read.ts:readNeedsYouDecisions`), so /attention counts what each project's own
- * Needs you page and Dashboard count (REQ-48 BC-11). A project nothing waits in is left out.
+ * Needs you page and Dashboard count (REQ-48 BC-11), with every other row it lists as the viewer's
+ * (ISS-924). A project nothing waits in is left out.
  */
 export async function readNeedsYouAcross(
   userId: string,
@@ -67,13 +68,15 @@ export async function readNeedsYouAcross(
             access,
             now,
           );
-          if (read.total === 0) return [];
+          const owed = read.notDecisions.filter((n) => n.reason !== 'agent_takes');
+          if (read.total === 0 && owed.length === 0) return [];
           return [
             {
               projectSlug: p.slug,
               projectName: p.name,
               total: read.total,
               decisions: read.decisions.slice(0, NEEDS_YOU_PERSON_CAP),
+              owed,
               ids,
             },
           ];

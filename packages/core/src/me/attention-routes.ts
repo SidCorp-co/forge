@@ -39,8 +39,7 @@ interface AttentionItem {
 }
 
 interface AttentionResponse {
-  /** Every project's needs-you rows, read by the one needs-you read model. */
-  /** Each project's Needs you, as its own page counts it (REQ-48 BC-11). */
+  /** Each project's Needs you, as its own page counts it (REQ-48 BC-11), and what else it lists as the caller's (ISS-924). */
   needsYou: NeedsYouProjectDecisions[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
@@ -66,6 +65,9 @@ interface AttentionResponse {
   waitingOnYou: number;
   total: number;
 }
+
+/** Every row a project's Needs you lists as the caller's that is no decision, cut or not. */
+const owedCount = (p: NeedsYouProjectDecisions) => p.owed.reduce((n, o) => n + o.count, 0);
 
 const issueLink = (slug: string, docId: string) => `/projects/${slug}/issues/${docId}`;
 
@@ -195,7 +197,7 @@ meAttentionRoutes.get(
         offlineRunners: offlineRunners.length,
       },
       total:
-        needsYou.reduce((n, p) => n + p.total, 0) +
+        needsYou.reduce((n, p) => n + p.total + owedCount(p), 0) +
         mentions.length +
         failedJobs.length +
         channelGates.length +

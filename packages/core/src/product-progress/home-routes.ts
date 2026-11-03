@@ -98,10 +98,6 @@ meHomeRoutes.get(
       moving: moving.slice(0, HOME_MOVING_LIMIT),
       movingTotal: moving.length,
       movingTruncated: moving.length > HOME_MOVING_LIMIT,
-      waiting: parts
-        .flatMap((p) => p.waiting)
-        .sort((one, other) => Date.parse(other.lastMovedAt) - Date.parse(one.lastMovedAt))
-        .map(({ lastMovedAt: _moved, ...w }) => w),
       // at most two a project (its latest on production and on testing), so it is never cut
       live: parts.flatMap((p) => p.live).sort(byEnvThenNewest),
     };

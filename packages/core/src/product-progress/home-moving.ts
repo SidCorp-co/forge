@@ -1,11 +1,11 @@
 // One project's part of a person's home (ISS-919): the feedback they gave and the issues they own,
 // each with its stage, who owes the next move and the forecast's held date. An item whose next move
-// the viewer owes (a wait whose `you` its standing set) is theirs to take, so it is a Waiting row and
-// never a Moving one. Composed from the reads the feedback page, the issue list and the board already
+// the viewer owes (a wait whose `you` its standing set) is theirs to take: the person's Needs you lists
+// it (`/api/me/attention`, ISS-924), so it is never a Moving row. Composed from the reads the feedback page, the issue list and the board already
 // serve; nothing here computes a date.
 
 import type { FeedbackSummary } from '@forge/contracts/feedback';
-import type { HomeMovingItem, HomeWaitingItem } from '@forge/contracts/owner-home';
+import type { HomeMovingItem } from '@forge/contracts/owner-home';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
 import { listFeedbackAs } from '../feedback/index.js';
@@ -143,13 +143,9 @@ export function carriersOf(s: FeedbackSummary, reads: FeedbackReads): string[] {
   return [];
 }
 
-/** A Waiting row with the last move it is ranked by, which the reply leaves out. */
-export type HomeWaitingRanked = HomeWaitingItem & { lastMovedAt: string };
-
-/** One project's items split by who owes the next move: someone else or nobody (Moving), or the viewer (Waiting). */
+/** One project's Moving items: those someone else or nobody owes the next move of. */
 export interface HomeProjectItems {
   moving: HomeMovingItem[];
-  waiting: HomeWaitingRanked[];
 }
 
 const runStarts = (runs: readonly RunStanding[]) => runs.map((r) => r.since);
@@ -162,26 +158,16 @@ export async function homeItemsOf(
   now: Date = new Date(),
 ): Promise<HomeProjectItems> {
   const of = { projectSlug: project.slug, projectName: project.name };
-  const out: HomeProjectItems = { moving: [], waiting: [] };
+  const out: HomeProjectItems = { moving: [] };
   for (const { s, progress } of part.feedback) {
     if (feedbackEnded(s, progress)) continue;
+    // the viewer's own move: their Needs you lists it, never Moving
+    if (progress.waitingOn.some((w) => w.you)) continue;
     const lastMovedAt = lastMoveOf(
       s.updatedAt,
       s.times.since,
       ...runStarts(runsOn(part.reads.runs, carriersOf(s, part.reads))),
     );
-    const owed = progress.waitingOn.find((w) => w.you);
-    if (owed) {
-      out.waiting.push({
-        kind: 'feedback',
-        key: s.key,
-        title: s.title,
-        ...of,
-        act: owed.act,
-        lastMovedAt,
-      });
-      continue;
-    }
     const wait = progress.waitingOn[0];
     out.moving.push({
       kind: 'feedback',
@@ -214,18 +200,8 @@ export async function homeItemsOf(
     const running = part.running.has(i.key);
     const standing = waits.get(i.id)?.standing;
     const w = standing?.waitingOn;
+    if (w?.kind === 'you') continue;
     const lastMovedAt = lastMoveOf(i.updatedAt, standing?.times.since, ...runStarts(runs));
-    if (w?.kind === 'you') {
-      out.waiting.push({
-        kind: 'issue',
-        key: i.key,
-        title: i.title,
-        ...of,
-        act: w.act,
-        lastMovedAt,
-      });
-      continue;
-    }
     const f = dates.get(i.key);
     out.moving.push({
       kind: 'issue',

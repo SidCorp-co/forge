@@ -3,13 +3,18 @@
  * across every project they read and none they do not: the feedback they gave and the issues they own
  * that are not live, each at its stage; each project's latest release with how many of their items it
  * carried; and a search that says where any item stands, live since a version or still moving.
- * Against real Postgres.
+ * ISS-924: what the person owes is their Needs you alone (`/api/me/attention`), a triage they hold
+ * among it, so the home has no `waiting` of its own and loses no owed row. Against real Postgres.
  *
  * @direct-test-of packages/core/src/product-progress/home-routes.ts
  * @direct-test-of packages/core/src/product-progress/home-moving.ts
  * @direct-test-of packages/core/src/product-progress/home-live.ts
  * @direct-test-of packages/core/src/product-progress/home-find.ts
  * @direct-test-of packages/core/src/product-progress/home-stage.ts
+ * @direct-test-of packages/core/src/lib/standing-times.ts
+ * @direct-test-of packages/core/src/me/attention-routes.ts
+ * @direct-test-of packages/core/src/development/needs-you-viewer.ts
+ * @direct-test-of packages/core/src/development/needs-you-decisions.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -141,20 +146,49 @@ describe("a person's home", () => {
     expect(full).toMatchObject({ movingTotal: HOME_MOVING_LIMIT + 2, movingTruncated: true });
   });
 
-  it('puts an item the viewer owes under waiting, never under moving', async () => {
+  it('lists an item the viewer owes on their Needs you, never under moving, and the home has no waiting of its own', async () => {
     const home = ok(await say('owner', 'GET', '/api/me/home'));
     // FB-1 is new and the owner holds triage, so its standing names the owner: theirs to take
     expect((home.moving as Doc[]).map((m) => m.key)).not.toContain('FB-1');
-    expect(home.waiting as Doc[]).toEqual([
-      expect.objectContaining({
-        kind: 'feedback',
-        key: 'FB-1',
-        projectSlug: slug,
-        act: 'triage it',
-      }),
-    ]);
-    // the same item names nobody's "You" in moving: no row there is the viewer's
+    expect(home).not.toHaveProperty('waiting');
+    // no row in moving is the viewer's
     for (const m of home.moving as Doc[]) expect(m.owes?.who).not.toBe('You');
+    // the feedback list and every needs-you read agree: the triage is the owner's
+    const list = ok(await say('owner', 'GET', `/api/projects/${projectId}/feedback`));
+    const fb1 = (list.feedback as Doc[]).find((f) => f.key === 'FB-1');
+    expect(fb1).toMatchObject({
+      attentionGroup: 'needs_you',
+      waitingOn: { kind: 'you', act: 'triage it' },
+    });
+    const attention = ok(await say('owner', 'GET', '/api/me/attention'));
+    const part = (attention.needsYou as Doc[]).find((p) => p.projectSlug === slug);
+    expect(part?.owed).toEqual([
+      {
+        reason: 'triage',
+        count: 1,
+        items: [
+          {
+            key: 'FB-1',
+            title: expect.any(String),
+            next: 'triage it',
+            opens: { kind: 'feedback', key: 'FB-1' },
+          },
+        ],
+      },
+    ]);
+    // the attention total counts it beside the decisions; the decisions badge does not
+    expect(attention.total as number).toBeGreaterThanOrEqual(1 + (part?.total as number));
+    const items = ok(await say('owner', 'GET', `/api/projects/${projectId}/needs-you`));
+    expect((items.items as Doc[]).map((i) => i.key)).toContain('FB-1');
+    const decisions = ok(
+      await say('owner', 'GET', `/api/projects/${projectId}/needs-you/decisions`),
+    );
+    expect(decisions.notDecisions as Doc[]).toContainEqual(
+      expect.objectContaining({ reason: 'triage', count: 1 }),
+    );
+    // an outsider holds no triage there and reads no part of that project
+    const theirs = ok(await say('outsider', 'GET', '/api/me/attention'));
+    expect((theirs.needsYou as Doc[]).map((p) => p.projectSlug)).not.toContain(slug);
   });
 
   it('ranks Moving by last move, newest first, with the idle folded last', async () => {

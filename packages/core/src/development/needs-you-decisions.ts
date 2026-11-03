@@ -23,6 +23,7 @@ import {
   type NotDecisionItem,
 } from '@forge/contracts/needs-you-decisions';
 import type { NeedsYouTopic } from '@forge/contracts/needs-you-proposal';
+import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
 import { type AttentionRow, owedOf, type readAttention } from './needs-you.js';
 import { acceptDecision, admitDecision, repinDecision } from './needs-you-accept-builders.js';
@@ -56,6 +57,9 @@ const OWN_WORK: ReadonlySet<string> = new Set([
   'issues.standing.act.reviseDesign',
   'standing.act.writeRevision',
 ]);
+
+/** A feedback item's triage the viewer holds: their choice, made on the item's page, no one-click answer (ISS-924). */
+const TRIAGE: ReadonlySet<string> = new Set(FEEDBACK_TRIAGE_ACTS);
 
 /** A draft nobody has asked to merge, drop or keep yet (BC-12): not a decision until the steward asks it. */
 const AWAITING_PROPOSAL: ReadonlySet<string> = new Set(['issues.standing.act.takeOnOrDrop']);
@@ -169,8 +173,8 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   const act = actOf(row);
   if (OWN_WORK.has(act.key)) return { reason: 'own_work' };
   if (AWAITING_PROPOSAL.has(act.key)) return { reason: 'awaiting_proposal' };
-  // a row whose act no person decides is an agent's to take (`isDecisionAct`); slices never group it
-  // needs_you, so one reaching here is a question row or a slice outside the three
+  if (row.entity === 'feedback' && TRIAGE.has(act.key)) return { reason: 'triage' };
+  // a row the viewer owes whose act no person decides by one press: theirs to carry out on its page
   if (row.entity !== 'question' && !isDecisionActOn(row.entity, row.standing.waitingOn.says.act)) {
     return { reason: 'work' };
   }
