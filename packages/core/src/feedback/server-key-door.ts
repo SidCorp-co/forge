@@ -22,7 +22,7 @@ import {
   type FeedbackServerKeyFiledResponse,
 } from '@forge/contracts/feedback-server-keys';
 import { eq } from 'drizzle-orm';
-import { type Context, Hono, type MiddlewareHandler } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -49,8 +49,8 @@ const doorAnswer = (status: 401 | 429, code: string, message: string, retryAfter
 /** The request's body, checked by the same validator the person's route mounts. */
 async function checkedBody(c: Context): Promise<CreateFeedbackRequest> {
   let body: CreateFeedbackRequest | undefined;
-  await (bodyCheck as unknown as MiddlewareHandler)(c, async () => {
-    body = (c.req as unknown as { valid: (t: 'json') => CreateFeedbackRequest }).valid('json');
+  await bodyCheck(c, async () => {
+    body = c.req.valid('json' as never);
   });
   if (!body) throw new Error('feedback server key: the body validator passed without a body');
   return body;

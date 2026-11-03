@@ -167,7 +167,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:supersedes field:param:rid field:param:ruleId field:param:username
     field:json:member field:json:threads field:json:after field:json:check
     field:json:fire field:json:covers field:json:profile field:param:debt
-    field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment`,
+    field:param:n field:param:environment field:param:proposal field:param:variable field:json:environment
+    field:param:keyId`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -176,7 +177,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:intro field:json:message field:json:narrative field:json:note
     field:json:observedSteps field:json:plan field:json:prompt field:json:reason
     field:json:releaseNotes field:json:soul field:json:summary field:json:text
-    field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen
+    field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen field:json:product
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
     field:json:suggestion field:json:evidence field:json:emoji field:json:name field:json:role
     field:json:displayName field:json:shortName field:json:request field:json:account
@@ -363,7 +364,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     projects/master-charter-routes.ts HonoRequest.valid(json) in module code
     release-batch/version-routes.ts HonoRequest.valid(json) in module code
     requirements/route-kit.ts HonoRequest.valid(json) in draftPictureFits
-    workflows/routes.ts HonoRequest.valid(json) in module code`,
+    workflows/routes.ts HonoRequest.valid(json) in module code
+    feedback/server-key-door.ts HonoRequest.valid(json) in checkedBody`,
   'the request handed to core’s own router, gates and body checks, which read it here': lines`
     index.ts Request handed to hono:fetch in module code
     web-host/mount.ts Request handed to hono:fetch in hostTheWeb
@@ -375,7 +377,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     middleware/zod-validator.ts Context handed to hono:middleware in refuseUndeclaredBodyType
     lib/upload-body-limit.ts Context handed to hono:limiter in uploadBodyLimit
     middleware/chat-write-hold.ts Context handed to hono:matchedRoutes in chatWriteRouteOf
-    middleware/pat-rest-surface.ts Context handed to hono:matchedRoutes in routeIsServed`,
+    middleware/pat-rest-surface.ts Context handed to hono:matchedRoutes in routeIsServed
+    feedback/server-key-door.ts Context handed to hono:bodyCheck in checkedBody`,
   'a file of the web build core serves, found by its path and gzipped by Accept-Encoding': lines`
     web-host/host.ts Context handed to hono:serve in webHost
     web-host/host.ts Context handed to hono:squeeze in webHost`,

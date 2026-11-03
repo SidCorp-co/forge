@@ -196,6 +196,12 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'POST /token redeems a code or a refresh token core minted for an MCP client, with no session; a PAT is neither. Consent sits behind requireAuth, where the chat write rule runs, and refuses a token by PAT_UNGRANTABLE',
   'credentials/mcp-oauth-store.ts':
     'redeemCode and refreshGrant look a code or a refresh token up by its digest; a PAT digests to neither',
+  'feedback/server-key-door.ts':
+    'a product server’s feedback key, read by readServerKeyBearer and looked up by its SHA-256, files POST …/feedback on its one project as the product’s account and sets no session; a PAT is never one, and passes on to requireAuth',
+  'feedback/server-keys.ts':
+    'serverKeyOf looks a feedback server key up by its SHA-256; mintServerKey stores only the digest of what it mints',
+  'feedback/server-key-rules.ts':
+    'mints a feedback server key and digests it for its lookup; a PAT never matches its shape',
   'credentials/mcp-oauth-shape.ts':
     'pkceAnswers checks a PKCE verifier against the challenge its code was issued with, in constant time; mintSecret digests what it mints',
 };
@@ -212,6 +218,8 @@ const ADMITS_NOTHING: Readonly<Record<string, string>> = {
     'the /admin page gate hands every forge_auth value to core’s own /api/admin/whoami, where requireAuth decides',
   'web-host/mount.ts':
     'puts the web host and the demo credential in front of the router; checks none',
+  'feedback/server-key-routes.ts':
+    'mints, lists and revokes feedback server keys behind requireAuth and project.admin; it checks none',
   'route-registry.ts': 'mounts the web host ahead of every route; checks none',
   'index.ts': 'serves app.fetch, which a demo core wraps in the demo credential; checks none',
 };
