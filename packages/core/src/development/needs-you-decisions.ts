@@ -26,7 +26,7 @@ import type { NeedsYouTopic } from '@forge/contracts/needs-you-proposal';
 import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
 import { type AttentionRow, owedOf, type readAttention } from './needs-you.js';
-import { acceptDecision, admitDecision, repinDecision } from './needs-you-accept-builders.js';
+import { acceptDecision, repinDecision } from './needs-you-accept-builders.js';
 import {
   agreeDecision,
   type CuttableRelease,
@@ -100,12 +100,6 @@ const REPIN_BATCH = 'designs.act.repinBatch';
 /** A draft release no gate holds, which only an admin cuts (`release-batch/release-view.ts:draftTurn`). */
 const RELEASE_CUT = 'standing.act.cut';
 
-/** A requirement whose only issues are drafts asks them taken on (`requirements/standing.ts`). */
-const PROMOTE_DRAFTS: ReadonlySet<string> = new Set([
-  'standing.act.promoteDraft',
-  'standing.act.promoteDrafts',
-]);
-
 type Classified = Built | { reason: NeedsYouNotDecisionReason } | { folded: true };
 
 interface Facts {
@@ -124,8 +118,6 @@ interface Facts {
       currentWords: string | null;
     }
   >;
-  /** Each requirement's draft issues, by requirement key. */
-  draftsOf: ReadonlyMap<string, { id: string; key: string }[]>;
   /** Each moved design's re-pin group, by the base's flow. */
   repinOf: ReadonlyMap<string, DesignRepinGroup>;
   releaseOf: ReadonlyMap<string, ReleaseFacts>;
@@ -217,8 +209,6 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     if (act.key === 'standing.act.check' && req?.current) {
       return acceptDecision(row, area, f.projectId, req.current, req.criteria);
     }
-    const drafts = f.draftsOf.get(row.key) ?? [];
-    if (PROMOTE_DRAFTS.has(act.key) && drafts.length > 0) return admitDecision(row, area, drafts);
     return { reason: 'work' };
   }
   if (row.entity === 'release' && act.key === RELEASE_CUT) {
@@ -284,24 +274,6 @@ function completed(
 function dueOfRow(row: AttentionRow): { stuck: boolean; dueAt: string | null } {
   const dueAt = row.due?.dueAt ?? row.standing.waitingOn.dueAt ?? null;
   return { stuck: row.due?.stuck ?? false, dueAt: dueAt ? new Date(dueAt).toISOString() : null };
-}
-
-/** Each requirement's draft issues, by its key. */
-function draftsByRequirement(
-  issues: readonly {
-    id: string;
-    key: string;
-    status: string;
-    standing: { requirement: { key: string } | null };
-  }[],
-): Map<string, { id: string; key: string }[]> {
-  const out = new Map<string, { id: string; key: string }[]>();
-  for (const i of issues) {
-    const req = i.standing.requirement?.key;
-    if (i.status !== 'draft' || !req) continue;
-    out.set(req, [...(out.get(req) ?? []), { id: i.id, key: i.key }]);
-  }
-  return out;
 }
 
 const OPENS_KIND: Partial<Record<AttentionRow['entity'], DecisionOpens['kind']>> = {
@@ -381,7 +353,6 @@ export async function decisionsOf(
         },
       ]),
     ),
-    draftsOf: draftsByRequirement(attention.issues.issues),
     repinOf: new Map(attention.repins.groups.map((g) => [g.flow, g])),
     releaseOf: new Map(attention.releases.releases.map((r) => [r.version, releaseFactsOf(r)])),
     cutOf: new Map(

@@ -33,7 +33,6 @@ const NEED: Readonly<Record<DecisionAct, Need>> = {
   'requirement.drop': { permission: 'requirements.approve' },
   'requirement.repin': { gate: 'revisions' },
   'requirement.defer': { permission: 'requirements.approve' },
-  'issue.admit': { gate: 'admit' },
   'suggestion.accept': { permission: 'suggestions.approve' },
   'suggestion.reject': { permission: 'suggestions.approve' },
   // the reporter says whether their own report is settled

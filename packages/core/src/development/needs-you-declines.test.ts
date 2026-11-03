@@ -6,7 +6,7 @@
 import { needsYouDecisionSchema } from '@forge/contracts/needs-you-decisions';
 import { describe, expect, it } from 'vitest';
 import type { AttentionRow } from './needs-you.js';
-import { acceptDecision, admitDecision, repinDecision } from './needs-you-accept-builders.js';
+import { acceptDecision, repinDecision } from './needs-you-accept-builders.js';
 import {
   agreeDecision,
   designDecision,
@@ -77,12 +77,7 @@ describe('the answer that says no', () => {
     });
   });
 
-  it('is absent where the kind has no act that says no: a take-on and a re-pin', () => {
-    expect(
-      declining(
-        admitDecision(row('requirement', 'REQ-50'), 'requirements', [{ id: 'i', key: 'ISS-601' }]),
-      ),
-    ).toEqual([]);
+  it('is absent where the kind has no act that says no: a re-pin', () => {
     expect(declining(repinDecision(row('requirement', 'REQ-50'), 'requirements', P, 4))).toEqual(
       [],
     );

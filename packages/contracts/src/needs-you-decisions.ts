@@ -106,10 +106,6 @@ export const DECISION_ACTS = {
 		path: "/api/projects/:projectId/requirements/:key/defer",
 		reason: true,
 	},
-	"issue.admit": {
-		path: "/api/issues/:issueId/transition",
-		reason: false,
-	},
 	"suggestion.accept": {
 		path: "/api/projects/:projectId/suggestions/:suggestionId/accept",
 		reason: false,
@@ -534,8 +530,6 @@ export const DECISION_ACT_OF_SAID: Readonly<Record<string, DecisionActOfSaid>> =
 		"standing.act.confirmAnswer": { act: "feedback.verify" },
 		"standing.act.verifyFix": { act: "feedback.verify" },
 		"standing.act.verifyFixIn": { act: "feedback.verify" },
-		"standing.act.promoteDraft": { act: "issue.admit" },
-		"standing.act.promoteDrafts": { act: "issue.admit" },
 		"standing.act.updateToDesign": { act: "requirement.repin" },
 		"standing.act.updateToContract": { act: "requirement.repin" },
 		"standing.act.reviewBreakdown": {
