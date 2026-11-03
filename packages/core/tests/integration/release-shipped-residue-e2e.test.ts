@@ -11,6 +11,8 @@
  * @direct-test-of packages/core/src/release-batch/recorded.ts
  * @direct-test-of packages/core/src/release-batch/promotion-release.ts
  * @direct-test-of packages/core/src/release-batch/residue.ts
+ * @direct-test-of packages/core/src/release-batch/record-door.ts
+ * @direct-test-of packages/core/src/release-batch/state.ts
  * @direct-test-of packages/core/src/release-batch/finish.ts
  */
 
