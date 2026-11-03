@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.461] - 2026-11-03
+
+Beta issues are worked on dev; your home says when a list is cut
+
+### Added
+
+- **forge-beta issues are ported to forge-dev on a schedule.** A `beta_port` schedule opens each new beta issue in its same-slug project once, comments the dev key on beta, and mirrors dev status moves back.
+
+### Fixed
+
+- **The home says when a list is cut.** Moving and the search show "50 of N"; an item you owe sits under Waiting on you, never Moving; Moving ranks by last move and folds week-idle items under one Idle row.
+
 ## [0.4.0-dev.460] - 2026-11-03
 
 Product servers file feedback into their Forge project with a project-bound server key

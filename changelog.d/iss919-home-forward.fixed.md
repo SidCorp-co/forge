@@ -1,1 +1,0 @@
-**The home says when a list is cut.** Moving and the search show "50 of N"; an item you owe sits under Waiting on you, never Moving; Moving ranks by last move and folds week-idle items under one Idle row.
