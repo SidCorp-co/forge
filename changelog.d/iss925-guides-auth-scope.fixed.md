@@ -1,0 +1,1 @@
+**Project routers gate only their own routes.** The guides router and eighteen others ran their sign-in gate over every project route; now each gates its own, so mount order no longer refuses an open route.
