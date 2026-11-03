@@ -14,17 +14,25 @@ import { feedbackEnded, feedbackStage, issueStage } from './home-stage.js';
 
 const KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
 
+/** The project's first `HOME_FIND_LIMIT` matching issues, and how many match in all. */
 async function issuesMatching(projectId: string, q: string) {
   const page = { sort: 'updatedAt:desc', limit: HOME_FIND_LIMIT, offset: 0 } as const;
   const found = KEY.test(q)
     ? await listIssues(projectId, { key: q }, page)
     : await listIssues(projectId, { search: q }, page);
-  if (!found.ok) return [];
+  // a key the issue list refuses (FB-12, another prefix) names no issue of the project: none match
+  if (!found.ok && found.field === 'key') return { rows: [], total: 0 };
+  if (!found.ok) {
+    throw new Error(
+      `home find: the issue list refused its own read (${found.field}: ${found.message})`,
+    );
+  }
   const keys = await issueDisplayIds(found.rows.map((r) => r.id));
-  return found.rows.flatMap((r) => {
+  const rows = found.rows.flatMap((r) => {
     const key = keys.get(r.id);
     return key ? [{ key, row: r }] : [];
   });
+  return { rows, total: found.total };
 }
 
 function feedbackMatching(all: readonly FeedbackSummary[], q: string): FeedbackSummary[] {
@@ -64,16 +72,16 @@ function issueStanding(
   return { kind: 'moving', stage };
 }
 
-/** One project's matches for `q`, keys first. */
+/** One project's matches for `q`, and how many matched before its issue list's own cut. */
 export async function findIn(
   project: HomeProject,
   part: HomeProjectReads,
   releases: ReleaseListResponse,
   q: string,
-): Promise<HomeFoundItem[]> {
+): Promise<{ items: HomeFoundItem[]; total: number }> {
   const of = { projectSlug: project.slug, projectName: project.name };
   const issues = await issuesMatching(project.id, q);
-  const fromIssues = issues.map(
+  const fromIssues = issues.rows.map(
     ({ key, row }): HomeFoundItem => ({
       kind: 'issue',
       key,
@@ -91,7 +99,10 @@ export async function findIn(
       standing: feedbackStanding(s, part, releases),
     }),
   );
-  return [...fromIssues, ...fromFeedback];
+  return {
+    items: [...fromIssues, ...fromFeedback],
+    total: issues.total + fromFeedback.length,
+  };
 }
 
 /** Every project's matches, an exact key first, at most `HOME_FIND_LIMIT`. */

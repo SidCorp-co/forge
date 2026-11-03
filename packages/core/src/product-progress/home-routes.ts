@@ -6,6 +6,7 @@
 
 import { inActiveOrg } from '@forge/contracts/org-scope';
 import {
+  HOME_FIND_LIMIT,
   HOME_MOVING_LIMIT,
   type HomeFindResponse,
   type HomeLiveRelease,
@@ -22,10 +23,11 @@ import { listVisibleProjectsWithRole } from '../projects/index.js';
 import { findIn, rankFound } from './home-find.js';
 import { liveOf, releasesOf } from './home-live.js';
 import {
+  byLastMove,
   carriersOf,
   type HomeProject,
   type HomeViewer,
-  movingOf,
+  homeItemsOf,
   readHomeProject,
 } from './home-moving.js';
 
@@ -72,6 +74,7 @@ meHomeRoutes.get(
   async (c) => {
     const { orgId } = c.req.valid('query');
     const viewer = viewerOf(c);
+    const now = new Date();
     const projects = await readableProjects(viewer.userId, orgId ?? null);
     const limiter = createLimiter(HOME_CONCURRENCY);
     const parts = await Promise.all(
@@ -85,16 +88,21 @@ meHomeRoutes.get(
             ...part.issues.map((i) => i.key),
             ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
           ]);
-          return { moving: await movingOf(p, part), live: liveOf(p, releases, mine) };
+          return { ...(await homeItemsOf(p, part, viewer, now)), live: liveOf(p, releases, mine) };
         }),
       ),
     );
+    const moving = parts.flatMap((p) => p.moving).sort(byLastMove);
     const response: HomeResponse = {
-      generatedAt: new Date().toISOString(),
-      moving: parts
-        .flatMap((p) => p.moving)
-        .sort((a, b) => Number(b.running) - Number(a.running))
-        .slice(0, HOME_MOVING_LIMIT),
+      generatedAt: now.toISOString(),
+      moving: moving.slice(0, HOME_MOVING_LIMIT),
+      movingTotal: moving.length,
+      movingTruncated: moving.length > HOME_MOVING_LIMIT,
+      waiting: parts
+        .flatMap((p) => p.waiting)
+        .sort((one, other) => Date.parse(other.lastMovedAt) - Date.parse(one.lastMovedAt))
+        .map(({ lastMovedAt: _moved, ...w }) => w),
+      // at most two a project (its latest on production and on testing), so it is never cut
       live: parts.flatMap((p) => p.live).sort(byEnvThenNewest),
     };
     return c.json(response);
@@ -126,7 +134,14 @@ meHomeRoutes.get(
         }),
       ),
     );
-    const response: HomeFindResponse = { q, items: rankFound(q, found.flat()) };
+    const items = found.flatMap((f) => f.items);
+    const total = found.reduce((n, f) => n + f.total, 0);
+    const response: HomeFindResponse = {
+      q,
+      items: rankFound(q, items),
+      total,
+      truncated: total > HOME_FIND_LIMIT,
+    };
     return c.json(response);
   },
 );

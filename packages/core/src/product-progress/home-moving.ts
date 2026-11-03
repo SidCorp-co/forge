@@ -1,10 +1,17 @@
 // One project's part of a person's home (ISS-919): the feedback they gave and the issues they own,
-// each with its stage, who owes the next move and the forecast's held date. Composed from the reads
-// the feedback page, the issue list and the board already serve; nothing here computes a date.
+// each with its stage, who owes the next move and the forecast's held date. An item whose next move
+// the viewer owes (a wait whose `you` its standing set) is theirs to take, so it is a Waiting row and
+// never a Moving one. Composed from the reads the feedback page, the issue list and the board already
+// serve; nothing here computes a date.
 
 import type { FeedbackSummary } from '@forge/contracts/feedback';
-import type { HomeMovingItem } from '@forge/contracts/owner-home';
+import {
+  HOME_IDLE_DAYS,
+  type HomeMovingItem,
+  type HomeWaitingItem,
+} from '@forge/contracts/owner-home';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import type { RunStanding } from '@forge/contracts/run-standing';
 import { listFeedbackAs } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
 import { issueDisplayIds, issueWaitsOf, listIssues } from '../issues/index.js';
@@ -36,23 +43,47 @@ export interface HomeProjectReads {
   /** Every item of the project, for the search: summaries without progress. */
   allFeedback: FeedbackSummary[];
   /** The issues they filed or hold, at any status. */
-  issues: { id: string; key: string; title: string; status: string; claimed: boolean }[];
+  issues: {
+    id: string;
+    key: string;
+    title: string;
+    status: string;
+    claimed: boolean;
+    updatedAt: string;
+  }[];
   /** Issue keys a live run works now. */
   running: Set<string>;
   reads: FeedbackReads;
 }
 
-const OWNED_LIMIT = 200;
-const PAGE = { sort: 'updatedAt:desc', limit: OWNED_LIMIT, offset: 0 } as const;
+/** Issues read a page at a time; every page is read, so Moving's total counts every one. */
+const OWNED_PAGE = 200;
+
+type IssueFilters = Parameters<typeof listIssues>[1];
+
+/** Every issue of the project `filters` admits, page after page until a short one. */
+async function allIssues(projectId: string, filters: IssueFilters) {
+  const rows = [];
+  for (let offset = 0; ; offset += OWNED_PAGE) {
+    const page = await listIssues(projectId, filters, {
+      sort: 'updatedAt:desc',
+      limit: OWNED_PAGE,
+      offset,
+    });
+    if (!page.ok) {
+      throw new Error(`home: the issue list refused its own read (${page.field}: ${page.message})`);
+    }
+    rows.push(...page.rows);
+    if (page.rows.length < OWNED_PAGE) return rows;
+  }
+}
 
 async function ownedIssues(projectId: string, userId: string) {
   const [created, held] = await Promise.all([
-    listIssues(projectId, { createdBy: userId }, PAGE),
-    listIssues(projectId, { assigneeId: userId }, PAGE),
+    allIssues(projectId, { createdBy: userId }),
+    allIssues(projectId, { assigneeId: userId }),
   ]);
-  const rows = new Map(
-    [...(created.ok ? created.rows : []), ...(held.ok ? held.rows : [])].map((r) => [r.id, r]),
-  );
+  const rows = new Map([...created, ...held].map((r) => [r.id, r]));
   const keys = await issueDisplayIds([...rows.keys()]);
   return [...rows.values()].flatMap((r) => {
     const key = keys.get(r.id);
@@ -64,6 +95,7 @@ async function ownedIssues(projectId: string, userId: string) {
             title: r.title,
             status: r.status,
             claimed: r.releaseBatchRunId !== null,
+            updatedAt: r.updatedAt.toISOString(),
           },
         ]
       : [];
@@ -115,58 +147,128 @@ export function carriersOf(s: FeedbackSummary, reads: FeedbackReads): string[] {
   return [];
 }
 
-/** The project's Moving rows: their feedback not yet live, then their issues not yet over. */
-export async function movingOf(
+/** A Moving row before the cut, and a Waiting row with the move it is ranked by. */
+export type HomeWaitingRanked = HomeWaitingItem & { lastMovedAt: string };
+
+/** One project's items split by who owes the next move: someone else or nobody (Moving), or the viewer (Waiting). */
+export interface HomeProjectItems {
+  moving: HomeMovingItem[];
+  waiting: HomeWaitingRanked[];
+}
+
+const DAY_MS = 86_400_000;
+
+/** The latest of the instants an item's reads served for its last movement. */
+export function lastMoveOf(...at: readonly (string | null | undefined)[]): string {
+  const known = at.filter((a): a is string => typeof a === 'string' && a !== '');
+  if (known.length === 0) throw new Error('home: an item reached Moving with no instant it moved');
+  return known.reduce((latest, a) => (Date.parse(a) > Date.parse(latest) ? a : latest));
+}
+
+/** Nothing has moved it for more than `HOME_IDLE_DAYS`, and no run works on it now. */
+export function isIdle(lastMovedAt: string, running: boolean, now: Date): boolean {
+  return !running && now.getTime() - Date.parse(lastMovedAt) > HOME_IDLE_DAYS * DAY_MS;
+}
+
+const runStarts = (runs: readonly RunStanding[]) => runs.map((r) => r.since);
+
+/** The project's items not yet live: their feedback, then their issues not yet over. */
+export async function homeItemsOf(
   project: HomeProject,
   part: HomeProjectReads,
-): Promise<HomeMovingItem[]> {
+  viewer: HomeViewer,
+  now: Date = new Date(),
+): Promise<HomeProjectItems> {
   const of = { projectSlug: project.slug, projectName: project.name };
-  const fromFeedback = part.feedback.flatMap(({ s, progress }): HomeMovingItem[] => {
-    if (feedbackEnded(s, progress)) return [];
-    const wait = progress.waitingOn[0];
-    return [
-      {
+  const out: HomeProjectItems = { moving: [], waiting: [] };
+  for (const { s, progress } of part.feedback) {
+    if (feedbackEnded(s, progress)) continue;
+    const lastMovedAt = lastMoveOf(
+      s.updatedAt,
+      s.times.since,
+      ...runStarts(runsOn(part.reads.runs, carriersOf(s, part.reads))),
+    );
+    const owed = progress.waitingOn.find((w) => w.you);
+    if (owed) {
+      out.waiting.push({
         kind: 'feedback',
         key: s.key,
         title: s.title,
         ...of,
-        stage: feedbackStage(s, progress),
-        running: progress.running,
-        owes: wait ? { who: wait.who, act: wait.act } : ownerOf(s),
-        likelyBy: progress.eta.estimate ? progress.eta.likelyBy : null,
-        noDate: progress.eta.estimate ? null : progress.eta.why,
-      },
-    ];
-  });
+        act: owed.act,
+        lastMovedAt,
+      });
+      continue;
+    }
+    const wait = progress.waitingOn[0];
+    out.moving.push({
+      kind: 'feedback',
+      key: s.key,
+      title: s.title,
+      ...of,
+      stage: feedbackStage(s, progress),
+      running: progress.running,
+      owes: wait ? { who: wait.who, act: wait.act } : ownerOf(s),
+      likelyBy: progress.eta.estimate ? progress.eta.likelyBy : null,
+      noDate: progress.eta.estimate ? null : progress.eta.why,
+      lastMovedAt,
+      idle: isIdle(lastMovedAt, progress.running, now),
+    });
+  }
   const open = part.issues.filter((i) => issueStage(i.status, false, i.claimed) !== null);
-  if (open.length === 0) return fromFeedback;
+  if (open.length === 0) return out;
   const [waits, forecast] = await Promise.all([
     issueWaitsOf(
       project.id,
       open.map((i) => i.id),
-      null,
+      { userId: viewer.userId },
+      now,
     ),
     readProjectForecast(project.id, null),
   ]);
   const dates = new Map(forecast.issues.map((f) => [f.key, f.forecast]));
-  const fromIssues = open.map((i): HomeMovingItem => {
-    const running = part.running.has(i.key) || runsOn(part.reads.runs, [i.key]).length > 0;
-    const w = waits.get(i.id)?.standing.waitingOn;
+  for (const i of open) {
+    const runs = runsOn(part.reads.runs, [i.key]);
+    const running = part.running.has(i.key);
+    const standing = waits.get(i.id)?.standing;
+    const w = standing?.waitingOn;
+    const lastMovedAt = lastMoveOf(i.updatedAt, standing?.times.since, ...runStarts(runs));
+    if (w?.kind === 'you') {
+      out.waiting.push({
+        kind: 'issue',
+        key: i.key,
+        title: i.title,
+        ...of,
+        act: w.act,
+        lastMovedAt,
+      });
+      continue;
+    }
     const f = dates.get(i.key);
-    return {
+    out.moving.push({
       kind: 'issue',
       key: i.key,
       title: i.title,
       ...of,
-      stage: issueStage(i.status, running, i.claimed) ?? 'planned',
-      running: part.running.has(i.key),
+      stage: issueStage(i.status, running || runs.length > 0, i.claimed) ?? 'planned',
+      running,
       owes: w && w.kind !== 'none' ? { who: w.who, act: w.act } : null,
       likelyBy: f?.kind === 'forecast' ? f.p50At : null,
       noDate: f?.kind === 'paused' ? f.reason : null,
-    };
-  });
-  return [...fromFeedback, ...fromIssues];
+      lastMovedAt,
+      idle: isIdle(lastMovedAt, running, now),
+    });
+  }
+  return out;
 }
+
+/** Moving's order: what moves first, the idle last; newest move first inside each. */
+export const byLastMove = (
+  one: Pick<HomeMovingItem, 'idle' | 'lastMovedAt'>,
+  other: Pick<HomeMovingItem, 'idle' | 'lastMovedAt'>,
+) =>
+  Number(one.idle) - Number(other.idle) ||
+  Date.parse(other.lastMovedAt) - Date.parse(one.lastMovedAt);
 
 function ownerOf(s: FeedbackSummary): { who: string; act: string } | null {
   return s.waitingOn.kind === 'none' ? null : { who: s.waitingOn.who, act: s.waitingOn.act };
