@@ -30,6 +30,8 @@ export interface ProgressWait {
 	/** When the act is due or the wait began, where the read knows it. */
 	at: string | null;
 	late: boolean;
+	/** The reader owes it: read from the wait's own kind or said name (`standing.who.you`), never from the word in `who`. */
+	you: boolean;
 }
 
 export type ProgressEta =

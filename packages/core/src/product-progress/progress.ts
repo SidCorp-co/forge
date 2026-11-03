@@ -31,6 +31,8 @@ import { listRunStanding } from '../runs/index.js';
 export type { Progress, ProgressEta, ProgressRun, ProgressWait };
 
 const WORKING: readonly RunState[] = ['claimed', 'running'];
+/** The said name a wait addresses its reader by where the reader owes it. */
+const YOU = 'standing.who.you';
 const RUN_STATE_WORDS: Record<RunState, string> = {
   queued: 'queued',
   claimed: 'starting',
@@ -132,9 +134,11 @@ function runWaits(runs: readonly RunStanding[]): ProgressWait[] {
       const w = r.waitingOn;
       const ref = r.issue?.key ?? null;
       if (w.kind === 'gate') {
-        return { who: 'A gate', act: w.gate, why: w.rule, ref, at: w.resumesAt, late: false };
+        const at = w.resumesAt;
+        return { who: 'A gate', act: w.gate, why: w.rule, ref, at, late: false, you: false };
       }
-      return { who: w.who, act: w.act, why: w.rule, ref, at: w.dueAt, late: false };
+      const you = w.kind === 'you';
+      return { who: w.who, act: w.act, why: w.rule, ref, at: w.dueAt, late: false, you };
     });
 }
 
@@ -146,6 +150,7 @@ export function pausedWait(p: ForecastPaused): ProgressWait {
     ref: p.ref,
     at: p.since,
     late: p.late !== null,
+    you: p.says.who.key === YOU,
   };
 }
 
@@ -162,6 +167,7 @@ function deliveryWaits(d: DeliveryForecast | null): ProgressWait[] {
       ref: d.release.version,
       at: null,
       late: false,
+      you: d.release.says.who.key === YOU,
     });
   }
   return out;

@@ -47,6 +47,7 @@ function standingWaits(s: Standing): ProgressWait[] {
       ref: s.waitingOn.ref,
       at: s.times.dueAt,
       late: s.times.stuck?.code === 'overdue',
+      you: s.waitingOn.kind === 'you',
     });
   }
   for (const t of s.tasks) {
@@ -58,6 +59,8 @@ function standingWaits(s: Standing): ProgressWait[] {
       ref: issue,
       at: t.dueAt,
       late: t.overdue,
+      // a task's owner is a role (the project master, a BA), never its reader
+      you: false,
     });
   }
   return out;

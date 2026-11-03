@@ -93,6 +93,7 @@ export function feedbackProgress(s: FeedbackSummary, reads: FeedbackReads): Prog
       ref: item.waitingOn.ref,
       at: item.waitingOn.dueAt,
       late: false,
+      you: item.waitingOn.kind === 'you',
     });
   }
   if (forecast?.triage) waits.push(pausedWait(forecast.triage));
