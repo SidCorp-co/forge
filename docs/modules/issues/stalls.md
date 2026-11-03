@@ -9,7 +9,7 @@ it is never dropped.
 | cause | starts | ends |
 |---|---|---|
 | `unclear_item` | a question the ask door names as about a requirement or feedback item (`about`), or a reporter's clarification on a feedback item: `packages/core/src/questions/stall-start.ts:startQuestionStall`, called by `insertQuestion` | the question answered (`answered`), or voided, expired or deleted (`withdrawn`), in the statement that ends it: `stalls_question_end_trg` and `stalls_question_gone_trg` on `agent_questions` |
-| `defect` | a failed verdict's reopen: `packages/core/src/issues/fail-reopen.ts:reopenOnFail` | the next merge mark (`merge-record.ts:recordIssueMerge`, `recordDesignLanding`), a move to `awaiting_release` or `closed` (`merged`), or a drop (`dropped`) |
+| `defect` | a failed verdict's reopen: `packages/core/src/issues/fail-reopen.ts:reopenOnFail` | the next merge mark (`packages/core/src/issues/merge-record.ts:recordIssueMerge`, `recordDesignLanding`), a move to `awaiting_release` or `closed` (`merged`), or a drop (`dropped`) |
 | `waiting_on_person` | a `needs_info` park: `packages/core/src/issues/stalls.ts:stallsOfMove` | leaving `needs_info` (`resumed`), or a drop (`dropped`) |
 
 What is not a stall, by decision:
