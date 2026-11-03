@@ -51,9 +51,9 @@ const move = (id: string, body: Record<string, unknown>) =>
   api(w.token, 'POST', `/api/issues/${id}/transition`, body);
 
 const statusOf = async (id: string): Promise<string> => {
-  const [row] = (await db.execute(
-    sql`SELECT status FROM issues WHERE id = ${id}`,
-  )) as unknown as { status: string }[];
+  const [row] = (await db.execute(sql`SELECT status FROM issues WHERE id = ${id}`)) as unknown as {
+    status: string;
+  }[];
   return row?.status as string;
 };
 
