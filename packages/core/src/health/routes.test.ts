@@ -43,3 +43,17 @@ describe('the probe reads take the cache-buster and nothing else', () => {
     });
   }
 });
+
+// ISS-930: once core's shutdown begins its drain, /health answers 503 draining so the proxy and the
+// deploy probe stop reading it as ready; the liveness read is not reached
+describe('/health while core drains', () => {
+  it('answers 503 draining with Retry-After once shutdown starts', async () => {
+    const { coreDrain } = await import('../lib/drain.js');
+    expect((await publicHealthRoutes.request('/health')).status).toBe(200);
+    coreDrain.begin();
+    const res = await publicHealthRoutes.request('/health');
+    expect(res.status).toBe(503);
+    expect(res.headers.get('retry-after')).toBe('20');
+    expect(await res.json()).toEqual({ ok: false, draining: true });
+  });
+});

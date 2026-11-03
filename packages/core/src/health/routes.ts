@@ -10,6 +10,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
+import { coreDrain, DRAIN_RETRY_AFTER_SECONDS } from '../lib/drain.js';
 import { sourceCommit } from '../lib/source-commit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresPublic } from '../permissions/index.js';
@@ -28,6 +29,12 @@ publicHealthRoutes.get(
   ),
   probeQuery,
   async (c) => {
+    // a core shutting down answers no new request, so the proxy and the deploy probe read it as
+    // not ready rather than reaching it until its listener closes (ISS-930)
+    if (coreDrain.draining()) {
+      c.header('Retry-After', String(DRAIN_RETRY_AFTER_SECONDS));
+      return c.json({ ok: false, draining: true }, 503);
+    }
     const live = await readLiveness();
     return c.json(
       {

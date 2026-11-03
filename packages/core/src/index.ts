@@ -72,6 +72,7 @@ import { provideKnowledgePorts } from './knowledge/index.js';
 import { loadProjectAccess, provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
+import { coreDrain } from './lib/drain.js';
 import { env } from './lib/env.js';
 import { provideEphemeralPublisher } from './lib/ephemeral.js';
 import { installFatalExit } from './lib/fatal-exit.js';
@@ -427,7 +428,8 @@ if (isMain) {
   await startOutboxWorker();
 
   // a preview host (`<label>.<PREVIEW_DOMAIN>`) is answered by the preview relay before the API
-  // routes, as raw Node requests it streams to the box (REQ-39)
+  // routes, as raw Node requests it streams to the box (REQ-39); both sit behind the drain, which
+  // counts each request and answers a new one 503 once shutdown begins (ISS-930)
   const server = serve(
     {
       fetch: app.fetch,
@@ -435,7 +437,7 @@ if (isMain) {
       // a demo core signs a member in with no credential (auth/demo.ts), so it answers on loopback only
       ...(env.FORGE_DEMO_MODE ? { hostname: '127.0.0.1' } : {}),
       createServer: ((options, listener) =>
-        createServer(options, withPreviewHosts(listener))) as typeof createServer,
+        createServer(options, coreDrain.gate(withPreviewHosts(listener)))) as typeof createServer,
     },
     (info) => {
       logger.info({ port: info.port }, '@forge/core listening');

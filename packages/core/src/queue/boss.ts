@@ -83,9 +83,13 @@ export async function startBoss(): Promise<void> {
   await carryOverV10Jobs(boss);
 }
 
+// pg-boss waits 30 s for active jobs by default, past core's whole shutdown budget
+// (`src/shutdown.ts:SHUTDOWN_LIMITS`); this wait fits in what HTTP's drain leaves of it (ISS-930)
+const STOP_JOBS_TIMEOUT_MS = 8_000;
+
 export async function stopBoss(): Promise<void> {
   if (!started) return;
-  await boss.stop({ graceful: true });
+  await boss.stop({ graceful: true, timeout: STOP_JOBS_TIMEOUT_MS });
   started = false;
 }
 
