@@ -26,12 +26,11 @@ import {
 import { buildBaToolset } from './tools/ba-tools.js';
 import { buildDecideToolset } from './tools/decide-tool.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
-import { buildOfferActToolset } from './tools/offer-act-tool.js';
 import { buildOfferPreviewToolset } from './tools/offer-preview-tool.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset, buildRecordToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
-import { askerLineLanguage, askerWithRole } from './turn-asker.js';
+import { askerWithRole } from './turn-asker.js';
 import { fenceToolsetToOrigin, handoffVenueRefusal, turnOriginRefused } from './turn-origin.js';
 import type { TurnHookContext, TurnInputs } from './turn-request.js';
 import { latestUiSnapshot } from './ui-snapshot.js';
@@ -164,11 +163,6 @@ async function prepareWebTurn(
         { snapshot: () => latestUiSnapshot(conversationId) },
         args.window.question,
       ),
-      buildOfferActToolset({
-        projectId: args.project.id,
-        userId: authority.userId,
-        language: await askerLineLanguage(args),
-      }),
       buildOfferPreviewToolset({ projectId: args.project.id, userId: authority.userId }),
       buildDecideToolset({
         projectId: args.project.id,

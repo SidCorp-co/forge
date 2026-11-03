@@ -22,7 +22,7 @@ const reply = {
   blocks: [
     { type: "thinking", durationMs: 1200 },
     { type: "tool", toolCall: { id: "c1", name: "forge_project_status", durationMs: 420, withheld: true } },
-    { type: "tool", toolCall: { id: "c2", name: "offer_act", durationMs: 35, withheld: true } },
+    { type: "tool", toolCall: { id: "c2", name: "offer_preview", durationMs: 35, withheld: true } },
     { type: "text", text: "REQ-4 has three of four criteria agreed." },
   ],
   silenceReason: null,

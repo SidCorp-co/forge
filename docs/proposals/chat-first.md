@@ -63,8 +63,7 @@ yet held to it: its writer is forge-plugin, whose half is reported there. Those,
 already open, read `noRecommendation: "The run that asked gave no recommended answer"`.
 
 **In chat.** "What waits on me" is answered from the decisions, grouped, each with its question,
-the recommendation and its buttons drawn from the tool result (the `offer_act` card pattern of
-`contracts/chat-acts.ts`). The reply ends with one line naming what it left out, by reason.
+the recommendation and its buttons drawn from the tool result. The reply ends with one line naming what it left out, by reason.
 
 ## A held reply still shows its checked part (BC-3)
 
@@ -130,7 +129,7 @@ dropped.
   means what the person sees) and `highlight`. `describeUiSnapshot` says them. The model reads them
   as page context, as it already does.
 - **View only (BC-9).** Every page action changes the view only. Acts are the decision buttons
-  above, and the existing `offer_act` cards, both pressed by the person.
+  above, pressed by the person.
 
 ## Noise cut at the source (BC-10, BC-11, BC-12)
 

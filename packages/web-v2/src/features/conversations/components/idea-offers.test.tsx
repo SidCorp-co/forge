@@ -72,7 +72,7 @@ describe("the assistant's offer (BC-14)", () => {
     expect(ideaOffersOf([{ type: "text", text: "Here." }, block({ offer: OFFER })])).toEqual([OFFER]);
     expect(ideaOffersOf([block({ offer: OFFER }, { isError: true })])).toEqual([]);
     expect(ideaOffersOf([block({ offer: { ...OFFER, about: "ISS-1" } })])).toEqual([]);
-    expect(ideaOffersOf([block({ offer: OFFER }, { name: "offer_act" })])).toEqual([]);
+    expect(ideaOffersOf([block({ offer: OFFER }, { name: "ui_navigate" })])).toEqual([]);
   });
 
   it("reads the offer in the shape core's own assistant stores: the result body as plain JSON", () => {

@@ -35,8 +35,8 @@ const TOOL_BLOCKS: ContentBlock[] = [
     type: 'tool',
     toolCall: {
       id: 'call-2',
-      name: 'offer_act',
-      input: { act: 'admit', key: 'ISS-77' },
+      name: 'offer_preview',
+      input: { about: 'REQ-77', brief: 'a wider export' },
       output: JSON.stringify({ offer: OFFER_SECRET }),
       durationMs: 35,
     },

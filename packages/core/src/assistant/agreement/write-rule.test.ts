@@ -220,7 +220,6 @@ const ALLOWED: readonly { why: string; rest: readonly string[]; tools: readonly 
       'ui_highlight',
       'ui_board_draw',
       'ui_board_revise',
-      'offer_act',
       'offer_preview',
     ],
   },

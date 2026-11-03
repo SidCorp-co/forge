@@ -1,17 +1,14 @@
 // Dropping an issue that holds open questions (ISS-560, FB-130), witnessed at desktop and phone width
 // over a stubbed core that refuses a drop meeting an open question unless the move voids it, as core
 // does. From the issue's status menu: the drop dialog lists both questions, one is answered there,
-// and one Drop voids the other with the reason typed. In chat: the assistant's drop card lists the
-// issue's question and one press voids it with the person's reason. No stage may show core's field
-// name `voidQuestions`, and nothing may scroll sideways.
+// and one Drop voids the other with the reason typed. No stage may show core's field name
+// `voidQuestions`, and nothing may scroll sideways.
 //
 //   pnpm --filter web-v2 witness witness/drop-with-questions.witness.tsx --out <dir> [--clip]
 
 import { issueMovesFrom } from "@forge/contracts/issue-machine";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
-import { useActOffers } from "@/features/conversations/act-offers";
-import type { ConversationMessage } from "@/features/conversations/types";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
 import type { AgentQuestion } from "@/features/questions";
 import "./entry";
@@ -19,10 +16,8 @@ import { InRouter } from "./router";
 
 const PROJECT = "6f0ee160-8432-4b84-98cf-956b6cd65a29";
 const PAGE_ISSUE = "8c3a0f3e-5b1e-4f7a-9d55-2f0a8e6b1c49";
-const CHAT_ISSUE = "a37ef0fd-13e6-4a48-9b6b-76127dc386fc";
 const AT = new Date(Date.now() - 3 * 3_600_000).toISOString();
 const REASON = "superseded by ISS-561, which carries the same fix";
-const CHAT_REASON = "the export moved to the reports page";
 const ANSWER = "the columns as clinics file them today";
 
 const ask = (id: string, issueId: string, prompt: string): AgentQuestion => ({
@@ -50,12 +45,10 @@ const ask = (id: string, issueId: string, prompt: string): AgentQuestion => ({
 
 const KEEP = "Which export columns ship first?";
 const MOOT = "How should ISS-41 close: keep, drop or open?";
-const CHAT_MOOT = "How should ISS-744 close: keep, drop or open?";
 const open: Record<string, AgentQuestion[]> = {
   [PAGE_ISSUE]: [ask("q1", PAGE_ISSUE, KEEP), ask("q2", PAGE_ISSUE, MOOT)],
-  [CHAT_ISSUE]: [ask("q3", CHAT_ISSUE, CHAT_MOOT)],
 };
-const status: Record<string, string> = { [PAGE_ISSUE]: "in_progress", [CHAT_ISSUE]: "in_progress" };
+const status: Record<string, string> = { [PAGE_ISSUE]: "in_progress" };
 
 /** Every move and answer the page sent, in order, as its path and JSON body. */
 const sent: { path: string; body: Record<string, unknown> }[] = [];
@@ -99,17 +92,6 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   return new Promise<Response>(() => {});
 };
 
-const offer = { v: 1, act: "drop", effect: "transition", projectId: PROJECT, issueId: CHAT_ISSUE, key: "ISS-744", title: "Old export", from: "in_progress", to: "dropped", reason: CHAT_REASON };
-const MESSAGE = {
-  id: "m1",
-  blocks: [{ type: "tool", toolCall: { id: "call-1", name: "offer_act", output: JSON.stringify({ content: [{ type: "text", text: JSON.stringify({ offer }) }] }) } }],
-} as unknown as ConversationMessage;
-
-function ChatCard() {
-  const { offersFor } = useActOffers({ messages: [MESSAGE], progress: null });
-  return <div data-witness="chat">{offersFor("m1")}</div>;
-}
-
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 createRoot(document.getElementById("root") as HTMLElement).render(
   <InRouter at="/projects/hop/issues/ISS-41">
@@ -118,7 +100,6 @@ createRoot(document.getElementById("root") as HTMLElement).render(
         <div data-witness="page">
           <IssueQuickActions issueId={PAGE_ISSUE} status="in_progress" moves={issueMovesFrom("in_progress", null, false)} priority="medium" />
         </div>
-        <ChatCard />
       </div>
     </QueryClientProvider>
   </InRouter>,
@@ -163,7 +144,7 @@ window.__witness = {
     { name: "desktop", width: 1440 },
     { name: "phone", width: 390 },
   ],
-  ready: () => all("[data-witness=page] button").length > 0 && all("[data-witness=chat] button").some((b) => b.textContent?.trim() === "Confirm"),
+  ready: () => all("[data-witness=page] button").length > 0,
   stages: [
     {
       name: "1-drop-lists-questions",
@@ -207,29 +188,6 @@ window.__witness = {
         if (moves !== 1) wrong.push(`the drop took ${moves} moves, not one`);
         if (move?.toStatus !== "dropped" || move.reason !== REASON || move.voidQuestions !== REASON)
           wrong.push(`the drop sent ${JSON.stringify(move)}, not the reason given as both the drop's and the void's`);
-        return wrong;
-      },
-    },
-    {
-      name: "4-chat-card-lists-question",
-      run: async () => {
-        document.querySelector("[data-witness=chat]")?.scrollIntoView({ block: "start" });
-        const listed = await until(() => (document.querySelector("[data-witness=chat]")?.textContent ?? "").includes(CHAT_MOOT));
-        const wrong = always();
-        if (!listed) wrong.push("the chat drop card does not list the issue's open question");
-        return wrong;
-      },
-    },
-    {
-      name: "5-chat-press-voids-it",
-      run: async () => {
-        buttonIn(document.querySelector("[data-witness=chat]"), "Confirm")?.click();
-        const done = await until(() => (document.querySelector("[data-witness=chat]")?.textContent ?? "").includes("Done."));
-        const wrong = always();
-        const move = lastMove(CHAT_ISSUE);
-        if (!done) wrong.push("the chat drop card did not finish");
-        if (move?.toStatus !== "dropped" || move.reason !== CHAT_REASON || move.voidQuestions !== CHAT_REASON)
-          wrong.push(`the chat drop sent ${JSON.stringify(move)}, not the person's reason as both the drop's and the void's`);
         return wrong;
       },
     },

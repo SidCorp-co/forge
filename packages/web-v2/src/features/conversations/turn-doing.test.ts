@@ -14,7 +14,6 @@ describe("the stage line says what a live turn is doing", () => {
     );
     expect(turnDoing([running("forge", { argv: ["new", "-", "--title", "x"] })], t)).toContain("Đang ghi vào tracker"); // i18n-allow: a production ask or reply replayed as the test case
     expect(turnDoing([running("forge_memory", { action: "search" })], t)).toBe("Đang tìm trong bộ nhớ dự án"); // i18n-allow: a production ask or reply replayed as the test case
-    expect(turnDoing([running("offer_act", {})], t)).toBe("Đang chuẩn bị nút thao tác cho bạn"); // i18n-allow: a production ask or reply replayed as the test case
   });
 
   it("says nothing more once the call returned or the turn is writing", () => {
