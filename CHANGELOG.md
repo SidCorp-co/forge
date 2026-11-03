@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.463] - 2026-11-03
+
+Ported beta issues get their full beta text written under them
+
+### Fixed
+
+- **The beta port backfills the bodies its first fire missed.** A ported issue holding only its provenance line gets the beta body under that line, once per pair; an edited description is never touched, and each fire names its backfills.
+
 ## [0.4.0-dev.462] - 2026-11-03
 
 Beta port carries only new work and finishes closes on beta
