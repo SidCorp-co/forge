@@ -33,6 +33,15 @@ into FB-n when it is product feedback after all.
   serve is \`FEEDBACK_TARGET_UNKNOWN\`, naming what it does serve; a project that provides no such
   contract serves nothing, and the refusal says so. The item reads back keyed \`<contract>:<element>\`.
 
+### Filing from a product's server
+A product's own server files with a **server key** instead of a person's token. A holder of
+\`project.admin\`, person or agent, mints one with \`POST …/feedback/server-keys\` \`{ product, expiresAt? }\`
+(the \`fsk_…\` secret is shown once), lists them with \`GET\`, and revokes one with \`DELETE …/server-keys/:keyId\`.
+The key admits \`POST /api/projects/:id/feedback\` on its project alone, the reporter recorded as the product,
+and reads nothing back; anywhere else it is \`FEEDBACK_SERVER_KEY_SCOPE\` (403). Unknown, revoked or expired is
+\`FEEDBACK_SERVER_KEY_UNKNOWN\`, \`_REVOKED\` or \`_EXPIRED\` (401); over 30 filings an hour,
+\`FEEDBACK_SERVER_KEY_RATE_LIMITED\` (429). Nothing is filed on a refusal.
+
 ### Reporting from a page
 \`POST …/feedback/report\` \`{ said, whereSeen, kind?, screenshot?: { name, mime, contentBase64, redacted } }\` is
 the top bar's Feedback: one sentence and the page's screenshot, filed as the caller, who needs only to read the

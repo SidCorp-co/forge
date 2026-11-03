@@ -1,0 +1,1 @@
+**A product's server files feedback with a server key.** A project admin, person or agent, mints a project-bound `fsk_` key shown once; it files only `POST …/feedback` as the product, rate-limited, refused by name anywhere else.
