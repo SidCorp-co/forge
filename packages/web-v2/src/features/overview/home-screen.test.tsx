@@ -2,8 +2,9 @@
 // they gave, and what is live, from core's reads. Waiting on you opens the act's own place; a Moving
 // row with no held forecast says so in words, never a blank; the search answers a live item with
 // its version and since when, and a moving one with its stage. A list core cut says how many it holds
-// of how many; what nothing moved for a week folds under Idle, each with its age, a running item never;
-// an item the person owes is a Waiting row beside the needs-you decisions, never a Moving one.
+// of how many; what nothing moved for a week folds under Idle, each with its age, a running item never.
+// ISS-924: Waiting reads the needs-you read alone, its decisions then every other row it lists as the
+// person's (a triage they hold among them), so the home's own `waiting` key is gone.
 // @direct-test-of packages/web-v2/src/features/overview/components/home-screen.tsx
 // @direct-test-of packages/web-v2/src/features/overview/components/waiting-on-you.tsx
 // @direct-test-of packages/web-v2/src/features/overview/components/moving-work.tsx
@@ -41,7 +42,24 @@ const decision = {
 };
 const attention = {
   view: {
-    needsYou: [{ projectSlug: "shop", projectName: "Shop", total: 1, decisions: [decision] }],
+    needsYou: [
+      {
+        projectSlug: "shop",
+        projectName: "Shop",
+        total: 1,
+        decisions: [decision],
+        // the issue the decision is about is also on the person's list: one row, the decision's
+        owed: [{ reason: "work", count: 1, items: [{ key: "ISS-77", title: "Login provider order", next: "answer a question", opens: { kind: "issue", key: "ISS-77" } }] }],
+      },
+      {
+        projectSlug: "forge",
+        projectName: "Forge",
+        total: 0,
+        decisions: [],
+        // three feedback items to triage, core sent the first by name
+        owed: [{ reason: "triage", count: 3, items: [{ key: "FB-1", title: "Search forgets my filter", next: "triage it", opens: { kind: "feedback", key: "FB-1" } }] }],
+      },
+    ],
     mentions: [],
     failedJobs: [],
     channelGates: [],
@@ -61,10 +79,6 @@ const home: HomeResponse = {
   generatedAt: "2026-11-03T04:00:00.000Z",
   movingTotal: 132,
   movingTruncated: true,
-  waiting: [
-    { kind: "feedback", key: "FB-469", title: "Search forgets my filter", projectSlug: "forge", projectName: "Forge", act: "triage it" },
-    { kind: "issue", key: "ISS-77", title: "Login provider order", projectSlug: "shop", projectName: "Shop", act: "answer a question" },
-  ],
   moving: [
     {
       kind: "feedback",
@@ -250,7 +264,7 @@ describe("the workspace home", () => {
     expect(screen.getByTestId("home-found-says").textContent).toBe("Planned · Shop");
   });
 
-  it("lists Waiting from the needs-you read, then the person's own items, one row an item", () => {
+  it("lists Waiting from the needs-you read alone: its decisions, then the triage it lists as the person's, one row an item", () => {
     render(<HomeScreen />);
     const rows = screen.getAllByTestId("home-waiting-row");
     // the needs-you decision first; the owed ISS-77 it is about is not listed twice
@@ -261,9 +275,16 @@ describe("the workspace home", () => {
     const [, owed] = rows;
     if (!owed) throw new Error("the owed row is missing");
     expect(within(owed).getByText("Your move")).toBeTruthy();
+    // the act the person owes rides on the chip's hover, in the standing's words
+    expect(owed.querySelector('[title="triage it"]')).not.toBeNull();
     fireEvent.click(within(owed).getByRole("button", { name: "Open" }));
-    expect(push).toHaveBeenCalledWith("/projects/forge/feedback/FB-469");
-    expect(owed.textContent).not.toContain("FB-469");
+    expect(push).toHaveBeenCalledWith("/projects/forge/feedback/FB-1");
+    expect(owed.textContent).not.toContain("FB-1");
+  });
+
+  it("says a cut Waiting list holds how many of how many, the triage core did not send by name counted", () => {
+    render(<HomeScreen />);
+    expect(within(screen.getByTestId("home-waiting")).getByTestId("home-cut").textContent).toBe("2 of 4");
   });
 
   it("never shows an item the person owes under Moving", () => {

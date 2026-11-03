@@ -1,7 +1,7 @@
 // The home's rows as pure reads of what core served (ISS-919): what waits on the person, in the
-// order the needs-you read gives it (decisions first, then the person's own items whose next move is
-// theirs, which the home read serves as `waiting`), and the place each act is taken. Moving splits
-// on core's own `idle`. The screen renders these and counts nothing of its own.
+// order the needs-you read gives it (decisions first, then every other row it lists as theirs, a
+// triage among them, ISS-924), and the place each act is taken. Moving splits on core's own `idle`.
+// The screen renders these and counts nothing of its own.
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import type { useAttention } from "@/features/attention";
@@ -10,7 +10,7 @@ import { approvalsHref, questionDecisionHref } from "@/lib/routes/approvals";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issuesHref } from "@/lib/routes/issues";
 import type { LegendTone } from "@/design";
-import type { HomeMovingItem, HomeStage, HomeWaitingItem } from "./types";
+import type { HomeMovingItem, HomeStage } from "./types";
 
 type AttentionView = NonNullable<ReturnType<typeof useAttention>["view"]>;
 
@@ -63,25 +63,29 @@ function decidedItems(view: AttentionView): Set<string> {
 }
 
 /**
- * Every row waiting on the person: each project's decisions first, then their own items whose next
- * move is theirs (deduped by key against the decisions), then gates, then mentions.
+ * Every row waiting on the person: each project's decisions first, then every other row its Needs
+ * you lists as theirs (deduped by key against the decisions), then gates, then mentions.
  */
-export function waitingRows(view: AttentionView, owed: readonly HomeWaitingItem[] = []): WaitingRow[] {
+export function waitingRows(view: AttentionView): WaitingRow[] {
   const decided = decidedItems(view);
-  const own = owed
-    .filter((o) => !decided.has(`${o.projectSlug}:${o.key}`))
-    .map(
-      (o): WaitingRow => ({
-        id: `own:${o.projectSlug}:${o.key}`,
-        title: o.title,
-        tip: o.key,
-        projectName: o.projectName,
-        kind: "yourMove",
-        act: "open",
-        href: itemHref(o),
-        owes: o.act,
-      }),
-    );
+  const own = view.needsYou.flatMap((part) =>
+    part.owed.flatMap((o) =>
+      o.items
+        .filter((i) => !decided.has(`${part.projectSlug}:${i.opens?.key ?? i.key}`))
+        .map(
+          (i): WaitingRow => ({
+            id: `own:${part.projectSlug}:${o.reason}:${i.key}`,
+            title: i.title,
+            tip: i.key,
+            projectName: part.projectName,
+            kind: "yourMove",
+            act: "open",
+            href: decisionHref(part.projectSlug, i.opens) ?? approvalsHref(part.projectSlug),
+            owes: i.next,
+          }),
+        ),
+    ),
+  );
   const decisions = view.needsYou.flatMap((part) =>
     part.decisions.map(
       (d): WaitingRow => ({
@@ -123,9 +127,15 @@ export function waitingRows(view: AttentionView, owed: readonly HomeWaitingItem[
   return [...decisions, ...own, ...gates, ...mentions];
 }
 
-/** The decisions core counted but did not send (each project's past its cap), so a cut list says so. */
-export function decisionsNotSent(view: AttentionView): number {
-  return view.needsYou.reduce((n, part) => n + Math.max(0, part.total - part.decisions.length), 0);
+/** The rows core counted but did not send (each project's decisions past its cap, and the rest past theirs), so a cut list says so. */
+export function rowsNotSent(view: AttentionView): number {
+  return view.needsYou.reduce(
+    (n, part) =>
+      n +
+      Math.max(0, part.total - part.decisions.length) +
+      part.owed.reduce((m, o) => m + Math.max(0, o.count - o.items.length), 0),
+    0,
+  );
 }
 
 /** Moving split on core's `idle`: what moves, in core's order, and what folds under Idle. */

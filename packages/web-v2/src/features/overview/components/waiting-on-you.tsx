@@ -1,6 +1,6 @@
-// Waiting on you (ISS-919): the needs-you read behind /attention, decisions first, then the person's
-// own items whose next move is theirs (the home read's `waiting`, deduped by key); each row's next step
-// is the act itself, opening the place that takes it. Decisions core counted past its cap are said.
+// Waiting on you (ISS-919, ISS-924): the needs-you read behind /attention alone, decisions first, then
+// every other row it lists as the person's (a triage they hold among them), deduped by key; each row's
+// next step is the act itself, opening the place that takes it. Rows core counted past a cap are said.
 
 import { Button, SectionTitle, StatusChip, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { useAttention } from "@/features/attention";
@@ -8,12 +8,11 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link, useRouter } from "@/lib/navigation/router";
 import { useState } from "react";
-import { decisionsNotSent, HOME_ROWS, type WaitingRow, waitingRows } from "../home-rows";
-import type { HomeWaitingItem } from "../types";
+import { HOME_ROWS, rowsNotSent, type WaitingRow, waitingRows } from "../home-rows";
 import { CutNote } from "./cut-note";
 import { ShowMore } from "./show-more";
 
-export function WaitingOnYou({ owed }: { owed: readonly HomeWaitingItem[] }) {
+export function WaitingOnYou() {
   const t = useCopy();
   const q = useAttention();
   return (
@@ -21,12 +20,12 @@ export function WaitingOnYou({ owed }: { owed: readonly HomeWaitingItem[] }) {
       <SectionTitle id="home-waiting" className="fg-h3">{t("overview.home.waiting.title")}</SectionTitle>
       <QueryBoundary query={{ ...q, data: q.view }} loadingLabel={t("overview.home.loading")} height="inline">
         {(view) => {
-          const rows = waitingRows(view, owed);
+          const rows = waitingRows(view);
           if (rows.length === 0) return <p className="fg-body-sm text-muted">{t("overview.home.waiting.empty")}</p>;
           return (
             <>
             <WaitingTable rows={rows} />
-            <CutNote shown={rows.length} total={rows.length + decisionsNotSent(view)} />
+            <CutNote shown={rows.length} total={rows.length + rowsNotSent(view)} />
             </>
           );
         }}

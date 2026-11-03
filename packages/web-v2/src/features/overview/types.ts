@@ -18,5 +18,4 @@ export type {
   HomeMovingItem,
   HomeResponse,
   HomeStage,
-  HomeWaitingItem,
 } from "@forge/contracts/owner-home";

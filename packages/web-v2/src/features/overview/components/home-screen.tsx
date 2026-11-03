@@ -40,7 +40,7 @@ function HomeTables() {
   const home = useHome(activeOrgId);
   return (
     <div className="flex flex-col gap-8">
-      <WaitingOnYou owed={home.data?.waiting ?? []} />
+      <WaitingOnYou />
       <QueryBoundary query={home} loadingLabel={t("overview.home.loading")} height="inline">
         {(data) => (
           <>

@@ -44,8 +44,10 @@ export const ATTENTION = {
         decision(2, "approve", "issue", "Release 0.4.0 carries 12 issues"),
         decision(3, "verify", "issue", LONG),
       ],
+      // a triage the person holds: no decision, but theirs, so Waiting lists it (ISS-924)
+      owed: [{ reason: "triage", count: 1, items: [{ key: "FB-469", title: "Search forgets the filter I set", next: "triage it", opens: { kind: "feedback", key: "FB-469" } }] }],
     },
-    { projectSlug: "adminhub-api", projectName: "Adminhub API", total: 1, decisions: [decision(4, "accept", "issue", "Invoices export to the new ledger")] },
+    { projectSlug: "adminhub-api", projectName: "Adminhub API", total: 1, decisions: [decision(4, "accept", "issue", "Invoices export to the new ledger")], owed: [] },
   ],
   mentions: [],
   failedJobs: [],
@@ -54,7 +56,7 @@ export const ATTENTION = {
   offlineRunners: [],
   counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 },
   waitingOnYou: 5,
-  total: 5,
+  total: 6,
 };
 
 const moving = (n: number, over: Partial<HomeResponse["moving"][number]>): HomeResponse["moving"][number] => ({
@@ -93,7 +95,6 @@ export const HOME: HomeResponse = {
   ],
   movingTotal: MOVING_COUNTED,
   movingTruncated: true,
-  waiting: [{ kind: "feedback", key: "FB-469", title: "Search forgets the filter I set", projectSlug: "forge", projectName: "Forge", act: "triage it" }],
   live: [
     { projectSlug: "forge", projectName: "Forge", environment: "production", environmentName: "dev", version: "0.4.0-dev.457", name: "Live Build Checklist Clarity", at: AT, mine: 3 },
     { projectSlug: "adminhub-api", projectName: "Adminhub API", environment: "production", environmentName: "production", version: "2.14.0", name: "Ledger exports", at: "2026-11-02T09:00:00.000Z", mine: 1 },
