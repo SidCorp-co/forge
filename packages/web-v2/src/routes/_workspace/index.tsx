@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { OverviewScreen } from "@/features/overview/components/overview-screen";
+import { HomeScreen } from "@/features/overview";
 
-function OverviewPage() {
-  return <OverviewScreen />;
+function HomePage() {
+  return <HomeScreen />;
 }
 
-export const Route = createFileRoute("/_workspace/")({ component: OverviewPage });
+export const Route = createFileRoute("/_workspace/")({ component: HomePage });

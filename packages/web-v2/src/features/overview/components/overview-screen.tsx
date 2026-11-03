@@ -1,5 +1,5 @@
 import { useRouter } from "@/lib/navigation/router";
-import { EmptyState, ErrorState, PageContainer, PageTitle, Skeleton, useNow } from '@/design';
+import { EmptyState, ErrorState, Skeleton, useNow } from '@/design';
 import { useActiveOrg } from "@/features/orgs";
 import { useProjectsConsole } from "@/features/projects";
 import { formatApiError } from '@/lib/api/error';
@@ -14,7 +14,8 @@ import { WorkSitting } from './work-sitting';
 /** The five sections the page reads, held by placeholders while it loads. */
 const PLACEHOLDERS = ["work", "flow", "quality", "liveness", "sitting"] as const;
 
-export function OverviewScreen() {
+/** The org's figures (flow, quality, liveness), the home's Figures tab (ISS-919): what the workspace home showed before. */
+export function OverviewFigures() {
   const router = useRouter();
   const { activeOrg, activeOrgId } = useActiveOrg();
   const pulse = usePulse(activeOrgId);
@@ -29,49 +30,47 @@ export function OverviewScreen() {
 
   if (pulse.isError) {
     return (
-      <PageContainer>
+      <div>
         <ErrorState
           title={t('overview.loadFailed')}
           message={formatApiError(pulse.error)}
           onRetry={() => void pulse.refetch()}
         />
-      </PageContainer>
+      </div>
     );
   }
 
   if (pulse.isLoading || !data) {
     return (
-      <PageContainer className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         {PLACEHOLDERS.map((k) => (
           <Skeleton key={k} className="h-40 w-full rounded-md" />
         ))}
-      </PageContainer>
+      </div>
     );
   }
 
   if (!hasProjects) {
     const hasAnyProjects = allItems.length > 0;
     return (
-      <PageContainer className="grid min-h-96 place-items-center">
+      <div className="grid min-h-96 place-items-center">
         <EmptyState
           message={hasAnyProjects ? t('overview.noProjectsIn') : t('overview.welcome')}
           action={{ label: t('overview.newProject'), onClick: () => router.push('/projects?new=1') }}
         />
-      </PageContainer>
+      </div>
     );
   }
 
   return (
-    <PageContainer className="flex flex-col gap-4">
-      <PageTitle>
-          {t('overview.title')}{orgLabel ? ` · ${orgLabel}` : ''}
-      </PageTitle>
+    <div className="flex flex-col gap-4">
+      {orgLabel ? <p className="fg-caption text-muted">{orgLabel}</p> : null}
 
       <LivenessBand liveness={data.liveness} thresholds={data.thresholds} />
       <WorkSitting pulse={data} nowMs={nowMs} />
       <ActionQueue pulse={data} />
       <FlowFigures flow={data.flow} />
       <QualityFigures quality={data.quality} />
-    </PageContainer>
+    </div>
   );
 }
