@@ -1,0 +1,1 @@
+**The editable diagram fix now reaches forge-dev.** The 0.4.0-dev.473 build stopped on a diagram package patch the server never installs; the server image now skips that patch, so pasted class, ER and state diagrams become editable shapes.
