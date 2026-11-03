@@ -772,6 +772,8 @@ export interface FeedbackReporterView {
 	agency: "human" | "agent";
 	/** The duplicate this reporter filed, when they reported it by one; null for the item's own reporter. */
 	from: string | null;
+	/** The product whose server key filed it (ISS-922), the reporter being that product; null for a person or an agent. */
+	product: string | null;
 }
 
 /** One report of the item after its filing: a repeat that joined it rather than becoming an item (REQ-66 BC-3). */

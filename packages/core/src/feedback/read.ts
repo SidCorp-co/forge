@@ -33,6 +33,7 @@ import { occurrencesOf } from './occurrences.js';
 import { questionsOnFeedback, questionViewsOf } from './questions-read.js';
 import { reportersOf } from './reporters.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
+import { productsOfAccounts } from './server-keys.js';
 import { shipNoticeOf } from './ship-notice.js';
 import { clarificationViewOf } from './told.js';
 import { recordCheckOf, verifyHeldOf } from './verify-window.js';
@@ -294,6 +295,7 @@ export async function detailAs(
     ...attachments.map((a) => a.uploadedBy),
     ...mergedAttachments.map((m) => m.a.uploadedBy),
   ]);
+  const products = await productsOfAccounts(reporters.map((r) => r.id));
   const acceptReasons = await acceptReasonsOf(decisions.map((d) => d.fromSuggestionId));
   // the latest clarification to the reporter; the steward's questions about the item are not one
   const q = questions.find((x) => x.clarification);
@@ -357,6 +359,7 @@ export async function detailAs(
         name: deciders.get(r.id) ?? null,
         agency: r.agency,
         from: r.from,
+        product: products.get(r.id) ?? null,
       })),
       occurrences: withhold ? occurrences.map((o) => ({ ...o, said: null })) : occurrences,
       messages: messageViewsOf(shownMessages, deciders, withhold),

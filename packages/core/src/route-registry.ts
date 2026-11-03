@@ -62,6 +62,8 @@ import {
 } from './ecosystem/routes.js';
 import { issueLaneRoutes } from './fast-lane/routes.js';
 import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
+import { feedbackServerKeyDoor } from './feedback/server-key-door.js';
+import { feedbackServerKeyRoutes } from './feedback/server-key-routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import {
   agentReportsRetiredRoutes,
@@ -269,6 +271,8 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api', codeTraceRoutes);
   // a client site's visitor, never a Forge user: the site key, the session token or the status link
   app.route('/api/widget', widgetRoutes);
+  // a product server's feedback key, answered here before any /api/projects gate reads a bearer
+  app.route('/api/projects', feedbackServerKeyDoor);
 
   app.route('/', rootRoutes);
 }
@@ -309,6 +313,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', intakeRoutes);
   app.route('/api/projects', projectPreviewRoutes);
   app.route('/api/projects', projectRoomRoutes);
+  app.route('/api/projects', feedbackServerKeyRoutes);
   app.route('/api/projects', feedbackRoutes);
   app.route('/api/projects', supportRoutes);
   app.route('/api/projects', standingRoutes);

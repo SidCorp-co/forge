@@ -268,8 +268,24 @@ export async function createFeedback(input: {
   /** E3's seam (ISS-61): a filer naming a key gets the one item already filed under it. */
   dedupKey?: string | undefined;
 }): Promise<FeedbackOutcome> {
+  await requireDeclaredOn(input.projectId, input.actor.userId, 'project.write');
+  const filed = await fileFeedback(input);
+  if (!filed.ok) return filed;
+  return answer(input.projectId, filed.id, input.actor, { created: filed.created });
+}
+
+/**
+ * The one filing every door runs once it has decided the actor may file: the value check, the
+ * dedup and the insert under the project's feedback lock. A person's door decides by
+ * `project.write`; a product server's key (`server-key-door.ts`) by the key itself.
+ */
+export async function fileFeedback(input: {
+  projectId: string;
+  actor: FeedbackActor;
+  request: CreateFeedbackRequest;
+  dedupKey?: string | undefined;
+}): Promise<{ ok: true; id: string; created: boolean } | { ok: false; refusals: Refusal[] }> {
   const { projectId, actor, request } = input;
-  await requireDeclaredOn(projectId, actor.userId, 'project.write');
   const prepared = await preparedFeedback(projectId, actor, request);
   if (!prepared.ok) return prepared;
   let id = '';
@@ -292,7 +308,7 @@ export async function createFeedback(input: {
   });
   if (refusals) return { ok: false, refusals };
   if (created) embedFeedbackLater(id);
-  return answer(projectId, id, actor, { created });
+  return { ok: true, id, created };
 }
 
 /** The decline act, reached from triage's decline route: the reason the reporter reads, a decision row. */
