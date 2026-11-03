@@ -165,6 +165,12 @@
         "automation#screen"
       ]
     },
+    "beta-port": {
+      "kind": "domain",
+      "context": "work",
+      "owns": ["betaPortPairs"],
+      "serves": ["automation#inline"]
+    },
     "body": {
       "kind": "platform",
       "context": "platform",
@@ -530,6 +536,11 @@
         "feedback-triage#vectors",
         "core-components#ad-llm"
       ]
+    },
+    "integrations/peer-forge": {
+      "kind": "adapter",
+      "context": "adapters",
+      "serves": ["via:beta-port"]
     },
     "integrations/rocketchat": {
       "kind": "adapter",

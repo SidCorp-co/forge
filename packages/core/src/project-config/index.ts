@@ -63,6 +63,7 @@ export {
   unique,
   uuid,
 } from './schema.js';
+export { type ProjectSecretRead, readProjectSecrets } from './secret-read.js';
 /** The policy layer of the effective config, on its own: dispatch reads it before any project document. */
 export {
   listTestingProfiles,

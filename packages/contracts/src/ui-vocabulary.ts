@@ -515,6 +515,7 @@ export const ENUM_LABELS = {
 		status_report: "Status report",
 		cleanup: "Cleanup window",
 		daily_review: "Daily review",
+		beta_port: "Beta port",
 	} satisfies Record<ScheduleKind, string>,
 	/** How a fire started (contracts `schedules.ts:SCHEDULE_RUN_TRIGGERS`). */
 	fireTrigger: {

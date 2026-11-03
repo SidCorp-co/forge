@@ -33,9 +33,10 @@ const scheduleFields = {
 };
 
 const SELF_NAMED: Record<
-  'release_batch' | 'sentry_pull' | 'status_report' | 'daily_review',
+  'release_batch' | 'sentry_pull' | 'status_report' | 'daily_review' | 'beta_port',
   string
 > = {
+  beta_port: "it ports forge-beta's issues here and mirrors their status back",
   release_batch: 'it cuts whatever is waiting at the gate',
   daily_review: "it hands the project's master its daily review brief",
   sentry_pull: "it pulls whatever the project's Sentry binding declares",
@@ -71,7 +72,8 @@ const createSchema = z
       kind === 'release_batch' ||
       kind === 'sentry_pull' ||
       kind === 'status_report' ||
-      kind === 'daily_review'
+      kind === 'daily_review' ||
+      kind === 'beta_port'
     ) {
       const what = SELF_NAMED[kind];
       for (const field of ['prompt', 'script'] as const) {

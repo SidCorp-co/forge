@@ -7,6 +7,7 @@ import {
 import { db } from '../db/client.js';
 import { type agentSessions, projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
+import { routeScheduleBetaPortFire } from './beta-port-dispatch.js';
 import { routeScheduleCleanupFire } from './cleanup-dispatch.js';
 import { routeScheduleDailyReviewFire } from './daily-review-dispatch.js';
 import type {
@@ -63,6 +64,8 @@ function routeFire(input: DispatchScheduleInput, fireId: string): Promise<Routed
       return routeScheduleCleanupFire(input, fireId, routePromptFire);
     case 'daily_review':
       return routeScheduleDailyReviewFire(input, fireId);
+    case 'beta_port':
+      return routeScheduleBetaPortFire(input, fireId);
     default:
       return routePromptFire(input, fireId);
   }

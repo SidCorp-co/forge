@@ -33,6 +33,7 @@ const SELF_NAMED_KINDS: ReadonlySet<ScheduleKind> = new Set([
   'status_report',
   'cleanup',
   'daily_review',
+  'beta_port',
 ]);
 
 // Cross-project routing via `targetProjectSlug` would otherwise let a source
@@ -148,6 +149,11 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   if (kind === 'status_report' && input.targetProjectSlug) {
     throw badRequest(
       'targetProjectSlug must be omitted when kind is "status_report": it reports on its own project to its members',
+    );
+  }
+  if (kind === 'beta_port' && input.targetProjectSlug) {
+    throw badRequest(
+      'targetProjectSlug must be omitted when kind is "beta_port": it reads forge-beta with its own project\'s secrets and ports to every same-slug project',
     );
   }
   if (kind === 'daily_review' && input.targetProjectSlug) {

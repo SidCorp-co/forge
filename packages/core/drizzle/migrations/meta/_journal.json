@@ -3767,6 +3767,13 @@
       "when": 1834099200000,
       "tag": "0592_a_product_server_files_feedback_with_a_server_key",
       "breakpoints": true
+    },
+    {
+      "idx": 593,
+      "version": "7",
+      "when": 1834185600000,
+      "tag": "0593_a_beta_issue_is_ported_once_and_its_status_mirrored",
+      "breakpoints": true
     }
   ]
 }

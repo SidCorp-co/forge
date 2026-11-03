@@ -45,7 +45,11 @@ const MAX_ISSUE_PAGES = 25;
 const COMMENT_PAGE = 100;
 const MAX_COMMENT_PAGES = 10;
 
-const refuse = (code: string, status: number, detail: string): { ok: false; refusal: PeerRefusal } => ({
+const refuse = (
+  code: string,
+  status: number,
+  detail: string,
+): { ok: false; refusal: PeerRefusal } => ({
   ok: false,
   refusal: { code, status, detail },
 });
@@ -72,7 +76,9 @@ function codeOf(body: unknown): string | null {
 
 function messageOf(body: unknown): string | null {
   if (!isRecord(body)) return null;
-  return str(body.detail) ?? str(body.message) ?? (isRecord(body.error) ? str(body.error.message) : null);
+  return (
+    str(body.detail) ?? str(body.message) ?? (isRecord(body.error) ? str(body.error.message) : null)
+  );
 }
 
 async function call(
@@ -124,12 +130,20 @@ async function call(
     if (!res.ok) {
       const code = codeOf(parsed) ?? `PEER_FORGE_HTTP_${res.status}`;
       const said = messageOf(parsed);
-      return refuse(code, res.status, scrub(`${where} answered ${res.status}${said ? `: ${said}` : ''}`));
+      return refuse(
+        code,
+        res.status,
+        scrub(`${where} answered ${res.status}${said ? `: ${said}` : ''}`),
+      );
     }
     return { ok: true, value: parsed };
   } catch (err) {
     if (controller.signal.aborted) {
-      return refuse('PEER_FORGE_TIMEOUT', 0, `${where} did not answer within ${peer.timeoutMs ?? CALL_TIMEOUT_MS} ms`);
+      return refuse(
+        'PEER_FORGE_TIMEOUT',
+        0,
+        `${where} did not answer within ${peer.timeoutMs ?? CALL_TIMEOUT_MS} ms`,
+      );
     }
     const reason = err instanceof Error ? err.message : String(err);
     return refuse('PEER_FORGE_UNREACHABLE', 0, scrub(`${where} could not be sent: ${reason}`));

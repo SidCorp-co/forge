@@ -18,8 +18,12 @@ export const SCHEDULE_KINDS = [
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 
 /** Why a daily review fire reached no master, recorded as its refusal (`schedule_runs.refusal`): missed by name. */
-export const DAILY_REVIEW_FIRE_REFUSALS = ["DAILY_REVIEW_NO_MASTER", "DAILY_REVIEW_MASTER_SILENT"] as const;
-export type DailyReviewFireRefusal = (typeof DAILY_REVIEW_FIRE_REFUSALS)[number];
+export const DAILY_REVIEW_FIRE_REFUSALS = [
+	"DAILY_REVIEW_NO_MASTER",
+	"DAILY_REVIEW_MASTER_SILENT",
+] as const;
+export type DailyReviewFireRefusal =
+	(typeof DAILY_REVIEW_FIRE_REFUSALS)[number];
 
 /**
  * Where a `beta_port` fire reads forge-beta's address and token: two secrets of the schedule's own

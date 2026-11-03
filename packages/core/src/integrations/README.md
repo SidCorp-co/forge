@@ -50,6 +50,7 @@ protocol and nothing else:
 | mail | `identity/smtp.ts` | SMTP | deployment |
 | identity | `./identity/` | GitHub OAuth, Google, generic OIDC | deployment |
 | paired runner box, pinned downloads | `github/published-releases/` | GitHub releases | deployment |
+| peer Forge | `peer-forge/` (a client with a timeout that answers refusals by code, never follows a redirect, scrubs the token) | another Forge instance's REST API: forge-beta, for the `beta_port` schedule (ISS-923) | project: its base URL and token are the schedule project's secrets, handed in by the caller |
 
 A caller either imports the port's index or reaches the port through its own module's `<module>/ports.ts`,
 filled at boot (`../execution-ports.ts`, `../work-ports.ts`), so a port's callers are found by
