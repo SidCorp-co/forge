@@ -23,6 +23,7 @@ const SURFACE: Record<RunRow['subjectKind'], EgressSurface> = {
   requirement: 'requirement',
   feedback: 'feedback',
   issue: 'issue',
+  workflow: 'design',
 };
 
 export interface GatewayActResult {

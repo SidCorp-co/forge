@@ -1,4 +1,5 @@
-// The items a steward run is about (REQ-48 BC-1): a requirement, a feedback item or an issue, read by
+// The items a steward run is about (REQ-48 BC-1): a requirement, a feedback item, an issue or a
+// workflow (REQ-68 BC-5), read by
 // id for the key every page and record names it by, and whether its life has ended, which skips a run
 // `subject_ended` rather than acting on a closed thing.
 
@@ -10,6 +11,7 @@ import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { issues } from '../db/schema-issues.js';
 import { requirements } from '../db/schema-requirements.js';
+import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
@@ -18,6 +20,8 @@ const ENDED: Record<StandingSubjectKind, readonly string[]> = {
   requirement: ['accepted', 'dropped', 'refused'],
   feedback: ['declined', 'verified'],
   issue: ['closed', 'dropped'],
+  // a workflow's life does not end: an approved design takes its next revision, so only its standing rests
+  workflow: [],
 };
 
 /** An act that follows an item past its end: the follow-through of shipped work reads closed issues. */
@@ -49,6 +53,14 @@ export async function subjectOf(
       .where(and(eq(feedback.id, id), eq(feedback.projectId, projectId)))
       .limit(1);
     return row ? { kind, id, key: feedbackKey(row.seq), projectId, status: row.status } : null;
+  }
+  if (kind === 'workflow') {
+    const [row] = await db
+      .select({ flow: projectWorkflows.flow, status: projectWorkflows.designStatus })
+      .from(projectWorkflows)
+      .where(and(eq(projectWorkflows.id, id), eq(projectWorkflows.projectId, projectId)))
+      .limit(1);
+    return row ? { kind, id, key: row.flow, projectId, status: row.status ?? 'none' } : null;
   }
   const [row] = await db
     .select({ seq: issues.issSeq, status: issues.status })

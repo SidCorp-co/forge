@@ -3795,6 +3795,13 @@
       "when": 1834444800000,
       "tag": "0596_a_beta_pair_records_its_close_in_the_landing_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 597,
+      "version": "7",
+      "when": 1834531200000,
+      "tag": "0597_a_workflow_is_a_standing_subject",
+      "breakpoints": true
     }
   ]
 }

@@ -152,6 +152,8 @@ const DECISION_DOOR: Record<StewardAsk['subject']['kind'], (keys: string) => str
     `on a feedback item (${keys}), \`forge-runner api projects/<projectId>/feedback/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
   requirement: (keys) =>
     `on a requirement (${keys}), \`forge-runner api projects/<projectId>/requirements/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
+  workflow: (keys) =>
+    `on a workflow (${keys}), \`forge-runner api projects/<projectId>/workflows/<flow>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
 };
 
 /** What an ask says, with each item a decision on answers it (ISS-739: the stuck item, or the blocker it asks about). */
@@ -162,7 +164,7 @@ const askWithItems = (a: StewardAsk) =>
 function stewardAsksLine(asks: Owed['stewardAsks']): string {
   if (asks.length === 0) return '';
   const items = asks.flatMap((a) => a.answeredOn);
-  const kinds = (['issue', 'feedback', 'requirement'] as const).flatMap((kind) => {
+  const kinds = (['issue', 'feedback', 'requirement', 'workflow'] as const).flatMap((kind) => {
     const keys = [...new Set(items.filter((i) => i.kind === kind).map((i) => i.key))];
     return keys.length > 0 ? [DECISION_DOOR[kind](keys.join(', '))] : [];
   });

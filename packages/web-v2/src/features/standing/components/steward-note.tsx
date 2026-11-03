@@ -9,6 +9,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
+import { workflowHref } from "@/lib/routes/workflows";
 import { cn } from "@/lib/utils/cn";
 
 /** Where a cited record lives; a cite with no page of its own (a verdict, a comment, a run) stays text. */
@@ -17,6 +18,7 @@ const CITE_HREF: Partial<Record<StewardCiteKind, (slug: string, ref: string) => 
   feedback: feedbackHref,
   issue: issueHref,
   release: releaseHref,
+  workflow: workflowHref,
 };
 
 /** One line, each cite whose ref it names linked in place, in the order they appear. */

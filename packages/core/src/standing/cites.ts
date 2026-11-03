@@ -67,6 +67,11 @@ function existsSql(projectId: string, kind: StewardCiteKind, ref: string): SQL |
         : null;
     case 'comment':
       return id ? commentSql(projectId, id, null) : null;
+    // a workflow is named by its flow, or by id
+    case 'workflow':
+      return id
+        ? sql`SELECT 1 FROM project_workflows WHERE project_id = ${projectId} AND id = ${id}::uuid`
+        : sql`SELECT 1 FROM project_workflows WHERE project_id = ${projectId} AND flow = ${ref}`;
   }
 }
 

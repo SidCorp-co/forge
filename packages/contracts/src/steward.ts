@@ -9,19 +9,24 @@ import type { Said } from "./said.js";
 import type { StandingGroup, WaitingKind, WaitingOn } from "./standing.js";
 import { WAITING_KINDS } from "./standing.js";
 
-/** What a standing is read for. An issue's standing is read for its own pages and for the roll-up. */
+/**
+ * What a standing is read for. An issue's standing is read for its own pages and for the roll-up; a
+ * workflow's for its page, which shows its step, who it waits on and what is next (REQ-68 BC-5).
+ */
 export const STANDING_SUBJECT_KINDS = [
 	"requirement",
 	"feedback",
 	"issue",
+	"workflow",
 ] as const;
 export type StandingSubjectKind = (typeof STANDING_SUBJECT_KINDS)[number];
 
-/** What a steward note is written on (BC-7): every item the standing read lists, an issue included. */
+/** What a steward note is written on (BC-7): every item the standing read lists, an issue and a workflow included. */
 export const STEWARD_NOTE_SUBJECT_KINDS = [
 	"requirement",
 	"feedback",
 	"issue",
+	"workflow",
 ] as const;
 export type StewardNoteSubjectKind =
 	(typeof STEWARD_NOTE_SUBJECT_KINDS)[number];
@@ -239,6 +244,7 @@ export const STEWARD_CITE_KINDS = [
 	"suggestion",
 	"comment",
 	"run",
+	"workflow",
 ] as const;
 export type StewardCiteKind = (typeof STEWARD_CITE_KINDS)[number];
 

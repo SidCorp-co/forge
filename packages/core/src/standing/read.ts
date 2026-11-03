@@ -1,6 +1,6 @@
 /**
  * The one standing read (REQ-48 BC-8; docs/proposals/steward-agent.md, "Standing contract"): one row
- * per open requirement, feedback item and issue of a project, built from the same per-slice
+ * per open requirement, feedback item, issue and workflow of a project, built from the same per-slice
  * derivations the lists draw, read with no viewer so every reader and the steward see one basis.
  * `GET /api/projects/:id/standings`, `forge_standing` and the steward's sweep (`OpenStandingsRead`)
  * all read it; nothing here derives a fact of its own.
@@ -19,8 +19,10 @@ import type {
 } from '@forge/contracts/steward';
 import { feedbackStandingsOf } from '../feedback/index.js';
 import { listIssueStanding } from '../issues/index.js';
+import { masterServingOf } from '../masters/index.js';
 import { requirementStandingsOf } from '../requirements/index.js';
 import { currentNoteRowsOf, notesOf } from '../steward-notes/index.js';
+import { type WorkflowStanding, workflowStandingsOf } from '../workflows/index.js';
 
 /** What every slice's standing carries: its group, its wait and its times. */
 type Sliced = Standing & { times: StandingTimes };
@@ -57,6 +59,14 @@ async function issueItems(projectId: string): Promise<ItemStanding[]> {
   );
 }
 
+/** Each workflow under a design step, keyed by its flow: its page shows its step, whom it waits on and what is next (REQ-68 BC-5). */
+async function workflowItems(projectId: string): Promise<ItemStanding[]> {
+  const master = await masterServingOf(projectId);
+  return (await workflowStandingsOf(projectId, master)).map((w: WorkflowStanding) =>
+    itemOf({ kind: 'workflow', id: w.id, key: w.flow }, w.flow, w),
+  );
+}
+
 /** Each item with its current steward note, the note marked stale where the item's basis moved. */
 async function withNotes(projectId: string, items: ItemStanding[]): Promise<ItemStanding[]> {
   const rows = await currentNoteRowsOf(
@@ -74,13 +84,17 @@ async function withNotes(projectId: string, items: ItemStanding[]): Promise<Item
 
 /** Every open item's standing in a project, stuck first (oldest first), then by key (BC-8). */
 export const openStandings: OpenStandingsRead = async (projectId) => {
-  const [requirements, feedback, issues] = await Promise.all([
+  const [requirements, feedback, issues, workflows] = await Promise.all([
     requirementItems(projectId),
     // a duplicate stands as its original does: one item for the steward and the status, the root
     feedbackItems(projectId, true),
     issueItems(projectId),
+    workflowItems(projectId),
   ]);
-  const items = await withNotes(projectId, [...requirements, ...feedback, ...issues].filter(open));
+  const items = await withNotes(
+    projectId,
+    [...requirements, ...feedback, ...issues, ...workflows].filter(open),
+  );
   return items.sort(
     (a, b) =>
       Number(b.stuck !== null) - Number(a.stuck !== null) ||
@@ -93,9 +107,10 @@ const ITEMS_OF: Record<StewardNoteSubjectKind, (projectId: string) => Promise<It
   requirement: requirementItems,
   feedback: feedbackItems,
   issue: issueItems,
+  workflow: workflowItems,
 };
 
-/** One requirement's, feedback item's or open issue's standing with its note, by key; null where the project holds none. */
+/** One requirement's, feedback item's, open issue's or workflow's standing with its note, by key; null where the project holds none. */
 export async function standingOfSubject(
   projectId: string,
   kind: StewardNoteSubjectKind,

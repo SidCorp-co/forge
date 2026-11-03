@@ -1,6 +1,6 @@
-// The reasoned decisions written on feedback items and requirements (ISS-654, REQ-48 BC-5): a
-// decision comment (`intent: decision`) posted at `projects/:id/feedback/:fb/comments` or
-// `projects/:id/requirements/:req/comments`, read in the shape an issue's `decision` record is read
+// The reasoned decisions written on feedback items, requirements and workflows (ISS-654, REQ-48 BC-5,
+// REQ-68 BC-5): a decision comment (`intent: decision`) posted at `projects/:id/feedback/:fb/comments`,
+// `projects/:id/requirements/:req/comments` or `projects/:id/workflows/:flow/comments`, read in the shape an issue's `decision` record is read
 // (`issues/record-events/decision-read.ts`): `reason` is its why, and `reversedWhen` its until, which
 // ends it only on a date it names (`issues/record-events/decision-until.ts`). The steward reads one
 // written after its ask about the item as that ask's answer.
@@ -12,7 +12,7 @@ import { comments } from '../db/schema-comments.js';
 import { readDecisionUntil, untilReadingWarnings } from '../issues/index.js';
 
 /** The kinds of item, besides an issue, a steward ask is about and a decision comment sits on. */
-export type DecidedItemKind = 'feedback' | 'requirement';
+export type DecidedItemKind = 'feedback' | 'requirement' | 'workflow';
 
 export interface ItemDecision {
   subjectId: string;
@@ -23,7 +23,11 @@ export interface ItemDecision {
   until: Date | null;
 }
 
-const COLUMN = { feedback: comments.feedbackId, requirement: comments.requirementId } as const;
+const COLUMN = {
+  feedback: comments.feedbackId,
+  requirement: comments.requirementId,
+  workflow: comments.workflowId,
+} as const;
 
 const trimmed = (text: string | undefined): string | null => {
   const value = text?.trim() ?? '';

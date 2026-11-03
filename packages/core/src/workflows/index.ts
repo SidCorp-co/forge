@@ -36,4 +36,5 @@ export {
   recordArtifactContext,
 } from './run-context-service.js';
 export { createWorkflow, updateWorkflow, workflowView } from './service.js';
+export { type WorkflowStanding, workflowStandingsOf } from './standing-read.js';
 export { buildsOf, linkBuild, liveWorkflow } from './store.js';

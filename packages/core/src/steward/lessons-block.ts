@@ -14,6 +14,7 @@ const PRODUCES: Record<RunRow['subjectKind'], readonly LessonItemKind[]> = {
   requirement: ['requirement', 'suggestion'],
   feedback: ['suggestion', 'issue'],
   issue: ['issue'],
+  workflow: ['workflow'],
 };
 
 /** The area the run's item sits in: a requirement's own, an issue's requirement's, else none. */
