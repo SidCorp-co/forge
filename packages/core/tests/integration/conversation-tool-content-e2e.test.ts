@@ -135,7 +135,7 @@ describe("a delivered reply's tool content", () => {
       },
       {
         type: 'tool',
-        toolCall: { id: 'call-2', name: 'offer_act', durationMs: 35, withheld: true },
+        toolCall: { id: 'call-2', name: 'offer_preview', durationMs: 35, withheld: true },
       },
       { type: 'text', text: REPLY },
     ]);
