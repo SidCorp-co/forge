@@ -15,7 +15,7 @@ import type {
   DispatchScheduleResult,
   RoutedFire,
 } from './dispatch-types.js';
-import { attachFireSession, openFire, settleFire } from './fires.js';
+import { attachFireSession, type FireSettlement, openFire, settleFire } from './fires.js';
 import { routeScheduleReleaseBatchFire } from './release-batch-dispatch.js';
 import {
   authorizeScheduledRun,
@@ -47,7 +47,35 @@ export async function dispatchScheduleRun(
     throw err;
   }
   if (routed.settle) await settleFire(fireId, routed.settle);
+  if (routed.background) settleInBackground(fireId, routed.background);
   return { ...routed.result, fireId };
+}
+
+/**
+ * The rest of a fire, run after its answer: settled with what it returns, or `failed` with what it
+ * throws, so an error after the answer is the fire's record and never lost. A settle that itself
+ * throws is logged by fire id; the fire then reads running until the kind's own stale rule ends it.
+ */
+function settleInBackground(fireId: string, run: () => Promise<FireSettlement>): void {
+  void (async () => {
+    let settlement: FireSettlement;
+    try {
+      settlement = await run();
+    } catch (err) {
+      settlement = {
+        status: 'failed',
+        error: `the fire threw after it was answered: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+    try {
+      await settleFire(fireId, settlement);
+    } catch (err) {
+      logger.error(
+        { err, fireId },
+        'schedule.dispatch: a fire run after its answer did not settle',
+      );
+    }
+  })();
 }
 
 function routeFire(input: DispatchScheduleInput, fireId: string): Promise<RoutedFire> {

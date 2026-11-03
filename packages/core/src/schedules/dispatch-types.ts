@@ -58,4 +58,10 @@ export type DispatchScheduleResult = RoutedScheduleResult & { fireId: string };
 export interface RoutedFire {
   result: RoutedScheduleResult;
   settle: FireSettlement | null;
+  /**
+   * The rest of a fire core runs itself, run after the fire is answered (`result.status` is then
+   * `running`): what it returns settles the fire, and what it throws settles it `failed` with the
+   * error. Set by a kind whose run can hold a caller for long (`beta_port`).
+   */
+  background?: () => Promise<FireSettlement>;
 }

@@ -121,3 +121,8 @@ export async function orgEntryForProject(projectId: string, slug: string): Promi
     .limit(1);
   return row?.entry ?? null;
 }
+
+/** When the entry under `slug` of the org `projectId` belongs to was written first; null where none. */
+export async function orgKnowledgeCreatedAt(projectId: string, slug: string): Promise<Date | null> {
+  return (await orgEntryForProject(projectId, slug))?.createdAt ?? null;
+}

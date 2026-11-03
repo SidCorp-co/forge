@@ -83,3 +83,30 @@ export function mirrorReason(devKey: string, devStatus: string): string {
 export function mirrorRefusedComment(devKey: string, devStatus: string, code: string): string {
   return `forge-dev ${devKey} moved to ${devStatus}; forge-beta refused the matching move: ${code}.`;
 }
+
+/**
+ * Where a dev issue's work landed, as beta's merge mark records it: the dev key and the landing the
+ * dev issue's own mark names (its landing, else its commit).
+ */
+export function devLanding(dev: {
+  key: string;
+  mergedLanding: string | null;
+  mergedCommitSha: string | null;
+}): string {
+  const where = dev.mergedLanding
+    ? ` at ${dev.mergedLanding}`
+    : dev.mergedCommitSha
+      ? ` at commit ${dev.mergedCommitSha.slice(0, 12)}`
+      : '';
+  return `forge-dev ${dev.key}${where}`;
+}
+
+/** The note beta's merge mark carries: the work was done and shipped on forge-dev. */
+export function landedNote(devKey: string): string {
+  return `Worked and shipped on forge-dev as ${devKey}; beta records its status (owner ruling beta-issues-are-worked-on-dev).`;
+}
+
+/** The reason a move to the nearest legal status toward closed carries on beta. */
+export function nearestReason(devKey: string, refused: string): string {
+  return `Mirrored from forge-dev ${devKey}, which moved to closed; forge-beta refused closed (${refused}), and this is the nearest status toward it that it takes.`;
+}

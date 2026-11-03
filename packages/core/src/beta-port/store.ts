@@ -6,6 +6,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { betaPortPairs, issues, projects } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
+import { orgKnowledgeCreatedAt } from '../knowledge/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
 export interface DevTwin {
@@ -21,11 +22,33 @@ export interface DevIssue {
   status: string;
 }
 
+/** A dev issue as a mirror reads it: where its work landed, when it did. */
+export interface MirroredDevIssue extends DevIssue {
+  mergedLanding: string | null;
+  mergedCommitSha: string | null;
+}
+
 export interface Pair {
   betaIssueId: string;
   betaKey: string;
   devIssueId: string;
+  /** The dev status whose move beta took; never one it refused. */
   lastMirroredStatus: string | null;
+  /** The dev status last tried, taken or not; null on a pair tried under the old rule. */
+  lastTriedStatus: string | null;
+  /** The beta status beta stood at after that try. */
+  betaReached: string | null;
+}
+
+/** The slug of the org knowledge entry holding the owner's ruling: its creation is the cutoff. */
+export const RULING_SLUG = 'beta-issues-are-worked-on-dev';
+
+/**
+ * When the owner ruled that beta issues are worked on dev: the creation of the ruling's entry in
+ * the knowledge of the org `projectId` belongs to, read at every fire; null where it holds none.
+ */
+export function rulingCutoff(projectId: string): Promise<Date | null> {
+  return orgKnowledgeCreatedAt(projectId, RULING_SLUG);
 }
 
 /** The live dev project carrying each slug exactly: a twin is never guessed. */
@@ -62,21 +85,24 @@ export async function devFirstLines(twin: DevTwin): Promise<(DevIssue & { firstL
   }));
 }
 
-/** The dev issues of a twin by id, with their keys. */
+/** The dev issues of a twin by id, with their keys and where their work landed. */
 export async function devIssuesById(
   twin: DevTwin,
   ids: readonly string[],
-): Promise<Map<string, DevIssue>> {
+): Promise<Map<string, MirroredDevIssue>> {
   if (ids.length === 0) return new Map();
   const rows = await db
-    .select({ id: issues.id, issSeq: issues.issSeq, status: issues.status })
+    .select({
+      id: issues.id,
+      issSeq: issues.issSeq,
+      status: issues.status,
+      mergedLanding: issues.mergedLanding,
+      mergedCommitSha: issues.mergedCommitSha,
+    })
     .from(issues)
     .where(inArray(issues.id, [...ids]));
   return new Map(
-    rows.map((r) => [
-      r.id,
-      { id: r.id, key: formatIssueRef(twin.prefix, r.issSeq), status: r.status },
-    ]),
+    rows.map(({ issSeq, ...r }) => [r.id, { ...r, key: formatIssueRef(twin.prefix, issSeq) }]),
   );
 }
 
@@ -89,6 +115,8 @@ export async function pairsOf(betaIssueIds: readonly string[]): Promise<Map<stri
       betaKey: betaPortPairs.betaKey,
       devIssueId: betaPortPairs.devIssueId,
       lastMirroredStatus: betaPortPairs.lastMirroredStatus,
+      lastTriedStatus: betaPortPairs.lastTriedStatus,
+      betaReached: betaPortPairs.betaReached,
     })
     .from(betaPortPairs)
     .where(inArray(betaPortPairs.betaIssueId, [...betaIssueIds]));
@@ -103,10 +131,26 @@ export async function recordPair(pair: Pair & { betaProjectSlug: string }): Prom
     .onConflictDoNothing({ target: betaPortPairs.betaIssueId });
 }
 
-/** The dev status last mirrored onto a pair's beta issue, tried or refused. */
-export async function recordMirrored(betaIssueId: string, status: string): Promise<void> {
+/**
+ * One try of a dev status onto a pair's beta issue: the status tried, the beta status beta stood at
+ * after it, and, where beta took the move, that status as mirrored. A try beta did not take leaves
+ * the mirrored status as it was, unless it named this same dev status, which beta never took.
+ */
+export async function recordTry(args: {
+  betaIssueId: string;
+  tried: string;
+  reached: string;
+  taken: boolean;
+}): Promise<void> {
   await db
     .update(betaPortPairs)
-    .set({ lastMirroredStatus: status, at: new Date() })
-    .where(eq(betaPortPairs.betaIssueId, betaIssueId));
+    .set({
+      lastTriedStatus: args.tried,
+      betaReached: args.reached,
+      lastMirroredStatus: args.taken
+        ? args.tried
+        : sql`nullif(${betaPortPairs.lastMirroredStatus}, ${args.tried})`,
+      at: new Date(),
+    })
+    .where(eq(betaPortPairs.betaIssueId, args.betaIssueId));
 }

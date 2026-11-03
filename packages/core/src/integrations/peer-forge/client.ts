@@ -33,10 +33,15 @@ export interface PeerIssue {
   /** Its human key on the peer (`ISS-12`). */
   key: string;
   title: string;
-  description: string | null;
+  /** Undefined where the list row carries no description (a projection): read it from the issue. */
+  description: string | null | undefined;
   status: string;
   priority: string | null;
   category: string | null;
+  /** When it was filed on the peer. */
+  createdAt: Date;
+  /** How many times it moved into `reopen`; null where the peer's row carries no count. */
+  reopenCount: number | null;
 }
 
 const CALL_TIMEOUT_MS = 15_000;
@@ -171,21 +176,34 @@ export async function listPeerProjects(peer: PeerForge): Promise<PeerAnswer<Peer
   return { ok: true, value: projects };
 }
 
+const dateOf = (v: unknown): Date | null => {
+  const text = str(v);
+  if (!text) return null;
+  const at = new Date(text);
+  return Number.isNaN(at.getTime()) ? null : at;
+};
+
 function issueOf(row: unknown): PeerIssue | null {
   if (!isRecord(row)) return null;
   const id = str(row.id);
   const key = str(row.displayId) ?? str(row.key);
   const title = str(row.title);
   const status = str(row.status);
-  if (!id || !key || title === null || !status) return null;
+  const createdAt = dateOf(row.createdAt);
+  if (!id || !key || title === null || !status || !createdAt) return null;
   return {
     id,
     key,
     title,
-    description: str(row.description),
+    description: 'description' in row ? str(row.description) : undefined,
     status,
     priority: str(row.priority),
     category: str(row.category),
+    createdAt,
+    reopenCount:
+      typeof row.reopenCount === 'number' && Number.isInteger(row.reopenCount)
+        ? row.reopenCount
+        : null,
   };
 }
 
@@ -203,7 +221,9 @@ export async function listPeerIssues(
     if (!rows) return shape(`/api${route}`, 'issue list');
     for (const row of rows) {
       const issue = issueOf(row);
-      if (!issue) return shape(`/api${route}`, 'issue row (id, displayId, title, status)');
+      if (!issue) {
+        return shape(`/api${route}`, 'issue row (id, displayId, title, status, createdAt)');
+      }
       issues.push(issue);
     }
     const more = isRecord(got.value) && got.value.hasMore === true;
@@ -250,6 +270,73 @@ export async function listPeerCommentBodies(
     200,
     `GET /api${route} holds more than ${MAX_COMMENT_PAGES * COMMENT_PAGE} comments; this client reads no further`,
   );
+}
+
+/** One peer issue's description, read from the issue itself (a list row may not carry it). */
+export async function readPeerIssueDescription(
+  peer: PeerForge,
+  issueId: string,
+): Promise<PeerAnswer<string | null>> {
+  const route = `/issues/${encodeURIComponent(issueId)}`;
+  const got = await call(peer, 'GET', route);
+  if (!got.ok) return got;
+  if (!isRecord(got.value)) return shape(`/api${route}`, 'issue');
+  return { ok: true, value: str(got.value.description) };
+}
+
+const ACTIVITY_PAGE = 100;
+const MAX_ACTIVITY_PAGES = 5;
+
+/**
+ * When one peer issue last moved into `status` at or after `since`, read from its activity feed
+ * (`issue.statusChanged` rows, newest first) until a row older than `since`; null where it did not.
+ */
+export async function peerMovedIntoSince(
+  peer: PeerForge,
+  issueId: string,
+  status: string,
+  since: Date,
+): Promise<PeerAnswer<Date | null>> {
+  const route = `/issues/${encodeURIComponent(issueId)}/activity`;
+  let before: string | null = null;
+  for (let page = 0; page < MAX_ACTIVITY_PAGES; page += 1) {
+    const query = `?limit=${ACTIVITY_PAGE}${before ? `&before=${encodeURIComponent(before)}` : ''}`;
+    const got = await call(peer, 'GET', `${route}${query}`);
+    if (!got.ok) return got;
+    const rows = rowsOf(got.value);
+    if (!rows) return shape(`/api${route}`, 'activity list');
+    for (const row of rows) {
+      if (!isRecord(row)) continue;
+      const at = dateOf(row.createdAt);
+      if (!at) return shape(`/api${route}`, 'activity row (createdAt)');
+      if (at < since) return { ok: true, value: null };
+      const payload = isRecord(row.payload) ? row.payload : null;
+      if (row.action === 'issue.statusChanged' && payload?.to === status) {
+        return { ok: true, value: at };
+      }
+    }
+    before = isRecord(got.value) ? str(got.value.nextBefore) : null;
+    if (!before) return { ok: true, value: null };
+  }
+  return refuse(
+    'PEER_FORGE_TOO_MANY',
+    200,
+    `GET /api${route} holds more than ${MAX_ACTIVITY_PAGES * ACTIVITY_PAGE} rows since ${since.toISOString()}; this client reads no further`,
+  );
+}
+
+/** Record on a peer issue that its work landed, naming where: the peer's merge mark. */
+export async function markPeerIssueLanded(
+  peer: PeerForge,
+  issueId: string,
+  landing: string,
+  note: string,
+): Promise<PeerAnswer<null>> {
+  const got = await call(peer, 'POST', `/issues/${encodeURIComponent(issueId)}/merge`, {
+    landing,
+    note,
+  });
+  return got.ok ? { ok: true, value: null } : got;
 }
 
 export async function postPeerComment(

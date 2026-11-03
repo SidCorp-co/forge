@@ -6,12 +6,14 @@ export {
   mirrorTarget,
   portedFirstLine,
 } from './markers.js';
+export { owesTry } from './mirror.js';
 export { type BetaPortReport, renderReport } from './report.js';
 export {
   BETA_TOKEN_REF,
   BETA_URL_REF,
   type BetaPortOutcome,
+  type BetaPortStart,
   MAX_MIRRORS_PER_FIRE,
   MAX_PORTS_PER_FIRE,
-  runBetaPort,
+  startBetaPort,
 } from './run.js';
