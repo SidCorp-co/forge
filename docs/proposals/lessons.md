@@ -1,7 +1,7 @@
 # Lessons: Forge learns from every correction and stops to ask when a lesson confuses
 
 **Removed when:** REQ-50's eight criteria hold a counting verdict. After that, what holds is the code:
-`packages/contracts/src/lessons.ts`, `packages/core/src/lessons/`, and migrations 0510 and 0522.
+`packages/contracts/src/lessons.ts`, `packages/core/src/lessons/`, and migrations 0510, 0522, 0578 and 0588.
 
 Requirement REQ-50 r2, BC-1..9. The owner said, 2026-10-21: "learn, but when using it you find a
 confusion, report it so it is handled at once ... without learning, the same errors repeat, which is
@@ -28,6 +28,7 @@ retried delivery never doubles it. A return or rejection with no reason is not a
 | `revision_returned` | `requirements/service.ts:returnRevision` | The requirement (`REQ-n`) and its area |
 | `verdict_failed` | `issues/criteria/verdict-record.ts:recordVerdict` on a `fail` with a reason | The issue (`ISS-n`) and the criterion |
 | `chat` | The `lessons-chat` consumer of `chat.replied` (below) | The conversation and the assistant message corrected |
+| `room` | The `lessons-room` consumer of `room.replied` (below; ISS-867) | The room thread's conversation, keyed `Room <rid>` |
 | `feedback_triaged` | `feedback/triage.ts:triageIn` on a first triage onto work of a bug or change request, never a duplicate (ISS-867), via `feedback/correction.ts`; the reporter's own words, said by the reporter | The feedback item (`FB-n`) and its requirement's area |
 | `feedback_declined` | `feedback/service.ts:declineIn` on a decline with a reason (ISS-867); said by the triager | The feedback item (`FB-n`) |
 
@@ -38,6 +39,18 @@ yes/no, a confidence, and one sentence saying what was wrong. It keeps the corre
 confidence 0.7 or above (`CHAT_CORRECTION_THRESHOLD`). No screen shows a kept correction. A gateway
 miss leaves the message as it is and logs the miss. The message never becomes a correction because
 the model was unreachable.
+
+**Room.** A member's message in a bound room's thread is a candidate on the same terms: it follows
+the bot's answer there (a `system` note between is skipped; a line core wrote in the bot's place is
+no answer), it was handed to the room's session, and it is not addressed to others.
+`support/room-replies.ts:noteRoomMessage` emits `room.replied` in the transaction that stores the
+message, through `assistant/turn-lessons.ts:repliesOf`, the rule `noteTurnLessons` uses; a
+redelivered frame is no new message, so nothing is emitted twice. `lessons/consumers.ts:correctionFromReply`
+reads both events with the one classifier and threshold, on the scrubbed text stored. The writer is
+the Forge user their chat account resolves to (`support/ops-asker.ts:forgeUserOfWriter`: a confirmed
+speaker link, or the chat server's verified address), else `by_user_id` is null: the correction is
+kept, and who said it stays on the message `source_ref` names. The bot's room lines keep their
+`Lessons applied:` through `noteAppliedLessons`, as a chat answer does.
 
 ## 2. Where a lesson lives (BC-2, BC-3, BC-7)
 

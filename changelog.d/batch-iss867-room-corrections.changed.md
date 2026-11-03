@@ -1,0 +1,1 @@
+**Room replies teach lessons.** A member's message correcting the bot in a bound room's thread is now a correction, read like a chat reply and counted under its own source, even when the writer has no Forge account.
