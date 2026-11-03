@@ -309,8 +309,8 @@ fn awaiting_core_ends(run: &Run, state: &CloseState) -> String {
     // again. What the reader is pointed at instead is the ask that is
     // running and the line that carries core's refusal, which repeats
     // on every sweep and so is still there when they look. That the
-    // ask is in the sweep at all is held by `master.rs`'s own
-    // `depth_of_call_in_sweep("run_record::close_ended_runs(")`.
+    // ask is in the sweep at all, and before the sweep's opens, is held by
+    // `run_record::settle_tests::a_sweep_closes_the_ended_run_before_it_opens_its_successor`.
     if !state.session_terminal {
         format!(
             "core's session row for {} is not over yet, and this box asks core to close \

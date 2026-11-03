@@ -1057,7 +1057,10 @@ mod settle_tests {
             _checkpoint: Option<serde_json::Value>,
             _claim_holders: &[String],
         ) -> runner_platform::error::Result<()> {
-            self.said.lock().unwrap().push(format!("close {session_id}"));
+            self.said
+                .lock()
+                .unwrap()
+                .push(format!("close {session_id}"));
             if self
                 .closes_down
                 .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
@@ -1185,7 +1188,10 @@ mod settle_tests {
                 settle_at_core(&core, &mut led, "boot-1", None, T0 + n * SWEEP_MS).await;
             }
             let opens = core.said().iter().filter(|s| *s == "open run-2").count();
-            assert_eq!(opens, 1, "the open was re-sent inside the wait: {holders:?}");
+            assert_eq!(
+                opens, 1,
+                "the open was re-sent inside the wait: {holders:?}"
+            );
             assert_eq!(row(&led, "run-2").session_retry_at, Some(T0), "{holders:?}");
             let _ = std::fs::remove_dir_all(dir);
         }
@@ -1197,7 +1203,8 @@ mod settle_tests {
     async fn a_holder_whose_close_core_refused_keeps_the_wait() {
         let (led, dir) = ended_then_declared();
         let l = led.as_ref().unwrap();
-        l.mark_close_refused("run-1", "checkpoint: too big").unwrap();
+        l.mark_close_refused("run-1", "checkpoint: too big")
+            .unwrap();
         assert_eq!(
             held_by_our_ended_run(l, "boot-1", "ISSUE_LEASE_HELD", &[ours()]),
             None

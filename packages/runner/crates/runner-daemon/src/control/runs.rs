@@ -923,6 +923,10 @@ mod tree_tests {
     }
 
     fn ctl(dir: &Path) -> Arc<Control> {
+        ctl_with(dir, None)
+    }
+
+    fn ctl_with(dir: &Path, core: Option<runner_transport::CoreClient>) -> Arc<Control> {
         let masters = Arc::new(crate::master::Masters::default());
         masters.remember(
             PROJECT,
@@ -946,7 +950,7 @@ mod tree_tests {
             promises: std::sync::Mutex::new(GateMemory::default()),
             drain: Arc::new(crate::drain::Drain::new(None)),
             hosts: Arc::new(runner_platform::subagent_host::ProcHosts::system()),
-            core: None,
+            core: core.map(Arc::new),
         })
     }
 
@@ -1062,5 +1066,157 @@ mod tree_tests {
         assert!(why(Some("ISS-76"), &none, Some("qa")).contains("not a requirement reference"));
         assert!(why(Some("REQ-0"), &none, Some("qa")).contains("not a requirement reference"));
         assert!(why(None, &none, Some("qa")).contains("--requirement REQ-n"));
+    }
+
+    /// A core that answers every close with `answer`, counting them.
+    struct Closer {
+        sent: std::sync::atomic::AtomicUsize,
+        answer: fn() -> runner_platform::error::Result<()>,
+    }
+
+    impl crate::run_record::SessionCloser for Closer {
+        async fn close(
+            &self,
+            _session_id: &str,
+            _detail: &str,
+            _checkpoint: Option<serde_json::Value>,
+            _claim_holders: &[String],
+        ) -> runner_platform::error::Result<()> {
+            self.sent.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            (self.answer)()
+        }
+    }
+
+    /// A run declared over ISS-1 and opened at core as `session-1`.
+    async fn opened_run(ctl: &Arc<Control>, tree: &Path) -> String {
+        let run_id = declare(ctl, tree).await.job_id.expect("declared");
+        let held = ctl.ledger.lock().unwrap();
+        held.as_ref()
+            .unwrap()
+            .attach_session(&run_id, "session-1")
+            .unwrap();
+        run_id
+    }
+
+    fn row(ctl: &Arc<Control>, run_id: &str) -> runner_core::ledger::Run {
+        let held = ctl.ledger.lock().unwrap();
+        held.as_ref().unwrap().run(run_id).unwrap().unwrap()
+    }
+
+    /// ISS-929 (d): `run close` closes the run's core session itself, through the closer the
+    /// sweep uses, and says so; the lease goes before the close answers, not a sweep later.
+    #[tokio::test]
+    async fn a_close_closes_its_core_session_and_says_so() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+        let ctl = ctl(&dir);
+        let run_id = opened_run(&ctl, &tree).await;
+        let core = Closer {
+            sent: 0.into(),
+            answer: || Ok(()),
+        };
+        let reply = run_close_with(&ctl, &run_id, Some("done"), MASTER, Some(&core)).await;
+        assert!(reply.ok, "{reply:?}");
+        assert_eq!(core.sent.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let said = reply.reason.unwrap_or_default();
+        assert!(said.contains("session-1 is closed"), "{said}");
+        let run = row(&ctl, &run_id);
+        assert_eq!(run.ended_by.as_deref(), Some("master"));
+        assert!(
+            run.session_terminal_at.is_some(),
+            "a close core took was not recorded, so the sweep sends it again"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// ISS-929 (d): a core answering 503 leaves the run ended on this box and its session owed:
+    /// the close says the session is still open and why, never only `closed`, and the row is
+    /// left for the sweep's close leg to send again.
+    #[tokio::test]
+    async fn a_close_core_cannot_take_says_the_session_is_still_open_and_leaves_it_to_the_sweep() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+        let ctl = ctl(&dir);
+        let run_id = opened_run(&ctl, &tree).await;
+        let core = Closer {
+            sent: 0.into(),
+            answer: || {
+                Err(runner_platform::error::Error::Other(
+                    "run-session close 503 Service Unavailable: no available server".into(),
+                ))
+            },
+        };
+        let reply = run_close_with(&ctl, &run_id, Some("done"), MASTER, Some(&core)).await;
+        assert!(
+            reply.ok,
+            "the box's ending is recorded whatever core said: {reply:?}"
+        );
+        let said = reply.reason.unwrap_or_default();
+        assert!(said.contains("session-1 is still open"), "{said}");
+        assert!(said.contains("503"), "{said}");
+        assert!(said.contains("next sweep sends it again"), "{said}");
+        let run = row(&ctl, &run_id);
+        assert_eq!(run.ended_by.as_deref(), Some("master"));
+        assert!(run.session_terminal_at.is_none());
+        let owed = {
+            let held = ctl.ledger.lock().unwrap();
+            held.as_ref()
+                .unwrap()
+                .ended_with_open_session("boot-1")
+                .unwrap()
+        };
+        assert_eq!(
+            owed.iter().map(|r| r.run_id.as_str()).collect::<Vec<_>>(),
+            vec![run_id.as_str()],
+            "the sweep's close leg does not see the close it owes"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The same over the wire: the daemon's own core client meets a 503 from the close route,
+    /// and the pane is told the session is still open and owed to the sweep.
+    #[tokio::test]
+    async fn a_close_over_the_wire_meeting_a_503_is_owed_not_closed() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+        let (client, seen) = crate::test_core::fake_core(|_| (503, "no available server")).await;
+        let ctl = ctl_with(&dir, Some(client));
+        let run_id = opened_run(&ctl, &tree).await;
+        let reply = run_close(&ctl, &run_id, Some("done"), MASTER).await;
+        assert!(reply.ok, "{reply:?}");
+        let said = reply.reason.unwrap_or_default();
+        assert!(said.contains("session-1 is still open"), "{said}");
+        assert!(said.contains("503"), "{said}");
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|(p, _)| p == "/api/devices/me/run-sessions/session-1/close"),
+            "the close was never sent to core"
+        );
+        assert!(row(&ctl, &run_id).session_terminal_at.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A run that never opened at core has no session there to close, and the close says so
+    /// rather than sending anything.
+    #[tokio::test]
+    async fn a_close_of_a_run_core_never_opened_sends_nothing() {
+        let dir = scratch();
+        let (_repo, tree) = repo_with_tree(&dir);
+        let ctl = ctl(&dir);
+        let run_id = declare(&ctl, &tree).await.job_id.expect("declared");
+        let core = Closer {
+            sent: 0.into(),
+            answer: || Ok(()),
+        };
+        let reply = run_close_with(&ctl, &run_id, None, MASTER, Some(&core)).await;
+        assert!(reply.ok);
+        assert_eq!(core.sent.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(reply
+            .reason
+            .unwrap_or_default()
+            .contains("never opened a session at core"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
