@@ -5,7 +5,16 @@ import {
   IMPACT_TYPES,
 } from '@forge/contracts/cleanup';
 import { sql } from 'drizzle-orm';
-import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  type AnyPgColumn,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { issues } from './schema-issues.js';
 import { projects } from './schema-projects.js';
@@ -44,6 +53,7 @@ export const changeImpacts = pgTable(
 /**
  * What a cleanup run reported (REQ-79 BC-9): the head it left, green or red, every debt it cleared
  * and every one that remains with why, and the issues rated high whose merge its green head carries.
+ * A later report from the same fire supersedes it (ISS-912): kept, and read by nothing that decides.
  */
 export const cleanupReports = pgTable(
   'cleanup_reports',
@@ -69,9 +79,14 @@ export const cleanupReports = pgTable(
     covers: jsonb('covers').notNull(),
     reportedBy: uuid('reported_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The later report from the same fire that stands in its place; null while this one is current. */
+    supersededBy: uuid('superseded_by').references((): AnyPgColumn => cleanupReports.id, {
+      onDelete: 'set null',
+    }),
   },
   (t) => ({
     projectIdx: index('cleanup_reports_project_idx').on(t.projectId, t.createdAt),
+    notSelfChk: check('cleanup_reports_superseded_chk', sql`${t.supersededBy} <> ${t.id}`),
     resultChk: check(
       'cleanup_reports_result_chk',
       sql`${t.result} IN (${inList(CLEANUP_RESULTS)})`,

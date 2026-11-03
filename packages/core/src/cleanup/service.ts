@@ -6,6 +6,7 @@
 import type {
   CarryDebtRequest,
   CleanupReportRequest,
+  CleanupReportsQuery,
   CleanupReportView,
   DebtEvidenceRequest,
   DebtLedgerView,
@@ -32,6 +33,7 @@ import {
   fireProjectOf,
   readCleanupWindow,
 } from '../schedules/index.js';
+import { checkReportBase } from './report-base.js';
 import {
   type CleanupRefusal,
   type CoverCandidate,
@@ -228,13 +230,15 @@ export async function recordMergeCheckCleanup(
 
 /**
  * What one cleanup run cleared, what remains and why (BC-9), and the changes rated high its green
- * head carries. Every debt open now is named once; whatever its rows contradict is refused by name.
+ * head carries. Every debt open now is named once; whatever its rows contradict is refused by name,
+ * and a base the project's source does not hold on its branch is refused (ISS-912). A report naming
+ * its fire supersedes the one that fire filed before it.
  */
 export async function recordCleanupReport(args: {
   projectId: string;
   request: CleanupReportRequest;
   userId: string;
-}): Promise<{ report: CleanupReportView; open: number; waiting: string[] }> {
+}): Promise<{ report: CleanupReportView; supersedes: string[]; open: number; waiting: string[] }> {
   const { projectId, request, userId } = args;
   if (request.fire && (await fireProjectOf(request.fire)) !== projectId) {
     throw refuse(
@@ -243,6 +247,7 @@ export async function recordCleanupReport(args: {
       '/fire',
     );
   }
+  await checkReportBase(projectId, request.base);
   const covers: CoverCandidate[] = [];
   for (const ref of request.covers ?? []) {
     const issue = await issueOf(projectId, ref, userId);
@@ -258,7 +263,7 @@ export async function recordCleanupReport(args: {
     c.key = keys.get(c.issueId) ?? null;
     c.rating = ratings.find((r) => r.issueId === c.issueId)?.impact.rating ?? null;
   }
-  const row = await db.transaction(async (tx) => {
+  const kept = await db.transaction(async (tx) => {
     const refusals = reportRefusals(request, await openDebts(tx, projectId), covers);
     if (refusals.length) throw new RefusalError(refusals, 'CLEANUP_REFUSED');
     return insertReport(tx, {
@@ -270,14 +275,16 @@ export async function recordCleanupReport(args: {
   });
   const [open, waiting] = await Promise.all([openDebts(db, projectId), waitingIssues(projectId)]);
   return {
-    report: reportView(row, keys),
+    report: reportView(kept.row, keys),
+    supersedes: kept.supersedes,
     open: open.length,
     waiting: waiting.map((w) => w.issueKey),
   };
 }
 
-export async function listCleanupReports(projectId: string) {
-  return { reports: await readReports(projectId) };
+/** The project's current cleanup reports; `superseded` lists those a later one replaced beside them. */
+export async function listCleanupReports(projectId: string, query: CleanupReportsQuery = {}) {
+  return { reports: await readReports(projectId, { superseded: query.superseded === 'include' }) };
 }
 
 /**

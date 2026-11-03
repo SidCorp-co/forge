@@ -13,7 +13,7 @@ export const FAST_DELIVERY_GUIDE: CoreGuide = {
   title: 'Fast delivery: rate the change, leave debt to the cleanup run',
   summary:
     "Every project delivers fast unless its document says `delivery.fast: false`: a change lands when it builds, deploys healthy and its scoped tests pass; the building run rates the change's impact and leaves a non-severe red as cleanup debt; only a change rated high waits for a green cleanup: it is held from landing where the project deploys on land, and from promotion where a person promotes; the cleanup run works the debt in its own window and reports what it cleared and what remains.",
-  version: 4,
+  version: 5,
   body: `## Fast delivery: rate the change, leave debt to the cleanup run
 
 Fast delivery is every project's default. A project turns it off with \`delivery.fast: false\` in its
@@ -70,7 +70,11 @@ the open debt and the changes waiting on it, and:
 2. clears debt and CI red, and simplifies, in its own worktree, landing as the project lands work;
 3. reports once, last: \`POST /api/projects/:id/cleanup-reports\`
    \`{ fire, base: { branch, sha }, result: green | red, ci?, cleared: [{ debt, how }], remains: [{ debt, why }], covers }\`.
-   Every open debt is named once, cleared with how or remaining with why. \`covers\` names the issues
+   \`base.sha\` is the full 40-hex sha of the head it left, which core reads on the project's source
+   host: one the branch does not hold is refused (\`CLEANUP_BASE_NOT_ON_BRANCH\`), and so is any base
+   on a project whose host cannot be read (\`CLEANUP_BASE_UNCHECKABLE\`). A later report naming the
+   same fire supersedes the earlier one, which is kept; the list and the landing rule read only the
+   current one. Every open debt is named once, cleared with how or remaining with why. \`covers\` names the issues
    rated high whose merge the green head carries, checked with \`git merge-base --is-ancestor\`; only a
    green report covers anything, and covering lets a promotion carry them.
 

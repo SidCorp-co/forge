@@ -9,7 +9,10 @@
 
 import { z } from "zod";
 import { wholeShaSchema } from "./check-runs.js";
-import { LANDING_SURFACE_LABELS, type LandingSurface } from "./landing-artifacts.js";
+import {
+	LANDING_SURFACE_LABELS,
+	type LandingSurface,
+} from "./landing-artifacts.js";
 
 /** The surfaces a changed path can map to: every landing surface but `design` and `adoption`. */
 type PathSurface = Exclude<LandingSurface, "design" | "adoption">;
@@ -19,13 +22,21 @@ type PathSurface = Exclude<LandingSurface, "design" | "adoption">;
  * CHECK reads one; `satisfies` holds each to a landing surface, and `IMPACT_TYPE_LABELS` (keyed by
  * every path surface) fails the build where a surface is added there and not here.
  */
-export const IMPACT_TYPES = ["ui", "api", "logic", "data", "config", "runner"] as const satisfies readonly PathSurface[];
+export const IMPACT_TYPES = [
+	"ui",
+	"api",
+	"logic",
+	"data",
+	"config",
+	"runner",
+] as const satisfies readonly PathSurface[];
 export type ImpactType = (typeof IMPACT_TYPES)[number];
 
 /** Each impact type's label, the landing surface's own. */
-export const IMPACT_TYPE_LABELS: Readonly<Record<PathSurface, string>> = Object.fromEntries(
-	IMPACT_TYPES.map((t) => [t, LANDING_SURFACE_LABELS[t]]),
-) as Record<ImpactType, string> satisfies Record<PathSurface, string>;
+export const IMPACT_TYPE_LABELS: Readonly<Record<PathSurface, string>> =
+	Object.fromEntries(
+		IMPACT_TYPES.map((t) => [t, LANDING_SURFACE_LABELS[t]]),
+	) as Record<ImpactType, string> satisfies Record<PathSurface, string>;
 
 export const IMPACT_RATINGS = ["low", "medium", "high"] as const;
 export type ImpactRating = (typeof IMPACT_RATINGS)[number];
@@ -33,7 +44,14 @@ export type ImpactRating = (typeof IMPACT_RATINGS)[number];
 /** The rating that holds: a change rated so waits for a green cleanup, a red rated so holds its issue. */
 export const HOLDING_RATING: ImpactRating = "high";
 
-const LIMITS = { reason: 600, where: 500, detail: 2000, check: 200, items: 50, listed: 500 } as const;
+const LIMITS = {
+	reason: 600,
+	where: 500,
+	detail: 2000,
+	check: 200,
+	items: 50,
+	listed: 500,
+} as const;
 
 const text = (what: string, max: number) =>
 	z
@@ -124,10 +142,14 @@ export type CleanupResult = (typeof CLEANUP_RESULTS)[number];
  * `POST /api/projects/:id/cleanup-reports` (BC-9): what one cleanup run cleared, what remains and why.
  * Every debt open when it reports is named once, in `cleared` or `remains`. `covers` names the issues
  * rated high whose merge the green head carries, which the run checks with its own git; only a green
- * report covers anything.
+ * report covers anything. `base.sha` is checked against the project's source host: a commit on
+ * `base.branch` there, or the report is refused (ISS-912). A later report naming the same `fire`
+ * supersedes the one before it, which is kept and reads as superseded.
  */
 export const cleanupReportRequestSchema = z.strictObject({
-	fire: z.uuid("fire is the id of the schedule fire that started this run").optional(),
+	fire: z
+		.uuid("fire is the id of the schedule fire that started this run")
+		.optional(),
 	base: z.strictObject({
 		branch: z.string().trim().min(1).max(200),
 		sha: wholeShaSchema("base.sha"),
@@ -140,7 +162,10 @@ export const cleanupReportRequestSchema = z.strictObject({
 	remains: z
 		.array(z.strictObject({ debt: z.uuid(), why: text("why", LIMITS.reason) }))
 		.max(LIMITS.listed),
-	covers: z.array(z.string().trim().min(1).max(200)).max(LIMITS.items).optional(),
+	covers: z
+		.array(z.string().trim().min(1).max(200))
+		.max(LIMITS.items)
+		.optional(),
 });
 export type CleanupReportRequest = z.infer<typeof cleanupReportRequestSchema>;
 
@@ -154,14 +179,23 @@ export const CLEANUP_REFUSAL_CODES = [
 	"CLEANUP_COVERS_RED",
 	"CLEANUP_COVERS_NOT_HIGH",
 	"CLEANUP_RESULT_DISAGREES",
+	"CLEANUP_BASE_NOT_ON_BRANCH",
+	"CLEANUP_BASE_UNCHECKABLE",
 ] as const;
 export type CleanupRefusalCode = (typeof CLEANUP_REFUSAL_CODES)[number];
 
 /** Why a cleanup fire started nothing, recorded as its refusal (`schedule_runs.refusal`). */
-export const CLEANUP_FIRE_REFUSALS = ["FAST_DELIVERY_OFF", "CLEANUP_RUN_LIVE"] as const;
+export const CLEANUP_FIRE_REFUSALS = [
+	"FAST_DELIVERY_OFF",
+	"CLEANUP_RUN_LIVE",
+] as const;
 
 /** The default cleanup window: end of day, UTC, until a person re-times the schedule. */
-export const CLEANUP_WINDOW_DEFAULT = { cron: "0 18 * * *", timeZone: null, name: "Cleanup window" } as const;
+export const CLEANUP_WINDOW_DEFAULT = {
+	cron: "0 18 * * *",
+	timeZone: null,
+	name: "Cleanup window",
+} as const;
 
 export interface ImpactView {
 	id: string;
@@ -203,7 +237,20 @@ export interface CleanupReportView {
 	covers: { issueId: string; issueKey: string }[];
 	reportedBy: string | null;
 	reportedAt: string;
+	/** The later report from the same fire that stands in its place, or null while it is current (ISS-912). */
+	supersededBy: string | null;
 }
+
+/** `GET /api/projects/:id/cleanup-reports`: current reports only, unless `superseded=include` asks for every one. */
+export const cleanupReportsQuerySchema = z.strictObject({
+	superseded: z
+		.literal("include", {
+			error:
+				"superseded is `include`, which lists superseded reports beside the current ones",
+		})
+		.optional(),
+});
+export type CleanupReportsQuery = z.infer<typeof cleanupReportsQuerySchema>;
 
 /** `GET /api/projects/:id/debts`: the ledger, the changes waiting on a cleanup, and the window. */
 export interface DebtLedgerView {
@@ -211,7 +258,12 @@ export interface DebtLedgerView {
 	open: DebtView[];
 	cleared: DebtView[];
 	/** Issues rated high that no green cleanup covers yet: held from production (BC-5). */
-	waiting: { issueId: string; issueKey: string; status: string; impact: Impact }[];
+	waiting: {
+		issueId: string;
+		issueKey: string;
+		status: string;
+		impact: Impact;
+	}[];
 	window: {
 		scheduleId: string;
 		cron: string;

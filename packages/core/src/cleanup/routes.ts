@@ -4,6 +4,7 @@
 import {
   carryDebtRequestSchema,
   cleanupReportRequestSchema,
+  cleanupReportsQuerySchema,
   debtEvidenceRequestSchema,
   recordDebtsRequestSchema,
   recordImpactRequestSchema,
@@ -169,7 +170,7 @@ cleanupProjectRoutes.post(
   requiresOnParam('project.write'),
   strictBody(
     cleanupReportRequestSchema,
-    '{ fire?, base: { branch, sha }, result: green | red, ci?, cleared: [{ debt, how }], remains: [{ debt, why }], covers?: [issue] } reports a cleanup run (REQ-79 BC-9)',
+    "{ fire?, base: { branch, sha }, result: green | red, ci?, cleared: [{ debt, how }], remains: [{ debt, why }], covers?: [issue] } reports a cleanup run (REQ-79 BC-9); base.sha is a full 40-hex commit on base.branch in the project's source, and a later report naming the same fire supersedes the earlier one",
   ),
   async (c) =>
     c.json(
@@ -185,7 +186,8 @@ cleanupProjectRoutes.post(
 cleanupProjectRoutes.get(
   '/:projectId/cleanup-reports',
   projectParam,
-  noQuery,
+  zValidator('query', cleanupReportsQuerySchema),
   requiresOnParam('project.read'),
-  async (c) => c.json(await listCleanupReports(c.req.valid('param').projectId)),
+  async (c) =>
+    c.json(await listCleanupReports(c.req.valid('param').projectId, c.req.valid('query'))),
 );

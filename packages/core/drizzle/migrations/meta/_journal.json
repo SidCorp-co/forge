@@ -3809,6 +3809,13 @@
       "when": 1834617600000,
       "tag": "0598_a_defect_stall_keeps_its_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 599,
+      "version": "7",
+      "when": 1834704000000,
+      "tag": "0599_a_later_cleanup_report_supersedes_its_fires_earlier_one",
+      "breakpoints": true
     }
   ]
 }

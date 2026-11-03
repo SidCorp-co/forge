@@ -12,7 +12,7 @@ import type {
   ImpactView,
 } from '@forge/contracts/cleanup';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 import {
@@ -327,7 +327,7 @@ export async function ratedOpenIssues(
     );
 }
 
-/** When a green cleanup report last covered each issue, among `issueIds`. */
+/** When a current green cleanup report last covered each issue, among `issueIds`; a superseded one covers nothing. */
 export async function greenCoverage(
   projectId: string,
   issueIds: readonly string[],
@@ -339,6 +339,7 @@ export async function greenCoverage(
            jsonb_array_elements_text(r.covers) AS c(issue_id)
      WHERE r.project_id = ${projectId}
        AND r.result = 'green'
+       AND r.superseded_by IS NULL
        AND c.issue_id IN (${sql.join(
          issueIds.map((id) => sql`${id}`),
          sql`, `,
@@ -347,6 +348,11 @@ export async function greenCoverage(
   return new Map(rows.map((r) => [r.issue_id, new Date(r.at)]));
 }
 
+/**
+ * Keep a report, and clear the debts it names cleared. A report naming its fire supersedes every
+ * current report that fire filed before it (ISS-912): those are kept, naming this one, and the fire's
+ * reports are taken one at a time so two filed at once still leave exactly one current.
+ */
 export async function insertReport(
   tx: Tx,
   row: {
@@ -355,8 +361,11 @@ export async function insertReport(
     covers: readonly string[];
     reportedBy: string | null;
   },
-): Promise<typeof cleanupReports.$inferSelect> {
+): Promise<{ row: typeof cleanupReports.$inferSelect; supersedes: string[] }> {
   const { report } = row;
+  if (report.fire) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${report.fire}, 912))`);
+  }
   const [r] = await tx
     .insert(cleanupReports)
     .values({
@@ -373,6 +382,19 @@ export async function insertReport(
     })
     .returning();
   if (!r) throw new Error('cleanup_reports: insert returned no row');
+  const superseded = report.fire
+    ? await tx
+        .update(cleanupReports)
+        .set({ supersededBy: r.id })
+        .where(
+          and(
+            eq(cleanupReports.scheduleRunId, report.fire),
+            isNull(cleanupReports.supersededBy),
+            ne(cleanupReports.id, r.id),
+          ),
+        )
+        .returning({ id: cleanupReports.id })
+    : [];
   const at = new Date();
   for (const c of report.cleared) {
     await tx
@@ -386,14 +408,24 @@ export async function insertReport(
         ),
       );
   }
-  return r;
+  return { row: r, supersedes: superseded.map((s) => s.id) };
 }
 
-export async function readReports(projectId: string, limit = 50): Promise<CleanupReportView[]> {
+/** The project's reports, newest first: the current ones, or with `superseded` every one. */
+export async function readReports(
+  projectId: string,
+  opts: { superseded?: boolean } = {},
+  limit = 50,
+): Promise<CleanupReportView[]> {
   const rows = await db
     .select()
     .from(cleanupReports)
-    .where(eq(cleanupReports.projectId, projectId))
+    .where(
+      and(
+        eq(cleanupReports.projectId, projectId),
+        opts.superseded ? undefined : isNull(cleanupReports.supersededBy),
+      ),
+    )
     .orderBy(desc(cleanupReports.createdAt))
     .limit(limit);
   const covered = rows.flatMap((r) => r.covers as string[]);
@@ -419,10 +451,11 @@ export function reportView(
     })),
     reportedBy: r.reportedBy,
     reportedAt: r.createdAt.toISOString(),
+    supersededBy: r.supersededBy,
   };
 }
 
-/** The project's newest cleanup report on `branch`, or null where none was filed on it. */
+/** The project's newest current cleanup report on `branch`, or null where none stands on it. */
 export async function lastReport(
   executor: Pick<Tx, 'select'>,
   projectId: string,
@@ -437,7 +470,13 @@ export async function lastReport(
       reportedAt: cleanupReports.createdAt,
     })
     .from(cleanupReports)
-    .where(and(eq(cleanupReports.projectId, projectId), eq(cleanupReports.branch, branch)))
+    .where(
+      and(
+        eq(cleanupReports.projectId, projectId),
+        eq(cleanupReports.branch, branch),
+        isNull(cleanupReports.supersededBy),
+      ),
+    )
     .orderBy(desc(cleanupReports.createdAt), desc(cleanupReports.id))
     .limit(1);
   return r ?? null;
