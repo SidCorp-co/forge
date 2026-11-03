@@ -484,7 +484,9 @@ export const INTEGRATION_REFUSAL_STATUSES = {
 	WEBHOOK_ROUTE_REMOVED: 404,
 	BINDING_WRITE_MOVED: 400,
 	...SENTRY_REFUSAL_STATUSES,
-} as const satisfies RefusalStatuses<IntegrationRefusalCode | SentryRefusalCode>;
+} as const satisfies RefusalStatuses<
+	IntegrationRefusalCode | SentryRefusalCode
+>;
 
 /**
  * Why a browser GitHub sent back could not finish connecting, carried to the web Integrations page
