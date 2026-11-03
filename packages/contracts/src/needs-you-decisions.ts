@@ -227,10 +227,12 @@ export const decisionRecommendationSchema = z.strictObject({
 	by: z.enum(["asker", "assistant", "rule", "steward"]),
 });
 
-/** The record a decision or a left-out row opens, as `ui.open` takes it. */
+/**
+ * The record a decision or a left-out row opens, as `ui.open` takes it: a product item, never an
+ * issue, which the agents work (REQ-68 BC-6).
+ */
 export const decisionOpensSchema = z.strictObject({
 	kind: z.enum([
-		"issue",
 		"requirement",
 		"feedback",
 		"workflow",
@@ -258,7 +260,6 @@ export const decisionEvidenceSchema = z.strictObject({
 			revision: z.int().min(1).nullable(),
 		})
 		.nullable(),
-	plan: z.boolean().nullable(),
 	criteria: z.strictObject({
 		count: z.int().min(0),
 		/** The BC codes the live criteria trace, each once, in code order. */

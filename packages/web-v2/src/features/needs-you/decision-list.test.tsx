@@ -20,11 +20,11 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
   decisions: [
     {
       group: "answer",
-      area: "issues",
-      entity: "issue",
-      key: "ISS-1",
+      area: "requirements",
+      entity: "requirement",
+      key: "REQ-1",
       title: "Export",
-      opens: { kind: "issue", key: "ISS-1" },
+      opens: { kind: "requirement", key: "REQ-1" },
       question: "Keep the old export format or move to the new one?",
       changes: "What happens next on it",
       impact: "It waits on this until it is decided.",
@@ -85,7 +85,7 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["Move to the new one", "Keep the old format"]);
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.hasAttribute("data-recommended"))).toEqual([true, false]);
     // the item's title leads its link; its key sits behind it (ISS-865)
-    expect(within(first).getByRole("link", { name: "Export" })).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
+    expect(within(first).getByRole("link", { name: "Export" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-1");
     expect(screen.getByTestId("needs-you-left-out")).toHaveTextContent(
       "Left out, not decisions: 37 drafts nobody has proposed merging or dropping yet, 2 of your own drafts to finish.",
     );
@@ -99,11 +99,11 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
       decisions: [
         {
           group: "answer",
-          area: "issues",
-          entity: "issue",
-          key: "ISS-1",
+          area: "requirements",
+          entity: "requirement",
+          key: "REQ-1",
           title: "Import",
-          opens: { kind: "issue", key: "ISS-1" },
+          opens: { kind: "requirement", key: "REQ-1" },
           question: "Which identifier should the referral import match on?",
           changes: "What happens next on it",
           impact: "It waits on this until it is decided.",
@@ -237,14 +237,14 @@ describe("a dense list", () => {
     const first = screen.getAllByTestId("needs-you-decision")[0];
     if (!first) throw new Error("no decision drawn");
     const question = within(first).getByTestId("needs-you-decision-question");
-    expect(question).toHaveAttribute("data-item", "Export · ISS-1");
+    expect(question).toHaveAttribute("data-item", "Export · REQ-1");
     // the title is no visible text: only the screen reader's, after the question
     expect([...first.querySelectorAll("*")].filter((e) => !e.closest(".sr-only") && e.childElementCount === 0 && e.textContent === "Export")).toHaveLength(0);
     const open = within(question).getByRole("link");
-    expect(open).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
-    expect(open).toHaveAccessibleName(/move to the new one\?\s*· Export · ISS-1$/);
+    expect(open).toHaveAttribute("href", "/projects/hop/requirements/REQ-1");
+    expect(open).toHaveAccessibleName(/move to the new one\?\s*· Export · REQ-1$/);
     open.focus();
-    expect(await screen.findByText("Export · ISS-1", { selector: ":not(.sr-only)" })).toBeInTheDocument();
+    expect(await screen.findByText("Export · REQ-1", { selector: ":not(.sr-only)" })).toBeInTheDocument();
   });
 
   it("says on its more line, as its hover, what the read left out", () => {

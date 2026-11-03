@@ -41,8 +41,8 @@ function delivery(p50At: string): DeliveryForecast {
 
 function wait(key: string): StatusWait {
 	return {
-		area: "issues",
-		entity: "issue",
+		area: "requirements",
+		entity: "requirement",
 		key,
 		title: key,
 		waitingOn: { kind: "person" },

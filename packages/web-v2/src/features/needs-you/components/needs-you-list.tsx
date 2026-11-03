@@ -10,7 +10,7 @@ import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-la
 import type { Copy } from "@/lib/i18n/product-copy";
 import { said, saidOrNull } from "@/lib/i18n/said";
 import { formatAge } from "@/lib/utils/format";
-import { needsYouHref, needsYouKeyLabel, needsYouPeekHref } from "../routes";
+import { needsYouHref, needsYouKeyLabel } from "../routes";
 import { NEEDS_YOU_AREAS, type NeedsYouItem } from "../types";
 import { Written } from "@/lib/i18n/written";
 
@@ -52,7 +52,7 @@ export function NeedsYouList({ items, slug, foldKey, empty }: { items: NeedsYouI
   const groups = useMemo(() => needsYouGroups(items, (a) => label("needsYouArea", a)), [items, label]);
   const open = (key: string) => {
     const n = items.find((r) => `${r.entity}:${r.key}` === key);
-    if (n) router.push(needsYouPeekHref(slug, n));
+    if (n) router.push(needsYouHref(slug, n));
   };
   return <GroupedList ariaLabel={t("dash.needsYou")} groups={groups} fold={fold} row={row} selected={null} onPeek={open} empty={empty} />;
 }

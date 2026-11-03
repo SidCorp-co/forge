@@ -108,10 +108,10 @@ export function readChatDecideResult(text: string): ChatDecideResult | null {
 export const decisionOutcomeRequestSchema = z.strictObject({
 	/** The Needs-you decision id the card carried. */
 	decision: z.string().trim().min(1).max(300),
-	/** The item the decision opens, as the card carried it; null where it opens none. */
+	/** The item the decision opens, as the card carried it; null where it opens none. Never an issue (REQ-68 BC-6). */
 	opens: z
 		.strictObject({
-			kind: z.enum(["issue", "requirement", "feedback"]),
+			kind: z.enum(["requirement", "feedback"]),
 			key: z.string().trim().regex(/^[A-Za-z][A-Za-z0-9]*-\d+$/),
 		})
 		.nullable(),
