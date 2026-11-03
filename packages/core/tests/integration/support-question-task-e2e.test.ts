@@ -346,6 +346,8 @@ describe('ISS-916: an owner’s answer reaches a question he owes, wherever he w
     expect(note).toContain(`question ${id}`);
     expect(note).toContain('Which workspace key should Mộc use?');
     expect(note).toContain(`- and ${(open?.n ?? 0) - 5} more`);
+    // an answer the agent cannot match is asked about once in that thread, never filed as a new item
+    expect(note).toContain('ask him which, once, in that same thread, and file nothing');
     expect(recorded.isError, JSON.stringify(recorded)).toBe(false);
     const q = await question(id);
     expect(q?.status).toBe('answered');

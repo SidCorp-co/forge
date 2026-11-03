@@ -68,6 +68,7 @@ export async function ownerOwedNote(room: RoomRow): Promise<string | null> {
     ...lines,
     ...more,
     'Where his message answers one, record it with support.answer_question { thread, forgeQuestion, message, option? } and file nothing for it; only his own message answers one.',
+    'Where it may answer one but you cannot tell which, ask him which, once, in that same thread, and file nothing until he says.',
   ].join('\n');
 }
 
