@@ -15,7 +15,9 @@ import {
   orgResource,
   requireOrgCan,
   requireOrgHeld,
+  requiresByRule,
   requiresOnParam,
+  requiresSelf,
 } from '../permissions/index.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
@@ -81,28 +83,91 @@ const memberParamSchema = z.object({ orgId: z.uuid(), userId: z.uuid() });
 
 export const orgRoutes = new Hono<{ Variables: AuthVars }>();
 
+type OrgRole = (typeof orgMemberRoles)[number];
+
+/** Who adds a member: org.admin, and org.own to grant `owner`. */
+export async function assertMayAddOrgMember(
+  callerId: string,
+  orgId: string,
+  role: OrgRole,
+): Promise<void> {
+  const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
+  if (role === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
+}
+
+/**
+ * Who changes a member: org.admin, and org.own where a role change grants `owner` or touches an
+ * owner (the member's row); a lenses-only patch is no permission change. A membership not there is
+ * not found, after the admin check.
+ */
+export async function assertMayChangeOrgMember(
+  callerId: string,
+  orgId: string,
+  targetUserId: string,
+  role: OrgRole | undefined,
+): Promise<OrgRole> {
+  const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
+  const targetRole = await orgMemberRole(orgId, targetUserId);
+  if (!targetRole) throw notFound('membership not found');
+  if (role !== undefined && (role === 'owner' || targetRole === 'owner')) {
+    requireOrgHeld(orgId, caller.role, 'org.own');
+  }
+  return targetRole;
+}
+
+/**
+ * Who removes a member: the member themself leaving (org.read), else org.admin, and org.own to
+ * remove an owner (the member's row); a membership not there is not found, after the role check.
+ */
+export async function assertMayDropOrgMember(
+  callerId: string,
+  orgId: string,
+  targetUserId: string,
+): Promise<OrgRole> {
+  const selfLeave = targetUserId === callerId;
+  const caller = await requireOrgCan(
+    actorFor(callerId),
+    selfLeave ? 'org.read' : 'org.admin',
+    orgResource(orgId),
+  );
+  const targetRole = await orgMemberRole(orgId, targetUserId);
+  if (!targetRole) throw notFound('membership not found');
+  if (targetRole === 'owner' && !selfLeave) requireOrgHeld(orgId, caller.role, 'org.own');
+  return targetRole;
+}
+
 orgRoutes.use('*', requireAuth(), assertEmailVerified());
 
 // My orgs + my role. The personal org is included (isPersonal flag lets the
 // UI pin/sort it).
-orgRoutes.get('/', noQuery, async (c) => {
-  const userId = c.get('userId');
-  return c.json(await listOrgsForUser(userId));
-});
+orgRoutes.get(
+  '/',
+  requiresSelf("the caller's own organizations and their role in each"),
+  noQuery,
+  async (c) => {
+    const userId = c.get('userId');
+    return c.json(await listOrgsForUser(userId));
+  },
+);
 
-orgRoutes.post('/', zValidator('json', createOrgSchema), async (c) => {
-  const { slug, name } = c.req.valid('json');
-  const userId = c.get('userId');
-  try {
-    const created = await createTeamOrg(userId, { slug, name });
-    return c.json({ ...created, role: 'owner' as const }, 201);
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      throw refuse('SLUG_TAKEN', 'this org slug is already taken; pick another', '/slug');
+orgRoutes.post(
+  '/',
+  requiresSelf('a team organization the caller creates, and owns'),
+  zValidator('json', createOrgSchema),
+  async (c) => {
+    const { slug, name } = c.req.valid('json');
+    const userId = c.get('userId');
+    try {
+      const created = await createTeamOrg(userId, { slug, name });
+      return c.json({ ...created, role: 'owner' as const }, 201);
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw refuse('SLUG_TAKEN', 'this org slug is already taken; pick another', '/slug');
+      }
+      throw err;
     }
-    throw err;
-  }
-});
+  },
+);
 
 orgRoutes.patch(
   '/:orgId',
@@ -174,14 +239,17 @@ orgRoutes.get(
 orgRoutes.post(
   '/:orgId/members',
   zValidator('param', orgParamSchema),
+  requiresByRule(
+    'orgs/routes.ts:assertMayAddOrgMember',
+    'org.admin on the organization, and org.own to grant owner (the body)',
+  ),
   zValidator('json', addMemberSchema),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const { email, role } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
-    if (role === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
+    await assertMayAddOrgMember(callerId, orgId, role);
     if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot have additional members');
     }
@@ -268,23 +336,21 @@ orgRoutes.delete(
 orgRoutes.patch(
   '/:orgId/members/:userId',
   zValidator('param', memberParamSchema),
+  requiresByRule(
+    'orgs/routes.ts:assertMayChangeOrgMember',
+    'org.admin on the organization, and org.own where a role change grants owner or touches one (the row)',
+  ),
   zValidator('json', patchMemberSchema),
   async (c) => {
     const { orgId, userId: targetUserId } = c.req.valid('param');
     const { role, lenses } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
+    // the owner-tier check is the rule's; the last-owner guard, like it, applies ONLY to a
+    // permission `role` change: a lenses-only patch has no permission effect
+    const targetRole = await assertMayChangeOrgMember(callerId, orgId, targetUserId, role);
 
-    const targetRole = await orgMemberRole(orgId, targetUserId);
-    if (!targetRole) throw notFound('membership not found');
-
-    // Owner-tier + last-owner guards apply ONLY to a permission `role` change.
-    // A lenses-only patch is a soft attribute (no permission effect), so it must
-    // NOT be blocked on an owner-tier target.
     if (role !== undefined) {
-      // Touching the owner tier (granting or revoking) is owner-only.
-      if (role === 'owner' || targetRole === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
       if (targetRole === 'owner' && role !== 'owner') {
         if ((await orgOwnerCount(orgId)) <= 1) {
           throw refuse(
@@ -306,33 +372,32 @@ orgRoutes.patch(
   },
 );
 
-orgRoutes.delete('/:orgId/members/:userId', zValidator('param', memberParamSchema), async (c) => {
-  const { orgId, userId: targetUserId } = c.req.valid('param');
-  const callerId = c.get('userId');
+orgRoutes.delete(
+  '/:orgId/members/:userId',
+  zValidator('param', memberParamSchema),
+  requiresByRule(
+    'orgs/routes.ts:assertMayDropOrgMember',
+    'the member themself leaving (org.read), else org.admin, and org.own to remove an owner (the row)',
+  ),
+  async (c) => {
+    const { orgId, userId: targetUserId } = c.req.valid('param');
+    const callerId = c.get('userId');
 
-  const selfLeave = targetUserId === callerId;
-  const caller = await requireOrgCan(
-    actorFor(callerId),
-    selfLeave ? 'org.read' : 'org.admin',
-    orgResource(orgId),
-  );
+    const targetRole = await assertMayDropOrgMember(callerId, orgId, targetUserId);
 
-  const targetRole = await orgMemberRole(orgId, targetUserId);
-  if (!targetRole) throw notFound('membership not found');
-
-  if (targetRole === 'owner') {
-    if (!selfLeave) requireOrgHeld(orgId, caller.role, 'org.own');
-    if ((await orgOwnerCount(orgId)) <= 1) {
-      throw refuse(
-        'LAST_OWNER',
-        'the org must keep at least one owner; promote another owner first',
-      );
+    if (targetRole === 'owner') {
+      if ((await orgOwnerCount(orgId)) <= 1) {
+        throw refuse(
+          'LAST_OWNER',
+          'the org must keep at least one owner; promote another owner first',
+        );
+      }
     }
-  }
 
-  await dropOrgMember(orgId, targetUserId);
-  return c.body(null, 204);
-});
+    await dropOrgMember(orgId, targetUserId);
+    return c.body(null, 204);
+  },
+);
 
 orgRoutes.route('/', agentAccountRoutes);
 

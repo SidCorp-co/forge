@@ -28,6 +28,9 @@
  * @direct-test-of packages/core/src/ecosystem/ecosystem-declarations.ts
  * @direct-test-of packages/core/src/ecosystem/contract/routes.ts
  * @direct-test-of packages/core/src/ecosystem/standing/routes.ts
+ * @direct-test-of packages/core/src/orgs/routes.ts
+ * @direct-test-of packages/core/src/projects/routes.ts
+ * @direct-test-of packages/core/src/status-reports/routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -257,5 +260,63 @@ describe('a contract route declared by its counterparty rule (contractReader), n
     expect(party.status, JSON.stringify(party.json)).toBe(403);
     const member = await sender(w)('platform', 'GET', path);
     expect(member.status, JSON.stringify(member.json)).toBe(200);
+  });
+});
+
+describe("an organization's member routes, declared by their extracted rules", () => {
+  it('lets an admin add a member but not grant owner (org.own), and a member leave themself', async () => {
+    const owner = await createTestUser({ verified: true });
+    const admin = await createTestUser({ verified: true });
+    const third = await createTestUser({ verified: true });
+    const ownerToken = await userToken(owner.id);
+    const adminToken = await userToken(admin.id);
+
+    const created = await api(ownerToken, 'POST', '/api/orgs', {
+      slug: `declared-${randomUUID().slice(0, 8)}`,
+      name: 'Declared',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const orgId = created.body.id as string;
+    const mine = await api(ownerToken, 'GET', '/api/orgs');
+    expect(JSON.stringify(mine.body)).toContain(orgId);
+
+    const added = await api(ownerToken, 'POST', `/api/orgs/${orgId}/members`, {
+      email: admin.email,
+      role: 'admin',
+    });
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+
+    const grant = await api(adminToken, 'POST', `/api/orgs/${orgId}/members`, {
+      email: third.email,
+      role: 'owner',
+    });
+    expect(grant.status, JSON.stringify(grant.body)).toBe(403);
+    expect(JSON.stringify(grant.body)).toContain('org.own');
+
+    const demote = await api(adminToken, 'PATCH', `/api/orgs/${orgId}/members/${owner.id}`, {
+      role: 'member',
+    });
+    expect(demote.status, JSON.stringify(demote.body)).toBe(403);
+
+    const left = await api(adminToken, 'DELETE', `/api/orgs/${orgId}/members/${admin.id}`);
+    expect(left.status, JSON.stringify(left.body)).toBe(204);
+  });
+});
+
+describe("a project's settings routes, declared org.admin resolved on its organization", () => {
+  it('refuses archive to a project admin who is no org admin, and answers the org owner', async () => {
+    const owner = await createTestUser({ verified: true });
+    const projectAdmin = await createTestUser({ verified: true });
+    const { id } = await createTestProject(owner.id);
+    await addProjectMember(id, projectAdmin.id, 'admin');
+
+    const refused = await api(
+      await userToken(projectAdmin.id),
+      'POST',
+      `/api/projects/${id}/archive`,
+    );
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    const answered = await api(await userToken(owner.id), 'POST', `/api/projects/${id}/archive`);
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
   });
 });
