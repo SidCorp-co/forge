@@ -579,6 +579,8 @@ export interface OutboxEventPayloads
 		approvalId: string;
 		decision: "approved" | "returned";
 		reason: string | null;
+		/** The unproven criteria the approval carried by name, each still owed after the release (ISS-914). */
+		carried: { issue: string; n: number; standing: string; why: string }[];
 		decidedBy: string;
 		decidedAt: string;
 	};

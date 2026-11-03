@@ -82,8 +82,7 @@ export const RELEASE_STATE_HINTS: Record<ReleaseState, string> = {
 	returned:
 		"returned: an admin sent it back; the master answers before asking again",
 	shipped: "shipped: the release run stamped the version released",
-	landed:
-		"landed: it landed on a branch production does not deploy from",
+	landed: "landed: it landed on a branch production does not deploy from",
 	failed: "failed: the release run ended without shipping",
 	aborted: "aborted: the release run was stopped on purpose",
 };
@@ -677,7 +676,24 @@ export interface ReleaseApprovalView {
 	decidedBy: ReleasePerson | null;
 	decidedAt: string | null;
 	reason: string | null;
+	/**
+	 * The unproven criteria the approver carried past the release approval checklist by name, each at
+	 * its standing when decided and with the approver's why (ISS-914). Empty where nothing was carried.
+	 * A carried criterion stays owed after the release: nothing marks it proven.
+	 */
+	carried: ReleaseCarriedCriterion[];
 }
+
+/** One criterion an approval carried unproven (ISS-914): the issue, its criterion, why it was not proven, the approver's why. */
+export interface ReleaseCarriedCriterion {
+	issue: string;
+	n: number;
+	standing: string;
+	why: string;
+}
+
+/** The longest `why` a carry takes, in characters. */
+export const RELEASE_CARRY_WHY_MAX = 1000;
 
 /**
  * A person's decision on a drafted release, keyed on its version, on a project that declares no
@@ -919,8 +935,10 @@ const RELEASE_APPROVAL_REFUSAL_CODES = [
 	"RELEASE_VERSION_SHAPE",
 	/** A draft's approval asked where a draft is not what is approved: production is declared, or a run is cut (ISS-869). */
 	"RELEASE_DRAFT_NOT_APPROVABLE",
-	/** A draft's approval from an agent's token: its approvers are the people who hold releases.approve (ISS-869). */
-	"RELEASE_APPROVAL_IS_A_PERSONS",
+	/** An approval carrying a criterion the release already proves at the request's commit (ISS-914). */
+	"RELEASE_CARRY_PROVEN",
+	/** An approval carrying an issue or criterion the release does not hold (ISS-914). */
+	"RELEASE_CARRY_UNKNOWN",
 ] as const;
 /** Every code a release door refuses with, in the one refusal envelope; `RELEASE_REFUSED` when several differ. */
 export const RELEASE_REFUSAL_CODES = [
@@ -1020,7 +1038,7 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_RANGE_NO_BASE: 409,
 	RELEASE_RANGE_BASE_MOVED: 409,
 	RELEASE_VERSION_UNKNOWN: 404,
-	RELEASE_APPROVAL_IS_A_PERSONS: 403,
+	RELEASE_CARRY_PROVEN: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
 /** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */
@@ -1057,7 +1075,9 @@ export function servedCommits(serving: ServingReading): string[] {
 }
 
 /** Whether a release waits on a person's approval: gate `release_approval` as the project's profile resolves it (REQ-76); under standard, `release.approval.required`. */
-export function releaseApprovalRequired(document: GateSwitches | null | undefined): boolean {
+export function releaseApprovalRequired(
+	document: GateSwitches | null | undefined,
+): boolean {
 	return projectGate(document, null, "release_approval").mode === "enforce";
 }
 

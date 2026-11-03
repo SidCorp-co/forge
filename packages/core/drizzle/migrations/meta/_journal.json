@@ -3753,6 +3753,13 @@
       "when": 1833926400000,
       "tag": "0590_an_mcp_client_records_the_issuer_it_registered_at",
       "breakpoints": true
+    },
+    {
+      "idx": 591,
+      "version": "7",
+      "when": 1834012800000,
+      "tag": "0591_an_approval_carries_its_unproven_criteria_by_name",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@
 
 import { RELEASE_APPROVAL_CHECKLIST } from '@forge/contracts/checklist-registry';
 import {
+  type ChecklistEvaluation,
   type ChecklistRefusal,
   checklistRefusals,
   evaluateChecklist,
@@ -25,12 +26,15 @@ import {
 } from '@forge/contracts/checklists';
 import { projectGate } from '@forge/contracts/gate-profiles';
 import { CRITERION_STANDING_LABELS } from '@forge/contracts/issue-vocabulary';
+import type { Refusal } from '@forge/contracts/refusal';
+import type { ReleaseCarriedCriterion } from '@forge/contracts/releases';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import { readProjectDocument } from '../project-config/index.js';
+import { type Carry, resolveCarry } from './approval-carry.js';
 import { type ChangeRequestBuild, changeRequestBuildsOf } from './change-request-build.js';
 import { mergeStepsOf } from './change-request-roster.js';
 import { criteriaAt, loadReleaseFacts } from './release-facts.js';
@@ -112,12 +116,17 @@ async function changeRequestBuildsFor(
   return changeRequestBuildsOf(projectId, ids);
 }
 
+/** The approval facts, with every criterion the release holds, which a carry is resolved against. */
+export interface ReleaseApprovalFacts extends ApprovalFacts {
+  criteria: { issue: string; n: number }[];
+}
+
 /** What the release `runId` carries, read for its approval at `build`, the commit it ships. */
 export async function approvalFactsOf(
   projectId: string,
   runId: string,
   build: string,
-): Promise<ApprovalFacts> {
+): Promise<ReleaseApprovalFacts> {
   const rows = await db
     .select({ id: issues.id, requirementId: issues.requirementId })
     .from(issues)
@@ -166,28 +175,74 @@ export async function approvalFactsOf(
           standing: c.unverified ?? CRITERION_STANDING_LABELS[c.standing].toLowerCase(),
         }));
     }),
+    criteria: ordered.flatMap((i) => i.criteria.map((c) => ({ issue: i.key, n: c.n }))),
     verdictsRequired: projectGate(doc?.document, null, 'release_criteria').mode === 'enforce',
     judgedOn: facts.judgedOn,
   };
 }
 
+const keyOf = (c: { issue: string; n: number }) => `${c.issue}#${c.n}`;
+
 /**
- * The refusals approving the release `runId` meets: each gap the checklist names, on the body's
- * `reason` where the approver's own answer is what is missing.
+ * The evaluation with the verdicts gap the approver carried as a `waived` answer: its value names
+ * each carried criterion with its standing and the approver's why, and its source is the carry.
+ */
+function carriedEvaluation(
+  evaluation: ChecklistEvaluation,
+  carried: readonly ReleaseCarriedCriterion[],
+): ChecklistEvaluation {
+  if (carried.length === 0 || !evaluation.gaps.some((g) => g.question === 'verdicts'))
+    return evaluation;
+  const gaps = evaluation.gaps.filter((g) => g.question !== 'verdicts');
+  return {
+    ...evaluation,
+    complete: gaps.length === 0,
+    gaps,
+    answers: [
+      ...evaluation.answers,
+      {
+        question: 'verdicts',
+        value:
+          `Carried unproven: ${carried.map((c) => `${c.issue} criterion ${c.n} (${c.standing}): ${c.why}`).join('; ')}.`.slice(
+            0,
+            2000,
+          ),
+        provenance: 'waived',
+        source: 'decision:carry',
+      },
+    ],
+  };
+}
+
+/**
+ * The refusals approving the release `runId` meets, and the criteria its approver carried: each
+ * gap the checklist names, on the body's `reason` where the approver's own answer is what is
+ * missing; each carry entry naming a proven or unknown criterion, on its own path. A criterion left
+ * unproven and not carried is still the verdicts gap, naming only what was not carried.
  */
 export async function approvalChecklistRefusals(
   projectId: string,
   runId: string,
   build: string,
   reason: string | undefined,
-): Promise<ChecklistRefusal[]> {
+  carry?: Carry,
+): Promise<{ refusals: Refusal[]; carried: ReleaseCarriedCriterion[] }> {
+  const facts = await approvalFactsOf(projectId, runId, build);
+  const resolved = carry ? resolveCarry(carry, facts) : { carried: [], refusals: [] };
+  if (resolved.refusals.length > 0) return { refusals: resolved.refusals, carried: [] };
   const given = parseAnswers(RELEASE_APPROVAL_CHECKLIST, reason === undefined ? {} : { reason });
-  if (!given.ok) return given.refusals.map((r) => ({ ...r, path: '/reason' }));
-  const judged = evaluateChecklist(RELEASE_APPROVAL_CHECKLIST, {
+  if (!given.ok)
+    return { refusals: given.refusals.map((r) => ({ ...r, path: '/reason' })), carried: [] };
+  const carriedKeys = new Set(resolved.carried.map(keyOf));
+  const owed = facts.unproven.filter((u) => !carriedKeys.has(keyOf(u)));
+  const evaluated = evaluateChecklist(RELEASE_APPROVAL_CHECKLIST, {
     given: given.answers,
-    record: approvalAnswersOf(await approvalFactsOf(projectId, runId, build)),
+    // what is still owed names the gap; where nothing is, the full list reads as the gap the carry waives
+    record: approvalAnswersOf(owed.length > 0 ? { ...facts, unproven: owed } : facts),
   });
-  return checklistRefusals(judged).map((r) =>
+  const judged = owed.length > 0 ? evaluated : carriedEvaluation(evaluated, resolved.carried);
+  const refusals: ChecklistRefusal[] = checklistRefusals(judged).map((r) =>
     r.question === 'reason' ? { ...r, path: '/reason' } : r,
   );
+  return { refusals, carried: refusals.length > 0 ? [] : resolved.carried };
 }

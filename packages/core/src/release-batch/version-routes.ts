@@ -112,7 +112,8 @@ releaseVersionRoutes.put(
 );
 
 // A drafted release decided by a listed approver, keyed on its version, on a project that declares no
-// production and so cuts no run to ask approval on (ISS-869): `{ decision, reason? }`, as a run's.
+// production and so cuts no run to ask approval on (ISS-869): `{ decision, reason? }`, as a run's,
+// but with no carry, since a draft is judged by no checklist (ISS-914).
 releaseVersionRoutes.post(
   '/:projectId/releases/:version/approval',
   versionParam,
@@ -121,11 +122,8 @@ releaseVersionRoutes.post(
   async (c) => {
     const { projectId, version } = c.req.valid('param');
     const userId = c.get('userId');
-    const agency = c.get('agency');
-    if (!agency)
-      throw new Error('release-batch: a draft decision reached its handler without an auth gate');
     const decision = parseDecision(c.req.valid('json'));
-    return c.json(await decideDraftApproval({ projectId, version, userId, agency, decision }), 201);
+    return c.json(await decideDraftApproval({ projectId, version, userId, decision }), 201);
   },
 );
 
@@ -193,9 +191,6 @@ releaseVersionRoutes.post(
   async (c) => {
     const { projectId, runId, approvalId } = c.req.valid('param');
     const userId = c.get('userId');
-    const agency = c.get('agency');
-    if (!agency)
-      throw new Error('release-batch: a decision reached its handler without an auth gate');
     await loadProjectAccess(projectId, userId);
     await assertRunOfProject(runId, projectId);
     const decision = parseDecision(c.req.valid('json'));

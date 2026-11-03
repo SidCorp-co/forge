@@ -327,9 +327,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
         !p.gates.some((g) => g.kind === 'blocker'),
       decide:
         s.viewer?.mayApprove === true &&
-        (p.state === 'draft'
-          ? s.draftsDecided && s.viewer.agency === 'human'
-          : approvalFacts(p)?.decision === null),
+        (p.state === 'draft' ? s.draftsDecided : approvalFacts(p)?.decision === null),
       split: split !== null,
     },
     split,

@@ -2,6 +2,7 @@ import {
   RELEASE_ATTEMPT_STAGES,
   RELEASE_HOLD_OWERS,
   type ReleaseAttemptStage,
+  type ReleaseCarriedCriterion,
 } from '@forge/contracts/releases';
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
@@ -95,6 +96,8 @@ export const releaseApprovals = pgTable(
     decidedByUser: uuid('decided_by_user').references(() => users.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     reason: text('reason'),
+    /** The unproven criteria an approval carried by name, each with the approver's why (ISS-914); empty where none. */
+    carried: jsonb('carried').$type<ReleaseCarriedCriterion[]>().notNull().default([]),
   },
   (t) => ({
     onePendingUq: uniqueIndex('release_approvals_one_pending_uq')

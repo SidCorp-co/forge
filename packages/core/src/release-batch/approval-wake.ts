@@ -43,7 +43,13 @@ export async function releaseRunSession(runId: string): Promise<string | null> {
 export function decisionMessage(p: Decided, decidedBy: string): string {
   const path = `/api/${releaseBatchPath(p.projectId, p.runId)}`;
   if (p.decision === 'approved') {
-    return `Release approval ${p.approvalId} was APPROVED by ${decidedBy} at ${p.decidedAt}. The production acts of release run ${p.runId} are allowed now: carry on with the release, and read the decision back with GET ${path}/state if you need it.`;
+    // an event recorded before ISS-914 has no carried list
+    const carried = p.carried ?? [];
+    const carriedLine =
+      carried.length === 0
+        ? ''
+        : ` It carried ${carried.length} unproven ${carried.length === 1 ? 'criterion' : 'criteria'} by the approver's word (${carried.map((c) => `${c.issue} #${c.n}`).join(', ')}); each stays owed after the release.`;
+    return `Release approval ${p.approvalId} was APPROVED by ${decidedBy} at ${p.decidedAt}.${carriedLine} The production acts of release run ${p.runId} are allowed now: carry on with the release, and read the decision back with GET ${path}/state if you need it.`;
   }
   return `Release approval ${p.approvalId} was RETURNED by ${decidedBy} at ${p.decidedAt}: "${p.reason ?? ''}". No production act is allowed on release run ${p.runId}. Answer that reason, then ask again with POST ${path}/approvals, or abort the batch with the reason.`;
 }

@@ -1,11 +1,11 @@
 // A drafted release decided by its listed approvers, keyed on its version (ISS-869). A project that
 // declares no production cuts no run (NO_RELEASE_GATE), so there is no request for a run's approval
 // to decide; where the project's own rule still asks its owner to approve the release before the
-// master acts on it, the owner decides the draft here. The decision is a person's: an agent's token is
-// refused, as the release's page names people only as its approvers. It stands for the roster it was
-// given on, and rests on no reading and no commit (owner ruling release-is-the-agents-record).
+// master acts on it, a holder of releases.approve decides the draft here: the permission alone decides,
+// and an agent's token holding it decides too (ADR 0007, owner ruling 2026-10-04). It stands for the
+// roster it was given on, and rests on no reading and no commit (owner ruling
+// release-is-the-agents-record).
 
-import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ReleaseDraftApprovalView } from '@forge/contracts/releases';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -17,12 +17,15 @@ import { peopleOf } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { readReleasePath } from '../project-config/index.js';
+import type { Carry } from './approval-carry.js';
 import { draftedVersion } from './draft-version.js';
 import { runCutAs } from './naming.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 
-type Decision = { decision: 'approve'; reason?: string } | { decision: 'return'; reason: string };
+type Decision =
+  | { decision: 'approve'; reason?: string; carry?: Carry }
+  | { decision: 'return'; reason: string };
 
 const sameRoster = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && [...a].sort().every((id, i) => id === [...b].sort()[i]);
@@ -81,14 +84,14 @@ export async function standingDraftApproval(
 
 /**
  * A listed approver's decision on the draft `version`, recorded for the roster waiting at the gate.
- * Refused by name: a token of an agent's, a viewer not holding releases.approve, a project that
- * declares production, a version cut as a run, and a version that is not the draft.
+ * Refused by name: an actor not holding releases.approve, a carry (a draft is judged by no
+ * checklist, so nothing on it is carried), a project that declares production, a version cut as a
+ * run, and a version that is not the draft.
  */
 export async function decideDraftApproval(input: {
   projectId: string;
   version: string;
   userId: string;
-  agency: ActorAgency;
   decision: Decision;
 }): Promise<ReleaseDraftApprovalView> {
   const { projectId, version, userId, decision } = input;
@@ -99,10 +102,11 @@ export async function decideDraftApproval(input: {
     'approving or returning a release',
   );
   if (denied) throw new RefusalError([denied], denied.code);
-  if (input.agency === 'agent') {
+  if (decision.decision === 'approve' && decision.carry !== undefined) {
     throw refuseRelease(
-      'RELEASE_APPROVAL_IS_A_PERSONS',
-      `a drafted release is decided by its listed approvers, the people who hold releases.approve, and this request carries an agent's token. Ask the approver with POST /api/questions, naming the project rule that asks for their approval in \`rule\`.`,
+      'RELEASE_APPROVAL_SHAPE',
+      'a drafted release is decided on its roster and judged by no release approval checklist, so it has no unproven criterion to carry: send the approval without carry',
+      '/carry',
     );
   }
   const why = await draftNotApprovableWhy(projectId);

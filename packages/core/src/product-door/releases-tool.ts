@@ -1,5 +1,5 @@
 // `forge_releases`: a project's releases as the Releases screen and the release page read them, and
-// the two acts a person takes on one — naming it, and deciding the approval it waits on. Every action
+// the two acts taken on one — naming it, and deciding the approval it waits on. Every action
 // calls the service its REST route calls (`release-batch/version-routes.ts`, `release-page/routes.ts`).
 
 import { RELEASES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
@@ -40,18 +40,24 @@ const input = z.strictObject({
   summary: z.string().optional().describe('name: two or three sentences on what it brings'),
   decision: z.enum(['approve', 'return']).optional(),
   reason: z.string().optional().describe('decide: why; a return must say why'),
+  carry: z
+    .unknown()
+    .optional()
+    .describe(
+      'decide approve: the unproven criteria carried by your word, [{ issue: "ISS-n", n, why }] or { all: true, why }',
+    ),
 });
 type Input = z.infer<typeof input>;
 
 const SHAPE =
-  '{ action, projectId, version?, state?, limit?, view?, name?, summary?, decision?, reason? }';
+  '{ action, projectId, version?, state?, limit?, view?, name?, summary?, decision?, reason?, carry? }';
 
-const DESCRIPTION = `A project's releases: what shipped, what is drafted, what waits on approval, and the acts a person takes on one. Every answer about a release still moving carries \`progress\`: whether work is running now, and when it is likely done (the forecast's dates), or plainly why there is no date.
+const DESCRIPTION = `A project's releases: what shipped, what is drafted, what waits on approval, and the acts taken on one. Every answer about a release still moving carries \`progress\`: whether work is running now, and when it is likely done (the forecast's dates), or plainly why there is no date.
 - action=list { projectId, state?, limit? }: releases newest first, each with version, state (${RELEASE_STATES.join(' | ')}), name, summary, releasedAt, issue count, requirements, what was verified, and whom it waits on. \`draft\` is the release now gathering issues: how many are still to land, which an agent is working on, and when it is likely in people's hands.
 - action=get { projectId, version }: one release in full: what users get (notes by section), the requirements it completes, its issues with their proof, what stands in the way, the approval, every attempt at it.
 - action=page { projectId, version, view? }: the release page a reader reads (user view, or developer for the technical notes).
 - action=name { projectId, version, name, summary }: name a drafted or cut release. Needs project admin, as cutting does.
-- action=decide { projectId, version, decision: approve | return, reason? }: decide the approval request the release run is waiting on, or, on a project that declares no production and so cuts no run, the drafted release itself (an agent's token is refused RELEASE_APPROVAL_IS_A_PERSONS). This is a person's act: it needs releases.approve on the project, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). A return must say why. Read the release (get) before you decide, and decide only when the person asked you to.`;
+- action=decide { projectId, version, decision: approve | return, reason?, carry? }: decide the approval request the release run is waiting on, or, on a project that declares no production and so cuts no run, the drafted release itself. It needs releases.approve on the project, whoever holds it, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). An approval may carry unproven criteria by the approver's word: \`carry: [{ issue: "ISS-n", n, why }]\` or \`carry: { all: true, why }\`; each carried criterion is recorded on the approval and stays owed after the release, one not carried still refuses, and one proven or not on the release is refused RELEASE_CARRY_PROVEN or RELEASE_CARRY_UNKNOWN. A return must say why and carries nothing. Read the release (get) before you decide, and decide only when the person asked you to.`;
 
 async function viewerFactsOf(ctx: McpContext, projectId: string): Promise<ViewerFacts> {
   const access = await readAccess(ctx, projectId);
@@ -168,6 +174,7 @@ async function decide(ctx: McpContext, i: Input) {
   const decision = parseDecision({
     decision: i.decision,
     ...(i.reason === undefined ? {} : { reason: i.reason }),
+    ...(i.carry === undefined ? {} : { carry: i.carry }),
   });
   const approval = await decideApprovalOfVersion({
     projectId: i.projectId,

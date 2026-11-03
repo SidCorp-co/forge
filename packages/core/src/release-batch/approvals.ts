@@ -1,8 +1,8 @@
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { gateSays } from '@forge/contracts/gate-profiles';
-import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   type ReleaseApprovalView,
+  type ReleaseCarriedCriterion,
   type ReleaseDraftApprovalView,
   releaseThroughChangeRequests,
 } from '@forge/contracts/releases';
@@ -24,6 +24,7 @@ import {
   gateOf,
   readReleasePath,
 } from '../project-config/index.js';
+import { type Carry, parseCarry } from './approval-carry.js';
 import { approvalChecklistRefusals } from './approval-checklist.js';
 import { decideDraftApproval, draftNotApprovableWhy } from './draft-approval.js';
 import { runCutAs } from './naming.js';
@@ -49,7 +50,9 @@ type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
 
 const DECISIONS = ['approve', 'return'] as const;
 
-type Decision = { decision: 'approve'; reason?: string } | { decision: 'return'; reason: string };
+export type Decision =
+  | { decision: 'approve'; reason?: string; carry?: Carry }
+  | { decision: 'return'; reason: string };
 
 // each wrong decision body is refused by what is wrong with it: an unknown verb and a return with no reason are different mistakes, and a schema's "Invalid input" names neither
 export function parseDecision(raw: unknown): Decision {
@@ -57,13 +60,19 @@ export function parseDecision(raw: unknown): Decision {
     typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null
   ) as Record<string, unknown> | null;
   if (!body) {
-    throw refuseRelease('RELEASE_DECISION_UNKNOWN', 'the body is { decision, reason? }', '');
+    throw refuseRelease(
+      'RELEASE_DECISION_UNKNOWN',
+      'the body is { decision, reason?, carry? }',
+      '',
+    );
   }
-  const extra = Object.keys(body).filter((k) => k !== 'decision' && k !== 'reason');
+  const extra = Object.keys(body).filter(
+    (k) => k !== 'decision' && k !== 'reason' && k !== 'carry',
+  );
   if (extra.length > 0) {
     throw refuseRelease(
       'RELEASE_APPROVAL_SHAPE',
-      `unknown ${agrees(extra.length, 'key', 'keys')} ${extra.join(', ')}; a decision is { decision: "approve", reason } or { decision: "return", reason }`,
+      `unknown ${agrees(extra.length, 'key', 'keys')} ${extra.join(', ')}; a decision is { decision: "approve", reason, carry? } or { decision: "return", reason }`,
     );
   }
   if (body.decision !== 'approve' && body.decision !== 'return') {
@@ -78,9 +87,18 @@ export function parseDecision(raw: unknown): Decision {
     if (body.reason !== undefined && typeof body.reason !== 'string') {
       throw refuseRelease('RELEASE_APPROVAL_SHAPE', "an approval's reason is text", '/reason');
     }
-    return body.reason === undefined
-      ? { decision: 'approve' }
-      : { decision: 'approve', reason: body.reason };
+    return {
+      decision: 'approve',
+      ...(body.reason === undefined ? {} : { reason: body.reason }),
+      ...(body.carry === undefined ? {} : { carry: parseCarry(body.carry) }),
+    };
+  }
+  if (body.carry !== undefined) {
+    throw refuseRelease(
+      'RELEASE_APPROVAL_SHAPE',
+      'a return carries nothing: only an approval carries unproven criteria past the release approval checklist',
+      '/carry',
+    );
   }
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   if (reason.length < 1 || reason.length > 1000) {
@@ -118,6 +136,7 @@ export async function approvalViews(rows: readonly ReleaseApprovalRow[]): Promis
     decidedBy: r.decidedByUser ? who(r.decidedByUser) : null,
     decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
     reason: r.reason,
+    carried: r.carried,
   }));
 }
 
@@ -250,8 +269,10 @@ export async function decideApproval(input: {
     'approving or returning a release',
   );
   if (denied) throw new RefusalError([denied], denied.code);
-  if (decision.decision === 'approve')
-    await refuseIncompleteApproval(projectId, runId, approvalId, decision.reason);
+  const carried =
+    decision.decision === 'approve'
+      ? await refuseIncompleteApproval(projectId, runId, approvalId, decision)
+      : [];
   const row = await db.transaction(async (tx) => {
     const [decided] = await tx
       .update(releaseApprovals)
@@ -260,6 +281,7 @@ export async function decideApproval(input: {
         decidedByUser: userId,
         decidedAt: sql`now()`,
         reason: decision.reason?.trim() ?? null,
+        carried,
       })
       .where(
         and(
@@ -277,6 +299,7 @@ export async function decideApproval(input: {
         approvalId,
         decision: decided.decision,
         reason: decided.reason,
+        carried: decided.carried,
         decidedBy: userId,
         decidedAt: decided.decidedAt.toISOString(),
       });
@@ -311,13 +334,18 @@ export async function decideApprovalOfVersion(input: {
   projectId: string;
   version: string;
   userId: string;
-  agency: ActorAgency;
   decision: Decision;
 }): Promise<ApprovalView | ReleaseDraftApprovalView> {
   const { projectId, version } = input;
   const run = await runCutAs(projectId, version);
   // a project declaring no production cuts no run: its draft is what a listed approver decides (ISS-869)
-  if (!run && (await draftNotApprovableWhy(projectId)) === null) return decideDraftApproval(input);
+  if (!run && (await draftNotApprovableWhy(projectId)) === null)
+    return decideDraftApproval({
+      projectId,
+      version,
+      userId: input.userId,
+      decision: input.decision,
+    });
   if (!run) {
     throw refuseRelease(
       'RELEASE_VERSION_UNKNOWN',
@@ -345,23 +373,37 @@ export async function decideApprovalOfVersion(input: {
 /**
  * An approval is judged by the release approval checklist (Requirement lifecycle r15
  * release_check): the requirements the release carries, each carried criterion's latest verdict on
- * the commit the request names, and the approver's reason. A gap refuses the approval, naming it.
+ * the commit the request names, and the approver's reason. A gap refuses the approval, naming it;
+ * an unproven criterion the approver carried by name is no gap (ISS-914), and is what this returns.
  */
 async function refuseIncompleteApproval(
   projectId: string,
   runId: string,
   approvalId: string,
-  reason: string | undefined,
-): Promise<void> {
+  decision: { reason?: string; carry?: Carry },
+): Promise<ReleaseCarriedCriterion[]> {
   const [request] = await db
     .select({ commit: releaseApprovals.evidenceCommit })
     .from(releaseApprovals)
     .where(and(eq(releaseApprovals.id, approvalId), eq(releaseApprovals.runId, runId)))
     .limit(1);
   // a request this run does not hold is answered by the decision's own not-found below
-  if (!request) return;
-  const refusals = await approvalChecklistRefusals(projectId, runId, request.commit, reason);
-  if (refusals.length > 0) throw new RefusalError(refusals, 'CHECKLIST_INCOMPLETE');
+  if (!request) return [];
+  const judged = await approvalChecklistRefusals(
+    projectId,
+    runId,
+    request.commit,
+    decision.reason,
+    decision.carry,
+  );
+  if (judged.refusals.length > 0) {
+    const carryRefused = judged.refusals.some((r) => r.code.startsWith('RELEASE_CARRY_'));
+    throw new RefusalError(
+      judged.refusals,
+      carryRefused ? 'RELEASE_REFUSED' : 'CHECKLIST_INCOMPLETE',
+    );
+  }
+  return judged.carried;
 }
 
 // an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them
