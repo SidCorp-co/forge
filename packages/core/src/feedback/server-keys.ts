@@ -7,6 +7,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { feedbackKey } from '@forge/contracts/feedback';
 import type {
   FeedbackServerKeyRefusalCode,
   FeedbackServerKeyView,
@@ -14,6 +15,7 @@ import type {
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { insertAgentAccount, setUserDisplayName } from '../auth/index.js';
 import { db } from '../db/client.js';
+import { feedback } from '../db/schema-feedback.js';
 import { feedbackServerKeys } from '../db/schema-feedback-server-keys.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { userNames } from '../lib/people.js';
@@ -179,4 +181,14 @@ export async function productsOfAccounts(
     .from(feedbackServerKeys)
     .where(inArray(feedbackServerKeys.accountId, [...accountIds]));
   return new Map(rows.map((r) => [r.accountId, r.product]));
+}
+
+/** The FB-n key of an item a server key just filed, for the filing's answer. */
+export async function filedFeedbackKey(feedbackId: string): Promise<string> {
+  const [row] = await db
+    .select({ seq: feedback.fbSeq })
+    .from(feedback)
+    .where(eq(feedback.id, feedbackId));
+  if (!row) throw new Error(`server key: filed feedback ${feedbackId} has no row to name it by`);
+  return feedbackKey(row.seq);
 }

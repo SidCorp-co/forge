@@ -15,23 +15,19 @@ import {
   CREATE_FEEDBACK_SHAPE,
   type CreateFeedbackRequest,
   createFeedbackRequestSchema,
-  feedbackKey,
 } from '@forge/contracts/feedback';
 import {
   FEEDBACK_SERVER_KEY_FILINGS_PER_HOUR,
   type FeedbackServerKeyFiledResponse,
 } from '@forge/contracts/feedback-server-keys';
-import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { feedback } from '../db/schema-feedback.js';
 import { refused } from '../lib/refusal.js';
 import { readServerKeyBearer, serverKeyScopeRefusal } from '../middleware/bearer.js';
 import { consumeRateLimit } from '../middleware/rate-limit.js';
 import { strictBody } from '../middleware/zod-validator.js';
-import { serverKeyClosed, serverKeyOf, touchServerKey } from './server-keys.js';
+import { filedFeedbackKey, serverKeyClosed, serverKeyOf, touchServerKey } from './server-keys.js';
 import { fileFeedback } from './service.js';
 
 const HOUR_MS = 60 * 60_000;
@@ -96,12 +92,8 @@ async function fileWithServerKey(c: Context, token: string): Promise<Response> {
   });
   if (!filed.ok) return refused(c, filed.refusals, 'FEEDBACK_REFUSED');
   await touchServerKey(key.id, now);
-  const [row] = await db
-    .select({ seq: feedback.fbSeq })
-    .from(feedback)
-    .where(eq(feedback.id, filed.id));
   const body: FeedbackServerKeyFiledResponse = {
-    feedback: { key: feedbackKey(row?.seq ?? 0), created: filed.created },
+    feedback: { key: await filedFeedbackKey(filed.id), created: filed.created },
     reporter: { kind: 'product', product: key.product },
   };
   return c.json(body, filed.created ? 201 : 200);
