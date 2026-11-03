@@ -1,0 +1,57 @@
+diff --git a/dist/parseMermaid.js b/dist/parseMermaid.js
+index 54d351d2f90b04ab5a20602bd705e85fcdfa4453..84524c4567523f557b9a8c51eebbe62fbec7ef12 100644
+--- a/dist/parseMermaid.js
++++ b/dist/parseMermaid.js
+@@ -14,6 +14,29 @@ let renderCounter = 0;
+ const hashConfig = (config) => {
+     return JSON.stringify(config);
+ };
++// Mermaid 11.14 prefixes every internal element id of a rendered diagram (nodes, edges, clusters,
++// markers) with the SVG's own id: `<renderId>-classId-Issue-0`, `<renderId>-entity-ISSUE-0`. The
++// parsers below look elements up by the bare ids the diagram's db holds, as mermaid rendered them
++// before 11.14, and fail on the prefixed ones (forge ISS-911). Strip the prefix for the parse and
++// hand back a function that puts every id back, so an SVG kept as the image fallback still resolves
++// its own `url(#...)` references.
++const unprefixRenderIds = (svgContainer, renderId) => {
++    const prefix = `${renderId}-`;
++    const renamed = Array.from(svgContainer.querySelectorAll("[id]")).filter((el) => el.id.startsWith(prefix));
++    renamed.forEach((el) => {
++        el.id = el.id.slice(prefix.length);
++    });
++    let restored = false;
++    return () => {
++        if (restored) {
++            return;
++        }
++        restored = true;
++        renamed.forEach((el) => {
++            el.id = `${prefix}${el.id}`;
++        });
++    };
++};
+ // Fallback to Svg
+ const convertSvgToGraphImage = (svgContainer) => {
+     // Extract SVG width and height
+@@ -84,6 +107,7 @@ export const parseMermaid = async (definition, config = MERMAID_CONFIG) => {
+             const { svg } = await mermaid.render(renderId, definition, svgContainer);
+             // Append SVG to DOM temporarily to allow querying element dimensions/positions
+             svgContainer.innerHTML = svg;
++            const restoreRenderIds = unprefixRenderIds(svgContainer, renderId);
+             let data;
+             try {
+                 switch (diagram.type) {
+@@ -111,12 +135,14 @@ export const parseMermaid = async (definition, config = MERMAID_CONFIG) => {
+                         break;
+                     }
+                     default: {
++                        restoreRenderIds();
+                         data = convertSvgToGraphImage(svgContainer);
+                     }
+                 }
+             }
+             catch (error) {
+                 console.error("Error processing Mermaid diagram:", error);
++                restoreRenderIds();
+                 data = convertSvgToGraphImage(svgContainer);
+             }
+             return data;

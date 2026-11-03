@@ -1,10 +1,11 @@
-// @direct-test-of patches/@excalidraw__mermaid-to-excalidraw@2.2.2.patch
+// @direct-test-of packages/web-v2/patches/@excalidraw__mermaid-to-excalidraw@2.2.2.patch
+// @direct-test-of package.json
 // A mermaid definition pasted on the board (or entered in Excalidraw's mermaid dialog) goes through
 // `parseMermaidToExcalidraw`, which renders the diagram with mermaid and then finds each node and edge
 // of the rendered SVG by its element id. Mermaid 11.14 prefixed every such id with the SVG's own id
-// (`mermaid-to-excalidraw-0-classId-Issue-0`), and the converter's class and ER parsers look the
-// bare id up, so both fell back to a single image (ISS-911). Each diagram here must come back as
-// editable element skeletons — no `graphImage` fallback — for the four kinds the board converts.
+// (`mermaid-to-excalidraw-0-classId-Issue-0`), and the converter's class, ER and state parsers and
+// its flowchart subgraphs look the bare id up, so those fell back to a single image (ISS-911). Each
+// diagram here must come back as editable element skeletons, never the `graphImage` fallback.
 
 import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -14,6 +15,8 @@ const DIAGRAMS = {
   er: "erDiagram\n  ISSUE ||--o{ COMMENT : has\n  ISSUE {\n    string key\n  }",
   flowchart: "flowchart LR\n  A[Issue] --> B{Built?}\n  B -->|yes| C[Released]\n  B -->|no| A",
   sequence: "sequenceDiagram\n  Master->>Builder: brief\n  Builder-->>Master: report",
+  state: "stateDiagram-v2\n  [*] --> Open\n  Open --> Closed: release\n  Closed --> [*]",
+  subgraph: "flowchart LR\n  subgraph Batch\n    A[Build] --> B[Gate]\n  end\n  B --> C[Release]",
 } as const;
 
 // cm:why jsdom lays nothing out: SVG elements have no getBBox and text has no measured length, and
@@ -40,7 +43,10 @@ afterAll(() => {
 
 // cm:why the converter's own declarations import `@excalidraw/excalidraw/element/transform`, a path
 // 0.18.1 does not ship, so its result type does not resolve; this is the part of it read here
-type Converted = { elements: readonly { type: string; text?: unknown; label?: { text?: unknown } }[] };
+type Converted = {
+  elements: readonly { type: string; text?: unknown; label?: { text?: unknown } }[];
+  files?: Record<string, { dataURL: string }>;
+};
 
 const textsOf = (result: Converted) =>
   result.elements.flatMap((e) => [e.text, e.label?.text]).filter((t): t is string => typeof t === "string");
@@ -79,6 +85,16 @@ describe("a mermaid diagram pasted on the board converts to editable elements (I
     expect(result.elements.some((e) => e.type === "arrow")).toBe(true);
   });
 
+  it.each([
+    ["a state diagram", DIAGRAMS.state, "Closed"],
+    ["a flowchart subgraph", DIAGRAMS.subgraph, "Batch"],
+  ])("%s, found by the same prefixed ids, converts", async (_kind, definition, name) => {
+    const { result, errors } = await convert(definition);
+    expect(errors.map((e) => String(e[1] ?? e[0]))).toEqual([]);
+    expect(result.elements.some((e) => e.type === "image")).toBe(false);
+    expect(textsOf(result).join("\n")).toContain(name);
+  });
+
   it("a flowchart and a sequence diagram still convert", async () => {
     for (const definition of [DIAGRAMS.flowchart, DIAGRAMS.sequence]) {
       const { result, errors } = await convert(definition);
@@ -86,5 +102,16 @@ describe("a mermaid diagram pasted on the board converts to editable elements (I
       expect(result.elements.some((e) => e.type === "image")).toBe(false);
       expect(result.elements.length).toBeGreaterThan(3);
     }
+  });
+
+  it("a diagram kept as an image keeps its render-prefixed ids, so its own url(#…) references resolve", async () => {
+    const { result } = await convert("journey\n  title Ship\n  section Build\n    Code: 5: Builder");
+    const dataURLs = Object.values(result.files ?? {}).map((f) => f.dataURL);
+    expect(dataURLs).toHaveLength(1);
+    const svg = atob((dataURLs[0] ?? "").replace(/^data:image\/svg\+xml;base64,/, ""));
+    const [root, ...inner] = [...svg.matchAll(/ id="([^"]*)"/g)].map((m) => m[1] ?? "");
+    expect(root).toMatch(/^mermaid-to-excalidraw-\d+$/);
+    expect(inner).toContain(`${root}-arrowhead`);
+    expect(inner.filter((id) => !id.startsWith(`${root}-`))).toEqual([]);
   });
 });

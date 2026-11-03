@@ -45,6 +45,9 @@
       "chevrotain>lodash-es": "4.18.1",
       "@chevrotain/gast>lodash-es": "4.18.1",
       "@chevrotain/cst-dts-gen>lodash-es": "4.18.1"
+    },
+    "patchedDependencies": {
+      "@excalidraw/mermaid-to-excalidraw@2.2.2": "packages/web-v2/patches/@excalidraw__mermaid-to-excalidraw@2.2.2.patch"
     }
   },
   "engines": {
