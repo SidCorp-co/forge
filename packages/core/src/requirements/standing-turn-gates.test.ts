@@ -15,14 +15,12 @@ const OWNER = {
   userId: 'u1',
   canWrite: true,
   canSignOff: false,
-  canAdmit: false,
   canApproveBreakdown: false,
 };
 const SIGNER = {
   userId: 'u2',
   canWrite: true,
   canSignOff: true,
-  canAdmit: true,
   canApproveBreakdown: true,
 };
 

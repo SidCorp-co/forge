@@ -1,6 +1,6 @@
 import type { DecisionMaker } from "@forge/contracts/comments";
 import type { RequirementKind, WritePictureRequest } from "@forge/contracts/requirement-pictures";
-import type { PromoteDraftsAnswer, RequirementDecisionsResponse } from "@forge/contracts/requirements";
+import type { RequirementDecisionsResponse } from "@forge/contracts/requirements";
 import type { PutCriterionStepsRequest } from "@forge/contracts/workflow-health";
 import { apiClient } from "@/lib/api/client";
 import type {
@@ -57,17 +57,9 @@ export const requirementsApi = {
     apiClient<RequirementDetail>(base(projectId), post(body)),
   act: (projectId: string, req: string, action: RequirementAction) =>
     apiClient<RequirementDetail>(actionPath(projectId, req, action), post(actionBody(action))),
-  /** Promotes the named draft issues to open, or every linked draft when none is named (FB-93). */
-  promoteDrafts: (projectId: string, req: string, issues?: string[]) =>
-    apiClient<PromoteDraftsAnswer>(`${one(projectId, req)}/promote`, post(issues ? { issues } : {})),
   /** Its decisions and those on its issues, with the answers its questions and its issues' questions took. */
   decisions: (projectId: string, req: string, by: DecisionMaker = "people") =>
     apiClient<RequirementDecisionsResponse>(`${one(projectId, req)}/decisions${by === "people" ? "" : `?by=${by}`}`),
-  /** Links an existing issue as one that delivers it; `adoptPlan` records the issue's plan as written against the current revision. */
-  linkIssue: (projectId: string, req: string, issue: string, adoptPlan: boolean) =>
-    apiClient<RequirementDetail>(`${one(projectId, req)}/issues`, post({ issue, ...(adoptPlan ? { adoptPlan: true } : {}) })),
-  unlinkIssue: (projectId: string, req: string, issue: string) =>
-    apiClient<RequirementDetail>(`${one(projectId, req)}/issues/${encodeURIComponent(issue)}`, { method: "DELETE" }),
   /** Sets or corrects a revision's kind (REQ-35); null clears it, and a picture drawn for another kind leaves with it. */
   writeKind: (projectId: string, req: string, revision: number, kind: RequirementKind | null) =>
     apiClient<RequirementDetail>(`${one(projectId, req)}/revisions/${revision}/kind`, put({ kind })),

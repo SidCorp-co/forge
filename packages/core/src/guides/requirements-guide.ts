@@ -121,6 +121,8 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
    ${guideRef('mockups')}.
 
 ### Issues against a requirement
+- Linking and unlinking an issue is the agents' act, never a product page's (REQ-68 BC-6): a call
+  from the web on a person's session is refused \`REQUIREMENT_ISSUE_ACT_FORBIDDEN\` with nothing written.
 - **link_issue** once the requirement is agreed or accepted under strict (\`REQUIREMENT_NOT_AGREED\` before that);
   outside strict a draft links too (gate \`link_requirement_agreed\`). An
   issue serves one requirement: linking one held elsewhere is \`REQUIREMENT_ISSUE_LINKED_ELSEWHERE\`, naming
@@ -150,19 +152,9 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   passes \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
 - A breakdown accept files its issues at \`draft\`, and while every live issue is a draft the standing
-  asks whoever the project's admit gate names to "promote N draft issues"; anyone
-  else reads it as waiting on "a BA or owner who can admit issues" (signing does not widen who may
-  admit). **promote** \`{ issues? }\` moves them \`draft → open\`: the named ones (key or uuid), or every
-  linked draft when none is named. It asks what admitting an issue asks, the gate \`approval_admit\`:
-  \`issues.admit\` where it is enforced, \`project.write\` where it is not; a caller without it is
-  refused \`PERMISSION_FORBIDDEN\` naming it and the gate before anything moves. Each moves through its own status move, so the move's own guards
-  hold (an archived issue, a gap in the issue-ready checklist). The answer is \`{ requirement, promoted, refused }\`:
-  a draft whose move was refused is named in \`refused\` once per refusal, with that move's own code,
-  \`path\` (\`/answers/<question>\` for a checklist gap) and words, while the rest still move; when none
-  moves the act is refused with nothing written, each refusal at \`/issues/<key>\` followed by its own path. Refused whole by name:
-  \`REQUIREMENT_NO_DRAFT_ISSUES\`, \`REQUIREMENT_ISSUE_NOT_LINKED\` or \`REQUIREMENT_ISSUE_NOT_DRAFT\` at
-  the named issue's place in \`issues\`, \`REQUIREMENT_DEFERRED\`, and \`REQUIREMENT_NOT_AGREED\` for a
-  draft or dropped requirement.
+  waits on the project's master to "promote N draft issues": the master admits each through its own
+  status move (\`POST /api/issues/:id/transition { toStatus: open }\`), so the move's own guards hold.
+  No person is asked to promote, link or unlink an issue (REQ-68 BC-6).
 - **link_workflow** \`POST …/requirements/:req/workflows { workflowId }\` names a design the next agree or repin pins.
 - **trace** ties one business criterion to the steps and edges of a design the requirement links:
   ${TRACE_ACT}. It is the only way to trace: a revision

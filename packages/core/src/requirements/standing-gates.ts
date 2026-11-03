@@ -58,9 +58,7 @@ export function nextStepOf(
 }
 
 /** An approval no project switch gates (a triage, a steward decision's answer, a suggested revision's
- *  accept): every holder of requirements.approve may do it, so each of them is asked. A draft
- *  issue's promote is asked of whoever the admit gate names, in `standing.ts` (`promote-drafts.ts`,
- *  REQ-76 / ISS-640). */
+ *  accept): every holder of requirements.approve may do it, so each of them is asked. */
 export const signerWait = (viewer: StandingInput['viewer'], act: Said, rule: Said) =>
   viewer?.canSignOff
     ? { group: 'needs_you' as const, waitingOn: wait('you', YOU, act, rule) }
@@ -152,6 +150,15 @@ export function ownerWait(input: StandingInput, act: Said, rule: Said, due: stri
   const named = owner?.name ? say('standing.who.named', { name: owner.name }) : SIGNER;
   return { group: 'waiting' as const, waitingOn: wait('person', named, act, rule, due) };
 }
+
+/** The acts on a requirement's issues, which only the master takes, never a person (REQ-68 BC-6). */
+const ISSUE_ACTS: ReadonlySet<string> = new Set([
+  'standing.act.promoteDraft',
+  'standing.act.promoteDrafts',
+]);
+
+/** Whether a wait is an act on the requirement's issues: no runner bound moves it onto no signer. */
+export const isIssueAct = (w: RequirementWaitingOn): boolean => ISSUE_ACTS.has(w.says.act.key);
 
 /**
  * A master's wait on a project no runner is bound to: no master can take it, so the signer owes it

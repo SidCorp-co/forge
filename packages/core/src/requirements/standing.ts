@@ -49,6 +49,7 @@ import {
 import {
   actWait,
   askedTurn,
+  isIssueAct,
   nextStepOf,
   ownerWait,
   signerInsteadOfMaster,
@@ -175,7 +176,6 @@ type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
 > & { issues: readonly I[] };
 
 const SIGNER = say('standing.who.baOrOwner');
-const ADMITTER = say('standing.who.signerAdmitter');
 
 const wait = (
   kind: RequirementWaitingKind,
@@ -223,8 +223,8 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // (`proofTurn`); 7. an open breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
 // re-plans it (its re-plan tasks); 9a. no issue and a verdict recorded at the requirement → it rests on
 // its shipped capability (`standing-shipped.ts:shippedTurn`, ISS-588): its accept, its judge or, for a
-// failing criterion, the master; 9. no issue → the master breaks it down; 10. only drafts → a signer who can
-// admit promotes them (only they are asked: question 3b8292dc);
+// failing criterion, the master; 9. no issue → the master breaks it down; 10. only drafts → the master
+// admits them, runner or none (REQ-68 BC-6: no person works an issue);
 // 11. else whom the work waits on (`standing-work.ts:workTurn`): a parked issue's own wait, the release
 // cut once every issue has landed, the issues while one runs, else the master. Then
 // `lib/standing-times.ts:withTimes` reads the stuck rule over the turn: no owner, nobody serving its
@@ -404,9 +404,7 @@ function turnOf(
         : say('standing.act.promoteDrafts', { n: drafts.length });
     const rule = say('requirements.rule.onlyDrafts');
     const draftCarrier = drafts[0]?.displayId ?? null;
-    return viewer?.canAdmit
-      ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule), draftCarrier }
-      : { group: 'waiting', waitingOn: wait('person', ADMITTER, act, rule), draftCarrier };
+    return { group: 'waiting', waitingOn: wait('agent', MASTER, act, rule), draftCarrier };
   }
   return workTurn(live, input.release);
 }
@@ -462,7 +460,8 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   const touched = touchedAt(input);
   const turn = turnOf(input, live, coverage);
   let { group, waitingOn } = turn;
-  if (input.runnerBound === false && waitingOn.says.who.key === MASTER.key) {
+  const mastersAlone = waitingOn.says.who.key === MASTER.key && !isIssueAct(waitingOn);
+  if (input.runnerBound === false && mastersAlone) {
     ({ group, waitingOn } = signerInsteadOfMaster(input.viewer, waitingOn));
   }
   const ownerless = input.owner === null && !['needs_you', 'done', 'deferred'].includes(group);

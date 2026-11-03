@@ -21,7 +21,6 @@ import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { RequirementAction, RequirementDetail } from "../types";
-import { PromoteDrafts } from "./promote-drafts";
 import { AcceptByDecision, type Held, ReasonAct, ReasonForm } from "./reason-act";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */
@@ -201,8 +200,6 @@ export function PrimaryActions({
         act={(reason) => ({ kind: "accept-delivery", revision: head.revision, reason })}
       />
     );
-  } else if (d.canPromote && draftIssuesToPromote(d.status, d.issues).length > 0) {
-    primary = <PromoteDrafts projectId={projectId} d={d} />;
   }
   const { deferrable, droppable } = sideActsOf(d);
   const decision = decisionOf(d, head);
@@ -275,15 +272,15 @@ type DeliveryKind = "start-delivery" | "mark-delivered";
 
 /**
  * The delivery move an accepter (`canAccept`) is offered (REQ-74 BC-8): an agreed requirement with a
- * linked issue past draft moves into delivery once no draft is left to promote, one in delivery is
+ * linked issue past draft moves into delivery once the master has admitted every draft, one in delivery is
  * marked delivered. Core refuses each by name where its condition is not met.
  */
 function deliveryMoveOf(d: RequirementDetail, head: Head): DeliveryKind | null {
   if (!d.canAccept || !head) return null;
   if (d.status === "in_delivery") return "mark-delivered";
   const working = d.issues.some((i) => i.status !== "dropped" && i.status !== "draft");
-  const promotable = d.canPromote && draftIssuesToPromote(d.status, d.issues).length > 0;
-  return d.status === "agreed" && working && !promotable ? "start-delivery" : null;
+  const drafts = draftIssuesToPromote(d.status, d.issues).length > 0;
+  return d.status === "agreed" && working && !drafts ? "start-delivery" : null;
 }
 
 /** The head an accept by decision names, where the viewer may accept (`canAccept`); core refuses unfinished issues. */

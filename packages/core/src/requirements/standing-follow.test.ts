@@ -24,7 +24,7 @@ const revision = (state: 'current' | 'draft', n: number) => ({
 const base = (over: Partial<StandingInput> = {}): StandingInput => ({
   status: 'agreed',
   owner: { id: 'u1', name: 'Ba', kind: 'human' },
-  viewer: { userId: 'u2', canWrite: true, canSignOff: true, canAdmit: true },
+  viewer: { userId: 'u2', canWrite: true, canSignOff: true },
   revisions: [revision('current', 1)],
   currentRevision: 1,
   criteria: [],
@@ -103,7 +103,7 @@ describe('a stuck draft the steward asked about (REQ-48 BC-5)', () => {
       base({
         ...draft,
         revisions: [revision('draft', 1)],
-        viewer: { userId: 'u1', canWrite: true, canSignOff: true, canAdmit: true },
+        viewer: { userId: 'u1', canWrite: true, canSignOff: true },
       }),
     );
     expect(s.waitingOn.act).toBe('propose r1');

@@ -1251,7 +1251,6 @@ export const SAID = {
 		vars: { ref: "name" },
 	},
 	"standing.who.baOrOwner": { en: "BA or owner" },
-	"standing.who.signerAdmitter": { en: "a BA or owner who can admit issues" },
 	"standing.who.currentRevision": { en: "The current revision" },
 	"standing.who.holderOf": {
 		en: "{perm}",

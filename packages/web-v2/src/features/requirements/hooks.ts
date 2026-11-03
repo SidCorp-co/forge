@@ -51,22 +51,6 @@ export const useCreateRequirement = (projectId: string) =>
 export const useRequirementAction = (projectId: string, req: string) =>
   useWrite((action: RequirementAction) => requirementsApi.act(projectId, req, action), { shows: requirementKeys.detail(projectId, req), touches: oneAndList(projectId, req) });
 
-/** Promotes drafts to open; the detail it answers with is the one the screen shows next, and the drafts core refused stay on `data`. */
-export const usePromoteDrafts = (projectId: string, req: string) =>
-  useWrite((issues: string[] | undefined) => requirementsApi.promoteDrafts(projectId, req, issues), {
-    shows: requirementKeys.detail(projectId, req),
-    shown: (answer) => answer.requirement,
-    touches: oneAndList(projectId, req),
-  });
-
-/** Links (or, given `unlink`, unlinks) an existing issue; the requirement, the list, and the issue whose standing names it read again. */
-export const useLinkRequirementIssue = (projectId: string, req: string) =>
-  useWrite(
-    (a: { issue: string; adoptPlan?: boolean; unlink?: boolean }) =>
-      a.unlink ? requirementsApi.unlinkIssue(projectId, req, a.issue) : requirementsApi.linkIssue(projectId, req, a.issue, a.adoptPlan === true),
-    { shows: requirementKeys.detail(projectId, req), touches: [...oneAndList(projectId, req), ["issues", "standing"], ["issue"]] },
-  );
-
 /** Answers a question asked of the requirement, in words; its answer reaches the requirement as a decision. */
 export const useAnswerRequirementQuestion = (projectId: string, req: string) =>
   useWrite((a: { questionId: string; round: number; text: string }) => questionsApi.answer(a), {

@@ -417,7 +417,6 @@ export async function detailOf(
     releases: releasesOf(delivered.shipped, linked, naming),
     canSignOff: viewerFacts?.canSignOff ?? false,
     canAccept: viewerFacts?.canAccept ?? false,
-    canPromote: viewerFacts?.canAdmit ?? false,
     standing,
     history,
     dedup,

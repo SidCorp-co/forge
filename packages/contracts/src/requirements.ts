@@ -735,18 +735,11 @@ export const repinRequirementRequestSchema = z.strictObject({
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason } — names the head revision and says why it now follows; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
 
-/** Each named issue by key or uuid; left out, every draft issue linked to the requirement. */
-export const promoteRequirementDraftsRequestSchema = z.strictObject({
-	issues: z.array(z.string().trim().min(1).max(200)).min(1).max(200).optional(),
-});
-export const PROMOTE_REQUIREMENT_DRAFTS_SHAPE =
-	"{ issues? } — the draft issues to promote to open, each by key or uuid; left out, every draft issue linked to the requirement";
-
 /**
- * A requirement's linked issues still at `draft`, which a holder of requirements.approve and issues.admit
- * promotes to `open`. The standing's "promote N draft issues" line counts these, the promote act moves these, and
- * the web draws the act from these, so the ask and its act never disagree. Only a requirement at one
- * of `AGREED_STATUSES` has issues to promote: those are the statuses an issue is linked under.
+ * A requirement's linked issues still at `draft`, which the project's master admits to `open`
+ * (REQ-68 BC-6: no person works an issue). The standing's "promote N draft issues" line, owed by the
+ * master, counts these. Only a requirement at one of `AGREED_STATUSES` has issues to promote: those
+ * are the statuses an issue is linked under.
  */
 export function draftIssuesToPromote<T extends { status: string }>(
 	requirementStatus: string,
@@ -754,32 +747,6 @@ export function draftIssuesToPromote<T extends { status: string }>(
 ): T[] {
 	if (!isAgreedStatus(requirementStatus)) return [];
 	return issues.filter((i) => i.status === "draft");
-}
-
-export interface PromotedDraftIssue {
-	issueId: string;
-	displayId: string;
-}
-
-/**
- * One refusal of a draft the promote could not move: its own move's code, its words for a person,
- * and where in that move it points (`/answers/<question>` for a checklist gap; empty for the move
- * as a whole). A draft refused for several reasons is named once per refusal.
- */
-export interface RefusedDraftIssue extends PromotedDraftIssue {
-	code: string;
-	path: string;
-	detail: string;
-}
-
-/**
- * What a promote answers when at least one draft moved: each draft moves on its own status move, so
- * one refused is named here while the rest still moved. When none moved the act is refused whole.
- */
-export interface PromoteDraftsAnswer {
-	requirement: RequirementDetail;
-	promoted: PromotedDraftIssue[];
-	refused: RefusedDraftIssue[];
 }
 
 const REQUIREMENT_CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
@@ -893,9 +860,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_DESIGN_UNKNOWN",
 	// a design withdrawn before any revision was approved draws no requirement (`workflows.ts`)
 	"WORKFLOW_DESIGN_WITHDRAWN",
-	"REQUIREMENT_NO_DRAFT_ISSUES",
-	"REQUIREMENT_ISSUE_NOT_LINKED",
-	"REQUIREMENT_ISSUE_NOT_DRAFT",
+	// a person links or unlinks no issue: the project's agents do (REQ-68 BC-6)
+	"REQUIREMENT_ISSUE_ACT_FORBIDDEN",
 	"REQUIREMENT_OPEN_QUESTION_UNKNOWN",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
@@ -1292,11 +1258,6 @@ export interface RequirementDetail extends RequirementSummary {
 	 * project's `approvals.accept` asks (requirements.approve where on, project.write where off).
 	 */
 	canAccept: boolean;
-	/**
-	 * The viewer may promote its draft issues: a signer who also holds issues.admit. Only they are asked
-	 * to (question 3b8292dc); who may admit an issue is not widened by signing.
-	 */
-	canPromote: boolean;
 	history: RequirementHistoryEntry[];
 	/** Whether an agree at the head would compare it for near-duplicates; null with no head. */
 	dedup: RequirementDedupCheck | null;

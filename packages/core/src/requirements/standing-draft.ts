@@ -26,11 +26,6 @@ export interface RequirementViewer {
   /** project.write: what the owner's own move and a draft revision's author ask (ISS-926). */
   canWrite: boolean;
   canSignOff: boolean;
-  /**
-   * What the admit gate asks (issues.admit where enforced, project.write where not), which the
-   * promote of a draft needs (REQ-76 / ISS-640).
-   */
-  canAdmit: boolean;
   /** suggestions.approve: what a breakdown's accept asks where its switch is on. */
   canApproveBreakdown?: boolean;
 }

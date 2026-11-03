@@ -1,14 +1,12 @@
 // JU-6 / JU-5 / the HOP link ask (2026-10-08): a requirement's page says what is still unclear and
 // what it assumes, its answer box records an answer the requirement keeps as a decision, its
-// Decisions tab rolls up the decisions on its issues beside the answers, and a person links an issue
-// that already exists to it, with core's refusal shown by its name.
+// Decisions tab rolls up the decisions on its issues beside the answers.
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RequirementQuestionView } from "@forge/contracts/requirements";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { LinkIssueControl } from "./link-issue";
 import { RequirementDecisions } from "./requirement-decisions";
 import { Assumptions, OpenQuestions } from "./requirement-unclear";
 
@@ -25,11 +23,6 @@ const question = (over: Partial<RequirementQuestionView>): RequirementQuestionVi
   askedAt: "2026-10-07T10:00:00Z",
   answer: null,
   ...over,
-});
-
-const refusal = (code: string, detail: string) => ({
-  status: 422,
-  body: { error: { code: "REQUIREMENT_REFUSED", message: "refused", refusals: [{ code, path: "/issue", detail }] } },
 });
 
 describe("what a requirement still leaves unclear", () => {
@@ -147,38 +140,5 @@ describe("a requirement's Decisions tab", () => {
     expect(within(row).getByTestId("decision-target")).toHaveTextContent("ISS-110");
     expect(screen.getByTestId("requirement-answer")).toHaveTextContent("Download the aggregate?");
     expect(screen.getByTestId("requirement-answer")).toHaveTextContent("No");
-  });
-});
-
-describe("linking an issue that already exists", () => {
-  it("picks the issue by key or title and links it, with the plan adopted when asked", async () => {
-    const calls = fakeCore((c) => {
-      if (c.path.startsWith("/projects/p1/issues/search")) return { body: { items: [{ displayId: "ISS-136", title: "Referral list" }] } };
-      if (c.path === "/projects/p1/requirements/REQ-5/issues") return { body: { key: "REQ-5", issues: [] } };
-      return undefined;
-    });
-    const user = userEvent.setup();
-    renderWithQuery(<LinkIssueControl projectId="p1" reqKey="REQ-5" />);
-    await user.click(screen.getByTestId("link-issue-open"));
-    await user.type(screen.getByRole("combobox", { name: "Issue to link" }), "Referral");
-    await user.click(await screen.findByRole("option", { name: /ISS-136/ }));
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(screen.getByRole("button", { name: "Link" }));
-    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/projects/p1/requirements/REQ-5/issues", body: { issue: "ISS-136", adoptPlan: true } }));
-  });
-
-  it("names core's refusal when the issue already delivers another requirement", async () => {
-    fakeCore((c) => {
-      if (c.path.startsWith("/projects/p1/issues/search")) return { body: { items: [{ displayId: "ISS-136", title: "Referral list" }] } };
-      if (c.method === "POST") return refusal("REQUIREMENT_ISSUE_LINKED_ELSEWHERE", "ISS-136 already delivers REQ-2");
-      return undefined;
-    });
-    const user = userEvent.setup();
-    renderWithQuery(<LinkIssueControl projectId="p1" reqKey="REQ-5" />);
-    await user.click(screen.getByTestId("link-issue-open"));
-    await user.type(screen.getByRole("combobox", { name: "Issue to link" }), "ISS-136");
-    await user.click(await screen.findByRole("option", { name: /ISS-136/ }));
-    await user.click(screen.getByRole("button", { name: "Link" }));
-    expect(await screen.findByTestId("link-issue-refusal")).toHaveTextContent("REQUIREMENT_ISSUE_LINKED_ELSEWHERE");
   });
 });

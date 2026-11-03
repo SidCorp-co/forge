@@ -6,8 +6,9 @@ import {
   PUT_CRITERION_STEPS_SHAPE,
   putCriterionStepsRequestSchema,
 } from '@forge/contracts/workflow-health';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod';
+import { refused } from '../lib/refusal.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { strictBody } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -18,10 +19,32 @@ import { actorOf, answer, type RequirementEnv, reqAnd, reqParam } from './route-
 
 export const requirementLinkRoutes = new Hono<RequirementEnv>();
 
+/**
+ * Linking and unlinking an issue is the agents' act, never a product page's (REQ-68 BC-6): the steward
+ * and the master keep a requirement's issues through this door on their tokens; a person at the web,
+ * on its session cookie, is refused by name and nothing is written.
+ */
+const agentsOnly: MiddlewareHandler<RequirementEnv> = async (c, next) => {
+  if (!c.get('sessionCookie')) return next();
+  return refused(
+    c,
+    [
+      {
+        code: 'REQUIREMENT_ISSUE_ACT_FORBIDDEN',
+        path: '',
+        detail:
+          "a person links or unlinks no issue: the project's agents keep a requirement's issues, and a stuck one reaches you as a decision on the requirement",
+      },
+    ],
+    'REQUIREMENT_ISSUE_ACT_FORBIDDEN',
+  );
+};
+
 requirementLinkRoutes.post(
   '/:id/requirements/:req/issues',
   reqParam,
   requiresOnParam('project.write', 'id'),
+  agentsOnly,
   strictBody(
     z.strictObject({ issue: z.string().trim().min(1).max(200), adoptPlan: z.boolean().optional() }),
     '{ issue, adoptPlan? } names the issue, by key or uuid; adoptPlan (needs requirements.approve) records its existing plan as written against the current revision',
@@ -45,6 +68,7 @@ requirementLinkRoutes.post(
 requirementLinkRoutes.delete(
   '/:id/requirements/:req/issues/:issue',
   reqAnd({ issue: z.string().trim().min(1).max(200) }, ' and an issue'),
+  agentsOnly,
   holdChatWrite('requirement_link'),
   async (c) => {
     const { id, req, issue } = c.req.valid('param');

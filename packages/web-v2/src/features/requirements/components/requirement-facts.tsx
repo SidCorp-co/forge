@@ -17,9 +17,7 @@ import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
-import { LinkIssueControl } from "./link-issue";
 import { RequirementContracts, RequirementDesigns } from "./requirement-links";
-import { PromotableDraft } from "./promote-drafts";
 import { Placement } from "./requirement-placement";
 import { agreedTitle } from "./standing-bits";
 
@@ -224,7 +222,7 @@ export function RequirementProperties({
   more?: ReactNode;
   /** The developer view: the revision that stands, by number (BC-7); the dates line names when it was agreed. */
   developer?: boolean;
-  /** The project its placement, promote and link acts write to. */
+  /** The project its placement act writes to. */
   projectId: string;
   /** Opens the revisions view; the peek, which has none, leaves it out and the revision reads as text. */
   onOpenRevisions?: () => void;
@@ -296,12 +294,10 @@ export function RequirementProperties({
                 ) : i.landedIn ? (
                   <IssueLandedIn landedIn={i.landedIn} />
                 ) : null}
-                <PromotableDraft projectId={projectId} d={d} issue={i} />
               </li>
             ))}
           </ul>
         )}
-        {s.attentionGroup !== "done" ? <LinkIssueControl projectId={projectId} reqKey={d.key} /> : null}
       </FactsGroup>
 
       <RequirementDesigns projectId={projectId} slug={slug} d={d} editable={editable} />
