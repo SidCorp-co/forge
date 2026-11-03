@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { releaseNoteReferences } from "./content-language.js";
+import type { CriterionClass } from "./issue-design.js";
 import {
 	CRITERION_STANDINGS,
 	type CriterionStanding,
@@ -173,7 +174,8 @@ const NO_VERSIONS: ReadonlySet<string> = new Set();
  * reads it (REQ-36 BC-18..BC-20): where the project names no testing environment (`judgedOn` null),
  * a verdict whose identity is that commit; where it names one, only a verdict judged on the running
  * build at that commit (`runtime`, whatever corroborated it), and never a commit verdict, which gates
- * the merge and proves no release criterion. A verdict judged on a release (ISS-900: where production
+ * the merge. A code-property criterion is the exception, read by `countedForClass` (ISS-914): only the
+ * review judges it, against the diff, so its commit pass proves it. A verdict judged on a release (ISS-900: where production
  * names no commit it serves, a release is its agent's record by version) counts on a release whose
  * `versions` hold the one it names: that release and those its record says it carries
  * (`released-line.ts:versionsCountedOn`), whether or not the release names a build.
@@ -214,9 +216,51 @@ export function countedOnRelease(
 	return judgedOnReleaseBuild(v, build, judgedOn, versions);
 }
 
+/**
+ * The verdicts a release reads a criterion of class `criterionClass` by: those `countedOnRelease`
+ * counts, and on a code-property criterion every commit verdict recorded after the issue's last
+ * reopen (`reopenedAt`, ISO; null where it was never reopened) too, wherever the project is judged
+ * and whatever build the release names (ISS-914). Only the review judges a code property, against the
+ * diff (`issue-design.ts:JUDGE_OF_CLASS`), and QA is refused on it (`VERDICT_JUDGED_BY_REVIEW`), so a
+ * runtime pass at the build is one it can never earn. Forge reads no commit ancestry
+ * (release-is-the-agents-record), so the commit is not compared with the build; a reopen means the
+ * code changed, so a review before it counts no more. An observable or server-side criterion, and
+ * one with no class recorded, read exactly as `countedOnRelease`.
+ */
+export function countedForClass(
+	v: Pick<
+		ReleaseVerdictReading,
+		"identityKind" | "commitSha" | "runtimeRef" | "releaseVersion" | "at"
+	>,
+	criterionClass: CriterionClass | null,
+	build: string | null,
+	judgedOn: string | null,
+	versions: ReadonlySet<string> = NO_VERSIONS,
+	reopenedAt: string | null = null,
+): boolean {
+	if (countedOnRelease(v, build, judgedOn, versions)) return true;
+	if (criterionClass !== "code_property" || v.identityKind !== "commit")
+		return false;
+	return reopenedAt === null || Date.parse(v.at) > Date.parse(reopenedAt);
+}
+
 /** Why a release criterion with no verdict on the running build is not proven, naming the environment (REQ-36 BC-19). */
 export const notJudgedOnWhy = (judgedOn: string, build: string): string =>
 	`Not judged on ${judgedOn}: a release of this project is proven only by a pass judged on the build ${judgedOn} serves at ${build.slice(0, 12)} (a runtime verdict), and a commit verdict gates the merge only`;
+
+/** Why a code-property criterion no pass proves is not proven: the review owes its pass (ISS-914). */
+export const reviewPassOwedWhy =
+	"Not reviewed: a code property is proven by the review's pass on the diff";
+
+/** Why a criterion of class `criterionClass` no verdict on the release's build proves is not proven. */
+export const unjudgedOnReleaseWhy = (
+	criterionClass: CriterionClass | null,
+	judgedOn: string,
+	build: string,
+): string =>
+	criterionClass === "code_property"
+		? reviewPassOwedWhy
+		: notJudgedOnWhy(judgedOn, build);
 
 export type ReleaseClaim =
 	| { claimed: true; at: string }

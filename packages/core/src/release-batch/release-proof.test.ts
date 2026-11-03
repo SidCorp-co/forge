@@ -4,6 +4,7 @@
 // `verified-rule.ts:verifiedOf`). Before this the record counted a short as proven, so the panel read
 // "4 proven" beside a page that read 3 for the same release.
 
+import type { CriterionClass } from '@forge/contracts/issue-design';
 import type { CriterionStanding } from '@forge/contracts/issue-vocabulary';
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import { describe, expect, it } from 'vitest';
@@ -38,7 +39,11 @@ const verdict = (
 });
 
 /** An issue whose criterion n carries `verdicts[n-1]`, oldest first, as `loadReleaseFacts` hands it. */
-function issue(verdicts: CarriedVerdict[][]): IssueFact {
+function issue(
+  verdicts: CarriedVerdict[][],
+  classes: ReadonlyMap<number, CriterionClass> = new Map(),
+  reopenedAt: Date | null = null,
+): IssueFact {
   return {
     id: 'i1',
     key: 'ISS-1',
@@ -59,9 +64,10 @@ function issue(verdicts: CarriedVerdict[][]): IssueFact {
       proven: false,
       unverified: null,
     })),
+    classes,
     verdicts: new Map(verdicts.map((list, k) => [k + 1, list])),
     voided: new Map(),
-    reopenedAt: null,
+    reopenedAt,
     closedAt: [],
     merged: { at: null, landing: null, artifacts: null, commitSha: null, readPaths: null },
   };
@@ -185,6 +191,47 @@ describe('a release of a project that names its testing environment', () => {
   it('counts a commit verdict on a project naming none, as before (BC-20)', () => {
     expect(read(issue([[verdict('pass', '10:00')]]))[0]?.proven).toBe(true);
     expect(read(issue([[runtime('11:00')]]))[0]?.proven).toBe(false);
+  });
+
+  // ISS-914: only the review judges a code property, so the review's commit pass is all it can earn
+  describe('a code-property criterion, which only the review judges', () => {
+    const codeProperty = new Map<number, CriterionClass>([[1, 'code_property']]);
+    const reviewPass = verdict('pass', '10:00', { commitSha: EARLIER });
+
+    it("is proven by the review's commit pass at any commit, named by that commit", () => {
+      const [c] = onDev(issue([[reviewPass]], codeProperty));
+      expect(c).toMatchObject({
+        standing: 'pass',
+        proven: true,
+        unverified: null,
+        identity: `commit ${EARLIER.slice(0, 12)}`,
+      });
+      // and on a project naming no testing environment, at a commit other than the build's
+      expect(read(issue([[reviewPass]], codeProperty))[0]?.proven).toBe(true);
+    });
+
+    it('reads a commit fail as failing, never proven', () => {
+      const [c] = onDev(issue([[reviewPass, verdict('fail', '11:00')]], codeProperty));
+      expect(c).toMatchObject({ standing: 'fail', proven: false });
+    });
+
+    it('counts no commit pass recorded before the last reopen', () => {
+      const reopened = new Date('2026-10-14T10:30:00.000Z');
+      const [c] = onDev(issue([[reviewPass]], codeProperty, reopened));
+      expect(c).toMatchObject({ standing: 'unjudged', proven: false });
+      expect(c?.unverified).toBe(
+        "Not reviewed: a code property is proven by the review's pass on the diff",
+      );
+    });
+
+    it('leaves an observable or server-side criterion, or one with no class, needing the runtime pass', () => {
+      for (const cls of ['observable', 'server_side', null] as const) {
+        const classes = new Map<number, CriterionClass>(cls ? [[1, cls]] : []);
+        const [c] = onDev(issue([[verdict('pass', '10:00')]], classes));
+        expect(c).toMatchObject({ standing: 'unjudged', proven: false });
+        expect(c?.unverified).toMatch(/^Not judged on dev: /);
+      }
+    });
   });
 
   it('asks the approver for a deploy to the environment and a pass there', () => {

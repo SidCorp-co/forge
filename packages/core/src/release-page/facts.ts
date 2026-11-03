@@ -12,7 +12,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { listCriteriaOf, reopenedAtOf, voidedUpTo } from '../issues/index.js';
+import { criterionRoutesOf, listCriteriaOf, reopenedAtOf, voidedUpTo } from '../issues/index.js';
 import { carriedVerdictsOf } from '../release-batch/index.js';
 import type { CarriedCriterion, CarriedRequirement, CarriedVerdict, IssueFile } from './claims.js';
 
@@ -30,7 +30,10 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
   ]);
   const all = [...criteria.values()].flat();
   // the rows the release record counts by (`release-batch/release-facts.ts:criteriaAt`)
-  const verdicts = await carriedVerdictsOf(all.map((c) => c.id));
+  const [verdicts, routes] = await Promise.all([
+    carriedVerdictsOf(all.map((c) => c.id)),
+    criterionRoutesOf(all.map((c) => c.id)),
+  ]);
   return detail.issues.flatMap((issue) => {
     const traced = detail.issueCriteria.find((i) => i.key === issue.key)?.criteria ?? [];
     return (criteria.get(issue.id) ?? []).map((c) => {
@@ -45,6 +48,8 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
         n: c.n,
         statement: c.statement,
         bc: traced.find((t) => t.n === c.n)?.bc ?? null,
+        class: routes.get(c.id)?.class ?? null,
+        reopenedAt: reopened.get(issue.id)?.toISOString() ?? null,
         verdicts: own
           .filter((v) => new Date(v.at).getTime() > voidedBy)
           .map(

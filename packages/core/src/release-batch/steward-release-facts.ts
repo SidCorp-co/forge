@@ -53,7 +53,7 @@ export async function stewardReleaseFacts(
         : 'Its delivery policy owes no verdict at awaiting_release (delivery.verdictsRequired: false): criteria are judged on the build the release ships, by the judge that follows the release, so a missing verdict or proof at the gate is not a reason to send an issue back.';
   const judgedOn = judgedOnOf(document?.document.delivery);
   const testing = judgedOn
-    ? `Its releases are proven on its testing environment \`${judgedOn}\` (delivery.judgedOn): a release criterion counts only a pass judged on the build \`${judgedOn}\` serves, a runtime verdict at the release's commit; a commit verdict gates the merge and proves no release criterion.`
+    ? `Its releases are proven on its testing environment \`${judgedOn}\` (delivery.judgedOn): a release criterion counts only a pass judged on the build \`${judgedOn}\` serves, a runtime verdict at the release's commit; a commit verdict gates the merge and proves no release criterion but a code property, which the review's commit pass proves.`
     : null;
   const claim = issueId ? await liveClaimOf(issueId) : null;
   const member = claim

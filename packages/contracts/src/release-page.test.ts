@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { refusalStatusOf } from "./refusal-statuses.js";
-import { landedIdentityWhy } from "./verdict-identity.js";
 import {
+	countedForClass,
 	judgedOnReleaseBuild,
 	judgeHighlights,
 	numeralsIn,
@@ -21,8 +21,11 @@ import {
 	releaseEnded,
 	releaseMediaKindOf,
 	releasePagePath,
+	reviewPassOwedWhy,
+	unjudgedOnReleaseWhy,
 	whatsNewReleaseOwed,
 } from "./release-page.js";
+import { landedIdentityWhy } from "./verdict-identity.js";
 
 const BUILD = "a".repeat(40);
 const MERGED = "b".repeat(40);
@@ -31,7 +34,13 @@ const v = (
 	commitSha: string | null,
 	at: string,
 	identityKind: string | null = "commit",
-): ReleaseVerdictReading => ({ verdict, identityKind, commitSha, runtimeRef: null, at });
+): ReleaseVerdictReading => ({
+	verdict,
+	identityKind,
+	commitSha,
+	runtimeRef: null,
+	at,
+});
 
 describe("the truth rule: a page claims a criterion only with a pass on its build (BC-13)", () => {
 	it("claims a pass on the build", () => {
@@ -359,7 +368,11 @@ describe("release media", () => {
 		).toBe(false);
 	});
 	it("names the commit or the release its verdict judged, exactly one (ISS-900)", () => {
-		const onRelease = { ...media(), commitSha: undefined, releaseVersion: "0.76.0" };
+		const onRelease = {
+			...media(),
+			commitSha: undefined,
+			releaseVersion: "0.76.0",
+		};
 		expect(ReleaseMediaRefSchema.safeParse(onRelease).success).toBe(true);
 		const both = media({ releaseVersion: "0.76.0" });
 		expect(ReleaseMediaRefSchema.safeParse(both).success).toBe(false);
@@ -463,7 +476,9 @@ describe("the verdicts a release reads on its build", () => {
 	it("reads only the runtime verdict at the build where it names one", () => {
 		expect(judgedOnReleaseBuild(commit, BUILD, "dev")).toBe(false);
 		expect(judgedOnReleaseBuild(runtime(BUILD), BUILD, "dev")).toBe(true);
-		expect(judgedOnReleaseBuild(runtime(BUILD.toUpperCase()), BUILD, "dev")).toBe(true);
+		expect(
+			judgedOnReleaseBuild(runtime(BUILD.toUpperCase()), BUILD, "dev"),
+		).toBe(true);
 		expect(judgedOnReleaseBuild(runtime(MERGED), BUILD, "dev")).toBe(false);
 	});
 
@@ -484,9 +499,102 @@ describe("the verdicts a release reads on its build", () => {
 	it("weighs a whole-commit runtime at a landing only where a testing environment is named", () => {
 		expect(landedIdentityWhy("runtime", BUILD, "dev")).toBeNull();
 		expect(landedIdentityWhy("runtime", BUILD, null)).toContain("not a commit");
-		expect(landedIdentityWhy("runtime", `${BUILD}${"0".repeat(24)}`, "dev")).toContain(
+		expect(
+			landedIdentityWhy("runtime", `${BUILD}${"0".repeat(24)}`, "dev"),
+		).toContain("not a commit");
+		expect(landedIdentityWhy("design", "flow rev 2", "dev")).toContain(
 			"not a commit",
 		);
-		expect(landedIdentityWhy("design", "flow rev 2", "dev")).toContain("not a commit");
+	});
+});
+
+// ISS-914: a code property is the review's alone, judged against the diff, so its commit pass proves it
+describe("the verdicts a release reads a criterion by, by its class", () => {
+	const at = "2026-11-03T10:00:00.000Z";
+	const commitAt = (sha: string) => ({
+		identityKind: "commit",
+		commitSha: sha,
+		runtimeRef: null,
+		at,
+	});
+	const runtimeAt = (ref: string) => ({
+		identityKind: "runtime",
+		commitSha: null,
+		runtimeRef: ref,
+		at,
+	});
+
+	it("counts a code property's commit verdict at any commit, judged on an environment or not", () => {
+		for (const judgedOn of ["stg", null]) {
+			expect(
+				countedForClass(commitAt(MERGED), "code_property", BUILD, judgedOn),
+			).toBe(true);
+		}
+	});
+
+	it("counts no commit verdict recorded at or before the last reopen", () => {
+		expect(
+			countedForClass(
+				commitAt(MERGED),
+				"code_property",
+				BUILD,
+				"stg",
+				undefined,
+				"2026-11-03T11:00:00.000Z",
+			),
+		).toBe(false);
+		expect(
+			countedForClass(
+				commitAt(MERGED),
+				"code_property",
+				BUILD,
+				"stg",
+				undefined,
+				at,
+			),
+		).toBe(false);
+		expect(
+			countedForClass(
+				commitAt(MERGED),
+				"code_property",
+				BUILD,
+				"stg",
+				undefined,
+				"2026-11-03T09:00:00.000Z",
+			),
+		).toBe(true);
+	});
+
+	it("leaves every other class, and none, to the build's rule", () => {
+		for (const cls of ["observable", "server_side", null] as const) {
+			expect(countedForClass(commitAt(BUILD), cls, BUILD, "stg")).toBe(false);
+			expect(countedForClass(runtimeAt(BUILD), cls, BUILD, "stg")).toBe(true);
+			expect(countedForClass(commitAt(MERGED), cls, BUILD, null)).toBe(false);
+			expect(countedForClass(commitAt(BUILD), cls, BUILD, null)).toBe(true);
+		}
+	});
+
+	it("still counts a code property's runtime verdict at the build, and no runtime one elsewhere", () => {
+		expect(
+			countedForClass(runtimeAt(BUILD), "code_property", BUILD, "stg"),
+		).toBe(true);
+		expect(
+			countedForClass(runtimeAt(MERGED), "code_property", BUILD, "stg"),
+		).toBe(false);
+	});
+
+	it("says a code property owes the review's pass, and every other class the environment's", () => {
+		expect(unjudgedOnReleaseWhy("code_property", "stg", BUILD)).toBe(
+			reviewPassOwedWhy,
+		);
+		expect(unjudgedOnReleaseWhy("code_property", "stg", BUILD)).not.toMatch(
+			/gates the merge/,
+		);
+		expect(unjudgedOnReleaseWhy("observable", "stg", BUILD)).toMatch(
+			/^Not judged on stg: /,
+		);
+		expect(unjudgedOnReleaseWhy(null, "stg", BUILD)).toMatch(
+			/^Not judged on stg: /,
+		);
 	});
 });

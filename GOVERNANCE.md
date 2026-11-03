@@ -42,7 +42,9 @@ BC-2). The release hold asks for passing verdicts where the project document's
 without them. Where the document names a testing environment (`delivery.judgedOn`, REQ-36
 BC-18..BC-20), a commit verdict still gates the merge, but a release is proven, and its owner's
 review owed, only by passes judged on the build that environment serves (a `runtime` verdict at
-the release's commit); a criterion not judged there reads "Not judged on <environment>".
+the release's commit); a criterion not judged there reads "Not judged on <environment>". A
+code-property criterion, which only the review judges against the diff, is proven by the review's
+commit pass since the issue's last reopen (ISS-914).
 
 Fast delivery (REQ-79) is every project's default, and `delivery.fast: false` turns it off: a
 merge check then asks only build and the change's scoped tests, a red the building agent rates

@@ -6,7 +6,8 @@
 // `judgedOn` names the project's testing environment (REQ-36 BC-18..BC-20, owner ruling
 // 2026-10-27): a release of a project naming one is proven only by passes judged on the build that
 // environment serves — a `runtime` verdict at the release's commit — and a commit verdict, which
-// still gates the merge, proves no release criterion. It is one name on the delivery policy rather
+// still gates the merge, proves no release criterion but a code property, which only the review judges
+// (`release-page.ts:countedForClass`, ISS-914). It is one name on the delivery policy rather
 // than a flag on each environment, so a project has at most one by construction, and it is not
 // `environments.<name>.testing`, which names the testing profile a run signs in with.
 //

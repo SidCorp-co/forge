@@ -7,10 +7,10 @@
 // picture to a highlight (BC-3); every other one is a known issue as its verdict on the build reads
 // (BC-8). Pure: the loaders in facts.ts hand it rows.
 
+import type { CriterionClass } from '@forge/contracts/issue-design';
 import {
   citesAttachment,
-  countedOnRelease,
-  notJudgedOnWhy,
+  countedForClass,
   RELEASE_CLIP_MAX_BYTES,
   type ReleaseClaim,
   type ReleaseKnownIssue,
@@ -21,6 +21,7 @@ import {
   type ReleaseVerdictReading,
   releaseClaimOf,
   releaseMediaKindOf,
+  unjudgedOnReleaseWhy,
 } from '@forge/contracts/release-page';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { countedUnderCutover, verifiedOf } from '@forge/contracts/verified-rule';
@@ -45,6 +46,10 @@ export interface CarriedCriterion {
   n: number;
   statement: string;
   bc: string | null;
+  /** Its class in the issue's design; null where none is recorded (`countedForClass`, ISS-914). */
+  class: CriterionClass | null;
+  /** The issue's last reopen, ISO; null where it was never reopened. */
+  reopenedAt: string | null;
   verdicts: readonly CarriedVerdict[];
 }
 
@@ -76,16 +81,18 @@ export interface ClaimReading {
 /**
  * The verdicts a release reads a criterion by, newest first: those judged on `build`
  * (`judgedOnReleaseBuild`, on its testing environment where the project names one), or every one on
- * a draft.
+ * a draft, and on a code property its review's commit verdicts since the reopen (`countedForClass`).
  */
 function readAt(
-  verdicts: readonly CarriedVerdict[],
+  criterion: CarriedCriterion,
   build: string | null,
   judgedOn: string | null,
   versions: ReadonlySet<string>,
 ): CarriedVerdict[] {
-  const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
-  return newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, versions));
+  const newestFirst = [...criterion.verdicts].sort((a, b) => b.at.localeCompare(a.at));
+  return newestFirst.filter((v) =>
+    countedForClass(v, criterion.class, build, judgedOn, versions, criterion.reopenedAt),
+  );
 }
 
 /**
@@ -101,7 +108,7 @@ export function readClaims(
   versions: ReadonlySet<string> = new Set(),
 ): ClaimReading[] {
   return criteria.map((criterion) => {
-    const read = verifiedOf(readAt(criterion.verdicts, build, judgedOn, versions), judge);
+    const read = verifiedOf(readAt(criterion, build, judgedOn, versions), judge);
     const { stands, why } = read;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
     // a release with no build still stands on a verdict judged on its own version
@@ -120,7 +127,7 @@ export function readClaims(
         stands?.verdict === 'pass'
           ? why
           : build !== null && judgedOn !== null && !stands
-            ? notJudgedOnWhy(judgedOn, build)
+            ? unjudgedOnReleaseWhy(criterion.class, judgedOn, build)
             : null,
       onBuild,
       underCutover: proven && stands !== null && countedUnderCutover(stands, judge),

@@ -1,10 +1,11 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
+import type { CriterionClass } from '@forge/contracts/issue-design';
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import {
-  countedOnRelease,
-  notJudgedOnWhy,
+  countedForClass,
   type ReleaseVerdictReading,
+  unjudgedOnReleaseWhy,
 } from '@forge/contracts/release-page';
 import { type ReleasedLine, versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
@@ -26,6 +27,7 @@ import {
   activeIssuePrefix,
   type CriterionWithVerdict,
   closedAtOf,
+  criterionRoutesOf,
   listCriteriaOf,
   reopenedAtOf,
   verdictByBuilderSql,
@@ -49,6 +51,9 @@ export interface IssueFact {
   requirementId: string | null;
   /** Each live criterion read by its latest verdict: what a release with no cut build counts. */
   criteria: ReleaseCriterionView[];
+  /** Each live criterion's class in the issue's design, by its number; one with none recorded is
+   *  absent, and reads as an observable one (`countedForClass`, ISS-914). */
+  classes: ReadonlyMap<number, CriterionClass>;
   /** Every verdict each live criterion earned since the issue's last reopen, by its number. */
   verdicts: ReadonlyMap<number, readonly CarriedVerdict[]>;
   /** Every verdict that reopen voided, by number: what a release shipped before it still reads
@@ -170,7 +175,8 @@ export async function carriedVerdictsOf(
  * never a commit one, REQ-36 BC-18), so a verdict on an earlier build never counts, and none on it
  * reads not judged — "Not judged on <environment>" where the project names one (BC-19). A verdict
  * judged on a release counts on release `version` and on every release its record says carries
- * that one (`versionsCountedOn`, ISS-900).
+ * that one (`versionsCountedOn`, ISS-900). A code-property criterion, which only the review judges,
+ * also counts its commit verdicts since the last reopen, at any build (`countedForClass`, ISS-914).
  */
 export function criteriaAt(
   issue: IssueFact,
@@ -182,17 +188,25 @@ export function criteriaAt(
 ): ReleaseCriterionView[] {
   const versions = versionsCountedOn(released, version);
   const reader = { shippedAt, build, judgedOn, versions };
+  const reopenedAt = issue.reopenedAt?.toISOString() ?? null;
   return issue.criteria.map((c) => {
+    const cls = issue.classes.get(c.n) ?? null;
     const before = voidedStillRead(issue, c.n, reader);
     const newestFirst = [...(issue.verdicts.get(c.n) ?? []), ...before].sort((a, b) =>
       b.at.localeCompare(a.at),
     );
-    const counted = newestFirst.filter((v) => countedOnRelease(v, build, judgedOn, versions));
+    const counted = newestFirst.filter((v) =>
+      countedForClass(v, cls, build, judgedOn, versions, reopenedAt),
+    );
     const read = verifiedOf(counted, judge);
     const stands = read.stands;
     const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
     const unjudgedThere = build !== null && judgedOn !== null && !stands;
-    const unverified = proven ? null : unjudgedThere ? notJudgedOnWhy(judgedOn, build) : read.why;
+    const unverified = proven
+      ? null
+      : unjudgedThere
+        ? unjudgedOnReleaseWhy(cls, judgedOn, build)
+        : read.why;
     // with no build, a verdict judged on a release still names what it stands on (ISS-900)
     if (build === null && stands?.identityKind !== 'release') return { ...c, proven, unverified };
     const at = build ?? '';
@@ -206,9 +220,11 @@ export function criteriaAt(
       identity: stands
         ? stands.identityKind === 'release'
           ? `release ${stands.releaseVersion}`
-          : judgedOn === null
-            ? commitIdentityPhrase(at)
-            : `runtime ${at.slice(0, 12)} on ${judgedOn}`
+          : stands.identityKind === 'commit'
+            ? commitIdentityPhrase(stands.commitSha)
+            : judgedOn === null
+              ? commitIdentityPhrase(at)
+              : `runtime ${at.slice(0, 12)} on ${judgedOn}`
         : null,
       reason: stands?.reason ?? null,
       judgedAt: stands?.at ?? null,
@@ -350,9 +366,11 @@ export async function loadReleaseFacts(
       rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])),
     ),
   ]);
-  const verdicts = await carriedVerdictsOf(
-    [...criteria.values()].flatMap((list) => list.map((c) => c.id)),
-  );
+  const criterionIds = [...criteria.values()].flatMap((list) => list.map((c) => c.id));
+  const [verdicts, routes] = await Promise.all([
+    carriedVerdictsOf(criterionIds),
+    criterionRoutesOf(criterionIds),
+  ]);
   // a reopen voids what was judged before it on a criterion not passing then (`voidedUpTo`,
   // ISS-845), as `criterionView` reads the latest
   const voidedFor = (issueId: string, criterionId: string) =>
@@ -382,6 +400,12 @@ export async function loadReleaseFacts(
         releaseNotes: r.releaseNotes ?? null,
         requirementId: r.requirementId,
         criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, voidedFor(r.id, c.id))),
+        classes: new Map(
+          (criteria.get(r.id) ?? []).flatMap((c) => {
+            const route = routes.get(c.id);
+            return route ? [[c.n, route.class] as const] : [];
+          }),
+        ),
         verdicts: judged(r.id, true),
         voided: judged(r.id, false),
         reopenedAt: reopened.get(r.id) ?? null,

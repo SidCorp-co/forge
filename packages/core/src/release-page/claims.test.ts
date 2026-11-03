@@ -47,6 +47,8 @@ function criterion(n: number, bc: string | null, verdicts: CarriedVerdict[]): Ca
     n,
     statement: `criterion ${n}`,
     bc,
+    class: null,
+    reopenedAt: null,
     verdicts,
   };
 }
