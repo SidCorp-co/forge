@@ -98,7 +98,7 @@
   "info": {
     "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-query-closed` marks a read whose query refuses a key it does not take; every GET carries it, or carries `x-forge-query-open` naming why a third party chooses its keys. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
-    "version": "11.2.0",
+    "version": "11.3.0",
     "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
@@ -773,6 +773,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a retired door answers anyone the refusal naming its replacement; it reads and writes nothing"
+        },
         "x-forge-query-open": "the retired agent-report read answers its retirement whatever the old caller sends; that read required ?projectId unless scope=all, so every old caller's query is a shape Forge no longer names, and a query refusal in front would hide where reports went (REQ-47 BC-8)",
         "x-forge-validated": []
       },
@@ -790,6 +793,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a retired door answers anyone the refusal naming its replacement; it reads and writes nothing"
+        },
         "x-forge-validated": []
       }
     },
@@ -808,6 +814,9 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a retired door answers anyone the refusal naming its replacement; it reads and writes nothing"
+        },
         "x-forge-validated": []
       }
     },
@@ -835,6 +844,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a retired door answers anyone the refusal naming its replacement; it reads and writes nothing"
+        },
         "x-forge-validated": []
       }
     },
@@ -3115,6 +3127,9 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "none": "renders the text the caller sent as a stored body would be; it reads and writes no row"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -5742,6 +5757,10 @@
         "x-forge-auth": [
           "requireAuth"
         ],
+        "x-forge-permission": {
+          "rule": "devices/login-routes.ts:resolveApprovableAgent",
+          "why": "the caller approves a code for themself; for an agent the body names, org.admin on the agent's organization"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -10860,6 +10879,10 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "rule": "integrations/source-host/host-credential.ts:relayedGitUpstream",
+          "why": "git's Basic credential carries a relay ticket naming a device and a binding, no Forge session; whether that device may still reach the repository is decided on every request (GIT_RELAY_FORBIDDEN)"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -10915,6 +10938,10 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "rule": "integrations/source-host/host-credential.ts:relayedGitUpstream",
+          "why": "git's Basic credential carries a relay ticket naming a device and a binding, no Forge session; whether that device may still reach the repository is decided on every request (GIT_RELAY_FORBIDDEN)"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19050,6 +19077,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "credentials/pat-grant-checks.ts:assertProjectsVisible",
+          "why": "the caller’s own token or grant, whose project list may name only projects the caller sees; refused naming the first it does not"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -19397,6 +19428,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "devices/owner-routes.ts:ownerDevicesScope",
+          "why": "the caller's own devices; org.read on the organization the query names, where it names one"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -19797,6 +19832,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "ecosystem/membership-service.ts:readableMembership",
+          "why": "a role on the ecosystem's steward organization, or a reader's role on the member project; refused naming both"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -22767,6 +22806,10 @@
           "assertEmailVerified",
           "requireFreshAuth"
         ],
+        "x-forge-permission": {
+          "rule": "credentials/pat-grant-checks.ts:assertProjectsVisible",
+          "why": "the caller’s own token or grant, whose project list may name only projects the caller sees; refused naming the first it does not"
+        },
         "x-forge-validated": [
           "json"
         ]
@@ -22879,6 +22922,10 @@
           "assertEmailVerified",
           "requireFreshAuth"
         ],
+        "x-forge-permission": {
+          "rule": "credentials/pat-grant-checks.ts:assertProjectsVisible",
+          "why": "the caller’s own token or grant, whose project list may name only projects the caller sees; refused naming the first it does not"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -27640,6 +27687,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "reports/executions.ts:readExecution",
+          "why": "only the person who asked the execution reads it, and project.read on its project; EXECUTION_NOT_FOUND, EXECUTION_READ_FORBIDDEN and EXECUTION_EXPIRED answer before it"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -36701,6 +36752,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "questionnaires/rules.ts:submitterRefusal",
+          "why": "questionnaires.answer on the project, refused by name in the ONBOARDING_REFUSED envelope"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -36808,6 +36863,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "reports/runs.ts:runReport",
+          "why": "the query declares the permission it is run under, held by the caller on the project; refused by name otherwise"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -36853,6 +36912,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "reports/runs.ts:readReportRun",
+          "why": "the permission the stored run was read under, held now by the person who made it; REPORT_RUN_NOT_FOUND and the run-reader refusals answer first"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "param",
@@ -36990,6 +37053,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "reports/templates.ts:checkTemplateNarrative",
+          "why": "each named run is one of the template's own, made by the caller and readable under the permission it was stored with"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -37055,6 +37122,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "reports/templates.ts:runTemplate",
+          "why": "each of the template's queries declares the permission it is run under, held by the caller on the project"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -42325,6 +42396,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.admin"
+        },
         "x-forge-validated": [
           "json",
           "param"
@@ -49731,6 +49808,12 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "on": {
+            "resolved": "the project the path names, once the handler has refused an id that is no uuid"
+          },
+          "permission": "project.read"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -58508,6 +58591,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-permission": {
+          "rule": "runners/routes.ts:runnerListProject",
+          "why": "project.read on the project the query names as projectId; with none named the list is empty"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -59934,6 +60021,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a provider's delivery carries no Forge credential; its signature against the App's or the binding's secret is checked before anything routes"
+        },
         "x-forge-validated": []
       }
     },
@@ -59970,6 +60060,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "a provider's delivery carries no Forge credential; its signature against the App's or the binding's secret is checked before anything routes"
+        },
         "x-forge-validated": []
       }
     },
@@ -60427,6 +60520,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the built-in workflow templates carry no project's data and are read with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
@@ -60465,6 +60561,9 @@
           }
         },
         "x-forge-auth": [],
+        "x-forge-permission": {
+          "public": "the built-in workflow templates carry no project's data and are read with no credential"
+        },
         "x-forge-query-closed": true,
         "x-forge-validated": [
           "query"
