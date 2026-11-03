@@ -145,7 +145,8 @@ export function ownerWait(input: StandingInput, act: Said, rule: Said, due: stri
   if (owner?.kind === 'agent') {
     return { group: 'waiting' as const, waitingOn: wait('agent', MASTER, act, rule, due) };
   }
-  if (owner && viewer?.userId === owner.id) {
+  // the owner's move asks project.write: an owner who lost it reads it as everyone else does (ISS-926)
+  if (owner && viewer?.userId === owner.id && viewer.canWrite) {
     return { group: 'needs_you' as const, waitingOn: wait('you', YOU, act, rule, due) };
   }
   const named = owner?.name ? say('standing.who.named', { name: owner.name }) : SIGNER;

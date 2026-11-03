@@ -66,6 +66,7 @@ interface StandingRow {
 
 interface StandingViewer {
   userId: string;
+  canWrite: boolean;
   canSignOff: boolean;
   canAdmit: boolean;
   canApproveBreakdown?: boolean;

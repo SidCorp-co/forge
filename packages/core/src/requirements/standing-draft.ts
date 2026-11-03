@@ -35,7 +35,10 @@ const turn = (
 
 /** Whose turn an open draft revision is: an agent's draft is its master's to propose or drop,
  *  whichever account the agent wrote it under; a person's draft is its author's. */
-export function draftTurn(draft: StandingRevision, viewer: { userId: string } | null) {
+export function draftTurn(
+  draft: StandingRevision,
+  viewer: { userId: string; canWrite: boolean } | null,
+) {
   const returned = draft.returned === true;
   const r = draft.revision;
   if (draft.authorAgency === 'agent') {
@@ -49,7 +52,8 @@ export function draftTurn(draft: StandingRevision, viewer: { userId: string } | 
       say(returned ? 'requirements.rule.agentReturned' : 'requirements.rule.agentDraft'),
     );
   }
-  if (viewer && draft.authorId === viewer.userId) {
+  // finishing a draft asks project.write: an author who lost it reads it as everyone else does (ISS-926)
+  if (viewer && draft.authorId === viewer.userId && viewer.canWrite) {
     return turn(
       'needs_you',
       'you',

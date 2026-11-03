@@ -1,3 +1,5 @@
+// @direct-test-of packages/core/src/requirements/standing-gates.ts
+// @direct-test-of packages/core/src/requirements/viewer.ts
 import type { Approvals } from '@forge/contracts/person-gates';
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
@@ -9,8 +11,20 @@ import { nextStepOf } from './standing-gates.js';
 const at = (iso: string) => new Date(iso);
 
 /** Two members of one project: the owner holds only project.write, the other holds requirements.approve. */
-const OWNER = { userId: 'u1', canSignOff: false, canAdmit: false, canApproveBreakdown: false };
-const SIGNER = { userId: 'u2', canSignOff: true, canAdmit: true, canApproveBreakdown: true };
+const OWNER = {
+  userId: 'u1',
+  canWrite: true,
+  canSignOff: false,
+  canAdmit: false,
+  canApproveBreakdown: false,
+};
+const SIGNER = {
+  userId: 'u2',
+  canWrite: true,
+  canSignOff: true,
+  canAdmit: true,
+  canApproveBreakdown: true,
+};
 
 const R1 = {
   revision: 1,
@@ -75,6 +89,13 @@ describe('a person’s Needs you lists only the acts that person must do (BC-22)
     expect(signer.waitingOn).toMatchObject({ kind: 'you', act: 'agree r1' });
     expect(owner.attentionGroup).toBe('waiting');
     expect(owner.waitingOn).toMatchObject({ kind: 'person', who: 'BA or owner' });
+  });
+
+  // ISS-926: the owner's move asks project.write; an owner who lost it was still asked on Needs you
+  it('an owner who lost project.write reads their move as waiting on them by name, never needs_you', () => {
+    const s = turn({ ...base(), viewer: { ...OWNER, canWrite: false } });
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Lan', act: 'agree r1' });
   });
 
   it('a switch for another step leaves this one with its owner', () => {

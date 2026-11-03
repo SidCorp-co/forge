@@ -99,6 +99,8 @@ export interface StandingInput {
    */
   viewer: {
     userId: string;
+    /** project.write: what the owner's own move and a draft revision's author ask (ISS-926). */
+    canWrite: boolean;
     canSignOff: boolean;
     canAdmit: boolean;
     /** suggestions.approve: what a breakdown's accept asks where its switch is on. */

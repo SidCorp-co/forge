@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/requirements/standing-draft.ts
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { deriveStanding as deriveStanding_, type StandingIssue } from './standing.js';
@@ -109,7 +110,7 @@ describe('whose turn an open draft revision is', () => {
   const draftBy = (authorAgency: 'human' | 'agent') => ({
     ...input([]),
     status: 'draft' as const,
-    viewer: { userId: 'u1', canSignOff: true, canAdmit: true },
+    viewer: { userId: 'u1', canWrite: true, canSignOff: true, canAdmit: true },
     currentRevision: null,
     revisions: [
       {
@@ -133,6 +134,16 @@ describe('whose turn an open draft revision is', () => {
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'propose r1' });
   });
 
+  // ISS-926: finishing a draft asks project.write; an author who lost it was still asked on Needs you
+  it('waits on its author by name, never needs_you, when the author can no longer write', () => {
+    const s = deriveStanding({
+      ...draftBy('human'),
+      viewer: { userId: 'u1', canWrite: false, canSignOff: false, canAdmit: false },
+    });
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ba', act: 'finish draft' });
+  });
+
   it('waits on the master, never on the viewer, when an agent wrote it under their account', () => {
     const s = deriveStanding(draftBy('agent'));
     expect(s.attentionGroup).toBe('waiting');
@@ -153,7 +164,7 @@ describe('whose turn an open draft revision is', () => {
     const s = deriveStanding({
       ...base,
       runnerBound: false,
-      viewer: { userId: 'u2', canSignOff: false, canAdmit: false },
+      viewer: { userId: 'u2', canWrite: true, canSignOff: false, canAdmit: false },
     });
     expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'BA or owner' });
@@ -178,7 +189,7 @@ describe('whose turn an open draft revision is', () => {
 // FB-73: an agree is refused REQUIREMENT_DESIGN_UNAPPROVED while a linked design is unapproved, so
 // the requirement cannot read as waiting on the signer to agree it
 describe('a draft requirement whose linked designs are not all approved', () => {
-  const signer = { userId: 'u1', canSignOff: true, canAdmit: true };
+  const signer = { userId: 'u1', canWrite: true, canSignOff: true, canAdmit: true };
   const draftHead = (
     unapprovedDesigns: { flow: string; title: string; designStatus: string | null }[],
   ) => ({
@@ -250,7 +261,7 @@ describe('a draft requirement whose linked designs are not all approved', () => 
 // It asks only a person who can act on it, a signer who also holds issues.admit (question 3b8292dc,
 // B), while its only live issues are drafts (requirement-to-delivery step `turn`, as approved).
 describe('an agreed requirement whose live issues are drafts', () => {
-  const admitter = { userId: 'u1', canSignOff: true, canAdmit: true };
+  const admitter = { userId: 'u1', canWrite: true, canSignOff: true, canAdmit: true };
 
   it('asks a signer who can admit to promote every draft, a dropped one not counted', () => {
     const s = deriveStanding({
@@ -265,7 +276,7 @@ describe('an agreed requirement whose live issues are drafts', () => {
     ['a viewer who cannot sign', null],
     [
       'a signer the admit gate does not let admit',
-      { userId: 'u2', canSignOff: true, canAdmit: false },
+      { userId: 'u2', canWrite: true, canSignOff: true, canAdmit: false },
     ],
   ])('names a BA or owner who can admit issues to %s, and does not ask them', (_, viewer) => {
     const s = deriveStanding({ ...input([issue(1, 'draft', false)]), viewer });
@@ -283,7 +294,7 @@ describe('an agreed requirement whose live issues are drafts', () => {
   it('asks a viewer the admit gate lets admit, whether or not they can sign', () => {
     const s = deriveStanding({
       ...input([issue(1, 'draft', false)]),
-      viewer: { userId: 'u3', canSignOff: false, canAdmit: true },
+      viewer: { userId: 'u3', canWrite: true, canSignOff: false, canAdmit: true },
     });
     expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'promote 1 draft issue' });
   });
