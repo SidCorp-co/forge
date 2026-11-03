@@ -374,7 +374,8 @@
         "feedbackExternalReporters",
         "feedbackMessages",
         "feedbackOccurrences",
-        "feedbackRouteIssues"
+        "feedbackRouteIssues",
+        "feedbackServerKeys"
       ],
       "serves": [
         "REQ-7",
