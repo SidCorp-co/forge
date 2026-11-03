@@ -5,7 +5,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
+import { requiresByRule, requiresOnParam } from '../permissions/index.js';
 import { attachVisualBlock } from './blocks.js';
 import { computeExecution } from './compute.js';
 import { readExecution } from './executions.js';
@@ -74,6 +74,10 @@ reportRoutes.get(
 reportRoutes.post(
   '/conversations/:id/blocks',
   zValidator('param', roomParam, invalid('invalid path: /api/conversations/<conversation>/blocks')),
+  requiresByRule(
+    'reports/blocks.ts:attachVisualBlock',
+    'a reader of the room (readableConversation), about the project the body names (REPORT_RUN_OTHER_PROJECT), drawing a run or execution the caller made',
+  ),
   zValidator(
     'json',
     blockBody,

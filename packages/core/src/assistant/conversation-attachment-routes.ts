@@ -22,6 +22,7 @@ import type { AuthVars } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/index.js';
+import { ROOM_READ, ROOM_WRITE } from './conversation-declarations.js';
 import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
 
 /**
@@ -80,6 +81,7 @@ export const conversationAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
 conversationAttachmentRoutes.post(
   '/:id/attachments',
   zValidator('param', idParamSchema),
+  ROOM_WRITE,
   zValidator('json', attachmentTicketSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -114,6 +116,7 @@ conversationAttachmentRoutes.post(
 conversationAttachmentRoutes.get(
   '/:id/attachments/:attachmentId/download',
   zValidator('param', idParamSchema.extend({ attachmentId: z.uuid() })),
+  ROOM_READ,
   noQuery,
   async (c) => {
     const { id, attachmentId } = c.req.valid('param');
@@ -138,14 +141,19 @@ conversationAttachmentRoutes.get(
  * box is that session's to cancel, and a room running nothing is told so by
  * name rather than answered 200 over a stop that stopped nothing.
  */
-conversationAttachmentRoutes.post('/:id/stop', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  await writableConversation(id, c.get('userId'));
+conversationAttachmentRoutes.post(
+  '/:id/stop',
+  zValidator('param', idParamSchema),
+  ROOM_WRITE,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await writableConversation(id, c.get('userId'));
 
-  if (!isTurnRunning(id)) {
-    const refusal = await nothingHereToStop(id);
-    if (refusal) throw refusal;
-  }
+    if (!isTurnRunning(id)) {
+      const refusal = await nothingHereToStop(id);
+      if (refusal) throw refusal;
+    }
 
-  return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
-});
+    return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
+  },
+);

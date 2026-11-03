@@ -28,6 +28,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { idParamSchema } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
+import { ROOM_ADD_HANDLE, ROOM_MEMBERSHIP, ROOM_READ } from './conversation-declarations.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 import { addRoomHandle, addRoomPerson, removeRoomParticipant } from './service.js';
 
@@ -92,6 +93,7 @@ conversationMemberRoutes.get(
 conversationMemberRoutes.get(
   '/:id/candidates',
   zValidator('param', idParamSchema),
+  ROOM_READ,
   noQuery,
   async (c) => {
     const { id } = c.req.valid('param');
@@ -112,6 +114,7 @@ conversationMemberRoutes.get(
 conversationMemberRoutes.post(
   '/:id/people',
   zValidator('param', idParamSchema),
+  ROOM_MEMBERSHIP,
   zValidator('json', addPersonSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -128,6 +131,7 @@ conversationMemberRoutes.post(
 conversationMemberRoutes.post(
   '/:id/handles',
   zValidator('param', idParamSchema),
+  ROOM_ADD_HANDLE,
   zValidator('json', addHandleSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -144,6 +148,7 @@ conversationMemberRoutes.post(
 conversationMemberRoutes.delete(
   '/:id/participants/:participantId',
   zValidator('param', removeParamSchema),
+  ROOM_MEMBERSHIP,
   async (c) => {
     const { id, participantId } = c.req.valid('param');
     const actor = c.get('userId');

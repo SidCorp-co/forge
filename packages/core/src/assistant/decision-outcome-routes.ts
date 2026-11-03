@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { writableConversation } from '../conversations/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { ROOM_WRITE } from './conversation-declarations.js';
 import { answerPressedCard } from './decision-outcome.js';
 
 export const decisionOutcomeRoutes = new Hono<{ Variables: AuthVars }>();
@@ -17,6 +18,7 @@ export const decisionOutcomeRoutes = new Hono<{ Variables: AuthVars }>();
 decisionOutcomeRoutes.post(
   '/:id/decision-outcomes',
   zValidator('param', z.object({ id: z.uuid() })),
+  ROOM_WRITE,
   strictBody(decisionOutcomeRequestSchema, DECISION_OUTCOME_SHAPE),
   async (c) => {
     const { id } = c.req.valid('param');

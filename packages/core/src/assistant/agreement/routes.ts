@@ -16,8 +16,9 @@ import { refuser } from '../../lib/refusal.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { noQuery, strictBody, zValidator } from '../../middleware/zod-validator.js';
 import { postServiceAnswer } from '../conversation-adapter.js';
+import { PROPOSAL_AGREE, PROPOSAL_DECLINE, ROOM_READ } from '../conversation-declarations.js';
 import { agreeProposal, declineAs } from './agree.js';
-import { agreementOf, refuseChatDecline } from './agreement-door.js';
+import { agreementOf, declinerOf } from './agreement-door.js';
 import type { WriteOutcome } from './execute.js';
 import { failureSentence } from './failure.js';
 import { type ChatProposalRow, listProposals, readProposal } from './store.js';
@@ -37,7 +38,7 @@ function toldInThread(row: ChatProposalRow, outcome: WriteOutcome): string {
   return ref ? `Recorded as ${ref}: ${title}.` : `Recorded: ${title}.`;
 }
 
-conversationProposalRoutes.get('/:id/proposals', roomParam, noQuery, async (c) => {
+conversationProposalRoutes.get('/:id/proposals', roomParam, ROOM_READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await readableConversation(id, userId);
@@ -49,6 +50,7 @@ conversationProposalRoutes.get('/:id/proposals', roomParam, noQuery, async (c) =
 conversationProposalRoutes.post(
   '/:id/proposals/:pid/agree',
   proposalParam,
+  PROPOSAL_AGREE,
   strictBody(agreeChatProposalRequestSchema, AGREE_CHAT_PROPOSAL_SHAPE),
   async (c) => {
     const { id, pid } = c.req.valid('param');
@@ -76,16 +78,23 @@ conversationProposalRoutes.post(
   },
 );
 
-conversationProposalRoutes.post('/:id/proposals/:pid/decline', proposalParam, async (c) => {
-  const { id, pid } = c.req.valid('param');
-  const userId = c.get('userId');
-  await refuseChatDecline();
-  await readableConversation(id, userId);
-  const proposal = await readProposal(pid);
-  if (!proposal || proposal.conversationId !== id) {
-    throw refuse('CHAT_PROPOSAL_UNKNOWN', `proposal ${pid} is not one made in conversation ${id}`);
-  }
-  const row = await declineAs(pid, userId);
-  const named = await labels([row.proposedTo]);
-  return c.json({ proposal: viewOf(row, userId, named) });
-});
+conversationProposalRoutes.post(
+  '/:id/proposals/:pid/decline',
+  proposalParam,
+  PROPOSAL_DECLINE,
+  async (c) => {
+    const { id, pid } = c.req.valid('param');
+    const userId = c.get('userId');
+    await declinerOf(id, userId);
+    const proposal = await readProposal(pid);
+    if (!proposal || proposal.conversationId !== id) {
+      throw refuse(
+        'CHAT_PROPOSAL_UNKNOWN',
+        `proposal ${pid} is not one made in conversation ${id}`,
+      );
+    }
+    const row = await declineAs(pid, userId);
+    const named = await labels([row.proposedTo]);
+    return c.json({ proposal: viewOf(row, userId, named) });
+  },
+);

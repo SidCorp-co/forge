@@ -54,3 +54,9 @@ export async function agreementOf(
 export function refuseChatDecline(): Promise<void> {
   return refuseChatCredential('declined');
 }
+
+/** The person pressing Decline: their own sign-in, and a reader of the room the card is in. */
+export async function declinerOf(conversationId: string, userId: string): Promise<void> {
+  await refuseChatDecline();
+  await readableConversation(conversationId, userId);
+}

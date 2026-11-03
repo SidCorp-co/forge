@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { readableConversation, refuseConversation } from '../conversations/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { ROOM_READ } from './conversation-declarations.js';
 import { homeIsEcosystemMember } from './read.js';
 import { pinConversation, unpinConversation } from './service.js';
 
@@ -37,7 +38,7 @@ export const conversationPinRoutes = new Hono<{ Variables: AuthVars }>();
 
 const idParam = zValidator('param', z.object({ id: z.uuid() }));
 
-conversationPinRoutes.put('/:id/pin', idParam, async (c) => {
+conversationPinRoutes.put('/:id/pin', idParam, ROOM_READ, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await readableConversation(id, userId);
@@ -45,7 +46,7 @@ conversationPinRoutes.put('/:id/pin', idParam, async (c) => {
   return c.json({ conversationId: id, pinned: true });
 });
 
-conversationPinRoutes.delete('/:id/pin', idParam, async (c) => {
+conversationPinRoutes.delete('/:id/pin', idParam, ROOM_READ, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await readableConversation(id, userId);

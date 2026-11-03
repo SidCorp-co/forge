@@ -46,6 +46,7 @@ import { batchesOfConversation } from '../questionnaires/index.js';
 import { conversationProposalRoutes } from './agreement/routes.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
+import { ROOM_READ, ROOM_WRITE } from './conversation-declarations.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { conversationMessageRoutes } from './conversation-message-routes.js';
 import { withDisplayNames } from './conversation-people.js';
@@ -217,39 +218,46 @@ conversationRoutes.post(
   },
 );
 
-conversationRoutes.get('/:id', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
-  const conversation = await readableConversation(id, userId);
-  const [participants, { messages, windows, agentTurns }, scope, questionnaires, marks] =
-    await Promise.all([
-      listParticipants(id),
-      roomTail(id, userId),
-      derivedScope(id),
-      batchesOfConversation(id),
-      threadMarks([conversation], userId),
-    ]);
-  const scopeProjects = await projectsNamed(scope);
-  return c.json({
-    ...conversation,
-    scope,
-    scopeProjects,
-    canChangeMembership: await mayChangeMembership(conversation, userId),
-    agentMode: await agentModeOffer(conversation, scope, messages.length),
-    agentTurns,
-    participants: await withDisplayNames(participants),
-    messages,
-    windows,
-    // a questionnaire block names its batch; the batches ride the detail read so the card
-    // shows its live state and answers with the same socket invalidation as the messages
-    questionnaires,
-    ...(marks.get(id) ?? { kind: null, threadStatus: null, subjectKey: null }),
-  });
-});
+conversationRoutes.get(
+  '/:id',
+  zValidator('param', idParamSchema),
+  ROOM_READ,
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+    const conversation = await readableConversation(id, userId);
+    const [participants, { messages, windows, agentTurns }, scope, questionnaires, marks] =
+      await Promise.all([
+        listParticipants(id),
+        roomTail(id, userId),
+        derivedScope(id),
+        batchesOfConversation(id),
+        threadMarks([conversation], userId),
+      ]);
+    const scopeProjects = await projectsNamed(scope);
+    return c.json({
+      ...conversation,
+      scope,
+      scopeProjects,
+      canChangeMembership: await mayChangeMembership(conversation, userId),
+      agentMode: await agentModeOffer(conversation, scope, messages.length),
+      agentTurns,
+      participants: await withDisplayNames(participants),
+      messages,
+      windows,
+      // a questionnaire block names its batch; the batches ride the detail read so the card
+      // shows its live state and answers with the same socket invalidation as the messages
+      questionnaires,
+      ...(marks.get(id) ?? { kind: null, threadStatus: null, subjectKey: null }),
+    });
+  },
+);
 
 conversationRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
+  ROOM_WRITE,
   zValidator('json', patchSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -270,7 +278,7 @@ conversationRoutes.patch(
   },
 );
 
-conversationRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+conversationRoutes.delete('/:id', zValidator('param', idParamSchema), ROOM_WRITE, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await writableConversation(id, userId);

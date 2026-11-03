@@ -15,6 +15,8 @@
  * @direct-test-of packages/core/src/release-batch/declarations.ts
  * @direct-test-of packages/core/src/middleware/declared-gate.ts
  * @direct-test-of packages/core/src/agent-sessions/session-access.ts
+ * @direct-test-of packages/core/src/assistant/conversation-declarations.ts
+ * @direct-test-of packages/core/src/assistant/agreement/agreement-door.ts
  */
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -27,7 +29,7 @@ vi.hoisted(() => {
 
 import { api, type Body, userToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
-import { createTestProject, createTestUser } from '../helpers/factories.js';
+import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 
 const tokens = { operator: '', person: '' };
 
@@ -118,5 +120,33 @@ describe('the session list, declared by its extracted rule (sessionListScope)', 
     const listed = await api(tokens.person, 'GET', '/api/agent-sessions');
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
     expect(listed.body.total).toBe(0);
+  });
+});
+
+describe('a conversation route declared by its room rule (readableConversation), no floor', () => {
+  it("refuses a project member who is not one of a one-to-one room's people, and answers its participant", async () => {
+    const owner = (await createTestUser({ verified: true })).id;
+    const ownerToken = await userToken(owner);
+    const project = await createTestProject(owner);
+    const member = (await createTestUser({ verified: true })).id;
+    await addProjectMember(project.id, member, 'member');
+
+    const opened = await api(ownerToken, 'POST', '/api/conversations', {
+      projectId: project.id,
+      title: 'one to one',
+      people: [],
+    });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(201);
+    const roomId = (opened.body as { id: string }).id;
+
+    // the member holds project.read, so no door permission on the project would refuse them: the
+    // room's own rule does, naming that they are not in it
+    const refused = await api(await userToken(member), 'GET', `/api/conversations/${roomId}`);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('not one of its people');
+
+    const answered = await api(ownerToken, 'GET', `/api/conversations/${roomId}`);
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    expect((answered.body as { id: string }).id).toBe(roomId);
   });
 });

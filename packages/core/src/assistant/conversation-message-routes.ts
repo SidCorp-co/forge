@@ -25,6 +25,7 @@ import { jsonPointer, type Refusal, RefusalError } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { ROOM_WRITE } from './conversation-declarations.js';
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
 import { sendWebConversationMessage } from './conversation-send.js';
 import { roomTail, speakerLabelOf } from './read.js';
@@ -113,6 +114,7 @@ function soleProject(row: ConversationRow, scope: string[]): string {
 conversationMessageRoutes.post(
   '/:id/messages',
   zValidator('param', idParamSchema),
+  ROOM_WRITE,
   zValidator('json', sendSchema, refuseRetiredSnapshotKeys),
   async (c) => {
     const { id } = c.req.valid('param');
