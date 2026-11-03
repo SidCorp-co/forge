@@ -5,6 +5,7 @@ import { jobStatuses, jobTypes, modelTiers } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclared, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
@@ -69,8 +70,10 @@ function refuseUnmintableType(type: (typeof jobTypes)[number]): void {
   );
 }
 
-export const jobProjectRoutes = new Hono<{ Variables: AuthVars }>();
-jobProjectRoutes.use('*', requireAuth(), assertEmailVerified());
+export const jobProjectRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 jobProjectRoutes.post(
   '/:id/jobs',

@@ -4,19 +4,20 @@ import { checklistFormOf, evaluateChecklist } from '@forge/contracts/checklists'
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { triageAnswersInput } from '@forge/contracts/feedback-triage';
 import { countsAsPassed } from '@forge/contracts/move-gates';
-import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { gatedMovesOf } from '../lifecycle/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { feedbackTriageRecord, withReportedSeverity } from './checklist-record.js';
 import { detailAs } from './read.js';
 
-export const feedbackChecklistRoutes = new Hono<{ Variables: AuthVars }>();
-
-feedbackChecklistRoutes.use('*', requireAuth(), assertEmailVerified());
+export const feedbackChecklistRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 /**
  * `GET /api/projects/:id/feedback/:fb/checklist` — the triage checklist as one definition gives it

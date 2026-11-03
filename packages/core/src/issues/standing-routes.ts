@@ -2,11 +2,11 @@
 // standing with its step log. Read-only; every derived fact is core's, never the client's.
 
 import { ISSUE_STANDING_SCOPES } from '@forge/contracts/issue-standing';
-import { Hono } from 'hono';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -20,8 +20,10 @@ const keyParam = z.object({
 });
 const scopeQuery = z.strictObject({ scope: z.enum(ISSUE_STANDING_SCOPES).default('open') });
 
-export const issueStandingRoutes = new Hono<{ Variables: AuthVars }>();
-issueStandingRoutes.use('*', requireAuth(), assertEmailVerified());
+export const issueStandingRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 issueStandingRoutes.get(
   '/:id/issues/standing',

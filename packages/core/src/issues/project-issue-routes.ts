@@ -1,10 +1,10 @@
 // The issue routes under a project: create, look up by display id, and list.
 
-import { Hono } from 'hono';
 import type { IssueStatus } from '../db/schema.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -75,8 +75,10 @@ export async function issueDetailOf(issue: IssueRow) {
   };
 }
 
-export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
-issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
+export const issueProjectRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 issueProjectRoutes.post(
   '/:id/issues',

@@ -68,7 +68,15 @@ import { requirementVerdictRoutes } from './verdict-routes.js';
 
 export const requirementRoutes = new Hono<RequirementEnv>();
 
-for (const path of ['/:id/requirements', '/:id/requirements/*', '/:id/contract-requests']) {
+// the areas routes rode on another router's `use('*')` gate until ISS-925 scoped those: each path
+// this router serves names its own gate here
+for (const path of [
+  '/:id/requirements',
+  '/:id/requirements/*',
+  '/:id/contract-requests',
+  '/:id/requirement-areas',
+  '/:id/requirement-areas/*',
+]) {
   requirementRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 

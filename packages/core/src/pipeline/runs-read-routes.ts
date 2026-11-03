@@ -4,6 +4,7 @@ import { pipelineRunStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclared, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
@@ -40,8 +41,10 @@ pipelineRunReadRoutes.get(
 );
 
 /** Mounted at `/api/projects` so the route is `/api/projects/:id/pipeline-runs`. */
-export const pipelineRunProjectRoutes = new Hono<{ Variables: AuthVars }>();
-pipelineRunProjectRoutes.use('*', requireAuth(), assertEmailVerified());
+export const pipelineRunProjectRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 pipelineRunProjectRoutes.get(
   '/:id/pipeline-runs',

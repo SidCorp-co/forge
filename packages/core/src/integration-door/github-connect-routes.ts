@@ -50,6 +50,7 @@ import {
   requireAuth,
   requireAuthOrLand,
 } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -82,8 +83,10 @@ const installedQuerySchema = z.looseObject({
 // the admin check runs before the query is read, so a non-admin learns nothing from a 400
 const projectAdmin = requiresOnParam('project.admin', 'projectId');
 
-export const githubConnectRoutes = new Hono<{ Variables: AuthVars }>();
-githubConnectRoutes.use('*', requireAuth(), assertEmailVerified());
+export const githubConnectRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 export const githubCallbackRoutes = new Hono<{ Variables: AuthVars }>();
 // no session, or another person's, is not provably the person the App was made for: the return
 // lands naming why and spends no code (`no_session` and `email_unverified` are of that group)

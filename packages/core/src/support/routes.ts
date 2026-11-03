@@ -39,7 +39,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
-import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresNoPermission, requiresOnParam } from '../permissions/index.js';
 import { type SupportActInput, supportAct } from './acts.js';
@@ -56,7 +56,11 @@ import { supportTurnsOf } from './turns.js';
  */
 export const supportRoutes = new Hono<{ Variables: AuthVars }>();
 
-supportRoutes.use('/:id/support/*', requireAuth());
+// what every support door was held to while other project routers' `use('*')` gates ran ahead of
+// these (ISS-925): a credential, and a verified email for a person; `agent-roles` is this router's too
+for (const path of ['/:id/support/*', '/:id/agent-roles']) {
+  supportRoutes.use(path, requireAuth(), assertEmailVerified());
+}
 
 const projectParam = zValidator(
   'param',

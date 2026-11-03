@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam, requiresOnResolved } from '../permissions/index.js';
@@ -82,8 +83,10 @@ issueActivityRoutes.get(
 );
 // ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
 
-export const projectActivityRoutes = new Hono<{ Variables: AuthVars }>();
-projectActivityRoutes.use('*', requireAuth(), assertEmailVerified());
+export const projectActivityRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 projectActivityRoutes.get(
   '/:id/activity',

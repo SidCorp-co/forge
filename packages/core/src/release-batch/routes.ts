@@ -6,10 +6,10 @@ import {
 } from '@forge/contracts/release-page';
 import { RELEASE_HOLD_OWERS, RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import type { Context } from 'hono';
-import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import {
@@ -104,8 +104,10 @@ async function requireReleaseAct(
   requireMasterAct(access, 'project.admin', ask, act);
 }
 
-export const releaseBatchRoutes = new Hono<{ Variables: AuthVars }>();
-releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
+export const releaseBatchRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 releaseBatchRoutes.post(
   '/:projectId/release-batches',

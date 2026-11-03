@@ -1,6 +1,6 @@
-import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -8,8 +8,10 @@ import { readDevelopmentOverview } from './overview-read.js';
 
 const noQuery = z.strictObject({});
 
-export const developmentOverviewRoutes = new Hono<{ Variables: AuthVars }>();
-developmentOverviewRoutes.use('*', requireAuth(), assertEmailVerified());
+export const developmentOverviewRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 developmentOverviewRoutes.get(
   '/:id/development/overview',

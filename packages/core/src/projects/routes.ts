@@ -1,4 +1,3 @@
-import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
@@ -10,6 +9,7 @@ import {
 import { pluginDesignationsPatchSchema } from '../lib/plugin-designation.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/index.js';
@@ -32,9 +32,10 @@ import {
   updateProjectSettings,
 } from './service.js';
 
-export const projectRoutes = new Hono<{ Variables: AuthVars }>();
-
-projectRoutes.use('*', requireAuth(), assertEmailVerified());
+export const projectRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 projectRoutes.post('/', zValidator('json', createProjectBodySchema), async (c) => {
   assertUnfenced('creating a project');

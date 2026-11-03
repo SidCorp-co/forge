@@ -1,7 +1,7 @@
-import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -31,9 +31,10 @@ const createRunnerBodySchema = z
   })
   .strict();
 
-export const projectRunnerRoutes = new Hono<{ Variables: AuthVars }>();
-
-projectRunnerRoutes.use('*', requireAuth(), assertEmailVerified());
+export const projectRunnerRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 // Project-centric runner list — the device pools serving THIS project, with
 // device identity + live provision status. Powers the project Runners screen

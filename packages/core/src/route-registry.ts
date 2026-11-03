@@ -229,7 +229,8 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 
 /** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
-  // a product server's feedback key, answered first: guides mount a requireAuth over /api/projects/*
+  // a product server's feedback key, answered first; since ISS-925 no router under /api/projects gates
+  // past its own routes (`middleware/gated-routes.ts`), so its place no longer decides that it is reached
   app.route('/api/projects', feedbackServerKeyDoor);
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 

@@ -11,4 +11,15 @@ describe('the composed routes', () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('reached its own handler');
   });
+
+  // ISS-925: no router under /api/projects gates past its own routes, so a project route mounted
+  // last answers with no session; a `use('*')` gate on any of them answered 401 here
+  it('lets a project route mounted after every router answer with no session', async () => {
+    const app = new Hono();
+    mountRoutes(app as never);
+    app.post('/api/projects/:id/mounted-after-everything', (c) => c.text(c.req.param('id')));
+    const res = await app.request('/api/projects/p-1/mounted-after-everything', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('p-1');
+  });
 });

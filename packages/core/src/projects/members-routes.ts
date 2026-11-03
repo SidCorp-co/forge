@@ -1,5 +1,4 @@
 import { PROJECT_PERMISSIONS, type ProjectPermission } from '@forge/contracts/permissions';
-import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { projectMemberRoles } from '../db/schema.js';
@@ -14,6 +13,7 @@ import {
   readAuthUser,
   requireAuth,
 } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld, requiresOnParam, requiresSelf } from '../permissions/index.js';
@@ -86,9 +86,10 @@ const revokeInvitationQuerySchema = z.object({
 const notFound = (code = 'NOT_FOUND', message = 'not found') =>
   new HTTPException(404, { message, cause: { code } });
 
-export const memberRoutes = new Hono<{ Variables: AuthVars }>();
-
-memberRoutes.use('*', requireAuth(), assertEmailVerified());
+export const memberRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 memberRoutes.get(
   '/:projectId/members',

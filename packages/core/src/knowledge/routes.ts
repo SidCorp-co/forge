@@ -1,5 +1,4 @@
 import { ALWAYS_INJECT_GUARANTEE_NOTE, ALWAYS_INJECT_MAX_CHARS } from '@forge/contracts/knowledge';
-import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
@@ -7,6 +6,7 @@ import { masterVerbs } from '../db/schema-master-charter.js';
 import { requestReader } from '../lib/authz.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -69,8 +69,10 @@ const badSlug = (slug: string) =>
   );
 const notFound = () => new HTTPException(404, { message: 'knowledge entry not found' });
 
-export const knowledgeRoutes = new Hono<{ Variables: AuthVars }>();
-knowledgeRoutes.use('*', requireAuth(), assertEmailVerified());
+export const knowledgeRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 const READ = requiresOnParam('project.read', 'id');
 

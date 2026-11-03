@@ -1,7 +1,7 @@
-import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -20,8 +20,10 @@ import {
  * write takes charter.write, which a full token holds where its holder's role
  * does and a named token only where its grant names it (REQ-27 BC-4).
  */
-export const masterCharterRoutes = new Hono<{ Variables: AuthVars }>();
-masterCharterRoutes.use('*', requireAuth(), assertEmailVerified());
+export const masterCharterRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 const serialise = (charter: MasterCharter) => ({
   version: charter.version,

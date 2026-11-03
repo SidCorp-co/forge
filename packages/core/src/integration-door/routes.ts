@@ -9,7 +9,6 @@
  */
 
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
-import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   adapterOrRefuse,
@@ -41,6 +40,7 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
@@ -62,8 +62,10 @@ const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 export { integrationConnectionsRoutes } from './connection-routes.js';
 export { mcpRelayRoutes } from './mcp-relay-routes.js';
 
-export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
-integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
+export const integrationsRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 registerCoolifyDeployRoutes(integrationsRoutes);
 registerSourceRoutes(integrationsRoutes);

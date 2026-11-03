@@ -1,8 +1,8 @@
-import { Hono } from 'hono';
 import { z } from 'zod';
 import type { IssueStatus } from '../db/schema.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -37,8 +37,10 @@ const searchQuerySchema = z
   })
   .strict();
 
-export const searchRoutes = new Hono<{ Variables: AuthVars }>();
-searchRoutes.use('*', requireAuth(), assertEmailVerified());
+export const searchRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 searchRoutes.get(
   '/:id/issues/search',

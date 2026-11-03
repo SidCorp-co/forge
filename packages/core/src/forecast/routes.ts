@@ -1,9 +1,9 @@
-import { Hono } from 'hono';
 import { z } from 'zod';
 import { heldIssuePrefixes } from '../issues/index.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
@@ -27,8 +27,10 @@ const requirementParam = z.object({ id: z.uuid(), key: z.string().regex(/^REQ-\d
 const feedbackParam = z.object({ id: z.uuid(), fb: z.string().trim().min(1).max(64) });
 const noQuery = z.strictObject({});
 
-export const forecastRoutes = new Hono<{ Variables: AuthVars }>();
-forecastRoutes.use('*', requireAuth(), assertEmailVerified());
+export const forecastRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 forecastRoutes.get(
   '/:id/forecast',

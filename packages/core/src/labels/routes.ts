@@ -5,6 +5,7 @@ import { labelKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { gatedRoutes } from '../middleware/gated-routes.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclared, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
@@ -73,8 +74,10 @@ const uniqueConflict = (err: unknown): RefusalError | undefined => {
   return named && refuse(named.code, named.message);
 };
 
-export const labelProjectRoutes = new Hono<{ Variables: AuthVars }>();
-labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
+export const labelProjectRoutes = gatedRoutes<{ Variables: AuthVars }>(
+  requireAuth(),
+  assertEmailVerified(),
+);
 
 labelProjectRoutes.post(
   '/:id/labels',
