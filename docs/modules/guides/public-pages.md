@@ -2,8 +2,8 @@
 
 `/guides` and `/guides/<slug>` in `packages/web-v2` are Forge's public documentation: one set of
 pages from two homes, behind two doors named for the reader. Both homes are unauthenticated —
-`guideRoutes` in `packages/core/src/guides/routes.ts` applies `requireAuth()` only to its
-`/projects` sub-tree, and the help pages are a static module bundled into the web build — and the routes sit
+`guideRoutes` in `packages/core/src/guides/routes.ts` applies `requireAuth()` only to its one
+project route, `/projects/:id/guides/:slug`, and the help pages are a static module bundled into the web build — and the routes sit
 outside the `_workspace` layout (`packages/web-v2/src/routes/_workspace/route.tsx`), which sends a
 signed-out visitor to `/login`.
 
