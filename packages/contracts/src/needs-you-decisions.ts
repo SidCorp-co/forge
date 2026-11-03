@@ -591,6 +591,17 @@ export function isDecisionActOn(entity: NeedsYouEntity, act: SaidAct): boolean {
 	);
 }
 
+/**
+ * Whether a wait's act is taken on another record than the one that names it: an issue's act a
+ * requirement waits on (`standing.act.onIssue`), or an act only another record decides (a release's
+ * cut, `DECISION_ACT_KEYS_ON`). That record lists it for the viewer, so the one naming it is no
+ * second Needs you row (REQ-48 BC-11, ISS-924).
+ */
+export function actTakenElsewhere(act: SaidAct): boolean {
+	if (act.key === "standing.act.onIssue") return true;
+	return Object.values(DECISION_ACT_KEYS_ON).some((keys) => keys?.has(act.key));
+}
+
 /** The first `cap` decisions a person is shown and how many more wait behind them, never dropped (BC-11). */
 export function capDecisions<T>(
 	decisions: readonly T[],
