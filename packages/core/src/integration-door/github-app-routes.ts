@@ -43,6 +43,7 @@ import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { listOrgsForUser } from '../orgs/index.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import { CONNECTION_READ, GITHUB_APP_COMPLETE, GITHUB_CONNECT } from './connection-declarations.js';
 import { loadConnection } from './connection-routes.js';
 import {
   apiBaseUrl,
@@ -140,13 +141,27 @@ export async function beginConnect(
   });
 }
 
-githubAppRoutes.post('/github/connect', zValidator('json', connectBodySchema), async (c) => {
-  const body = c.req.valid('json');
-  return beginConnect(c, {
-    orgId: body.orgId,
-    ...(body.returnTo ? { returnTo: body.returnTo } : {}),
-  });
-});
+githubAppRoutes.post(
+  '/github/connect',
+  GITHUB_CONNECT,
+  zValidator('json', connectBodySchema),
+  async (c) => {
+    const body = c.req.valid('json');
+    return beginConnect(c, {
+      orgId: body.orgId,
+      ...(body.returnTo ? { returnTo: body.returnTo } : {}),
+    });
+  },
+);
+
+/** Only a Forge operator completes this Forge's GitHub App, refused by name to anyone else. */
+export async function assertGithubAppOperator(userId: string): Promise<void> {
+  if (await isPlatformAdmin(userId)) return;
+  throw refuse(
+    'GITHUB_APP_OPERATOR_ONLY',
+    `only a Forge operator completes this Forge's GitHub App. ${await askAnOperator()}`,
+  );
+}
 
 /**
  * Hand an App made before this to the instance: an operator supplies the client secret GitHub shows
@@ -156,15 +171,11 @@ githubAppRoutes.post('/github/connect', zValidator('json', connectBodySchema), a
  */
 githubAppRoutes.post(
   '/:id/github-app/complete',
+  GITHUB_APP_COMPLETE,
   zValidator('json', completeBodySchema),
   async (c) => {
     const userId = c.get('userId');
-    if (!(await isPlatformAdmin(userId))) {
-      throw refuse(
-        'GITHUB_APP_OPERATOR_ONLY',
-        `only a Forge operator completes this Forge's GitHub App. ${await askAnOperator()}`,
-      );
-    }
+    await assertGithubAppOperator(userId);
     assertVaultConfigured();
     const connection = await findConnectionById(c.req.param('id'));
     if (!connection) throw notFound('connection');
@@ -270,7 +281,7 @@ githubAppRoutes.post(
  * it, the installations recorded for the caller's orgs with whether any project uses each, and what
  * an operator still has to do before it serves the instance.
  */
-githubAppRoutes.get('/:id/github-app', noQuery, async (c) => {
+githubAppRoutes.get('/:id/github-app', CONNECTION_READ, noQuery, async (c) => {
   const userId = c.get('userId');
   const connection = await loadConnection(c.req.param('id'), userId, 'read');
   if (connection.provider !== 'github') {

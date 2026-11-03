@@ -48,6 +48,13 @@ import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
 import { summarizeBindings } from './binding-standing.js';
 import { bindConnectionInto } from './connect-and-bind.js';
+import {
+  CONNECTION_BIND,
+  CONNECTION_CREATE,
+  CONNECTION_MANAGE,
+  CONNECTION_READ,
+  CONNECTIONS_LISTED,
+} from './connection-declarations.js';
 import { instanceInstallationsFor, suggestionsFor } from './github-reach.js';
 
 /**
@@ -106,10 +113,24 @@ async function usageVisibleTo<B extends { projectId: string }>(
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
+/**
+ * Who may make a connection: a personal one (no orgId) is the caller's own; an organization's is
+ * shared across its projects, so it takes org.admin there (an organization not theirs is not found).
+ */
+export async function assertMayOwnConnection(
+  userId: string,
+  orgId: string | undefined,
+): Promise<void> {
+  if (!orgId) return;
+  const orgRole = await loadOrgRole(orgId, userId);
+  if (!orgRole) throw notFound('org');
+  requireOrgHeld(orgId, orgRole, 'org.admin');
+}
+
 export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
-integrationConnectionsRoutes.get('/', noQuery, async (c) => {
+integrationConnectionsRoutes.get('/', CONNECTIONS_LISTED, noQuery, async (c) => {
   const userId = c.get('userId');
   const rows = await listConnectionsForPrincipalUser(userId);
   const bindings = await usageVisibleTo(
@@ -140,44 +161,45 @@ integrationConnectionsRoutes.get('/', noQuery, async (c) => {
   });
 });
 
-integrationConnectionsRoutes.post('/', zValidator('json', connectionCreateSchema), async (c) => {
-  const userId = c.get('userId');
-  assertVaultConfigured();
-  const body = c.req.valid('json');
-  // orgId present = an org-owned connection (shared across the org's
-  // projects); requires org admin. Absent = personal (user-owned).
-  if (body.orgId) {
-    const orgRole = await loadOrgRole(body.orgId, userId);
-    if (!orgRole) throw notFound('org');
-    requireOrgHeld(body.orgId, orgRole, 'org.admin');
-  }
-  const connection = pendingConnectionRow({
-    ownerType: body.orgId ? 'org' : 'user',
-    ownerId: body.orgId ?? userId,
-    provider: body.provider,
-    displayName: body.displayName ?? defaultConnectionDisplayName(body.provider, body.config ?? {}),
-    config: body.config,
-    secrets: body.secrets,
-  });
-  if (!body.bindings) {
-    await createConnection(connection);
+integrationConnectionsRoutes.post(
+  '/',
+  zValidator('json', connectionCreateSchema),
+  CONNECTION_CREATE,
+  async (c) => {
+    const userId = c.get('userId');
+    assertVaultConfigured();
+    const body = c.req.valid('json');
+    await assertMayOwnConnection(userId, body.orgId);
+    const connection = pendingConnectionRow({
+      ownerType: body.orgId ? 'org' : 'user',
+      ownerId: body.orgId ?? userId,
+      provider: body.provider,
+      displayName:
+        body.displayName ?? defaultConnectionDisplayName(body.provider, body.config ?? {}),
+      config: body.config,
+      secrets: body.secrets,
+    });
+    if (!body.bindings) {
+      await createConnection(connection);
+      notifyConnectionChanged(body.provider, connection.id);
+      return c.json({ connection: summarizeConnection(connection), bindings: [] }, 201);
+    }
+    const bound = await bindConnectionInto({
+      userId,
+      connection,
+      items: body.bindings,
+      store: true,
+    });
+    if (!bound.ok) return refused(c, bound.refusals, 'CONFIG_REFUSED');
     notifyConnectionChanged(body.provider, connection.id);
-    return c.json({ connection: summarizeConnection(connection), bindings: [] }, 201);
-  }
-  const bound = await bindConnectionInto({
-    userId,
-    connection,
-    items: body.bindings,
-    store: true,
-  });
-  if (!bound.ok) return refused(c, bound.refusals, 'CONFIG_REFUSED');
-  notifyConnectionChanged(body.provider, connection.id);
-  return c.json({ connection: summarizeConnection(connection), bindings: bound.bindings }, 201);
-});
+    return c.json({ connection: summarizeConnection(connection), bindings: bound.bindings }, 201);
+  },
+);
 
 /** Bind a connection that already exists into several projects, as one write. */
 integrationConnectionsRoutes.post(
   '/:id/bindings',
+  CONNECTION_BIND,
   zValidator('json', z.strictObject({ bindings: bindingItemsSchema })),
   async (c) => {
     const userId = c.get('userId');
@@ -198,7 +220,7 @@ integrationConnectionsRoutes.post(
  * caller administers is offered pre-ticked (`suggestedFor`). A provider whose target is typed rather
  * than listed is refused by name, with the fields its target takes.
  */
-integrationConnectionsRoutes.get('/:id/targets', noQuery, async (c) => {
+integrationConnectionsRoutes.get('/:id/targets', CONNECTION_READ, noQuery, async (c) => {
   const connection = await loadConnection(c.req.param('id'), c.get('userId'), 'read');
   if (connection.provider !== 'github') {
     return refused(
@@ -247,7 +269,7 @@ integrationConnectionsRoutes.get('/:id/targets', noQuery, async (c) => {
   }
 });
 
-integrationConnectionsRoutes.get('/:id/bindings', noQuery, async (c) => {
+integrationConnectionsRoutes.get('/:id/bindings', CONNECTION_READ, noQuery, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   const connection = await loadConnection(id, userId, 'read');
@@ -260,7 +282,7 @@ integrationConnectionsRoutes.get('/:id/bindings', noQuery, async (c) => {
   return c.json({ items: bindings });
 });
 
-integrationConnectionsRoutes.post('/:id/test', async (c) => {
+integrationConnectionsRoutes.post('/:id/test', CONNECTION_MANAGE, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   await loadConnection(id, userId, 'manage');
@@ -297,6 +319,7 @@ integrationConnectionsRoutes.post('/:id/test', async (c) => {
 
 integrationConnectionsRoutes.patch(
   '/:id',
+  CONNECTION_MANAGE,
   zValidator('json', connectionUpdateSchema),
   async (c) => {
     const id = c.req.param('id');
@@ -335,7 +358,7 @@ integrationConnectionsRoutes.patch(
   },
 );
 
-integrationConnectionsRoutes.delete('/:id', async (c) => {
+integrationConnectionsRoutes.delete('/:id', CONNECTION_MANAGE, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   const existing = await loadConnection(id, userId, 'manage');

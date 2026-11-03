@@ -4,6 +4,9 @@
  * included, and names the project and target. And GitHub's return never strands an App on a JSON
  * page: it lands on Integrations naming why, and spends the App's code to name it only when the
  * return is provably the person's own.
+ *
+ * @direct-test-of packages/core/src/integration-door/connection-routes.ts
+ * @direct-test-of packages/core/src/integration-door/connection-declarations.ts
  */
 
 import { randomUUID } from 'node:crypto';

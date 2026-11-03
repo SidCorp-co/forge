@@ -1,6 +1,8 @@
 /**
  * One public GitHub App serves the instance, only an operator makes it, and an installation of it is
  * recorded for an org only once GitHub shows it is the installer's (points 1, 2; S1, S2).
+ *
+ * @direct-test-of packages/core/src/integration-door/github-app-routes.ts
  */
 
 import { sql } from 'drizzle-orm';
