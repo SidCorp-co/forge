@@ -14,6 +14,8 @@
  * @direct-test-of packages/core/src/beta-port/store.ts
  * @direct-test-of packages/core/src/integrations/peer-forge/client.ts
  * @direct-test-of packages/core/src/integrations/peer-forge/landing.ts
+ * @direct-test-of packages/core/src/integrations/peer-forge/index.ts
+ * @direct-test-of packages/core/src/db/schema-beta-port.ts
  */
 
 import { randomUUID } from 'node:crypto';
