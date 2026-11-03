@@ -84,6 +84,19 @@ describe('the catalog of every served action', () => {
     expect(dead).toEqual([]);
   });
 
+  // a client sees five tools and calls a door's action by forge_call, so a guide naming a door by
+  // its internal tool name (project_feedback's `find it with forge_requirements`) is a dead end too
+  it('names no door by its internal tool name in a door guide, only the tools a client lists', () => {
+    const listedTools = new Set(['forge_find', 'forge_describe', 'forge_call']);
+    const dead = tools.flatMap((t) =>
+      [...t.description.matchAll(/\bforge_[a-z_]+\b/g)]
+        .map((m) => m[0])
+        .filter((name) => !listedTools.has(name))
+        .map((name) => `${t.name}: ${name}`),
+    );
+    expect(dead).toEqual([]);
+  });
+
   it("gives each action its own guide, but where the door judges each action's own input", () => {
     for (const e of catalog.values()) {
       const tool = tools.find((t) => t.name === e.tool) as McpTool;
