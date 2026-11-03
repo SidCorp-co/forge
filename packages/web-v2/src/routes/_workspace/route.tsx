@@ -64,6 +64,7 @@ import { HelpToursButton } from "@/features/tours/components/help-tours-button";
 import { TourReleaseProvider } from "@/features/tours/release-context";
 import { useReleases } from "@/features/releases";
 import { TourLauncher } from "@/features/tours/components/tour-launcher";
+import { WORKSPACE_MAIN, WORKSPACE_PAGE_COLUMN } from "@/design/templates/workspace-frame";
 
 function WorkspaceLayout() {
   return (
@@ -290,7 +291,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellAnchor} />
 
       {/* data-page: the container the page's breakpoints read while the Ask Agent panel is beside it (globals.css) */}
-      <div ref={pageColumnRef} className="flex min-w-0 flex-1 flex-col" data-print="frame" data-page>
+      <div ref={pageColumnRef} className={WORKSPACE_PAGE_COLUMN} data-print="frame" data-page>
         <div className="contents" data-print="chrome">
           <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
           <PinnedTabBar
@@ -301,7 +302,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           />
         </div>
 
-        <main className="min-h-0 flex-1 overflow-y-auto bg-app pb-[calc(56px+env(safe-area-inset-bottom))] window-md:pb-0" data-print="frame">
+        <main className={WORKSPACE_MAIN} data-print="frame">
           {children}
           <TourLauncher />
         </main>

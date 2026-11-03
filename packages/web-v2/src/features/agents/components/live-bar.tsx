@@ -121,8 +121,8 @@ function rowsOf(now: ProjectNow, t: Copy, label: Label, language: Language, slug
   return now.items.map(rowOf).filter((r): r is Row => r !== null);
 }
 
-// an item and its link are bounded by the bar, never by their text: a long issue title at phone
-// width truncated inside the screen instead of pushing every page sideways (the ISS-691 judge, 2026-11-03)
+// an item, the tooltip wrapping its link and the link are bounded by the bar, never by their text: a
+// long issue title at phone width truncates inside the screen instead of pushing every page sideways
 function RowLine({ row, at }: { row: Row; at: number }) {
   const language = useInterfaceLanguage();
   const link = (
@@ -132,7 +132,13 @@ function RowLine({ row, at }: { row: Row; at: number }) {
   );
   return (
     <>
-      {row.tip ? <Tooltip label={row.tip}>{link}</Tooltip> : link}
+      {row.tip ? (
+        <Tooltip label={row.tip} className="min-w-0 max-w-full">
+          {link}
+        </Tooltip>
+      ) : (
+        link
+      )}
       {row.since ? <span className="text-muted tabular-nums">{formatElapsed(at - Date.parse(row.since), language)}</span> : null}
     </>
   );

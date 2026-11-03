@@ -202,6 +202,8 @@ function OwedDecision({
               // a row's answers are never the page's primary, the recommended one included: the page has one
               // primary and it is the page's own next act (ISS-903); the recommendation is the star and the line
               variant="secondary"
+              // a long answer wraps inside the column instead of widening the page (ISS-691)
+              className="h-auto min-h-8 max-w-full whitespace-normal py-1 text-left"
               icon={a.recommended ? "star" : undefined}
               data-recommended={a.recommended || undefined}
               title={a.effect ?? undefined}

@@ -57,7 +57,7 @@ export function RequirementOverview({
   const sug = useWaitingSuggestions(projectId, { requirement: d.key });
   const waiting = d.canSignOff && (sug.data?.suggestions.length ?? 0) > 0;
   return (
-    <div className="grid gap-8" data-testid="view-overview">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
       <div className="grid gap-2">
         <RequirementGoal d={d} developer={developer} />
         {spec.goal ? (
