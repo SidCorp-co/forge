@@ -1,0 +1,1 @@
+**Stalls by cause.** Each delivery stall is recorded against the requirement, feedback item or issue that caused it, with the question it raised, and each release page counts its stalls: unclear item, defect, or waiting on a person.
