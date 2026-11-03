@@ -11,6 +11,12 @@ export const mcpOauthClients = pgTable('mcp_oauth_clients', {
   id: uuid('id').primaryKey().defaultRandom(),
   clientName: text('client_name').notNull(),
   redirectUris: text('redirect_uris').array().notNull(),
+  /**
+   * The origin the registration reached, which is the issuer the client discovered: the consent
+   * answers `iss` (RFC 9207) from it. Null on a client registered before it was recorded, whose
+   * consent is refused until it registers again.
+   */
+  issuer: text('issuer'),
   createdIp: text('created_ip'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

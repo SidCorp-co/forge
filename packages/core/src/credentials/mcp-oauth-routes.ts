@@ -110,6 +110,8 @@ mcpOauthRoutes.post(
     const client = await registerClient({
       clientName: body.client_name ?? 'MCP client',
       redirectUris: body.redirect_uris,
+      // the registration endpoint is on the issuer the client discovered (`mcp-oauth-metadata.ts`)
+      issuer: reachedOrigin(c),
       createdIp: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
     });
     return c.json(

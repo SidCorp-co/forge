@@ -42,6 +42,7 @@ export type TokenOutcome =
 export async function registerClient(input: {
   clientName: string;
   redirectUris: string[];
+  issuer: string;
   createdIp: string | null;
 }): Promise<McpOauthClientRow> {
   const [row] = await db.insert(mcpOauthClients).values(input).returning();

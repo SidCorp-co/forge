@@ -3746,6 +3746,13 @@
       "when": 1833840000000,
       "tag": "0589_each_stall_is_recorded_against_its_cause",
       "breakpoints": true
+    },
+    {
+      "idx": 590,
+      "version": "7",
+      "when": 1833926400000,
+      "tag": "0590_an_mcp_client_records_the_issuer_it_registered_at",
+      "breakpoints": true
     }
   ]
 }
