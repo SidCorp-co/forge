@@ -173,6 +173,7 @@ import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { provideSandboxPorts } from './sandbox/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { provideShareSubjectSources } from './shares/index.js';
+import { runShutdown, type ShutdownSteps } from './shutdown.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { forgeStandingTool } from './standing/index.js';
 import { provideStandingPorts } from './standing-ports.js';
@@ -382,41 +383,6 @@ app.use('/api/*', refuseUnresolvedRefs());
 app.notFound(notFoundHandler);
 app.onError(errorHandler);
 
-const SHUTDOWN_TIMEOUT_MS = 30_000;
-
-export async function runShutdown(
-  signal: string,
-  server: { close: (cb?: (err?: Error) => void) => void },
-): Promise<number> {
-  logger.info({ signal }, '@forge/core shutdown initiated');
-
-  const httpClosed = new Promise<void>((resolve, reject) => {
-    server.close((err) => (err ? reject(err) : resolve()));
-  });
-
-  const sequence = (async () => {
-    await closeWs();
-    await stopRocketChatManager();
-    await stopTimers();
-    await stopOutboxWorker();
-    await stopBoss();
-    await httpClosed;
-    await closeDb();
-  })();
-
-  const timeout = new Promise<'timeout'>((resolve) => {
-    const t = setTimeout(() => resolve('timeout'), SHUTDOWN_TIMEOUT_MS);
-    t.unref?.();
-  });
-
-  const outcome = await Promise.race([sequence.then(() => 'ok' as const), timeout]);
-  if (outcome === 'timeout') {
-    logger.error('@forge/core shutdown timed out after 30s, forcing exit');
-    return 1;
-  }
-  return 0;
-}
-
 mountRoutes(app);
 app.fetch = resolvingRouteRefs(app as unknown as Hono<never>, app.fetch);
 
@@ -486,11 +452,21 @@ if (isMain) {
   await startTimers(coreTimers());
   if (servesRunnerReleases()) void refreshMainRunnerHead();
 
+  const shutdownSteps: ShutdownSteps = {
+    services: [
+      { name: 'ws', run: closeWs },
+      { name: 'rocketchat', run: stopRocketChatManager },
+      { name: 'timers', run: stopTimers },
+      { name: 'outbox', run: stopOutboxWorker },
+      { name: 'queue', run: stopBoss },
+    ],
+    database: { name: 'db', run: closeDb },
+  };
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    const code = await runShutdown(signal, server);
+    const code = await runShutdown(signal, server, shutdownSteps);
     process.exit(code);
   };
 
