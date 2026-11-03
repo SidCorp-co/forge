@@ -56,8 +56,8 @@ function viewerOf(c: {
 }
 
 const ENV_ORDER = { production: 0, testing: 1 } as const;
-const byEnvThenNewest = (a: HomeLiveRelease, b: HomeLiveRelease) =>
-  ENV_ORDER[a.environment] - ENV_ORDER[b.environment] || b.at.localeCompare(a.at);
+const byEnvThenNewest = (one: HomeLiveRelease, other: HomeLiveRelease) =>
+  ENV_ORDER[one.environment] - ENV_ORDER[other.environment] || other.at.localeCompare(one.at);
 
 export const meHomeRoutes = new Hono<{ Variables: AuthVars }>();
 meHomeRoutes.use('/home', requireAuth(), assertEmailVerified());
