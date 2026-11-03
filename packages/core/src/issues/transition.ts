@@ -1,4 +1,5 @@
 import { QUESTION_ABOUT_SHAPE_SENTENCE } from '@forge/contracts/questions';
+import { DEFECT_EVIDENCE_SHAPE_SENTENCE } from '@forge/contracts/stalls';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -175,6 +176,13 @@ transitionRoutes.post(
         'QUESTION_ABOUT_SHAPE',
         QUESTION_ABOUT_SHAPE_SENTENCE,
       );
+      refuseFieldShape(
+        result.error.issues,
+        result.data,
+        'evidence',
+        'DEFECT_EVIDENCE_SHAPE',
+        DEFECT_EVIDENCE_SHAPE_SENTENCE,
+      );
       refuseUnknownTransitionKeys(result.error.issues);
     }
   }),
@@ -193,6 +201,8 @@ transitionRoutes.post(
       voidQuestions,
       recovery,
       answers,
+      cause,
+      evidence,
     } = c.req.valid('json');
     const userId = c.get('userId');
 
@@ -227,6 +237,8 @@ transitionRoutes.post(
           about,
           voidQuestions,
           answers,
+          cause,
+          evidence,
           ...(recovery ? { recovery } : {}),
         },
       );

@@ -3,12 +3,15 @@
 //   unclear_item       a question about a requirement or feedback item, or a reporter's
 //                      clarification (`questions/stall-start.ts`) → its answer, void or delete
 //                      (`stalls_question_end_trg`, migration 0589)
-//   defect             a failed verdict's reopen (`fail-reopen.ts`) → the next merge mark or a drop
+//   defect             a failed verdict's reopen (`fail-reopen.ts`), or a reopen naming `cause:
+//                      defect` with its evidence (`apply-transition.ts`, ISS-927) → the next merge
+//                      mark or a drop
 //   waiting_on_person  a `needs_info` park on a person (`apply-transition.ts`) → leaving the park
 // Kernel input: a stall the caller cannot place is refused by name, never guessed or skipped.
 
 import type { QuestionAboutRequest } from '@forge/contracts/questions';
 import {
+  type DefectEvidence,
   STALL_CAUSES,
   STALL_REFUSAL_CODES,
   type StallCause,
@@ -29,6 +32,8 @@ export interface StallStart {
   feedbackId?: string | null | undefined;
   issueId?: string | null | undefined;
   question?: { id: string; text: string } | null | undefined;
+  /** What a defect reopen cited as its proof (ISS-927); only a defect stall keeps one. */
+  evidence?: DefectEvidence | null | undefined;
 }
 
 /** The row a start writes, or the refusal naming what it could not place. Pure: the unit test's subject. */
@@ -54,6 +59,13 @@ export function placeStall(input: StallStart): typeof stalls.$inferInsert {
       '/issueId',
     );
   }
+  if (input.evidence && input.cause !== 'defect') {
+    throw refuseStall(
+      'STALL_EVIDENCE_NOT_DEFECT',
+      `a ${input.cause} stall keeps no evidence: only a defect stall cites its proof`,
+      '/evidence',
+    );
+  }
   return {
     projectId: input.projectId,
     cause: input.cause,
@@ -62,6 +74,7 @@ export function placeStall(input: StallStart): typeof stalls.$inferInsert {
     issueId: input.issueId ?? null,
     questionId: input.question?.id ?? null,
     question: input.question?.text ?? null,
+    evidence: input.evidence ?? null,
   };
 }
 
@@ -100,12 +113,15 @@ export interface StallMove {
   awaitsMerge: boolean;
   /** The park's question names a product item: that is an unclear-item stall, started with it. */
   aboutItem: boolean;
+  /** A reopen naming `cause: defect`, with the evidence it cited (ISS-927); null on any other move. */
+  defect: { evidence: DefectEvidence } | null;
 }
 
 /**
  * The stalls one issue move starts and ends, in its transaction: a `needs_info` park on a person
- * starts a wait, and leaving the park ends it; a move to `awaiting_release` or `closed` stands on a
- * merge mark and ends a defect; a drop ends every stall the issue still holds.
+ * starts a wait, and leaving the park ends it; a reopen naming `cause: defect` starts a defect, and a
+ * move to `awaiting_release` or `closed` stands on a merge mark and ends it; a drop ends every stall
+ * the issue still holds. A failed verdict's reopen starts its defect itself (`fail-reopen.ts`).
  */
 export async function stallsOfMove(tx: Tx, move: StallMove): Promise<void> {
   const { issue, fromStatus, toStatus } = move;
@@ -119,6 +135,14 @@ export async function stallsOfMove(tx: Tx, move: StallMove): Promise<void> {
   }
   if (toStatus === 'awaiting_release' || toStatus === 'closed') {
     await endStalls(tx, { cause: 'defect', issueId: issue.id }, 'merged');
+  }
+  if (toStatus === 'reopen' && move.defect) {
+    await startStall(tx, {
+      projectId: issue.projectId,
+      cause: 'defect',
+      issueId: issue.id,
+      evidence: move.defect.evidence,
+    });
   }
   if (toStatus === 'needs_info' && !move.awaitsMerge && !move.aboutItem) {
     await startStall(tx, {

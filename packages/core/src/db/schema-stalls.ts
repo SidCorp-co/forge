@@ -1,6 +1,6 @@
-import { STALL_CAUSES, STALL_ENDINGS } from '@forge/contracts/stalls';
+import { type DefectEvidence, STALL_CAUSES, STALL_ENDINGS } from '@forge/contracts/stalls';
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { feedback } from './schema-feedback.js';
 import { issues } from './schema-issues.js';
 import { projects } from './schema-projects.js';
@@ -32,6 +32,8 @@ export const stalls = pgTable(
     /** The question it raised; its words are kept in `question` should the question row go. */
     questionId: uuid('question_id').references(() => agentQuestions.id, { onDelete: 'set null' }),
     question: text('question'),
+    /** The evidence a reopen naming `cause: defect` cited (0598, ISS-927); null on every other stall. */
+    evidence: jsonb('evidence').$type<DefectEvidence>(),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     endedBy: text('ended_by'),
@@ -45,6 +47,10 @@ export const stalls = pgTable(
     endedByChk: check(
       'stalls_ended_by_chk',
       sql`(${t.endedAt} IS NULL) = (${t.endedBy} IS NULL) AND (${t.endedBy} IS NULL OR ${t.endedBy} IN (${inList(STALL_ENDINGS)}))`,
+    ),
+    evidenceChk: check(
+      'stalls_evidence_chk',
+      sql`${t.evidence} IS NULL OR (${t.cause} = 'defect' AND jsonb_typeof(${t.evidence}) = 'object')`,
     ),
     placedChk: check(
       'stalls_placed_chk',

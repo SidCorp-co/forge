@@ -82,6 +82,16 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"REOPEN_FAIL_UNOWNED",
 	/** A body key the move does not take, `note` among them: named, with the keys it does (ISS-566). */
 	"TRANSITION_FIELD_UNKNOWN",
+	/** `cause` or `evidence` on a move whose target is not `reopen`: only a reopen names a cause (ISS-927). */
+	"CAUSE_NOT_APPLICABLE",
+	/** A reopen naming `cause: defect` with no `evidence`: a defect stall cites its proof (ISS-927). */
+	"DEFECT_EVIDENCE_REQUIRED",
+	/** `evidence` on a reopen naming no `cause`: the proof of a defect says it is one (ISS-927). */
+	"DEFECT_CAUSE_REQUIRED",
+	/** `evidence` in a shape it does not take: one of a verdict id, an attachment id or a live read (ISS-927). */
+	"DEFECT_EVIDENCE_SHAPE",
+	/** `evidence` naming a verdict or attachment that is not on this issue (ISS-927). */
+	"DEFECT_EVIDENCE_NOT_FOUND",
 ] as const;
 export type IssueTransitionRefusalCode =
 	(typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
@@ -92,6 +102,8 @@ export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
 	CHECKLIST_ANSWER_INVALID: 400,
 	ISSUE_REOPEN_RELEASING: 409,
 	TRANSITION_FIELD_UNKNOWN: 400,
+	DEFECT_EVIDENCE_SHAPE: 400,
+	DEFECT_EVIDENCE_NOT_FOUND: 404,
 } as const satisfies RefusalStatuses<IssueTransitionRefusalCode>;
 
 type IssueStatusLegacyRefusal = Refusal & {

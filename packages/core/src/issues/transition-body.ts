@@ -7,6 +7,7 @@ import { moveAnswersInputOf } from '@forge/contracts/checklists';
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { ISSUE_MACHINE, type IssueTransitionRefusalCode } from '@forge/contracts/issue-machine';
 import { questionAboutRequestSchema } from '@forge/contracts/questions';
+import { defectEvidenceSchema, REOPEN_CAUSES } from '@forge/contracts/stalls';
 import { z } from 'zod';
 import { issueStatuses, waitingKinds } from '../db/schema.js';
 import { acceptedBodySentence } from '../lib/body-shape.js';
@@ -27,6 +28,10 @@ export const transitionBodySchema = z
     about: questionAboutRequestSchema.optional(),
     voidQuestions: z.string().max(2000).optional(),
     recovery: z.literal(true).optional(),
+    // a reopen's cause, by field and never by its reason (ISS-927): `defect` with its evidence starts
+    // a defect stall; both are refused on any other target
+    cause: z.enum(REOPEN_CAUSES).optional(),
+    evidence: defectEvidenceSchema.optional(),
     // handed to the kernel as sent: it parses them by the checklist of the edge the move takes,
     // and refuses and records a wrong one exactly as it does a lane move's; the contract publishes
     // the shape that checklist derives

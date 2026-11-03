@@ -3802,6 +3802,13 @@
       "when": 1834531200000,
       "tag": "0597_a_workflow_is_a_standing_subject",
       "breakpoints": true
+    },
+    {
+      "idx": 598,
+      "version": "7",
+      "when": 1834617600000,
+      "tag": "0598_a_defect_stall_keeps_its_evidence",
+      "breakpoints": true
     }
   ]
 }

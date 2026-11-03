@@ -8,6 +8,7 @@ import {
 } from '@forge/contracts/issue-machine';
 import type { QuestionAboutRequest } from '@forge/contracts/questions';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
+import type { DefectEvidence, ReopenCause } from '@forge/contracts/stalls';
 import type { staleTransitionRefusal } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
 import { type Db, db, type Tx } from '../db/client.js';
@@ -46,6 +47,7 @@ import {
 } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
+import { reopenCauseOf } from './reopen-cause.js';
 import { aboutsItem, stallsOfMove } from './stalls.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
 import { type GuardCode, issueGuards, readIssueMoveFacts } from './transition-guards.js';
@@ -136,6 +138,10 @@ interface ApplyStatusTransitionOptions {
   /** The mover's answers to the checklist the move's edge names, as the door received them; the
    *  kernel parses them and refuses a move that names none for answers it was sent. */
   answers?: unknown;
+  /** Why a reopen is taken, by field (ISS-927): `defect` starts a defect stall, with `evidence`. */
+  cause?: ReopenCause | undefined;
+  /** The proof a `cause: defect` reopen cites: a verdict or attachment on the issue, or a live read. */
+  evidence?: DefectEvidence | undefined;
 }
 
 export interface StatusTransitionResult {
@@ -242,6 +248,14 @@ async function moveIssue(
     );
   }
 
+  const caused = await reopenCauseOf(issue.id, toStatus, options);
+  if ('fault' in caused) {
+    throw transitionRefused(caused.fault.code, caused.fault.detail, {
+      from: fromStatus,
+      ...caused.fault.details,
+    });
+  }
+
   const needsRefused = needsNotApplicable({ issue, toStatus, actor, options });
   if (needsRefused) {
     throw transitionRefused('NEEDS_NOT_APPLICABLE', needsRefused, {
@@ -272,6 +286,7 @@ async function moveIssue(
     recovering,
     step,
     leftStatus,
+    defect: caused.defect,
   });
   const updated = txResult.row;
 
@@ -298,6 +313,8 @@ export type TransitionWriteInput = {
   step: WorkStep | null;
   /** The status the park being left was entered from, or null (`issue_work_state.left_status`). */
   leftStatus: IssueStatus | null;
+  /** The defect a reopen naming `cause: defect` starts, with its evidence (`reopen-cause.ts`). */
+  defect?: { evidence: DefectEvidence } | null;
 };
 
 type TransitionWriteResult = {
@@ -438,6 +455,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         await stallsOfMove(tx, {
           ...{ issue, fromStatus, toStatus, parkQuestion: parked.question },
           ...{ awaitsMerge: Boolean(options.awaitsMerge), aboutItem: aboutsItem(options.about) },
+          defect: input.defect ?? null,
         });
         if (toStatus === 'reopen') await supersedeOnReopen(tx, issue.projectId, issue.id, actor);
         if (failReturned.note) {
