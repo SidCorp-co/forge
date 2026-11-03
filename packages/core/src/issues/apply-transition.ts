@@ -29,7 +29,12 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { issueGateOf } from './gates.js';
 import { supersedeMergeOnReopen } from './merge-record.js';
-import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './park-question.js';
+import {
+  type AwaitedDesignRef,
+  mintParkQuestion,
+  needsNotApplicable,
+  type ParkQuestion,
+} from './park-question.js';
 import { repointPark, repointsPark } from './park-repoint.js';
 import { planCheckpointHolds, unplannedForBuild } from './plan-checkpoint.js';
 import {
@@ -41,6 +46,7 @@ import {
 } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
+import { aboutsItem, stallsOfMove } from './stalls.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
 import { type GuardCode, issueGuards, readIssueMoveFacts } from './transition-guards.js';
 import {
@@ -340,6 +346,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   });
   // the note the way back from a requirement-level fail's reopen posts, left by its guard (ISS-760)
   const failReturned: { note: string | null } = { note: null };
+  const parked: { question: ParkQuestion | null } = { question: null };
   const write = (exec: KernelExecutor) =>
     transition(exec, ISSUE_MACHINE, {
       to: toStatus,
@@ -391,7 +398,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         }
         await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
         await postRecoveryNotice({ issue, fromStatus, toStatus, actor, recovering, options }, tx);
-        await mintParkQuestion({ issue, toStatus, actor, options }, tx);
+        parked.question = await mintParkQuestion({ issue, toStatus, actor, options }, tx);
         // a move ends every steward decision on the issue it moved, before a terminal move meets its
         // open questions: the drop is an answer to that one (REQ-41 BC-26, REQ-68 BC-7)
         await voidStewardDecisionsOnMove(tx, {
@@ -428,6 +435,10 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         if (!row) return;
         await recordMove(tx, moveOf(input, row.reopenCount));
         await writeWorkStateOfMove(tx, input);
+        await stallsOfMove(tx, {
+          ...{ issue, fromStatus, toStatus, parkQuestion: parked.question },
+          ...{ awaitsMerge: Boolean(options.awaitsMerge), aboutItem: aboutsItem(options.about) },
+        });
         if (toStatus === 'reopen') await supersedeOnReopen(tx, issue.projectId, issue.id, actor);
         if (failReturned.note) {
           await postIssueNotice({ issueId: issue.id, authorId: by, body: failReturned.note }, tx);

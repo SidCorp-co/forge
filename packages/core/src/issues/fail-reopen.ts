@@ -19,6 +19,7 @@ import type { TransitionActor } from './actor-agency.js';
 import { transitionIssueStatus } from './apply-transition.js';
 import { failedWhat, staysNote } from './fail-wording.js';
 import { postIssueNotice } from './ports.js';
+import { startStall } from './stalls.js';
 
 type Failed = VerdictFailed & { issueId: string; verdictId: string };
 
@@ -67,6 +68,9 @@ export async function reopenOnFail(p: Failed): Promise<void> {
   try {
     await transitionIssueStatus(row, 'reopen', actor, {
       transitionReason: `${failedWhat(p)}. A failing verdict reopens the issue that owns the work: correct it here, not in a new issue.`,
+      // the reopen is a defect stall on the issue, ended by its next merge mark (REQ-67 BC-6)
+      beforeStatusWrite: (tx) =>
+        startStall(tx, { projectId: row.projectId, cause: 'defect', issueId: row.id }),
     });
   } catch (err) {
     if (!(err instanceof RefusalError)) throw err;

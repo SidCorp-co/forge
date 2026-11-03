@@ -14,6 +14,9 @@ export interface AwaitedDesignRef {
   revision: number;
 }
 
+/** The question a park minted, as the stall it starts names it (REQ-67 BC-6). */
+export type ParkQuestion = { id: string; text: string };
+
 const NEED_NOT_STATED =
   'the run did not say what would settle this — answer with whatever it needs to carry on';
 
@@ -46,10 +49,13 @@ function mintsAt(toStatus: IssueStatus): boolean {
  * issue an answer, which is the question it waits on. The park returns once every one is answered
  * (`pipeline/answer-resume.ts` resumes only an issue with no open question left).
  */
-export async function mintParkQuestion(input: MintParkQuestionInput, tx: DrizzleTx): Promise<void> {
+export async function mintParkQuestion(
+  input: MintParkQuestionInput,
+  tx: DrizzleTx,
+): Promise<ParkQuestion | null> {
   const needs = input.options.needs?.trim();
-  if (!mintsAt(input.toStatus)) return;
-  if (actorAgency(input.actor) !== 'agent') return;
+  if (!mintsAt(input.toStatus)) return null;
+  if (actorAgency(input.actor) !== 'agent') return null;
   const awaitsMerge = input.options.awaitsMerge;
   const about = input.options.about;
   const named = input.options.awaitsDesign ?? [];
@@ -63,7 +69,7 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
     !awaitsMerge &&
     (await personOwesAnAnswer(tx, input.issue.id))
   )
-    return;
+    return null;
   const prompt = input.options.transitionReason?.trim() || input.options.reason?.trim() || '';
   const ask = (
     awaited: Pick<Parameters<typeof askParkQuestion>[1], 'awaitsDesign' | 'awaitsMerge'>,
@@ -79,13 +85,19 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
       ...(about ? { about } : {}),
       ...(linked ? { linkedUnderIssue: true } : {}),
     });
+  const first = (q: { id: string; steps: Array<{ prompt: string }> }): ParkQuestion => ({
+    id: q.id,
+    text: q.steps[0]?.prompt ?? prompt,
+  });
   if (designs.length === 0) {
-    await ask(awaitsMerge ? { awaitsMerge: { issueId: awaitsMerge.issueId } } : {});
-    return;
+    return first(await ask(awaitsMerge ? { awaitsMerge: { issueId: awaitsMerge.issueId } } : {}));
   }
+  let minted: ParkQuestion | null = null;
   for (const d of designs) {
-    await ask({ awaitsDesign: { workflowId: d.workflowId, revision: d.revision } });
+    const q = await ask({ awaitsDesign: { workflowId: d.workflowId, revision: d.revision } });
+    minted ??= first(q);
   }
+  return minted;
 }
 
 /**

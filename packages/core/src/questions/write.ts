@@ -45,6 +45,7 @@ import { type AwaitedMerge, awaitedMergeFault, neededForMerge } from './merge-wa
 import { resolveAskOrigin } from './origin.js';
 import { owedBlockerOf } from './owed.js';
 import { screenRound } from './screen.js';
+import { startQuestionStall } from './stall-start.js';
 import { refuseUnanswerableAsk } from './unanswerable-ask.js';
 
 /** The pool, or a caller's open transaction — a park writes its question inside the transition's. */
@@ -396,6 +397,10 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
     })
     .returning();
   if (!row) throw new Error('the question was not written');
+  await startQuestionStall(executor, input, about, {
+    id: row.id,
+    text: row.steps[0]?.prompt ?? '',
+  });
   await emitEvent(executor, 'question.asked', {
     questionId: row.id,
     projectId: row.projectId,

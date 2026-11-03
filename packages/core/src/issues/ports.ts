@@ -185,7 +185,7 @@ interface IssuePorts {
       /** What the question is about (ISS-583), in the ask door's shapes. */
       about?: QuestionAboutRequest | undefined;
     },
-  ) => Promise<unknown>;
+  ) => Promise<{ id: string; steps: Array<{ prompt: string }> }>;
   /** Answer the open questions waiting on this issue's mark, in the stamp's transaction. */
   answerMergeQuestions: (
     executor: Tx,

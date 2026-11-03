@@ -13,6 +13,7 @@ import {
   type MergeMarkColumns,
 } from './merge-mark-kind.js';
 import { answerMergeQuestions } from './ports.js';
+import { endStalls } from './stalls.js';
 
 /** The pool or a caller's open transaction. A close stamps inside one; a mark does not. */
 export type MergeRecordExecutor = Pick<Db, 'update' | 'select'>;
@@ -250,6 +251,8 @@ export async function recordIssueMerge(
     );
   }
   if (wrote) {
+    // the mark ends the defect a failed verdict's reopen started (REQ-67 BC-6)
+    await endStalls(executor, { cause: 'defect', issueId }, 'merged');
     await answerMergeQuestions(executor, {
       issueId,
       mark: {
@@ -346,6 +349,7 @@ export async function recordDesignLanding(
     .where(and(eq(issues.id, issueId), gate))
     .returning(stampColumns);
   if (!wrote) return { wrote: false, ...(await readBack(executor, issueId)), before };
+  await endStalls(executor, { cause: 'defect', issueId }, 'merged');
   await answerMergeQuestions(executor, {
     issueId,
     mark: {
