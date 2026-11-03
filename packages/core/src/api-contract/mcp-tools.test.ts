@@ -7,6 +7,8 @@ import { CONTRACTS_DIR } from './routes.js';
 
 // REQ-12 BC-20 (ISS-824): every MCP tool action declares its permission in the published contract,
 // and the generator refuses an action that declares none, with no exception.
+//
+// @direct-test-of packages/core/src/api-contract/declared-permission-field.ts
 
 const input = (actions: string[]) => ({
   type: 'object',
