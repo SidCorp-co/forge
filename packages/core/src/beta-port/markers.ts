@@ -1,10 +1,10 @@
 // The pure half of the beta port (ISS-923): the line a ported issue opens with, the comment that
 // marks a beta issue ported, how either is recognised, and which beta status a dev status mirrors to.
 
-import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { ISSUE_TERMINAL_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
 
 /** The beta statuses that are never ported: the issue is finished there. */
-export const UNPORTED_BETA_STATUSES: ReadonlySet<string> = new Set(['closed', 'dropped']);
+export const UNPORTED_BETA_STATUSES: ReadonlySet<string> = new Set<string>(ISSUE_TERMINAL_STATUSES);
 
 /** The first line of a ported dev issue's description. */
 export function portedFirstLine(betaKey: string, betaIssueId: string): string {
