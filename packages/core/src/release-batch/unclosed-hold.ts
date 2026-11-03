@@ -25,9 +25,17 @@ export function unclosedHold(args: {
   version: string | null;
   refusal: string;
   openQuestionIds: readonly string[];
+  /** Whether the release shipped, so this issue is its residue and a record against it closes it. */
+  shipped?: boolean;
 }): ReleaseHold {
   const release = args.version ? `Release ${args.version}` : 'The release';
   const asked = args.openQuestionIds.length > 0;
+  // the release shipped and this issue is its residue: once the hold lifts, a record against that
+  // version closes it there (ISS-928, `residue.ts`)
+  const recordIt =
+    args.shipped && args.version
+      ? ` Once it clears, record it against ${args.version} (\`POST /api/projects/:id/release-records\` naming it, \`version: ${args.version}\`) to close it into that release.`
+      : '';
   const waitingFor = asked
     ? `the open question ${args.openQuestionIds.join(', ')} to be answered or voided`
     : 'the refusal named here to be cleared';
@@ -39,7 +47,7 @@ export function unclosedHold(args: {
         asked
           ? 'It ends when no question is open on the issue'
           : 'A person clears the refusal, then cuts the release by hand'
-      }, or moves the issue out of \`awaiting_release\` if it is not to ship.`,
+      }, or moves the issue out of \`awaiting_release\` if it is not to ship.${recordIt}`,
     owes: 'human',
     waitingFor,
   };

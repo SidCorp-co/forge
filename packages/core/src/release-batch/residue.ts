@@ -51,6 +51,7 @@ export async function holdResidue(
   runId: string,
   version: string | null,
   failed: ReadonlyArray<{ id: string; reason: string }>,
+  { shipped = true }: { shipped?: boolean } = {},
 ): Promise<void> {
   if (failed.length === 0) return;
   const [run] = await db
@@ -69,6 +70,7 @@ export async function holdResidue(
         version,
         refusal: reasons.get(id) ?? '',
         openQuestionIds: asked.get(id) ?? [],
+        shipped,
       }),
     now: new Date(),
   });

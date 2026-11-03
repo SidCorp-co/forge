@@ -245,6 +245,8 @@ describe('adminhub-api 0.9.0: approved, merged, deployed, 12 of 13 closed, one h
       SELECT code, reason, waiting_for FROM release_holds WHERE issue_id = ${held} AND cleared_at IS NULL`);
     expect(hold?.code).toBe('RELEASE_UNCLOSED_QUESTION');
     expect(hold?.reason).toContain('question');
+    // and it names the record that closes it into this release once that lifts
+    expect(hold?.reason).toContain('release-records');
     expect(hold?.waiting_for).toContain(questionId);
     // the run's own read names the residue, and no failure
     const state = await call('GET', `/release-batches/${runId}/state`);

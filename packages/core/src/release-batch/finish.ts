@@ -174,7 +174,7 @@ export async function finishReleaseBatch(
     recordedLive: shipsNone,
     fence,
   });
-  await holdResidue(runId, run?.releaseVersion ?? null, failed);
+  await holdResidue(runId, run?.releaseVersion ?? null, failed, { shipped: !shipsNone });
   // a landing this release holds whose mark came after its cut, so its roster never named it, is
   // recorded as shipped in this release by its finish (ISS-888)
   if (!shipsNone) await claimMarkedLate(runId, actor);
