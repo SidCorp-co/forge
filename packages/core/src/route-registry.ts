@@ -119,6 +119,7 @@ import { lessonRoutes } from './lessons/index.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpMethodNotAllowed, mcpRequestClass } from './mcp/index.js';
 import { meAttentionRoutes, mePulseRoutes } from './me/index.js';
+import { meHomeRoutes } from './product-progress/index.js';
 import { memoryListRoutes, memorySearchRoutes, memoryWriteRoutes } from './memory/routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';
@@ -424,6 +425,7 @@ function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', notificationVolumeRoutes);
   app.route('/api/me', meAttentionRoutes);
   app.route('/api/me', mePulseRoutes);
+  app.route('/api/me', meHomeRoutes);
   app.route('/api/me', productStateRoutes);
   app.route('/api/me', whatsNewRoutes);
   app.route('/api/questions', questionRoutes);

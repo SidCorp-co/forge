@@ -16,3 +16,4 @@ export {
   runsOn,
   type WorkIssue,
 } from './progress.js';
+export { meHomeRoutes } from './home-routes.js';
