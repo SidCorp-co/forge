@@ -1,1 +1,0 @@
-**Class, ER and state diagrams pasted on a board now become editable shapes.** They had fallen back to a single picture since mermaid 11.14 renamed the ids the converter looks up; flowchart subgraphs are fixed too.

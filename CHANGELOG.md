@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.473] - 2026-11-03
+
+Class, ER and state mermaid diagrams paste onto a board as editable shapes
+
+### Fixed
+
+- **Class, ER and state diagrams pasted on a board now become editable shapes.** They had fallen back to a single picture since mermaid 11.14 renamed the ids the converter looks up; flowchart subgraphs are fixed too.
+
 ## [0.4.0-dev.472] - 2026-11-03
 
 A hand reopen for a live defect now counts as a defect stall
