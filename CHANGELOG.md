@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.474] - 2026-11-03
+
+Pasted class, ER and state diagrams become editable shapes on forge-dev
+
+### Fixed
+
+- **The editable diagram fix now reaches forge-dev.** The 0.4.0-dev.473 build stopped on a diagram package patch the server never installs; the server image now skips that patch, so pasted class, ER and state diagrams become editable shapes.
+
 ## [0.4.0-dev.473] - 2026-11-03
 
 Class, ER and state mermaid diagrams paste onto a board as editable shapes
