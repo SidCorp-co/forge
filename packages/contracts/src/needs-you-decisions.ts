@@ -50,10 +50,12 @@ export const NEEDS_YOU_DECISION_GROUP_LABELS: Record<
  * `awaiting_proposal`: a draft the assistant has not yet proposed merging or dropping (BC-12).
  * `unreadable`: a record waiting on the viewer that no decision could be made of, named so it is
  * opened on its own page rather than dropped (the log says what broke). `agent_takes`: a decision the
- * project's agent may take itself, so it is not a person's (REQ-68 BC-3).
+ * project's agent may take itself, so it is not a person's (REQ-68 BC-3). `triage`: a feedback item
+ * whose triage the viewer holds, a person's choice with no one-click answer, taken on its page (ISS-924).
  */
 export const NEEDS_YOU_NOT_DECISION_REASONS = [
 	"own_work",
+	"triage",
 	"work",
 	"awaiting_proposal",
 	"unreadable",
@@ -464,12 +466,21 @@ export const needsYouDecisionsSchema = z.strictObject({
 });
 export type NeedsYouDecisions = z.infer<typeof needsYouDecisionsSchema>;
 
-/** One project's part of /attention: its Needs you `total` and the first `NEEDS_YOU_PERSON_CAP` decisions. */
+/**
+ * One project's part of /attention: its Needs you `total` and the first `NEEDS_YOU_PERSON_CAP`
+ * decisions, and every other row its Needs you lists as the viewer's (ISS-924): what the person's
+ * home draws under Waiting on you beside the decisions, and nothing else.
+ */
 export interface NeedsYouProjectDecisions {
 	projectSlug: string;
 	projectName: string;
 	total: number;
 	decisions: NeedsYouDecision[];
+	/**
+	 * The project's `notDecisions` but what the agent takes (`agent_takes` is the master's, REQ-68
+	 * BC-3): each reason's `count` is all of them, its `items` the first of them by name.
+	 */
+	owed: NeedsYouDecisions["notDecisions"];
 }
 
 /**

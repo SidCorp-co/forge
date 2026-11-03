@@ -2,8 +2,8 @@
 // they gave and what is live. Core composes it from reads it already serves (feedback with its
 // progress block, the issue list and standing, the run standing, the release list) and computes no
 // date of its own: `likelyBy` is the forecast's held p50 or null, never a guess (VISION:
-// state-never-lies). What waits on the person is `/api/me/attention`'s decisions, merged on the page
-// with `waiting`: the person's own items whose next move is theirs and is no decision needs-you builds.
+// state-never-lies). What waits on the person is `/api/me/attention`'s Needs you alone: its decisions
+// and every other row it lists as theirs (ISS-924); an item they owe is never a Moving row.
 
 /** How far a moving item has got, read from its carrier issues' status and the runs on them now. */
 export const HOME_STAGES = [
@@ -26,7 +26,7 @@ export interface HomeMovingItem {
 	stage: HomeStage;
 	/** A run works on it right now (claimed or running). */
 	running: boolean;
-	/** Who owes the next move and what, as its standing or progress says it; null where nobody is named. Never the viewer: an item they owe is in `waiting`. */
+	/** Who owes the next move and what, as its standing or progress says it; null where nobody is named. Never the viewer: an item they owe is on their Needs you. */
 	owes: { who: string; act: string } | null;
 	/** The forecast's held p50 (`progress.eta.likelyBy`, or the issue forecast's), else null. */
 	likelyBy: string | null;
@@ -40,18 +40,6 @@ export interface HomeMovingItem {
 	lastMovedAt: string;
 	/** Nothing has moved it for more than `HOME_IDLE_DAYS` and no run works on it now. */
 	idle: boolean;
-}
-
-/** One of the person's own items whose next move is theirs (its standing names the viewer), outside the needs-you decisions. */
-export interface HomeWaitingItem {
-	kind: "feedback" | "issue";
-	/** FB-n or ISS-n: what its link and tooltip name it by, never shown as text. */
-	key: string;
-	title: string;
-	projectSlug: string;
-	projectName: string;
-	/** What the person owes, as the standing says it: "triage it", "answer a question". */
-	act: string;
 }
 
 /** A project's latest release on one environment. */
@@ -79,8 +67,6 @@ export interface HomeResponse {
 	movingTotal: number;
 	/** `moving` holds fewer than `movingTotal`. */
 	movingTruncated: boolean;
-	/** The person's own items whose next move is theirs, newest move first; the page merges them with the needs-you decisions, by key. */
-	waiting: HomeWaitingItem[];
 	/** Production first, then testing; newest first inside each. */
 	live: HomeLiveRelease[];
 }
