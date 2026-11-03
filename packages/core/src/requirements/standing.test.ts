@@ -128,8 +128,8 @@ describe('whose turn an open draft revision is', () => {
 
   it('waits on the viewer when the viewer wrote it themselves', () => {
     const s = deriveStanding(draftBy('human'));
-    // the viewer's own draft to finish is their work, not a decision, so not Needs you (REQ-48 BC-11)
-    expect(s.attentionGroup).toBe('waiting');
+    // the viewer's own draft to finish is no decision, but it is theirs: Needs you lists it as own work (ISS-924)
+    expect(s.attentionGroup).toBe('needs_you');
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'propose r1' });
   });
 
@@ -142,7 +142,8 @@ describe('whose turn an open draft revision is', () => {
   // FB-77: with no runner bound no master can take it, so the signer owes it, told why
   it('waits on you, naming why, when no runner is bound to carry the master', () => {
     const s = deriveStanding({ ...draftBy('agent'), runnerBound: false });
-    expect(s.attentionGroup).toBe('waiting');
+    // it names the viewer, so it is theirs to take, listed beside the decisions (ISS-924)
+    expect(s.attentionGroup).toBe('needs_you');
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'propose or drop r1' });
     expect(s.waitingOn.says.rule.key).toBe('requirements.rule.noRunner');
   });
@@ -204,8 +205,9 @@ describe('a draft requirement whose linked designs are not all approved', () => 
       currentRevision: null,
     };
     const s = deriveStanding(none);
-    expect(s.waitingOn).toMatchObject({ act: 'write a revision' });
-    expect(s.attentionGroup).not.toBe('needs_you');
+    // its owner's own work, listed as such on their Needs you (ISS-924), never an agree decision
+    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'write a revision' });
+    expect(s.attentionGroup).toBe('needs_you');
     const agent = deriveStanding({
       ...none,
       owner: { id: 'a1', name: 'Bot', kind: 'agent' as const },

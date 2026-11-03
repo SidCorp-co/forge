@@ -56,8 +56,8 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
       AT,
     );
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'triage it' });
-    // a triage is the steward's to take (REQ-48 BC-4, BC-11): it is the viewer's, never their Needs you
-    expect(s.attentionGroup).toBe('waiting');
+    // the list and Needs you agree: a triage the viewer owes is on their Needs you (ISS-924)
+    expect(s.attentionGroup).toBe('needs_you');
   });
 
   it('names the project master for an item it owes a triage, whoever reads it', () => {

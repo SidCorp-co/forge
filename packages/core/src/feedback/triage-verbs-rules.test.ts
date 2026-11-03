@@ -64,9 +64,9 @@ describe('snooze', () => {
     expect(parked.attentionGroup).toBe('waiting');
     expect(parked.waitingOn.dueAt).toBe(until);
     const back = feedbackStandingOf('new', null, [], 'Ann', viewer, null, NO_STANDING_FACTS, AT);
-    // back in New it is the viewer's to triage again, which the steward takes, so not Needs you (REQ-48 BC-11)
+    // back in New it is the viewer's to triage again, so it is back on their Needs you (ISS-924)
     expect(back.waitingOn.kind).toBe('you');
-    expect(back.attentionGroup).toBe('waiting');
+    expect(back.attentionGroup).toBe('needs_you');
   });
 });
 

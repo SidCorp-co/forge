@@ -5,7 +5,7 @@
  * the requirement, feedback and issue reads apply one rule and no screen computes its own.
  */
 
-import { isDecisionAct } from '@forge/contracts/needs-you-decisions';
+import { actTakenElsewhere, isDecisionAct } from '@forge/contracts/needs-you-decisions';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import type { StandingGroup, WaitingOn } from '@forge/contracts/standing';
 import {
@@ -124,16 +124,21 @@ function stuckOf(turn: Turn<StandingGroup>, f: TimesFacts, due: Date | null): St
 /**
  * The turn with its times: grouped `stuck` where the stuck rule holds (a `needs_you` row keeps its
  * group, the person is told; a resting one is never stuck), and the basis a steward note is vetted
- * against. A `needs_you` row whose act is no person's decision is work an agent takes, so it moves
- * to `notDecision` and the stuck rule reads it like any other wait (BC-11: one Needs you).
+ * against. A `needs_you` row that names the viewer (`waitingOn.kind: you`) stays theirs whatever its
+ * act, so a triage the list says they owe is on their Needs you, which lists it beside the decisions
+ * by why it is no one-click decision (ISS-924). One that asks no person's decision and names someone
+ * else, or an act another record lists (`actTakenElsewhere`: an issue's act, a release's cut), moves
+ * to `notDecision`, and the stuck rule reads it like any other wait (BC-11).
  */
 export function withTimes<G extends StandingGroup>(
   given: Turn<G>,
   f: TimesFacts,
   notDecision: G,
 ): { group: G | 'stuck'; times: StandingTimes } {
+  const act = given.waitingOn.says.act;
+  const elsewhere = given.waitingOn.kind !== 'you' || actTakenElsewhere(act);
   const turn =
-    given.group === 'needs_you' && !isDecisionAct(given.waitingOn.says.act)
+    given.group === 'needs_you' && elsewhere && !isDecisionAct(act)
       ? { ...given, group: notDecision }
       : given;
   const resting = RESTING.includes(turn.group);
