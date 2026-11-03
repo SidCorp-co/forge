@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.459] - 2026-11-03
+
+Your home page shows what waits on you, what moves, and what is live
+
+### Added
+
+- **Your home page answers what waits on you, what is moving and what is live.** Across your projects: decisions waiting on you, each item you gave until it ships, each latest release, and a search. Figures move under a tab.
+
 ## [0.4.0-dev.458] - 2026-11-03
 
 Approvals carry unproven criteria; owner messages answer open questions from any thread

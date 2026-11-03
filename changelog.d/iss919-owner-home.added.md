@@ -1,1 +1,0 @@
-**Your home page answers what waits on you, what is moving and what is live.** Across your projects: decisions waiting on you, each item you gave until it ships, each latest release, and a search. Figures move under a tab.
