@@ -3,7 +3,8 @@
 // it links the agreed requirement the draft delivers and writes criteria traced to its BCs, each a
 // checkable statement. It writes no plan: the run that claims the open issue does (ISS-778).
 // A prepared draft is asked open, recommending open. Where no agreed requirement fits, the steward
-// asks link (its candidates), requirement or drop, and the answer acts: link links the draft and has
+// asks the master (no person is asked about an issue serving no item, REQ-68 BC-4) link (its
+// candidates), requirement or drop, and the answer acts: link links the draft and has
 // it diagnosed again, which prepares it and asks open, under the same daily budget; requirement
 // starts a requirement from the draft's feedback; drop drops it.
 //
@@ -292,16 +293,23 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
   it('asks link, requirement or drop; a link answer links it, and the run it starts prepares it and asks open', async () => {
     const req = await agreedRequirement(905);
     const issue = await draftIssue(104);
-    // a person owes it on Needs you: serious, on a strict project (REQ-79 BC-13)
-    const results = await underStrict(projectId, ownerId, () =>
-      diagnose(issue, [
-        decide(issue.key, 'link', [
-          { requirement: req, bc: 'BC-1' },
-          { requirement: 'REQ-904', bc: 'BC-1' },
-        ]),
-        decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }]),
-      ]),
+    // a person is never asked about an issue that serves no item (REQ-68 BC-4): serious, on a strict
+    // project, the ask is refused by name and nothing is written
+    const strict = await underStrict(projectId, ownerId, () =>
+      diagnose(issue, [decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }])]),
     );
+    expect(strict[0]).toContain('STEWARD_DECISION_ITEM_NONE');
+    expect(await rows(sql`SELECT id FROM agent_questions WHERE issue_id = ${issue.id}`)).toEqual(
+      [],
+    );
+    // left to the master, it is asked on the issue
+    const results = await diagnose(issue, [
+      decide(issue.key, 'link', [
+        { requirement: req, bc: 'BC-1' },
+        { requirement: 'REQ-904', bc: 'BC-1' },
+      ]),
+      decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }]),
+    ]);
     expect(results[0]).toContain('candidate REQ-904 BC-1: REQ-904 is draft');
     const { id, step } = await openQuestion(issue.id);
     const link = stewardLinkOptionId(req, 'BC-1');
@@ -313,22 +321,10 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect(step.recommendedOptionId).toBe(link);
     expect(step.prompt).toBe(`Link it to ${req} BC-1, start a requirement from it, or drop it?`);
     expect(JSON.stringify(step)).not.toMatch(/write the (details|plan)/i);
-    const read = ok(await say('owner', 'GET', at('/needs-you/decisions')));
-    const row = (read.decisions as Doc[]).find((d) => d.key === issue.key);
-    // each button says what it does to this issue, never that it sends the answer to a run
-    expect(((row?.answers ?? []) as Doc[]).map((a) => [a.id, a.needsReason, a.effect])).toEqual([
-      [
-        link,
-        false,
-        `Links ${issue.key} to ${req} BC-1 as you; the steward then writes its criteria, and asks whether to open it.`,
-      ],
-      [
-        IDS.requirement,
-        false,
-        `Starts a requirement from ${issue.key}'s feedback as you; ${issue.key} stays a draft until that requirement is agreed.`,
-      ],
-      [IDS.drop, true, `Drops ${issue.key} as you, with your reason.`],
-    ]);
+    const [owed] = await rows<{ blocker_kind: string }>(
+      sql`SELECT blocker_kind FROM agent_questions WHERE id = ${id}`,
+    );
+    expect(owed?.blocker_kind).toBe('master_or_peer');
 
     const done = await answer(id, { optionId: link });
     expect(done.status, JSON.stringify(done.json)).toBe(200);

@@ -1,7 +1,10 @@
 // Where the steward's one decision question lands (REQ-48 BC-5): on the issue or the requirement it
 // is about, as any question on them is, or, for a feedback item, beside it under `about`, since an
 // item's own question is its reporter's clarification and this one is a triager's or a member's to
-// answer. Only the project's steward asks, naming a run of this project, and every option is
+// answer. A stuck issue reaches a person only as a decision on its item (REQ-68 BC-4): its question
+// names the requirement it delivers, else the feedback item it carries, under `about`, so it is
+// listed and answered there; one on an issue that serves neither is the master's, and asking a
+// person it is refused by name. Only the project's steward asks, naming a run of this project, and every option is
 // one of Forge's fixed decisions, each carrying the run and the basis it read: the answer is carried
 // out against that run (`decision-act.ts`), so no other asker can spell one.
 
@@ -18,7 +21,7 @@ import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { refuser } from '../lib/refusal.js';
 import { requireDeclaredOn } from '../permissions/index.js';
-import { askQuestion } from '../questions/index.js';
+import { askQuestion, decisionOwedBy } from '../questions/index.js';
 import { heldStewardOf } from './account.js';
 import { decisionSubjectOf } from './decision-subject-of.js';
 import { runOfProject } from './runs-store.js';
@@ -102,6 +105,42 @@ async function checkMerges(input: DecisionAsk, about: { kind: string; id: string
   }
 }
 
+/**
+ * The product item a decision on an issue is asked about: the requirement it delivers, else the
+ * feedback item it carries (the oldest, where it carries several); null where it serves neither.
+ */
+async function itemOfIssue(
+  issueId: string,
+): Promise<{ requirement: null } | { feedbackId: string } | null> {
+  const [row] = rowsOf<{ requirement_id: string | null; feedback_id: string | null }>(
+    await db.execute(sql`
+      SELECT i.requirement_id,
+             (SELECT f.id FROM feedback_route_issues r JOIN feedback f ON f.id = r.feedback_id
+               WHERE r.issue_id = i.id ORDER BY f.fb_seq LIMIT 1) AS feedback_id
+        FROM issues i WHERE i.id = ${issueId}`),
+  );
+  if (row?.requirement_id) return { requirement: null };
+  if (row?.feedback_id) return { feedbackId: row.feedback_id };
+  return null;
+}
+
+/**
+ * Where an issue's decision is asked: about its item; on an issue serving none, left on the issue
+ * for the master, and refused by name where it would be a person's to answer.
+ */
+async function issueAnchor(input: DecisionAsk, issueId: string) {
+  const item = await itemOfIssue(issueId);
+  if (item) return { issueId, about: item };
+  if ((await decisionOwedBy(input.projectId, input.serious === true)) === 'human') {
+    throw refuse(
+      'STEWARD_DECISION_ITEM_NONE',
+      `${input.about} serves no requirement or feedback item, so no person sees a decision on it: ask it without \`serious\`, which leaves it to the master, or wake the master (steward_wake_master)`,
+      '/about',
+    );
+  }
+  return { issueId };
+}
+
 /** Ask one decision question about `about`; the question's id and the item it stands on or names. */
 export async function askStewardDecision(input: DecisionAsk) {
   await requireDeclaredOn(input.projectId, input.userId, 'project.read');
@@ -127,7 +166,7 @@ export async function askStewardDecision(input: DecisionAsk) {
   const fingerprint = decisionFingerprint(input.runId, input.basis);
   const anchor =
     subject.kind === 'issue'
-      ? { issueId: subject.id }
+      ? await issueAnchor(input, subject.id)
       : subject.kind === 'requirement'
         ? { requirementId: subject.id }
         : { about: { feedbackId: subject.id } };
