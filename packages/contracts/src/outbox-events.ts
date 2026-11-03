@@ -68,6 +68,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"preview.transitioned",
 	"mockup.transitioned",
 	"chat.replied",
+	"room.replied",
 	"suggestion.proposed",
 	"standing.stuck",
 	"standing.changed",

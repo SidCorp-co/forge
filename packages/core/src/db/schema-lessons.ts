@@ -109,7 +109,7 @@ export const lessons = pgTable(
 );
 
 // one correction (REQ-50 BC-1): a return, rejection or failing verdict said with a reason, or a chat
-// reply the classifier read as one; one row per source event, so a retried delivery never doubles it
+// or room reply the classifier read as one; one row per source event, so a retried delivery never doubles it
 export const corrections = pgTable(
   'corrections',
   {
@@ -118,7 +118,7 @@ export const corrections = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     source: text('source', { enum: CORRECTION_SOURCES }).notNull(),
-    /** The source event's own id: the kernel move, the return, the verdict or the chat message. */
+    /** The source event's own id: the kernel move, the return, the verdict, the chat or room message. */
     sourceRef: text('source_ref').notNull(),
     itemKind: text('item_kind', { enum: CORRECTION_ITEM_KINDS }).notNull(),
     itemId: uuid('item_id').notNull(),
@@ -154,7 +154,7 @@ export const corrections = pgTable(
     agencyChk: check('corrections_agency_chk', sql`${t.agency} IN ('human', 'agent')`),
     scoreChk: check(
       'corrections_score_chk',
-      sql`(${t.source} = 'chat') = (${t.score} IS NOT NULL) AND (${t.score} IS NULL OR ${t.score} BETWEEN 0 AND 1)`,
+      sql`(${t.source} IN ('chat', 'room')) = (${t.score} IS NOT NULL) AND (${t.score} IS NULL OR ${t.score} BETWEEN 0 AND 1)`,
     ),
     linkChk: check('corrections_link_chk', sql`(${t.lessonId} IS NULL) = (${t.linkedAt} IS NULL)`),
     rejectedChk: check(

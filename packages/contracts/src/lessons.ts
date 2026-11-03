@@ -16,11 +16,11 @@ export const CORRECTION_SOURCES = [
 	"revision_returned",
 	"verdict_failed",
 	"chat",
+	"room",
 	"feedback_triaged",
 	"feedback_declined",
 ] as const;
 export type CorrectionSource = (typeof CORRECTION_SOURCES)[number];
-
 
 /** The item a correction is about. */
 export const CORRECTION_ITEM_KINDS = [
@@ -57,7 +57,6 @@ export const LESSON_STATUSES = [
 ] as const;
 export type LessonStatus = (typeof LESSON_STATUSES)[number];
 
-
 /** What an agent found confusing about a lesson (BC-5). */
 export const LESSON_CONFUSION_KINDS = [
 	"conflict",
@@ -66,7 +65,6 @@ export const LESSON_CONFUSION_KINDS = [
 	"wrongly_applied",
 ] as const;
 export type LessonConfusionKind = (typeof LESSON_CONFUSION_KINDS)[number];
-
 
 /** How the steward settles a confusion. */
 export const LESSON_RESOLUTIONS = ["keep", "edit", "retire"] as const;
@@ -209,6 +207,19 @@ export interface LessonEventPayloads {
 		conversationId: string;
 		assistantMessageId: string;
 		personMessageId: string;
+	};
+	/**
+	 * A member's message followed the bot's reply in a bound room's thread, and was handed to the
+	 * room's session, addressed to the bot or to nobody (BC-1, room source). `room` is the room the
+	 * thread's route resolved, its project the event's; the writer is the person message's own
+	 * chat account.
+	 */
+	"room.replied": {
+		projectId: string;
+		conversationId: string;
+		assistantMessageId: string;
+		personMessageId: string;
+		room: { id: string; rid: string };
 	};
 }
 
