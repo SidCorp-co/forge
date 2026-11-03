@@ -1,1 +1,0 @@
-**An owner's answer reaches the question he owes, wherever he writes it.** The channel agent is shown the open questions the owner owes and records his message as one's answer from any thread, waking the master who asked.

@@ -1,1 +1,0 @@
-**A code property is proven by its review on a cut release.** Under a testing environment, a code-property criterion now counts the review's commit pass since the last reopen; observable and server-side criteria still need the runtime pass there.

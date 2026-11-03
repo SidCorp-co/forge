@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.458] - 2026-11-03
+
+Approvals carry unproven criteria; owner messages answer open questions from any thread
+
+### Fixed
+
+- **A code property is proven by its review on a cut release.** Under a testing environment, a code-property criterion now counts the review's commit pass since the last reopen; observable and server-side criteria still need the runtime pass there.
+- **The owner's own request is his consent.** Under owner mode, work the owner asked for runs once the channel agent cites his request; he is no longer asked to type "ok". Every other member still agrees after the proposal.
+- **An owner's answer reaches the question he owes, wherever he writes it.** The channel agent is shown the open questions the owner owes and records his message as one's answer from any thread, waking the master who asked.
+
 ## [0.4.0-dev.457] - 2026-11-03
 
 Requirement checklists load again when a standing names the live build

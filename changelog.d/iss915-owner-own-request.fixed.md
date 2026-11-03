@@ -1,1 +1,0 @@
-**The owner's own request is his consent.** Under owner mode, work the owner asked for runs once the channel agent cites his request; he is no longer asked to type "ok". Every other member still agrees after the proposal.
