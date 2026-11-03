@@ -13,6 +13,8 @@ import { describe, expect, it } from "vitest";
 const read = (p: string) => readFileSync(join(import.meta.dirname, p), "utf8");
 const tokens = read("tokens.css");
 const shellRoute = read("../routes/_workspace/route.tsx");
+// the workspace's main pane takes its classes from the frame the screen witness shares (ISS-691)
+const workspaceFrame = read("../design/templates/workspace-frame.ts");
 const navRail = read("../design/patterns/nav-rail.tsx");
 const drawer = read("../features/shell/components/mobile-nav-drawer.tsx");
 
@@ -150,7 +152,8 @@ describe.each(Object.entries(THEMES))("the %s theme's background layers", (_, th
 describe("the shell", () => {
   it("stands its frame and sidebar on the base and its main pane on the content", () => {
     expect(shellRoute).toMatch(/className="[^"]*\bbg-shell\b[^"]*" data-print="frame" data-shell/);
-    expect(shellRoute).toMatch(/<main className="[^"]*\bbg-app\b/);
+    expect(shellRoute).toMatch(/<main className=\{WORKSPACE_MAIN\}/);
+    expect(workspaceFrame).toMatch(/export const WORKSPACE_MAIN = "[^"]*\bbg-app\b/);
     expect(navRail).toMatch(/data-layer="shell"\s+className=\{cn\(\s+"flex h-full flex-none flex-col border-r border-line bg-shell"/);
   });
 
