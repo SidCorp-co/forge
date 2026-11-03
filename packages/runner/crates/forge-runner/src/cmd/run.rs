@@ -542,4 +542,32 @@ mod tests {
         assert!(why.contains("Permission denied"), "{why}");
         assert!(d.join("x.json").exists());
     }
+    /// The login a judge's pane wrote under its own `$TMPDIR` and recorded on the run is the one
+    /// `run close` removes, whatever `$TMPDIR` the close is typed under (ISS-920).
+    #[test]
+    fn closing_removes_the_recorded_login_wherever_the_pane_wrote_it() {
+        let led = ledger_with("recorded", &[JUDGED]);
+        let pane = TmpRoot::new("pane");
+        let closer = TmpRoot::new("closer");
+        let login = pane.plant(JUDGED);
+        let recorded = judge_dir::record(&led, JUDGED, &login).unwrap();
+        let said = closed(
+            led.judge_dirs(JUDGED).map_err(|e| e.to_string()),
+            &closer.0,
+            JUDGED,
+        );
+        assert!(!login.exists(), "{said}");
+        assert_eq!(
+            said,
+            format!(
+                "run {JUDGED} closed\nremoved {}: the test login its judge was handed",
+                recorded.display()
+            )
+        );
+        // a record that breaks the rule is refused by name and removes nothing
+        let other = pane.plant(NEIGHBOUR);
+        let said = closed(Ok(vec![other.clone()]), &closer.0, JUDGED);
+        assert!(said.contains("is not named forge-judge-"), "{said}");
+        assert!(other.join("x.json").exists());
+    }
 }

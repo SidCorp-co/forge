@@ -374,4 +374,84 @@ mod tests {
         assert!(line.contains("ermission denied"), "{line}");
         assert!(line.contains("the run is closed"), "{line}");
     }
+    #[test]
+    fn a_recorded_path_is_absolute_dotless_named_for_its_run_and_under_no_symlink() {
+        let r = Root::new("recorded");
+        let real = std::fs::canonicalize(&r.0).unwrap();
+        let mine = real.join(format!("{PREFIX}{RUN}"));
+        assert_eq!(check_recorded(&mine, RUN), Ok(()));
+        let link = real.join("link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        for (bad, says) in [
+            (
+                PathBuf::from(format!("{PREFIX}{RUN}")),
+                "not an absolute path",
+            ),
+            (
+                real.join("x").join("..").join(format!("{PREFIX}{RUN}")),
+                "`..`",
+            ),
+            (real.join(format!("{PREFIX}{OTHER}")), "not named"),
+            (real.join("forge-judge-self"), "not named"),
+            (link.join(format!("{PREFIX}{RUN}")), "under a symlink"),
+        ] {
+            let why = check_recorded(&bad, RUN).unwrap_err();
+            assert!(why.contains(says), "{}: {why}", bad.display());
+            let refused = remove_recorded(&bad, RUN);
+            assert!(matches!(refused, Removal::Refused(_)), "{refused:?}");
+        }
+        assert!(check_recorded(&mine, "../x")
+            .unwrap_err()
+            .contains("no run id"));
+    }
+
+    #[test]
+    fn a_recorded_directory_goes_and_a_recorded_symlink_or_file_is_refused() {
+        let r = Root::new("rec-remove");
+        let real = std::fs::canonicalize(&r.0).unwrap();
+        let mine = r.plant(RUN);
+        let mine = std::fs::canonicalize(mine).unwrap();
+        assert!(matches!(remove_recorded(&mine, RUN), Removal::Removed(_)));
+        assert!(!mine.exists());
+        assert!(matches!(remove_recorded(&mine, RUN), Removal::Absent));
+        let file = real.join(format!("{PREFIX}{OTHER}"));
+        std::fs::write(&file, "{}").unwrap();
+        let refused = remove_recorded(&file, OTHER);
+        assert!(
+            matches!(&refused, Removal::Refused(w) if w.contains("a file")),
+            "{refused:?}"
+        );
+        assert!(file.exists());
+        #[cfg(unix)]
+        {
+            let outside = Root::new("rec-outside");
+            std::fs::write(outside.0.join("keep.json"), "{}").unwrap();
+            let link = real.join(format!("{PREFIX}{RUN}"));
+            std::os::unix::fs::symlink(&outside.0, &link).unwrap();
+            let refused = remove_recorded(&link, RUN);
+            assert!(
+                matches!(&refused, Removal::Refused(w) if w.contains("a symlink")),
+                "{refused:?}"
+            );
+            assert!(outside.0.join("keep.json").exists());
+            assert!(std::fs::symlink_metadata(&link).is_ok());
+        }
+    }
+
+    #[test]
+    fn a_run_with_nothing_recorded_falls_back_and_an_unreadable_record_is_said() {
+        let r = Root::new("fallback");
+        let mine = r.plant(RUN);
+        let gone = remove_for_run(Ok(vec![]), &r.0, RUN);
+        assert!(matches!(gone.as_slice(), [Removal::Removed(_)]), "{gone:?}");
+        assert!(!mine.exists());
+        let mine = r.plant(RUN);
+        let said = remove_for_run(Err("locked".into()), &r.0, RUN);
+        assert!(
+            matches!(said.as_slice(), [Removal::Refused(w), Removal::Removed(_)] if w.contains("locked")),
+            "{said:?}"
+        );
+        assert!(!mine.exists());
+    }
 }
