@@ -14,10 +14,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupFirePlan } from '../../src/cleanup/index.js';
 import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
+import { plantSource } from '../helpers/cleanup-source.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
@@ -26,6 +27,13 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { releaseWorld, seedProductionDeployTrigger } from '../helpers/release-world.js';
+
+// a cleanup report's base is read on the project's source host (ISS-912): planted, never a real one
+vi.mock('../../src/integrations/source-host/index.js', async (original) =>
+  (await import('../helpers/cleanup-source.js')).mockedSourceHost(
+    await original<typeof import('../../src/integrations/source-host/index.js')>(),
+  ),
+);
 
 let projectId: string;
 let ownerId: string;
@@ -46,6 +54,10 @@ beforeEach(async () => {
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  plantSource(projectId, {
+    dev: ['b'.repeat(40), 'c'.repeat(40)],
+    main: ['b'.repeat(40), 'c'.repeat(40)],
+  });
   token = await userToken(ownerId);
 });
 
