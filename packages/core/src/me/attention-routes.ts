@@ -63,11 +63,21 @@ interface AttentionResponse {
    * the rail's Overview read the same figure the pages add up to (REQ-48 r3 BC-17).
    */
   waitingOnYou: number;
+  /**
+   * The rows `needsYou` counted but did not send: each project's decisions past its cap and its other
+   * rows past theirs, so a cut list says "N of M" from core's count and never sums one itself.
+   */
+  needsYouNotSent: number;
   total: number;
 }
 
 /** Every row a project's Needs you lists as the caller's that is no decision, cut or not. */
 const owedCount = (p: NeedsYouProjectDecisions) => p.owed.reduce((n, o) => n + o.count, 0);
+
+/** The rows a project's Needs you counted past what it sent: decisions past its cap, the rest past theirs. */
+const notSentOf = (p: NeedsYouProjectDecisions) =>
+  Math.max(0, p.total - p.decisions.length) +
+  p.owed.reduce((n, o) => n + Math.max(0, o.count - o.items.length), 0);
 
 const issueLink = (slug: string, docId: string) => `/projects/${slug}/issues/${docId}`;
 
@@ -184,6 +194,7 @@ meAttentionRoutes.get(
     const response: AttentionResponse = {
       needsYou,
       waitingOnYou,
+      needsYouNotSent: needsYou.reduce((n, p) => n + notSentOf(p), 0),
       mentions,
       failedJobs,
       channelGates,

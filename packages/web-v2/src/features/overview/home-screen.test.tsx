@@ -67,6 +67,8 @@ const attention = {
     offlineRunners: [],
     counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 },
     waitingOnYou: 1,
+    // core's count of what it did not send: Forge's two triage rows past the one it named
+    needsYouNotSent: 2,
     total: 1,
   },
   ...settled,

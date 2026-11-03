@@ -40,6 +40,8 @@ export interface AttentionResponse {
   };
   /** The decisions waiting on you across your projects: the sum of their Needs you `total`s, core's own (REQ-48 r3 BC-17). */
   waitingOnYou: number;
+  /** The rows `needsYou` counted but did not send, past each project's caps: core's count. */
+  needsYouNotSent: number;
   total: number;
 }
 

@@ -8,7 +8,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link, useRouter } from "@/lib/navigation/router";
 import { useState } from "react";
-import { HOME_ROWS, rowsNotSent, type WaitingRow, waitingRows } from "../home-rows";
+import { HOME_ROWS, type WaitingRow, waitingRows } from "../home-rows";
 import { CutNote } from "./cut-note";
 import { ShowMore } from "./show-more";
 
@@ -25,7 +25,7 @@ export function WaitingOnYou() {
           return (
             <>
             <WaitingTable rows={rows} />
-            <CutNote shown={rows.length} total={rows.length + rowsNotSent(view)} />
+            <CutNote shown={rows.length} total={rows.length + view.needsYouNotSent} />
             </>
           );
         }}

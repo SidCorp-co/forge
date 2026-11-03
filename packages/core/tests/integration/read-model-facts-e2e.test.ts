@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -93,6 +94,31 @@ describe('the queue and attention read models serve the derived facts', () => {
     const res = await api(token, 'GET', `/api/me/attention?orgId=${project.orgId}`);
     expect(res.status).toBe(200);
     expect((res.body.counts as { offlineRunners: number }).offlineRunners).toBe(1);
+  });
+
+  // ISS-919 c09c3b22a summed the cut rows on the home in web; core counts them (REQ-12 BC-19)
+  it('counts the Needs you rows it did not send past the person cap, so no screen sums them', async () => {
+    const before = await api(token, 'GET', '/api/me/attention');
+    expect(before.body.needsYouNotSent).toBe(0);
+    const { askQuestion } = await import('../../src/questions/index.js');
+    const asker = (await createTestUser({ verified: true })).id;
+    for (let i = 0; i < 5; i++) {
+      await askQuestion({
+        id: randomUUID(),
+        projectId: other.id,
+        askedBy: asker,
+        prompt: `Which export format, case ${i}?`,
+        blockerKind: 'human',
+        answer: { shape: 'free_text', needed: 'the format' },
+      });
+    }
+    const res = await api(token, 'GET', '/api/me/attention');
+    expect(res.status).toBe(200);
+    const part = (
+      res.body.needsYou as { projectSlug: string; total: number; decisions: unknown[] }[]
+    ).find((p) => p.projectSlug === other.slug);
+    expect([part?.total, part?.decisions.length]).toEqual([5, NEEDS_YOU_PERSON_CAP]);
+    expect(res.body.needsYouNotSent).toBe(5 - NEEDS_YOU_PERSON_CAP);
   });
 
   it('refuses an orgId that is no uuid, by name', async () => {

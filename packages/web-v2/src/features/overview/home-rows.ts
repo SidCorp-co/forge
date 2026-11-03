@@ -127,17 +127,6 @@ export function waitingRows(view: AttentionView): WaitingRow[] {
   return [...decisions, ...own, ...gates, ...mentions];
 }
 
-/** The rows core counted but did not send (each project's decisions past its cap, and the rest past theirs), so a cut list says so. */
-export function rowsNotSent(view: AttentionView): number {
-  return view.needsYou.reduce(
-    (n, part) =>
-      n +
-      Math.max(0, part.total - part.decisions.length) +
-      part.owed.reduce((m, o) => m + Math.max(0, o.count - o.items.length), 0),
-    0,
-  );
-}
-
 /** Moving split on core's `idle`: what moves, in core's order, and what folds under Idle. */
 export function movingSplit(items: readonly HomeMovingItem[]): { active: HomeMovingItem[]; idle: HomeMovingItem[] } {
   return { active: items.filter((m) => !m.idle), idle: items.filter((m) => m.idle) };
