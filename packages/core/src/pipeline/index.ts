@@ -64,6 +64,7 @@ export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 export { resolvedWindowDaysFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
+export { type RunFailure, readRunFailure } from './run-failure.js';
 export { assertRunAcceptsWork } from './run-guard.js';
 export {
   describePause,

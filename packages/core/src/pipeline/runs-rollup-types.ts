@@ -2,6 +2,7 @@
 
 import type { IssueStatus, PipelineRunKind, PipelineRunStatus } from '../db/schema.js';
 import type { RunGateReading } from './ports.js';
+import type { RunFailure } from './run-failure.js';
 import type {
   PipelineRunGroup,
   PipelineRunLane,
@@ -125,6 +126,10 @@ export interface PipelineRunSummary {
   /** ISS-1192 — the box's declaration gate when this run opened; `null` where
    *  the box reported none. The list row omits it: it carries a breakdown. */
   gateAtOpen: RunGateReading | null;
+  /** Why the run failed, as its close recorded it (`run-failure.ts`); null on a run that did not
+   *  fail. A release run's failure lives on the run, never on a job, so a reader of the jobs alone
+   *  read it as failed with no code (ISS-928). */
+  failure: RunFailure | null;
 }
 
 export type PipelineRunListItem = Omit<

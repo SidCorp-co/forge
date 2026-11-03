@@ -11,7 +11,12 @@ import type { ReleaseRepairView } from '@forge/contracts/releases';
 import { and, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
-import { releaseRunsByVersion, stampReleaseShipped, writeRunMetadata } from '../pipeline/index.js';
+import {
+  readRunFailure,
+  releaseRunsByVersion,
+  stampReleaseShipped,
+  writeRunMetadata,
+} from '../pipeline/index.js';
 import { refuseRelease } from './refuse.js';
 import { type RepairedRoster, settleRepairedRoster } from './repaired-roster.js';
 import { versionStatus } from './versions.js';
@@ -53,19 +58,6 @@ export function repairViewOf(
   by: ReleaseRepairView['by'],
 ): ReleaseRepairView {
   return { ...record, by };
-}
-
-/** The failure a run's close recorded (`pipeline/runs-cascade.ts:failureMetadata`), or null. */
-export function readRunFailure(
-  metadata: unknown,
-): { code: string; detail: string; step: string | null } | null {
-  const raw = (metadata as { failure?: unknown } | null)?.failure;
-  if (typeof raw !== 'object' || raw === null) return null;
-  const f = raw as Record<string, unknown>;
-  const code = str(f.code);
-  const detail = str(f.detail);
-  if (!code || !detail) return null;
-  return { code, detail, step: str(f.step) };
 }
 
 export interface RepairReleaseArgs {

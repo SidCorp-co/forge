@@ -18,10 +18,11 @@ import { issues } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { readRunFailure } from '../pipeline/index.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
 import type { Part } from './release-read-views.js';
-import { readReleaseRepair, readRunFailure, repairViewOf } from './release-repair.js';
+import { readReleaseRepair, repairViewOf } from './release-repair.js';
 import { carriersIn, carriersOf, type Lineage, type LineageRun } from './version-rule.js';
 import { versionStatus } from './versions.js';
 

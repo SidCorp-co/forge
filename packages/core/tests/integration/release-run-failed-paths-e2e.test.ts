@@ -1,7 +1,8 @@
 /**
  * ISS-928 (d): every path that still ends a release run `failed` writes its code and its reason. One
  * test per writer, each driving the writer itself against real Postgres and reading the failure back
- * the way the release page and the repair read it (`release-repair.ts:readRunFailure`): the finish
+ * the way the release page and the repair read it (`pipeline/run-failure.ts:readRunFailure`), and as
+ * the run summary shows it (`GET /api/pipeline-runs/:id`, which read no failure at all): the finish
  * that closed none of its roster, the record that closed none, a deploy that failed under a close,
  * a cut that lost its claim, and the kernel's close of an unshipped release asked to end otherwise.
  * That no writer can drop the cause is the compiler's (`pipeline/run-end.test.ts`).
@@ -11,6 +12,8 @@
  * @direct-test-of packages/core/src/release-batch/claim-conflicts.ts
  * @direct-test-of packages/core/src/pipeline/runs.ts
  * @direct-test-of packages/core/src/pipeline/runs-cascade.ts
+ * @direct-test-of packages/core/src/pipeline/run-failure.ts
+ * @direct-test-of packages/core/src/pipeline/runs-rollup.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -18,12 +21,12 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import type { TransitionActor } from '../../src/issues/index.js';
-import { closeRun, closeRunIfOneShot } from '../../src/pipeline/index.js';
+import { closeRun, closeRunIfOneShot, readRunFailure } from '../../src/pipeline/index.js';
+import { loadPipelineRunSummary } from '../../src/pipeline/runs-rollup.js';
 import { askQuestion } from '../../src/questions/index.js';
 import { claimRoster } from '../../src/release-batch/claim-conflicts.js';
 import { finishReleaseBatch } from '../../src/release-batch/finish.js';
 import { endRecordRun } from '../../src/release-batch/recorded.js';
-import { readRunFailure } from '../../src/release-batch/release-repair.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
@@ -63,11 +66,13 @@ const actor = (): TransitionActor => ({ type: 'user', id: ownerId, agency: 'huma
 async function ended(runId: string) {
   const [run] = await rows<{ status: string; released: unknown; metadata: unknown }>(sql`
     SELECT status, release_released_at AS released, metadata FROM pipeline_runs WHERE id = ${runId}`);
-  return {
-    status: run?.status,
-    released: run?.released ?? null,
-    failure: readRunFailure(run?.metadata),
-  };
+  const failure = readRunFailure(run?.metadata);
+  // the run summary is the other door a failed release run is read through: it shows the same
+  // failure, never a run that reads `failed` with no code (adminhub-api 46a3abe4)
+  const summary = await loadPipelineRunSummary(runId);
+  expect(summary?.status).toBe(run?.status);
+  expect(summary?.failure ?? null).toEqual(failure);
+  return { status: run?.status, released: run?.released ?? null, failure };
 }
 
 /** A release run open at its release step, wearing `version`, holding nothing. */

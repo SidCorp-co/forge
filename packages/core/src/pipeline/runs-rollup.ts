@@ -22,6 +22,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { readRunFailure } from './run-failure.js';
 import {
   groupOf,
   laneOf,
@@ -220,6 +221,7 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     liveJobs: 0,
     lastSessionBeatAt: null,
     residentMaster: null,
+    failure: readRunFailure(row.metadata),
   };
 }
 

@@ -3,12 +3,12 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
+import { type RunFailure, readRunFailure } from '../pipeline/index.js';
 import { type ReleaseChannel, resolveReleaseChannels } from './channel.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
-import { readRunFailure } from './release-repair.js';
 import { residueOf } from './residue.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 import { attemptsOf } from './versions.js';
@@ -18,7 +18,7 @@ interface ReleaseRunState {
   projectId: string;
   runStatus: string;
   /** Why a run that ended `failed` failed, as its close recorded it; null on every other run (ISS-928). */
-  failure: ReturnType<typeof readRunFailure>;
+  failure: RunFailure | null;
   /** The roster issues a release that shipped could not close, waiting to close into it (ISS-928). */
   residue: string[];
   /** The version this release cut. `null` only on a release row nothing versioned. */
