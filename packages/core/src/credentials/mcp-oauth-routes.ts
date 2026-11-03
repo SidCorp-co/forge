@@ -178,6 +178,13 @@ async function readRequest(c: Context, params: AuthorizeParams) {
       '/client_id',
     );
   }
+  if (client.issuer === null) {
+    throw refuse(
+      'MCP_AUTH_CLIENT_ISSUER_UNRECORDED',
+      `${client.clientName} registered before this Forge recorded the issuer a client registers at, so no consent can name it; the client registers again and retries`,
+      '/client_id',
+    );
+  }
   if (!redirectUriRegistered(params.redirect_uri, client.redirectUris)) {
     throw refuse(
       'MCP_AUTH_REDIRECT_UNREGISTERED',
@@ -200,7 +207,7 @@ async function readRequest(c: Context, params: AuthorizeParams) {
       '/scope',
     );
   }
-  return { client, requestedScopes: asked.scopes };
+  return { client, issuer: client.issuer, requestedScopes: asked.scopes };
 }
 
 mcpOauthRoutes.get(
@@ -242,13 +249,11 @@ mcpOauthRoutes.post(
   zValidator('json', decisionBody, invalid(`${SHAPE}, and decision (allow or deny)`)),
   async (c) => {
     const body = c.req.valid('json');
-    const { client, requestedScopes } = await readRequest(c, body);
+    const { client, issuer, requestedScopes } = await readRequest(c, body);
+    // `iss` (RFC 9207) is the issuer the client discovered and registered at, never the origin
+    // this consent reached, which is the web's where web and API are different hosts
     const answer = (params: Record<string, string | undefined>): McpConsentAnswer => ({
-      redirectTo: redirectWith(body.redirect_uri, {
-        ...params,
-        state: body.state,
-        iss: reachedOrigin(c),
-      }),
+      redirectTo: redirectWith(body.redirect_uri, { ...params, state: body.state, iss: issuer }),
     });
     if (body.decision === 'deny') return c.json(answer({ error: 'access_denied' }));
 

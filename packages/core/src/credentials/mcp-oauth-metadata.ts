@@ -8,7 +8,8 @@ import { noQuery } from '../middleware/zod-validator.js';
  * What an MCP client reads to find where to sign in. A 401 from `/mcp` names the protected-resource
  * document (RFC 9728), which names this core as the authorization server, whose document (RFC 8414)
  * names the endpoints. The issuer is the origin the client reached, since a client compares the
- * two; the consent page is the web's, at APP_BASE_URL.
+ * two; the consent page is the web's, at APP_BASE_URL. The registration endpoint is on the issuer,
+ * so a client records it when it registers, and the consent's `iss` names it (`mcp-oauth-routes.ts`).
  */
 
 export const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';

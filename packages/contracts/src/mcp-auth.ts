@@ -84,10 +84,13 @@ export const MCP_AUTH_REFUSAL_CODES = [
 	"MCP_AUTH_RESOURCE_FOREIGN",
 	/** A scope outside `read` and `write`, or more than the client asked for. */
 	"MCP_AUTH_SCOPE_INVALID",
+	/** The client registered before its issuer was recorded, so no consent can name it; it registers again. */
+	"MCP_AUTH_CLIENT_ISSUER_UNRECORDED",
 ] as const;
 
 export type McpAuthRefusalCode = (typeof MCP_AUTH_REFUSAL_CODES)[number];
 
 export const MCP_AUTH_REFUSAL_STATUSES = {
 	MCP_AUTH_CLIENT_UNKNOWN: 404,
+	MCP_AUTH_CLIENT_ISSUER_UNRECORDED: 409,
 } as const satisfies RefusalStatuses<McpAuthRefusalCode>;
