@@ -2,6 +2,7 @@
  * The approvals folded into the one Needs you read (REQ-48 BC-11): every suggestion an agent proposed
  * that the viewer may decide, every mockup they may accept and every preview they may approve, each a
  * decision with the act that decides it where it is listed and what it proposes (`needs-you-proposals.ts`).
+ * One on an issue is listed on the item the issue serves, or left to the master (`needs-you-on-item.ts`).
  * No lesson is one: lessons are internal to Forge, and the steward settles them (REQ-50 BC-9).
  * There is no second approvals read: the page, the Dashboard, /attention, the nav and the chat count
  * this one. Each is checked against the decision schema on its own, so a record no decision can be
@@ -23,7 +24,6 @@ import {
   fitProposal,
   type NeedsYouTopic,
 } from '@forge/contracts/needs-you-proposal';
-import type { SuggestionTargetType } from '@forge/contracts/suggestions';
 import { cutAtWord } from '@forge/contracts/title-text';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -45,6 +45,7 @@ import {
 } from '../suggestions/waiting-read.js';
 import type { NeedsYouViewer, readAttention } from './needs-you.js';
 import { clip, type DecisionBody, filled, prefilledReason } from './needs-you-decision-builders.js';
+import { issueItemsOf, type Placement, placeOn } from './needs-you-on-item.js';
 import {
   type BrokenDown,
   breakdownProposal,
@@ -54,13 +55,6 @@ import {
 } from './needs-you-proposals.js';
 
 type Attention = Awaited<ReturnType<typeof readAttention>>;
-
-const AREA_OF: Record<SuggestionTargetType, NeedsYouAreaKey> = {
-  requirement: 'requirements',
-  issue: 'issues',
-  feedback: 'feedback',
-  workflow: 'designs',
-};
 
 const TOPIC_OF: Partial<Record<string, NeedsYouTopic>> = {
   feedback_triage: 'feedback',
@@ -94,6 +88,7 @@ function approveOrDecline(
 }
 
 function suggestionDecision(
+  place: Placement,
   projectId: string,
   s: WaitingSuggestion,
   proposal: DecisionProposal,
@@ -127,11 +122,11 @@ function suggestionDecision(
     : null;
   return {
     group: 'approve',
-    area: AREA_OF[s.target.type],
-    entity: s.target.type as NeedsYouEntity,
-    key: s.target.key,
-    title: cutAtWord(s.target.title, 500),
-    opens: { kind: s.target.type, key: s.target.key },
+    area: place.area,
+    entity: place.entity,
+    key: place.key,
+    title: cutAtWord(place.title, 500),
+    opens: place.opens,
     question: asked(proposal),
     changes: `What happens to ${s.target.key}, as the agent proposes it`,
     impact: `${s.target.key} waits on this; nothing the agent proposed is done until it is approved.`,
@@ -166,10 +161,7 @@ function standingOf(m: MockupView): { label: string; value: string }[] {
   ];
 }
 
-const mockupArea = (m: MockupView): NeedsYouAreaKey =>
-  m.target.type === 'feedback' ? 'feedback' : m.target.type === 'issue' ? 'issues' : 'requirements';
-
-function mockupDecision(projectId: string, m: MockupView): DecisionBody {
+function mockupDecision(place: Placement, projectId: string, m: MockupView): DecisionBody {
   const consequence = CONSEQUENCE_OF[m.target.type];
   const proposal: DecisionProposal = fitProposal({
     verb: 'Accept mockup',
@@ -209,11 +201,11 @@ function mockupDecision(projectId: string, m: MockupView): DecisionBody {
     : null;
   return {
     group: 'approve',
-    area: mockupArea(m),
-    entity: m.target.type,
+    area: place.area,
+    entity: place.entity,
     key: m.key,
     title: cutAtWord(m.name, 500),
-    opens: { kind: m.target.type, key: m.target.key },
+    opens: place.opens,
     question: asked(proposal),
     changes: `Whether ${m.key} is the agreed picture for ${m.target.key}`,
     impact: `${m.target.key} waits on this; round ${m.round} stays open until it is decided.`,
@@ -235,7 +227,7 @@ function mockupDecision(projectId: string, m: MockupView): DecisionBody {
   };
 }
 
-function previewDecision(p: ApprovablePreview): DecisionBody {
+function previewDecision(place: Placement, p: ApprovablePreview): DecisionBody {
   const proposal: DecisionProposal = fitProposal({
     verb: 'Approve preview',
     what: p.issueTitle,
@@ -249,11 +241,11 @@ function previewDecision(p: ApprovablePreview): DecisionBody {
   });
   return {
     group: 'approve',
-    area: 'issues',
-    entity: 'issue',
-    key: p.issueKey,
-    title: cutAtWord(p.issueTitle, 500),
-    opens: { kind: 'issue', key: p.issueKey },
+    area: place.area,
+    entity: place.entity,
+    key: place.key,
+    title: cutAtWord(place.title, 500),
+    opens: place.opens,
     question: asked(proposal),
     changes: `Whether the running preview of ${p.issueKey} is approved`,
     impact: `${p.issueKey} waits on this; it moves on only once its preview is approved.`,
@@ -423,51 +415,32 @@ export async function foldedDecisions(
     suggestions.filter((s) => s.kind === 'feedback_triage').map((s) => s.target.id),
   );
   const reqs = brokenDownOf(attention);
+  const itemOf = issueItemsOf(attention);
   const out: Folded = { decisions: [], unreadable: [] };
   for (const s of suggestions) {
+    const place = placeOn(s.target, itemOf);
+    if (!place) continue;
     checked(
-      {
-        area: AREA_OF[s.target.type],
-        entity: s.target.type as NeedsYouEntity,
-        key: s.target.key,
-        title: s.target.title,
-        touchedAt: s.createdAt,
-        opens: { kind: s.target.type, key: s.target.key },
-      },
-      () => suggestionDecision(projectId, s, fitProposal(proposalOf(s, items, reqs))),
+      { ...place, touchedAt: s.createdAt },
+      () => suggestionDecision(place, projectId, s, fitProposal(proposalOf(s, items, reqs))),
       out,
       projectId,
     );
   }
   for (const m of mockups) {
+    const place = placeOn({ ...m.target, title: m.name }, itemOf);
+    if (!place) continue;
     checked(
-      {
-        area: mockupArea(m),
-        entity: m.target.type,
-        key: m.key,
-        title: m.name,
-        touchedAt: m.createdAt,
-        opens: { kind: m.target.type, key: m.target.key },
-      },
-      () => mockupDecision(projectId, m),
+      { ...place, key: m.key, title: m.name, touchedAt: m.createdAt },
+      () => mockupDecision(place, projectId, m),
       out,
       projectId,
     );
   }
   for (const p of previews) {
-    checked(
-      {
-        area: 'issues',
-        entity: 'issue',
-        key: p.issueKey,
-        title: p.issueTitle,
-        touchedAt: p.since,
-        opens: { kind: 'issue', key: p.issueKey },
-      },
-      () => previewDecision(p),
-      out,
-      projectId,
-    );
+    const place = placeOn({ type: 'issue', key: p.issueKey, title: p.issueTitle }, itemOf);
+    if (!place) continue;
+    checked({ ...place, touchedAt: p.since }, () => previewDecision(place, p), out, projectId);
   }
   return out;
 }

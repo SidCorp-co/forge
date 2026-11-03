@@ -10,7 +10,6 @@ export const NEEDS_YOU_AREAS = [
 	"requirements",
 	"releases",
 	"feedback",
-	"issues",
 	"contracts",
 	"designs",
 	"automation",
@@ -22,7 +21,6 @@ export const NEEDS_YOU_AREA_LABELS: Record<NeedsYouAreaKey, string> = {
 	requirements: "Requirements",
 	releases: "Releases",
 	feedback: "Feedback",
-	issues: "Issues",
 	contracts: "Contracts",
 	designs: "Workflows",
 	automation: "Automation",
@@ -31,7 +29,8 @@ export const NEEDS_YOU_AREA_LABELS: Record<NeedsYouAreaKey, string> = {
 
 /**
  * Whose list a needs-you row belongs on. `asks`: what a project member owes as a person — a
- * question, an approval, a decision, an accept, a promote or a drop. `ops`: Forge's own upkeep — an
+ * question, an approval, a decision, an accept or a drop, each on a product item: no area lists an
+ * issue, which the agents work (REQ-68 BC-6). `ops`: Forge's own upkeep — an
  * agent report to triage, a schedule's owner, a contract to repin — which Development reads, never
  * the person's Needs you. One map, so the home, /attention and the status report count one set.
  */
@@ -42,7 +41,6 @@ export const NEEDS_YOU_AREA_SPACE: Record<NeedsYouAreaKey, NeedsYouSpace> = {
 	requirements: "asks",
 	releases: "asks",
 	feedback: "asks",
-	issues: "asks",
 	designs: "asks",
 	questions: "asks",
 	contracts: "ops",
@@ -54,7 +52,6 @@ export const NEEDS_YOU_ENTITIES = [
 	"requirement",
 	"release",
 	"feedback",
-	"issue",
 	"contract",
 	"schedule",
 	"workflow",
@@ -68,7 +65,7 @@ export interface NeedsYouItem {
 	/** Whose list it belongs on (`NEEDS_YOU_AREA_SPACE`): a member's ask, or Forge ops' upkeep. */
 	space: NeedsYouSpace;
 	entity: NeedsYouEntity;
-	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule id, a design's flow, a question's id. */
+	/** The row's key: REQ-n, FB-n, a release version, a contract ref, a schedule id, a design's flow, a question's id. */
 	key: string;
 	/** The row's title in English: its writer's words, or Forge's own where nobody wrote one. */
 	title: string;

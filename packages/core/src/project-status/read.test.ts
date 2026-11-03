@@ -51,12 +51,14 @@ describe("the status report's waiting-on-people list", () => {
   const read = waitsOf(
     {
       automation: schedules,
-      issues: [row('issue', 'ISS-107', you, '2026-10-07T10:00:00.000Z', 'needs_you')],
       designs: [
         row('workflow', 'hop-recall-ux', minh, '2026-10-07T12:00:00.000Z'),
         row('workflow', 'hop-intake', minh, '2026-10-06T12:00:00.000Z'),
       ],
-      requirements: [row('requirement', 'REQ-31', you, '2026-10-07T08:00:00.000Z', 'needs_you')],
+      requirements: [
+        row('requirement', 'REQ-31', you, '2026-10-07T08:00:00.000Z', 'needs_you'),
+        row('requirement', 'REQ-107', you, '2026-10-07T10:00:00.000Z', 'needs_you'),
+      ],
     },
     AS_OF,
   );
@@ -73,7 +75,7 @@ describe("the status report's waiting-on-people list", () => {
     ]);
     expect(read.people.map((w) => w.key)).toEqual([
       'REQ-31',
-      'ISS-107',
+      'REQ-107',
       'hop-intake',
       'hop-recall-ux',
     ]);

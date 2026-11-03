@@ -16,8 +16,8 @@ const TITLE =
 const REASON =
   'ISS-625 now links agreed REQ-48 revision 2 and has a plan and three traced BC-5 criteria, so it is ready for a person to open.';
 const row = {
-  entity: 'issue',
-  key: 'ISS-625',
+  entity: 'requirement',
+  key: 'REQ-48',
   title: TITLE,
   touchedAt: null,
 } as unknown as AttentionRow;
@@ -54,6 +54,7 @@ function asked(step: Partial<ChoiceStep>): OpenPersonQuestion {
   return {
     id: 'q625',
     issueId: 'i625',
+    issueKey: 'ISS-625',
     requirementId: null,
     current,
     at: current.askedAt,
@@ -67,7 +68,7 @@ const drawn = (q: OpenPersonQuestion) =>
     dueAt: null,
     topic: 'question',
     proposal: null,
-    ...questionDecision(row, 'issues', q, { kind: 'issue', key: 'ISS-625' }).decision,
+    ...questionDecision(row, 'requirements', q, { kind: 'requirement', key: 'REQ-48' }).decision,
   });
 
 describe("the steward's question as drawn (REQ-48 r3 BC-14)", () => {

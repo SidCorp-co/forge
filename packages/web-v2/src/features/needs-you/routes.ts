@@ -1,18 +1,16 @@
 import { scheduleHref } from "@/lib/routes/automation";
 import { contractHref } from "@/lib/routes/contracts";
 import { feedbackHref } from "@/lib/routes/feedback";
-import { issueHref, issuesHref } from "@/lib/routes/issues";
 import { questionDecisionHref } from "@/lib/routes/approvals";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import { workflowHref } from "@/lib/routes/workflows";
+import type { DecisionOpens } from "@forge/contracts/needs-you-decisions";
 import type { NeedsYouItem } from "./types";
 
 /** The page a needs-you row opens, by what it is. */
 export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key"> & { waitingOn?: Pick<NeedsYouItem["waitingOn"], "kind"> }): string {
   switch (n.entity) {
-    case "issue":
-      return issueHref(slug, n.key);
     case "requirement":
       return requirementHref(slug, n.key);
     case "release":
@@ -32,11 +30,9 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
 }
 
 /** The page a decision opens on, or null where no record holds it. */
-export function decisionHref(slug: string, opens: { kind: "issue" | "requirement" | "feedback" | "workflow" | "release"; key: string } | null): string | null {
+export function decisionHref(slug: string, opens: DecisionOpens | null): string | null {
   if (!opens) return null;
   switch (opens.kind) {
-    case "issue":
-      return issueHref(slug, opens.key);
     case "requirement":
       return requirementHref(slug, opens.key);
     case "feedback":
@@ -51,7 +47,3 @@ export function decisionHref(slug: string, opens: { kind: "issue" | "requirement
 /** What a row is called in a list: its key, or for a schedule or a question (keyed by an id no reader knows) the area it sits in. */
 export const needsYouKeyLabel = (n: Pick<NeedsYouItem, "entity" | "key" | "area">, areaLabel: (area: string) => string): string =>
   n.entity === "schedule" || n.entity === "question" ? areaLabel(n.area) : n.key;
-
-/** An issue opens in the list's peek; everything else opens its page. */
-export const needsYouPeekHref = (slug: string, n: Parameters<typeof needsYouHref>[1]): string =>
-  n.entity === "issue" ? `${issuesHref(slug)}?peek=${encodeURIComponent(n.key)}` : needsYouHref(slug, n);

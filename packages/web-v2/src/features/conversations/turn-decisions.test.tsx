@@ -71,17 +71,17 @@ describe("the chat draws the decisions its turn read (REQ-41 BC-2)", () => {
 // person's word must not be drawn again as a button that can only be refused.
 const steward = (seq: number) => ({
   ...READ.decisions[0],
-  id: `issue:ISS-${seq}:question.answer`,
-  key: `ISS-${seq}`,
-  entity: "issue",
-  opens: { kind: "issue", key: `ISS-${seq}` },
+  id: `requirement:REQ-${seq}:question.answer`,
+  key: `REQ-${seq}`,
+  entity: "requirement",
+  opens: { kind: "requirement", key: `REQ-${seq}` },
 });
 const CLUSTER = needsYouDecisionsSchema.parse({ ...READ, total: 4, decisions: [603, 609, 612, 613].map(steward) });
 const decided = {
   results: [
-    { outcome: "already_done", decision: "ISS-603", state: { key: "ISS-603", status: "open", movedBy: "Darrel", movedAt: "2026-10-22T07:48:04.924Z" } },
-    { outcome: "done", decision: "ISS-609", id: "issue:ISS-609:question.answer", answer: "Open it", state: { key: "ISS-609", status: "open", movedBy: "Darrel", movedAt: "2026-10-22T07:52:00.000Z" } },
-    { outcome: "refused", decision: "ISS-612", code: "DECISION_REFUSED", detail: "QUESTION_ROUND_STALE", state: null },
+    { outcome: "already_done", decision: "REQ-603", state: { key: "REQ-603", status: "open", movedBy: "Darrel", movedAt: "2026-10-22T07:48:04.924Z" } },
+    { outcome: "done", decision: "REQ-609", id: "requirement:REQ-609:question.answer", answer: "Open it", state: { key: "REQ-609", status: "open", movedBy: "Darrel", movedAt: "2026-10-22T07:52:00.000Z" } },
+    { outcome: "refused", decision: "REQ-612", code: "DECISION_REFUSED", detail: "QUESTION_ROUND_STALE", state: null },
   ],
   note: "Report each item exactly as read back here.",
 };
@@ -89,7 +89,7 @@ const decided = {
 describe("a decision made on the word is not drawn again, and a press is answered in the room (REQ-41 BC-24, BC-25)", () => {
   it("drops the decisions act_on_decisions made or found made, and keeps one it refused", () => {
     const left = decisionsIn([block("forge_needs_you", CLUSTER), block("act_on_decisions", decided)] as never);
-    expect(left?.decisions.map((d) => d.key)).toEqual(["ISS-612", "ISS-613"]);
+    expect(left?.decisions.map((d) => d.key)).toEqual(["REQ-612", "REQ-613"]);
     expect(left?.total).toBe(2);
   });
 
@@ -117,7 +117,7 @@ describe("a decision made on the word is not drawn again, and a press is answere
     expect(await screen.findByTestId("decision-follow-up-failed")).toHaveTextContent("The chat could not say what this changed");
     const follow = calls.find((c) => c.url.includes("/decision-outcomes"));
     expect(follow?.url).toContain("/conversations/c0ffee00-0000-4000-8000-000000000001/decision-outcomes");
-    expect(follow?.body).toEqual({ decision: "issue:ISS-613:question.answer", opens: { kind: "issue", key: "ISS-613" }, ok: true });
+    expect(follow?.body).toEqual({ decision: "requirement:REQ-613:question.answer", opens: { kind: "requirement", key: "REQ-613" }, ok: true });
     vi.unstubAllGlobals();
   });
 });

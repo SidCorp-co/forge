@@ -74,6 +74,8 @@ const slugOf = (id: string) =>
 interface World {
   projectId: string;
   issueKey: string;
+  /** The requirement the issue delivers: a decision on the issue is listed on it (REQ-68 BC-4). */
+  carrierKey: string;
   ownSuggestion: string;
   previewId: string;
 }
@@ -87,6 +89,17 @@ async function world(): Promise<World> {
     status: 'open',
     createdAt: new Date(Date.now() - 5 * 86_400_000),
   });
+  const carrier = ok(
+    await say('owner', 'POST', '/requirements', {
+      title: 'The checkout ships',
+      reason: 'the checkout has to ship',
+      criteria: [{ body: 'The checkout ships.' }],
+    }),
+    201,
+  );
+  await db.execute(
+    sql`UPDATE issues SET requirement_id = ${carrier.id as string} WHERE id = ${issue.id}`,
+  );
 
   // the member's suggestion, asked first so it has waited longest
   const suggested = ok(
@@ -146,6 +159,7 @@ async function world(): Promise<World> {
   return {
     projectId,
     issueKey: issue.key,
+    carrierKey: carrier.key as string,
     ownSuggestion: suggested.suggestion.id as string,
     previewId,
   };
@@ -177,12 +191,14 @@ describe('the Needs you read lists every approval waiting on the viewer, and onl
     expect(new Set(ids).size).toBe(ids.length);
 
     const suggestion = read.decisions.find((d: Doc) => d.id === `suggestion:${w.ownSuggestion}`);
-    // titled by the issue it is on, never by its payload's note
+    // listed on the requirement the issue delivers, never on the issue (REQ-68 BC-4), and never by
+    // its payload's note
     expect(suggestion).toMatchObject({
       group: 'approve',
-      key: w.issueKey,
-      title: 'issue 1',
-      opens: { kind: 'issue', key: w.issueKey },
+      entity: 'requirement',
+      key: w.carrierKey,
+      title: 'The checkout ships',
+      opens: { kind: 'requirement', key: w.carrierKey },
       proposal: { verb: `Triage ${w.issueKey}`, what: 'route this to the checkout team' },
     });
     expect(acts(suggestion)).toEqual(['suggestion.accept', 'suggestion.reject (reason)']);
@@ -205,14 +221,20 @@ describe('the Needs you read lists every approval waiting on the viewer, and onl
       ]),
     );
 
-    const revision = read.decisions.find((d: Doc) => d.entity === 'requirement');
+    const revision = read.decisions.find((d: Doc) =>
+      d.answers.some((a: Doc) => a.act === 'revision.accept'),
+    );
     expect(revision.title).toContain('The case reaches its owner');
     expect(acts(revision)).toEqual(
       expect.arrayContaining(['revision.accept (reason)', 'revision.return (reason)']),
     );
 
     const preview = read.decisions.find((d: Doc) => d.topic === 'preview');
-    expect(preview).toMatchObject({ id: `preview:${w.previewId}`, key: w.issueKey });
+    expect(preview).toMatchObject({
+      id: `preview:${w.previewId}`,
+      key: w.carrierKey,
+      opens: { kind: 'requirement', key: w.carrierKey },
+    });
     expect(preview.answers).toEqual([
       expect.objectContaining({
         act: 'preview.approve',
@@ -261,12 +283,16 @@ describe('the Needs you read lists every approval waiting on the viewer, and onl
     }
     const needs = ok(await as(w.projectId)('owner', 'GET', '/needs-you'));
     const rows = (needs.items as Doc[]).map((i) => `${i.area} ${i.entity} ${i.key}`);
-    // the suggestion, the mockup and the preview each open the issue they wait on
-    expect(rows.filter((r) => r === `issues issue ${w.issueKey}`)).toHaveLength(3);
+    // the suggestion, the mockup and the preview each open the requirement their issue delivers, and
+    // no row is the issue (REQ-68 BC-6)
+    expect(rows.filter((r) => r.endsWith(` ${w.issueKey}`))).toEqual([]);
+    expect(
+      rows.filter((r) => r === `requirements requirement ${w.carrierKey}`).length,
+    ).toBeGreaterThan(0);
     const proposed = (needs.items as Doc[]).find((i) => i.title === 'checkout.html');
     expect(proposed).toMatchObject({
-      entity: 'issue',
-      key: w.issueKey,
+      entity: 'requirement',
+      key: w.carrierKey,
       waitingOn: { kind: 'you', act: 'approve or decline what an agent proposed' },
     });
   }, 60_000);

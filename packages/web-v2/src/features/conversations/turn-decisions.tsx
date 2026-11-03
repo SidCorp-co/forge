@@ -58,7 +58,7 @@ export function decisionsIn(blocks: readonly CanonicalBlock[] | null | undefined
 export function outcomeOf({ decision, ok }: DecisionSettled): DecisionOutcomeRequest {
   const opens = decision.opens;
   const item =
-    opens && (opens.kind === "issue" || opens.kind === "requirement" || opens.kind === "feedback")
+    opens && (opens.kind === "requirement" || opens.kind === "feedback")
       ? { kind: opens.kind, key: opens.key }
       : null;
   return { decision: decision.id, opens: item, ok };

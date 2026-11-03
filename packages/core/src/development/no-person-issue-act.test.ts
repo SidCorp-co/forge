@@ -1,12 +1,14 @@
 // REQ-68 BC-6 (ISS-687 c2): no product page asks a person to act on an issue. This walks each product
 // surface a person acts from and finds no act on an issue: the web routes and components of
 // requirements, feedback, Needs you and Approvals call no route that moves, runs, admits, links or
-// files an issue; no Needs you decision moves one; the chat offers no button on an issue; and no
-// product MCP door moves one. A stuck issue reaches a person only as a
+// files an issue; Needs you lists no issue and no decision opens or moves one; the chat offers no
+// button on an issue; and no product MCP door moves one. A stuck issue reaches a person only as a
 // decision on its item (`steward/decision-ask.ts`). Planted red by putting one back: the `issue.admit`
 // act in `DECISION_ACTS`, an `issuesApi.transition` call on the requirement page.
 //
+// @direct-test-of packages/contracts/src/needs-you.ts
 // @direct-test-of packages/contracts/src/needs-you-decisions.ts
+// @direct-test-of packages/contracts/src/chat-decide.ts
 // @direct-test-of packages/core/src/assistant/agreement/write-rule.ts
 // @direct-test-of packages/core/src/assistant/prompt/door-web.ts
 // @direct-test-of packages/core/src/mcp/registry.ts
@@ -14,8 +16,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { decisionOutcomeRequestSchema } from '@forge/contracts/chat-decide';
 import { IDEA_OFFER_TOOL, ideaOfferParamsSchema } from '@forge/contracts/idea-offer';
-import { DECISION_ACTS } from '@forge/contracts/needs-you-decisions';
+import { NEEDS_YOU_AREAS, NEEDS_YOU_ENTITIES } from '@forge/contracts/needs-you';
+import { DECISION_ACTS, decisionOpensSchema } from '@forge/contracts/needs-you-decisions';
 import { describe, expect, it } from 'vitest';
 import { NOT_A_BUSINESS_WRITE } from '../assistant/agreement/write-rule.js';
 import { WEB_DOOR_LAYER } from '../assistant/prompt/door-web.js';
@@ -79,13 +83,25 @@ describe('the web product pages hold no act on an issue', () => {
   });
 });
 
-describe('Needs you holds no act that moves an issue', () => {
-  // its issue area still lists a run's question on an issue: removing it is left to a follow-up
-  it('has no decision act on an issue route', () => {
+describe('Needs you asks a person nothing about an issue', () => {
+  it('has no issue area and lists no issue row', () => {
+    expect(NEEDS_YOU_AREAS as readonly string[]).not.toContain('issues');
+    expect(NEEDS_YOU_ENTITIES as readonly string[]).not.toContain('issue');
+  });
+
+  it('has no decision act on an issue route, and no decision opens an issue', () => {
     const onIssues = Object.entries(DECISION_ACTS).filter(([, a]) =>
       a.path.startsWith('/api/issues/'),
     );
     expect(onIssues.map(([act]) => act)).toEqual([]);
+    expect(decisionOpensSchema.safeParse({ kind: 'issue', key: 'ISS-1' }).success).toBe(false);
+    expect(
+      decisionOutcomeRequestSchema.safeParse({
+        decision: 'd',
+        opens: { kind: 'issue', key: 'ISS-1' },
+        ok: true,
+      }).success,
+    ).toBe(false);
   });
 });
 

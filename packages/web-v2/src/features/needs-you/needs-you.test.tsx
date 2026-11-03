@@ -1,6 +1,6 @@
 // What waits on the viewer, drawn from core's one needs-you read (ISS-75, dev.54): the inbox groups
-// its rows by area in the fixed area order, each row opens what it names (an issue in the list's
-// peek), and the menu's hint names the acts behind a count.
+// its rows by area in the fixed area order, each row opens what it names (a question on Approvals),
+// and the menu's hint names the acts behind a count. No row is an issue (REQ-68 BC-6).
 
 import { verbatim } from "@forge/contracts/said";
 import { RULE, say, waitingOn } from "@/test/said";
@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { NeedsYouList } from "./components/needs-you-list";
 import { needsYouHint } from "./hint";
-import { needsYouHref, needsYouPeekHref } from "./routes";
+import { needsYouHref } from "./routes";
 import type { NeedsYouItem } from "./types";
 
 const push = vi.hoisted(() => vi.fn());
@@ -18,10 +18,10 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 const item = (over: Partial<NeedsYouItem>): NeedsYouItem => {
   const title = over.title ?? "Answer the agent's question";
   return {
-    area: "issues",
+    area: "questions",
     space: "asks",
-    entity: "issue",
-    key: "ISS-7",
+    entity: "question",
+    key: "b2dccb6a-1111-4222-8333-444455556666",
     title,
     titleLang: null,
     waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }),
@@ -46,17 +46,17 @@ describe("the needs-you inbox", () => {
       />,
     );
     const keys = screen.getAllByTestId("list-row").map((r) => r.getAttribute("data-key"));
-    expect(keys).toEqual(["requirement:REQ-2", "feedback:FB-9", "issue:ISS-7"]);
+    expect(keys).toEqual(["requirement:REQ-2", "feedback:FB-9", "question:b2dccb6a-1111-4222-8333-444455556666"]);
     expect(screen.queryByText("Releases")).toBeNull();
   });
 
-  it("draws each row's waiting-on from core, and opens an issue in the list's peek", () => {
+  it("draws each row's waiting-on from core, and opens a question on Approvals", () => {
     push.mockReset();
     render(<NeedsYouList slug="hop" foldKey="t2" empty="" items={[item({})]} />);
     const row = screen.getByTestId("list-row");
     expect(within(row).getByTestId("waiting-on")).toHaveTextContent("You · answer a question");
     fireEvent.click(row);
-    expect(push).toHaveBeenCalledWith("/projects/hop/issues?peek=ISS-7");
+    expect(push).toHaveBeenCalledWith("/projects/hop/approvals?peek=question%3Ab2dccb6a-1111-4222-8333-444455556666");
   });
 
   it("says under a row what doing its act changes, where core gave one", () => {
@@ -89,7 +89,6 @@ describe("where a needs-you row leads", () => {
   it("opens a question attached to nothing on Approvals, its decision in the peek", () => {
     const q = { entity: "question", key: "b2dccb6a-1111-4222-8333-444455556666" } as const;
     expect(needsYouHref("hop", q)).toBe("/projects/hop/approvals?peek=question%3Ab2dccb6a-1111-4222-8333-444455556666");
-    expect(needsYouPeekHref("hop", q)).toBe(needsYouHref("hop", q));
   });
 
   it("draws a question row under Questions, keyed by the area and not by its id", () => {
@@ -108,12 +107,11 @@ describe("where a needs-you row leads", () => {
     expect(push).toHaveBeenLastCalledWith("/projects/hop/approvals?peek=question%3Ab2dccb6a-1111-4222-8333-444455556666");
   });
 
-  it("opens its own page for everything but an issue", () => {
+  it("opens each item's own page", () => {
     expect(needsYouHref("hop", { entity: "requirement", key: "REQ-2" })).toBe("/projects/hop/requirements/REQ-2");
-    expect(needsYouPeekHref("hop", { entity: "feedback", key: "FB-9" })).toBe(needsYouHref("hop", { entity: "feedback", key: "FB-9" }));
+    expect(needsYouHref("hop", { entity: "feedback", key: "FB-9" })).toBe("/projects/hop/feedback/FB-9");
     expect(needsYouHref("hop", { entity: "workflow", key: "shell", waitingOn: { kind: "you" } })).toBe("/projects/hop/workflows/shell?tab=revisions");
     expect(needsYouHref("hop", { entity: "workflow", key: "shell", waitingOn: { kind: "person" } })).toBe("/projects/hop/workflows/shell");
-    expect(needsYouPeekHref("hop", { entity: "issue", key: "ISS-7" })).toBe("/projects/hop/issues?peek=ISS-7");
   });
 });
 

@@ -20,11 +20,11 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
   decisions: [
     {
       group: "answer",
-      area: "issues",
-      entity: "issue",
-      key: "ISS-1",
+      area: "requirements",
+      entity: "requirement",
+      key: "REQ-1",
       title: "Export",
-      opens: { kind: "issue", key: "ISS-1" },
+      opens: { kind: "requirement", key: "REQ-1" },
       question: "Keep the old export format or move to the new one?",
       changes: "What happens next on it",
       impact: "It waits on this until it is decided.",
@@ -66,7 +66,7 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
     },
   ],
   notDecisions: [
-    { reason: "awaiting_proposal", count: 37, items: [{ key: "ISS-4", title: "ISS-4", next: null, opens: null }] },
+    { reason: "work", count: 37, items: [{ key: "REQ-4", title: "REQ-4", next: null, opens: null }] },
     { reason: "own_work", count: 2, items: [{ key: "REQ-2", title: "REQ-2", next: null, opens: null }, { key: "REQ-3", title: "REQ-3", next: null, opens: null }] },
   ],
 });
@@ -85,9 +85,9 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["Move to the new one", "Keep the old format"]);
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.hasAttribute("data-recommended"))).toEqual([true, false]);
     // the item's title leads its link; its key sits behind it (ISS-865)
-    expect(within(first).getByRole("link", { name: "Export" })).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
+    expect(within(first).getByRole("link", { name: "Export" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-1");
     expect(screen.getByTestId("needs-you-left-out")).toHaveTextContent(
-      "Left out, not decisions: 37 drafts nobody has proposed merging or dropping yet, 2 of your own drafts to finish.",
+      "Left out, not decisions: 37 tasks to carry out, 2 of your own drafts to finish.",
     );
   });
 
@@ -99,11 +99,11 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
       decisions: [
         {
           group: "answer",
-          area: "issues",
-          entity: "issue",
-          key: "ISS-1",
+          area: "requirements",
+          entity: "requirement",
+          key: "REQ-1",
           title: "Import",
-          opens: { kind: "issue", key: "ISS-1" },
+          opens: { kind: "requirement", key: "REQ-1" },
           question: "Which identifier should the referral import match on?",
           changes: "What happens next on it",
           impact: "It waits on this until it is decided.",
@@ -237,20 +237,20 @@ describe("a dense list", () => {
     const first = screen.getAllByTestId("needs-you-decision")[0];
     if (!first) throw new Error("no decision drawn");
     const question = within(first).getByTestId("needs-you-decision-question");
-    expect(question).toHaveAttribute("data-item", "Export · ISS-1");
+    expect(question).toHaveAttribute("data-item", "Export · REQ-1");
     // the title is no visible text: only the screen reader's, after the question
     expect([...first.querySelectorAll("*")].filter((e) => !e.closest(".sr-only") && e.childElementCount === 0 && e.textContent === "Export")).toHaveLength(0);
     const open = within(question).getByRole("link");
-    expect(open).toHaveAttribute("href", "/projects/hop/issues/ISS-1");
-    expect(open).toHaveAccessibleName(/move to the new one\?\s*· Export · ISS-1$/);
+    expect(open).toHaveAttribute("href", "/projects/hop/requirements/REQ-1");
+    expect(open).toHaveAccessibleName(/move to the new one\?\s*· Export · REQ-1$/);
     open.focus();
-    expect(await screen.findByText("Export · ISS-1", { selector: ":not(.sr-only)" })).toBeInTheDocument();
+    expect(await screen.findByText("Export · REQ-1", { selector: ":not(.sr-only)" })).toBeInTheDocument();
   });
 
   it("says on its more line, as its hover, what the read left out", () => {
     renderWithQuery(<DecisionList read={READ} slug="hop" dense cap={1} moreHref="/projects/hop/approvals" />);
     expect(screen.queryByTestId("needs-you-left-out")).toBeNull();
-    expect(screen.getByTestId("needs-you-more")).toHaveAttribute("title", expect.stringContaining("37 drafts nobody has proposed merging or dropping yet"));
+    expect(screen.getByTestId("needs-you-more")).toHaveAttribute("title", expect.stringContaining("37 tasks to carry out"));
   });
 
   // ISS-903: the page has one primary, its own next act; a row's recommended answer is marked, never coloured as one

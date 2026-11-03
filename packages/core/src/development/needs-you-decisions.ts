@@ -54,15 +54,11 @@ const OWN_WORK: ReadonlySet<string> = new Set([
   'standing.act.reviseReturned',
   'standing.act.finishDraft',
   'standing.act.reviseThenProposeOrDrop',
-  'issues.standing.act.reviseDesign',
   'standing.act.writeRevision',
 ]);
 
 /** A feedback item's triage the viewer holds: their choice, made on the item's page, no one-click answer (ISS-924). */
 const TRIAGE: ReadonlySet<string> = new Set(FEEDBACK_TRIAGE_ACTS);
-
-/** A draft nobody has asked to merge, drop or keep yet (BC-12): not a decision until the steward asks it. */
-const AWAITING_PROPOSAL: ReadonlySet<string> = new Set(['issues.standing.act.takeOnOrDrop']);
 
 /** A requirement holding a question a person owes, the steward's decision or any other (REQ-48 BC-5, REQ-68 BC-9): its question is the decision. */
 const REQUIREMENT_ASKED = new Set(['standing.act.answerSteward', 'standing.act.answerQuestion']);
@@ -70,7 +66,7 @@ const REQUIREMENT_ASKED = new Set(['standing.act.answerSteward', 'standing.act.a
 /** A design revision proposed to its approver (`workflows/design-standing.ts:proposedWait`). */
 const DESIGN_PROPOSED = 'designs.act.approveOrReturn';
 
-/** The issue acts a person owes as the answer to a run's question. */
+/** The issue acts a requirement waits on as the answer to a run's question on one of its issues. */
 const ANSWER_ACTS: ReadonlySet<string> = new Set([
   'issues.standing.act.answer',
   'issues.standing.act.answerOther',
@@ -143,14 +139,14 @@ function actOf(row: AttentionRow): { key: string; inner: string | null; ref: str
   };
 }
 
-/** The open question a row waits on: the issue's, or the question the row is. */
+/** The open question a row waits on: the question the row is, the requirement's, or its issue's. */
 function questionOf(
   row: AttentionRow,
   f: Facts,
   issueKey: string | null,
 ): OpenPersonQuestion | null {
   if (row.entity === 'question') return f.questions.find((q) => q.id === row.key) ?? null;
-  if (row.entity === 'requirement') {
+  if (row.entity === 'requirement' && issueKey === null) {
     const id = f.requirementOf.get(row.key)?.id;
     return id ? (f.questions.filter((q) => q.requirementId === id).at(-1) ?? null) : null;
   }
@@ -160,11 +156,20 @@ function questionOf(
   return f.questions.filter((q) => q.issueId === issueId).at(-1) ?? null;
 }
 
+/**
+ * The product item a question row opens: the feedback item it is about, else the requirement it is
+ * about; null where it names neither (a run's question attached to nothing).
+ */
+function itemOfQuestion(q: OpenPersonQuestion): DecisionOpens | null {
+  if (q.aboutFeedback) return { kind: 'feedback', key: q.aboutFeedback };
+  if (q.subject?.kind === 'requirement') return { kind: 'requirement', key: q.subject.key };
+  return null;
+}
+
 /** What one row the viewer owes is: a decision built from its record, or the reason it is not one. */
 function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classified {
   const act = actOf(row);
   if (OWN_WORK.has(act.key)) return { reason: 'own_work' };
-  if (AWAITING_PROPOSAL.has(act.key)) return { reason: 'awaiting_proposal' };
   if (row.entity === 'feedback' && TRIAGE.has(act.key)) return { reason: 'triage' };
   // a row the viewer owes whose act no person decides by one press: theirs to carry out on its page
   if (row.entity !== 'question' && !isDecisionActOn(row.entity, row.standing.waitingOn.says.act)) {
@@ -175,23 +180,17 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     if (!q) return { reason: 'work' };
     return asked(row, area, q, { kind: 'requirement', key: row.key }, f.projectId);
   }
-  if (row.entity === 'question' || (row.entity === 'issue' && ANSWER_ACTS.has(act.key))) {
-    const q = questionOf(row, f, row.entity === 'issue' ? row.key : null);
+  if (row.entity === 'question') {
+    const q = questionOf(row, f, null);
     if (!q) return { reason: 'work' };
-    // a steward decision about a feedback item stands on no item, and opens the item it names
-    const opens =
-      row.entity === 'issue'
-        ? { kind: 'issue' as const, key: row.key }
-        : q.aboutFeedback
-          ? { kind: 'feedback' as const, key: q.aboutFeedback }
-          : null;
-    return asked(row, area, q, opens, f.projectId);
+    return asked(row, area, q, itemOfQuestion(q), f.projectId);
   }
-  if (act.key === 'standing.act.onIssue' && act.inner && act.ref) {
+  // a question on one of the requirement's issues is a decision on the requirement (REQ-68 BC-4)
+  if (act.key === 'standing.act.onIssue' && act.inner && act.ref && row.entity === 'requirement') {
     if (!ANSWER_ACTS.has(act.inner)) return { reason: 'work' };
     const q = questionOf(row, f, act.ref);
     if (!q) return { reason: 'work' };
-    return asked(row, area, q, { kind: 'issue', key: act.ref }, f.projectId);
+    return asked(row, area, q, { kind: 'requirement', key: row.key }, f.projectId);
   }
   if (row.entity === 'requirement') {
     const req = f.requirementOf.get(row.key);
@@ -277,7 +276,6 @@ function dueOfRow(row: AttentionRow): { stuck: boolean; dueAt: string | null } {
 }
 
 const OPENS_KIND: Partial<Record<AttentionRow['entity'], DecisionOpens['kind']>> = {
-  issue: 'issue',
   requirement: 'requirement',
   feedback: 'feedback',
   workflow: 'workflow',
@@ -388,7 +386,7 @@ export async function decisionsOf(
   const asks = NEEDS_YOU_AREAS.filter((a) => NEEDS_YOU_AREA_SPACE[a] === 'asks').flatMap((area) =>
     owedRows[area].map((row) => ({ area, row })),
   );
-  // an issue's own row answers its question before a requirement it holds up names the same one
+  // a question's own row answers it before a requirement its issue holds up names the same one
   const heldUp = (r: AttentionRow) => actOf(r).key === 'standing.act.onIssue';
   for (const { area, row } of [
     ...asks.filter((a) => !heldUp(a.row)),

@@ -298,11 +298,11 @@ const SIGN_OFF: NeedsYouDecision = {
 const QUESTION: NeedsYouDecision = {
   id: "question:q41",
   group: "answer",
-  area: "issues",
-  entity: "issue",
-  key: "ISS-41",
+  area: "requirements",
+  entity: "requirement",
+  key: "REQ-141",
   title: "Bulk export",
-  opens: { kind: "issue", key: "ISS-41" },
+  opens: { kind: "requirement", key: "REQ-141" },
   question: "Should the export keep the old column order for existing reports?",
   changes: "What happens next on it",
   impact: "It waits on this until it is decided.",
@@ -341,11 +341,11 @@ const stewardAnswer = (decision: keyof typeof STEWARD_DECISION_OPTION_IDS, recom
 export const STEWARD_DECISION: NeedsYouDecision = needsYouDecisionSchema.parse({
   id: "question:q7",
   group: "answer",
-  area: "issues",
-  entity: "issue",
-  key: "ISS-7",
+  area: "requirements",
+  entity: "requirement",
+  key: "REQ-7",
   title: "Export keeps the old column order",
-  opens: { kind: "issue", key: "ISS-7" },
+  opens: { kind: "requirement", key: "REQ-7" },
   question: stewardDecisionQuestion([STEWARD_DECISION_OPTION_IDS.open, STEWARD_DECISION_OPTION_IDS.keep, STEWARD_DECISION_OPTION_IDS.drop], ISS_7),
   changes: "What happens next on it",
   impact: "It waits on this until it is decided.",
@@ -381,13 +381,13 @@ const answer625 = (id: string, label: string, decision: Parameters<typeof stewar
 export const STEWARD_625_REASON = "ISS-625 now links agreed REQ-48 revision 2 and has a plan and three traced BC-5 criteria, so it is ready for a person to open.";
 const ANSWERS_625 = [STEWARD_DECISION_OPTION_IDS.open, MERGE_625, STEWARD_DECISION_OPTION_IDS.keep, STEWARD_DECISION_OPTION_IDS.drop];
 export const STEWARD_625: NeedsYouDecision = needsYouDecisionSchema.parse({
-  id: "issue:ISS-625:question.answer",
+  id: "requirement:REQ-625:question.answer",
   group: "answer",
-  area: "issues",
-  entity: "issue",
-  key: "ISS-625",
+  area: "requirements",
+  entity: "requirement",
+  key: "REQ-625",
   title: "Issue criterion BC trace syntax is undocumented; a trailing tag silently traces nothing",
-  opens: { kind: "issue", key: "ISS-625" },
+  opens: { kind: "requirement", key: "REQ-625" },
   question: stewardDecisionQuestion(ANSWERS_625, ISS_625),
   changes: "What happens next on it",
   impact: "It waits on this until it is decided.",
@@ -406,7 +406,6 @@ export const STEWARD_625: NeedsYouDecision = needsYouDecisionSchema.parse({
   proposal: null,
   evidence: {
     requirement: { key: "REQ-48", title: "An agent stands at every Product and Delivery handoff", revision: 2 },
-    plan: true,
     criteria: { count: 3, codes: ["BC-5"] },
   },
 });

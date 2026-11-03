@@ -85,10 +85,7 @@ function itemOf(
   target: string,
 ): { kind: ItemKind; key: string } | null {
   const opens = d?.opens;
-  if (
-    opens &&
-    (opens.kind === 'issue' || opens.kind === 'requirement' || opens.kind === 'feedback')
-  ) {
+  if (opens && (opens.kind === 'requirement' || opens.kind === 'feedback')) {
     return { kind: opens.kind, key: opens.key };
   }
   const kind = itemKindOf(target);
