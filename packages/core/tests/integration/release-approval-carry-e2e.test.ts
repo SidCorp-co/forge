@@ -12,7 +12,6 @@
  * @direct-test-of packages/core/src/release-batch/approval-checklist.ts
  * @direct-test-of packages/core/src/release-batch/approvals.ts
  * @direct-test-of packages/core/src/release-batch/version-routes.ts
- * @direct-test-of packages/core/src/release-batch/approval-wake.ts
  * @direct-test-of packages/core/src/product-door/releases-tool.ts
  * @direct-test-of packages/core/src/db/schema-release-ledger.ts
  * @direct-test-of packages/contracts/src/releases.ts

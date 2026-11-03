@@ -52,6 +52,7 @@ function approval(over: Partial<ReleaseApprovalView>): ReleaseApprovalView {
     decidedBy: null,
     decidedAt: null,
     reason: null,
+    carried: [],
     ...over,
   };
 }
