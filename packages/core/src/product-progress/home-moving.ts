@@ -5,18 +5,14 @@
 // serve; nothing here computes a date.
 
 import type { FeedbackSummary } from '@forge/contracts/feedback';
-import {
-  HOME_IDLE_DAYS,
-  type HomeMovingItem,
-  type HomeWaitingItem,
-} from '@forge/contracts/owner-home';
+import type { HomeMovingItem, HomeWaitingItem } from '@forge/contracts/owner-home';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
 import { listFeedbackAs } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
 import { issueDisplayIds, issueWaitsOf, listIssues } from '../issues/index.js';
 import { type FeedbackReads, feedbackProgress, routedRequirements } from './feedback-views.js';
-import { feedbackEnded, feedbackStage, issueStage } from './home-stage.js';
+import { feedbackEnded, feedbackStage, isIdle, issueStage, lastMoveOf } from './home-stage.js';
 import {
   issuesOfRequirements,
   liveRunsByIssue,
@@ -156,20 +152,6 @@ export interface HomeProjectItems {
   waiting: HomeWaitingRanked[];
 }
 
-const DAY_MS = 86_400_000;
-
-/** The latest of the instants an item's reads served for its last movement. */
-export function lastMoveOf(...at: readonly (string | null | undefined)[]): string {
-  const known = at.filter((a): a is string => typeof a === 'string' && a !== '');
-  if (known.length === 0) throw new Error('home: an item reached Moving with no instant it moved');
-  return known.reduce((latest, a) => (Date.parse(a) > Date.parse(latest) ? a : latest));
-}
-
-/** Nothing has moved it for more than `HOME_IDLE_DAYS`, and no run works on it now. */
-export function isIdle(lastMovedAt: string, running: boolean, now: Date): boolean {
-  return !running && now.getTime() - Date.parse(lastMovedAt) > HOME_IDLE_DAYS * DAY_MS;
-}
-
 const runStarts = (runs: readonly RunStanding[]) => runs.map((r) => r.since);
 
 /** The project's items not yet live: their feedback, then their issues not yet over. */
@@ -261,14 +243,6 @@ export async function homeItemsOf(
   }
   return out;
 }
-
-/** Moving's order: what moves first, the idle last; newest move first inside each. */
-export const byLastMove = (
-  one: Pick<HomeMovingItem, 'idle' | 'lastMovedAt'>,
-  other: Pick<HomeMovingItem, 'idle' | 'lastMovedAt'>,
-) =>
-  Number(one.idle) - Number(other.idle) ||
-  Date.parse(other.lastMovedAt) - Date.parse(one.lastMovedAt);
 
 function ownerOf(s: FeedbackSummary): { who: string; act: string } | null {
   return s.waitingOn.kind === 'none' ? null : { who: s.waitingOn.who, act: s.waitingOn.act };

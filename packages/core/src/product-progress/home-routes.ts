@@ -23,13 +23,13 @@ import { listVisibleProjectsWithRole } from '../projects/index.js';
 import { findIn, rankFound } from './home-find.js';
 import { liveOf, releasesOf } from './home-live.js';
 import {
-  byLastMove,
   carriersOf,
   type HomeProject,
   type HomeViewer,
   homeItemsOf,
   readHomeProject,
 } from './home-moving.js';
+import { byLastMove } from './home-stage.js';
 
 /** Projects read at once: each reads its feedback list, forecasts, runs and releases. */
 const HOME_CONCURRENCY = 2;
