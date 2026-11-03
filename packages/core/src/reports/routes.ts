@@ -50,6 +50,10 @@ function gated<T>(agency: T | undefined): T {
 reportRoutes.get(
   '/projects/:id/report-runs/:runId',
   zValidator('param', runParam, invalid('invalid path: /api/projects/<project>/report-runs/<run>')),
+  requiresByRule(
+    'reports/runs.ts:readReportRun',
+    'the permission the stored run was read under, held now by the person who made it; REPORT_RUN_NOT_FOUND and the run-reader refusals answer first',
+  ),
   noQuery,
   async (c) => {
     const { id: projectId, runId } = c.req.valid('param');
@@ -148,6 +152,10 @@ reportRoutes.post(
     'param',
     templateParam,
     invalid('invalid path: /api/projects/<project>/report-templates/<template>/narrative'),
+  ),
+  requiresByRule(
+    'reports/templates.ts:checkTemplateNarrative',
+    "each named run is one of the template's own, made by the caller and readable under the permission it was stored with",
   ),
   zValidator(
     'json',

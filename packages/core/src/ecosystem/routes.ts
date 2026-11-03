@@ -5,7 +5,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnResolved } from '../permissions/index.js';
+import { requiresByRule, requiresOnResolved } from '../permissions/index.js';
 import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
   ECOSYSTEM_CREATE,
@@ -162,10 +162,19 @@ ecosystemRoutes.post(
     ),
 );
 
-membershipRoutes.get('/:id', idParam, noQuery, async (c) => {
-  const row = await readableMembership(c.get('userId'), c.req.valid('param').id);
-  return c.json({ ...serialiseMembership(row), history: await membershipHistory(row.id) });
-});
+membershipRoutes.get(
+  '/:id',
+  idParam,
+  requiresByRule(
+    'ecosystem/membership-service.ts:readableMembership',
+    "a role on the ecosystem's steward organization, or a reader's role on the member project; refused naming both",
+  ),
+  noQuery,
+  async (c) => {
+    const row = await readableMembership(c.get('userId'), c.req.valid('param').id);
+    return c.json({ ...serialiseMembership(row), history: await membershipHistory(row.id) });
+  },
+);
 
 const reasonBody = zValidator(
   'json',

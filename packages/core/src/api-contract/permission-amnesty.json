@@ -1,16 +1,13 @@
 {
   "routes": [
     "GET /api/me/devices",
-    "GET /api/memberships/:id",
     "GET /api/projects/:id/executions/:executionId",
-    "GET /api/projects/:id/report-runs/:runId",
     "GET /api/runners",
     "PATCH /api/pat/:id",
     "POST /api/devices/login/approve",
     "POST /api/mcp-auth/authorize",
     "POST /api/pat",
     "POST /api/projects/:id/report-queries/:queryId/runs",
-    "POST /api/projects/:id/report-templates/:templateId/narrative",
     "POST /api/projects/:id/report-templates/:templateId/runs"
   ],
   "actions": []
