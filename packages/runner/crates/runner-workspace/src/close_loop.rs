@@ -261,7 +261,25 @@ pub async fn close(
         }
     }
 
-    state(ledger, run_id)
+    let closed = state(ledger, run_id)?;
+    if closed.is_closed() {
+        remove_judge_login(&runner_core::judge_dir::root(), run_id);
+    }
+    Ok(closed)
+}
+
+/// Every ending reaches this loop — a master's close, a pane that ended, a reap of a run whose
+/// tree is gone, a run core said is over — so a closed run's `forge-judge-<run>` goes here, named
+/// by the same rule `judge-login` and `run close` use (ISS-920). It reads this daemon's `$TMPDIR`;
+/// a pane started with another one is covered by its master's `run close`, which reads the pane's.
+pub(crate) fn remove_judge_login(root: &Path, run_id: &str) {
+    use runner_core::judge_dir::Removal;
+    let removal = runner_core::judge_dir::remove(root, run_id);
+    match (&removal, removal.said()) {
+        (Removal::Absent, _) | (_, None) => {}
+        (Removal::Removed(_), Some(line)) => tracing::info!("[close] run={run_id}: {line}"),
+        (_, Some(line)) => tracing::warn!("[close] run={run_id}: {line}"),
+    }
 }
 
 /// Two runs on one box over one key (ISS-752): the close of the older one,
@@ -385,5 +403,49 @@ mod tests {
             vec![(Some("session-build".to_string()), "ISS-572".to_string())]
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+    /// Every ending reaches this loop, so a run it closes loses the judge login written for it
+    /// under `$TMPDIR`; a run still owed its checkout keeps its own (ISS-920).
+    #[tokio::test]
+    async fn a_run_the_loop_closes_loses_its_judge_login_and_an_open_one_keeps_it() {
+        let dir = std::env::temp_dir().join(format!("forge-iss920-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+        let ended = uuid::Uuid::new_v4().to_string();
+        let open = uuid::Uuid::new_v4().to_string();
+        let plant = |run: &str| {
+            let d = runner_core::judge_dir::dir(&runner_core::judge_dir::root(), run).unwrap();
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("x.json"), "{}").unwrap();
+            d
+        };
+        let (ended_login, open_login) = (plant(&ended), plant(&open));
+        declare(&mut led, &ended, "ISS-1");
+        led.attach_session(&ended, "session-ended").unwrap();
+        // a pane that ended over a tree that is gone: the reap's shape
+        led.mark_checkout_returned_observed(&ended, CheckoutReturn::Gone)
+            .unwrap();
+        led.end_run(&ended, "recovery", "its pane ended").unwrap();
+        declare(&mut led, &open, "ISS-2");
+        let core = Core {
+            rows: Mutex::new(vec![]),
+            released: Mutex::new(vec![]),
+        };
+
+        let closed = close(&mut led, &ended, None, &core, &core).await.unwrap();
+        let still = close(&mut led, &open, None, &core, &core).await.unwrap();
+
+        assert!(closed.is_closed(), "{closed:?}");
+        assert!(
+            !ended_login.exists(),
+            "the closed run's judge login is still on disk"
+        );
+        assert!(!still.is_closed(), "{still:?}");
+        assert!(
+            open_login.join("x.json").exists(),
+            "an open run's login was removed"
+        );
+        let _ = std::fs::remove_dir_all(&open_login);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

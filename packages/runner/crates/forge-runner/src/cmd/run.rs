@@ -18,6 +18,7 @@
 mod brief;
 
 use clap::{Args as ClapArgs, Subcommand};
+use runner_core::judge_dir;
 use runner_core::ledger::{Ledger, Named, SHORT_ID_CHARS};
 use runner_daemon::{control, session_tokens};
 use runner_platform::config::Config;
@@ -287,14 +288,30 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
             c.choice
         ),
         Command::Close(c) => println!(
-            "run {} closed",
-            reply.job_id.as_deref().unwrap_or(&c.run_id)
+            "{}",
+            closed(
+                &judge_dir::root(),
+                reply.job_id.as_deref().unwrap_or(&c.run_id)
+            )
         ),
         Command::Release(_) | Command::Brief(_) => {
             unreachable!("answered above, before the socket is opened")
         }
     }
     Ok(())
+}
+
+/// What `run close` says once the daemon has ended the run: that it is closed, and what became of
+/// the test login `judge-login` wrote for it under `root` (ISS-920). The run is closed whatever the
+/// removal came to; a refused or failed removal is said beside it, naming the path and the error,
+/// and a run that never logged in has nothing said about it.
+fn closed(root: &std::path::Path, run_id: &str) -> String {
+    let mut said = format!("run {run_id} closed");
+    if let Some(line) = judge_dir::remove(root, run_id).said() {
+        said.push('\n');
+        said.push_str(&line);
+    }
+    said
 }
 
 fn declared_id(job_id: Option<String>) -> anyhow::Result<String> {
@@ -384,5 +401,111 @@ mod tests {
             full_id(&led, "296f5496-b").unwrap(),
             "296f5496-bbbb-4000-8000-000000000002"
         );
+    }
+    /// A `$TMPDIR` of the test's own, under the one the code reads, removed when it ends.
+    struct TmpRoot(std::path::PathBuf);
+    impl TmpRoot {
+        fn new(name: &str) -> Self {
+            let p =
+                judge_dir::root().join(format!("forge-run-close-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&p);
+            std::fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+        /// What `judge-login` leaves for `run`: its directory with one file in it.
+        fn plant(&self, run: &str) -> std::path::PathBuf {
+            let d = judge_dir::dir(&self.0, run).unwrap();
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("x.json"), "{}").unwrap();
+            d
+        }
+    }
+    impl Drop for TmpRoot {
+        fn drop(&mut self) {
+            #[cfg(unix)]
+            for entry in std::fs::read_dir(&self.0).into_iter().flatten().flatten() {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(entry.path(), std::fs::Permissions::from_mode(0o700));
+            }
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    const JUDGED: &str = "f1b18bd5-870e-428f-b386-d1c6007bfd9c";
+    const NEIGHBOUR: &str = "cbfc71ed-1111-4222-8333-944455556666";
+
+    #[test]
+    fn closing_a_declared_run_removes_its_judge_login_and_says_so() {
+        let led = ledger_with("judged", &[JUDGED, NEIGHBOUR]);
+        let root = TmpRoot::new("judged");
+        let mine = root.plant(JUDGED);
+        let theirs = root.plant(NEIGHBOUR);
+        // closed by the short id a master types, named whole as the daemon answers it
+        let run_id = full_id(&led, "f1b18bd5").unwrap();
+        let said = closed(&root.0, &run_id);
+        assert!(!mine.exists(), "{said}");
+        assert_eq!(
+            said,
+            format!(
+                "run {JUDGED} closed\nremoved {}: the test login its judge was handed",
+                mine.display()
+            )
+        );
+        // another run's login is its own close's to remove
+        assert!(theirs.join("x.json").exists());
+    }
+
+    #[test]
+    fn a_run_that_never_logged_in_closes_with_nothing_said_about_it() {
+        let root = TmpRoot::new("never");
+        assert_eq!(closed(&root.0, JUDGED), format!("run {JUDGED} closed"));
+    }
+
+    #[test]
+    fn a_hostile_run_id_is_refused_and_removes_nothing() {
+        let root = TmpRoot::new("hostile");
+        let inner = root.0.join("inner");
+        let kept = judge_dir::dir(&inner, JUDGED).unwrap();
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(kept.join("x.json"), "{}").unwrap();
+        let outside = root.0.join("forge-judge-x");
+        std::fs::create_dir_all(&outside).unwrap();
+        for hostile in [
+            "../forge-judge-x",
+            "..",
+            "x/../..",
+            "/etc",
+            &format!("{JUDGED}/.."),
+        ] {
+            let said = closed(&inner, hostile);
+            assert!(
+                said.starts_with(&format!("run {hostile} closed\n")),
+                "{said}"
+            );
+            assert!(said.contains("is no run id"), "{said}");
+        }
+        assert!(kept.join("x.json").exists());
+        assert!(outside.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_removal_that_fails_still_closes_and_names_the_path_and_the_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = TmpRoot::new("readonly");
+        let d = root.plant(JUDGED);
+        std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o500)).unwrap();
+        if std::fs::write(d.join("probe"), "").is_ok() {
+            // root ignores the mode, so there is no failure to plant here
+            return;
+        }
+        let said = closed(&root.0, JUDGED);
+        let mut lines = said.lines();
+        assert_eq!(lines.next(), Some(format!("run {JUDGED} closed").as_str()));
+        let why = lines.next().unwrap();
+        assert!(why.contains(&d.display().to_string()), "{why}");
+        assert!(why.contains("Permission denied"), "{why}");
+        assert!(d.join("x.json").exists());
     }
 }

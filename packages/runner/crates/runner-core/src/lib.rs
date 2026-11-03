@@ -7,6 +7,7 @@ pub mod dispatch_gate;
 pub mod inflight;
 pub mod job_exit;
 pub mod job_unheard;
+pub mod judge_dir;
 pub mod ledger;
 pub mod pane_exit;
 pub mod stop_gate;
