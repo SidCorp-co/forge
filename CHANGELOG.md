@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.462] - 2026-11-03
+
+Beta port carries only new work and finishes closes on beta
+
+### Fixed
+
+- **The beta port takes only what came after the owner's ruling.** Older beta issues are counted, not ported; each port names its twin; `/run` answers at once; a close beta refuses is recorded as landed, then closed or moved nearest.
+
 ## [0.4.0-dev.461] - 2026-11-03
 
 Beta issues are worked on dev; your home says when a list is cut
