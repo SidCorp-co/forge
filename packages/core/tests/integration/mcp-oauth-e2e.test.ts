@@ -1,3 +1,7 @@
+// @direct-test-of packages/core/src/credentials/mcp-oauth-routes.ts
+// @direct-test-of packages/core/src/credentials/mcp-oauth-store.ts
+// @direct-test-of packages/core/src/credentials/mcp-oauth-metadata.ts
+// @direct-test-of packages/core/src/db/schema-mcp-oauth.ts
 /**
  * MCP OAuth: an MCP client signs in to `/mcp` through the browser. It finds the sign-in from the
  * 401, registers itself, the person consents with a reach, and the code it gets back is redeemed
