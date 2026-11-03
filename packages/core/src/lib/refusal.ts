@@ -14,6 +14,9 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 export type { ProblemBody, Refusal, RefusalEnvelope };
 
+/** How every refusal's message opens; a read's is `refused: ` (`forTheMethod`). */
+const WRITE_REFUSED = 'refused, nothing written: ';
+
 /**
  * A refusal thrown to either door. `detail` is the answer's own sentence where the thrower words
  * the refusals as one (a validator naming every fault at its path); absent, the envelope leads with
@@ -71,7 +74,7 @@ export function refusalEnvelope(
   const list = ordered.map((o) => o.refusal);
   const codes = [...new Set(list.map((r) => r.code))];
   const code = codes.length === 1 && codes[0] ? codes[0] : fallbackCode;
-  const message = `refused, nothing written: ${list.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join('; ')}`;
+  const message = `${WRITE_REFUSED}${list.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join('; ')}`;
   return {
     type: refusalType(code),
     title: refusalTitle(code),
@@ -109,8 +112,17 @@ export function problemBody(
   };
 }
 
+/** A read writes nothing whether refused or not, so its refusal does not say it (ISS-867). */
+function forTheMethod(method: string, body: ProblemBody): ProblemBody {
+  if ((method !== 'GET' && method !== 'HEAD') || !body.message.startsWith(WRITE_REFUSED))
+    return body;
+  const message = `refused: ${body.message.slice(WRITE_REFUSED.length)}`;
+  return { ...body, message, error: { ...body.error, message } };
+}
+
 /** A problem body served as `application/problem+json` under its own status. */
-export function problem(c: Context, body: ProblemBody) {
+export function problem(c: Context, served: ProblemBody) {
+  const body = forTheMethod(c.req.method, served);
   return c.json(body, body.status as ContentfulStatusCode, {
     'Content-Type': PROBLEM_CONTENT_TYPE,
   });

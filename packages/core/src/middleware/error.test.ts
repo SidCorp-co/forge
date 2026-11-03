@@ -28,6 +28,9 @@ function app() {
     c.json({}),
   );
   a.get('/auth', requireAuth(), (c) => c.json({}));
+  a.get('/kernel', () => {
+    throw refuse('SESSION_CONTEXT_MISMATCH', 'the issue moved under this read', '/sessionContext');
+  });
   // a route that maps nothing itself: the transition reason answered 500 this way (J7, ISS-439)
   a.post('/message', () => {
     throw messageRefused(
@@ -100,6 +103,15 @@ describe('one problem envelope at every door', () => {
     expect(body.message).toBe(
       'refused, nothing written: SESSION_CONTEXT_MISMATCH at /sessionContext: the issue moved under this write',
     );
+  });
+
+  // ISS-867 (forge-core-61, 2026-11-03): a read could write nothing, so its refusal does not say it did not
+  it("a read's refusal opens `refused:`, both in the message and under error", async () => {
+    const { body } = await answer('GET', '/kernel');
+    expect(body.message).toBe(
+      'refused: SESSION_CONTEXT_MISMATCH at /sessionContext: the issue moved under this read',
+    );
+    expect(body.error.message).toBe(body.message);
   });
 
   it("a schema refusal's message names the failing field", async () => {

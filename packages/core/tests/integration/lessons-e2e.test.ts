@@ -408,4 +408,21 @@ describe('the daily review reads what a day taught, by slug (ISS-867)', () => {
     // thirty-one days is the edge, and holds
     ok(await learned(new Date(now.getTime() - 31 * 86_400_000), now));
   });
+
+  // forge-core-61 (2026-11-03): one code answered 400 when a bound was missing and 422 when the window
+  // was too long, and a read's refusal said "nothing written" as if it could have written
+  it('answers every window refusal under one status, and a read never says it wrote nothing', async () => {
+    const now = new Date();
+    const answers = [
+      await learned(now, now),
+      await learned(new Date(now.getTime() - 40 * 86_400_000), now),
+      await say('member', 'GET', at(`/lessons/learned?since=${now.toISOString()}`)),
+    ];
+    expect(answers.map((r) => r.status)).toEqual([400, 400, 400]);
+    for (const r of answers) {
+      const message = r.json.message as string;
+      expect(message.startsWith('refused: LESSON_WINDOW_INVALID'), message).toBe(true);
+      expect(message).not.toContain('nothing written');
+    }
+  });
 });

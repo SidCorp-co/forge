@@ -137,6 +137,8 @@ export const LESSON_REFUSAL_STATUSES = {
 	LESSON_DECIDED: 409,
 	LESSON_CONFUSION_DECIDED: 409,
 	LESSON_APPLICATION_MARKED: 409,
+	// one status for one code: a missing bound and a window longer than allowed are both the query's fault
+	LESSON_WINDOW_INVALID: 400,
 } as const satisfies RefusalStatuses<LessonRefusalCode>;
 
 const sentence = z.string().trim().min(1).max(LESSON_LIMITS.sentenceChars);
