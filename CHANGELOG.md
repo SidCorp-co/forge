@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.470] - 2026-11-03
+
+Core drains in-flight requests on a deploy, so a landed write no longer reads 502
+
+### Fixed
+
+- **A deploy no longer answers 502 for a write that committed.** On stop, core finishes requests in flight, answers new ones and `/health` 503 with Retry-After, closes its database last, and its 25 s budget sits under the stop grace.
+
 ## [0.4.0-dev.469] - 2026-11-03
 
 A closed run frees its issue lease at once for the next run
