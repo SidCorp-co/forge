@@ -226,6 +226,8 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 
 /** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
+  // a product server's feedback key, answered first: guides mount a requireAuth over /api/projects/*
+  app.route('/api/projects', feedbackServerKeyDoor);
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
   // an MCP client that reaches /mcp with no token is pointed here to sign in through the browser
@@ -271,8 +273,6 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api', codeTraceRoutes);
   // a client site's visitor, never a Forge user: the site key, the session token or the status link
   app.route('/api/widget', widgetRoutes);
-  // a product server's feedback key, answered here before any /api/projects gate reads a bearer
-  app.route('/api/projects', feedbackServerKeyDoor);
 
   app.route('/', rootRoutes);
 }

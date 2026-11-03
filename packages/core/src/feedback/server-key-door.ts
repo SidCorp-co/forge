@@ -40,8 +40,11 @@ const uuid = z.uuid();
 
 const bodyCheck = strictBody(createFeedbackRequestSchema, CREATE_FEEDBACK_SHAPE);
 
-const doorAnswer = (status: 401 | 429, code: string, message: string) =>
-  new HTTPException(status, { message, cause: { code } });
+const doorAnswer = (status: 401 | 429, code: string, message: string, retryAfter?: number) =>
+  new HTTPException(status, {
+    message,
+    cause: retryAfter === undefined ? { code } : { code, retryAfter },
+  });
 
 /** The request's body, checked by the same validator the person's route mounts. */
 async function checkedBody(c: Context): Promise<CreateFeedbackRequest> {
@@ -79,11 +82,11 @@ async function fileWithServerKey(c: Context, token: string): Promise<Response> {
     HOUR_MS,
   );
   if (!limit.allowed) {
-    c.header('Retry-After', String(Math.max(1, Math.ceil(limit.resetMs / 1000))));
     throw doorAnswer(
       429,
       'FEEDBACK_SERVER_KEY_RATE_LIMITED',
       `server key ${key.prefix}… has filed ${FEEDBACK_SERVER_KEY_FILINGS_PER_HOUR} items this hour; nothing was filed`,
+      Math.max(1, Math.ceil(limit.resetMs / 1000)),
     );
   }
   const filed = await fileFeedback({
