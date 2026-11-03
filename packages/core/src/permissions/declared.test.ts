@@ -198,9 +198,6 @@ describe('one declaration, enforced the same at both doors before the handler', 
 
   it('throws a wiring defect where a handler checks a declaration its action never made', async () => {
     await expect(
-      runDeclaredTool(tool([], { byAction: { other: WRITE } }), { action: 'resolve' }, 'u1'),
-    ).rejects.toThrow(/declares no permission for its handler to check/);
-    await expect(
       enforceDeclared(
         permissionless('self', 'own rows'),
         { userId: 'u1', named: () => undefined, act: 'x' },
@@ -209,10 +206,25 @@ describe('one declaration, enforced the same at both doors before the handler', 
     ).rejects.toThrow(/declares no permission/);
   });
 
-  it('runs an action that declares none, which the amnesty names, as its own handler checks it', async () => {
+  it('refuses an action that declares none before its handler, with no exception left (c3)', async () => {
     const ran: string[] = [];
-    await runDeclaredTool(tool(ran, undefined), { action: 'write', projectId: PROJECT }, 'u1');
-    expect(ran).toEqual(['mcp']);
+    const detailOf = (call: Promise<unknown>) =>
+      call.then(
+        () => 'ran',
+        (err: { status?: number; cause?: { details?: unknown } }) =>
+          `${err.status} ${String(err.cause?.details)}`,
+      );
+    expect(
+      await detailOf(
+        runDeclaredTool(tool(ran, undefined), { action: 'write', projectId: PROJECT }, 'u1'),
+      ),
+    ).toMatch(/^400 forge_probe\.write declares no permission/);
+    expect(
+      await detailOf(
+        runDeclaredTool(tool(ran, { byAction: { other: WRITE } }), { action: 'resolve' }, 'u1'),
+      ),
+    ).toMatch(/^400 forge_probe\.resolve declares no permission/);
+    expect(ran).toEqual([]);
     expect(access.seen).toEqual([]);
   });
 });

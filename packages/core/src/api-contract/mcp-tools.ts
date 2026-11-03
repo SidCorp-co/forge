@@ -4,11 +4,7 @@ import {
   type ToolPermission,
   toolPermissionFor,
 } from '../middleware/declared-permission.js';
-import {
-  UNDECLARED_PERMISSION_ACTIONS,
-  undeclaredActionPermission,
-  undeclaredPermissionAmnesties,
-} from './permission-amnesty.js';
+import { undeclaredActionPermission } from './declared-permission-field.js';
 
 export type ListedTool = {
   name: string;
@@ -30,23 +26,25 @@ function actionsOf(inputSchema: Record<string, unknown>): string[] {
 }
 
 /**
- * Each action's `x-forge-permission`, and a refusal for each action that declares none and is not
- * amnestied, or that the declaration names but the tool does not take.
+ * Each action's `x-forge-permission`, and a refusal for each action that declares none, for a tool
+ * taking no action that declares none, and for an action the declaration names but the tool does
+ * not take.
  */
-function permissionsOf(
-  tool: ListedTool,
-  amnestied: ReadonlySet<string>,
-  declaresNone: Set<string>,
-  refusals: string[],
-): Record<string, unknown> {
+function permissionsOf(tool: ListedTool, refusals: string[]): Record<string, unknown> {
   const actions = actionsOf(tool.inputSchema);
   const out: Record<string, unknown> = {};
+  if (actions.length === 0) {
+    const refused = undeclaredActionPermission(
+      tool.name,
+      toolPermissionFor(tool.permission, undefined),
+    );
+    if (refused) refusals.push(refused);
+  }
   for (const action of actions) {
     const name = `${tool.name}.${action}`;
     const declared = toolPermissionFor(tool.permission, action);
-    if (declared === undefined) declaresNone.add(name);
-    else out[action] = renderedPermission(declared);
-    const refused = undeclaredActionPermission(name, declared, amnestied);
+    if (declared !== undefined) out[action] = renderedPermission(declared);
+    const refused = undeclaredActionPermission(name, declared);
     if (refused) refusals.push(refused);
   }
   if (tool.permission && 'byAction' in tool.permission) {
@@ -62,11 +60,9 @@ function permissionsOf(
 export function buildMcpContract(
   listing: ListedTool[],
   header: Record<string, unknown>,
-  undeclaredActions: ReadonlySet<string> = UNDECLARED_PERMISSION_ACTIONS,
 ): McpContract {
   const refusals: string[] = [];
   const seen = new Set<string>();
-  const declaresNone = new Set<string>();
   const permissions = new Map<string, Record<string, unknown>>();
   for (const tool of listing) {
     if (seen.has(tool.name)) refusals.push(`${tool.name}: listed twice by tools/list`);
@@ -75,9 +71,8 @@ export function buildMcpContract(
       refusals.push(`${tool.name}: an inputSchema whose type is not "object", which MCP requires`);
     }
     // every action names the permission it needs (REQ-12 BC-20, ISS-824)
-    permissions.set(tool.name, permissionsOf(tool, undeclaredActions, declaresNone, refusals));
+    permissions.set(tool.name, permissionsOf(tool, refusals));
   }
-  refusals.push(...undeclaredPermissionAmnesties(undeclaredActions, declaresNone, 'actions'));
   const tools = [...listing]
     .sort((a, b) => byCodeUnits(a.name, b.name))
     .map(({ name, description, inputSchema }) => {

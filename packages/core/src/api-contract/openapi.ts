@@ -9,18 +9,13 @@ import {
   declaredRawBodies,
 } from '../middleware/zod-validator.js';
 import { COMPONENTS } from './components.js';
+import { permissionField, undeclaredPermission } from './declared-permission-field.js';
 import {
   OPEN_QUERY_READS,
   type OpenQuery,
   queryClosure,
   unmountedAmnesties,
 } from './open-queries.js';
-import {
-  permissionField,
-  UNDECLARED_PERMISSION_ROUTES,
-  undeclaredPermission,
-  undeclaredPermissionAmnesties,
-} from './permission-amnesty.js';
 import { type RequestRead, readsOf } from './request-reads.js';
 
 type MountedRoute = { method: string; path: string; handler: unknown };
@@ -401,11 +396,9 @@ export function buildApiContract(
   routes: MountedRoute[],
   info: JsonSchema,
   openQueries: Readonly<Record<string, OpenQuery>> = OPEN_QUERY_READS,
-  undeclaredPermissions: ReadonlySet<string> = UNDECLARED_PERMISSION_ROUTES,
 ): ApiContract {
   const refusals: string[] = [];
   const reads = new Set<string>();
-  const declaresNone = new Set<string>();
   const paths: Record<string, Record<string, Operation>> = {};
   let operations = 0;
   const endpoints = endpointsOf(routes, refusals).sort((a, b) =>
@@ -425,8 +418,7 @@ export function buildApiContract(
     const described = describe(shape, endpoint);
     for (const why of described.refusals) refusals.push(`${name}: ${why}`);
     // every route names the permission it needs where it is mounted (REQ-12 BC-20, ISS-824)
-    if (endpoint.permissions.length === 0) declaresNone.add(name);
-    const undeclared = undeclaredPermission(name, endpoint.permissions, undeclaredPermissions);
+    const undeclared = undeclaredPermission(name, endpoint.permissions);
     if (undeclared) refusals.push(undeclared);
     if (endpoint.method === 'GET') {
       reads.add(name);
@@ -446,7 +438,6 @@ export function buildApiContract(
     operations += 1;
   }
   refusals.push(...unmountedAmnesties(openQueries, reads));
-  refusals.push(...undeclaredPermissionAmnesties(undeclaredPermissions, declaresNone));
   const document = {
     openapi: '3.1.0',
     info,

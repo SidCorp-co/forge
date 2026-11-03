@@ -107,7 +107,7 @@ export type ToolPermission =
   | DeclaredPermission
   | { readonly byAction: Readonly<Record<string, DeclaredPermission>> };
 
-/** What a tool's action declares, or undefined where it declares none (an amnestied action). */
+/** What a tool's action declares, or undefined where it declares none, which the MCP contract refuses. */
 export function toolPermissionFor(
   declaredFor: ToolPermission | undefined,
   action: unknown,

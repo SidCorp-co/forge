@@ -145,8 +145,8 @@ export function requireDeclared(access: PermissionFacts, act?: string): void {
 
 /**
  * What a shared lookup checks on the project it resolves (an issue key, a row's id): the permission
- * the running action declares, or `fallback` for a caller that declares none yet. The fallback is
- * ISS-824's amnesty at a shared helper: it goes with the last undeclared caller.
+ * the running action declares where it declares one resolved, or `fallback` where its door already
+ * checked a project it named, decided by a rule, or is no door at all (the steward, a job).
  */
 export function requireDeclaredOr(
   access: PermissionFacts,
@@ -297,8 +297,9 @@ export function requiresInstanceAdmin(why: string): MiddlewareHandler {
 
 /**
  * Runs a tool's action through what it declares, as `/mcp` and the chat assistant both do after the
- * token's grant is judged. An action that declares none runs as before: it is on the amnesty the
- * contract generator holds, and checks in its own handler until its module's sweep moves it.
+ * token's grant is judged. A call its input refuses is answered by the tool's input gate; an action
+ * that declares no permission is refused here and never reaches its handler (the contract generator
+ * refuses a tool whose actions declare none, so this is a call naming an action no declaration has).
  */
 export function runDeclaredTool(
   tool: Pick<McpTool, 'name' | 'permission' | 'handler' | 'inputSchema'>,
@@ -306,17 +307,24 @@ export function runDeclaredTool(
   userId: string | null,
 ): Promise<unknown> {
   const declared = toolPermissionFor(tool.permission, args.action);
-  if (declared === undefined) return tool.handler(args);
   // a call its own input refuses is answered by the tool's input gate, naming the wrong argument,
   // before any permission read: the handler parses that input first and does nothing else
   const input = declaredInputOf(tool.inputSchema);
   if (input && !input.safeParse(args).success) return tool.handler(args);
+  const act = `${tool.name}${typeof args.action === 'string' ? `.${args.action}` : ''}`;
+  if (declared === undefined) {
+    return Promise.reject(
+      badRequest(
+        `${act} declares no permission, so it does not run: the tool's actions are those its contract (GET /api/mcp-tools.json) lists with x-forge-permission`,
+      ),
+    );
+  }
   return enforceDeclared(
     declared,
     {
       userId,
       named: (on) => ('arg' in on ? args[on.arg] : undefined),
-      act: `${tool.name}${typeof args.action === 'string' ? `.${args.action}` : ''}`,
+      act,
     },
     () => tool.handler(args),
   );

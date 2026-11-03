@@ -499,9 +499,10 @@ A route declares it where it is mounted (`packages/core/src/permissions/declared
 and its siblings), a tool per action (`McpTool.permission`); the generator reads it into
 `x-forge-permission` on the operation and on each action in `forge-mcp.tools.json`, and refuses, by
 `METHOD /path` or `<tool>.<action>`, one that declares none. Both doors enforce that same declaration
-before the handler (`packages/core/src/permissions/declared.ts:enforceDeclared`). The routes and actions still checking in handler
-code are a priced amnesty, `packages/core/src/api-contract/permission-amnesty.json`, which only
-shrinks: an entry naming one that now declares, or is no longer served, is refused too.
+before the handler (`packages/core/src/permissions/declared.ts:enforceDeclared`). There is no
+exception list: an undeclared route, action or action-less tool stops the generator
+(`packages/core/src/api-contract/declared-permission-field.ts`), and `runDeclaredTool` refuses a
+call naming an action that declares none before its handler runs.
 
 **Generated from the running app, not from a second description.** The generator imports `app`
 from `packages/core/src/index.ts` and walks `app.routes`, which is what Hono itself dispatches on,
