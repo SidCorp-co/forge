@@ -18,10 +18,12 @@ import { Route as RegisterRoute } from "@/routes/_auth/register/index";
 import { EcosystemScreen } from "@/features/ecosystem/components/ecosystem-screen";
 import { EcosystemsHome } from "@/features/ecosystem/components/ecosystems-home";
 import { MyForgeFeedback } from "@/features/feedback";
+import { HomeScreen } from "@/features/overview";
 import { P as FB_P } from "@/test/vi-chrome-feedback";
 import { P as REL_P, releaseSeed } from "@/test/vi-chrome-rel-wf";
 import { REQ_PROJECT, Seeded } from "@/test/vi-chrome-requirements";
 
+import { HOME_SEED } from "./owner-home.fixture";
 import { ECOSYSTEM_ID } from "./screens.fixture";
 
 export interface ScreenPage {
@@ -77,6 +79,7 @@ export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, 
     { name: "project-settings", path: `${P}/settings`, render: () => vi("Project settings · General") },
     { name: "integrations", path: "/integrations", pattern: "/integrations", render: () => vi("Integrations") },
     { name: "runners", path: "/runners", pattern: "/runners", render: () => vi("Runners") },
+    { name: "owner-home", path: "/", pattern: "/", render: () => <Seeded data={HOME_SEED}><HomeScreen /></Seeded> },
     { name: "org-home", path: "/org", pattern: "/org", render: () => vi("Settings · organization home") },
     { name: "settings-account", path: "/settings", pattern: "/settings", render: () => vi("Account preferences") },
     { name: "approvals", path: `${P}/approvals`, pattern: "/projects/$slug/approvals", render: () => routeOf(ApprovalsRoute) },

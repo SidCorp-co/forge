@@ -8,7 +8,7 @@
 const P = "/projects/$slug";
 export const INVENTORY = [
   // ── workspace ──
-  { route: "/", component: "OverviewScreen", feature: "overview", files: ["features/overview/components/overview-screen.tsx"] },
+  { route: "/", component: "HomeScreen", feature: "overview", drawn: "owner-home" },
   { route: "/attention", component: "AttentionScreen", feature: "attention", files: ["features/attention/components/attention-screen.tsx"] },
   { route: "/projects", component: "ProjectsConsole", feature: "projects", files: ["features/projects/components/projects-console.tsx"] },
   { route: "/ops", component: "OpsMonitor", feature: "pipeline", drawn: "ops" },

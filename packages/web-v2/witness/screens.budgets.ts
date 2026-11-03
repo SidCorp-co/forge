@@ -49,6 +49,9 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "project-settings": { budget: 70 },
   integrations: { budget: 80, amnesty: waits(101) },
   runners: { budget: 80 },
+  // ISS-919: three flat tables of three rows each (waiting on you, moving, live) at the cap any first
+  // view may hold; the Overview it replaced drew 120 in the same frame, now under its Figures tab
+  "owner-home": { budget: 110 },
   "org-home": { budget: 50 },
   "settings-account": { budget: 50 },
   approvals: { budget: 110 },
