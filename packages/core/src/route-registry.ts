@@ -61,9 +61,12 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { issueLaneRoutes } from './fast-lane/routes.js';
-import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
-import { feedbackServerKeyDoor } from './feedback/server-key-door.js';
-import { feedbackServerKeyRoutes } from './feedback/server-key-routes.js';
+import {
+  feedbackChecklistRoutes,
+  feedbackRoutes,
+  feedbackServerKeyDoor,
+  feedbackServerKeyRoutes,
+} from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import {
   agentReportsRetiredRoutes,

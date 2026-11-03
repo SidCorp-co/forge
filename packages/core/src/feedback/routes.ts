@@ -489,3 +489,5 @@ feedbackRoutes.delete('/:id/feedback/:fb/reporter-data', itemParam, READ, async 
 
 // the triage checklist door (REQ-34 BC-3) is served through this face like every other feedback route
 export { feedbackChecklistRoutes } from './checklist-routes.js';
+export { feedbackServerKeyDoor } from './server-key-door.js';
+export { feedbackServerKeyRoutes } from './server-key-routes.js';
