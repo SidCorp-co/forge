@@ -15,7 +15,12 @@ import { carryAgentReports } from '../feedback/index.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresInstanceAdmin, requiresNoPermission, requiresSelf } from '../permissions/index.js';
+import {
+  requiresByRule,
+  requiresInstanceAdmin,
+  requiresNoPermission,
+  requiresSelf,
+} from '../permissions/index.js';
 import {
   type Answer,
   claimForgeAnswers,
@@ -82,6 +87,15 @@ forgeFeedbackRoutes.post(
   async (c) => answer(c, await claimForgeAnswers(callerOf(c), REST_DOOR)),
 );
 
+// an item is read and settled by its row, as forge_feedback's get, verify, reopen and reply are:
+// the reporter of an item, never a permission on Forge's home project (REQ-47 BC-3)
+const SERVICE = 'forge-door/service.ts';
+const ITEM_ROW =
+  "the item's row decides: its reporter, an agent reporter's master, or a member of Forge's home project; another answers not found";
+const ITEM_READ = requiresByRule(`${SERVICE}:getForgeFeedback`, ITEM_ROW);
+const ITEM_SETTLE = requiresByRule(`${SERVICE}:settleForgeFeedback`, ITEM_ROW);
+const ITEM_REPLY = requiresByRule(`${SERVICE}:replyForgeFeedback`, ITEM_ROW);
+
 const keyParam = z.object({
   key: z.string().regex(/^FB-\d{1,9}$/, 'a feedback item is named by its key, FB-n'),
 });
@@ -89,6 +103,7 @@ const keyParam = z.object({
 forgeFeedbackRoutes.get(
   '/:key',
   zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>')),
+  ITEM_READ,
   noQuery,
   async (c) => answer(c, await getForgeFeedback(callerOf(c), c.req.valid('param').key, REST_DOOR)),
 );
@@ -97,6 +112,7 @@ forgeFeedbackRoutes.get(
 forgeFeedbackRoutes.post(
   '/:key/verify',
   zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/verify')),
+  ITEM_SETTLE,
   strictBody(forgeFeedbackSettleRequestSchema, FORGE_FEEDBACK_SETTLE_SHAPE),
   async (c) =>
     answer(
@@ -114,6 +130,7 @@ forgeFeedbackRoutes.post(
 forgeFeedbackRoutes.post(
   '/:key/reopen',
   zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/reopen')),
+  ITEM_SETTLE,
   strictBody(forgeFeedbackSettleRequestSchema, FORGE_FEEDBACK_SETTLE_SHAPE),
   async (c) =>
     answer(
@@ -156,6 +173,7 @@ forgeFeedbackRoutes.post(
 forgeFeedbackRoutes.post(
   '/:key/reply',
   zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/reply')),
+  ITEM_REPLY,
   strictBody(forgeFeedbackSettleRequestSchema, FORGE_FEEDBACK_SETTLE_SHAPE),
   async (c) =>
     answer(
