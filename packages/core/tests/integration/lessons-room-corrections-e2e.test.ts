@@ -297,5 +297,8 @@ describe('a room reply to the bot is a correction, as a chat reply is (REQ-50 BC
     );
     expect(backwards.status).toBeLessThan(500);
     expect(JSON.stringify(backwards.body)).toContain('LESSON_WINDOW_INVALID');
+    // the reply is the session's next turn: the world stops only once the box has taken it, or the
+    // stop races it and the turn is told to no box (NO_CLAUDE_CLIENT at teardown)
+    await w.settleWarm();
   }, 60_000);
 });
