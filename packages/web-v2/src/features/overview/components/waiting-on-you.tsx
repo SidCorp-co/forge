@@ -1,5 +1,6 @@
-// Waiting on you (ISS-919): the needs-you read behind /attention, decisions first; each row's next
-// step is the act itself, opening the place that takes it.
+// Waiting on you (ISS-919): the needs-you read behind /attention, decisions first, then the person's
+// own items whose next move is theirs (the home read's `waiting`, deduped by key); each row's next step
+// is the act itself, opening the place that takes it. Decisions core counted past its cap are said.
 
 import { Button, SectionTitle, StatusChip, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { useAttention } from "@/features/attention";
@@ -7,10 +8,12 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link, useRouter } from "@/lib/navigation/router";
 import { useState } from "react";
-import { HOME_ROWS, type WaitingRow, waitingRows } from "../home-rows";
+import { decisionsNotSent, HOME_ROWS, type WaitingRow, waitingRows } from "../home-rows";
+import type { HomeWaitingItem } from "../types";
+import { CutNote } from "./cut-note";
 import { ShowMore } from "./show-more";
 
-export function WaitingOnYou() {
+export function WaitingOnYou({ owed }: { owed: readonly HomeWaitingItem[] }) {
   const t = useCopy();
   const q = useAttention();
   return (
@@ -18,10 +21,13 @@ export function WaitingOnYou() {
       <SectionTitle id="home-waiting" className="fg-h3">{t("overview.home.waiting.title")}</SectionTitle>
       <QueryBoundary query={{ ...q, data: q.view }} loadingLabel={t("overview.home.loading")} height="inline">
         {(view) => {
-          const rows = waitingRows(view);
+          const rows = waitingRows(view, owed);
           if (rows.length === 0) return <p className="fg-body-sm text-muted">{t("overview.home.waiting.empty")}</p>;
           return (
-<WaitingTable rows={rows} />
+            <>
+            <WaitingTable rows={rows} />
+            <CutNote shown={rows.length} total={rows.length + decisionsNotSent(view)} />
+            </>
           );
         }}
       </QueryBoundary>
@@ -55,7 +61,9 @@ function WaitingTable({ rows }: { rows: WaitingRow[] }) {
             </TD>
             <TD className="text-muted max-sm:hidden sm:w-px sm:whitespace-nowrap">{r.projectName}</TD>
             <TD className="sm:w-px sm:whitespace-nowrap">
-              <StatusChip tone="you" label={t(`overview.home.kind.${r.kind}`)} />
+              <span className="inline-flex" title={r.owes ?? undefined}>
+                <StatusChip tone="you" label={t(`overview.home.kind.${r.kind}`)} />
+              </span>
             </TD>
             <TD className="sm:w-px sm:whitespace-nowrap">
               <Button size="sm" onClick={() => router.push(r.href)}>

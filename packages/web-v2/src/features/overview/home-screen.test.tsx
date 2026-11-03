@@ -1,13 +1,16 @@
 // ISS-919 (FB-483): the workspace home answers what waits on the person, what is moving for what
 // they gave, and what is live, from core's reads. Waiting on you opens the act's own place; a Moving
 // row with no held forecast says so in words, never a blank; the search answers a live item with
-// its version and since when, and a moving one with its stage.
+// its version and since when, and a moving one with its stage. A list core cut says how many it holds
+// of how many; what nothing moved for a week folds under Idle, each with its age, a running item never;
+// an item the person owes is a Waiting row beside the needs-you decisions, never a Moving one.
 // @direct-test-of packages/web-v2/src/features/overview/components/home-screen.tsx
 // @direct-test-of packages/web-v2/src/features/overview/components/waiting-on-you.tsx
 // @direct-test-of packages/web-v2/src/features/overview/components/moving-work.tsx
 // @direct-test-of packages/web-v2/src/features/overview/components/live-releases.tsx
 // @direct-test-of packages/web-v2/src/features/overview/components/item-finder.tsx
 // @direct-test-of packages/web-v2/src/features/overview/home-rows.ts
+// @direct-test-of packages/web-v2/src/features/overview/components/cut-note.tsx
 
 import type { HomeFindResponse, HomeResponse } from "@forge/contracts/owner-home";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
@@ -24,7 +27,8 @@ const decision = {
   entity: "question",
   key: "q-1",
   title: "Which login provider ships first?",
-  opens: null,
+  // the decision is about an issue the person also owes: one row, the decision's
+  opens: { kind: "issue", key: "ISS-77" },
   question: "Which login provider ships first?",
   changes: "-",
   impact: "-",
@@ -50,8 +54,17 @@ const attention = {
   ...settled,
 };
 
+const DAY = 86_400_000;
+const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
+
 const home: HomeResponse = {
   generatedAt: "2026-11-03T04:00:00.000Z",
+  movingTotal: 132,
+  movingTruncated: true,
+  waiting: [
+    { kind: "feedback", key: "FB-469", title: "Search forgets my filter", projectSlug: "forge", projectName: "Forge", act: "triage it" },
+    { kind: "issue", key: "ISS-77", title: "Login provider order", projectSlug: "shop", projectName: "Shop", act: "answer a question" },
+  ],
   moving: [
     {
       kind: "feedback",
@@ -64,6 +77,8 @@ const home: HomeResponse = {
       owes: { who: "Agent", act: "build" },
       likelyBy: null,
       noDate: "no forecast: too little history",
+      lastMovedAt: daysAgo(0),
+      idle: false,
     },
     {
       kind: "issue",
@@ -76,6 +91,37 @@ const home: HomeResponse = {
       owes: null,
       likelyBy: "2026-11-07T00:00:00.000Z",
       noDate: null,
+      lastMovedAt: daysAgo(1),
+      idle: false,
+    },
+    {
+      // a run works on it, so it is never idle however long ago it last moved
+      kind: "issue",
+      key: "ISS-31",
+      title: "Nightly import runs again",
+      projectSlug: "shop",
+      projectName: "Shop",
+      stage: "building",
+      running: true,
+      owes: { who: "Agent", act: "build" },
+      likelyBy: null,
+      noDate: "no forecast",
+      lastMovedAt: daysAgo(30),
+      idle: false,
+    },
+    {
+      kind: "feedback",
+      key: "FB-86",
+      title: "Export misses the header row",
+      projectSlug: "forge",
+      projectName: "Forge",
+      stage: "new",
+      running: false,
+      owes: { who: "Project master", act: "triage it" },
+      likelyBy: null,
+      noDate: "it is not triaged yet",
+      lastMovedAt: daysAgo(21),
+      idle: true,
     },
   ],
   live: [
@@ -105,6 +151,8 @@ const found: Record<string, HomeFindResponse> = {
         standing: { kind: "live", environment: "production", version: "0.4.0-dev.450", since: "2026-11-02T15:06:30.361Z" },
       },
     ],
+    total: 1,
+    truncated: false,
   },
   "ISS-12": {
     q: "ISS-12",
@@ -118,6 +166,8 @@ const found: Record<string, HomeFindResponse> = {
         standing: { kind: "moving", stage: "planned" },
       },
     ],
+    total: 1,
+    truncated: false,
   },
 };
 
@@ -128,7 +178,7 @@ vi.mock("./hooks", () => ({
   HOME_FIND_MIN: 2,
   usePulse: () => ({ ...settled, data: undefined }),
   useHome: () => ({ ...settled, data: home }),
-  useHomeFind: (q: string) => ({ ...settled, data: q.trim().length >= 2 ? (found[q.trim()] ?? { q, items: [] }) : undefined }),
+  useHomeFind: (q: string) => ({ ...settled, data: q.trim().length >= 2 ? (found[q.trim()] ?? { q, items: [], total: 0, truncated: false }) : undefined }),
 }));
 
 import { HomeScreen } from "./components/home-screen";
@@ -154,7 +204,8 @@ describe("the workspace home", () => {
 
   it("opens the act's own place from a waiting row, and shows no raw key as text", () => {
     render(<HomeScreen />);
-    const row = screen.getByTestId("home-waiting-row");
+    const [row] = screen.getAllByTestId("home-waiting-row");
+    if (!row) throw new Error("no waiting row");
     expect(within(row).getByText("Question")).toBeTruthy();
     fireEvent.click(within(row).getByRole("button", { name: "Answer" }));
     expect(push).toHaveBeenCalledWith("/projects/shop/approvals?peek=question%3Aq-1");
@@ -197,5 +248,67 @@ describe("the workspace home", () => {
       vi.advanceTimersByTime(400);
     });
     expect(screen.getByTestId("home-found-says").textContent).toBe("Planned · Shop");
+  });
+
+  it("lists Waiting from the needs-you read, then the person's own items, one row an item", () => {
+    render(<HomeScreen />);
+    const rows = screen.getAllByTestId("home-waiting-row");
+    // the needs-you decision first; the owed ISS-77 it is about is not listed twice
+    expect(rows.map((r) => within(r).getByRole("link").textContent)).toEqual([
+      "Which login provider ships first?",
+      "Search forgets my filter",
+    ]);
+    const [, owed] = rows;
+    if (!owed) throw new Error("the owed row is missing");
+    expect(within(owed).getByText("Your move")).toBeTruthy();
+    fireEvent.click(within(owed).getByRole("button", { name: "Open" }));
+    expect(push).toHaveBeenCalledWith("/projects/forge/feedback/FB-469");
+    expect(owed.textContent).not.toContain("FB-469");
+  });
+
+  it("never shows an item the person owes under Moving", () => {
+    render(<HomeScreen />);
+    const moving = screen.getByTestId("home-moving");
+    expect(within(moving).queryByText("Search forgets my filter")).toBeNull();
+    expect(within(screen.getByTestId("home-waiting")).getByText("Search forgets my filter")).toBeTruthy();
+  });
+
+  it("says a cut Moving list holds how many of how many", () => {
+    render(<HomeScreen />);
+    expect(within(screen.getByTestId("home-moving")).getByTestId("home-cut").textContent).toBe("4 of 132");
+  });
+
+  it("folds what nothing moved for a week under one Idle row, which opens to each with its age in words", () => {
+    render(<HomeScreen />);
+    const moving = screen.getByTestId("home-moving");
+    const titles = () => screen.getAllByTestId("home-moving-row").map((r) => within(r).getByRole("link").textContent);
+    expect(titles()).not.toContain("Export misses the header row");
+    // a running item is never folded, however long ago it moved
+    expect(titles()).toContain("Nightly import runs again");
+    const idle = within(moving).getByTestId("home-moving-idle");
+    expect(idle.textContent).toBe("Idle (1)");
+    expect(idle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(idle);
+    const list = within(moving).getByTestId("home-moving-idle-list");
+    const row = within(list).getByTestId("home-moving-row");
+    expect(within(row).getByRole("link").textContent).toBe("Export misses the header row");
+    expect(within(row).getByTestId("home-moving-age").textContent).toBe("21d ago");
+    expect(within(list).queryByText("Nightly import runs again")).toBeNull();
+  });
+
+  it("says a cut search holds how many of how many", () => {
+    found.issue = {
+      q: "issue",
+      items: found["ISS-12"]?.items ?? [],
+      total: 52,
+      truncated: true,
+    };
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<HomeScreen />);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "issue" } });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(within(screen.getByTestId("home-find")).getByTestId("home-cut").textContent).toBe("1 of 52");
   });
 });

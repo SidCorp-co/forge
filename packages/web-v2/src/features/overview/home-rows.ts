@@ -1,6 +1,7 @@
 // The home's rows as pure reads of what core served (ISS-919): what waits on the person, in the
-// order the needs-you read gives it (decisions first), and the place each act is taken. The screen
-// renders these; it counts, merges and filters nothing of its own.
+// order the needs-you read gives it (decisions first, then the person's own items whose next move is
+// theirs, which the home read serves as `waiting`), and the place each act is taken. Moving splits
+// on core's own `idle`. The screen renders these and counts nothing of its own.
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import type { useAttention } from "@/features/attention";
@@ -9,14 +10,14 @@ import { approvalsHref, questionDecisionHref } from "@/lib/routes/approvals";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issuesHref } from "@/lib/routes/issues";
 import type { LegendTone } from "@/design";
-import type { HomeMovingItem, HomeStage } from "./types";
+import type { HomeMovingItem, HomeStage, HomeWaitingItem } from "./types";
 
 type AttentionView = NonNullable<ReturnType<typeof useAttention>["view"]>;
 
 /** The act a waiting row asks for: the button's word. */
-export type WaitingAct = "answer" | "approve" | "review";
+export type WaitingAct = "answer" | "approve" | "review" | "open";
 /** What a waiting row is, in one to three words. */
-export type WaitingKind = "question" | "approval" | "delivery" | "fixCheck" | "gate" | "mention";
+export type WaitingKind = "question" | "approval" | "delivery" | "fixCheck" | "gate" | "mention" | "yourMove";
 
 export interface WaitingRow {
   id: string;
@@ -27,6 +28,8 @@ export interface WaitingRow {
   kind: WaitingKind;
   act: WaitingAct;
   href: string;
+  /** What the person owes, in the standing's words, for the chip's tooltip; null where the kind says it. */
+  owes: string | null;
 }
 
 const DECISION_KIND: Record<NeedsYouDecision["group"], WaitingKind> = {
@@ -47,8 +50,38 @@ function decisionPlace(slug: string, d: NeedsYouDecision): string {
   return decisionHref(slug, d.opens) ?? approvalsHref(slug);
 }
 
-/** Every row waiting on the person: each project's decisions first, then gates, then mentions. */
-export function waitingRows(view: AttentionView): WaitingRow[] {
+/** The items a project's decisions stand on, `slug:key`: an own item already decided there is not listed twice. */
+function decidedItems(view: AttentionView): Set<string> {
+  return new Set(
+    view.needsYou.flatMap((part) =>
+      part.decisions.flatMap((d) => [
+        `${part.projectSlug}:${d.key}`,
+        ...(d.opens ? [`${part.projectSlug}:${d.opens.key}`] : []),
+      ]),
+    ),
+  );
+}
+
+/**
+ * Every row waiting on the person: each project's decisions first, then their own items whose next
+ * move is theirs (deduped by key against the decisions), then gates, then mentions.
+ */
+export function waitingRows(view: AttentionView, owed: readonly HomeWaitingItem[] = []): WaitingRow[] {
+  const decided = decidedItems(view);
+  const own = owed
+    .filter((o) => !decided.has(`${o.projectSlug}:${o.key}`))
+    .map(
+      (o): WaitingRow => ({
+        id: `own:${o.projectSlug}:${o.key}`,
+        title: o.title,
+        tip: o.key,
+        projectName: o.projectName,
+        kind: "yourMove",
+        act: "open",
+        href: itemHref(o),
+        owes: o.act,
+      }),
+    );
   const decisions = view.needsYou.flatMap((part) =>
     part.decisions.map(
       (d): WaitingRow => ({
@@ -59,6 +92,7 @@ export function waitingRows(view: AttentionView): WaitingRow[] {
         kind: DECISION_KIND[d.group],
         act: DECISION_ACT[d.group],
         href: decisionPlace(part.projectSlug, d),
+        owes: null,
       }),
     ),
   );
@@ -71,6 +105,7 @@ export function waitingRows(view: AttentionView): WaitingRow[] {
       kind: "gate",
       act: "approve",
       href: g.link,
+      owes: null,
     }),
   );
   const mentions = view.mentions.map(
@@ -82,9 +117,20 @@ export function waitingRows(view: AttentionView): WaitingRow[] {
       kind: "mention",
       act: "review",
       href: m.link,
+      owes: null,
     }),
   );
-  return [...decisions, ...gates, ...mentions];
+  return [...decisions, ...own, ...gates, ...mentions];
+}
+
+/** The decisions core counted but did not send (each project's past its cap), so a cut list says so. */
+export function decisionsNotSent(view: AttentionView): number {
+  return view.needsYou.reduce((n, part) => n + Math.max(0, part.total - part.decisions.length), 0);
+}
+
+/** Moving split on core's `idle`: what moves, in core's order, and what folds under Idle. */
+export function movingSplit(items: readonly HomeMovingItem[]): { active: HomeMovingItem[]; idle: HomeMovingItem[] } {
+  return { active: items.filter((m) => !m.idle), idle: items.filter((m) => m.idle) };
 }
 
 /** The page an item opens on: an issue in the list's peek, a feedback item on its page. */

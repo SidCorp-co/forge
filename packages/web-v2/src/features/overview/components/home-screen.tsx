@@ -40,11 +40,11 @@ function HomeTables() {
   const home = useHome(activeOrgId);
   return (
     <div className="flex flex-col gap-8">
-      <WaitingOnYou />
+      <WaitingOnYou owed={home.data?.waiting ?? []} />
       <QueryBoundary query={home} loadingLabel={t("overview.home.loading")} height="inline">
         {(data) => (
           <>
-            <MovingWork items={data.moving} />
+            <MovingWork items={data.moving} total={data.movingTotal} truncated={data.movingTruncated} />
             <LiveReleases live={data.live} />
           </>
         )}

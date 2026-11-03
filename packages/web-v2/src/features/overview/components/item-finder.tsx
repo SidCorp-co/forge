@@ -9,6 +9,7 @@ import { useState } from "react";
 import { itemHref } from "../home-rows";
 import { HOME_FIND_MIN, useHomeFind } from "../hooks";
 import type { HomeFoundItem } from "../types";
+import { CutNote } from "./cut-note";
 
 export function ItemFinder() {
   const t = useCopy();
@@ -24,11 +25,14 @@ export function ItemFinder() {
         found.data.items.length === 0 ? (
           <p className="fg-body-sm text-muted">{t("overview.home.find.none")}</p>
         ) : (
+          <>
           <ul className="flex flex-col divide-y divide-line-subtle border-y border-line-subtle" aria-live="polite">
             {found.data.items.map((f) => (
               <FoundItem key={`${f.projectSlug}:${f.key}`} item={f} />
             ))}
           </ul>
+          {found.data.truncated ? <CutNote shown={found.data.items.length} total={found.data.total} /> : null}
+          </>
         )
       ) : null}
     </div>
