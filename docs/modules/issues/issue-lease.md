@@ -193,7 +193,16 @@ Holders, not a count: an operator told only that something is held has to open
 the database to learn which box to stop. And the sentence differs by who holds —
 a box refused by its own earlier run closes that session or waits for the
 reaper; one refused by a stranger works something else. One sentence for both
-hides which of the two it is.
+hides which of the two it is. An own-box refusal names the command that ends
+the holder (`forge-runner run close <box run id>`) and where its session reads
+(`GET /api/agent-sessions/<sessionId>`).
+
+The holders also ride the refusal as data, under `details.holders`, each with
+the id its box knows the run by (`boxRunId`). The runner reads them to tell its
+own ended run, whose close at core it still owes, from anybody else's: that one
+is asked again on the next sweep rather than after `SESSION_RETRY_MS`, and the
+sweep closes ended runs before it opens declared ones, so a successor usually
+opens in the sweep its predecessor closes in (ISS-929).
 
 ## A lease holds the issue's declared scope too
 
