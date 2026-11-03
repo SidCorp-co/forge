@@ -442,3 +442,35 @@ describe('a release recorded by version alone claims a pass judged on that versi
     expect(built?.claim.claimed).toBe(false);
   });
 });
+
+// ISS-914: the page counts a code property by its review's commit pass, as the release record does
+describe('a code-property criterion on a release judged on a testing environment', () => {
+  const at = '2026-11-03T10:00:00.000Z';
+  const reviewed = (cls: CarriedCriterion['class'], reopenedAt: string | null = null) => ({
+    ...criterion(1, 'BC-1', [verdict('pass', MERGED, at)]),
+    class: cls,
+    reopenedAt,
+  });
+
+  it("claims the review's commit pass at another commit", () => {
+    const [read] = readClaims([reviewed('code_property')], BUILD, null, 'stg');
+    expect(read).toMatchObject({ proven: true, claim: { claimed: true }, unverified: null });
+    expect(knownIssuesOf(read ? [read] : [])).toEqual([]);
+  });
+
+  it('claims no observable one by it, nor a review before the last reopen', () => {
+    const [observable] = readClaims([reviewed('observable')], BUILD, null, 'stg');
+    expect(observable).toMatchObject({ proven: false, claim: { claimed: false } });
+    expect(observable?.unverified).toMatch(/^Not judged on stg: /);
+    const [stale] = readClaims(
+      [reviewed('code_property', '2026-11-03T11:00:00.000Z')],
+      BUILD,
+      null,
+      'stg',
+    );
+    expect(stale).toMatchObject({ proven: false, claim: { claimed: false } });
+    expect(stale?.unverified).toBe(
+      "Not reviewed: a code property is proven by the review's pass on the diff",
+    );
+  });
+});

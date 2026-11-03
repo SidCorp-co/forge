@@ -234,6 +234,31 @@ describe('a release of a project that names its testing environment', () => {
     });
   });
 
+  it("asks the approver for a review's pass on a code property, and the environment's on the rest", () => {
+    const review = "Not reviewed: a code property is proven by the review's pass on the diff";
+    const only = approvalAnswersOf({
+      carried: [],
+      unproven: [{ issue: 'ISS-1', n: 1, standing: review }],
+      verdictsRequired: true,
+      judgedOn: 'dev',
+    });
+    expect(only.verdicts).toMatchObject({
+      fix: 'Have a reviewer run pass each code property on the diff.',
+    });
+    const both = approvalAnswersOf({
+      carried: [],
+      unproven: [
+        { issue: 'ISS-1', n: 1, standing: review },
+        { issue: 'ISS-1', n: 2, standing: 'Not judged on dev' },
+      ],
+      verdictsRequired: true,
+      judgedOn: 'dev',
+    });
+    expect(both.verdicts).toMatchObject({
+      fix: "Deploy the commit it ships to dev, and have the project's judge pass each there, on the build dev serves. Have a reviewer run pass each code property on the diff.",
+    });
+  });
+
   it('asks the approver for a deploy to the environment and a pass there', () => {
     const answers = approvalAnswersOf({
       carried: [],

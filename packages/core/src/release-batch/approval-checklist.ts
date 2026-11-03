@@ -27,6 +27,7 @@ import {
 import { projectGate } from '@forge/contracts/gate-profiles';
 import { CRITERION_STANDING_LABELS } from '@forge/contracts/issue-vocabulary';
 import type { Refusal } from '@forge/contracts/refusal';
+import { reviewPassOwedWhy } from '@forge/contracts/release-page';
 import type { ReleaseCarriedCriterion } from '@forge/contracts/releases';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -50,6 +51,19 @@ export interface ApprovalFacts {
 }
 
 const listed = (items: readonly string[]) => items.join(', ');
+
+/** What clears the unproven criteria: a judge's pass on what the release ships, and on a code
+ *  property, which only the review judges, a review's pass on the diff (ISS-914). */
+function verdictsFix(f: Pick<ApprovalFacts, 'unproven' | 'judgedOn'>): string {
+  const reviewOwed = f.unproven.some((u) => u.standing === reviewPassOwedWhy);
+  const judgeOwed = f.unproven.some((u) => u.standing !== reviewPassOwedWhy);
+  const judge =
+    f.judgedOn === null
+      ? "Have the project's judge pass each on the commit it ships."
+      : `Deploy the commit it ships to ${f.judgedOn}, and have the project's judge pass each there, on the build ${f.judgedOn} serves.`;
+  const review = 'Have a reviewer run pass each code property on the diff.';
+  return [judgeOwed ? judge : null, reviewOwed ? review : null].filter(Boolean).join(' ');
+}
 
 /** The record answers of the release approval checklist, from what the release carries. */
 export function approvalAnswersOf(f: ApprovalFacts): RecordAnswers {
@@ -88,10 +102,7 @@ export function approvalAnswersOf(f: ApprovalFacts): RecordAnswers {
             0,
             2000,
           ),
-          fix:
-            f.judgedOn === null
-              ? "Have the project's judge pass each on the commit it ships."
-              : `Deploy the commit it ships to ${f.judgedOn}, and have the project's judge pass each there, on the build ${f.judgedOn} serves.`,
+          fix: verdictsFix(f),
         }
       : { value: 'Every carried criterion is proven.' };
   return { carried, verdicts };

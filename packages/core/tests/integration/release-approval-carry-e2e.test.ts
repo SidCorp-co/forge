@@ -15,6 +15,11 @@
  * @direct-test-of packages/core/src/product-door/releases-tool.ts
  * @direct-test-of packages/core/src/db/schema-release-ledger.ts
  * @direct-test-of packages/contracts/src/releases.ts
+ * @direct-test-of packages/contracts/src/release-page.ts
+ * @direct-test-of packages/core/src/release-batch/release-facts.ts
+ * @direct-test-of packages/core/src/release-page/claims.ts
+ * @direct-test-of packages/core/src/release-page/facts.ts
+ * @direct-test-of packages/core/src/issues/design-record.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -27,6 +32,7 @@ import {
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
+import { reopenedNow } from '../helpers/landed-requirement.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import { declareControls } from '../helpers/project-controls.js';
 import { BUILD, releasePageWorld } from '../helpers/release-page-world.js';
@@ -302,5 +308,114 @@ describe('ISS-914: the MCP releases.decide action takes the same carry', () => {
       approval: { decision: 'approved', carried: [{ issue: w.keyA, n: 2 }, {}, {}] },
     });
     expect((await stored(w.approvalId)).carried).toHaveLength(3);
+  });
+});
+
+// ISS-914 (FB-471): a code-property criterion is the review's alone, judged against the diff, and QA
+// is refused on it (VERDICT_JUDGED_BY_REVIEW), so on a project judged on its testing environment
+// the runtime pass the build rule asked of it was one it could never earn: the review's commit pass
+// proves it. Here the project is judged on beta; ISS-a criterion 1 is observable and ISS-b
+// criterion 1 a code property, each holding only a commit pass (ISS-b's at the merged commit).
+describe('ISS-914: a code property is proven by its review on a release judged on beta', () => {
+  /** Class `criterionClass` on criterion `n` of `issueId`, as a recorded design holds it. */
+  async function designed(issueId: string, lines: Array<[number, string]>) {
+    await db.execute(sql`
+      INSERT INTO issue_designs (issue_id, project_id, revision, modules, contracts, recorded_by)
+      VALUES (${issueId}, ${projectId}, 1, '{}'::uuid[], '{}'::text[], ${ownerId})
+      ON CONFLICT (issue_id) DO NOTHING
+    `);
+    for (const [n, criterionClass] of lines) {
+      await db.execute(sql`
+        INSERT INTO issue_design_criteria (criterion_id, issue_id, criterion_class, pattern, proof)
+        SELECT id, issue_id, ${criterionClass}, NULL, 'review: the diff'
+          FROM issue_criteria WHERE issue_id = ${issueId} AND n = ${n} AND retired_at IS NULL
+      `);
+    }
+  }
+
+  async function judgedOnBeta() {
+    const w = await waiting();
+    await declareControls(projectId, ownerId, {
+      delivery: { verdictsRequired: true, judgedOn: 'beta' },
+    });
+    await designed(w.a, [[1, 'observable']]);
+    await designed(w.b, [[1, 'code_property']]);
+    return w;
+  }
+
+  type Criterion = { n: number; proven: boolean; standing: string; unverified: string | null };
+  async function criteriaOf(key: string): Promise<Criterion[]> {
+    const r = await call('member', 'GET', '/releases/0.1.0');
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const read = r.body.release as { issueCriteria: Array<{ key: string; criteria: Criterion[] }> };
+    return read.issueCriteria.find((i) => i.key === key)?.criteria ?? [];
+  }
+
+  it("counts the code property's commit pass proven, and asks no carry of it", async () => {
+    const w = await judgedOnBeta();
+
+    expect((await release()).criteria).toMatchObject({ proven: 1, total: 4 });
+    const [b1] = await criteriaOf(w.keyB);
+    expect(b1).toMatchObject({ n: 1, proven: true, standing: 'pass', unverified: null });
+
+    const res = await call('owner', 'POST', w.path, {
+      decision: 'approve',
+      reason: 'the review proves the code property',
+      carry: [
+        { issue: w.keyA, n: 1, why: 'judged on beta next round' },
+        { issue: w.keyA, n: 2, why: 'phone layout judged next round' },
+        { issue: w.keyB, n: 2, why: 'flag off on beta' },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await stored(w.approvalId)).carried.map((c) => [c.issue, c.n])).toEqual([
+      [w.keyA, 1],
+      [w.keyA, 2],
+      [w.keyB, 2],
+    ]);
+  });
+
+  it('leaves an observable criterion with only a commit pass unproven, not judged on beta', async () => {
+    const w = await judgedOnBeta();
+
+    const [a1] = await criteriaOf(w.keyA);
+    expect(a1).toMatchObject({ n: 1, proven: false, standing: 'unjudged' });
+    expect(a1?.unverified).toMatch(/^Not judged on beta: /);
+    const res = await call('owner', 'POST', w.path, {
+      decision: 'approve',
+      reason: 'approved on my word',
+      carry: [
+        { issue: w.keyA, n: 2, why: 'phone layout judged next round' },
+        { issue: w.keyB, n: 2, why: 'flag off on beta' },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.code).toBe('CHECKLIST_INCOMPLETE');
+    const [refusal] = refusalsOf(res.body);
+    expect(refusal?.detail).toContain(`${w.keyA} criterion 1 (Not judged on beta`);
+    expect(refusal?.detail).not.toContain(`${w.keyB} criterion 1`);
+  });
+
+  it("counts no review pass recorded before the issue's last reopen", async () => {
+    const w = await judgedOnBeta();
+    await reopenedNow(w.b);
+
+    expect((await release()).criteria).toMatchObject({ proven: 0, total: 4 });
+    const [b1] = await criteriaOf(w.keyB);
+    expect(b1).toMatchObject({ n: 1, proven: false, standing: 'unjudged' });
+    expect(b1?.unverified).toBe(
+      "Not reviewed: a code property is proven by the review's pass on the diff",
+    );
+    const res = await call('owner', 'POST', w.path, {
+      decision: 'approve',
+      reason: 'approved on my word',
+      carry: [
+        { issue: w.keyA, n: 1, why: 'x' },
+        { issue: w.keyA, n: 2, why: 'x' },
+        { issue: w.keyB, n: 2, why: 'x' },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(refusalsOf(res.body)[0]?.detail).toContain(`${w.keyB} criterion 1 (Not reviewed`);
   });
 });
