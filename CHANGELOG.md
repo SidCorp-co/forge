@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.457] - 2026-11-03
+
+Requirement checklists load again when a standing names the live build
+
+### Added
+
+- **A release approval carries its unproven criteria by name.** An approver names each one, or all, with a why; the approval records them, the release page lists them, and each stays owed. Approval needs only releases.approve, an agent's token included.
+
+### Fixed
+
+- **A requirement's checklist no longer fails to load.** A criterion standing that names the live build, or a goal written with code formatting, is quoted in plain words instead of breaking the checklist and the agree or accept it gates.
+
 ## [0.4.0-dev.456] - 2026-11-03
 
 Project pages fit a phone's main scroller; detail overviews stay inside their column
