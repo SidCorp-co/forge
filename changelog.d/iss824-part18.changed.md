@@ -1,1 +1,0 @@
-**Every route and tool action now names its permission, with no exception.** The last 26 routes declare who may call them, and a route or action declaring none stops the build, or is refused before it runs.

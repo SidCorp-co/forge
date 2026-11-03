@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.475] - 2026-11-03
+
+Every REST route and MCP tool action declares its permission in the contract
+
+### Changed
+
+- **Sixty more routes name their permission.** The GitHub returns, the ecosystem's contract, link and interface routes, project settings, organizations, skills, recordings, suggestions, workflow designs, questions and Forge feedback items each declare who may call them.
+- **Every route and tool action now names its permission, with no exception.** The last 26 routes declare who may call them, and a route or action declaring none stops the build, or is refused before it runs.
+
 ## [0.4.0-dev.474] - 2026-11-03
 
 Pasted class, ER and state diagrams become editable shapes on forge-dev

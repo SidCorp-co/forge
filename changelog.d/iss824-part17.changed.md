@@ -1,1 +1,0 @@
-**Sixty more routes name their permission.** The GitHub returns, the ecosystem's contract, link and interface routes, project settings, organizations, skills, recordings, suggestions, workflow designs, questions and Forge feedback items each declare who may call them.
