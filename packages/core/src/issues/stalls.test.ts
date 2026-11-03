@@ -60,6 +60,17 @@ describe('placeStall', () => {
     );
   });
 
+  it("keeps a defect reopen's evidence, and refuses evidence on any other cause (ISS-927)", () => {
+    const evidence = { liveRead: 'the total cell is empty' };
+    expect(placeStall({ projectId, cause: 'defect', issueId, evidence }).evidence).toEqual(
+      evidence,
+    );
+    expect(placeStall({ projectId, cause: 'defect', issueId }).evidence).toBeNull();
+    expect(
+      refusedAs(() => placeStall({ projectId, cause: 'waiting_on_person', issueId, evidence })),
+    ).toBe('STALL_EVIDENCE_NOT_DEFECT');
+  });
+
   it('refuses a cause outside the vocabulary', () => {
     expect(refusedAs(() => placeStall({ projectId, cause: 'slow' as never, issueId }))).toBe(
       'STALL_CAUSE_UNKNOWN',
