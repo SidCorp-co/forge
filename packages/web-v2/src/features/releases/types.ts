@@ -18,5 +18,6 @@ export type {
   ReleaseVersionCarrier,
 } from "@forge/contracts/releases";
 
-export type ReleaseDecisionBody = { decision: "approve" | "return"; reason: string };
+/** `carry` is an approval's only (ISS-914): the unproven criteria carried by the approver's word. */
+export type ReleaseDecisionBody = { decision: "approve" | "return"; reason: string; carry?: { all: true; why: string } };
 export type { ReleasePage, ReleasePageViewKind } from "@forge/contracts/release-page";

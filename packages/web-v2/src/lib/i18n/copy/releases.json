@@ -313,7 +313,10 @@
     "releases.promotion.title": "Promotion",
     "releases.promotion.roster": "Roster",
     "releases.promotion.head": "head {sha}",
-    "releases.promotion.merge": "merged as {sha}"
+    "releases.promotion.merge": "merged as {sha}",
+    "releases.carried": "Carried ({n})",
+    "releases.carryAll": "Carry unproven",
+    "releases.carryWhy": "Why carry them"
   },
   "vi": {
     "releases.approval": "Duyệt",
@@ -469,6 +472,9 @@
     "releases.whyBack": "Lý do trả lại",
     "releases.whyBackPlaceholder": "Master cần trả lời gì trước khi xin duyệt lại",
     "releases.whyNotCut": "Vì sao chưa cắt được",
-    "releases.worthKnowing": "Nên biết"
+    "releases.worthKnowing": "Nên biết",
+    "releases.carried": "Ghi nợ ({n})",
+    "releases.carryAll": "Ghi nợ tiêu chí",
+    "releases.carryWhy": "Lý do ghi nợ"
   }
 }

@@ -65,6 +65,32 @@ function Attempt({ a }: { a: ReleaseAttemptView }) {
   );
 }
 
+/** What an approval carried unproven (ISS-914): a count that opens to each criterion and the approver's why. */
+function Carried({ carried }: { carried: ReleaseApprovalView["carried"] }) {
+  const t = useCopy();
+  const [open, setOpen] = useState(false);
+  if (carried.length === 0) return null;
+  return (
+    <span className="grid gap-1" data-testid="release-approval-carried">
+      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-approval-carried-toggle">
+        {t("releases.carried", { n: carried.length })}
+      </DisclosureToggle>
+      {open ? (
+        <ul className="grid gap-0.5 pl-4 text-13">
+          {carried.map((c) => (
+            <li key={`${c.issue}#${c.n}`} title={c.standing}>
+              <span className="font-medium">
+                {c.issue} #{c.n}
+              </span>{" "}
+              <span className="text-muted">{c.why}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </span>
+  );
+}
+
 function Approval({ a }: { a: ReleaseApprovalView }) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -90,6 +116,7 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
       </span>
       {a.note ? <span className="text-13">{a.note}</span> : null}
       {a.reason ? <span className="text-13 text-muted">{t("releases.reason")} {a.reason}</span> : null}
+      <Carried carried={a.carried ?? []} />
     </li>
   );
 }

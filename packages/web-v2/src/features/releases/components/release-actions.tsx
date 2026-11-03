@@ -1,6 +1,7 @@
 
 import { useRef, useState } from "react";
-import { Button, Field, Popover, Textarea } from "@/design";
+import { Button, Checkbox, Field, Popover, Textarea } from "@/design";
+import { ApiError } from "@/lib/api/client";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey as CopyKey } from "@/lib/i18n/product-copy";
 import { useCutRelease, useDraftDecision, useReleaseDecision } from "../hooks";
@@ -28,6 +29,16 @@ function useDecide(projectId: string, target: Target) {
   return { ...onRun, send: (body: ReleaseDecisionBody, done: () => void) => onRun.mutate({ runId, approvalId, body }, { onSuccess: done }) };
 }
 
+/**
+ * Whether an approval was refused on its unproven criteria alone: then the approver may carry them
+ * all by their word (ISS-914), and nothing else stands in the way.
+ */
+export function refusedOnlyOnUnproven(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.code !== "CHECKLIST_INCOMPLETE") return false;
+  const refusals = (error.body as { error?: { refusals?: { path?: unknown }[] } } | undefined)?.error?.refusals;
+  return Array.isArray(refusals) && refusals.length > 0 && refusals.every((r) => r.path === "/answers/verdicts");
+}
+
 // both decisions carry a reason: a return says what the master answers, an approval why it may ship (Requirement lifecycle r15 release_check)
 function DecideWithReason({ projectId, target, decision }: { projectId: string; target: Target; decision: Decided }) {
   const t = useCopy();
@@ -35,7 +46,11 @@ function DecideWithReason({ projectId, target, decision }: { projectId: string; 
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const [carry, setCarry] = useState(false);
+  const [carryWhy, setCarryWhy] = useState("");
   const c = DECIDE_WITH_REASON[decision];
+  const mayCarry = decision === "approve" && (carry || refusedOnlyOnUnproven(decide.error));
+  const carrying = mayCarry && carry;
   return (
     <>
       <span ref={anchorRef} className="inline-flex">
@@ -48,9 +63,14 @@ function DecideWithReason({ projectId, target, decision }: { projectId: string; 
           className="grid gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            decide.send({ decision, reason: reason.trim() }, () => {
+            const body: ReleaseDecisionBody = carrying
+              ? { decision, reason: reason.trim(), carry: { all: true, why: carryWhy.trim() } }
+              : { decision, reason: reason.trim() };
+            decide.send(body, () => {
               setOpen(false);
               setReason("");
+              setCarry(false);
+              setCarryWhy("");
             });
           }}
         >
@@ -64,11 +84,21 @@ function DecideWithReason({ projectId, target, decision }: { projectId: string; 
             />
           </Field>
           <RefusalText error={decide.error} />
+          {mayCarry ? (
+            <span className="grid gap-2" data-testid="release-carry">
+              <Checkbox checked={carry} onChange={setCarry} label={t("releases.carryAll")} />
+              {carry ? (
+                <Field label={t("releases.carryWhy")}>
+                  <Textarea value={carryWhy} onChange={(e) => setCarryWhy(e.target.value)} rows={2} data-testid="release-carry-why" />
+                </Field>
+              ) : null}
+            </span>
+          ) : null}
           <span className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button type="submit" variant="primary" size="sm" disabled={!reason.trim()} loading={decide.isPending} data-testid={`${c.testid}-submit`}>
+            <Button type="submit" variant="primary" size="sm" disabled={!reason.trim() || (carrying && !carryWhy.trim())} loading={decide.isPending} data-testid={`${c.testid}-submit`}>
               {t(c.submit)}
             </Button>
           </span>
