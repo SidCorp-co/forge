@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.460] - 2026-11-03
+
+Product servers file feedback into their Forge project with a project-bound server key
+
+### Added
+
+- **A product's server files feedback with a server key.** A project admin, person or agent, mints a project-bound `fsk_` key shown once; it files only `POST …/feedback` as the product, rate-limited, refused by name anywhere else.
+
 ## [0.4.0-dev.459] - 2026-11-03
 
 Your home page shows what waits on you, what moves, and what is live
