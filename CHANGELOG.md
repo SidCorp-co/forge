@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.464] - 2026-11-03
+
+Needs you shows owed triage; project routers gate only their own routes
+
+### Fixed
+
+- **A triage you hold is on your Needs you.** Every act an item's standing names as yours now lists on Needs you and `/api/me/attention`, beside the decisions; the home reads Waiting from there alone.
+- **Project routers gate only their own routes.** The guides router and eighteen others ran their sign-in gate over every project route; now each gates its own, so mount order no longer refuses an open route.
+
 ## [0.4.0-dev.463] - 2026-11-03
 
 Ported beta issues get their full beta text written under them
