@@ -106,3 +106,16 @@ export interface CoolifyApplicationDeploymentsResponse {
   count?: number;
   deployments?: CoolifyDeploymentResponse[];
 }
+
+/**
+ * One environment variable of an application, as this client hands it on: its name and where it
+ * applies, never its value. Coolify's `GET /applications/{uuid}/envs` answers values too; the
+ * client drops them where it parses the answer, so no caller can echo, log or store one (ISS-827).
+ */
+export interface CoolifyEnvKey {
+  /** Coolify's id of this variable, which `DELETE /applications/{uuid}/envs/{env_uuid}` takes. */
+  uuid: string;
+  key: string;
+  /** `true` for a preview-deployment variable, which Forge's env door neither sets nor deletes. */
+  isPreview: boolean;
+}

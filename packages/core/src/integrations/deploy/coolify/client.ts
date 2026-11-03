@@ -6,6 +6,7 @@ import type {
   CoolifyCancelResponse,
   CoolifyDeploymentResponse,
   CoolifyDeployResponse,
+  CoolifyEnvKey,
   CoolifyResourceResponse,
   CoolifyRollbackImagesResponse,
   CoolifyRollbackResponse,
@@ -37,6 +38,8 @@ const ROUTE_ABILITIES: { match: RegExp; ability: string }[] = [
   { match: /^POST \/api\/v1\/applications\/[^/]+\/rollback\b/, ability: 'deploy' },
   { match: /^GET \/api\/v1\/applications\/[^/]+\/rollback-images\b/, ability: 'read' },
   { match: /^GET \/api\/v1\/applications\/[^/]+\/logs\b/, ability: 'read' },
+  { match: /^GET \/api\/v1\/applications\/[^/]+\/envs\b/, ability: 'read' },
+  { match: /^(POST|PATCH|DELETE) \/api\/v1\/applications\/[^/]+\/envs\b/, ability: 'write' },
   { match: /^GET \/api\/v1\/applications\b/, ability: 'read' },
 ];
 
@@ -102,7 +105,11 @@ export class CoolifyClient {
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
     const url = joinUrl(this.baseUrl, path);
     const route = `${method} ${path.split('?')[0]}`;
     const tokens = [this.apiToken];
@@ -247,11 +254,70 @@ export class CoolifyClient {
     );
   }
 
+  /**
+   * The application's environment variable NAMES. Coolify answers each with its value; the value
+   * is dropped here, at the parse, so it never reaches a caller (ISS-827).
+   */
+  async listApplicationEnvKeys(resourceUuid: string): Promise<CoolifyEnvKey[]> {
+    const list = await withoutBody(this.request<unknown>('GET', envsPath(resourceUuid)));
+    return (Array.isArray(list) ? list : []).flatMap((raw) => {
+      const e = raw as { uuid?: unknown; key?: unknown; is_preview?: unknown };
+      if (typeof e.uuid !== 'string' || typeof e.key !== 'string') return [];
+      return [{ uuid: e.uuid, key: e.key, isPreview: e.is_preview === true }];
+    });
+  }
+
+  /** Create a production (non-preview) variable. Nothing of Coolify's answer is handed on. */
+  async createApplicationEnv(resourceUuid: string, env: EnvWrite): Promise<void> {
+    await withoutBody(this.request<unknown>('POST', envsPath(resourceUuid), envBody(env)));
+  }
+
+  /** Update a production variable, matched by its key. Nothing of Coolify's answer is handed on. */
+  async updateApplicationEnv(resourceUuid: string, env: EnvWrite): Promise<void> {
+    await withoutBody(this.request<unknown>('PATCH', envsPath(resourceUuid), envBody(env)));
+  }
+
+  async deleteApplicationEnv(resourceUuid: string, envUuid: string): Promise<void> {
+    await withoutBody(
+      this.request<unknown>('DELETE', `${envsPath(resourceUuid)}/${encodeURIComponent(envUuid)}`),
+    );
+  }
+
   async listApplications(): Promise<CoolifyApplicationResponse[]> {
     const list = await this.request<CoolifyApplicationResponse[]>('GET', '/api/v1/applications');
     return Array.isArray(list) ? list : [];
   }
 }
+
+interface EnvWrite {
+  key: string;
+  value: string;
+}
+
+const envsPath = (resourceUuid: string) =>
+  `/api/v1/applications/${encodeURIComponent(resourceUuid)}/envs`;
+
+/**
+ * An env call's failure, with Coolify's answer body dropped: a refused write may quote the value it
+ * was sent, and the body is what a delivery row or a log line would otherwise carry.
+ */
+async function withoutBody<T>(call: Promise<T>): Promise<T> {
+  try {
+    return await call;
+  } catch (err) {
+    if (err instanceof CoolifyApiError) {
+      throw new CoolifyApiError(
+        err.status,
+        '',
+        `Coolify API error: ${err.status}`,
+        err.route ?? undefined,
+      );
+    }
+    throw err;
+  }
+}
+
+const envBody = (env: EnvWrite) => ({ key: env.key, value: env.value, is_preview: false });
 
 async function safeText(res: Response): Promise<string> {
   try {
