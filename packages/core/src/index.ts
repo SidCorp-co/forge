@@ -457,7 +457,7 @@ if (isMain) {
   const shutdownSteps: ShutdownSteps = {
     services: [
       { name: 'ws', run: closeWs },
-      { name: 'rocketchat', run: stopRocketChatManager },
+      { name: 'chat-manager', run: stopRocketChatManager },
       { name: 'timers', run: stopTimers },
       { name: 'outbox', run: stopOutboxWorker },
       { name: 'queue', run: stopBoss },
