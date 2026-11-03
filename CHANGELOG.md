@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.465] - 2026-11-03
+
+Decisions you cannot take no longer wait on you
+
+### Fixed
+
+- **Needs you lists only what you can act on.** A read-only member no longer has an issue's question or decision counted as theirs; it waits on the people who can answer, by name. Requirement owners without write access likewise.
+
 ## [0.4.0-dev.464] - 2026-11-03
 
 Needs you shows owed triage; project routers gate only their own routes
