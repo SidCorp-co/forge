@@ -1,1 +1,1 @@
-**A person never acts on an issue.** Needs you lists no issue, chat offers no issue button, triage from the web names no issue, and a stuck issue's decision is asked on the requirement or feedback item it serves.
+**A person never acts on an issue.** Needs you asks no one to admit a draft, chat offers no issue button, triage names no issue, and a stuck issue's decision is asked on the requirement or feedback item it serves.
