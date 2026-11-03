@@ -48,16 +48,16 @@ function WaitingTable({ rows }: { rows: WaitingRow[] }) {
       <TBody>
         {shown.map((r) => (
           <TR key={r.id} data-testid="home-waiting-row" className="max-sm:flex max-sm:flex-wrap max-sm:items-center">
-            <TD className="max-sm:basis-full max-sm:pb-0">
-              <Link href={r.href} title={r.tip ? `${r.tip} · ${r.title}` : r.title} className="line-clamp-1 sm:max-w-48 hover:underline">
+            <TD className="max-sm:basis-full max-sm:pb-0 sm:w-full sm:max-w-0">
+              <Link href={r.href} title={r.tip ? `${r.tip} · ${r.title}` : r.title} className="line-clamp-1 hover:underline sm:block sm:truncate">
                 {r.title}
               </Link>
             </TD>
-            <TD className="text-muted max-sm:hidden">{r.projectName}</TD>
-            <TD>
+            <TD className="text-muted max-sm:hidden sm:w-px sm:whitespace-nowrap">{r.projectName}</TD>
+            <TD className="sm:w-px sm:whitespace-nowrap">
               <StatusChip tone="you" label={t(`overview.home.kind.${r.kind}`)} />
             </TD>
-            <TD>
+            <TD className="sm:w-px sm:whitespace-nowrap">
               <Button size="sm" onClick={() => router.push(r.href)}>
                 {t(`overview.home.act.${r.act}`)}
               </Button>

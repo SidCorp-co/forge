@@ -53,6 +53,37 @@ function sideways(): string[] {
   return [`main scrolls sideways: ${main.scrollWidth} px in ${main.clientWidth}; widest: ${wide.join(", ")}`];
 }
 
+/** The most free width a row may leave beside a name it cuts: past it, the name was cut for no reason. */
+const SLACK_MAX = 150;
+
+/** The width a cell's content draws, inside its padding. */
+function contentWidth(cell: HTMLElement): number {
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  return range.getBoundingClientRect().width;
+}
+
+/** A cell's width its content leaves unused. */
+function slack(cell: HTMLElement): number {
+  const st = getComputedStyle(cell);
+  const inner = cell.getBoundingClientRect().width - Number.parseFloat(st.paddingLeft) - Number.parseFloat(st.paddingRight);
+  return Math.max(0, inner - contentWidth(cell));
+}
+
+/** A name cut (ellipsis or clamp) while its row leaves more than SLACK_MAX px unused (ISS-919 fix round). */
+function namesCutWithRoom(): string[] {
+  const wrong: string[] = [];
+  for (const row of document.querySelectorAll<HTMLElement>("[data-testid=home-waiting-row], [data-testid=home-moving-row], [data-testid=home-live-row]")) {
+    const name = row.querySelector<HTMLElement>("td a");
+    if (!name) continue;
+    const cut = name.scrollWidth > name.clientWidth + 1 || name.scrollHeight > name.clientHeight + 1;
+    if (!cut) continue;
+    const free = [...row.querySelectorAll<HTMLElement>(":scope > td")].reduce((n, td) => n + slack(td), 0);
+    if (free > SLACK_MAX) wrong.push(`"${name.textContent?.slice(0, 40)}" is cut while its row leaves ${Math.round(free)} px free`);
+  }
+  return wrong;
+}
+
 function sections(): string[] {
   const order = ["home-waiting", "home-moving", "home-live"].map((id) => q(`[data-testid=${id}]`));
   if (order.some((s) => !s)) return ["the home does not draw all three sections: waiting on you, moving, live"];
@@ -85,7 +116,7 @@ const homeStage = (t: "light" | "dark") => ({
     theme(t);
     await pause(700);
     words("owner-home", t);
-    return [...sideways(), ...sections()];
+    return [...sideways(), ...sections(), ...namesCutWithRoom()];
   },
 });
 

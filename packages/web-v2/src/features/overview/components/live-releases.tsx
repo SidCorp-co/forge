@@ -42,21 +42,21 @@ function LiveRelease({ release: r }: { release: HomeLiveRelease }) {
   const time = useTimeFormat();
   return (
     <TR data-testid="home-live-row" className="max-sm:flex max-sm:flex-wrap max-sm:items-center" data-environment={r.environment}>
-      <TD className="max-sm:basis-full max-sm:pb-0">
-        <Link href={releaseHref(r.projectSlug, r.version)} className="line-clamp-1 sm:max-w-48 hover:underline" title={r.name ?? r.version}>
+      <TD className="max-sm:basis-full max-sm:pb-0 sm:w-full sm:max-w-0">
+        <Link href={releaseHref(r.projectSlug, r.version)} className="line-clamp-1 hover:underline sm:block sm:truncate" title={r.name ?? r.version}>
           {r.name ?? r.version}
         </Link>
         <span className="block text-12 text-muted">{[r.name ? r.version : null, time.relative(r.at)].filter(Boolean).join(" · ")}</span>
       </TD>
-      <TD className="text-muted max-sm:hidden">{r.projectName}</TD>
-      <TD>
+      <TD className="text-muted max-sm:hidden sm:w-px sm:whitespace-nowrap">{r.projectName}</TD>
+      <TD className="sm:w-px sm:whitespace-nowrap">
         <StatusChip
           tone={r.environment === "production" ? "done" : "ready"}
           label={t(`overview.home.env.${r.environment}`)}
           reason={r.environmentName}
         />
       </TD>
-      <TD className="text-muted" title={t("overview.home.yours", { n: r.mine })}>
+      <TD className="text-muted sm:w-px sm:whitespace-nowrap" title={t("overview.home.yours", { n: r.mine })}>
         {r.mine > 0 ? t("overview.home.yours", { n: r.mine }) : "–"}
       </TD>
     </TR>

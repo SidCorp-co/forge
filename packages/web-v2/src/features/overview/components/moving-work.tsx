@@ -52,13 +52,13 @@ function MovingItem({ item }: { item: HomeMovingItem }) {
     : t("overview.home.nobody");
   return (
     <TR data-testid="home-moving-row" className="max-sm:flex max-sm:flex-wrap max-sm:items-center" data-stage={item.stage}>
-      <TD className="max-sm:basis-full max-sm:pb-0">
-        <Link href={itemHref(item)} title={`${item.key} · ${item.title}`} className="line-clamp-1 sm:max-w-48 hover:underline">
+      <TD className="max-sm:basis-full max-sm:pb-0 sm:w-full sm:max-w-0">
+        <Link href={itemHref(item)} title={`${item.key} · ${item.title}`} className="line-clamp-1 hover:underline sm:block sm:truncate">
           {item.title}
         </Link>
       </TD>
-      <TD className="text-muted max-sm:hidden">{item.projectName}</TD>
-      <TD>
+      <TD className="text-muted max-sm:hidden sm:w-px sm:whitespace-nowrap">{item.projectName}</TD>
+      <TD className="sm:w-px sm:whitespace-nowrap">
         <span className="inline-flex items-center gap-2">
           <StatusChip tone={STAGE_TONE[item.stage]} label={t(`overview.home.stage.${item.stage}`)} />
           {item.running ? (
@@ -69,7 +69,7 @@ function MovingItem({ item }: { item: HomeMovingItem }) {
           ) : null}
         </span>
       </TD>
-      <TD>
+      <TD className="sm:w-px sm:whitespace-nowrap">
         <span className="block">{owes}</span>
         <span className="block text-12 text-muted" data-testid="home-moving-date" title={item.noDate ?? undefined}>
           {item.likelyBy ? t("overview.home.by", { date: time.date(item.likelyBy) }) : t("overview.home.noDate")}
