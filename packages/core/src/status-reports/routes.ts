@@ -17,7 +17,7 @@ import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { markStatusReportRead } from '../notifications/index.js';
-import { holds, requireHeld, requiresOnParam } from '../permissions/index.js';
+import { holds, requiresOnParam } from '../permissions/index.js';
 import { saveTemplateReport } from './save.js';
 import {
   deleteStatusReport,
@@ -114,6 +114,7 @@ statusReportRoutes.post(
     projectParam,
     invalid('invalid path: /api/projects/<project>/status/reports'),
   ),
+  requiresOnParam('project.write', 'id'),
   zValidator('json', saveBody, invalid(SAVE_SHAPE)),
   holdChatWrite('report_save'),
   async (c) => {
@@ -135,7 +136,6 @@ statusReportRoutes.post(
       });
       return c.json(meta, 201);
     }
-    requireHeld(access, 'project.write', 'saving a status report');
     const row = await storeStatusReport({
       projectId,
       access,

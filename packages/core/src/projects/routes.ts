@@ -16,9 +16,12 @@ import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
   orgResource,
+  requireDeclaredOrg,
   requireOrgCan,
-  requireOrgHeld,
+  requiresByRule,
   requiresOnParam,
+  requiresOnResolved,
+  requiresSelf,
 } from '../permissions/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
@@ -37,36 +40,54 @@ export const projectRoutes = gatedRoutes<{ Variables: AuthVars }>(
   assertEmailVerified(),
 );
 
-projectRoutes.post('/', zValidator('json', createProjectBodySchema), async (c) => {
-  assertUnfenced('creating a project');
-  const { slug, name, orgId: requestedOrgId } = c.req.valid('json');
-  const userId = c.get('userId');
+// the project's organization: settings, archive and delete need its org owner or admin, never a
+// merely-invited project admin; the handler checks it with `requireDeclaredOrg` on the org it found
+const ORG_ADMIN = requiresOnResolved('org.admin', "the project's organization");
 
-  // Resolve the target org: explicit orgId (caller must be an org member of
-  // any role) or the caller's personal org.
-  let orgId: string;
+/**
+ * The organization a new project is created in: the one the body names, where the caller holds
+ * any org role (org.read), or the caller's personal organization.
+ */
+export async function createTargetOrg(
+  userId: string,
+  requestedOrgId: string | undefined,
+): Promise<string> {
   if (requestedOrgId) {
     await requireOrgCan(actorFor(userId), 'org.read', orgResource(requestedOrgId));
-    orgId = requestedOrgId;
-  } else {
-    const personal = await findPersonalOrgId(userId);
-    if (!personal) {
-      throw new HTTPException(500, {
-        message: 'personal org missing — run migrations',
-        cause: { code: 'PERSONAL_ORG_MISSING' },
-      });
-    }
-    orgId = personal;
+    return requestedOrgId;
   }
+  const personal = await findPersonalOrgId(userId);
+  if (!personal) {
+    throw new HTTPException(500, {
+      message: 'personal org missing — run migrations',
+      cause: { code: 'PERSONAL_ORG_MISSING' },
+    });
+  }
+  return personal;
+}
 
-  const created = await createProject({
-    slug,
-    name,
-    orgId,
-    createdBy: userId,
-  });
-  return c.json(created, 201);
-});
+projectRoutes.post(
+  '/',
+  requiresByRule(
+    'projects/routes.ts:createTargetOrg',
+    "org.read on the organization the body names, else the caller's personal organization; refused to a project-fenced token",
+  ),
+  zValidator('json', createProjectBodySchema),
+  async (c) => {
+    assertUnfenced('creating a project');
+    const { slug, name, orgId: requestedOrgId } = c.req.valid('json');
+    const userId = c.get('userId');
+    const orgId = await createTargetOrg(userId, requestedOrgId);
+
+    const created = await createProject({
+      slug,
+      name,
+      orgId,
+      createdBy: userId,
+    });
+    return c.json(created, 201);
+  },
+);
 
 const listQuery = zValidator(
   'query',
@@ -74,25 +95,32 @@ const listQuery = zValidator(
   invalid('archived takes one value: 1 or true lists archived projects too'),
 );
 
-projectRoutes.get('/', listQuery, async (c) => {
-  const userId = c.get('userId');
-  const archived = c.req.valid('query').archived ?? '';
-  const includeArchived = ['1', 'true'].includes(archived.toLowerCase());
-  // Visible = explicit membership (any role) OR org owner/admin on the
-  // project's org (implicit admin) — same rule as lib/authz.ts.
-  const rows = await listVisibleProjectRows(userId, includeArchived);
+projectRoutes.get(
+  '/',
+  requiresSelf(
+    'the projects the caller sees: a role on them, or org owner or admin on their organization',
+  ),
+  listQuery,
+  async (c) => {
+    const userId = c.get('userId');
+    const archived = c.req.valid('query').archived ?? '';
+    const includeArchived = ['1', 'true'].includes(archived.toLowerCase());
+    // Visible = explicit membership (any role) OR org owner/admin on the
+    // project's org (implicit admin) — same rule as lib/authz.ts.
+    const rows = await listVisibleProjectRows(userId, includeArchived);
 
-  return c.json(
-    rows.map(({ memberRole, orgRole, ...row }) => {
-      const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
-      return {
-        ...row,
-        role,
-        orgRole: orgRole ?? null,
-      };
-    }),
-  );
-});
+    return c.json(
+      rows.map(({ memberRole, orgRole, ...row }) => {
+        const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
+        return {
+          ...row,
+          role,
+          orgRole: orgRole ?? null,
+        };
+      }),
+    );
+  },
+);
 
 projectRoutes.get(
   '/:id',
@@ -123,6 +151,7 @@ projectRoutes.get(
 projectRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
+  ORG_ADMIN,
   zValidator('json', updateProjectPatchSchema),
   holdChatWrite('project_change'),
   async (c) => {
@@ -132,7 +161,7 @@ projectRoutes.patch(
 
     // Settings PATCH needs org owner/admin, not a merely-invited project admin.
     const access = await loadProjectAccess(id, userId);
-    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+    requireDeclaredOrg(access.orgId, access.orgRole);
 
     let orgId: string | undefined;
     if (patch.orgId !== undefined && patch.orgId !== access.orgId) {
@@ -150,12 +179,12 @@ projectRoutes.patch(
   },
 );
 
-projectRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+projectRoutes.delete('/:id', zValidator('param', idParamSchema), ORG_ADMIN, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
 
   const access = await loadProjectAccess(id, userId);
-  requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+  requireDeclaredOrg(access.orgId, access.orgRole);
 
   await deleteProject(id);
   return c.body(null, 204);
@@ -176,13 +205,14 @@ projectRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
 projectRoutes.post(
   '/:id/archive',
   zValidator('param', idParamSchema),
+  ORG_ADMIN,
   holdChatWrite('project_change'),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+    requireDeclaredOrg(access.orgId, access.orgRole);
 
     const updated = await archiveProject(id);
     if (!updated) throw notFound();
@@ -193,13 +223,14 @@ projectRoutes.post(
 projectRoutes.post(
   '/:id/unarchive',
   zValidator('param', idParamSchema),
+  ORG_ADMIN,
   holdChatWrite('project_change'),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+    requireDeclaredOrg(access.orgId, access.orgRole);
 
     const updated = await unarchiveProject(id);
     if (!updated) throw notFound();
@@ -210,12 +241,13 @@ projectRoutes.post(
 projectRoutes.patch(
   '/:id/plugins',
   zValidator('param', idParamSchema),
+  ORG_ADMIN,
   zValidator('json', z.object({ plugins: pluginDesignationsPatchSchema })),
   async (c) => {
     const { id } = c.req.valid('param');
     const { plugins } = c.req.valid('json');
     const access = await loadProjectAccess(id, c.get('userId'));
-    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+    requireDeclaredOrg(access.orgId, access.orgRole);
 
     if ((await readAgentConfig(id)) === null) throw notFound();
     await patchAgentConfigKeys(id, { plugins });
