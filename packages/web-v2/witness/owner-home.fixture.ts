@@ -1,12 +1,16 @@
 // The person's home as the witness and the screen budget draw it (ISS-919): what waits on them,
 // what is moving for what they gave, what is live, and the org figures under its tab, each with the
-// longest words it meets in the field.
+// longest words it meets in the field. Moving is cut as core cuts it (50 of more), its tail idle, and one
+// item the person owes stands in Waiting beside the needs-you decisions.
 
 import type { HomeFindResponse, HomeResponse } from "@forge/contracts/owner-home";
 import type { PulseResponse } from "@forge/contracts/pulse";
 import type { QueryKey } from "@tanstack/react-query";
 
 export const AT = "2026-11-03T04:00:00.000Z";
+const DAY = 86_400_000;
+/** An instant `n` days before the witness draws, so the idle rows read their age as the field would. */
+const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 export const ORG = "0b0e0f00-0000-4000-8000-000000000919";
 const LONG = "A member's reply to the bot in a bound room thread is read for a correction, and the agent's lessons learn from it";
 
@@ -64,8 +68,15 @@ const moving = (n: number, over: Partial<HomeResponse["moving"][number]>): HomeR
   owes: { who: "Master", act: "dispatch it" },
   likelyBy: null,
   noDate: "no forecast: too little history",
+  lastMovedAt: daysAgo(1),
+  idle: false,
   ...over,
 });
+
+/** Moving's cut: the rows core sends of the ones it counted. */
+const MOVING_SENT = 50;
+const MOVING_COUNTED = 73;
+const IDLE_SENT = 12;
 
 export const HOME: HomeResponse = {
   generatedAt: AT,
@@ -75,7 +86,14 @@ export const HOME: HomeResponse = {
     moving(862, { title: "A master post naming an undeclared room is refused by name", stage: "releasing", projectName: "Adminhub API", projectSlug: "adminhub-api" }),
     moving(870, { title: "Lessons carry their area", owes: null }),
     moving(871, { kind: "feedback", key: "FB-490", title: "The phone menu hides the release page", stage: "new", owes: { who: "Steward", act: "triage it" } }),
+    ...Array.from({ length: MOVING_SENT - 5 - IDLE_SENT }, (_, i) => moving(700 + i, { title: `Planned work ${i + 1}`, lastMovedAt: daysAgo(2 + i / 10) })),
+    ...Array.from({ length: IDLE_SENT }, (_, i) =>
+      moving(86 + i, { kind: "feedback", key: `FB-${86 + i}`, title: `Parked feedback ${i + 1}`, stage: "new", owes: { who: "Steward", act: "triage it" }, lastMovedAt: daysAgo(10 + i * 3), idle: true }),
+    ),
   ],
+  movingTotal: MOVING_COUNTED,
+  movingTruncated: true,
+  waiting: [{ kind: "feedback", key: "FB-469", title: "Search forgets the filter I set", projectSlug: "forge", projectName: "Forge", act: "triage it" }],
   live: [
     { projectSlug: "forge", projectName: "Forge", environment: "production", environmentName: "dev", version: "0.4.0-dev.457", name: "Live Build Checklist Clarity", at: AT, mine: 3 },
     { projectSlug: "adminhub-api", projectName: "Adminhub API", environment: "production", environmentName: "production", version: "2.14.0", name: "Ledger exports", at: "2026-11-02T09:00:00.000Z", mine: 1 },
@@ -83,7 +101,7 @@ export const HOME: HomeResponse = {
   ],
 };
 
-export const FIND: HomeFindResponse = { q: "export", items: [] };
+export const FIND: HomeFindResponse = { q: "export", items: [], total: 0, truncated: false };
 
 const project = (id: string, slug: string, name: string) => ({ id, slug, name, stuckRuns: 0, abandonedIssues: 1, lastIssueRunAt: AT, open: 14, inProgress: 3, awaitingRelease: 2, humanBlocked: 1 });
 export const PULSE: PulseResponse = {

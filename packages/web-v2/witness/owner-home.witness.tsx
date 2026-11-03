@@ -4,7 +4,9 @@
 // longest words it meets in the field. Each stage reads `main.scrollWidth` against its
 // `main.clientWidth` (ISS-691), checks the three sections stand in order with no card mosaic, and
 // prints the first screen's words (`WORDS owner-home <theme> <n>`); the Figures stage prints what
-// today's Overview drew (`WORDS overview-figures …`), the count before this page.
+// today's Overview drew (`WORDS overview-figures …`), the count before this page. Moving is cut as
+// core cuts it, so the stage reads its "N of M"; the idle stage opens the Idle row and reads each idle
+// item's age in words.
 //
 //   pnpm --filter web-v2 witness witness/owner-home.witness.tsx --out <dir>
 
@@ -97,7 +99,28 @@ function sections(): string[] {
   for (const r of document.querySelectorAll<HTMLElement>("[data-testid=home-moving-date]")) {
     if (!r.textContent?.trim()) wrong.push("a Moving row's date is blank, not words");
   }
+  const cut = q("[data-testid=home-moving] [data-testid=home-cut]")?.textContent ?? "";
+  if (!/^\d+ of \d+$/.test(cut)) wrong.push(`Moving is cut and does not say so: "${cut}"`);
+  if (!q("[data-testid=home-moving-idle]")) wrong.push("Moving draws no Idle row for its idle items");
+  if (document.querySelector("[data-testid=home-moving-row][data-idle]")) wrong.push("an idle item shows before Idle is opened");
   return wrong;
+}
+
+/** Opens Idle and reads each idle row's age, in words. */
+function idleOpened(): string[] {
+  const idle = q("[data-testid=home-moving-idle]");
+  if (!idle) return ["Moving draws no Idle row"];
+  if (idle.getAttribute("aria-expanded") !== "true") idle.click();
+  return [];
+}
+
+function idleAges(): string[] {
+  const rows = [...document.querySelectorAll<HTMLElement>("[data-testid=home-moving-idle-list] [data-testid=home-moving-row]")];
+  if (rows.length === 0) return ["Idle opened to no rows"];
+  return rows.flatMap((r) => {
+    const age = r.querySelector("[data-testid=home-moving-age]")?.textContent?.trim() ?? "";
+    return /\d+\s?\S+/.test(age) ? [] : [`an idle row reads no age in words: "${age}"`];
+  });
 }
 
 const words = (name: string, t: string) => {
@@ -129,6 +152,17 @@ window.__witness = {
   stages: [
     homeStage("light"),
     homeStage("dark"),
+    {
+      name: "idle-open-light",
+      run: async () => {
+        theme("light");
+        const opened = idleOpened();
+        await pause(400);
+        q("[data-testid=home-moving-idle-list]")?.scrollIntoView({ block: "center" });
+        await pause(200);
+        return [...opened, ...idleAges(), ...sideways()];
+      },
+    },
     {
       name: "figures-light",
       run: async () => {
