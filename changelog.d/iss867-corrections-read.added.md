@@ -1,0 +1,1 @@
+**Kept corrections can be read.** GET /api/projects/:id/lessons/corrections lists a window's corrections, newest first and filterable by source, so a room or chat correction is visible before it becomes a lesson (ISS-867).

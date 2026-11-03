@@ -1,6 +1,8 @@
 import {
+  LESSONS_CORRECTIONS_SHAPE,
   LESSONS_LEARNED_MAX_DAYS,
   LESSONS_LEARNED_SHAPE,
+  lessonsCorrectionsQuerySchema,
   lessonsLearnedQuerySchema,
   RAISE_CONFUSION_SHAPE,
   type RaiseConfusionResponse,
@@ -15,6 +17,7 @@ import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js'
 import { requiresOnParam } from '../permissions/index.js';
 import { recordApplied } from './applied.js';
 import { raiseConfusion } from './confusions.js';
+import { correctionsSaid } from './corrections-read.js';
 import type { LessonActor } from './decide.js';
 import { lessonsLearned } from './learned.js';
 import { refuse } from './refuse.js';
@@ -23,7 +26,7 @@ import { refuse } from './refuse.js';
  * Lessons (L-n, REQ-50), under `/api/projects/:id/lessons`: the two doors agents write through, and
  * the one they read a window's learning from. A run or a master records the lessons an output applied
  * (BC-4), an agent reports a confusion to the steward (BC-5), and the daily review's master reads what
- * a day taught (`learned.ts`, ISS-867). Lessons are internal to Forge (BC-9): no route reads one for
+ * a day taught (`learned.ts`, ISS-867) and the corrections said in a window (`corrections-read.ts`). Lessons are internal to Forge (BC-9): no route reads one for
  * a screen, and the steward and core settle every one (`steward/lessons-pass.ts`).
  */
 export const lessonRoutes = new Hono<{ Variables: AuthVars }>();
@@ -68,6 +71,29 @@ lessonRoutes.get(
     if (until.getTime() - since.getTime() > LESSONS_LEARNED_MAX_DAYS * 86_400_000)
       throw learnedBad(`the window is longer than ${LESSONS_LEARNED_MAX_DAYS} days`);
     return c.json(await lessonsLearned(id, since, until));
+  },
+);
+
+lessonRoutes.get(
+  '/:id/lessons/corrections',
+  projectParam,
+  requiresOnParam('project.read', 'id'),
+  zValidator(
+    'query',
+    lessonsCorrectionsQuerySchema,
+    invalid(`invalid query: ${LESSONS_CORRECTIONS_SHAPE}`, 'LESSON_WINDOW_INVALID'),
+  ),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const q = c.req.valid('query');
+    const since = new Date(q.since);
+    const until = new Date(q.until);
+    const bad = (detail: string) =>
+      refuse('LESSON_WINDOW_INVALID', `${detail}; send ${LESSONS_CORRECTIONS_SHAPE}`, '/since');
+    if (since >= until) throw bad(`since (${q.since}) is not before until (${q.until})`);
+    if (until.getTime() - since.getTime() > LESSONS_LEARNED_MAX_DAYS * 86_400_000)
+      throw bad(`the window is longer than ${LESSONS_LEARNED_MAX_DAYS} days`);
+    return c.json(await correctionsSaid(id, since, until, q.source));
   },
 );
 

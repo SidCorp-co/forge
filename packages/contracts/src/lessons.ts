@@ -249,3 +249,39 @@ export interface LessonsLearnedView {
 		items: string[];
 	}>;
 }
+
+/**
+ * `GET …/lessons/corrections?since=&until=[&source=]` (ISS-867): the corrections said in a window,
+ * newest first, so an agent can see that a room, chat or feedback correction was kept before the
+ * steward's lessons pass groups it. Read-only; nothing here marks, links or removes a row.
+ */
+export const lessonsCorrectionsQuerySchema = z.strictObject({
+	since: z.iso.datetime({ offset: true }),
+	until: z.iso.datetime({ offset: true }),
+	source: z.enum(CORRECTION_SOURCES).optional(),
+});
+export const LESSONS_CORRECTIONS_SHAPE = `?since=<ISO datetime>&until=<ISO datetime>&source=<${CORRECTION_SOURCES.join(" | ")}>?, since before until, at most 31 days apart`;
+/** The most rows one read answers; `truncated` says when the window held more. */
+export const LESSONS_CORRECTIONS_LIMIT = 200;
+
+export interface LessonsCorrectionsView {
+	since: string;
+	until: string;
+	corrections: Array<{
+		id: string;
+		source: CorrectionSource;
+		item: { kind: CorrectionItemKind; key: string; title: string | null };
+		reason: string;
+		saidAt: string;
+		agency: string;
+		/** The Forge user who said it; null for a chat-only room writer. */
+		byUserId: string | null;
+		/** The classifier's confidence, on a chat or room correction only. */
+		score: number | null;
+		/** The lesson the steward linked it to, by key, once linked. */
+		lesson: string | null;
+		/** The steward found it is not a correction. */
+		rejected: boolean;
+	}>;
+	truncated: boolean;
+}

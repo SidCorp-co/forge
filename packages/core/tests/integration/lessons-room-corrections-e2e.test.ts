@@ -7,6 +7,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
 import type { Member, StandInRocketChat } from '../helpers/support-chat-server.js';
@@ -18,6 +19,10 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/assistant/turn-lessons.ts
 // @direct-test-of packages/core/src/lessons/consumers.ts
 // @direct-test-of packages/core/src/lessons/corrections.ts
+// @direct-test-of packages/core/src/lessons/corrections-read.ts
+// @direct-test-of packages/core/src/lessons/routes.ts
+// @direct-test-of packages/core/src/lessons/ports.ts
+// @direct-test-of packages/core/src/support/room-replies.ts
 // @direct-test-of packages/core/src/steward-ports.ts
 // @direct-test-of packages/core/tests/helpers/support-chat-server.ts
 //
@@ -251,5 +256,46 @@ describe('a room reply to the bot is a correction, as a chat reply is (REQ-50 BC
       sql`SELECT count(*)::int AS n FROM conversation_messages WHERE external_id = ${reply.externalId}`,
     );
     expect(count?.n).toBe(1);
+  }, 60_000);
+
+  // forge-core-61 (2026-11-03): no route read a correction, so a kept room correction could be
+  // witnessed only in the database; an agent now reads the window's corrections over REST
+  it('answers the kept room correction to a reader of the project, and refuses a window that is not one', async () => {
+    const thread = await answered(chat.bob, 'Which page holds the stock report?');
+    const reply = await says(chat.bob, 'No, stock is under Inventory, not Reports.', thread);
+    const since = new Date(Date.now() - 3_600_000).toISOString();
+    const until = new Date(Date.now() + 60_000).toISOString();
+    const path = `/api/projects/${w.projectId}/lessons/corrections`;
+    const got = await api(
+      w.owner,
+      'GET',
+      `${path}?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&source=room`,
+    );
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    const listed = got.body.corrections as Array<Record<string, unknown>>;
+    expect(listed.every((c) => c.source === 'room')).toBe(true);
+    const ids = (await kept()).filter((k) => k.source_ref === reply.id);
+    expect(ids).toHaveLength(1);
+    expect(listed[0], 'the newest room correction is the reply just kept').toMatchObject({
+      source: 'room',
+      item: { kind: 'conversation', key: `Room ${chat.rid}` },
+      reason: 'It sent the member to Products when the export is under Reports.',
+      byUserId: null,
+      agency: 'human',
+      score: expect.closeTo(0.9, 5),
+      lesson: null,
+      rejected: false,
+    });
+    expect(got.body.truncated).toBe(false);
+    const backwards = await api(
+      w.owner,
+      'GET',
+      `${path}?since=${encodeURIComponent(until)}&until=${encodeURIComponent(since)}`,
+    );
+    expect(backwards.status, 'a backwards window is the caller’s to fix').toBeGreaterThanOrEqual(
+      400,
+    );
+    expect(backwards.status).toBeLessThan(500);
+    expect(JSON.stringify(backwards.body)).toContain('LESSON_WINDOW_INVALID');
   }, 60_000);
 });
