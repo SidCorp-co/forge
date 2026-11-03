@@ -5,6 +5,7 @@
 import type { Hono } from 'hono';
 import type { RequestIdVars } from './middleware/request-id.js';
 import {
+  requiresByRule,
   requiresInstanceAdmin,
   requiresNoPermission,
   requiresPublic,
@@ -50,6 +51,14 @@ export function declareCredentialRoutes(app: Hono<{ Variables: RequestIdVars }>)
     '/api/pat/:id',
     requiresSelf('the caller revokes a token of their own; another’s answers not found'),
   );
+  // a token's or a grant's project list may name only projects the caller sees (FORBIDDEN_PROJECT)
+  const visible = requiresByRule(
+    'credentials/pat-grant-checks.ts:assertProjectsVisible',
+    'the caller’s own token or grant, whose project list may name only projects the caller sees; refused naming the first it does not',
+  );
+  app.on('POST', '/api/pat', visible);
+  app.on('PATCH', '/api/pat/:id', visible);
+  app.on('POST', '/api/mcp-auth/authorize', visible);
   for (const path of ['/api/mcp-auth/register', '/api/mcp-auth/token']) {
     app.on('POST', path, MCP_SIGN_IN_IS_PUBLIC);
   }

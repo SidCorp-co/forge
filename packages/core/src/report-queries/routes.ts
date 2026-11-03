@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
+import { requiresByRule, requiresOnParam } from '../permissions/index.js';
 import { runReport } from '../reports/index.js';
 import { listReportQueries } from './registry.js';
 
@@ -48,6 +48,10 @@ reportQueryRoutes.post(
     'param',
     runParam,
     invalid('invalid path: /api/projects/<project>/report-queries/<query>/runs'),
+  ),
+  requiresByRule(
+    'reports/runs.ts:runReport',
+    'the query declares the permission it is run under, held by the caller on the project; refused by name otherwise',
   ),
   zValidator('json', runBody, invalid('invalid body: { params?: { <name>: <value> } }')),
   async (c) => {

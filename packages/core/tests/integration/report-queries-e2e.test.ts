@@ -6,6 +6,8 @@ import { type World, world } from '../helpers/forecast-world.js';
 
 // The report-queries door: a query runs as the caller, over what the caller may read, and its
 // result says which query, which params and which read produced it (REQ-32, lane A2).
+//
+// @direct-test-of packages/core/src/report-queries/routes.ts
 
 const detail = (res: { body: Body }) =>
   String(res.body.detail ?? (res.body.error as Body | undefined)?.message);

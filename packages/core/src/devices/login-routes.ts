@@ -35,6 +35,7 @@ import {
   actorFor,
   orgResource,
   requireOrgCan,
+  requiresByRule,
   requiresNoPermission,
   requiresPublic,
 } from '../permissions/index.js';
@@ -240,7 +241,11 @@ deviceLoginRoutes.post(
  * at approval time: only an org admin of the agent's own org may hand a
  * machine that agent's identity.
  */
-async function resolveApprovableAgent(raw: unknown, approverId: string): Promise<string | null> {
+/** The agent a code is approved for: org.admin on its organization, where `agent_id` names one. */
+export async function resolveApprovableAgent(
+  raw: unknown,
+  approverId: string,
+): Promise<string | null> {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== 'string' || !UUID_PATTERN.test(raw)) {
     throw new HTTPException(400, {
@@ -263,6 +268,10 @@ deviceLoginRoutes.post(
   '/login/approve',
   rateLimit(() => RULES.deviceLoginApprove, { name: 'deviceLoginApprove' }),
   requireAuth(),
+  requiresByRule(
+    'devices/login-routes.ts:resolveApprovableAgent',
+    "the caller approves a code for themself; for an agent the body names, org.admin on the agent's organization",
+  ),
   async (c, next) => {
     assertMayMintFullCredential(c);
     await next();

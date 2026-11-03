@@ -8,7 +8,12 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
-import { requireDeclared, requireHeld, requiresOnResolved } from '../permissions/index.js';
+import {
+  requireDeclared,
+  requireHeld,
+  requiresByRule,
+  requiresOnResolved,
+} from '../permissions/index.js';
 import { resolvedWindowDaysFor } from '../pipeline/index.js';
 import { ownedDeviceForBind } from './project-binding.js';
 import {
@@ -96,18 +101,34 @@ export const runnerRoutes = new Hono<{ Variables: AuthVars }>();
 
 runnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
-runnerRoutes.get('/', zValidator('query', listQuery), async (c) => {
-  const userId = c.get('userId');
-  const q = c.req.valid('query');
-  if (!q.projectId) return c.json({ runners: [] });
-  const access = await loadProjectAccess(q.projectId, userId);
-  requireHeld(access, 'project.read');
-  const rows = await listProjectRunners(q.projectId, {
-    type: q.type as RunnerType | undefined,
-    status: q.status as RunnerStatus | undefined,
-  });
-  return c.json({ runners: rows.map((r) => publicRunner(rowToRunner(r))) });
-});
+/** The project the runner list reads: project.read on the one the query names; none named lists none. */
+export async function runnerListProject(
+  userId: string,
+  projectId: string | undefined,
+): Promise<string | null> {
+  if (!projectId) return null;
+  requireHeld(await loadProjectAccess(projectId, userId), 'project.read');
+  return projectId;
+}
+
+runnerRoutes.get(
+  '/',
+  requiresByRule(
+    'runners/routes.ts:runnerListProject',
+    'project.read on the project the query names as projectId; with none named the list is empty',
+  ),
+  zValidator('query', listQuery),
+  async (c) => {
+    const q = c.req.valid('query');
+    const projectId = await runnerListProject(c.get('userId'), q.projectId);
+    if (!projectId) return c.json({ runners: [] });
+    const rows = await listProjectRunners(projectId, {
+      type: q.type as RunnerType | undefined,
+      status: q.status as RunnerStatus | undefined,
+    });
+    return c.json({ runners: rows.map((r) => publicRunner(rowToRunner(r))) });
+  },
+);
 
 const activeQuery = z.object({ projectId: z.uuid() });
 

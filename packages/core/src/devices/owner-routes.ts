@@ -3,7 +3,13 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireOrgCan, requiresSelf } from '../permissions/index.js';
+import {
+  actorFor,
+  orgResource,
+  requireOrgCan,
+  requiresByRule,
+  requiresSelf,
+} from '../permissions/index.js';
 import { withDeviceBinaries } from './binary-report.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { withDeviceDisk } from './disk-report.js';
@@ -34,10 +40,19 @@ export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
 
 const ownerDevicesQuery = z.object({ orgId: z.uuid().optional() });
 
+/** The caller's own devices, narrowed to an organization's only where the caller reads it (org.read). */
+export async function ownerDevicesScope(userId: string, orgId: string | undefined): Promise<void> {
+  if (orgId !== undefined) await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+}
+
 deviceOwnerRoutes.get(
   '/me/devices',
   requireAuth(),
   assertEmailVerified(),
+  requiresByRule(
+    'devices/owner-routes.ts:ownerDevicesScope',
+    "the caller's own devices; org.read on the organization the query names, where it names one",
+  ),
   zValidator('query', ownerDevicesQuery),
   async (c) => {
     const userId = c.get('userId');
@@ -47,7 +62,7 @@ deviceOwnerRoutes.get(
     // org scope at all. The organisation's devices are a different population,
     // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
     const { orgId } = c.req.valid('query');
-    if (orgId !== undefined) await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+    await ownerDevicesScope(userId, orgId);
 
     const rows = await listOwnedDevices(userId, orgId);
     // ISS-392, widened by ISS-1165 — each box is compared against the published

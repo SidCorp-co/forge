@@ -126,6 +126,10 @@ reportRoutes.post(
     templateParam,
     invalid('invalid path: /api/projects/<project>/report-templates/<template>/runs'),
   ),
+  requiresByRule(
+    'reports/templates.ts:runTemplate',
+    "each of the template's queries declares the permission it is run under, held by the caller on the project",
+  ),
   zValidator('json', templateBody, invalid('invalid body: { params?: { <name>: <value> } }')),
   async (c) => {
     const { id: projectId, templateId } = c.req.valid('param');
@@ -216,6 +220,10 @@ reportRoutes.get(
     'param',
     executionParam,
     invalid('invalid path: /api/projects/<project>/executions/<execution>'),
+  ),
+  requiresByRule(
+    'reports/executions.ts:readExecution',
+    'only the person who asked the execution reads it, and project.read on its project; EXECUTION_NOT_FOUND, EXECUTION_READ_FORBIDDEN and EXECUTION_EXPIRED answer before it',
   ),
   noQuery,
   async (c) => {

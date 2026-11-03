@@ -35,6 +35,9 @@
  * @direct-test-of packages/core/src/workflows/template-routes.ts
  * @direct-test-of packages/core/src/workflows/route-declarations.ts
  * @direct-test-of packages/core/src/mounted-declarations.ts
+ * @direct-test-of packages/core/src/runners/routes.ts
+ * @direct-test-of packages/core/src/devices/owner-routes.ts
+ * @direct-test-of packages/core/src/devices/login-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -58,7 +61,12 @@ import {
   testEnv,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestProject,
+  createTestUser,
+  seedOrg,
+} from '../helpers/factories.js';
 
 const tokens = { operator: '', person: '' };
 
@@ -380,5 +388,44 @@ describe('the singles of part 18: public, credential-only and resolved on the pa
     expect(JSON.stringify(refused.body)).toContain('project.read');
     const answered = await api(await userToken(owner), 'GET', route);
     expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+  });
+});
+
+describe('the input-dependent routes of part 18, declared by their extracted rules', () => {
+  it('refuses the runner list for a project the query names and the caller cannot reach, and answers its owner', async () => {
+    const owner = (await createTestUser({ verified: true })).id;
+    const project = await createTestProject(owner);
+    const route = `/api/runners?projectId=${project.id}`;
+    const refused = await api(tokens.person, 'GET', route);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('project.read');
+    const answered = await api(await userToken(owner), 'GET', route);
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    const none = await api(tokens.person, 'GET', '/api/runners');
+    expect(none.status, JSON.stringify(none.body)).toBe(200);
+    expect(none.body.runners).toEqual([]);
+  });
+
+  it("narrows the caller's devices to an organization only where they read it (ownerDevicesScope)", async () => {
+    const owner = (await createTestUser({ verified: true })).id;
+    const orgId = await seedOrg(owner);
+    const refused = await api(tokens.person, 'GET', `/api/me/devices?orgId=${orgId}`);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    const answered = await api(await userToken(owner), 'GET', `/api/me/devices?orgId=${orgId}`);
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+  });
+
+  it('answers a pairing approval by its own rule: an unknown agent, then an unknown code', async () => {
+    const agent = await api(tokens.person, 'POST', '/api/devices/login/approve', {
+      pairing_code: 'ABC-DEFG',
+      agent_id: randomUUID(),
+    });
+    expect(agent.status, JSON.stringify(agent.body)).toBe(404);
+    expect(codeOf(agent.body)).toBe('AGENT_NOT_FOUND');
+    const code = await api(tokens.person, 'POST', '/api/devices/login/approve', {
+      pairing_code: 'ABC-DEFG',
+    });
+    expect(code.status, JSON.stringify(code.body)).toBe(404);
+    expect(codeOf(code.body)).toBe('PAIRING_CODE_NOT_FOUND');
   });
 });
