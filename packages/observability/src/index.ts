@@ -69,6 +69,12 @@ const MCP_OAUTH_SECRET_PATTERN = /forge_mcp_(?:rt|code)_[A-Za-z0-9_-]{8,}/g;
  */
 const WIDGET_TOKEN_PATTERN = /fw_(?:sess|stat)_[A-Za-z0-9_-]{8,}/g;
 
+/**
+ * A product server's feedback key (`@forge/contracts/feedback-server-keys`): it files feedback into
+ * a project as that product, so it is redacted wherever it turns up, cut off or not.
+ */
+const FEEDBACK_SERVER_KEY_PATTERN = /\bfsk_[A-Za-z0-9_-]{8,}/g;
+
 const PEM_PRIVATE_KEY_PATTERN =
 	/-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
@@ -168,6 +174,7 @@ function scrubPatInString(s: string): string {
 		.replace(SHARE_TOKEN_STRING_PATTERN, FILTERED)
 		.replace(MCP_OAUTH_SECRET_PATTERN, FILTERED)
 		.replace(WIDGET_TOKEN_PATTERN, FILTERED)
+		.replace(FEEDBACK_SERVER_KEY_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
 		.replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED)
@@ -444,6 +451,7 @@ const LINE_RULES: readonly SpanRule[] = [
 	{ shape: "access token", pattern: SHARE_TOKEN_STRING_PATTERN, lead: /^forge_share_/ },
 	{ shape: "access token", pattern: MCP_OAUTH_SECRET_PATTERN, lead: /^forge_mcp_[a-z]+_/ },
 	{ shape: "access token", pattern: WIDGET_TOKEN_PATTERN, lead: /^fw_[a-z]+_/ },
+	{ shape: "access token", pattern: FEEDBACK_SERVER_KEY_PATTERN, lead: /^fsk_/ },
 	{ shape: "access token", pattern: GOOGLE_ACCESS_TOKEN_PATTERN, lead: /^ya29\./ },
 	{ shape: "access token", pattern: JWT_PATTERN, lead: /^eyJ/ },
 	{ shape: "provider key", pattern: PREFIXED_TOKEN_PATTERN, lead: PROVIDER_KEY_LEAD },
