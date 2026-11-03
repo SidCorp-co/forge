@@ -12,6 +12,7 @@
 
 import { Hono } from 'hono';
 import {
+  ISSUE_PROJECT,
   issueRouteIdParamSchema,
   projectScopeQuery,
   resolveIssueRouteRef,
@@ -19,6 +20,7 @@ import {
 import { egressForRequest } from '../lib/data-egress.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { issueRequirementOf } from './issue-requirement-read.js';
 import type { RequirementEnv } from './route-kit.js';
 
@@ -29,6 +31,7 @@ issueRequirementRoutes.use('/:id/requirement', requireAuth(), assertEmailVerifie
 issueRequirementRoutes.get(
   '/:id/requirement',
   zValidator('param', issueRouteIdParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   projectScopeQuery,
   async (c) => {
     const { id } = c.req.valid('param');

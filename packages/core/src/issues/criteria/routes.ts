@@ -26,7 +26,8 @@ import {
 } from '../../middleware/auth.js';
 import { idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { nestedFieldShape, zValidator } from '../../middleware/zod-validator.js';
-import { heldIssue, projectScopeQuery } from '../issue-route-ref.js';
+import { requiresOnResolved } from '../../permissions/index.js';
+import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from '../issue-route-ref.js';
 import { judgedBuildOf } from '../ports.js';
 import { findIssueById } from '../read-service.js';
 import {
@@ -71,6 +72,7 @@ async function criteriaShown(
 issueCriteriaRoutes.get(
   '/:id/criteria',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   projectScopeQuery,
   async (c) => {
     const { id } = c.req.valid('param');
@@ -82,6 +84,7 @@ issueCriteriaRoutes.get(
 issueCriteriaRoutes.put(
   '/:id/criteria',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('json', criteriaPutSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -96,6 +99,7 @@ issueCriteriaRoutes.put(
 issueCriteriaRoutes.get(
   '/:id/criteria/:ref',
   zValidator('param', criterionParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   projectScopeQuery,
   async (c) => {
     const { id, ref } = c.req.valid('param');
@@ -115,6 +119,7 @@ issueCriteriaRoutes.get(
 issueCriteriaRoutes.patch(
   '/:id/criteria/:ref',
   zValidator('param', criterionParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('json', criterionPatchSchema),
   async (c) => {
     const { id, ref } = c.req.valid('param');
@@ -139,6 +144,7 @@ issueCriteriaRoutes.patch(
 issueCriteriaRoutes.post(
   '/:id/criteria/traces',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('json', criteriaTracePostSchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -152,6 +158,7 @@ issueCriteriaRoutes.post(
 issueCriteriaRoutes.post(
   '/:id/verdicts',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator(
     'json',
     verdictPostSchema,
@@ -199,6 +206,7 @@ issueCriteriaRoutes.post(
 issueCriteriaRoutes.get(
   '/:id/judged-build',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   projectScopeQuery,
   async (c) => {
     const { id } = c.req.valid('param');

@@ -3,6 +3,8 @@
  * 2026-10-07: on project forge the panel said "There is nobody left to add" while a person held a
  * role on the project as its member and not through its organisation, so a group room could not be
  * made from the web at all). Adding them is what makes the room a group.
+ *
+ * @direct-test-of packages/core/src/assistant/conversation-member-routes.ts
  */
 
 import { sql } from 'drizzle-orm';

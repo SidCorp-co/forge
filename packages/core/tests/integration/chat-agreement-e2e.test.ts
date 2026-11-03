@@ -8,6 +8,7 @@
  * probe A had a typed "No" bound as agreement, and core wrote it).
  *
  * @direct-test-of packages/core/src/requirements/agree.ts
+ * @direct-test-of packages/core/src/assistant/agreement/routes.ts
  */
 
 import { sql } from 'drizzle-orm';

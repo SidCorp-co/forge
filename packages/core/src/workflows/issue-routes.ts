@@ -12,10 +12,11 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { resolveIssueRouteRef } from '../issues/index.js';
+import { ISSUE_PROJECT, resolveIssueRouteRef } from '../issues/index.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { issueRequirementDesignOf } from './issue-design-read.js';
 
 export const issueRequirementDesignRoutes = new Hono<{ Variables: AuthVars }>();
@@ -44,22 +45,28 @@ const range = zValidator(
   ),
 );
 
-issueRequirementDesignRoutes.get('/:id/requirement/designs/:workflow', params, range, async (c) => {
-  const { id, workflow } = c.req.valid('param');
-  const q = c.req.valid('query');
-  const issue = await resolveIssueRouteRef(id, undefined, c.get('userId'));
-  const read = await issueRequirementDesignOf(issue.id, workflow, {
-    revision: q.revision,
-    from: q.stepFrom,
-    to: q.stepTo,
-  });
-  return c.json(
-    await egressForRequest(
-      c.get('agency'),
-      read.projectId,
-      'design',
-      read.design,
-      `workflow ${workflow}, read through issue ${issue.id}`,
-    ),
-  );
-});
+issueRequirementDesignRoutes.get(
+  '/:id/requirement/designs/:workflow',
+  params,
+  requiresOnResolved('project.read', ISSUE_PROJECT),
+  range,
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    const q = c.req.valid('query');
+    const issue = await resolveIssueRouteRef(id, undefined, c.get('userId'));
+    const read = await issueRequirementDesignOf(issue.id, workflow, {
+      revision: q.revision,
+      from: q.stepFrom,
+      to: q.stepTo,
+    });
+    return c.json(
+      await egressForRequest(
+        c.get('agency'),
+        read.projectId,
+        'design',
+        read.design,
+        `workflow ${workflow}, read through issue ${issue.id}`,
+      ),
+    );
+  },
+);

@@ -6,6 +6,8 @@
  * against real Postgres: the read through the issue on REST and MCP, authorised on the issue's
  * project alone; what the run is given at its open; and each refusal — an issue delivering none, a
  * credential without read on the issue's project, the sibling's other requirements.
+ *
+ * @direct-test-of packages/core/src/requirements/issue-routes.ts
  */
 
 import { sql } from 'drizzle-orm';

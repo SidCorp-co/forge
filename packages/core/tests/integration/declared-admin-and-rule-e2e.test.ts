@@ -17,6 +17,9 @@
  * @direct-test-of packages/core/src/agent-sessions/session-access.ts
  * @direct-test-of packages/core/src/assistant/conversation-declarations.ts
  * @direct-test-of packages/core/src/assistant/agreement/agreement-door.ts
+ * @direct-test-of packages/core/src/assistant/conversation-routes.ts
+ * @direct-test-of packages/core/src/assistant/conversation-scope.ts
+ * @direct-test-of packages/core/src/agent-sessions/routes.ts
  */
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -148,5 +151,11 @@ describe('a conversation route declared by its room rule (readableConversation),
     const answered = await api(ownerToken, 'GET', `/api/conversations/${roomId}`);
     expect(answered.status, JSON.stringify(answered.body)).toBe(200);
     expect((answered.body as { id: string }).id).toBe(roomId);
+
+    // the pin is declared by the same rule: a reader pins, and the member outside the room does not
+    const unpinned = await api(await userToken(member), 'PUT', `/api/conversations/${roomId}/pin`);
+    expect(unpinned.status, JSON.stringify(unpinned.body)).toBe(403);
+    const pinned = await api(ownerToken, 'PUT', `/api/conversations/${roomId}/pin`);
+    expect(pinned.status, JSON.stringify(pinned.body)).toBe(200);
   });
 });

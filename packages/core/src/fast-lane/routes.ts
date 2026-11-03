@@ -4,9 +4,10 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { resolveIssueRouteRef } from '../issues/index.js';
+import { ISSUE_PROJECT, resolveIssueRouteRef } from '../issues/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresOnResolved } from '../permissions/index.js';
 import { issueLane } from './service.js';
 
 export const issueLaneRoutes = new Hono<{ Variables: AuthVars }>();
@@ -15,6 +16,7 @@ issueLaneRoutes.use('/:id/lane', requireAuth(), assertEmailVerified());
 issueLaneRoutes.get(
   '/:id/lane',
   zValidator('param', z.object({ id: z.string().min(1) })),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', z.object({ projectId: z.uuid().optional() })),
   async (c) => {
     const issue = await resolveIssueRouteRef(

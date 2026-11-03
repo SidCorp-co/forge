@@ -5,6 +5,8 @@
  * Markdown, plain text, CSV, JSON, PDF and Word files under a cap per type; the assistant reads the
  * document's scrubbed text inside the message that carried it; and a draft requirement takes an
  * attached list as its criteria, line for line. The model is the one thing scripted.
+ *
+ * @direct-test-of packages/core/src/assistant/conversation-attachment-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';

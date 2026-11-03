@@ -6,6 +6,8 @@
  * real Postgres: the read through the issue, authorised on the issue's project alone, and each
  * refusal — a design the requirement neither links nor pins, an issue delivering none, a
  * credential without read on the issue's project.
+ *
+ * @direct-test-of packages/core/src/workflows/issue-routes.ts
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';

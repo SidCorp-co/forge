@@ -22,9 +22,10 @@ import {
 } from '../../middleware/auth.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { invalid, strictBody, zValidator } from '../../middleware/zod-validator.js';
+import { requiresByRule, requiresOnResolved } from '../../permissions/index.js';
 import type { Actor } from '../activity.js';
 import { issueDisplayIds } from '../display-ids.js';
-import { heldIssue } from '../issue-route-ref.js';
+import { heldIssue, ISSUE_PROJECT } from '../issue-route-ref.js';
 import { decisionUntilWarnings } from './decision-until.js';
 import { listRecordEvents, type RecordEvent } from './store.js';
 import { withdrawRecordEvent } from './withdraw.js';
@@ -72,6 +73,7 @@ recordEventRoutes.use('/:id/events', requireAuth(), assertEmailVerified());
 recordEventRoutes.post(
   '/:id/events',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
   zValidator('json', eventBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -92,6 +94,7 @@ recordEventRoutes.post(
 recordEventRoutes.get(
   '/:id/events',
   zValidator('param', idParamSchema),
+  requiresOnResolved('project.read', ISSUE_PROJECT),
   zValidator('query', listQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -121,6 +124,10 @@ recordEventRoutes.post(
     'param',
     withdrawParamSchema,
     invalid('invalid path: /api/issues/<issue uuid>/events/<record uuid>/withdraw'),
+  ),
+  requiresByRule(
+    'issues/record-events/withdraw.ts:withdrawRecordEvent',
+    "project.write on the issue's project, then the decision's own writer or a holder of project.admin",
   ),
   strictBody(withdrawRecordRequestSchema, WITHDRAW_RECORD_SHAPE),
   async (c) => {

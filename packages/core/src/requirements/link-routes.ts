@@ -68,6 +68,7 @@ requirementLinkRoutes.post(
 requirementLinkRoutes.delete(
   '/:id/requirements/:req/issues/:issue',
   reqAnd({ issue: z.string().trim().min(1).max(200) }, ' and an issue'),
+  requiresOnParam('project.write', 'id'),
   agentsOnly,
   holdChatWrite('requirement_link'),
   async (c) => {
