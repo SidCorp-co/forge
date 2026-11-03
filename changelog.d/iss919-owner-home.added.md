@@ -1,0 +1,1 @@
+**Your home page answers what waits on you, what is moving and what is live.** The workspace home shows, across your projects, the decisions waiting on you, each item you gave until it ships, and each project's latest release, with a search; the figures move under a tab.
