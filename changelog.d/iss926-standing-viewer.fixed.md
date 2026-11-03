@@ -1,0 +1,1 @@
+**Needs you lists only what you can act on.** A read-only member no longer has an issue's question or decision counted as theirs; it waits on the people who can answer, by name. Requirement owners without write access likewise.

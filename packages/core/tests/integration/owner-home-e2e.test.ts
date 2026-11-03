@@ -4,8 +4,13 @@
  * that are not live, each at its stage; each project's latest release with how many of their items it
  * carried; and a search that says where any item stands, live since a version or still moving.
  * ISS-924: what the person owes is their Needs you alone (`/api/me/attention`), a triage they hold
- * among it, so the home has no `waiting` of its own and loses no owed row. Against real Postgres.
+ * among it, so the home has no `waiting` of its own and loses no owed row. ISS-926: an issue's act is
+ * on a person's Needs you only where it names them and they hold what it asks; a read-only member reads
+ * it as waiting on the writers, and their /attention counts none of it. Against real Postgres.
  *
+ * @direct-test-of packages/core/src/issues/standing.ts
+ * @direct-test-of packages/core/src/issues/standing-read.ts
+ * @direct-test-of packages/core/src/issues/standing-viewer-read.ts
  * @direct-test-of packages/core/src/product-progress/home-routes.ts
  * @direct-test-of packages/core/src/product-progress/home-moving.ts
  * @direct-test-of packages/core/src/product-progress/home-live.ts
@@ -22,8 +27,16 @@ import { HOME_FIND_LIMIT, HOME_IDLE_DAYS, HOME_MOVING_LIMIT } from '@forge/contr
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { closeWorld, type Doc, ok, requester, testEnv } from '../helpers/ecosystem-world.js';
 import {
+  closeWorld,
+  type Doc,
+  ok,
+  requester,
+  startQueue,
+  testEnv,
+} from '../helpers/ecosystem-world.js';
+import {
+  addProjectMember,
   createTestFeedback,
   createTestIssue,
   createTestProject,
@@ -251,5 +264,105 @@ describe("a person's home", () => {
     const home = ok(await say('outsider', 'GET', '/api/me/home'));
     expect((home.live as Doc[]).map((l) => l.version)).toEqual(['9.9.9']);
     expect((home.moving as Doc[]).map((m) => m.key)).toEqual(['ISS-2']);
+  });
+});
+
+// ISS-926: a read-only member's issue standing grouped the decision on an issue needs_you while it
+// named the writers as owing it, and their /attention counted it against them.
+describe("an issue's act on a person's Needs you", () => {
+  let as: ReturnType<typeof requester>;
+  let decided = '';
+  let decidedSlug = '';
+  const keys = ['ISS-1', 'ISS-2', 'ISS-3'];
+
+  beforeAll(async () => {
+    const { app } = await import('../../src/index.js');
+    const { signUserToken } = await import('../../src/credentials/jwt.js');
+    const { askQuestion } = await import('../../src/questions/index.js');
+    // a question asked enqueues its notice
+    await startQueue();
+    const writer = (await createTestUser({ verified: true })).id;
+    const reader = (await createTestUser({ verified: true })).id;
+    ({ id: decided, slug: decidedSlug } = await createTestProject(writer));
+    await addProjectMember(decided, reader, 'viewer');
+    as = requester(app, {
+      writer: await signUserToken(writer),
+      reader: await signUserToken(reader),
+    });
+    const now = new Date();
+    // ISS-1: a run asked a person a question on it; ISS-2: parked for a decision; ISS-3: a draft
+    const asked = await createTestIssue(decided, writer, 1, { status: 'open', createdAt: now });
+    await createTestIssue(decided, writer, 2, {
+      status: 'needs_info',
+      waitingKind: 'needs_decision',
+      createdAt: now,
+    });
+    await createTestIssue(decided, writer, 3, { status: 'draft', createdAt: now });
+    await askQuestion({
+      id: randomUUID(),
+      projectId: decided,
+      issueId: asked.id,
+      prompt: 'Keep the old export format or move to the new one?',
+      blockerKind: 'human',
+      answer: {
+        shape: 'choice',
+        options: ['keep', 'move'].map((id) => ({
+          id,
+          label: id,
+          authority: 'writer' as const,
+          bindsTo: 'session' as const,
+          executedBy: 'agent' as const,
+        })),
+        recommendedOptionId: 'move',
+      },
+    });
+  }, 120_000);
+
+  const standingOf = async (who: string) => {
+    const list = ok(await as(who, 'GET', `/api/projects/${decided}/issues/standing`));
+    return new Map((list.issues as Doc[]).map((i) => [i.key as string, i.standing as Doc]));
+  };
+  const attentionOf = async (who: string) => {
+    const attention = ok(await as(who, 'GET', '/api/me/attention'));
+    return (attention.needsYou as Doc[]).find((p) => p.projectSlug === decidedSlug) ?? null;
+  };
+
+  it('reads a decision a read-only member cannot take as waiting on the writers, never needs_you', async () => {
+    const standing = await standingOf('reader');
+    for (const key of keys) {
+      const s = standing.get(key);
+      expect(s?.attentionGroup, key).not.toBe('needs_you');
+      expect(s?.waitingOn, key).toMatchObject({ kind: 'person' });
+      expect(s?.waitingOn.who, key).not.toBe('You');
+    }
+    expect(standing.get('ISS-1')?.waitingOn.act).toBe('answer a question');
+    expect(standing.get('ISS-2')?.waitingOn.act).toBe('make a decision');
+  });
+
+  it("counts no decision and no owed row of them on the read-only member's /attention", async () => {
+    const part = await attentionOf('reader');
+    const listed = [
+      ...((part?.decisions as Doc[] | undefined) ?? []).map((d) => d.key),
+      ...((part?.owed as Doc[] | undefined) ?? []).flatMap((o) =>
+        (o.items as Doc[]).map((i) => i.key),
+      ),
+    ];
+    for (const key of keys) expect(listed).not.toContain(key);
+    expect(part?.total ?? 0).toBe(0);
+    const items = ok(await as('reader', 'GET', `/api/projects/${decided}/needs-you`));
+    expect((items.items as Doc[]).map((i) => i.key)).toEqual(expect.not.arrayContaining(keys));
+  });
+
+  it('keeps each on the Needs you of the writer who owes it and can take it, the question a decision', async () => {
+    const standing = await standingOf('writer');
+    for (const key of keys) {
+      expect(standing.get(key), key).toMatchObject({
+        attentionGroup: 'needs_you',
+        waitingOn: { kind: 'you', who: 'You' },
+      });
+    }
+    const part = await attentionOf('writer');
+    expect(((part?.decisions as Doc[] | undefined) ?? []).map((d) => d.key)).toContain('ISS-1');
+    expect(part?.total as number).toBeGreaterThanOrEqual(1);
   });
 });
