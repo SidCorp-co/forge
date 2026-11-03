@@ -1,1 +1,0 @@
-**A failed run shows why in its own view.** `GET /api/pipeline-runs/:id` and the run lists now carry the failure a run's close recorded, so a release run that failed no longer reads failed with no code there.

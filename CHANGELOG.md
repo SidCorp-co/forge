@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.468] - 2026-11-03
+
+Shipped releases read shipped; owed feedback triage shows under Needs you
+
+### Fixed
+
+- **A failed run shows why in its own view.** `GET /api/pipeline-runs/:id` and the run lists now carry the failure a run's close recorded, so a release run that failed no longer reads failed with no code there.
+
 ## [0.4.0-dev.467] - 2026-11-03
 
 A shipped release reads shipped even when one issue cannot close yet
