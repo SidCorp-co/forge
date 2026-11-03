@@ -1,0 +1,1 @@
+**A release approval carries its unproven criteria by name.** An approver names each one, or all, with a why; the approval records them, the release page lists them, and each stays owed. Approval needs only releases.approve, an agent's token included.
