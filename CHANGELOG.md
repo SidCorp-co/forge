@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.472] - 2026-11-03
+
+A hand reopen for a live defect now counts as a defect stall
+
+### Fixed
+
+- **A reopen for a defect found live now counts as a defect stall.** Send `cause: "defect"` with its evidence on the reopen; the release that ships the issue counts it under Defect.
+
 ## [0.4.0-dev.471] - 2026-11-03
 
 Issues stay the agents' work, and your home says when a list is cut
