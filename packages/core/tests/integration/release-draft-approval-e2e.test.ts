@@ -1,4 +1,5 @@
 // @direct-test-of packages/core/src/release-batch/draft-approval.ts
+// @direct-test-of packages/core/src/release-batch/release-read-views.ts
 // @direct-test-of packages/core/src/release-batch/version-routes.ts
 // @direct-test-of packages/core/src/release-batch/release-read.ts
 // @direct-test-of packages/core/src/permissions/holders-named.ts
@@ -76,7 +77,7 @@ const decide = (token: string, version: string, body: Record<string, unknown>) =
   api(token, 'POST', `/api/projects/${world.projectId}/releases/${version}/approval`, body);
 
 describe('ISS-869: a release with no production is decided as a draft by its listed approvers', () => {
-  it('lists the people who approve it, never the agent, and offers the decision to the person only', async () => {
+  it('lists the people who approve it, never the agent, and offers the decision to whoever holds releases.approve', async () => {
     await landedIssue(5, F4);
     const byOwner = await draft();
     expect(byOwner.state).toBe('draft');
@@ -87,7 +88,8 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
 
     const byAgent = await draft(agentToken);
     expect(byAgent.approvers.map((a) => a.id)).not.toContain(agentId);
-    expect(byAgent.can.decide).toBe(false);
+    // ISS-914, ADR 0007: approval is the permission alone, so the agent holding it may decide
+    expect(byAgent.can.decide).toBe(true);
   });
 
   it('records the owner’s approval keyed on the version, with no run and no commit', async () => {
@@ -122,12 +124,29 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
     expect((await draft()).draftApproval).toBeNull();
   });
 
-  it('refuses the agent’s token by name, and records nothing', async () => {
+  it('takes the approval of an agent’s token holding releases.approve, naming the agent (ISS-914)', async () => {
     await landedIssue(5, F4);
     const { version } = await draft();
     const res = await decide(agentToken, version, { decision: 'approve', reason: 'mine' });
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe('RELEASE_APPROVAL_IS_A_PERSONS');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect((await draft()).draftApproval).toMatchObject({
+      decision: 'approved',
+      decidedBy: { id: agentId },
+      reason: 'mine',
+    });
+  });
+
+  it('refuses a carry on a draft, which no checklist judges, and records nothing (ISS-914)', async () => {
+    await landedIssue(5, F4);
+    const { version } = await draft();
+    const res = await decide(world.token, version, {
+      decision: 'approve',
+      reason: 'ok',
+      carry: { all: true, why: 'flag off on stg' },
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('RELEASE_APPROVAL_SHAPE');
+    expect(JSON.stringify(res.body)).toContain('/carry');
     expect((await draft()).draftApproval).toBeNull();
   });
 
