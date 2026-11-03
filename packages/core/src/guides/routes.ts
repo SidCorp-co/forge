@@ -29,27 +29,31 @@ const GUIDE_CORPUS = requiresPublic(
 );
 /** A project member reads a guide as its org shadows it: an org's integration guide over the code default. */
 const projectGuideRoutes = new Hono<{ Variables: AuthVars }>();
-const PROJECT_GUIDE = '/:id/guides/:slug';
 // the gate covers the one path this router serves: it is mounted under /api/projects, so a `'*'`
 // gate here ran on every project route that reached it and 401'd any unauthenticated one (ISS-925)
-projectGuideRoutes.use(PROJECT_GUIDE, requireAuth());
+projectGuideRoutes.use('/:id/guides/:slug', requireAuth());
 
-projectGuideRoutes.get(PROJECT_GUIDE, requiresOnParam('project.read', 'id'), noQuery, async (c) => {
-  const projectId = c.req.param('id');
-  const raw = c.req.param('slug');
-  const isMarkdown = raw.endsWith('.md');
-  const guide = await resolveGuide(
-    isMarkdown ? raw.slice(0, -3) : raw,
-    await findProjectOrgId(projectId),
-  );
-  if (!guide) {
-    throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
-  }
-  if (isMarkdown) {
-    return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
-  }
-  return c.json({ guide });
-});
+projectGuideRoutes.get(
+  '/:id/guides/:slug',
+  requiresOnParam('project.read', 'id'),
+  noQuery,
+  async (c) => {
+    const projectId = c.req.param('id');
+    const raw = c.req.param('slug');
+    const isMarkdown = raw.endsWith('.md');
+    const guide = await resolveGuide(
+      isMarkdown ? raw.slice(0, -3) : raw,
+      await findProjectOrgId(projectId),
+    );
+    if (!guide) {
+      throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
+    }
+    if (isMarkdown) {
+      return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
+    }
+    return c.json({ guide });
+  },
+);
 
 guideRoutes.route('/projects', projectGuideRoutes);
 
