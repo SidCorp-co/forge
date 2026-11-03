@@ -199,8 +199,9 @@ export async function recordLanding(
   });
   // As the record of a release production serves: the claim is the lock, never the index.
   await releaseRunClaims(run.id);
-  // the landing is the delivery: a record that closed what it claimed shipped, as a finished release
-  await endRecordRun(run.id, failed);
+  // the landing is the delivery: a record that closed any of what it claimed shipped, as a finished
+  // release, and what it could not close is its residue (ISS-928)
+  await endRecordRun(run.id, version, { closed, failed });
 
   return {
     runId: run.id,

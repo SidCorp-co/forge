@@ -28,6 +28,7 @@ import { RECORDED_VERIFICATIONS } from './plan.js';
 import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
 import { reasonOf } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
+import { holdResidue, markResidue } from './residue.js';
 import { takeGivenVersion } from './version-store.js';
 
 /** What a release its agent recorded stores (owner, 2026-11-01): the agent's record is the release. */
@@ -231,8 +232,8 @@ export async function recordPerformedRelease(
   // clears it the same way and for the same reason.
   await releaseRunClaims(run.id);
 
-  // the agent recorded the release as shipped: a record that closed what it claimed shipped
-  await endRecordRun(run.id, failed);
+  // the agent recorded the release as shipped: a record that closed any of what it claimed shipped
+  await endRecordRun(run.id, version, { closed, failed });
 
   return {
     runId: run.id,
@@ -248,27 +249,40 @@ export async function recordPerformedRelease(
 }
 
 /**
- * A record's run, ended as its roster did: shipped where every issue it named closed, else `failed`
- * naming each that would not. The ship is stamped before the close, in one unit, so no record's
- * run reads `completed` with no ship and no reason (ISS-761).
+ * A record's run, ended as its roster did (ISS-928). It ships where any issue it named closed, or where
+ * the release is proved out without them (`deployed`: a promotion merged and its deploy recorded): what
+ * would not close is the release's residue, named on the run and held under its refusal, and a later
+ * record against the same version closes it (`residue.ts`). Only a record that closed none of a roster
+ * and stands on nothing else ends `failed`, naming each refusal. The ship is stamped in the close's own
+ * unit, so no record's run reads `completed` with no ship (ISS-761).
  */
 export async function endRecordRun(
   runId: string,
-  failed: ReadonlyArray<{ id: string; reason: string }>,
+  version: string | null,
+  outcome: { closed: readonly string[]; failed: ReadonlyArray<{ id: string; reason: string }> },
+  { deployed = false }: { deployed?: boolean } = {},
 ): Promise<void> {
+  const { closed, failed } = outcome;
+  const ships = failed.length === 0 || closed.length > 0 || deployed;
   await db.transaction(async (tx) => {
-    if (failed.length === 0) {
+    if (ships) {
+      await markResidue(
+        runId,
+        failed.map((f) => f.id),
+        tx,
+      );
       await stampReleaseShipped(runId, tx);
       await closeRunIfOneShotInTx(tx, runId, 'completed');
       return;
     }
     await closeRunIfOneShotInTx(tx, runId, 'failed', {
       code: 'release_record_incomplete',
-      detail: `${failed.length} of the recorded issues would not close: ${failed
+      detail: `none of the ${failed.length} recorded issues would close: ${failed
         .map((f) => `${f.id} (${f.reason})`)
         .join('; ')}`,
     });
   });
+  if (ships) await holdResidue(runId, version, failed);
 }
 
 /** The ledger row: the intent, the account, and what was read — on an agent's record, nothing. */

@@ -974,6 +974,8 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_REPAIR_NOT_FAILED",
 	/** A repair whose body is not `{ outcome: "shipped", reason, evidence }` (ISS-761). */
 	"RELEASE_REPAIR_SHAPE",
+	/** A release-record against a shipped release naming an issue that is not its residue (ISS-928). */
+	"RELEASE_RESIDUE_NOT_HELD",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",

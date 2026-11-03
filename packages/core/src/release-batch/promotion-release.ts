@@ -302,7 +302,9 @@ export async function recordPromotionRelease(
     runId: run.id,
   });
   await releaseRunClaims(run.id);
-  await endRecordRun(run.id, failed);
+  // approved, its promotion merged and its deploy recorded: the release shipped, and an issue whose
+  // close was refused waits as its residue, never failing the release that carried it (ISS-928)
+  await endRecordRun(run.id, run.version, { closed, failed }, { deployed: true });
   return {
     runId: run.id,
     version: run.version,

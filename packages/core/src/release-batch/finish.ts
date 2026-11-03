@@ -32,12 +32,12 @@ import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
+import { holdResidue, markResidue } from './residue.js';
 import {
   type AbortShippedOutcome,
   claimMarkedLate,
   settleAbortedShipped,
 } from './shipped-in-runs.js';
-import { openQuestionIdsOf, unclosedHold } from './unclosed-hold.js';
 import { lockRunVersions } from './version-store.js';
 
 type FinishReleaseBatchResult = RosterCloseResult;
@@ -144,11 +144,12 @@ export async function finishReleaseBatch(
   // stamp (ISS-811; agenfold's ISS-11 was the whole roster of seven releases, each stamped shipped
   // and each closing nothing). A release that closed any of its roster did ship, and what it could
   // not close is held below, so it is not cut again into the same refusal.
-  const unclosed = failed.map((f) => f.id);
   const shipsNone = claimed.length > 0 && closed.length === 0;
-  if (unclosed.length > 0) {
-    await writeRunMetadata(runId, { merge: { rosterUnclosed: unclosed }, touch: false });
-  }
+  // what it could not close is the release's residue (`residue.ts`), closed into it by a later record
+  await markResidue(
+    runId,
+    failed.map((f) => f.id),
+  );
 
   // The ship, stamped on the release row itself. It is not read back off the run's status because
   // `cancelConcludedRun` flips a `completed` run to `cancelled`, and a release that shipped and was
@@ -173,7 +174,7 @@ export async function finishReleaseBatch(
     recordedLive: shipsNone,
     fence,
   });
-  await holdUnclosed(runId, run?.releaseVersion ?? null, failed);
+  await holdResidue(runId, run?.releaseVersion ?? null, failed);
   // a landing this release holds whose mark came after its cut, so its roster never named it, is
   // recorded as shipped in this release by its finish (ISS-888)
   if (!shipsNone) await claimMarkedLate(runId, actor);
@@ -192,38 +193,6 @@ export async function finishReleaseBatch(
   }
 
   return result;
-}
-
-/**
- * Each issue the finish could not close, back at the gate and held out of every unattended cut,
- * the hold naming the refusal and who clears it. Written after the recovery: the hold is guarded on
- * the row waiting unclaimed.
- */
-async function holdUnclosed(
-  runId: string,
-  version: string | null,
-  failed: ReadonlyArray<{ id: string; reason: string }>,
-): Promise<void> {
-  if (failed.length === 0) return;
-  const [run] = await db
-    .select({ projectId: pipelineRuns.projectId })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-  if (!run) return;
-  const reasons = new Map(failed.map((f) => [f.id, f.reason]));
-  const asked = await openQuestionIdsOf(failed.map((f) => f.id));
-  await writeReleaseHolds({
-    projectId: run.projectId,
-    issueIds: failed.map((f) => f.id),
-    holdFor: (id) =>
-      unclosedHold({
-        version,
-        refusal: reasons.get(id) ?? '',
-        openQuestionIds: asked.get(id) ?? [],
-      }),
-    now: new Date(),
-  });
 }
 
 /** What the recovery did to the roster, and what the abort did to the run row. `alreadyClosed` is

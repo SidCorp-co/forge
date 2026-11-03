@@ -24,9 +24,7 @@ import { createReleaseBatch } from './create.js';
 import { CUTS_BY_MASTER_ACT } from './declarations.js';
 import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
-import { resolveReleaseDeclaration } from './gate.js';
 import { announceMethod } from './method.js';
-import { recordPromotionRelease } from './promotion-release.js';
 import {
   findReleaseBatchRun,
   getActiveReleaseBatch,
@@ -34,16 +32,14 @@ import {
   loadReleaseRoster,
 } from './queries.js';
 import { loadReleaseReadiness } from './readiness.js';
-import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
-import { recordLanding } from './recorded-landing.js';
+import { recordRelease } from './record-door.js';
+import { readReleaseRecord } from './recorded.js';
 import { refuseRelease } from './refuse.js';
 import { recordShippedIn } from './shipped-in.js';
 import { correctShippedIn } from './shipped-in-correct.js';
 import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
 import { readReleaseRunState } from './state.js';
-import { RELEASE_VERSION_SHAPE } from './version.js';
 import { releaseVersionRoutes } from './version-routes.js';
-import { givenReleaseVersion } from './version-store.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -250,26 +246,6 @@ const releaseRecordBodySchema = z
   })
   .strict();
 
-/** The version a production release is recorded under, refused by name where missing or misshapen. */
-function recordedVersion(sent: string | undefined): string {
-  if (sent === undefined) {
-    throw refuseRelease(
-      'RELEASE_VERSION_MISSING',
-      'A release is recorded under the version you released: send `version`, e.g. `v1.31.1`.',
-      '/version',
-    );
-  }
-  const version = givenReleaseVersion(sent);
-  if (!version) {
-    throw refuseRelease(
-      'RELEASE_VERSION_SHAPE',
-      `\`${sent}\` is no release version: send ${RELEASE_VERSION_SHAPE}, with or without a leading \`v\`.`,
-      '/version',
-    );
-  }
-  return version;
-}
-
 async function loadRunForProject(runId: string, projectId: string, userId: string) {
   const run = await findReleaseBatchRun(runId);
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
@@ -450,28 +426,7 @@ releaseBatchRoutes.post(
 
     await requireReleaseAct(c, projectId, 'recording a release');
 
-    // With no production environment the landing is the delivery, under the agent's version or one
-    // Forge cuts; anywhere else a release is the agent's record under the version it shipped (owner, 2026-11-01).
-    const declared = await resolveReleaseDeclaration(projectId);
-    const sent = { projectId, userId, ...c.req.valid('json') };
-    if (declared?.kind === 'no-release') {
-      // a landing takes the version the agent names, else one Forge cuts (REQ-45 r7 BC-11)
-      const version = sent.version === undefined ? undefined : recordedVersion(sent.version);
-      return c.json(await recordLanding({ ...sent, version }, declared.defaultBranch), 201);
-    }
-    if (sent.branch !== undefined) {
-      throw refuseRelease(
-        'RELEASE_RECORD_BRANCH_UNUSED',
-        '`branch` names where a landing is recorded, and this project declares a production environment, whose record is the version it released: send the record without `branch`.',
-        '/branch',
-      );
-    }
-    const version = recordedVersion(sent.version);
-    const result =
-      declared?.kind === 'promotion'
-        ? await recordPromotionRelease({ ...sent, version }, declared)
-        : await recordPerformedRelease({ ...sent, version });
-    return c.json(result, 201);
+    return c.json(await recordRelease({ projectId, userId, ...c.req.valid('json') }), 201);
   },
 );
 
