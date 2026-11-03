@@ -199,7 +199,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:ecosystem field:json:edges field:json:events field:json:expect field:json:facts
     field:json:feedback field:json:fields field:json:files field:json:findings field:json:from
     field:json:gate field:json:grants field:json:handle field:json:handles field:json:identity
-    field:json:inputs field:json:issues field:json:items field:json:kind field:json:labels
+    field:json:inputs field:json:items field:json:kind field:json:labels
     field:json:mergeRefused field:json:merged field:json:messages field:json:metadata
     field:json:mime field:json:model field:json:modules field:json:names field:json:needed
     field:json:needs field:json:node field:json:options field:json:params field:json:path

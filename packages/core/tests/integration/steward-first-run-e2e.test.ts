@@ -132,11 +132,11 @@ describe('a stuck issue takes its note end to end (first live run: PUT …/stewa
     expect(row?.note).toMatchObject({ lines, stale: false });
   });
 
-  it('names every kind the note door takes, issue included, where the kind is wrong', async () => {
+  it('names every kind the note door takes, issue and workflow included, where the kind is wrong', async () => {
     const read = await say('owner', 'GET', at('/steward-notes/bug/ISS-1'));
     expect(read.status).toBe(400);
     expect(JSON.stringify(read.json)).toContain(
-      'invalid path: /api/projects/<project>/steward-notes/<requirement|feedback|issue>/<key>',
+      'invalid path: /api/projects/<project>/steward-notes/<requirement|feedback|issue|workflow>/<key>',
     );
   });
 });
