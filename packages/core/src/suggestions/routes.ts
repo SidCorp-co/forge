@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnParam } from '../permissions/index.js';
+import { requiresByRule, requiresOnParam } from '../permissions/index.js';
 import { listSuggestions } from './list.js';
 import type { SuggestionActor } from './read.js';
 import {
@@ -120,11 +120,27 @@ suggestionRoutes.post(
   },
 );
 
+// accept, reject and revise are decided on the suggestion's row and refused by name in the
+// SUGGESTION_REFUSED envelope, so each is declared by the rule forge_design's action names; no floor
+const ACCEPT = requiresByRule(
+  'suggestions/accept-gate.ts:acceptGateOf',
+  "the suggestion's kind decides: suggestions.approve, or the person a breakdown waits on",
+);
+const REJECT = requiresByRule(
+  'suggestions/service.ts:rejectSuggestion',
+  'suggestions.approve, refused by name in the SUGGESTION_REFUSED envelope',
+);
+const REVISE = requiresByRule(
+  'suggestions/propose.ts:reviseSuggestion',
+  "the suggestion's producer (project.write), or a holder of suggestions.approve",
+);
+
 const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty object');
 
 suggestionRoutes.post(
   '/:id/suggestions/:sid/accept',
   suggestionParam,
+  ACCEPT,
   strictBody(acceptSuggestionRequestSchema, ACCEPT_SUGGESTION_SHAPE),
   async (c) => {
     const { id, sid } = c.req.valid('param');
@@ -143,6 +159,7 @@ suggestionRoutes.post(
 suggestionRoutes.post(
   '/:id/suggestions/:sid/reject',
   suggestionParam,
+  REJECT,
   strictBody(rejectSuggestionRequestSchema, '{ reason } says why'),
   async (c) => {
     const { id, sid } = c.req.valid('param');
@@ -161,6 +178,7 @@ suggestionRoutes.post(
 suggestionRoutes.post(
   '/:id/suggestions/:sid/revise',
   suggestionParam,
+  REVISE,
   strictBody(reviseSuggestionRequestSchema, REVISE_SUGGESTION_SHAPE),
   async (c) => {
     const { id, sid } = c.req.valid('param');

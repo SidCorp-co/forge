@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/suggestions/routes.ts
 /**
  * ISS-281 / FB-16: a person's accept reason is shown where the act is read. ISS-84 made every accept
  * route keep one; two were never read back: a delivery accept (kept only on its kernel transition, so
