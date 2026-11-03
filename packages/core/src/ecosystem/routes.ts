@@ -8,6 +8,15 @@ import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnResolved } from '../permissions/index.js';
 import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
+  ECOSYSTEM_CREATE,
+  ECOSYSTEM_INVITE,
+  ECOSYSTEM_MEMBERS,
+  ECOSYSTEM_READ,
+  ECOSYSTEM_REGISTER,
+  ECOSYSTEM_WRITE,
+  ECOSYSTEMS_MINE,
+} from './ecosystem-declarations.js';
+import {
   createEcosystem,
   type EcosystemOutcome,
   type HeldEcosystem,
@@ -73,7 +82,7 @@ function answerMembership(c: Context, outcome: MembershipOutcome) {
   return c.json(serialiseMembership(outcome.membership));
 }
 
-ecosystemRoutes.post('/', zValidator('json', z.unknown()), async (c) => {
+ecosystemRoutes.post('/', ECOSYSTEM_CREATE, zValidator('json', z.unknown()), async (c) => {
   const { baseRevision, document } = envelopeOf(c.req.valid('json'));
   if (baseRevision !== null) {
     return refused(
@@ -92,32 +101,40 @@ ecosystemRoutes.post('/', zValidator('json', z.unknown()), async (c) => {
 });
 
 // the person's ecosystems, the invitations to their projects and every thread one of their projects sent or received, across ecosystems, in one read: the Ecosystem menu, the Threads inbox and the empty state all stand on it
-ecosystemRoutes.get('/mine', noQuery, async (c) => c.json(await readWorkspace(c.get('userId'))));
+ecosystemRoutes.get('/mine', ECOSYSTEMS_MINE, noQuery, async (c) =>
+  c.json(await readWorkspace(c.get('userId'))),
+);
 
-ecosystemRoutes.get('/:id', idParam, noQuery, async (c) => {
+ecosystemRoutes.get('/:id', idParam, ECOSYSTEM_READ, noQuery, async (c) => {
   const { eco } = await readableEcosystem(c.get('userId'), c.req.valid('param').id);
   return c.json(serialiseEcosystem(eco));
 });
 
-ecosystemRoutes.put('/:id', idParam, zValidator('json', z.unknown()), async (c) => {
-  const { baseRevision, document } = envelopeOf(c.req.valid('json'));
-  return answerEcosystem(
-    c,
-    await writeEcosystem({
-      id: c.req.valid('param').id,
-      userId: c.get('userId'),
-      baseRevision,
-      raw: document,
-    }),
-  );
-});
+ecosystemRoutes.put(
+  '/:id',
+  idParam,
+  ECOSYSTEM_WRITE,
+  zValidator('json', z.unknown()),
+  async (c) => {
+    const { baseRevision, document } = envelopeOf(c.req.valid('json'));
+    return answerEcosystem(
+      c,
+      await writeEcosystem({
+        id: c.req.valid('param').id,
+        userId: c.get('userId'),
+        baseRevision,
+        raw: document,
+      }),
+    );
+  },
+);
 
-ecosystemRoutes.get('/:id/revisions', idParam, noQuery, async (c) => {
+ecosystemRoutes.get('/:id/revisions', idParam, ECOSYSTEM_READ, noQuery, async (c) => {
   const { eco } = await readableEcosystem(c.get('userId'), c.req.valid('param').id);
   return c.json(serialiseRevisions(await listEcosystemRevisions(eco.id)));
 });
 
-ecosystemRoutes.get('/:id/members', idParam, noQuery, async (c) => {
+ecosystemRoutes.get('/:id/members', idParam, ECOSYSTEM_MEMBERS, noQuery, async (c) => {
   const { memberships } = await visibleMemberships(c.get('userId'), c.req.valid('param').id);
   return c.json({
     memberships: memberships.map(serialiseMembership),
@@ -128,6 +145,7 @@ ecosystemRoutes.get('/:id/members', idParam, noQuery, async (c) => {
 ecosystemRoutes.post(
   '/:id/invitations',
   idParam,
+  ECOSYSTEM_INVITE,
   zValidator(
     'json',
     z.strictObject({ project: z.uuid() }),
@@ -210,7 +228,7 @@ const registerQuery = zValidator(
   }),
 );
 
-ecosystemRoutes.get('/:id/register', idParam, registerQuery, async (c) => {
+ecosystemRoutes.get('/:id/register', idParam, ECOSYSTEM_REGISTER, registerQuery, async (c) => {
   const { rows, total } = await readRegister(
     c.get('userId'),
     c.req.valid('param').id,

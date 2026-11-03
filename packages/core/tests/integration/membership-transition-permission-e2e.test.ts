@@ -6,6 +6,7 @@
  *
  * @direct-test-of packages/core/src/ecosystem/membership-service.ts
  * @direct-test-of packages/core/src/ecosystem/routes.ts
+ * @direct-test-of packages/core/src/ecosystem/ecosystem-declarations.ts
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

@@ -6,6 +6,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
+import { ECOSYSTEM_READ, ECOSYSTEM_SUPERSEDE } from './ecosystem-declarations.js';
 import {
   listBuilderRunsAs,
   listLinksAs,
@@ -136,7 +137,7 @@ linkProjectRoutes.put('/:id/builder-runs/:run', runParam, envelope, async (c) =>
   );
 });
 
-busRoutes.get('/:id/bus', idParam, noQuery, async (c) =>
+busRoutes.get('/:id/bus', idParam, ECOSYSTEM_READ, noQuery, async (c) =>
   c.json(await readBus(c.get('userId'), c.req.valid('param').id)),
 );
 
@@ -170,7 +171,13 @@ linkProjectRoutes.post('/:id/builder-runs/:run/supersede', runParam, supersedeBo
 });
 
 // the ecosystem's door, an account route: a session or a token fenced to no project reaches it, as the steward org's admin does
-busRoutes.post('/:id/builder-runs/:run/supersede', supersedeParam, supersedeBody, async (c) => {
-  const { id, run } = c.req.valid('param');
-  return supersedeAnswer(c, { runId: run, ecosystemId: id }, c.req.valid('json'));
-});
+busRoutes.post(
+  '/:id/builder-runs/:run/supersede',
+  supersedeParam,
+  ECOSYSTEM_SUPERSEDE,
+  supersedeBody,
+  async (c) => {
+    const { id, run } = c.req.valid('param');
+    return supersedeAnswer(c, { runId: run, ecosystemId: id }, c.req.valid('json'));
+  },
+);
