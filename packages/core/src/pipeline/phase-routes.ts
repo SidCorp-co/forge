@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { refusePipeline } from './refuse.js';
 import { readPipelineRun } from './runs.js';
@@ -29,15 +29,15 @@ const endBodySchema = z
   })
   .strict();
 
-async function runProjectFor(
-  runId: string,
-  userId: string,
-  permission: 'project.read' | 'project.write',
-) {
+const RUN_PROJECT = 'the project of the pipeline run the path names';
+const RUN_READ = requiresOnResolved('project.read', RUN_PROJECT);
+const RUN_WRITE = requiresOnResolved('project.write', RUN_PROJECT);
+
+/** The run the path names, once the caller holds on its project what the route declares. */
+async function runProjectFor(runId: string, userId: string) {
   const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
-  const access = await loadProjectAccess(row.projectId, userId);
-  requireHeld(access, permission);
+  requireDeclared(await loadProjectAccess(row.projectId, userId));
   return row;
 }
 
@@ -47,11 +47,12 @@ phaseRoutes.use('*', requireAuth(), assertEmailVerified());
 phaseRoutes.post(
   '/:id/phases',
   zValidator('param', idParamSchema),
+  RUN_WRITE,
   zValidator('json', startBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    const run = await runProjectFor(id, c.get('userId'), 'project.write');
+    const run = await runProjectFor(id, c.get('userId'));
     if (body.issueId && body.issueId !== run.issueId) {
       throw refusePipeline(
         'PHASE_REF_NOT_IN_RUN',
@@ -74,11 +75,12 @@ phaseRoutes.post(
 phaseRoutes.post(
   '/:id/phases/end',
   zValidator('param', idParamSchema),
+  RUN_WRITE,
   zValidator('json', endBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    await runProjectFor(id, c.get('userId'), 'project.write');
+    await runProjectFor(id, c.get('userId'));
     await endPhase({
       runId: id,
       phase: body.phase,
@@ -90,18 +92,26 @@ phaseRoutes.post(
   },
 );
 
-phaseRoutes.get('/:id/resume-point', zValidator('param', idParamSchema), noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  await runProjectFor(id, c.get('userId'), 'project.read');
-  const row = await resumePoint(id);
-  return c.json({
-    resumePoint: row ? { phase: row.phase, attempt: row.attempt, startedAt: row.startedAt } : null,
-  });
-});
+phaseRoutes.get(
+  '/:id/resume-point',
+  zValidator('param', idParamSchema),
+  RUN_READ,
+  noQuery,
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await runProjectFor(id, c.get('userId'));
+    const row = await resumePoint(id);
+    return c.json({
+      resumePoint: row
+        ? { phase: row.phase, attempt: row.attempt, startedAt: row.startedAt }
+        : null,
+    });
+  },
+);
 
-phaseRoutes.get('/:id/phases', zValidator('param', idParamSchema), noQuery, async (c) => {
+phaseRoutes.get('/:id/phases', zValidator('param', idParamSchema), RUN_READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  await runProjectFor(id, c.get('userId'), 'project.read');
+  await runProjectFor(id, c.get('userId'));
   const rows = await listPhases(id);
   return c.json({
     phases: rows.map((row) => ({

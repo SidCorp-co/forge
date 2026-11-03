@@ -4,6 +4,7 @@ import { jobTypes } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requiresByRule } from '../permissions/index.js';
 import { readStepDurations } from './read.js';
 import { shippedPerDay } from './throughput-series.js';
 
@@ -14,11 +15,23 @@ const querySchema = z.object({
 
 const stepDurationsQuerySchema = querySchema.extend({ step: z.enum(jobTypes).optional() });
 
-async function loadVisibleProjectIdsScoped(userId: string, scopedTo?: string): Promise<string[]> {
+/**
+ * The projects an analytics read covers: the caller's visible ones, narrowed to `scopedTo` where it
+ * is one of them; a project not visible to the caller reads as none, never as a refusal.
+ */
+export async function loadVisibleProjectIdsScoped(
+  userId: string,
+  scopedTo?: string,
+): Promise<string[]> {
   const ids = await loadVisibleProjectIds(userId);
   if (!scopedTo) return ids;
   return ids.includes(scopedTo) ? [scopedTo] : [];
 }
+
+const VISIBLE_SCOPE = requiresByRule(
+  'pipeline/analytics-routes.ts:loadVisibleProjectIdsScoped',
+  "the caller's visible projects, narrowed to projectId where it is one of them; any other reads as empty",
+);
 
 export const pipelineAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -27,19 +40,25 @@ pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
  * Issues shipped per project per UTC day, one row for each of the last `days` calendar dates
  * whether or not anything shipped on it — see `shippedPerDay`.
  */
-pipelineAnalyticsRoutes.get('/throughput', zValidator('query', querySchema), async (c) => {
-  const { days, projectId } = c.req.valid('query');
-  const userId = c.get('userId');
+pipelineAnalyticsRoutes.get(
+  '/throughput',
+  zValidator('query', querySchema),
+  VISIBLE_SCOPE,
+  async (c) => {
+    const { days, projectId } = c.req.valid('query');
+    const userId = c.get('userId');
 
-  const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-  if (projectIds.length === 0) return c.json([]);
+    const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
+    if (projectIds.length === 0) return c.json([]);
 
-  return c.json(await shippedPerDay(projectIds, days, new Date()));
-});
+    return c.json(await shippedPerDay(projectIds, days, new Date()));
+  },
+);
 
 pipelineAnalyticsRoutes.get(
   '/step-durations',
   zValidator('query', stepDurationsQuerySchema),
+  VISIBLE_SCOPE,
   async (c) => {
     const { days, projectId, step } = c.req.valid('query');
     const userId = c.get('userId');

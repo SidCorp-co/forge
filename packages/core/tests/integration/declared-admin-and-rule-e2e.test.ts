@@ -20,8 +20,13 @@
  * @direct-test-of packages/core/src/assistant/conversation-routes.ts
  * @direct-test-of packages/core/src/assistant/conversation-scope.ts
  * @direct-test-of packages/core/src/agent-sessions/routes.ts
+ * @direct-test-of packages/core/src/pipeline/phase-routes.ts
+ * @direct-test-of packages/core/src/pipeline/runs-routes.ts
+ * @direct-test-of packages/core/src/pipeline/analytics-routes.ts
  */
 
+import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 const OPERATOR = 'operator@declared-admin.test';
@@ -30,6 +35,7 @@ vi.hoisted(() => {
   process.env.ADMIN_EMAILS = 'operator@declared-admin.test';
 });
 
+import { db } from '../../src/db/client.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
@@ -157,5 +163,35 @@ describe('a conversation route declared by its room rule (readableConversation),
     expect(unpinned.status, JSON.stringify(unpinned.body)).toBe(403);
     const pinned = await api(ownerToken, 'PUT', `/api/conversations/${roomId}/pin`);
     expect(pinned.status, JSON.stringify(pinned.body)).toBe(200);
+  });
+});
+
+describe("a pipeline run's routes, declared resolved on the run's project", () => {
+  it('answers a reader the phases, refuses them the pause (project.write), and refuses a stranger', async () => {
+    const owner = (await createTestUser({ verified: true })).id;
+    const project = await createTestProject(owner);
+    const viewer = (await createTestUser({ verified: true })).id;
+    await addProjectMember(project.id, viewer, 'viewer');
+    const runId = randomUUID();
+    await db.execute(
+      sql`INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${project.id}, 'interactive', 'running')`,
+    );
+    const viewerToken = await userToken(viewer);
+
+    const read = await api(viewerToken, 'GET', `/api/pipeline-runs/${runId}/phases`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const paused = await api(viewerToken, 'POST', `/api/pipeline-runs/${runId}/pause`);
+    expect(paused.status, JSON.stringify(paused.body)).toBe(403);
+    expect(JSON.stringify(paused.body)).toContain('project.write');
+    const stranger = await api(tokens.person, 'GET', `/api/pipeline-runs/${runId}/resume-point`);
+    expect(stranger.status, JSON.stringify(stranger.body)).toBe(403);
+  });
+
+  it("reads analytics over the caller's visible projects only: another project's reads as empty", async () => {
+    const owner = (await createTestUser({ verified: true })).id;
+    const project = await createTestProject(owner);
+    const res = await api(tokens.person, 'GET', `/api/pipeline/throughput?projectId=${project.id}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toEqual([]);
   });
 });
