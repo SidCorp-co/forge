@@ -1,4 +1,5 @@
 import { saidDisagreements } from '@forge/contracts/said';
+// @direct-test-of packages/core/src/issues/standing.ts
 // FB-104: a draft read "Waits on A project writer" — dev's ISS-146..148 and REQ-17 — naming nobody,
 // so a reader could not tell who that was or whether anyone was. A person's turn now names the
 // project's writers, or says that no person holds write and where an admin grants it.
@@ -53,6 +54,7 @@ const input = (
   viewer,
   writers,
   admins: [],
+  admit: { permission: 'project.write', holders: writers },
   withheld: null,
   statusSince: now,
   master: 'serves',
@@ -82,7 +84,9 @@ describe("a person's turn names who can take it", () => {
   });
 
   it('still addresses a viewer who can write as You', () => {
-    const s = deriveIssueStanding(input('draft', [], { userId: 'u1', canWrite: true }));
+    const s = deriveIssueStanding(
+      input('draft', [], { userId: 'u1', canWrite: true, canAdmit: true }),
+    );
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You' });
   });
 });
@@ -101,7 +105,7 @@ describe('a draft behind a live blocker', () => {
 
   it('waits on its blocker, never on a person, even for a viewer who can write', () => {
     const s = deriveIssueStanding({
-      ...input('draft', ['Ana'], { userId: 'u1', canWrite: true }),
+      ...input('draft', ['Ana'], { userId: 'u1', canWrite: true, canAdmit: true }),
       blockedBy: [blocker],
     });
     expect(s.attentionGroup).toBe('stuck');
@@ -114,5 +118,89 @@ describe('a draft behind a live blocker', () => {
       blockedBy: [{ ...blocker, holds: false }],
     });
     expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ana', act: 'take on or drop' });
+  });
+});
+
+// ISS-926: a read-only viewer's standing grouped "answer" needs_you while it named another person as
+// owing it, so their Needs you and /attention counted a decision they could not take. The group now
+// follows the kind and the permission the act asks together.
+describe("a person's act is the viewer's only where they hold what it asks", () => {
+  const reader = { userId: 'u9', canWrite: false, canAdmit: false };
+  const writer = { userId: 'u1', canWrite: true, canAdmit: false };
+  const admitter = { userId: 'u2', canWrite: true, canAdmit: true };
+  const asked = (viewer: IssueStandingInput['viewer']) => ({
+    ...input('in_progress', ['Ana'], viewer),
+    owesAnswer: true,
+  });
+  const parked = (viewer: IssueStandingInput['viewer'], waitingKind: string) => ({
+    ...input('needs_info', ['Ana'], viewer),
+    waitingKind,
+  });
+  const strictDraft = (viewer: IssueStandingInput['viewer']) => ({
+    ...input('draft', ['Ana', 'Bo'], viewer),
+    admit: { permission: 'issues.admit' as const, holders: ['Bo'] },
+  });
+
+  it('groups a question owed to a read-only viewer as waiting on the writers, never needs_you', () => {
+    const s = deriveIssueStanding(asked(reader));
+    expect(s.attentionGroup).toBe('queued');
+    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ana', act: 'answer a question' });
+  });
+
+  it.each(['needs_answer', 'needs_decision', 'needs_resource'])(
+    'groups a needs_info park (%s) as waiting on the writers for a read-only viewer',
+    (kind) => {
+      const s = deriveIssueStanding(parked(reader, kind));
+      expect(s.attentionGroup).toBe('queued');
+      expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ana' });
+    },
+  );
+
+  it.each(['needs_answer', 'needs_decision', 'needs_resource'])(
+    'keeps a needs_info park (%s) on the Needs you of a viewer who holds project.write',
+    (kind) => {
+      const s = deriveIssueStanding(parked(writer, kind));
+      expect(s.attentionGroup).toBe('needs_you');
+      expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You' });
+    },
+  );
+
+  it('keeps a question owed on the Needs you of a viewer who holds project.write', () => {
+    const s = deriveIssueStanding(asked(writer));
+    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'answer a question' });
+  });
+
+  it('asks a draft of the admit gate: a writer without issues.admit waits on its holders', () => {
+    const s = deriveIssueStanding(strictDraft(writer));
+    expect(s.attentionGroup).toBe('queued');
+    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Bo', act: 'take on or drop' });
+  });
+
+  it('keeps a draft on the Needs you of a viewer who holds what the admit gate asks', () => {
+    const s = deriveIssueStanding(strictDraft(admitter));
+    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'take on or drop' });
+  });
+
+  it('says nobody holds issues.admit, where it is granted, when the gate is on and nobody does', () => {
+    const s = deriveIssueStanding({
+      ...strictDraft(writer),
+      admit: { permission: 'issues.admit', holders: [] },
+    });
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
+    expect(s.waitingOn.act).toBe(
+      'take on or drop: nobody holds issues.admit; grant it under Settings → Members',
+    );
+  });
+
+  it('never groups a row needs_you that names anyone but the viewer', () => {
+    for (const viewer of [null, reader, writer, admitter]) {
+      for (const i of [asked(viewer), parked(viewer, 'needs_decision'), strictDraft(viewer)]) {
+        const s = deriveIssueStanding(i);
+        expect(s.attentionGroup === 'needs_you').toBe(s.waitingOn.kind === 'you');
+      }
+    }
   });
 });

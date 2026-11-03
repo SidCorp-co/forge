@@ -35,6 +35,7 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   viewer: null,
   writers: [],
   admins: ['Ada'],
+  admit: { permission: 'project.write', holders: [] },
   withheld,
   statusSince: now,
   master: 'serves',

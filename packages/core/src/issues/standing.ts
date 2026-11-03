@@ -25,6 +25,7 @@ import type {
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { ParkAnsweredView } from '@forge/contracts/park';
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/standing';
@@ -104,10 +105,19 @@ export interface IssueStandingInput {
   owedMark?: { number: number; commit: string } | null;
   /** The automatic release's standing hold on it (`release-batch/hold.ts:releaseHoldsOf`), else null. */
   releaseHold: ReleaseHoldView | null;
-  /** Null for a reader with no person behind it; nothing then reads as theirs. */
-  viewer: { userId: string; canWrite: boolean } | null;
+  /**
+   * Null for a reader with no person behind it; nothing then reads as theirs. `canWrite` is
+   * project.write, what an answer, a decision, a resource or a resume asks; `canAdmit` is what the
+   * admit gate asks (`admit.permission`), which taking a draft on asks.
+   */
+  viewer: { userId: string; canWrite: boolean; canAdmit: boolean } | null;
   /** The names of the people holding project.write, whom a person's turn names (FB-104). */
   writers: readonly string[];
+  /**
+   * What taking a draft on asks (`transition-guards.ts`, `approvals.admit`): issues.admit where the
+   * gate is on, project.write where it is off, and the names of the people holding it.
+   */
+  admit: { permission: ProjectPermission; holders: readonly string[] };
   /** The names of the people holding project.admin, whom an act only an admin takes names. */
   admins: readonly string[];
   /** The refusal the admissible list withholds it by (`devices/admissible.ts`), first that holds. */
@@ -129,32 +139,50 @@ const named = (name: string) => say('standing.who.named', { name });
 const minutesSince = (from: Date | null, now: Date) =>
   from ? Math.max(0, Math.round((now.getTime() - from.getTime()) / 60_000)) : null;
 
-type People = Pick<IssueStandingInput, 'viewer' | 'writers'>;
+type People = Pick<IssueStandingInput, 'viewer' | 'writers' | 'admit'>;
 
-/** Whose a person's act is: the viewer where they can write, else the project's writers by name,
- *  else nobody — said with where write is granted, never "A project writer" naming no one (FB-104). */
+/**
+ * The permission a person's act on an issue asks: an answer, a decision, a resource and a resume ask
+ * project.write (the answer route's floor, `questions/routes.ts`; the transition guard); taking a
+ * draft on asks what the admit gate asks.
+ */
+type Need = 'write' | 'admit';
+
+const holdsNeed = (viewer: People['viewer'], need: Need) =>
+  need === 'admit' ? viewer?.canAdmit === true : viewer?.canWrite === true;
+
+const needOf = (people: People, need: Need) =>
+  need === 'admit'
+    ? people.admit
+    : { permission: 'project.write' as const, holders: people.writers };
+
+/**
+ * Whose a person's act is (ISS-926): the viewer's, grouped `needs_you`, only where they hold the
+ * permission the act asks; else its holders' by name, grouped `queued` as a wait on them, never on
+ * the viewer; else nobody's, said with where the permission is granted, never "A project writer"
+ * naming no one (FB-104). The group follows the kind and the permission together.
+ */
 function forPerson(
   people: People,
   act: Said,
   rule: Said,
+  need: Need = 'write',
 ): { group: IssueAttentionGroup; waitingOn: IssueWaitingOn } {
-  if (people.viewer?.canWrite)
+  if (holdsNeed(people.viewer, need))
     return { group: 'needs_you', waitingOn: wait('you', YOU, act, rule) };
-  if (people.writers.length === 0) {
+  const { permission, holders } = needOf(people, need);
+  if (holders.length === 0) {
     return {
       group: 'stuck',
       waitingOn: wait(
         'none',
         NOBODY,
-        nobodyHoldsAct(act, 'project.write'),
-        say('issues.rule.noWriter', { rule, perm: 'project.write' }),
+        nobodyHoldsAct(act, permission),
+        say('issues.rule.noWriter', { rule, perm: permission }),
       ),
     };
   }
-  return {
-    group: 'needs_you',
-    waitingOn: wait('person', holdersWho(people.writers), act, rule),
-  };
+  return { group: 'queued', waitingOn: wait('person', holdersWho(holders), act, rule) };
 }
 
 const held = (lease: IssueLeaseView | null) =>
@@ -268,7 +296,12 @@ function personTurn(input: IssueStandingInput): Turn | null {
     // a draft behind a live blocker waits on that blocker first, not on a person's Needs you
     const blocker = input.blockedBy.find((b) => b.holds);
     if (blocker) return blockerTurn(blocker);
-    return forPerson(input, say('issues.standing.act.takeOnOrDrop'), say('issues.rule.draft'));
+    return forPerson(
+      input,
+      say('issues.standing.act.takeOnOrDrop'),
+      say('issues.rule.draft'),
+      'admit',
+    );
   }
   return null;
 }

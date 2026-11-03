@@ -43,6 +43,7 @@ const issueInput = (status: IssueStatus, master: MasterServing): IssueStandingIn
   viewer: null,
   writers: ['Ana'],
   admins: ['Ana'],
+  admit: { permission: 'project.write', holders: ['Ana'] },
   withheld: null,
   statusSince: SENT_BACK,
   master,

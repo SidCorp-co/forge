@@ -28,10 +28,9 @@ import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { holderNames, holds } from '../permissions/index.js';
+import { holderNames } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
 import { deliveryHeads } from './delivery-head.js';
@@ -64,6 +63,7 @@ import {
   requirementsOf,
   tracedCodesOf,
 } from './standing-facts-read.js';
+import { admitOf, viewerOf } from './standing-viewer-read.js';
 import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
 import { stepFactsOf } from './step-facts-read.js';
@@ -203,20 +203,6 @@ export interface StandingViewer {
   userId: string;
 }
 
-async function viewerOf(viewer: StandingViewer | null, projectId: string) {
-  if (!viewer) return null;
-  const [access, people] = await Promise.all([
-    effectiveProjectRole(viewer.userId, projectId),
-    peopleOf([viewer.userId]),
-  ]);
-  // A person's wait addresses its viewer as "You" only when the viewer is a person.
-  const person = people.get(viewer.userId)?.kind !== 'agent';
-  return {
-    userId: viewer.userId,
-    canWrite: person && access !== null && holds(access, 'project.write'),
-  };
-}
-
 type Facts = {
   key: (seq: number) => string;
   edges: BlockingEdge[];
@@ -230,6 +216,7 @@ type Facts = {
   viewer: Awaited<ReturnType<typeof viewerOf>>;
   writers: string[];
   admins: string[];
+  admit: IssueStandingInput['admit'];
   withheld: Map<string, IssueWithheld>;
   releaseHolds: Map<string, ReleaseHoldView>;
   master: MasterServing;
@@ -330,6 +317,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     viewer: f.viewer,
     writers: f.writers,
     admins: f.admins,
+    admit: f.admit,
     withheld: f.withheld.get(r.id) ?? null,
     statusSince: new Date(r.status_since),
     master: f.master,
@@ -345,6 +333,7 @@ async function standingRows(
 ): Promise<IssueStandingRow[]> {
   if (raws.length === 0) return [];
   const ids = raws.map((r) => r.id);
+  const admitting = admitOf(projectId);
   const [
     prefix,
     edges,
@@ -356,6 +345,7 @@ async function standingRows(
     withheld,
     writers,
     admins,
+    admit,
     master,
     releaseHolds,
   ] = await Promise.all([
@@ -365,10 +355,11 @@ async function standingRows(
     modulesOf(projectId, ids),
     feedbackOf(ids),
     approvalRequired(projectId),
-    viewerOf(viewer, projectId),
+    viewerOf(viewer, projectId, admitting),
     withheldOf(projectId, raws),
     holderNames('project.write', projectId),
     holderNames('project.admin', projectId),
+    admitting,
     masterServingOf(projectId),
     releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
@@ -394,6 +385,7 @@ async function standingRows(
     viewer: who,
     writers,
     admins,
+    admit,
     withheld,
     releaseHolds,
     master,
