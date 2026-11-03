@@ -1,12 +1,18 @@
 /**
  * ISS-923 (owner ruling 2026-11-03, `beta-issues-are-worked-on-dev`): a `beta_port` schedule's fire
- * ports each forge-beta issue not yet ported to the same-slug project here, open, with the beta key
- * and id on its first line and the dev key commented back on beta; it never ports one twice; it
- * mirrors a dev status move onto beta once, and comments a move beta refuses once; it names a beta
- * project with no twin and a missing secret, creating nothing for them; and the token never leaves.
- * forge-beta is a stub HTTP server this file starts and stops. Against real Postgres.
+ * ports each forge-beta issue filed or reopened after the ruling and not yet ported to the same-slug
+ * project here, open, with the beta key and id on its first line and the dev key commented back on
+ * beta; an older one is counted and never ported; it never ports one twice; it mirrors a dev status
+ * move onto beta once, and comments a move beta refuses once; a close beta refuses for want of a
+ * shipped record is finished the nearest legal way; it names a beta project with no twin, a missing
+ * secret and a missing ruling, creating nothing for them; `/run` answers 202 before the beta reads,
+ * and the fire settles after; and the token never leaves. forge-beta is a stub HTTP server this file
+ * starts and stops. Against real Postgres.
  *
  * @direct-test-of packages/core/src/beta-port/run.ts
+ * @direct-test-of packages/core/src/beta-port/mirror.ts
+ * @direct-test-of packages/core/src/schedules/dispatch.ts
+ * @direct-test-of packages/core/src/knowledge/org-knowledge.ts
  * @direct-test-of packages/core/src/beta-port/store.ts
  * @direct-test-of packages/core/src/schedules/beta-port-dispatch.ts
  * @direct-test-of packages/core/src/integrations/peer-forge/client.ts
@@ -14,10 +20,23 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterRuling,
+  beforeRuling,
+  beta,
+  betaIssue,
+  type FireRow,
+  fireRow,
+  RULING_AT,
+  type StubIssue,
+  settledFire,
+  startBeta,
+  stopBeta,
+  TOKEN,
+  writeRuling,
+} from '../helpers/beta-port-world.js';
 import {
   closeWorld,
   ok,
@@ -28,30 +47,6 @@ import {
 } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
 
-const TOKEN = 'beta-token-0123456789abcdef-NEVER-LEAVES';
-
-interface StubIssue {
-  id: string;
-  displayId: string;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  category: string | null;
-}
-
-/** forge-beta as far as the port reads and writes it, with every request it took. */
-const beta = {
-  projects: [] as { id: string; slug: string }[],
-  issues: new Map<string, StubIssue[]>(),
-  comments: new Map<string, string[]>(),
-  /** The statuses a transition is refused into, by code. */
-  refuseInto: new Map<string, string>(),
-  transitions: [] as { issueId: string; toStatus: string; reason: string }[],
-  unauthorised: 0,
-};
-
-let server: Server;
 let baseUrl = '';
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
 let ownerId = '';
@@ -60,85 +55,9 @@ let twin = { id: '', slug: '' };
 let betaProjectId = '';
 const logged: string[] = [];
 
-async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  const text = Buffer.concat(chunks).toString('utf8');
-  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
-}
-
-function startBeta(): Promise<void> {
-  server = createServer(async (req, res) => {
-    const send = (status: number, body: unknown) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(body));
-    };
-    if (req.headers.authorization !== `Bearer ${TOKEN}`) {
-      beta.unauthorised += 1;
-      return send(401, { code: 'UNAUTHORIZED', message: 'no' });
-    }
-    const url = new URL(req.url ?? '/', 'http://beta');
-    const parts = url.pathname.split('/').filter(Boolean);
-    if (req.method === 'GET' && url.pathname === '/api/projects') return send(200, beta.projects);
-    if (req.method === 'GET' && parts[1] === 'projects' && parts[3] === 'issues') {
-      const items = beta.issues.get(parts[2] as string) ?? [];
-      return send(200, { items, returned: items.length, total: items.length, hasMore: false });
-    }
-    if (parts[1] === 'issues' && parts[3] === 'comments') {
-      const id = parts[2] as string;
-      if (req.method === 'GET') {
-        const items = (beta.comments.get(id) ?? []).map((body, i) => ({ id: `c${i}`, body }));
-        return send(200, { items, nextCursor: null, hasMore: false });
-      }
-      const body = await readBody(req);
-      beta.comments.set(id, [...(beta.comments.get(id) ?? []), String(body.body)]);
-      return send(201, { id: randomUUID() });
-    }
-    if (req.method === 'POST' && parts[1] === 'issues' && parts[3] === 'transition') {
-      const id = parts[2] as string;
-      const body = await readBody(req);
-      const toStatus = String(body.toStatus);
-      beta.transitions.push({ issueId: id, toStatus, reason: String(body.reason) });
-      const refusal = beta.refuseInto.get(toStatus);
-      if (refusal) {
-        return send(422, {
-          code: refusal,
-          message: 'refused, nothing written',
-          error: { code: refusal, message: 'refused', refusals: [] },
-        });
-      }
-      for (const list of beta.issues.values()) {
-        const issue = list.find((i) => i.id === id);
-        if (issue) issue.status = toStatus;
-      }
-      return send(200, { ok: true });
-    }
-    return send(404, { code: 'NOT_FOUND', message: `${req.method} ${url.pathname}` });
-  });
-  return new Promise((resolve) =>
-    server.listen(0, '127.0.0.1', () => {
-      baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      resolve();
-    }),
-  );
-}
-
-function betaIssue(seq: number, over: Partial<StubIssue> = {}): StubIssue {
-  return {
-    id: randomUUID(),
-    displayId: `ISS-${seq}`,
-    title: `Beta issue ${seq}`,
-    description: `What beta issue ${seq} asks for.`,
-    status: 'open',
-    priority: 'high',
-    category: 'bug',
-    ...over,
-  };
-}
-
 beforeAll(async () => {
   testEnv();
-  await startBeta();
+  baseUrl = await startBeta();
   const { app } = await import('../../src/index.js');
   await startQueue();
   const { logger } = await import('../../src/lib/logger.js');
@@ -162,7 +81,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   vi.restoreAllMocks();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await stopBeta();
   await closeWorld();
 });
 
@@ -189,14 +108,12 @@ async function setSecret(name: string, value: string) {
 
 async function fire(scheduleId: string) {
   const run = await say('owner', 'POST', `/api/schedules/${scheduleId}/run`);
-  const [settled] = await rows<{
-    status: string;
-    reason: string | null;
-    refusal: string | null;
-    output: string | null;
-    error: string | null;
-  }>(
-    sql`SELECT status, reason, refusal, output, error FROM schedule_runs WHERE schedule_id = ${scheduleId} ORDER BY started_at DESC LIMIT 1`,
+  if (run.status === 202) {
+    const fireId = (run.json as { fireId: string }).fireId;
+    return { http: run.status, body: run.json, ...(await settledFire(fireId)) };
+  }
+  const [settled] = await rows<FireRow>(
+    sql`SELECT id, status, reason, refusal, output, error FROM schedule_runs WHERE schedule_id = ${scheduleId} ORDER BY started_at DESC LIMIT 1`,
   );
   if (!settled) throw new Error('the run pressed recorded no fire');
   return { http: run.status, body: run.json, ...settled };
@@ -236,11 +153,29 @@ describe('a beta port fire (ISS-923)', () => {
     expect(beta.comments.size).toBe(0);
   });
 
-  it('(a) a new beta issue is ported open to the same-slug project, first line set, and beta is told the dev key', async () => {
+  it('(a) a missing ruling refuses the fire by name, before beta is read, and nothing is created', async () => {
     await setSecret('forge-beta-url', baseUrl);
     await setSecret('forge-beta-token', TOKEN);
     const settled = await fire(scheduleId);
+    expect(settled.http).toBe(422);
+    expect(settled).toMatchObject({
+      status: 'skipped',
+      reason: 'gate-refused',
+      refusal: 'BETA_PORT_CUTOFF_MISSING',
+    });
+    expect(settled.output).toContain('beta-issues-are-worked-on-dev');
+    expect(beta.requests).toBe(0);
+    expect(await devIssues()).toHaveLength(0);
+  });
+
+  it('(a) a new beta issue is ported open to the same-slug project, first line set, and beta is told the dev key', async () => {
+    await writeRuling(scheduleProjectId, RULING_AT);
+    const settled = await fire(scheduleId);
+    expect(settled.http).toBe(202);
     expect(settled.status, JSON.stringify(settled)).toBe('success');
+    expect(settled.output).toContain(
+      `cutoff: the owner's ruling beta-issues-are-worked-on-dev, ${RULING_AT.toISOString()}`,
+    );
     const [dev, ...more] = await devIssues();
     expect(more).toHaveLength(0);
     const source = (beta.issues.get(betaProjectId) as StubIssue[])[0] as StubIssue;
@@ -258,7 +193,7 @@ describe('a beta port fire (ISS-923)', () => {
     expect(dev?.description).toContain('What beta issue 1 asks for.');
     const devKey = `ISS-${dev?.iss_seq}`;
     expect(beta.comments.get(source.id)).toEqual([`Ported to forge-dev: ${devKey}`]);
-    expect(settled.output).toContain(`ISS-1 → ${devKey}`);
+    expect(settled.output).toContain(`${twin.slug}: beta ISS-1 → ${devKey}`);
   });
 
   it('(d) a beta project with no dev twin is named in the report, and nothing is created for it', async () => {
@@ -348,6 +283,218 @@ describe('a beta port fire (ISS-923)', () => {
       `forge-dev ${devKey} moved to dropped; forge-beta refused the matching move: BETA_REFUSES_THIS_EDGE.`,
     ]);
   });
+});
+
+describe('a beta port fire after the ruling (ISS-923)', () => {
+  it('(a) an issue filed before the ruling is counted and never ported, unless it was reopened after it', async () => {
+    const old = betaIssue(10, { createdAt: beforeRuling() });
+    const reopened = betaIssue(11, { createdAt: beforeRuling(), reopenCount: 1, status: 'reopen' });
+    const reopenedEarly = betaIssue(12, { createdAt: beforeRuling(), reopenCount: 2 });
+    const uncounted = betaIssue(13, { createdAt: beforeRuling() });
+    delete uncounted.reopenCount;
+    const bare = betaIssue(14, { description: 'The body a list row leaves out.' });
+    beta.bare.add(bare.id);
+    beta.activity.set(reopened.id, [
+      {
+        action: 'issue.statusChanged',
+        payload: { from: 'open', to: 'reopen' },
+        createdAt: beforeRuling(),
+      },
+      { action: 'comment.created', payload: { body: 'still broken' }, createdAt: afterRuling() },
+      {
+        action: 'issue.statusChanged',
+        payload: { from: 'closed', to: 'reopen' },
+        createdAt: afterRuling(),
+      },
+    ]);
+    beta.activity.set(reopenedEarly.id, [
+      {
+        action: 'issue.statusChanged',
+        payload: { from: 'open', to: 'reopen' },
+        createdAt: beforeRuling(),
+      },
+    ]);
+    beta.issues.get(betaProjectId)?.push(old, reopened, reopenedEarly, uncounted, bare);
+    const before = (await devIssues()).length;
+
+    const settled = await fire(scheduleId);
+    const ported = (await devIssues()).slice(before);
+    expect(ported.map((d) => d.title).sort()).toEqual([reopened.title, bare.title]);
+    expect(ported.find((d) => d.title === bare.title)?.description).toContain(
+      'The body a list row leaves out.',
+    );
+    expect(settled.output).toContain(`${twin.slug}: beta ISS-11 → `);
+    expect(settled.output).toContain(`${twin.slug}: beta ISS-14 → `);
+    expect(settled.output).toContain('before the ruling (1):');
+    expect(settled.output).toContain(
+      `${twin.slug}: 3 (not ported; 1 of them carry no reopenCount on beta, so a reopen since cannot be told)`,
+    );
+    for (const left of [old, reopenedEarly, uncounted]) {
+      expect(beta.comments.get(left.id) ?? []).toEqual([]);
+    }
+
+    const again = await fire(scheduleId);
+    expect(await devIssues()).toHaveLength(before + 2);
+    expect(again.output).toContain(`${twin.slug}: 3 (not ported;`);
+  });
+
+  it('(c) /run answers 202 with its fire before a slow beta answers, and the fire settles with its report', async () => {
+    beta.delayMs = 1500;
+    const pressed = Date.now();
+    const run = await say('owner', 'POST', `/api/schedules/${scheduleId}/run`);
+    const answeredIn = Date.now() - pressed;
+    expect(run.status).toBe(202);
+    const fireId = (run.json as { fireId: string }).fireId;
+    expect(fireId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(answeredIn).toBeLessThan(beta.delayMs);
+    expect((await fireRow(fireId))?.status).toBe('running');
+
+    // a second press while it runs starts nothing: two at once would port the same issue twice
+    const second = await say('owner', 'POST', `/api/schedules/${scheduleId}/run`);
+    expect(second.status).toBe(422);
+    expect(JSON.stringify(second.json)).toContain('BETA_PORT_FIRE_LIVE');
+
+    const settled = await settledFire(fireId);
+    beta.delayMs = 0;
+    expect(['success', 'skipped']).toContain(settled.status);
+    const read = ok(
+      await say('owner', 'GET', `/api/projects/${scheduleProjectId}/automation/fires/${fireId}`),
+    );
+    expect((read.fire as { output: string }).output).toContain('cutoff: the owner');
+    expect((read.fire as { output: string }).output).toBe(settled.output);
+  });
+
+  it('(c) an error after the answer settles the fire failed with the error', async () => {
+    const { openFire } = await import('../../src/schedules/fires.js');
+    const { settleAfterAnswer } = await import('../../src/schedules/dispatch.js');
+    const fireId = await openFire({ scheduleId, projectId: scheduleProjectId, trigger: 'manual' });
+    settleAfterAnswer(fireId, async () => {
+      throw new Error('beta went away after the answer');
+    });
+    const settled = await settledFire(fireId);
+    expect(settled.status).toBe('failed');
+    expect(settled.error).toContain('beta went away after the answer');
+  });
+});
+
+describe('a beta port close (ISS-923)', () => {
+  it('(d) a close beta refuses CLOSE_REQUIRES_SHIPPED is made legal and closed, or moved to the nearest legal status, once', async () => {
+    const closes = betaIssue(20);
+    const releases = betaIssue(21);
+    const legacy = betaIssue(22);
+    beta.issues.get(betaProjectId)?.push(closes, releases, legacy);
+    await fire(scheduleId);
+    const pairOf = async (betaId: string) =>
+      (
+        await rows<{
+          dev_issue_id: string;
+          last_mirrored_status: string | null;
+          last_tried_status: string | null;
+          beta_reached: string | null;
+        }>(
+          sql`SELECT dev_issue_id, last_mirrored_status, last_tried_status, beta_reached FROM beta_port_pairs WHERE beta_issue_id = ${betaId}`,
+        )
+      )[0];
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    const { db } = await import('../../src/db/client.js');
+    const keys = new Map<string, string>();
+    for (const b of [closes, releases, legacy]) {
+      const pair = await pairOf(b.id);
+      expect(pair, b.displayId).toBeDefined();
+      await withKernelMarker(db, (tx) =>
+        tx.execute(
+          sql`UPDATE issues SET status = 'closed', merged_at = now(), merged_landing = 'https://dev.example/landed' WHERE id = ${pair?.dev_issue_id as string}`,
+        ),
+      );
+      const [dev] = await rows<{ iss_seq: number }>(
+        sql`SELECT iss_seq FROM issues WHERE id = ${pair?.dev_issue_id as string}`,
+      );
+      keys.set(b.id, `ISS-${dev?.iss_seq}`);
+    }
+    // the old rule's record: the close was tried and refused, and the pair claimed it mirrored
+    await rows(
+      sql`UPDATE beta_port_pairs SET last_mirrored_status = 'closed', last_tried_status = NULL, beta_reached = NULL WHERE beta_issue_id = ${legacy.id}`,
+    );
+    beta.closeNeedsMark = true;
+    beta.closeAfterMark.set(releases.id, 'CLOSE_ONLY_BY_RELEASE');
+    beta.transitions.length = 0;
+    const commentsBefore = [...beta.comments.values()].flat().length;
+
+    const settled = await fire(scheduleId);
+    const movesOf = (b: StubIssue) =>
+      beta.transitions.filter((t) => t.issueId === b.id).map((t) => t.toStatus);
+    expect(movesOf(closes)).toEqual(['closed', 'closed']);
+    expect(movesOf(releases)).toEqual(['closed', 'closed', 'awaiting_release']);
+    expect(movesOf(legacy)).toEqual(['closed', 'closed']);
+    for (const b of [closes, releases, legacy]) {
+      expect(beta.marks.get(b.id)?.landing).toBe(
+        `forge-dev ${keys.get(b.id)} at https://dev.example/landed`,
+      );
+    }
+    expect([closes.status, releases.status, legacy.status]).toEqual([
+      'closed',
+      'awaiting_release',
+      'closed',
+    ]);
+    expect(await pairOf(closes.id)).toMatchObject({
+      last_mirrored_status: 'closed',
+      last_tried_status: 'closed',
+      beta_reached: 'closed',
+    });
+    const held = await pairOf(releases.id);
+    expect(held).toMatchObject({ last_tried_status: 'closed', beta_reached: 'awaiting_release' });
+    expect(held?.last_mirrored_status).not.toBe('closed');
+    expect(await pairOf(legacy.id)).toMatchObject({
+      last_mirrored_status: 'closed',
+      last_tried_status: 'closed',
+      beta_reached: 'closed',
+    });
+    expect(settled.output).toContain(
+      `${twin.slug}: ${keys.get(closes.id)}: open → closed (beta ISS-20)`,
+    );
+    expect(settled.output).toContain(
+      `${twin.slug}: ${keys.get(releases.id)}: open → awaiting_release (beta ISS-21)`,
+    );
+    expect(settled.output).toContain('CLOSE_ONLY_BY_RELEASE');
+    // moved, so nothing is commented
+    expect([...beta.comments.values()].flat()).toHaveLength(commentsBefore);
+
+    const moves = beta.transitions.length;
+    const marks = beta.marks.size;
+    await fire(scheduleId);
+    expect(beta.transitions).toHaveLength(moves);
+    expect(beta.marks.size).toBe(marks);
+    beta.closeNeedsMark = false;
+  });
+});
+
+describe('a beta port bound and its token (ISS-923)', () => {
+  it('(b) the per-fire bound leaves the rest for the next fire, counting only issues filed after the ruling', async () => {
+    const cap = await createTestProject(ownerId);
+    const capBetaId = randomUUID();
+    beta.projects.push({ id: capBetaId, slug: cap.slug });
+    const fresh = Array.from({ length: 27 }, (_, i) => betaIssue(100 + i));
+    const old = Array.from({ length: 4 }, (_, i) =>
+      betaIssue(200 + i, { createdAt: beforeRuling() }),
+    );
+    beta.issues.set(capBetaId, [...old, ...fresh]);
+
+    const settled = await fire(scheduleId);
+    const [n] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM issues WHERE project_id = ${cap.id}`,
+    );
+    expect(n?.n).toBe(25);
+    expect(settled.output).toContain('left for the next fire: 2');
+    expect(settled.output).toContain(`${cap.slug}: 4 (not ported)`);
+    expect(settled.output).toMatch(new RegExp(`${cap.slug}: beta ISS-1\\d\\d → ISS-\\d+`));
+
+    const next = await fire(scheduleId);
+    const [m] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM issues WHERE project_id = ${cap.id}`,
+    );
+    expect(m?.n).toBe(27);
+    expect(next.output).not.toContain('left for the next fire');
+  }, 60_000);
 
   it('(e) the token never appears in a report, a comment, an issue or a log', async () => {
     const outputs = await rows<{ text: string }>(

@@ -1,0 +1,1 @@
+**The beta port takes only what came after the owner's ruling.** Older beta issues are counted, not ported; each port names its twin; `/run` answers at once; a close beta refuses is recorded as landed, then closed or moved nearest.

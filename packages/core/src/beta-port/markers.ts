@@ -110,3 +110,20 @@ export function landedNote(devKey: string): string {
 export function nearestReason(devKey: string, refused: string): string {
   return `Mirrored from forge-dev ${devKey}, which moved to closed; forge-beta refused closed (${refused}), and this is the nearest status toward it that it takes.`;
 }
+
+/**
+ * Whether a pair owes beta a try of the dev status. A pair tried under this rule is tried once per dev
+ * status. One tried under the old rule (no `lastTriedStatus`) recorded the dev status as mirrored
+ * whether beta took it or not; where beta does not stand at that status's target, beta refused it,
+ * and it is tried once more under this rule.
+ */
+export function owesTry(
+  pair: { lastMirroredStatus: string | null; lastTriedStatus: string | null },
+  devStatus: string,
+  betaStatus: string,
+): 'try' | 'retry-old' | null {
+  if (pair.lastTriedStatus !== null) return devStatus === pair.lastTriedStatus ? null : 'try';
+  if (devStatus !== pair.lastMirroredStatus) return 'try';
+  const target = mirrorTarget(devStatus);
+  return target !== null && target !== betaStatus ? 'retry-old' : null;
+}

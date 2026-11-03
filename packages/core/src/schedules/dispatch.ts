@@ -6,6 +6,7 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { type agentSessions, projects } from '../db/schema.js';
+import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 import { routeScheduleBetaPortFire } from './beta-port-dispatch.js';
 import { routeScheduleCleanupFire } from './cleanup-dispatch.js';
@@ -47,35 +48,38 @@ export async function dispatchScheduleRun(
     throw err;
   }
   if (routed.settle) await settleFire(fireId, routed.settle);
-  if (routed.background) settleInBackground(fireId, routed.background);
+  if (routed.background) settleAfterAnswer(fireId, routed.background);
   return { ...routed.result, fireId };
 }
+
+/** Fires run after their answer, known to `backgroundSettled()` so a shutdown or a reset waits them out. */
+const afterAnswer = background();
 
 /**
  * The rest of a fire, run after its answer: settled with what it returns, or `failed` with what it
  * throws, so an error after the answer is the fire's record and never lost. A settle that itself
  * throws is logged by fire id; the fire then reads running until the kind's own stale rule ends it.
  */
-function settleInBackground(fireId: string, run: () => Promise<FireSettlement>): void {
-  void (async () => {
-    let settlement: FireSettlement;
-    try {
-      settlement = await run();
-    } catch (err) {
-      settlement = {
-        status: 'failed',
-        error: `the fire threw after it was answered: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
-    try {
+export function settleAfterAnswer(fireId: string, run: () => Promise<FireSettlement>): void {
+  afterAnswer.start(
+    async () => {
+      let settlement: FireSettlement;
+      try {
+        settlement = await run();
+      } catch (err) {
+        settlement = {
+          status: 'failed',
+          error: `the fire threw after it was answered: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
       await settleFire(fireId, settlement);
-    } catch (err) {
+    },
+    (err) =>
       logger.error(
         { err, fireId },
         'schedule.dispatch: a fire run after its answer did not settle',
-      );
-    }
-  })();
+      ),
+  );
 }
 
 function routeFire(input: DispatchScheduleInput, fireId: string): Promise<RoutedFire> {

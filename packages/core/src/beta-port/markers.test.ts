@@ -7,16 +7,19 @@ import { describe, expect, it } from 'vitest';
 import { validateCron } from '../schedules/cron.js';
 import {
   DEV_TO_BETA_STATUS,
+  devLanding,
   firstLineNamesBetaIssue,
   firstLineOf,
   isPortedMarker,
   markerDevKey,
   mirrorTarget,
+  owesTry,
   portedComment,
   portedFirstLine,
 } from './markers.js';
 import { emptyReport, renderReport, reportSaysSomething } from './report.js';
 
+const CUTOFF = new Date('2026-11-03T04:00:00.000Z');
 const BETA = { id: '3f1c42a3-1111-4222-8333-944445555666', key: 'ISS-769' };
 
 describe('the ported marker (ISS-923)', () => {
@@ -74,7 +77,7 @@ describe('the status map', () => {
 
 describe('the fire report', () => {
   it('caps each list and counts the rest', () => {
-    const report = emptyReport();
+    const report = emptyReport(CUTOFF);
     report.ported = Array.from({ length: 23 }, (_, i) => `ISS-${i} → SD-${i}`);
     report.waiting = 4;
     const text = renderReport(report, 20);
@@ -87,11 +90,60 @@ describe('the fire report', () => {
   });
 
   it('says nothing changed only when nothing did', () => {
-    const report = emptyReport();
+    const report = emptyReport(CUTOFF);
     report.skipped.push('ISS-1 (named on SD-1)');
+    expect(reportSaysSomething(report)).toBe(false);
+    report.beforeRuling.push('sid-desk: 1490 (not ported)');
     expect(reportSaysSomething(report)).toBe(false);
     report.noTwin.push('lonely');
     expect(reportSaysSomething(report)).toBe(true);
+  });
+
+  it('opens with the cutoff and counts what was filed before the ruling, per project', () => {
+    const report = emptyReport(CUTOFF);
+    report.beforeRuling.push('adminhub-api: 1490 (not ported)', 'catalog-api: 27 (not ported)');
+    const text = renderReport(report);
+    expect(text.split('\n')[0]).toBe(
+      "cutoff: the owner's ruling beta-issues-are-worked-on-dev, 2026-11-03T04:00:00.000Z",
+    );
+    expect(text).toContain('before the ruling (2):\n  adminhub-api: 1490 (not ported)');
+    expect(renderReport(emptyReport(CUTOFF))).toContain('before the ruling: none');
+  });
+});
+
+describe('a mirror try', () => {
+  const fresh = { lastMirroredStatus: 'open', lastTriedStatus: 'open' };
+  const old = { lastMirroredStatus: 'closed', lastTriedStatus: null };
+
+  it('is owed once per dev status under this rule', () => {
+    expect(owesTry(fresh, 'open', 'open')).toBeNull();
+    expect(owesTry(fresh, 'closed', 'open')).toBe('try');
+    expect(
+      owesTry({ ...fresh, lastTriedStatus: 'closed' }, 'closed', 'awaiting_release'),
+    ).toBeNull();
+  });
+
+  it('retries once a status the old rule recorded as mirrored where beta does not stand at it', () => {
+    expect(owesTry(old, 'closed', 'in_progress')).toBe('retry-old');
+    expect(owesTry(old, 'closed', 'closed')).toBeNull();
+    expect(owesTry(old, 'dropped', 'closed')).toBe('try');
+    expect(
+      owesTry({ lastMirroredStatus: 'draft', lastTriedStatus: null }, 'draft', 'open'),
+    ).toBeNull();
+    expect(owesTry({ lastMirroredStatus: null, lastTriedStatus: null }, 'open', 'open')).toBe(
+      'try',
+    );
+  });
+
+  it("names where the dev issue's work landed: its landing, else its commit", () => {
+    const dev = { key: 'SD-5', mergedLanding: null, mergedCommitSha: null };
+    expect(devLanding({ ...dev, mergedLanding: 'https://x.example/a' })).toBe(
+      'forge-dev SD-5 at https://x.example/a',
+    );
+    expect(devLanding({ ...dev, mergedCommitSha: '0123456789abcdef0123' })).toBe(
+      'forge-dev SD-5 at commit 0123456789ab',
+    );
+    expect(devLanding(dev)).toBe('forge-dev SD-5');
   });
 });
 

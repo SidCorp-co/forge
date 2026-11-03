@@ -6,7 +6,6 @@ export {
   mirrorTarget,
   portedFirstLine,
 } from './markers.js';
-export { owesTry } from './mirror.js';
 export { type BetaPortReport, renderReport } from './report.js';
 export {
   BETA_TOKEN_REF,
