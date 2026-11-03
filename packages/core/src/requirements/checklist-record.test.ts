@@ -51,6 +51,18 @@ describe('the ready checklist, read from the head revision', () => {
     });
   });
 
+  it('reads a goal written with code formatting in plain words, never throwing (ISS-917)', () => {
+    const e = judge({
+      ...ready,
+      spec: {
+        ...ready.spec,
+        goal: 'Problem: `POST /referrals` loses referrals.\nValue: every referral reaches a clinician.\nMeasured by: lost referrals per month.\nRoadmap: now.',
+      },
+    });
+    expect(e.complete).toBe(true);
+    expect(JSON.stringify(e.answers)).not.toContain('`');
+  });
+
   it('stops on each blocking gap, naming its question on its path in plain words', () => {
     const e = judge({
       ...ready,
@@ -324,6 +336,25 @@ describe('the acceptance checklist, read from the delivery', () => {
       'BC-2 (not judged: the live build could not be read); BC-4 (gap)',
     );
     expect(by.evidence).toContain('ISS-3 criterion 1');
+  });
+
+  it('quotes a standing that names the live build in code formatting in plain words, never throwing (ISS-917)', () => {
+    const why =
+      'no release Forge verified, and no answer the source host gave Forge, shows whether the live build `2a6553ccb99e5427eaf9d15f9714a99ace1df19a` holds it';
+    const e = accept(
+      {
+        liveIssues: 1,
+        unshipped: [],
+        shipped: false,
+        unproven: [{ code: 'BC-25', verdict: 'not_judged', why }],
+      },
+      [],
+    );
+    const by = Object.fromEntries(checklistRefusals(e).map((r) => [r.question, r.detail]));
+    expect(by.verdicts).toContain(
+      'the live build 2a6553ccb99e5427eaf9d15f9714a99ace1df19a holds it',
+    );
+    expect(by.verdicts).not.toContain('`');
   });
 
   it('refuses a requirement no live issue delivers', () => {

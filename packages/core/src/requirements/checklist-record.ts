@@ -32,8 +32,16 @@ import { linkedDesigns } from './read.js';
 /** The longest record answer kept on a move: the record itself holds the whole text. */
 const ANSWER_MAX = 300;
 
-const clipped = (text: string) =>
-  text.length <= ANSWER_MAX ? text : `${text.slice(0, ANSWER_MAX - 1).trimEnd()}…`;
+/**
+ * A record answer in plain words, at most ANSWER_MAX long. Code formatting is dropped: a reader's
+ * words showing it are a defect `evaluateChecklist` throws on (`checklists.ts:fieldKeyShownIn`), and
+ * the text quoted here comes from elsewhere — a criterion's standing names the live build's sha in
+ * code formatting (`judged-build.ts`), a goal is the person's own words (ISS-917).
+ */
+const clipped = (raw: string) => {
+  const text = raw.replaceAll('`', '');
+  return text.length <= ANSWER_MAX ? text : `${text.slice(0, ANSWER_MAX - 1).trimEnd()}…`;
+};
 
 /** How a gap names a label: the requirement's own word first, then the English one. */
 const labelled = (lang: WrittenLang | null, label: GoalLabel) =>

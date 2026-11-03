@@ -1,0 +1,1 @@
+**A requirement's checklist no longer fails to load.** A criterion standing that names the live build, or a goal written with code formatting, is quoted in plain words instead of breaking the checklist and the agree or accept it gates.
