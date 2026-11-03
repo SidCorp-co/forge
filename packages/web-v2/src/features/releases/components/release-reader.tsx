@@ -17,6 +17,7 @@ import { BeforeYouRelease, ChangeGroup, GroupTitle, OtherChanges, Requirements, 
 import { DisclosureToggle, ShippedFailingBanner, UnapprovedBanner } from "./release-bits";
 import { ReleaseHighlightList } from "./release-highlights";
 import { checksByIssue } from "./release-row-detail";
+import { ReleaseStalls } from "./release-stalls";
 import { Technical } from "./release-technical";
 
 /**
@@ -205,6 +206,7 @@ export function ReleaseReader({
           <ChangeGroup key={g} group={g} rows={glance.groups[g]} page={page} checks={checks} reach={reach} />
         ))}
         <InternalChanges page={page} glance={glance} reach={reach} />
+        <ReleaseStalls page={page} />
         {developer ? (
           <>
             <Requirements page={page} slug={slug} />
