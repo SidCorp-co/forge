@@ -7,7 +7,7 @@ import {
   sessionRuntimeStates,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
-import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import {
@@ -18,13 +18,14 @@ import {
 } from '../middleware/auth.js';
 import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { assertCoreKeysKept } from './core-owned-metadata.js';
 import {
   CHAT_READ,
   DEVICE_OWN,
+  LIST_SCOPE,
   OWNER_OR_ADMIN,
   PATCH_OWNER_OR_ADMIN,
   SESSION_READ,
@@ -37,12 +38,7 @@ import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { agentSessionOpsRoutes } from './ops-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
-import {
-  type AgentSessionListFilter,
-  linkedIssueOf,
-  listAgentSessionsPage,
-  sessionCost,
-} from './read.js';
+import { linkedIssueOf, listAgentSessionsPage, sessionCost } from './read.js';
 import { refuseSession } from './refusals.js';
 import {
   BLIND_SCHEDULE_RUN_REASON,
@@ -59,6 +55,7 @@ import {
   ensureSessionRole,
   idParamSchema,
   loadSessionOr404,
+  sessionListScope,
   withTranscript,
 } from './session-access.js';
 import {
@@ -175,29 +172,14 @@ agentSessionRoutes.get(
   },
 );
 
-agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
+agentSessionRoutes.get('/', zValidator('query', listQuerySchema), LIST_SCOPE, async (c) => {
   const { projectId, deviceId, status, metadataType, issueId, archived, page, pageSize } =
     c.req.valid('query');
   const userId = c.get('userId');
 
-  // A person's own chat is listed to them and to holders of project.admin, the readers
-  // `assertAgentChatOwner` admits; a listing across projects holds only the caller's own.
-  let scope: AgentSessionListFilter['scope'];
-  let privateChatsOf: string | null = userId;
-  if (projectId) {
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
-    scope = { projectId };
-    if (holds(access, 'project.admin')) privateChatsOf = null;
-  } else {
-    // A deviceId listing is scoped to caller-visible projects too, or any
-    // authenticated user could dump a device's sessions across tenants (ISS-492).
-    const visible = await loadVisibleProjectIds(userId);
-    if (visible.length === 0) {
-      return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
-    }
-    scope = { visibleProjectIds: visible, deviceId };
-  }
+  const listed = await sessionListScope(userId, projectId, deviceId);
+  if (!listed) return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
+  const { scope, privateChatsOf } = listed;
 
   const { items, total } = await listAgentSessionsPage({
     scope,

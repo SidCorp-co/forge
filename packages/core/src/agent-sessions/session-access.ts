@@ -4,7 +4,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type AgentSessionKind, agentSessions } from '../db/schema.js';
-import { loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import {
@@ -12,7 +12,9 @@ import {
   holds,
   type ProjectPermission,
   requireDeclaredHeld,
+  requireHeld,
 } from '../permissions/index.js';
+import type { AgentSessionListFilter } from './read.js';
 import { refuseSession } from './refusals.js';
 import { readTranscript } from './turns-helpers.js';
 
@@ -232,4 +234,25 @@ export function assertDeviceOwnsSession(
   if (session.deviceId !== c.get('deviceId')) {
     throw forbidden('device does not own this session');
   }
+}
+
+/**
+ * Which sessions a caller may list (the rule `GET /api/agent-sessions` declares): one project needs
+ * project.read on it, and a listing across projects holds only the caller's visible ones (a
+ * deviceId narrows those, never widens them, ISS-492). A person's own chat is listed to them and to
+ * holders of project.admin, the readers `assertAgentChatOwner` admits. Null: nothing is visible.
+ */
+export async function sessionListScope(
+  userId: string,
+  projectId: string | undefined,
+  deviceId: string | undefined,
+): Promise<Pick<AgentSessionListFilter, 'scope' | 'privateChatsOf'> | null> {
+  if (projectId) {
+    const access = await loadProjectAccess(projectId, userId);
+    requireHeld(access, 'project.read');
+    return { scope: { projectId }, privateChatsOf: holds(access, 'project.admin') ? null : userId };
+  }
+  const visible = await loadVisibleProjectIds(userId);
+  if (visible.length === 0) return null;
+  return { scope: { visibleProjectIds: visible, deviceId }, privateChatsOf: userId };
 }

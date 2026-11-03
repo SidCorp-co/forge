@@ -10,7 +10,6 @@
     "DELETE /api/projects/:id/requirements/:req/issues/:issue",
     "DELETE /api/skills/:id",
     "GET /api/agent-reports",
-    "GET /api/agent-sessions",
     "GET /api/conversations/:id",
     "GET /api/conversations/:id/attachments/:attachmentId/download",
     "GET /api/conversations/:id/candidates",

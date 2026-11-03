@@ -12,6 +12,11 @@ const THE_SESSION = "the session's project";
 export const SESSION_READ = requiresOnResolved('project.read', THE_SESSION);
 export const SESSION_WRITE = requiresOnResolved('project.write', THE_SESSION);
 
+export const LIST_SCOPE = requiresByRule(
+  `${ACCESS}:sessionListScope`,
+  "project.read on the project projectId names, else the caller's visible projects; a person's private chat only to its owner or a holder of project.admin",
+);
+
 export const OWNER_OR_ADMIN = requiresByRule(
   `${ACCESS}:ensureSessionOwnerOrAdmin`,
   "project.write on the session's project, then its owner or a holder of project.admin (SESSION_OWNER_FORBIDDEN); a conversation turn's session its asker alone",

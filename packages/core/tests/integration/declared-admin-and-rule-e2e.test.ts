@@ -14,6 +14,7 @@
  * @direct-test-of packages/core/src/ecosystem/channel-routes.ts
  * @direct-test-of packages/core/src/release-batch/declarations.ts
  * @direct-test-of packages/core/src/middleware/declared-gate.ts
+ * @direct-test-of packages/core/src/agent-sessions/session-access.ts
  */
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -98,5 +99,24 @@ describe('a route declared by a named rule with no floor (the channel)', () => {
     const refused = await api(tokens.person, 'GET', `/api/projects/${project.id}/channel/inbox`);
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
     expect(JSON.stringify(refused.body)).toContain('holds no role on project');
+  });
+});
+
+describe('the session list, declared by its extracted rule (sessionListScope)', () => {
+  it('refuses a project the caller holds no role on, and answers its owner', async () => {
+    const owner = (await createTestUser({ verified: true })).id;
+    const project = await createTestProject(owner);
+    const route = `/api/agent-sessions?projectId=${project.id}`;
+    const refused = await api(tokens.person, 'GET', route);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('project.read');
+    const answered = await api(await userToken(owner), 'GET', route);
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+  });
+
+  it('answers a listing across projects with an empty page to a caller who sees none', async () => {
+    const listed = await api(tokens.person, 'GET', '/api/agent-sessions');
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    expect(listed.body.total).toBe(0);
   });
 });
