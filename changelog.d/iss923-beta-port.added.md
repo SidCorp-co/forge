@@ -1,0 +1,1 @@
+**forge-beta issues are ported to forge-dev on a schedule.** A `beta_port` schedule opens each new beta issue in its same-slug project once, comments the dev key on beta, and mirrors dev status moves back.
