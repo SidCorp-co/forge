@@ -500,6 +500,11 @@ jobs:
               - '.forge/conformance.json'
               # Read by path by scripts/lib/root-dependencies.test.mjs (ISS-140).
               - '.arch-tsconfig.json'
+              # Read by path by packages/core/src/shutdown-grace.test.ts, which holds core's stop
+              # grace over its shutdown budget (ISS-930). Here, not under `core:`, so a compose
+              # edit runs the core job without a Testcontainers run.
+              - 'docker-compose.dev.yml'
+              - 'docker-compose.prod.yml'
 
   web:
     needs: changes
