@@ -420,6 +420,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     mcp/handler.ts Request handed to @modelcontextprotocol/server:isLegacyRequest in serve
     mcp/handler.ts Request.text in mcpHandler
     mcp/request-class.ts Request.json in mcpRequestClass`,
+  'the drain’s probe check while core shuts down: the path alone, to let /health through and answer the rest 503 (ISS-930)': lines`
+    lib/drain.ts IncomingMessage.url in createDrain`,
   'the preview’s answer, a viewer’s body streamed through unread, the recorder’s own path': lines`
     previews/relay.ts IncomingHttpHeaders handed to lib:entries in downstreamHeaders
     previews/relay.ts IncomingMessage.on(data) in bodyOf
