@@ -177,8 +177,8 @@ describe("the triage verbs", () => {
 describe("messages to reporters", () => {
   const merged = view({
     reporters: [
-      { id: "u9", name: "Ana", agency: "human", from: null },
-      { id: "u8", name: "Bo", agency: "human", from: "FB-5" },
+      { id: "u9", name: "Ana", agency: "human", from: null, product: null },
+      { id: "u8", name: "Bo", agency: "human", from: "FB-5", product: null },
     ],
   });
   const PREVIEW = {
