@@ -12,12 +12,32 @@ export const SCHEDULE_KINDS = [
 	"cleanup",
 	/** A daily review (ISS-862): hands the project's master its review brief, a nudge in its pane. */
 	"daily_review",
+	/** A beta port (ISS-923): core ports forge-beta's issues to their same-slug project here and mirrors their status back. */
+	"beta_port",
 ] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 
 /** Why a daily review fire reached no master, recorded as its refusal (`schedule_runs.refusal`): missed by name. */
 export const DAILY_REVIEW_FIRE_REFUSALS = ["DAILY_REVIEW_NO_MASTER", "DAILY_REVIEW_MASTER_SILENT"] as const;
 export type DailyReviewFireRefusal = (typeof DAILY_REVIEW_FIRE_REFUSALS)[number];
+
+/**
+ * Where a `beta_port` fire reads forge-beta's address and token: two secrets of the schedule's own
+ * project, written with `PUT /api/projects/:id/secrets/integration/forge-beta-url` and
+ * `.../integration/forge-beta-token`. Nothing else is read: no env var, no file.
+ */
+export const BETA_PORT_SECRET_SCOPE = "integration";
+export const BETA_PORT_SECRET_NAMES = {
+	url: "forge-beta-url",
+	token: "forge-beta-token",
+} as const;
+
+/** Why a `beta_port` fire did nothing, recorded as its refusal (`schedule_runs.refusal`). */
+export const BETA_PORT_FIRE_REFUSALS = [
+	"BETA_PORT_SECRET_MISSING",
+	"BETA_PORT_BETA_UNREADABLE",
+] as const;
+export type BetaPortFireRefusal = (typeof BETA_PORT_FIRE_REFUSALS)[number];
 
 export const SCHEDULE_RUN_TRIGGERS = ["manual", "scheduled"] as const;
 export type ScheduleRunTrigger = (typeof SCHEDULE_RUN_TRIGGERS)[number];
