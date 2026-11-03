@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   type ConnectState,
+  type ConnectStateRead,
   type ConvertedApp,
   convertManifestCode,
   findAppsAwaitingCompletion,
@@ -51,18 +52,16 @@ import {
   requireAuthOrLand,
 } from '../middleware/auth.js';
 import { gatedRoutes } from '../middleware/gated-routes.js';
-import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  actorFor,
-  can,
-  orgResource,
-  projectResource,
-  requiresOnParam,
-} from '../permissions/index.js';
+import { requiresByRule, requiresOnParam } from '../permissions/index.js';
 import { projectOrgHead } from '../projects/index.js';
 import { beginConnect } from './github-app-routes.js';
+import {
+  installCallbackStrand,
+  manifestCallbackStrand,
+  strandMayNameApp,
+} from './github-callback-rules.js';
 import { finishedAt, nameStrandedApp, stateSecret, strandedAt } from './github-connect-shared.js';
 import { instanceInstallationsFor, projectsAdministeredBy } from './github-reach.js';
 
@@ -82,6 +81,18 @@ const installedQuerySchema = z.looseObject({
 
 // the admin check runs before the query is read, so a non-admin learns nothing from a 400
 const projectAdmin = requiresOnParam('project.admin', 'projectId');
+
+// a browser return answers a caller its rule refuses with the stranded page naming why, so neither
+// has a floor: a door refusal would be JSON on the API's origin, which strands the App (FB-128)
+const RULES = 'integration-door/github-callback-rules.ts';
+const MANIFEST_CALLBACK = requiresByRule(
+  `${RULES}:manifestCallbackStrand`,
+  'the person the signed state names, while it is fresh, and a Forge operator; else stranded naming why',
+);
+const INSTALL_CALLBACK = requiresByRule(
+  `${RULES}:installCallbackStrand`,
+  "the person the signed state names, then org.admin on the state's organization or project.admin on the project it lands on; else stranded naming why",
+);
 
 export const githubConnectRoutes = gatedRoutes<{ Variables: AuthVars }>(
   requireAuth(),
@@ -184,24 +195,22 @@ githubConnectRoutes.get(
 
 githubCallbackRoutes.get(
   '/integrations/github/manifest-callback',
+  MANIFEST_CALLBACK,
   zValidator('query', manifestCallbackQuerySchema),
   async (c) => {
     const { code, state: rawState } = c.req.valid('query');
     if (!code) return strandedAt(c, 'code_missing');
     if (!rawState) return strandedAt(c, 'state_missing');
     const read = readConnectState(stateSecret(), rawState);
-    if (!read.ok && read.why === 'invalid') return strandedAt(c, 'state_invalid');
-    const state = read.state;
     const userId = c.get('userId');
-    if (state.userId !== userId) return strandedAt(c, 'state_other_user');
-
-    // From here the state is genuine and this person's own, so a refusal may spend the code to
-    // name the App it strands. Above, it may not: a forged or foreign return would make Forge
-    // spend somebody else's App code.
-    if (!read.ok) return strandedAt(c, 'state_expired', await nameStrandedApp(code));
-    if (!(await isPlatformAdmin(userId))) {
-      return strandedAt(c, 'not_operator', await nameStrandedApp(code));
+    // once the state is genuine and this person's own, a strand may spend the code to name the App
+    // it strands; before, it may not: a forged or foreign return would spend somebody else's code
+    const strand = await manifestCallbackStrand(userId, read);
+    if (strand) {
+      return strandedAt(c, strand, strandMayNameApp(strand) ? await nameStrandedApp(code) : null);
     }
+    if (!read.ok) return strandedAt(c, 'state_expired'); // the rule stranded it already; for the type
+    const state = read.state;
     if (!isVaultConfigured()) return strandedAt(c, 'vault_missing', await nameStrandedApp(code));
     if ((await findInstanceGithubApp()) || (await findAppsAwaitingCompletion()).length > 0) {
       return strandedAt(c, 'app_exists', await nameStrandedApp(code));
@@ -262,6 +271,7 @@ githubCallbackRoutes.get(
  */
 githubCallbackRoutes.get(
   '/integrations/github/installed',
+  INSTALL_CALLBACK,
   zValidator('query', installedQuerySchema),
   async (c) => {
     const query = c.req.valid('query');
@@ -273,14 +283,14 @@ githubCallbackRoutes.get(
       return strandedAt(c, 'install_missing');
     }
     const read = rawState ? readConnectState(stateSecret(), rawState) : null;
-    if (read && !read.ok && read.why === 'invalid') return strandedAt(c, 'state_invalid');
-    const state = read ? read.state : null;
-    if (state && state.userId !== userId) return strandedAt(c, 'state_other_user');
+    const strand = await installCallbackStrand(userId, read);
+    if (strand) return strandedAt(c, strand);
+    const state = read && 'state' in read ? read.state : null;
 
     if (query.code) {
       if (!state || !read) return strandedAt(c, 'state_missing');
       if (!read.ok) return strandedAt(c, 'state_expired');
-      return recordProvenInstall(c, { state, code: query.code, installationId });
+      return recordProvenInstall(c, { read, state, code: query.code, installationId });
     }
 
     const owner = state?.connectionId
@@ -302,9 +312,8 @@ githubCallbackRoutes.get(
     }
     const projectId = state?.projectId ?? owner?.projectId ?? null;
     if (!projectId) return c.redirect(await finishedAt({ returnTo: 'integrations' }, connectionId));
-    if (!(await can(actorFor(userId), 'project.admin', projectResource(projectId)))) {
-      return strandedAt(c, 'not_admin');
-    }
+    const notAdmin = await installCallbackStrand(userId, read, { projectId });
+    if (notAdmin) return strandedAt(c, notAdmin);
     return c.redirect(
       await finishedAt(
         { projectId, ...(state?.returnTo ? { returnTo: state.returnTo } : {}) },
@@ -316,14 +325,13 @@ githubCallbackRoutes.get(
 
 async function recordProvenInstall(
   c: Context<{ Variables: AuthVars }>,
-  args: { state: ConnectState; code: string; installationId: number },
+  args: { read: ConnectStateRead; state: ConnectState; code: string; installationId: number },
 ): Promise<Response> {
-  const { state, code, installationId } = args;
+  const { read, state, code, installationId } = args;
   const userId = state.userId;
   if (!state.orgId) return strandedAt(c, 'state_missing');
-  if (!(await can(actorFor(userId), 'org.admin', orgResource(state.orgId)))) {
-    return strandedAt(c, 'not_admin');
-  }
+  const notAdmin = await installCallbackStrand(userId, read, { orgId: state.orgId });
+  if (notAdmin) return strandedAt(c, notAdmin);
   const app = await findInstanceGithubApp();
   if (!app) return strandedAt(c, 'install_unmatched');
   const secrets = decryptConnectionSecrets<{

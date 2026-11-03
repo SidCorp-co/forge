@@ -12,6 +12,7 @@ export {
   appWebhookUrl,
   buildAppManifest,
   type ConnectState,
+  type ConnectStateRead,
   type ConvertedApp,
   convertManifestCode,
   MANIFEST_POST_URL,

@@ -7,8 +7,6 @@
     "GET /api/agent-reports",
     "GET /api/forge/feedback/:key",
     "GET /api/git/:host/:rest{.+}",
-    "GET /api/integrations/github/installed",
-    "GET /api/integrations/github/manifest-callback",
     "GET /api/me/devices",
     "GET /api/memberships/:id",
     "GET /api/orgs",
