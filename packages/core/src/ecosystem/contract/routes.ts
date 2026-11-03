@@ -12,6 +12,12 @@ import {
 import { notFound } from '../../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../../middleware/zod-validator.js';
 import { slug } from '../../project-config/index.js';
+import {
+  CONTRACT_CONSUMED,
+  CONTRACT_DECIDE,
+  CONTRACT_PUBLISH,
+  CONTRACT_VERSIONS_READ,
+} from '../ecosystem-declarations.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
 import { decideContractVersion, decidedView } from './decide.js';
 import { MAX_ARTIFACT_BYTES } from './measure.js';
@@ -86,24 +92,31 @@ const unrecorded = (reader: ContractReader, contract: string, id: string, versio
     `${contract} of project ${id} has no ${reader.access === 'party' ? 'approved' : 'recorded'} version "${version}"`,
   );
 
-contractRoutes.get('/:id/contracts/:contract/versions', contractParam, noQuery, async (c) => {
-  const { id, contract } = c.req.valid('param');
-  const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
-  const current = currentOf(versions)?.version ?? null;
-  if (reader.access === 'party') {
-    return c.json({ reader, versions: versions.map(versionForParty), current });
-  }
-  // each row carries its own decision: a sibling map keyed by version read as no decision at all to
-  // a reader walking the rows
-  return c.json({
-    versions: versions.map((v) => ({ ...v.document, approval: approvalView(v) })),
-    current,
-  });
-});
+contractRoutes.get(
+  '/:id/contracts/:contract/versions',
+  contractParam,
+  CONTRACT_VERSIONS_READ,
+  noQuery,
+  async (c) => {
+    const { id, contract } = c.req.valid('param');
+    const { reader, versions } = await versionsShown(c.get('userId'), id, contract);
+    const current = currentOf(versions)?.version ?? null;
+    if (reader.access === 'party') {
+      return c.json({ reader, versions: versions.map(versionForParty), current });
+    }
+    // each row carries its own decision: a sibling map keyed by version read as no decision at all to
+    // a reader walking the rows
+    return c.json({
+      versions: versions.map((v) => ({ ...v.document, approval: approvalView(v) })),
+      current,
+    });
+  },
+);
 
 contractRoutes.get(
   '/:id/contracts/:contract/versions/:version',
   versionParam,
+  CONTRACT_VERSIONS_READ,
   noQuery,
   async (c) => {
     const { id, contract, version } = c.req.valid('param');
@@ -134,6 +147,7 @@ const ARTIFACT_MEDIA: Record<string, string> = {
 contractRoutes.get(
   '/:id/contracts/:contract/versions/:version/artifact',
   versionParam,
+  CONTRACT_VERSIONS_READ,
   noQuery,
   async (c) => {
     const { id, contract, version } = c.req.valid('param');
@@ -177,6 +191,7 @@ const decisionBody = zValidator(
 contractRoutes.post(
   '/:id/contracts/:contract/versions/:version/decision',
   versionParam,
+  CONTRACT_DECIDE,
   decisionBody,
   async (c) => {
     const { id, contract, version } = c.req.valid('param');
@@ -198,6 +213,7 @@ contractRoutes.post(
 contractRoutes.get(
   '/:id/consumes/:provider/:contract/versions',
   consumedParam,
+  CONTRACT_CONSUMED,
   noQuery,
   async (c) => {
     const { id, provider, contract } = c.req.valid('param');
@@ -216,15 +232,21 @@ contractRoutes.get(
   },
 );
 
-contractRoutes.post('/:id/contracts/:contract/versions', contractParam, uploadBody, async (c) => {
-  const { id, contract } = c.req.valid('param');
-  const actor = restActor(c);
-  const out = await publishContractVersion({
-    projectId: id,
-    contract,
-    writer: { userId: actor.id, agency: actor.agency },
-    ...c.req.valid('json'),
-  });
-  if (!out.ok) return refused(c, out.refusals, 'ECOSYSTEM_REFUSED');
-  return c.json({ recorded: out.recorded, version: out.version }, out.recorded ? 201 : 200);
-});
+contractRoutes.post(
+  '/:id/contracts/:contract/versions',
+  contractParam,
+  CONTRACT_PUBLISH,
+  uploadBody,
+  async (c) => {
+    const { id, contract } = c.req.valid('param');
+    const actor = restActor(c);
+    const out = await publishContractVersion({
+      projectId: id,
+      contract,
+      writer: { userId: actor.id, agency: actor.agency },
+      ...c.req.valid('json'),
+    });
+    if (!out.ok) return refused(c, out.refusals, 'ECOSYSTEM_REFUSED');
+    return c.json({ recorded: out.recorded, version: out.version }, out.recorded ? 201 : 200);
+  },
+);

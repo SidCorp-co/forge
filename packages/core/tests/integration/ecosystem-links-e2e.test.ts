@@ -1,5 +1,6 @@
 // @direct-test-of packages/core/src/ecosystem/link-read.ts
 // @direct-test-of packages/core/src/middleware/pat-fence.ts
+// @direct-test-of packages/core/src/ecosystem/link-routes.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

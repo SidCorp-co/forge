@@ -10,6 +10,7 @@ import { requiresOnParam } from '../permissions/index.js';
 import { adoptVersion } from './adopt-service.js';
 import { readApiPage } from './api-page.js';
 import { readContractContext } from './contract/run-context-service.js';
+import { API_PAGE_READ, INTERFACE_ADOPT, INTERFACE_WRITE } from './ecosystem-declarations.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { interfaceView, loadInterface, writeInterface } from './interface-service.js';
 import { listInterfaceRevisions } from './interface-store.js';
@@ -49,6 +50,7 @@ ecosystemProjectRoutes.get('/:id/interface', idParam, READ, noQuery, async (c) =
 ecosystemProjectRoutes.put(
   '/:id/interface',
   idParam,
+  INTERFACE_WRITE,
   zValidator('json', z.unknown()),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -78,6 +80,7 @@ const ADOPT_BODY = z.strictObject({
 ecosystemProjectRoutes.post(
   '/:id/interface/adopt',
   idParam,
+  INTERFACE_ADOPT,
   zValidator(
     'json',
     ADOPT_BODY,
@@ -146,7 +149,7 @@ ecosystemProjectRoutes.post(
   },
 );
 
-ecosystemProjectRoutes.get('/:id/api-page', idParam, noQuery, async (c) =>
+ecosystemProjectRoutes.get('/:id/api-page', idParam, API_PAGE_READ, noQuery, async (c) =>
   c.json(await readApiPage(c.get('userId'), c.req.valid('param').id)),
 );
 

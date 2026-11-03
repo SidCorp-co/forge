@@ -5,6 +5,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../../middlewar
 import { forbidden } from '../../middleware/route-errors.js';
 import { invalid, zValidator } from '../../middleware/zod-validator.js';
 import { slug } from '../../project-config/index.js';
+import { CONTRACT_STANDING_READ } from '../ecosystem-declarations.js';
 import { readContractDetail, readContractStanding } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
@@ -17,7 +18,11 @@ contractStandingRoutes.use('/:id/contract-standing/*', requireAuth(), assertEmai
 
 const query = zValidator('query', noQuery);
 
-async function member(projectId: string, userId: string | null): Promise<void> {
+/** Who reads a project's contract standing: anyone with a role on it, which no permission names. */
+export async function assertStandingReader(
+  projectId: string,
+  userId: string | null,
+): Promise<void> {
   const access = await loadProjectAccess(projectId, userId);
   if (!access.role) throw forbidden('not a project member');
 }
@@ -29,11 +34,12 @@ contractStandingRoutes.get(
     projectParam,
     invalid('invalid path: /api/projects/<project uuid>/contract-standing'),
   ),
+  CONTRACT_STANDING_READ,
   query,
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await member(id, userId);
+    await assertStandingReader(id, userId);
     return c.json(await readContractStanding(id, userId));
   },
 );
@@ -47,11 +53,12 @@ contractStandingRoutes.get(
       'invalid path: /api/projects/<project uuid>/contract-standing/<provider slug>/<publication slug>',
     ),
   ),
+  CONTRACT_STANDING_READ,
   query,
   async (c) => {
     const { id, provider, contract } = c.req.valid('param');
     const userId = c.get('userId');
-    await member(id, userId);
+    await assertStandingReader(id, userId);
     return c.json(await readContractDetail(id, userId, { provider, contract }));
   },
 );

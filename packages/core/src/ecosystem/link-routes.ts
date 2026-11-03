@@ -6,7 +6,16 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
-import { ECOSYSTEM_READ, ECOSYSTEM_SUPERSEDE } from './ecosystem-declarations.js';
+import {
+  BUILDER_RUN_CREATE,
+  BUILDER_RUN_UPDATE,
+  ECOSYSTEM_READ,
+  ECOSYSTEM_SUPERSEDE,
+  LINK_CREATE,
+  LINK_READ,
+  LINK_RETIRE,
+  LINK_UPDATE,
+} from './ecosystem-declarations.js';
 import {
   listBuilderRunsAs,
   listLinksAs,
@@ -68,7 +77,7 @@ function answer<W extends object>(c: Context, outcome: RecordOutcome<W>) {
   return c.json(writtenView(outcome));
 }
 
-linkProjectRoutes.post('/:id/links', idParam, envelope, async (c) => {
+linkProjectRoutes.post('/:id/links', idParam, LINK_CREATE, envelope, async (c) => {
   const { baseRevision, document } = envelopeOf(c.req.valid('json'));
   const projectId = c.req.valid('param').id;
   return answer(
@@ -82,12 +91,12 @@ linkProjectRoutes.get('/:id/links', idParam, READ, noQuery, async (c) => {
   return c.json({ links, returned: links.length });
 });
 
-linkProjectRoutes.get('/:id/links/:link', linkParam, noQuery, async (c) => {
+linkProjectRoutes.get('/:id/links/:link', linkParam, LINK_READ, noQuery, async (c) => {
   const { id, link } = c.req.valid('param');
   return c.json(await readLinkAs(c.get('userId'), id, link));
 });
 
-linkProjectRoutes.put('/:id/links/:link', linkParam, envelope, async (c) => {
+linkProjectRoutes.put('/:id/links/:link', linkParam, LINK_UPDATE, envelope, async (c) => {
   const { baseRevision, document } = envelopeOf(c.req.valid('json'));
   const { id, link } = c.req.valid('param');
   return answer(
@@ -96,14 +105,14 @@ linkProjectRoutes.put('/:id/links/:link', linkParam, envelope, async (c) => {
   );
 });
 
-linkProjectRoutes.delete('/:id/links/:link', linkParam, noQuery, async (c) => {
+linkProjectRoutes.delete('/:id/links/:link', linkParam, LINK_RETIRE, noQuery, async (c) => {
   const { id, link } = c.req.valid('param');
   const outcome = await retireLink({ projectId: id, id: link, writer: writerOf(c) });
   if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
   return c.json({ retired: recordView(outcome.held) });
 });
 
-linkProjectRoutes.post('/:id/builder-runs', idParam, envelope, async (c) => {
+linkProjectRoutes.post('/:id/builder-runs', idParam, BUILDER_RUN_CREATE, envelope, async (c) => {
   const { baseRevision, document } = envelopeOf(c.req.valid('json'));
   const projectId = c.req.valid('param').id;
   return answer(
@@ -122,20 +131,26 @@ linkProjectRoutes.get('/:id/builder-runs/:run', runParam, READ, noQuery, async (
   return c.json(await readBuilderRunAs(c.get('userId'), id, run));
 });
 
-linkProjectRoutes.put('/:id/builder-runs/:run', runParam, envelope, async (c) => {
-  const { baseRevision, document } = envelopeOf(c.req.valid('json'));
-  const { id, run } = c.req.valid('param');
-  return answer(
-    c,
-    await updateBuilderRun({
-      projectId: id,
-      id: run,
-      writer: writerOf(c),
-      baseRevision,
-      raw: document,
-    }),
-  );
-});
+linkProjectRoutes.put(
+  '/:id/builder-runs/:run',
+  runParam,
+  BUILDER_RUN_UPDATE,
+  envelope,
+  async (c) => {
+    const { baseRevision, document } = envelopeOf(c.req.valid('json'));
+    const { id, run } = c.req.valid('param');
+    return answer(
+      c,
+      await updateBuilderRun({
+        projectId: id,
+        id: run,
+        writer: writerOf(c),
+        baseRevision,
+        raw: document,
+      }),
+    );
+  },
+);
 
 busRoutes.get('/:id/bus', idParam, ECOSYSTEM_READ, noQuery, async (c) =>
   c.json(await readBus(c.get('userId'), c.req.valid('param').id)),
@@ -165,10 +180,16 @@ async function supersedeAnswer(
 }
 
 // the project's own door, which a project-fenced master token reaches (ISS-597)
-linkProjectRoutes.post('/:id/builder-runs/:run/supersede', runParam, supersedeBody, async (c) => {
-  const { id, run } = c.req.valid('param');
-  return supersedeAnswer(c, { runId: run, projectId: id }, c.req.valid('json'));
-});
+linkProjectRoutes.post(
+  '/:id/builder-runs/:run/supersede',
+  runParam,
+  ECOSYSTEM_SUPERSEDE,
+  supersedeBody,
+  async (c) => {
+    const { id, run } = c.req.valid('param');
+    return supersedeAnswer(c, { runId: run, projectId: id }, c.req.valid('json'));
+  },
+);
 
 // the ecosystem's door, an account route: a session or a token fenced to no project reaches it, as the steward org's admin does
 busRoutes.post(

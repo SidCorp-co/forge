@@ -23,6 +23,11 @@
  * @direct-test-of packages/core/src/pipeline/phase-routes.ts
  * @direct-test-of packages/core/src/pipeline/runs-routes.ts
  * @direct-test-of packages/core/src/pipeline/analytics-routes.ts
+ * @direct-test-of packages/core/src/integration-door/github-callback-rules.ts
+ * @direct-test-of packages/core/src/integration-door/github-connect-routes.ts
+ * @direct-test-of packages/core/src/ecosystem/ecosystem-declarations.ts
+ * @direct-test-of packages/core/src/ecosystem/contract/routes.ts
+ * @direct-test-of packages/core/src/ecosystem/standing/routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -36,8 +41,16 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
+import { signConnectState } from '../../src/integrations/github/index.js';
 import { api, type Body, userToken } from '../helpers/api.js';
-import { testEnv } from '../helpers/ecosystem-world.js';
+import {
+  type EcosystemWorld,
+  formEcosystem,
+  openWorld,
+  sender,
+  testEnv,
+  writeInterfaces,
+} from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 
 const tokens = { operator: '', person: '' };
@@ -193,5 +206,56 @@ describe("a pipeline run's routes, declared resolved on the run's project", () =
     const res = await api(tokens.person, 'GET', `/api/pipeline/throughput?projectId=${project.id}`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toEqual([]);
+  });
+});
+
+describe('a GitHub return declared by its stranding rule (installCallbackStrand), no floor', () => {
+  it('lands a person with their own state but no org.admin on the stranded page naming why, never a JSON refusal', async () => {
+    const userId = (await createTestUser({ verified: true })).id;
+    const token = await userToken(userId);
+    const state = signConnectState(process.env.JWT_SECRET as string, {
+      userId,
+      orgId: randomUUID(),
+    });
+    const res = await api(
+      token,
+      'GET',
+      `/api/integrations/github/installed?installation_id=77&code=oauth-code&state=${encodeURIComponent(state)}`,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(302);
+    const where = new URL(res.headers.get('location') as string);
+    expect(where.pathname).toBe('/integrations');
+    expect(where.searchParams.get('connect')).toBe('not_admin');
+  });
+});
+
+describe('a contract route declared by its counterparty rule (contractReader), no floor', () => {
+  let w: EcosystemWorld;
+  beforeAll(async () => {
+    w = await openWorld();
+    await formEcosystem(w);
+    await writeInterfaces(w);
+  }, 120_000);
+
+  it('refuses a stranger by the rule and answers a counterparty in the ecosystem the approved versions', async () => {
+    const path = `/api/projects/${w.project.forge}/contracts/forge-api/versions`;
+    const stranger = await api(tokens.person, 'GET', path);
+    expect(stranger.status, JSON.stringify(stranger.body)).toBe(403);
+    expect(JSON.stringify(stranger.body)).toMatch(/published to/);
+
+    const party = await sender(w)('store', 'GET', path);
+    expect(party.status, JSON.stringify(party.json)).toBe(200);
+    expect(party.json.reader.access).toBe('party');
+    expect(
+      party.json.versions.map((v: { contractVersion: string }) => v.contractVersion),
+    ).toContain('2026-09-20');
+  });
+
+  it('reads contract standing to a role on the project only, refusing a counterparty with none', async () => {
+    const path = `/api/projects/${w.project.forge}/contract-standing`;
+    const party = await sender(w)('store', 'GET', path);
+    expect(party.status, JSON.stringify(party.json)).toBe(403);
+    const member = await sender(w)('platform', 'GET', path);
+    expect(member.status, JSON.stringify(member.json)).toBe(200);
   });
 });

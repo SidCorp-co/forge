@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/ecosystem/project-routes.ts
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
