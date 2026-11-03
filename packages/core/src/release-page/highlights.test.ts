@@ -277,6 +277,8 @@ describe('the media each requirement may show', () => {
     n: 1,
     statement: 's',
     bc: 'BC-1',
+    class: null,
+    reopenedAt: null,
     verdicts: [],
   });
   const claimed = (issueKey: string, requirementKey: string): ClaimReading => ({
