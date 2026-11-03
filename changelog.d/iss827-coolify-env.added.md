@@ -1,1 +1,0 @@
-**A project's deployers can now set their own app's environment.** List an application's variable names with values hidden, set or delete one, and optionally redeploy, scoped to the apps the Coolify binding names.

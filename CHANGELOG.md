@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.476] - 2026-11-03
+
+A project's deployer sets its own app's environment through Forge's Coolify connection
+
+### Added
+
+- **A project's deployers can now set their own app's environment.** List an application's variable names with values hidden, set or delete one, and optionally redeploy, scoped to the apps the Coolify binding names.
+
 ## [0.4.0-dev.475] - 2026-11-03
 
 Every REST route and MCP tool action declares its permission in the contract
