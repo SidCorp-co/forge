@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/previews/routes.ts
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 

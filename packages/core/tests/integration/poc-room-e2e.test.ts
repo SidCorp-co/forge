@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/previews/room-routes.ts
 // @direct-test-of packages/core/src/previews/room-settle.ts
 import { SKETCH_BRANCH } from '@forge/contracts/preview';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';

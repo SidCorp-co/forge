@@ -28,7 +28,7 @@ import { projectScopeQuery } from '../issues/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnResolved } from '../permissions/index.js';
+import { requiresByRule, requiresNoPermission, requiresOnResolved } from '../permissions/index.js';
 import { confirmFix } from './confirm.js';
 import { keepIdea } from './keep.js';
 import {
@@ -97,6 +97,12 @@ issuePreviewRoutes.post(
   },
 );
 
+// a recording opens only to the project's signed-in members, and its own named refusal says so
+// (RECORDING_FORBIDDEN, BC-21), so each is declared by the rule that reads the row; no floor
+const RECORDINGS = 'previews/recordings.ts';
+const RECORDING_MEMBERS =
+  "a signed-in member of the recording's project; anyone else is refused RECORDING_FORBIDDEN";
+
 /** One preview, under `/api/previews`. */
 export const previewRoutes = new Hono<{ Variables: AuthVars & DeviceVars }>();
 
@@ -106,6 +112,9 @@ const PATH = invalid('invalid path: /api/previews/<preview id>');
 previewRoutes.post(
   '/:id/report',
   requireDevice(),
+  requiresNoPermission(
+    "the box's device credential; a preview its device does not hold is not found (PREVIEW_NOT_FOUND)",
+  ),
   zValidator('param', previewParam, PATH),
   zValidator(
     'json',
@@ -263,6 +272,10 @@ projectPreviewRoutes.use('/:id/feedback/:fb/recordings', requireAuth(), assertEm
 projectPreviewRoutes.post(
   '/:id/previews',
   zValidator('param', projectParam, invalid('invalid path: /api/projects/<project id>/previews')),
+  requiresByRule(
+    'previews/subjects.ts:openSubjectPreview',
+    "the body's kind decides: an idea needs project.write, a reproduce project.read",
+  ),
   zValidator(
     'json',
     openPreviewRequestSchema,
@@ -286,6 +299,7 @@ projectPreviewRoutes.get(
     z.strictObject({ id: z.uuid(), fb: z.string().regex(/^FB-\d{1,9}$/) }),
     invalid('invalid path: /api/projects/<project id>/feedback/FB-<n>/recordings'),
   ),
+  requiresByRule(`${RECORDINGS}:recordingsOfFeedback`, RECORDING_MEMBERS),
   noQuery,
   async (c) => {
     const { id, fb } = c.req.valid('param');
@@ -304,17 +318,23 @@ for (const at of ['/:id', '/:id/events', '/:id/stop']) {
   recordingRoutes.use(at, requireAuth(), assertEmailVerified());
 }
 
-recordingRoutes.get('/:id', zValidator('param', previewParam, RECORDING_PATH), noQuery, async (c) =>
-  c.json(
-    recordingEnvelopeSchema.parse({
-      recording: await readRecording(c.req.valid('param').id, actorOf(c)),
-    }),
-  ),
+recordingRoutes.get(
+  '/:id',
+  zValidator('param', previewParam, RECORDING_PATH),
+  requiresByRule(`${RECORDINGS}:readRecording`, RECORDING_MEMBERS),
+  noQuery,
+  async (c) =>
+    c.json(
+      recordingEnvelopeSchema.parse({
+        recording: await readRecording(c.req.valid('param').id, actorOf(c)),
+      }),
+    ),
 );
 
 recordingRoutes.get(
   '/:id/events',
   zValidator('param', previewParam, RECORDING_PATH),
+  requiresByRule(`${RECORDINGS}:recordingEvents`, RECORDING_MEMBERS),
   noQuery,
   async (c) =>
     c.json(
@@ -324,12 +344,19 @@ recordingRoutes.get(
     ),
 );
 
-recordingRoutes.post('/:id/stop', zValidator('param', previewParam, RECORDING_PATH), async (c) =>
-  c.json(
-    recordingEnvelopeSchema.parse({
-      recording: await stopRecording(c.req.valid('param').id, actorOf(c)),
-    }),
+recordingRoutes.post(
+  '/:id/stop',
+  zValidator('param', previewParam, RECORDING_PATH),
+  requiresByRule(
+    `${RECORDINGS}:stopRecording`,
+    `${RECORDING_MEMBERS}; stopping is the recorder's own or a project writer's (the row)`,
   ),
+  async (c) =>
+    c.json(
+      recordingEnvelopeSchema.parse({
+        recording: await stopRecording(c.req.valid('param').id, actorOf(c)),
+      }),
+    ),
 );
 
 // the POC room doors (REQ-44) are served through this face like every other preview route

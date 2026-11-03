@@ -16,7 +16,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { requiresOnResolved } from '../permissions/index.js';
+import { requiresByRule, requiresOnResolved } from '../permissions/index.js';
 import type { PreviewActor } from './access.js';
 import { settleRoom } from './room-settle.js';
 import {
@@ -51,6 +51,10 @@ projectRoomRoutes.use('/:id/rooms', requireAuth(), assertEmailVerified());
 projectRoomRoutes.post(
   '/:id/rooms',
   zValidator('param', roomParam, invalid('invalid path: /api/projects/<project id>/rooms')),
+  requiresByRule(
+    'previews/rooms.ts:openRoom',
+    "the idea preview's own rule (openIdeaPreview): the subject, the site and the writer, each refused by name",
+  ),
   zValidator(
     'json',
     openRoomRequestSchema,
@@ -63,6 +67,10 @@ projectRoomRoutes.post(
 projectRoomRoutes.get(
   '/:id/rooms',
   zValidator('param', roomParam, invalid('invalid path: /api/projects/<project id>/rooms')),
+  requiresByRule(
+    'previews/rooms.ts:listRooms',
+    'any role on the project; anyone else is answered ROOM_NOT_FOUND, never told the project exists',
+  ),
   noQuery,
   async (c) =>
     c.json(roomListSchema.parse({ rooms: await listRooms(c.req.valid('param').id, actorOf(c)) })),
