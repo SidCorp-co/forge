@@ -1,7 +1,8 @@
 // One `beta_port` fire (ISS-923, owner ruling 2026-11-03 `beta-issues-are-worked-on-dev`): every
 // forge-beta issue filed or reopened after that ruling and not yet ported becomes an open issue in the
 // same-slug project here, and every ported pair's dev status is mirrored back onto beta once. Core
-// runs it itself: no box, no session. It starts in two halves: what is read here (the secrets, the
+// runs it itself: no box, no session. Before it ports, a pair ported with only its provenance line
+// gets beta's body under that line, once (`backfill.ts`). It starts in two halves: what is read here (the secrets, the
 // ruling's time) is checked before the fire is answered, and the beta reads and writes run after.
 // forge-beta's address and token are read from the schedule project's secrets and nowhere else, and
 // the token is scrubbed out of everything the fire reports or logs.
