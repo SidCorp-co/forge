@@ -1,1 +1,0 @@
-**A closed run no longer blocks the next one.** The runner closes ended runs at core before opening new ones, `run close` closes the core session itself, and a lease refusal names `forge-runner run close <runId>`.

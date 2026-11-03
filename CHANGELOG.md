@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.469] - 2026-11-03
+
+A closed run frees its issue lease at once for the next run
+
+### Fixed
+
+- **A closed run no longer blocks the next one.** The runner closes ended runs at core before opening new ones, `run close` closes the core session itself, and a lease refusal names `forge-runner run close <runId>`.
+
 ## [0.4.0-dev.468] - 2026-11-03
 
 Shipped releases read shipped; owed feedback triage shows under Needs you
