@@ -114,6 +114,12 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   the app answers its health check. Judge only what you checked live: a criterion's or a
   requirement BC's verdict is recorded once you have exercised it on the running build, never as a
   forecast.
+- **A defect found live is fixed forward on its own issue.** Reopen the issue that shipped it with
+  `cause: "defect"` and its `evidence` beside the reason (`POST /api/issues/:id/transition`
+  `{ toStatus: "reopen", reason, cause: "defect", evidence: { liveRead } }`, or `{ verdictId }` or
+  `{ attachmentId }` on the issue): that reopen is the defect stall its release counts. A reopen
+  without the cause counts nowhere, and core refuses the cause without evidence
+  (`DEFECT_EVIDENCE_REQUIRED`).
 
 **The kernel does not relax with the mode.** Whatever the profile, core still refuses:
 

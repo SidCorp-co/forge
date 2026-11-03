@@ -287,7 +287,12 @@ criteria standing as that run's brief. Its own \`pass\` or \`short\` is still wr
 it ran: it is kept as this run's evidence, the merge check runs that probe, and it never counts. Its
 answer says so, \`notCounted: { code: 'VERDICT_BY_BUILDER' }\`. A \`fail\` counts whoever writes it,
 and on an issue past its build it sends the issue back to \`reopen\`: the correction is made there,
-never in a new issue. The building run is the one that took the issue before its work landed (it
+never in a new issue. A defect you find in landed work without a verdict, live on the served build or
+in a screenshot, reopens it by hand: \`POST /api/issues/:id/transition\`
+\`{ toStatus: 'reopen', reason, cause: 'defect', evidence: { liveRead } }\` (or \`{ verdictId }\`, or
+\`{ attachmentId }\` for an attachment on the issue). That reopen is a defect stall its next merge mark
+ends and its release counts; a reopen without \`cause\` counts nowhere, and \`cause\` without
+\`evidence\` is refused \`DEFECT_EVIDENCE_REQUIRED\`. The building run is the one that took the issue before its work landed (it
 holds the lease or recorded the checks); each verdict names the run that wrote it, the run holding
 the issue on the caller's box unless the body names another in \`run\` (the box's run id), and an
 unknown \`run\` is refused \`VERDICT_RUN_UNKNOWN\`. A run sending its own latest verdict on a criterion
