@@ -5,9 +5,10 @@
 A run can read its own checks now: `GET /api/projects/:id/integrations/source/commits/:sha/checks`
 and `…/branches/:ref/checks` answer, live from the host, every check on a commit or a branch head
 and the rollup of the latest run per name
-(`packages/core/src/integration-door/source-projection-routes.ts`). Each check carries its id, so
-`…/checks/:checkRunId/log` has an id to be given. On GitHub that is the commit's check runs and the
-commit statuses an outside CI posts; on GitLab, the commit's pipelines.
+(`packages/core/src/integration-door/source-projection-routes.ts`). Each check carries its id, and
+`…/checks/:checkId/jobs` lists its jobs by the ids `…/checks/:jobId/log` takes. On GitHub a check is
+a check run, which is its own one job, or a commit status an outside CI posts; on GitLab it is a
+pipeline, whose jobs the list names, and a pipeline id sent to the log is refused by name.
 
 ## What is still unbuilt
 
