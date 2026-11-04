@@ -1,0 +1,1 @@
+**A project's master posts in every room its project binds, a support room included.** It answers in an asker's thread or posts news at the top level as the room's bot, held to the rules that bot keeps toward users.

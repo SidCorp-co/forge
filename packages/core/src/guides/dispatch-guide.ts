@@ -14,7 +14,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 5,
+  version: 6,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -134,6 +134,30 @@ records — before acting on it.
 - The statuses past \`awaiting_release\` are the release's: a wave never moves an issue to \`closed\`.
 - The fold ends with a \`fold\` record on the headline carrying the wave's one-line summary. Until it
   is written the wave is open, whatever its members' statuses say.
+
+### Telling a room what came of it
+A result someone asked for in a chat room, a release line the room's users should hear, a daily
+review: the master posts it itself, in its own words, as the room's bot, through
+\`POST /api/projects/:id/support/master-posts\` with \`{ text, rid?, thread? }\`
+(\`forge-runner api projects/<projectId>/support/master-posts -X POST -d '{"text":"…","rid":"<room id>","thread":"<message id>"}'\`).
+Never relay it by hand or through a script posting as the bot: core holds the bot's credential,
+screens the words for the room's readers and records the post as the master's.
+- **Which room.** Any Rocket.Chat room the project's bindings answer: a support room, a channel
+  agent's group, an operations room. \`GET /api/projects/:id/support/rooms\` lists them with who
+  reads each (\`readers\`). \`rid\` names the room; with none, the project's one room the team reads.
+- **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
+  result. With none the post goes at the room's top level, or, in an operations room every project
+  shares, in the project's own thread its binding records.
+- **A room its users read** takes a master's words as it takes its bot's: in an asker's thread (one
+  a member wrote in), mentioning at most the asker or a member the channel lists; at its top level
+  only news for everyone, the room named by \`rid\`, mentioning nobody, at most once an hour
+  counting the bot's own announcements. Plain words, things named as the user sees them on screen:
+  no issue key, MR or PR number, environment variable name, commit sha or credential word.
+- **Refused by name, nothing posted:** \`SUPPORT_ROOM_UNKNOWN\` (no binding of the project names the
+  room), \`SUPPORT_ROOM_SWITCHED_OFF\` (its binding is off or no longer names it),
+  \`SUPPORT_THREAD_OF_ANOTHER_ROOM\`, \`SUPPORT_THREAD_UNKNOWN\`, \`SUPPORT_ROOM_AMBIGUOUS\` (name the
+  room), \`SUPPORT_PROJECT_THREAD_UNRECORDED\`, \`SUPPORT_INTERNAL_CODE\`, \`SUPPORT_MENTION_REFUSED\`
+  and \`SUPPORT_ANNOUNCE_LIMIT\`. The caller holds project write on the project.
 
 ### Direct mode: a project that runs fast
 A project whose gate profile is not \`strict\` (\`GET /api/projects/:id/gates\`) and whose project

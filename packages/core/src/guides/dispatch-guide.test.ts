@@ -63,3 +63,30 @@ describe('the dispatch guide asks for no triage ritual', () => {
     }
   });
 });
+
+// ISS-943: a master with a result for its project's support room found no door, and the result was
+// relayed by hand as the bot. The guide names the door with its body, every room kind it takes, and
+// the rules a room the product's users read keeps.
+describe('the dispatch guide names the room door a master posts its own results through', () => {
+  it('names the door with its body and the rooms it takes', () => {
+    expect(prose).toContain(
+      '`POST /api/projects/:id/support/master-posts` with `{ text, rid?, thread? }`',
+    );
+    expect(prose).toContain("a support room, a channel agent's group, an operations room");
+    expect(prose).toContain('Never relay it by hand or through a script posting as the bot');
+  });
+
+  it('names the rules of a room its users read, and each refusal', () => {
+    expect(prose).toContain("in an asker's thread (one a member wrote in)");
+    expect(prose).toContain('only news for everyone, the room named by `rid`, mentioning nobody');
+    for (const code of [
+      'SUPPORT_ROOM_UNKNOWN',
+      'SUPPORT_ROOM_SWITCHED_OFF',
+      'SUPPORT_THREAD_OF_ANOTHER_ROOM',
+      'SUPPORT_THREAD_UNKNOWN',
+      'SUPPORT_ANNOUNCE_LIMIT',
+    ]) {
+      expect(prose).toContain(code);
+    }
+  });
+});

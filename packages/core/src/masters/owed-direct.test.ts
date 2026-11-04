@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { masterWork } from './owed.js';
 
+// @direct-test-of packages/core/src/masters/pass-order.ts
+
 // The owed-work fixture of owed.test.ts, cut to the work a direct-mode pass is composed over.
 const none = {
   designs: [],
@@ -88,6 +90,16 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     expect(direct.nudge).not.toContain('build each issue you take yourself');
     expect(direct.nudge).not.toContain('record in one go');
     expect(direct.nudge).not.toContain('comment what shipped');
+  });
+
+  // ISS-943: the room door is named on every pass, so no master relays a result by hand
+  it('names the room door with its body on the nudge, in either mode', () => {
+    for (const nudge of [direct.nudge, dispatch.nudge]) {
+      expect(nudge).toContain(
+        '`forge-runner api projects/<projectId>/support/master-posts -X POST` with `{ text, rid?, thread? }`',
+      );
+      expect(nudge).toContain('(Telling a room what came of it)');
+    }
   });
 
   it('briefs a new pane the same, and leaves every other project as it was', () => {

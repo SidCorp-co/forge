@@ -15,6 +15,7 @@ import { type GuideSlug, guideCall } from '../guides/index.js';
 import { confirmsLine } from './owed-confirms.js';
 import { endedRunHoldsWork, recordingsLine, releaseHoldsLine } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
+import { DIRECT_NUDGE, DIRECT_ORDER, NUDGE } from './pass-order.js';
 import {
   type AgentConfirmOwed,
   type FilingOwed,
@@ -93,18 +94,6 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
 /** A line names the guide that holds its method by slug, never restates it (REQ-23 BC-2). */
 const method = (slug: GuideSlug) => `\`${guideCall(slug)}\``;
-
-/** The dispatch pass names the served guide, never a skill a plugin on the pane could answer to (ISS-304). */
-const NUDGE = `Pass. Run the wave by ${method('dispatch')}.`;
-
-/**
- * How a master on a project that runs fast works (`@forge/contracts/master-mode`): it builds the
- * batch and records afterwards, so its pass names no dispatch. The goal is said, and the kernel
- * limits with it, since they are what still refuses it; the order of the acts is the guide's.
- */
-const DIRECT_ORDER = ` This project's master works direct (fast delivery on, not strict): build the batch yourself, in this session or through general-purpose subagents on disjoint files. Dispatch no runner role, print no brief, and wait on no plan approval, design record or judge before landing. Land through the project's own landing route once the batch builds and its own tests pass (an MR where the project lands by change request, a push to the base branch only where it lands by push). The kernel still refuses: a move into \`in_progress\` or \`awaiting_release\` by anyone but the issue's holder (its lease, as the issue-flow guide's Take it says), a move off a legal edge or without its reason, \`awaiting_release\` without a recorded merge (\`forge-runner api issues/<id>/merge -X POST\` at the landing sha), and a close by anything but a release. A criterion's verdict is recorded only once you have checked it live, after landing. ${method('dispatch')} (Direct mode) is the method.`;
-
-const DIRECT_NUDGE = `Pass.${DIRECT_ORDER}`;
 
 function returnedLine(owed: Owed): string {
   let line = '';
