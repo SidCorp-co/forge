@@ -537,7 +537,7 @@ export const SAID = {
 		en: "A release that ended still claims issues at the gate",
 	},
 	"issues.releaseHold.act.releaseHeldByEndedRun": {
-		en: "abort that release, saying what it carried",
+		en: "settle that release by its abort, saying what it carried",
 	},
 	"issues.releaseHold.act.releaseQueuedBehind": {
 		en: "take it in a later release",

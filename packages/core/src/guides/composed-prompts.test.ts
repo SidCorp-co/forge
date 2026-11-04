@@ -80,6 +80,7 @@ const none = {
   filings: [] as Parameters<typeof owedLine>[0]['filings'],
   recordings: [] as Parameters<typeof owedLine>[0]['recordings'],
   releaseHolds: [] as Parameters<typeof owedLine>[0]['releaseHolds'],
+  endedRunHolds: [] as Parameters<typeof owedLine>[0]['endedRunHolds'],
   requests: [] as Parameters<typeof owedLine>[0]['requests'],
   carriers: [] as Parameters<typeof owedLine>[0]['carriers'],
   reviews: [] as Parameters<typeof owedLine>[0]['reviews'],

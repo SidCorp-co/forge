@@ -1090,7 +1090,7 @@
     "issues.releaseHold.act.releaseGateUnreadable": "sửa để đọc được cổng phát hành",
     "issues.releaseHold.act.releaseProbesUnreadable": "sửa các bài kiểm tra trên bản chạy thật",
     "issues.releaseHold.act.releaseShippedInOwed": "ghi bản phát hành chứa thay đổi này, đối chiếu git",
-    "issues.releaseHold.act.releaseHeldByEndedRun": "hủy bản phát hành đã dừng, ghi rõ những gì nó đã đẩy đi",
+    "issues.releaseHold.act.releaseHeldByEndedRun": "hủy bản phát hành đã dừng, ghi rõ thứ đã đẩy",
     "issues.releaseHold.act.releaseQueuedBehind": "đưa vào một lần phát hành sau",
     "issues.releaseHold.act.releaseCleanupPending": "chạy đợt dọn dẹp và báo đạt cho issue này",
     "issues.releaseHold.act.releaseGateCheckRed": "sửa bước kiểm tra rồi cắt bản lại",
