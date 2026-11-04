@@ -3,6 +3,11 @@
  * 2026-10-07: one roster of 26 issues cut three times wore 0.3.0, 0.4.0 and 0.5.0, and the releases
  * list read three releases, two of which never reached anyone. Through the app's own routes, against
  * real Postgres: the cut, the abort, the after-the-fact declaration and the read model.
+ *
+ * Its re-cut meets the ended-run refusal (ISS-961), which the selection did not reach it for: dev went
+ * red at 487330de3.
+ * @direct-test-of packages/core/src/release-batch/ended-claims.ts
+ * @direct-test-of packages/core/src/issues/release-claim.ts
  */
 
 import { sql } from 'drizzle-orm';
