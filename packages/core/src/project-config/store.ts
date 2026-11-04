@@ -313,19 +313,23 @@ export const drizzleConfigStore = {
     return new Map(rows.map((r) => [secretRefOf(r.scope, r.name), r.valueEnc]));
   },
 
-  async putSecret({
-    projectId,
-    scope,
-    name,
-    valueEnc,
-  }: {
-    projectId: string;
-    scope: string;
-    name: string;
-    valueEnc: Buffer;
-  }): Promise<SecretName> {
+  /** Store one secret's value, inside `exec`; `created` says whether the project held none before. */
+  async putSecret(
+    exec: Tx,
+    {
+      projectId,
+      scope,
+      name,
+      valueEnc,
+    }: {
+      projectId: string;
+      scope: string;
+      name: string;
+      valueEnc: Buffer;
+    },
+  ): Promise<SecretName & { created: boolean }> {
     const now = new Date();
-    const [row] = await db
+    const [row] = await exec
       .insert(projectSecrets)
       .values({ projectId, scope, name, valueEnc, updatedAt: now })
       .onConflictDoUpdate({
@@ -336,6 +340,8 @@ export const drizzleConfigStore = {
         scope: projectSecrets.scope,
         name: projectSecrets.name,
         updatedAt: projectSecrets.updatedAt,
+        // a row the upsert inserted is its transaction's own (xmax 0); one it updated is not
+        created: sql<boolean>`(xmax = 0)`,
       });
     if (!row) throw new Error('project-config: secret upsert returned no row');
     return row;

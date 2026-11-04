@@ -121,6 +121,8 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"TESTING_PROFILE_IN_USE",
 	/** A secret a testing profile still names is not deleted (ISS-847). */
 	"SECRET_IN_USE",
+	/** A testing profile's actor secret whose environment answered its sign-in with no session (ISS-937). */
+	"SECRET_DOES_NOT_SIGN_IN",
 	"BINDING_ID_MISMATCH",
 	"BINDING_TARGET_UNSUPPORTED",
 	"BINDING_NOT_REPRESENTABLE",

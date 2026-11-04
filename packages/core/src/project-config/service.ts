@@ -4,12 +4,7 @@ import type { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
 import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
-import {
-  encryptSecret,
-  getAdapter,
-  isVaultConfigured,
-  providerCanDeploy,
-} from '../integrations/index.js';
+import { getAdapter, providerCanDeploy } from '../integrations/index.js';
 import { stableStringify } from '../lib/canonical-json.js';
 import {
   type ApiRefusal,
@@ -27,12 +22,7 @@ import {
 import { projectConfigPorts } from './ports.js';
 import { checkPolicy, checkProjectConfig, type ProjectConfigContext } from './rules.js';
 import { type ProjectDocument, projectDocumentSchema } from './schema.js';
-import {
-  type CasResult,
-  drizzleConfigStore,
-  type SecretName,
-  type StoredDocument,
-} from './store.js';
+import { type CasResult, drizzleConfigStore, type StoredDocument } from './store.js';
 import { insertEvents, keysHeld } from './variables-store.js';
 
 export interface Held<T> {
@@ -395,26 +385,6 @@ export async function deleteTestingProfile(
 }
 
 export const SECRET_VALUE_MAX = 16_384;
-
-type SecretOutcome =
-  | { ok: true; secret: SecretName & { ref: string } }
-  | { ok: false; code: 'VAULT_NOT_CONFIGURED' };
-
-export async function putSecret(input: {
-  projectId: string;
-  scope: string;
-  name: string;
-  value: string;
-}): Promise<SecretOutcome> {
-  if (!isVaultConfigured()) return { ok: false, code: 'VAULT_NOT_CONFIGURED' };
-  const row = await drizzleConfigStore.putSecret({
-    projectId: input.projectId,
-    scope: input.scope,
-    name: input.name,
-    valueEnc: encryptSecret(input.value),
-  });
-  return { ok: true, secret: { ...row, ref: secretRefOf(row.scope, row.name) } };
-}
 
 /**
  * Remove one project secret (ISS-847): refused by name while a testing profile names its ref, each

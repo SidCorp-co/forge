@@ -170,6 +170,7 @@ import {
   jobVariableRoutes,
   projectConfigRoutes,
   projectConfigSchemaRoutes,
+  projectSecretRoutes,
   reviewRunRoutes,
   variableRoutes,
 } from './project-config/routes.js';
@@ -309,6 +310,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api', projectConfigSchemaRoutes(ecosystemJsonSchemas, workflowJsonSchemas));
   app.route('/api/workflow-templates', workflowTemplateCatalogueRoutes);
   app.route('/api/projects', projectConfigRoutes);
+  app.route('/api/projects', projectSecretRoutes);
   app.route('/api/projects', variableRoutes);
   app.route('/api/projects', reviewRunRoutes);
   app.route('/api/projects', environmentStateRoutes);

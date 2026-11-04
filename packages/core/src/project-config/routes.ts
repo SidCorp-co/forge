@@ -1,37 +1,26 @@
 import { GATE_MODES, GATE_PROFILES } from '@forge/contracts/gate-profiles';
-import { secretRefOf } from '@forge/contracts/project-config';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { verifyDeviceCredential } from '../credentials/device-credential.js';
-import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
-import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
 import { readGateChanges, readProjectGates, writeGates } from './gates.js';
+import { profileValueDoor, secretValueDoor, secretValueElsewhere } from './secret-value-door.js';
+import { signInStandings } from './secret-write.js';
 import {
-  profileValueDoor,
-  SECRETS_LIST_SAYS,
-  secretValueDoor,
-  secretValueDoors,
-  secretValueElsewhere,
-} from './secret-value-door.js';
-import {
-  deleteSecret,
   deleteTestingProfile,
   type Held,
-  listSecretNames,
   listTestingProfiles,
-  putSecret,
   readPolicy,
   readProjectConfig,
   readTestingProfile,
-  SECRET_VALUE_MAX,
   type WriteOutcome,
   writePolicy,
   writeProjectConfig,
@@ -46,9 +35,6 @@ for (const path of [
   '/:id/policy',
   '/:id/testing-profiles',
   '/:id/testing-profiles/*',
-  '/:id/secrets',
-  '/:id/secrets/*',
-  '/:id/test-credentials',
   '/:id/bindings',
   '/:id/bindings/*',
   '/:id/gates',
@@ -61,12 +47,6 @@ const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 const idParam = z.object({ id: z.uuid() });
 const profileParam = z.object({ id: z.uuid(), profileId: z.string().regex(NAME) });
 const bindingParam = z.object({ id: z.uuid(), bindingId: z.uuid() });
-const secretParam = z.object({
-  id: z.uuid(),
-  scope: z.string().regex(NAME),
-  name: z.string().regex(NAME),
-});
-const secretBody = z.strictObject({ value: z.string().min(1).max(SECRET_VALUE_MAX) });
 
 const paramOf = <T extends z.ZodType>(schema: T) =>
   zValidator(
@@ -85,13 +65,6 @@ const serialise = <T>(held: Held<T>) => ({
   document: held.document,
   updatedBy: held.updatedBy,
   updatedAt: held.updatedAt.toISOString(),
-});
-
-const secretView = (s: { ref: string; scope: string; name: string; updatedAt: Date }) => ({
-  ref: s.ref,
-  scope: s.scope,
-  name: s.name,
-  updatedAt: s.updatedAt.toISOString(),
 });
 
 function answer<T>(c: Context, outcome: WriteOutcome<T>) {
@@ -198,11 +171,13 @@ projectConfigRoutes.put(
 projectConfigRoutes.get('/:id/testing-profiles', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
   const profiles = await listTestingProfiles(id);
+  const standings = await signInStandings(id, profiles);
   return c.json({
     profiles: profiles.map((p) => ({
       profileId: p.profileId,
       ...serialise(p),
       valueDoor: profileValueDoor(p.profileId, p.document),
+      signIn: standings.get(p.profileId),
     })),
     returned: profiles.length,
   });
@@ -216,11 +191,14 @@ projectConfigRoutes.get(
   async (c) => {
     const { id, profileId } = c.req.valid('param');
     const held = await readTestingProfile(id, profileId);
-    return c.json(
-      held
-        ? { ...serialise(held), valueDoor: profileValueDoor(profileId, held.document) }
-        : UNDECLARED,
-    );
+    if (!held) return c.json(UNDECLARED);
+    // whether each actor's stored secret signed in when it was written (ISS-937, `secret-write.ts`)
+    const standings = await signInStandings(id, [{ profileId, document: held.document }]);
+    return c.json({
+      ...serialise(held),
+      valueDoor: profileValueDoor(profileId, held.document),
+      signIn: standings.get(profileId),
+    });
   },
 );
 
@@ -271,125 +249,6 @@ projectConfigRoutes.delete(
       throw new HTTPException(404, {
         message: `testing profile "${profileId}" is not declared on this project`,
         cause: { code: 'TESTING_PROFILE_NOT_FOUND' },
-      });
-    }
-    return refused(c, outcome.refusals, 'CONFIG_REFUSED');
-  },
-);
-
-projectConfigRoutes.get('/:id/secrets', paramOf(idParam), READ, noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const [secrets, profiles] = await Promise.all([listSecretNames(id), listTestingProfiles(id)]);
-  return c.json({
-    secrets: secrets.map((s) => ({ ...secretView(s), valueAt: secretValueDoors(profiles, s.ref) })),
-    returned: secrets.length,
-    says: SECRETS_LIST_SAYS,
-  });
-});
-
-// a value guessed at a secret's own path is refused naming the door each profile reads it at
-projectConfigRoutes.get(
-  '/:id/secrets/:scope/:name',
-  paramOf(secretParam),
-  READ,
-  noQuery,
-  async (c) => {
-    const { id, scope, name } = c.req.valid('param');
-    const ref = secretRefOf(scope, name);
-    const [door] = secretValueDoors(await listTestingProfiles(id), ref);
-    throw secretValueElsewhere(
-      `GET /api/projects/${id}/secrets/${scope}/${name}`,
-      door ?? secretValueDoor('<profile naming it>', `ref=${ref}`),
-    );
-  },
-);
-
-projectConfigRoutes.get('/:id/test-credentials', paramOf(idParam), READ, noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  throw secretValueElsewhere(
-    `GET /api/projects/${id}/test-credentials`,
-    secretValueDoor('<profile>', 'actor=<actor>'),
-  );
-});
-
-projectConfigRoutes.put(
-  '/:id/secrets/:scope/:name',
-  paramOf(secretParam),
-  ADMIN,
-  zValidator(
-    'json',
-    secretBody,
-    invalid(
-      `the body is { "value": string }, 1 to ${SECRET_VALUE_MAX} characters, and nothing else`,
-      'SECRET_WRITE_SHAPE',
-    ),
-  ),
-  async (c) => {
-    const { id, scope, name } = c.req.valid('param');
-    if (scope === VARIABLE_SECRET_SCOPE) {
-      return refused(
-        c,
-        [
-          {
-            code: 'SECRET_SCOPE_RESERVED',
-            path: '/scope',
-            detail: `\`${VARIABLE_SECRET_SCOPE}\` holds the project's variable values and is written only as a variable: POST /api/projects/${id}/variables. Store this secret under another scope.`,
-          },
-        ],
-        'CONFIG_REFUSED',
-      );
-    }
-    const outcome = await putSecret({
-      projectId: id,
-      scope,
-      name,
-      value: c.req.valid('json').value,
-    });
-    if (!outcome.ok) {
-      throw new HTTPException(503, {
-        message:
-          'INTEGRATION_MASTER_KEY is not set on this core, so a secret cannot be encrypted; nothing was written.',
-        cause: { code: outcome.code },
-      });
-    }
-    return c.json(secretView(outcome.secret));
-  },
-);
-
-// remove one secret (ISS-847): the PUT's rule, refused by name while a testing profile names it or
-// when there is none, and written to the project's credential audit (GET /variables/events)
-projectConfigRoutes.delete(
-  '/:id/secrets/:scope/:name',
-  paramOf(secretParam),
-  ADMIN,
-  noQuery,
-  async (c) => {
-    const { id, scope, name } = c.req.valid('param');
-    if (scope === VARIABLE_SECRET_SCOPE) {
-      return refused(
-        c,
-        [
-          {
-            code: 'SECRET_SCOPE_RESERVED',
-            path: '/scope',
-            detail: `\`${VARIABLE_SECRET_SCOPE}\` holds the project's variable values and is removed only as a variable: DELETE /api/projects/${id}/variables/<variable id>.`,
-          },
-        ],
-        'CONFIG_REFUSED',
-      );
-    }
-    const actor = restActor(c);
-    const outcome = await deleteSecret({
-      projectId: id,
-      scope,
-      name,
-      actor: { id: actor.id, tokenId: actor.tokenId, agency: actor.agency },
-    });
-    if (outcome.ok) return c.json({ deleted: secretRefOf(scope, name) });
-    if (outcome.notFound) {
-      throw new HTTPException(404, {
-        message: `this project holds no secret ${secretRefOf(scope, name)}; GET /api/projects/${id}/secrets lists the ones it holds`,
-        cause: { code: 'SECRET_NOT_FOUND' },
       });
     }
     return refused(c, outcome.refusals, 'CONFIG_REFUSED');
@@ -496,5 +355,6 @@ export { contentLanguageRoutes } from './content-language-routes.js';
 export { environmentStateRoutes } from './environment-state-routes.js';
 export { reviewRunRoutes } from './review-run-routes.js';
 export { projectConfigSchemaRoutes } from './schema-routes.js';
+export { projectSecretRoutes } from './secret-routes.js';
 export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';
 export { jobVariableRoutes, variableRoutes } from './variables-routes.js';
