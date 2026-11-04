@@ -42,7 +42,7 @@ export function Table({
     ? { "aria-labelledby": ariaLabelledBy }
     : { "aria-label": ariaLabel ?? DEFAULT_REGION_NAME };
   return (
-    <div className={cn("relative overflow-hidden print:overflow-visible bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt border-t border-line")}>
+    <div className={cn("relative overflow-hidden print:overflow-visible bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt border-t border-line-region")}>
       <div
         ref={scrollerRef}
         className="relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none print:overflow-visible"
@@ -63,7 +63,7 @@ export function Table({
 }
 
 export function THead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <TableHeader className={cn("border-b border-line [&_tr]:border-b-0 [&_tr]:hover:bg-transparent", className)} {...props} />;
+  return <TableHeader className={cn("border-b border-line-divider [&_tr]:border-b-0 [&_tr]:hover:bg-transparent", className)} {...props} />;
 }
 
 export function TBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -73,7 +73,7 @@ export function TBody({ className, ...props }: HTMLAttributes<HTMLTableSectionEl
 export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <TableRow
-      className={cn("border-b border-line-subtle transition-colors last:border-0 hover:bg-hover", className)}
+      className={cn("border-b border-line-divider transition-colors last:border-0 hover:bg-hover", className)}
       {...props}
     />
   );

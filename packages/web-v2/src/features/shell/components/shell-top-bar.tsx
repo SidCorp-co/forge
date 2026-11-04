@@ -15,7 +15,7 @@ export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onT
   const t = useCopy();
   const version = useForgeVersion().data?.version?.trim();
   return (
-    <header className="flex h-12 flex-none items-center gap-3 border-b border-line bg-surface px-4 sm:px-6">
+    <header className="flex h-12 flex-none items-center gap-3 border-b border-line-region bg-surface px-4 sm:px-6">
       <div ref={titleRef} className="flex min-w-0 flex-1 items-center gap-2" />
       <div ref={actionsRef} className="flex flex-none items-center gap-2" />
       <FeedbackButton clientVersion={version ? `web ${version}` : undefined} />

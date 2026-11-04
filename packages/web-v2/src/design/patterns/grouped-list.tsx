@@ -172,7 +172,7 @@ function Row({ v, selected, onPeek, eta, keyed }: { v: ListRowView; selected: bo
       data-key={v.key}
       className={cn(
         gridOf(eta, keyed),
-        "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-subtle py-[7px] text-left text-fg no-underline hover:bg-hover",
+        "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-divider py-[7px] text-left text-fg no-underline hover:bg-hover",
         "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-3 max-md:py-2.5",
         selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-sel",
       )}
@@ -253,7 +253,7 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
   return (
     <section aria-label={ariaLabel} data-testid="grouped-list">
       <div
-        className={cn(gridOf(eta !== undefined, keyed), "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
+        className={cn(gridOf(eta !== undefined, keyed), "sticky top-0 z-[6] h-8 items-center border-b border-line-divider bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
         data-testid="list-header"
       >
         {keyed ? <span aria-hidden>{columns?.key ?? t("list.col.key")}</span> : null}

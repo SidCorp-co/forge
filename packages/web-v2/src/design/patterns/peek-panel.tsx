@@ -119,12 +119,12 @@ export function PeekPanel({ peek, listLabel, noun, full, children, foot, testId 
   useEffect(() => preload(full.href), [preload, full.href]);
   return (
     <aside
-      className="fixed inset-x-0 top-0 bottom-0 z-30 flex flex-col overflow-hidden border-line-subtle bg-surface max-md:bottom-[calc(56px+env(safe-area-inset-bottom))] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-[calc(100dvh-48px)] lg:border-l"
+      className="fixed inset-x-0 top-0 bottom-0 z-30 flex flex-col overflow-hidden border-line-region bg-surface max-md:bottom-[calc(56px+env(safe-area-inset-bottom))] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-[calc(100dvh-48px)] lg:border-l"
       aria-label={t("common.peekSummary", { noun, key: peek.open ?? "" })}
       data-testid={testId ?? "peek-panel"}
       data-peek-root="1"
     >
-      <div className="z-[3] flex flex-none items-center gap-1.5 border-b border-line-subtle bg-surface px-3 py-2">
+      <div className="z-[3] flex flex-none items-center gap-1.5 border-b border-line-region bg-surface px-3 py-2">
         <Button type="button" size="sm" className="lg:hidden" onClick={() => peek.set(null)} data-testid="peek-back">
           ← {listLabel}
         </Button>
@@ -147,12 +147,12 @@ export function PeekPanel({ peek, listLabel, noun, full, children, foot, testId 
           <div className="flex min-h-full flex-col">{children}</div>
         </div>
         {foot ? (
-          <div className="max-h-[60%] flex-none overflow-y-auto border-t border-line-subtle bg-surface" data-testid="peek-foot">
+          <div className="max-h-[60%] flex-none overflow-y-auto border-t border-line-region bg-surface" data-testid="peek-foot">
             {foot}
           </div>
         ) : null}
       </FullPageContext>
-      <div className="flex-none border-t border-line-subtle px-[18px] pb-3 pt-2 text-12 text-subtle max-lg:hidden" data-testid="peek-keys">
+      <div className="flex-none border-t border-line-region px-[18px] pb-3 pt-2 text-12 text-subtle max-lg:hidden" data-testid="peek-keys">
         <Kbd>j</Kbd> <Kbd>k</Kbd> {t("common.peekMove")} · <Kbd>{t("common.key.enter")}</Kbd> {t("common.peekFullPage")} · <Kbd>{t("common.key.escape")}</Kbd> {t("common.peekCloseWord")}
       </div>
     </aside>

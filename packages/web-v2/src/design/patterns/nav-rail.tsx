@@ -354,7 +354,7 @@ export function NavRail({
     <nav
       data-layer="shell"
       className={cn(
-        "flex h-full flex-none flex-col border-r border-line bg-shell",
+        "flex h-full flex-none flex-col border-r border-line-region bg-shell",
         compact ? "w-[88px] items-center gap-2.5 px-1.5 pb-3 pt-[14px]" : "w-[280px] gap-3.5 px-3 py-4",
       )}
     >

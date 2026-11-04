@@ -33,8 +33,8 @@ export function RowList({
   pageGutter?: boolean;
 }) {
   return (
-    <div className={cn("border-t border-line-subtle", pageGutter && PAGE_GUTTER, className)} data-testid={testId ?? "row-list"}>
-      {header ? <div className="flex items-center gap-3 border-b border-line-subtle bg-sunken px-3 py-1.5 text-11-5 font-semibold text-subtle">{header}</div> : null}
+    <div className={cn("border-t border-line-divider", pageGutter && PAGE_GUTTER, className)} data-testid={testId ?? "row-list"}>
+      {header ? <div className="flex items-center gap-3 border-b border-line-divider bg-sunken px-3 py-1.5 text-11-5 font-semibold text-subtle">{header}</div> : null}
       <ul aria-label={label}>{children}</ul>
     </div>
   );
@@ -110,7 +110,7 @@ export function RowItem({ title, tip, lead, facts, note, trailing, href, onClick
     selected && "bg-sel",
   );
   return (
-    <li className="border-b border-line-subtle" data-testid={testId ?? "row-item"} data-row-key={rowKey} aria-current={selected || undefined}>
+    <li className="border-b border-line-divider" data-testid={testId ?? "row-item"} data-row-key={rowKey} aria-current={selected || undefined}>
       {href ? (
         <Link href={href} onClick={onClick} className={row}>
           {body}

@@ -140,6 +140,9 @@
   --color-line-subtle: var(--border-subtle);
   --color-line: var(--border-default);
   --color-line-strong: var(--border-strong);
+  /* ISS-956: border-line-divider between rows and items, border-line-region between regions */
+  --color-line-divider: var(--border-divider);
+  --color-line-region: var(--border-region);
 
   /* accent + link */
   --color-accent: var(--accent);

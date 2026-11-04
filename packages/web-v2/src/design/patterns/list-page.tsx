@@ -13,7 +13,7 @@ import { Select, type SelectOption } from "../primitives/select";
 /** The filter bar: search first, then filters and chips, a hairline under it. */
 export function ListToolbar({ children, testId }: { children: ReactNode; testId?: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2 max-md:px-3" data-testid={testId ?? "list-toolbar"}>
+    <div className="flex flex-wrap items-center gap-2 border-b border-line-region px-5 py-2 max-md:px-3" data-testid={testId ?? "list-toolbar"}>
       {children}
     </div>
   );

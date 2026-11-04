@@ -145,6 +145,9 @@
 
   --border-subtle: var(--neutral-6);
   --border-default:var(--neutral-7);
+  /* ISS-956: lines between rows and items, and between regions, sit lighter than a field's border */
+  --border-divider:var(--neutral-4);
+  --border-region: var(--neutral-5);
   --border-strong: var(--neutral-8);
 
   --fg-default:    var(--neutral-12);
