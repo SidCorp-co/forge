@@ -43,6 +43,8 @@ type CriterionVerdictRow = {
   covers: string[] | null;
   by_builder: boolean | null;
   authored: boolean | null;
+  /** The class the issue's recorded design gives the criterion; null where none is recorded. */
+  criterion_class?: string | null;
 };
 
 /** The identity a stored verdict names, as coverage checks it; null where it names none. */
@@ -133,7 +135,9 @@ export async function issueCriteriaOf(
              at: sql`v.verdict_at`,
              runSession: sql`v.run_session_id`,
            })}) AS by_builder,
-           (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored
+           (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored,
+           (SELECT d.criterion_class FROM issue_design_criteria d
+             WHERE d.criterion_id = c.id LIMIT 1) AS criterion_class
       FROM issue_criteria c
       JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
       LEFT JOIN LATERAL (
@@ -220,6 +224,7 @@ export async function issueCriteriaOf(
       issueId: r.issue_id,
       n: r.n,
       requirementCriterionId: r.requirement_criterion_id,
+      ...(r.criterion_class === 'observable' ? { liveOnly: true } : {}),
       ...verdictOf(r),
       earlier: older.map((v) => verdictOf(v)).filter((v) => v.verdict !== null),
       // kept beside the void for coverage to weigh on a landing (`standing-coverage.ts:standsAtLanding`)

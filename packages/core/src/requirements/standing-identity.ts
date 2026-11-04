@@ -6,7 +6,11 @@
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
-import { type ReleasedLine, readOnRelease } from '@forge/contracts/released-line';
+import {
+  type ReleasedLine,
+  readOnRelease,
+  releaseHoldsIssue,
+} from '@forge/contracts/released-line';
 import {
   landedCommitOf,
   type StorefrontDraftPart,
@@ -430,4 +434,42 @@ export function atRecordedLanding(
  */
 export function atRelease(version: string, line: ReleasedLine | undefined): Resolved {
   return { commit: null, ...readOnRelease(version, line) };
+}
+
+/**
+ * An issue criterion's verdict as the release weighs it at the issue's landing
+ * (`release-batch/landed-weighing.ts`, ISS-957), where its project's production names no commit it
+ * serves: a pass on a release counts only where that release's record holds the issue, and a
+ * criterion only the running product shows (`liveOnly`, classed `observable`) counts only on such a
+ * release, never at a build. Anywhere else, `resolve`.
+ */
+export function resolveIssueVerdict(
+  identity: CoverageIdentity | null,
+  live: LiveBuildHolds | null,
+  issueId: string,
+  covers: readonly string[] | null,
+  liveOnly: boolean,
+): Resolved {
+  const line = live?.released;
+  if (line && identity?.kind === 'release') {
+    const read = atRelease(identity.version, line);
+    if (read.notCounted !== null || releaseHoldsIssue(line, identity.version, issueId) !== false) {
+      return read;
+    }
+    return {
+      commit: null,
+      inLiveBuild: false,
+      notCounted: `judged on release ${identity.version}, whose record does not hold this issue: the change landed after it`,
+    };
+  }
+  if (line && liveOnly && identity) {
+    const r = resolve(identity, live, issueId, covers);
+    return {
+      ...r,
+      inLiveBuild: r.commit === null ? r.inLiveBuild : false,
+      notCounted:
+        'judged at a build, and only the running product shows this criterion, so it counts on a shipped release that holds the issue',
+    };
+  }
+  return resolve(identity, live, issueId, covers);
 }

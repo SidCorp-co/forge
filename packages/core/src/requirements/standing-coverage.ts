@@ -29,7 +29,7 @@ import {
   type LandedHolds,
   type LiveBuildHolds,
   type Resolved,
-  resolve,
+  resolveIssueVerdict,
   short,
 } from './standing-identity.js';
 
@@ -64,6 +64,8 @@ export interface StandingIssueCriterion extends StandingVerdict {
   earlier?: readonly StandingVerdict[];
   /** Its newest verdict where the issue's latest reopen voided it; absent where none was voided. */
   beforeReopen?: StandingVerdict;
+  /** Set where the issue's design classes it `observable`: only the running product shows it (ISS-957). */
+  liveOnly?: true;
 }
 
 /**
@@ -150,7 +152,16 @@ export function coverageOf(
       );
       const judged = verdictExercised(ic.verdict);
       const r = withReleaseHint(
-        ic.verdict === null ? null : resolve(ic.identity, build, traced.issueId, ic.covers ?? null),
+        ic.verdict === null
+          ? null
+          : resolveIssueVerdict(
+              ic.identity,
+              build,
+              traced.issueId,
+              ic.covers ?? null,
+              // a fail is everyone's evidence, wherever it was judged
+              traced.liveOnly === true && ic.verdict !== 'fail',
+            ),
         ic.identity?.kind === 'commit' || ic.identity?.kind === 'runtime',
         build,
         'issue',
