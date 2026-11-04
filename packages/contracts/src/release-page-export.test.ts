@@ -147,6 +147,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 			contracts: [],
 			dependencies: [],
 			settings: [],
+			unchecked: [],
 		},
 		knownIssues: [
 			{
