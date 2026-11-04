@@ -112,7 +112,8 @@ afterAll(closeWorld);
 describe('BC-11: a rescue-cap park made before the master park waits on the master', () => {
   it('plants the red: before the re-home the parks sit at needs_info and wait on a person', async () => {
     expect(await statusOf(capped.id)).toBe('needs_info');
-    expect(await standingOf(capped.key)).toMatchObject({ kind: 'you' });
+    // the person by name, never the reader as "You" (ISS-687)
+    expect(await standingOf(capped.key)).toMatchObject({ kind: 'person' });
     const keys = await decisionKeys();
     expect(keys).toEqual(
       expect.arrayContaining([parkQuestion[capped.key], parkQuestion[cappedBeside.key]]),

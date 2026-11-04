@@ -57,9 +57,11 @@ describe('forecast read', () => {
     const writer = (await peopleOf([w.userId])).get(w.userId)?.name;
     expect(f).toMatchObject({ kind: 'paused', who: writer, act: 'answer a question' });
     expect(f).not.toHaveProperty('p50At');
-    // JU-7: to that writer it is their own turn, so it reads You, never their name in third person
+    // ISS-687 (REQ-68 BC-6): no issue waits on its reader, so the writer who owes the answer reads it
+    // by name too, never "You" (JU-7's own turn is asked in Needs you, on the item the issue serves)
     const own = (await read(w, `/issues/${keys.parked}`)).forecast as Body;
-    expect(own).toMatchObject({ kind: 'paused', who: 'You', act: 'answer a question' });
+    expect(own).toMatchObject({ kind: 'paused', who: writer, act: 'answer a question' });
+    expect(own.who).not.toBe('You');
   });
 
   it('reads landed for an issue already merged, and lists every open issue on the board read', async () => {
