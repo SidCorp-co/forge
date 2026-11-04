@@ -151,6 +151,8 @@
     "standing.who.releaseRun": "Lượt chạy release",
     "standing.who.revisionProposal": "Đề xuất bản sửa",
     "standing.who.scheduleOwner": "Chủ lịch chạy",
-    "standing.who.you": "Bạn"
+    "standing.who.you": "Bạn",
+    "standing.who.runnerOwner": "Chủ runner",
+    "standing.who.projectAdmin": "Quản trị project"
   }
 }

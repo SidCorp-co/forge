@@ -369,7 +369,9 @@
     "agents.now.releasingAny": "Releasing",
     "agents.now.run": "{step}: {title}",
     "agents.now.waiting": "{n} messages waiting",
-    "agents.now.waitingOne": "1 message waiting"
+    "agents.now.waitingOne": "1 message waiting",
+    "agents.question.resource": "Resource needed",
+    "agents.question.answerWaiting": "Question waiting"
   },
   "vi": {
     "agents.cmd.everyRun": "Hiện mọi lượt",
@@ -821,6 +823,8 @@
     "agents.now.releasingAny": "Đang phát hành",
     "agents.now.run": "{step}: {title}",
     "agents.now.waiting": "{n} tin nhắn đang chờ",
-    "agents.now.waitingOne": "1 tin nhắn đang chờ"
+    "agents.now.waitingOne": "1 tin nhắn đang chờ",
+    "agents.question.resource": "Cần cung cấp",
+    "agents.question.answerWaiting": "Câu hỏi đang chờ"
   }
 }

@@ -80,7 +80,7 @@ export function IssuePageMain(props: {
               {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} needs={needsPanels} /> : needsPanels}
             </div>
             {/* a stuck issue says why, then the steward's note on it (REQ-48 BC-5, BC-7) */}
-            {standing ? <IssueStuckBanner standing={standing} className="mt-3 rounded-md" /> : null}
+            {standing ? <IssueStuckBanner standing={standing} developer={developer} className="mt-3 rounded-md" /> : null}
             <StewardNoteLines note={note} slug={slug} />
             {developer && blocker ? (
               <div className="mt-3">

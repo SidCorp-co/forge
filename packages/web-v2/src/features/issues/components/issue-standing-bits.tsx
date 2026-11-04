@@ -111,11 +111,22 @@ export function IssueBanner({ standing, className }: { standing: IssueStanding; 
   );
 }
 
+const STUCK_STATES = ["blocked", "overdue", "no_owner", "nobody_serves", "draft_carrier"] as const;
+
+/** The stuck reading as a short state: a release hold reads as one, else core's stuck code; a code this build does not know reads as one generic word. */
+export function stuckStateKey(standing: Pick<IssueStanding, "releaseHold" | "times">) {
+  if (standing.releaseHold) return "issues.stuckState.releaseHeld" as const;
+  const code = standing.times.stuck?.code;
+  const known = STUCK_STATES.find((c) => c === code);
+  return known ? (`issues.stuckState.${known}` as const) : ("issues.stuckState.unknown" as const);
+}
+
 /**
- * The issue page's Stuck banner (REQ-48 BC-5): why core reads it stuck, in core's sentence
- * (`times.stuck`), and whom it waits on; nothing here infers it. An issue not stuck draws none.
+ * The issue page's Stuck banner (REQ-48 BC-5; ISS-680): a person reads a short state and whom it
+ * waits on for what. Core's own sentence (`times.stuck`) and the rule — a hold's code and reason,
+ * a path — are agent text, drawn in the Developer view alone. An issue not stuck draws none.
  */
-export function IssueStuckBanner({ standing, className }: { standing: IssueStanding; className?: string }) {
+export function IssueStuckBanner({ standing, developer = false, className }: { standing: IssueStanding; developer?: boolean; className?: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const stuck = standing.attentionGroup === "stuck" ? standing.times.stuck : null;
@@ -125,12 +136,18 @@ export function IssueStuckBanner({ standing, className }: { standing: IssueStand
     <WaitBanner
       tone="blocked"
       head={t("issues.banner.stuck")}
-      body={said(stuck.says.reason, language)}
+      body={t(stuckStateKey(standing))}
       effect={[w.who, w.act].filter(Boolean).join(" · ")}
-      rule={w.rule}
+      rule={developer ? w.rule : undefined}
       className={className}
       testId="issue-stuck-banner"
-    />
+    >
+      {developer ? (
+        <span className="block text-12 text-muted" data-testid="issue-stuck-detail">
+          {said(stuck.says.reason, language)}
+        </span>
+      ) : null}
+    </WaitBanner>
   );
 }
 
