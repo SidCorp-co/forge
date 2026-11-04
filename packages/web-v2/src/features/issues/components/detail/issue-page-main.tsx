@@ -7,7 +7,7 @@ import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
 import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { settingsHref } from "@/features/project-settings";
-import { IssueQuestions } from "@/features/questions";
+import { IssueQuestions, currentRoundOf, useIssueQuestions } from "@/features/questions";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueDetail, IssueStatus } from "../../types";
@@ -20,6 +20,21 @@ import { IssuePatternList } from "../issue-pattern-list";
 import { IssueDetails } from "./issue-details";
 import { IssueStuckBanner } from "../issue-standing-bits";
 import { IssueStateHead } from "./issue-state-head";
+
+/**
+ * What a park waiting on a resource asks the person to supply (ISS-680): what its open question
+ * says it needs, so Needs you names it. Null for any other park, or where none is open.
+ */
+function useParkResource(issue: IssueDetail): string | null {
+  const parked = issue.status === "needs_info" && issue.waitingKind === "needs_resource";
+  const questions = useIssueQuestions(issue.id).data?.questions ?? [];
+  if (!parked) return null;
+  for (const q of questions) {
+    const round = currentRoundOf(q);
+    if (q.status === "open" && round?.answerShape === "free_text" && round.needed.trim()) return round.needed.trim();
+  }
+  return null;
+}
 
 /** The main column of the page: the state head, what needs a person, the criteria, the preview, the change and the Details. */
 export function IssuePageMain(props: {
@@ -56,6 +71,7 @@ export function IssuePageMain(props: {
   const developer = view === "developer";
   const standing = standingQ.data?.standing;
   const note = useStewardNote(projectId, "issue", issue.displayId);
+  const resource = useParkResource(issue);
   const needsPanels = (
     <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
       <IssueQuestions
@@ -63,6 +79,7 @@ export function IssuePageMain(props: {
         issueId={issue.id}
         slug={slug}
         parkedForInfo={issue.status === "needs_info"}
+        waitingKind={issue.status === "needs_info" ? (issue.waitingKind ?? null) : null}
         threadQuestion={props.threadQuestion}
         onAnswerInThread={props.onAnswerInThread}
       />
@@ -77,7 +94,7 @@ export function IssuePageMain(props: {
             </div>
             {/* what the reader answers on the page is Needs you's, before Done by and the criteria (REQ-43 BC-9) */}
             <div data-highlight="waiting question">
-              {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} needs={needsPanels} /> : needsPanels}
+              {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} needs={needsPanels} resource={resource} /> : needsPanels}
             </div>
             {/* a stuck issue says why, then the steward's note on it (REQ-48 BC-5, BC-7) */}
             {standing ? <IssueStuckBanner standing={standing} developer={developer} className="mt-3 rounded-md" /> : null}

@@ -1,10 +1,11 @@
-
+import type { NeedsInfoKind } from "@forge/contracts/issue-vocabulary";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { useState } from "react";
 import { Button, ErrorState, Field, LoadingState, Section, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAnsweringQuestions, useAnswerQuestion, useIssueQuestions } from "../hooks";
+import { currentRoundOf } from "../types";
 import { QuestionView } from "./question-view";
 
 const QUESTIONS_ANCHOR = "issue-decisions";
@@ -132,8 +133,11 @@ export function IssueQuestions({
   onAnswerInThread,
   show = "all",
   slug,
+  waitingKind = null,
 }: {
   issueId: string;
+  /** What the issue's park waits on, while it is parked: the park's own question is named by it. */
+  waitingKind?: NeedsInfoKind | null;
   /** The project's slug, where the host knows it: what a question is about opens its page. */
   slug?: string | undefined;
   parkedForInfo?: boolean;
@@ -183,6 +187,7 @@ export function IssueQuestions({
             onAnswer={answer}
             pending={answering.has(question.id)}
             slug={slug}
+            waits={parkedForInfo && currentRoundOf(question)?.answerShape === "free_text" ? waitingKind : null}
           />
         ))
       )}

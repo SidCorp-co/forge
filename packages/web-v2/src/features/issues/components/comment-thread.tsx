@@ -22,6 +22,7 @@ import { useIssueQuestions } from "@/features/questions";
 import { useCorrectIntent, useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "@/features/attachments";
+import { personNotice } from "../notice-words";
 import { BodyEditor } from "./body-editor";
 import type { IssueViewer } from "./use-issue-project";
 import { StagedFileList, useStagedFiles } from "@/features/attachments";
@@ -276,10 +277,13 @@ export function CommentItem({
   depth,
   readOnly = false,
   viewer,
+  developer = false,
 }: {
   node: CommentNode;
   issueId: string;
   members: ProjectMember[] | undefined;
+  /** The Developer view: a park's re-point notice reads as core wrote it, codes and all. */
+  developer?: boolean;
   depth: number;
   readOnly?: boolean;
   viewer?: IssueViewer | undefined;
@@ -323,7 +327,7 @@ export function CommentItem({
           </div>
           <div className="mt-1" lang={node.writtenLang ?? undefined}>
             <BodyView
-              body={node.body}
+              body={(!developer && personNotice(node.body, t)) || node.body}
               format={node.format}
               nodes={node.nodes}
               record={node.record}
@@ -378,6 +382,7 @@ export function CommentItem({
               depth={depth + 1}
               readOnly={readOnly}
               viewer={viewer}
+              developer={developer}
             />
           ))}
         </div>
@@ -392,6 +397,7 @@ export function CommentThread({
   members,
   readOnly = false,
   viewer,
+  developer = false,
 }: {
   issueId: string;
   comments: CommentNode[];
@@ -400,6 +406,8 @@ export function CommentThread({
   readOnly?: boolean;
   /** Who reads it: a comment's author, or a project admin, corrects what it is for. */
   viewer?: IssueViewer | undefined;
+  /** The Developer view: agent text in the thread reads as written. */
+  developer?: boolean;
 }) {
   const t = useCopy();
   // Newest top-level comment first so the latest activity is reachable without
@@ -427,6 +435,7 @@ export function CommentThread({
               depth={0}
               readOnly={readOnly}
               viewer={viewer}
+              developer={developer}
             />
           ))}
         </div>

@@ -17,8 +17,8 @@ const P = "11111111-1111-4111-8111-111111111111";
 const decision = (subject: NeedsYouDecision["subject"]): NeedsYouDecision => ({
   id: "question:q41",
   group: "answer",
-  area: "issues",
-  entity: "issue",
+  area: "questions",
+  entity: "question",
   key: "ISS-41",
   title: "Pick the dashboard's first row",
   opens: { kind: "issue", key: "ISS-41" },

@@ -12,7 +12,7 @@ import { EtaInline } from "@/features/forecast";
 import { etaOfForecast } from "@/features/forecast";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { saidView } from "@/lib/i18n/said";
+import { saidView, saysKey } from "@/lib/i18n/said";
 import { IssueSteps } from "../issue-standing-bits";
 
 function Line({ label, children, testId }: { label: string; children: ReactNode; testId: string }) {
@@ -29,6 +29,7 @@ export function IssueStateHead({
   forecast,
   act,
   needs,
+  resource = null,
 }: {
   standing: IssueStanding;
   forecast: Forecast | undefined;
@@ -36,11 +37,15 @@ export function IssueStateHead({
   act?: ReactNode;
   /** What the reader answers here, drawn under Needs you: the open questions and patterns. */
   needs?: ReactNode;
+  /** What a park waiting on a resource needs supplied, as its question names it (ISS-680). */
+  resource?: string | null;
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const clock = useEtaClock();
-  const w = saidView(standing.waitingOn, language);
+  const view = saidView(standing.waitingOn, language);
+  // "supply what it asks for" names nothing: where the park's question says what, the act names it
+  const w = resource && saysKey(standing.waitingOn.says.act, "issues.standing.act.supply") ? { ...view, act: t("issues.needs.supply", { what: resource }) } : view;
   const done = standing.attentionGroup === "done";
   const owesYou = standing.waitingOn.kind === "you";
   const eta = forecast && forecast.kind !== "landed" && forecast.kind !== "ended" ? etaOfForecast(forecast, clock) : null;

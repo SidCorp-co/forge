@@ -97,6 +97,7 @@ export function IssueDetails({
           commentsQ.data?.totalCount ?? null,
           <ActivityTab
             issueId={issue.id}
+            developer={developer}
             thread={thread}
             onThread={setThread}
             commentsQ={commentsQ}

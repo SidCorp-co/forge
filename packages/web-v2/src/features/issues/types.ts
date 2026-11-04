@@ -1,3 +1,4 @@
+import type { NeedsInfoKind } from "@forge/contracts/issue-vocabulary";
 import type { DesignRevisionState, DesignStatus } from "@forge/contracts/design-status";
 import type { IssueMove } from "@forge/contracts/issue-machine";
 
@@ -292,6 +293,8 @@ export interface IssueDetail extends IssueRow {
   /** ISS-1176 — the release note, whose `userFacing` line is the one sentence written for the person who filed. */
   releaseNotes?: ReleaseNotes | null;
   workState?: IssueWorkState | null;
+  /** What a `needs_info` park waits on (ISS-631); null when it is not parked or names no kind. */
+  waitingKind?: NeedsInfoKind | null;
   /** The release that shipped it (FB-102); null while none has, absent from an older core. */
   shippedIn?: { version: string; at: string } | null;
   /** On a project with no production environment, the landing that closed it: no version, nothing

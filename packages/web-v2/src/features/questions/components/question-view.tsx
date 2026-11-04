@@ -6,6 +6,7 @@
 // them BECAUSE it is shared: whoever mounts it supplies only a way to send and a
 // pending flag, so neither caller can reconstruct a round or re-derive a lock.
 
+import type { NeedsInfoKind } from "@forge/contracts/issue-vocabulary";
 import { useState } from "react";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { type ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -308,6 +309,16 @@ interface QuestionViewProps {
   highlighted?: boolean;
   /** The project's slug, where known: what the question is about then opens its page. */
   slug?: string | undefined;
+  /** What the park this question asks for waits on, where it is the park's (ISS-680): it names the card. */
+  waits?: NeedsInfoKind | null | undefined;
+}
+
+/** The card's heading: what the park waits on, where it is the park's, else a decision waiting. */
+export function questionHeadingKey(answerable: boolean, waits: NeedsInfoKind | null | undefined) {
+  if (!answerable) return "agents.question.decision" as const;
+  if (waits === "needs_resource") return "agents.question.resource" as const;
+  if (waits === "needs_answer") return "agents.question.answerWaiting" as const;
+  return "agents.question.waiting" as const;
 }
 
 /**
@@ -320,6 +331,7 @@ export function QuestionView({
   context,
   highlighted,
   slug,
+  waits,
 }: QuestionViewProps) {
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -360,7 +372,7 @@ export function QuestionView({
       className={cn("space-y-3", highlighted && "shadow-focus")}
       title={
         <span data-question-title="true" tabIndex={-1} className="focus-visible:outline-none focus-visible:shadow-focus">
-          {answerable ? t("agents.question.waiting") : t("agents.question.decision")}
+          {t(questionHeadingKey(answerable, waits))}
         </span>
       }
       right={

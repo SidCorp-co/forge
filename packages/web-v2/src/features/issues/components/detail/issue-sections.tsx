@@ -129,8 +129,11 @@ export function ActivityTab({
   canWrite,
   viewer,
   past,
+  developer = false,
 }: {
   issueId: string;
+  /** The Developer view: the thread's agent text reads as written. */
+  developer?: boolean;
   thread: ActivityThread;
   onThread: (thread: ActivityThread) => void;
   commentsQ: ReturnType<typeof useComments>;
@@ -163,7 +166,7 @@ export function ActivityTab({
           ) : commentsQ.isError ? (
             <TabError query={commentsQ} title={t("issues.activity.commentsFailed")} />
           ) : (
-            <CommentThread issueId={issueId} comments={commentsQ.data?.items ?? []} members={members} readOnly={!canWrite} viewer={viewer} />
+            <CommentThread issueId={issueId} comments={commentsQ.data?.items ?? []} members={members} readOnly={!canWrite} viewer={viewer} developer={developer} />
           ))}
         {thread === "activity" &&
           (activityQ.isLoading ? (
