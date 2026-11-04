@@ -1,0 +1,1 @@
+**A project whose gates Forge raised can save its settings again.** A settings save that leaves the gates as they stand is no longer refused as a gates change because their fields came back in a different order.

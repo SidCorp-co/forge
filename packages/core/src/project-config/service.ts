@@ -3,6 +3,7 @@ import { parseVariableRef } from '@forge/contracts/variables';
 import type { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
+import { stableStringify } from '../lib/canonical-json.js';
 import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import {
   encryptSecret,
@@ -182,8 +183,13 @@ export function writeProjectConfig(input: {
   return writeProjectDocument(input);
 }
 
+/**
+ * The gates a document holds, in key order (ISS-963): the stored document comes back from jsonb in
+ * its key order and the write's parse re-emits the schema's, so only a canonical form says whether
+ * a write changes them.
+ */
 const gatesJson = (doc: unknown): string =>
-  JSON.stringify(isRecord(doc) && doc.gates !== undefined ? doc.gates : null);
+  stableStringify(isRecord(doc) && doc.gates !== undefined ? doc.gates : null);
 
 /**
  * A project document write. Only the gates door (`gates.ts:writeGates`) passes `gates`, whose `also`

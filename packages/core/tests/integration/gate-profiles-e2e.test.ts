@@ -207,6 +207,42 @@ describe('BC-3 and BC-12: a profile and one override, set through their door and
     expect(other.status, JSON.stringify(other.body)).toBe(200);
     expect((await gatesOf()).profile).toBe('yolo');
   });
+
+  // ISS-963: jsonb hands the stored gates back with its own key order and the write's parse re-emits
+  // the schema's, so a key-order comparison refused every config write once the gates held `raised`
+  it('takes a write that leaves raised gates as they stand, and still refuses one that changes them', async () => {
+    expect((await setGates(owner, { profile: 'yolo' })).status).toBe(200);
+    await raiseOnIncident({
+      projectId,
+      cause: 'deploy_failed',
+      ref: 'deploy 41834060946 failed',
+      why: 'the deploy did not come up',
+    });
+    const held = (await api(owner, 'GET', `/api/projects/${projectId}/config`)).body as {
+      revision: number;
+      document: Record<string, unknown>;
+    };
+    expect((held.document.gates as { raised?: unknown }).raised).toMatchObject({
+      cause: 'deploy_failed',
+    });
+    const unchanged = await api(owner, 'PUT', `/api/projects/${projectId}/config`, {
+      baseRevision: held.revision,
+      document: { ...held.document, approvals: { agree: true } },
+    });
+    expect(unchanged.status, JSON.stringify(unchanged.body)).toBe(200);
+
+    const again = (await api(owner, 'GET', `/api/projects/${projectId}/config`)).body as {
+      revision: number;
+      document: Record<string, unknown>;
+    };
+    const gates = again.document.gates as Record<string, unknown>;
+    const changed = await api(owner, 'PUT', `/api/projects/${projectId}/config`, {
+      baseRevision: again.revision,
+      document: { ...again.document, gates: { ...gates, raised: undefined } },
+    });
+    expect(codes(changed)).toEqual(['GATES_WRITTEN_THROUGH_THEIR_DOOR']);
+    expect((await gatesOf()).raised).toMatchObject({ cause: 'deploy_failed' });
+  });
 });
 
 describe('BC-4: yolo opens an issue over its gaps', () => {
