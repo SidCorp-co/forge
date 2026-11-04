@@ -293,4 +293,9 @@ export {
   UNWEIGHED,
   type Weighing,
 } from './weighing.js';
-export { readWorkState, restartStepsForNewRun, setWorkStep } from './work-state.js';
+export {
+  advanceStepOnEvidence,
+  readWorkState,
+  restartStepsForNewRun,
+  setWorkStep,
+} from './work-state.js';

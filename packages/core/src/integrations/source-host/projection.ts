@@ -22,6 +22,7 @@ import {
   repoPullRequests,
 } from '../../db/schema-repo-projection.js';
 import { forgeReads } from '../index.js';
+import { workEvidence } from '../work-evidence.js';
 import { foldCheckRun, foldReviewDismissed, foldReviewSubmitted } from './projection-shape.js';
 
 /** What the caller already knows about the delivery's binding. */
@@ -190,6 +191,10 @@ export async function applyPullRequestEvent(
     })
     .returning({ id: repoPullRequests.id });
   for (const row of rows) await writeIssueLinks(row.id, links);
+  // an open request is a change being built: the issues it delivers are told so (ISS-951)
+  if (rows.length > 0 && stateOf(pr) === 'open' && links.length > 0) {
+    await workEvidence().changeRequestOpen(links.map((l) => l.issueId));
+  }
   return rows.length;
 }
 

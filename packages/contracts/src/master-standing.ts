@@ -48,9 +48,13 @@ export const MASTER_PASS_CLOSE_REASONS = [
 ] as const;
 export type MasterPassCloseReason = (typeof MASTER_PASS_CLOSE_REASONS)[number];
 
-/** `runs_out`: no pass is open, and runs this master declared are still out (`runsOut`). */
+/**
+ * `runs_out`: no pass is open, and runs this master declared are still out (`runsOut`). `busy`: no
+ * pass is open and the pane's own hooks say it works, so somebody drives it by hand (ISS-951).
+ */
 export const MASTER_STATES = [
 	"in_pass",
+	"busy",
 	"runs_out",
 	"idle",
 	"waiting_person",
@@ -122,6 +126,15 @@ export const MASTER_PASS_OPENERS = [
 const AGE_MS_MAX = 10 * 365 * 24 * 60 * 60_000;
 const ageMs = z.number().int().min(0).max(AGE_MS_MAX);
 
+/** What a master's pane is doing, as its hooks report it: working, idle, stopped on a permission dialog, or waiting on its subagents. */
+export const MASTER_PANE_DOINGS = [
+	"idle",
+	"working",
+	"awaiting_permission",
+	"awaiting_children",
+] as const;
+export type MasterPaneDoing = (typeof MASTER_PANE_DOINGS)[number];
+
 /** What the box holds about one open pass, for core to judge whether and how it ended. */
 export const masterPassFactsSchema = z.strictObject({
 	openedBy: z.enum(MASTER_PASS_OPENERS),
@@ -135,12 +148,7 @@ export const masterPassFactsSchema = z.strictObject({
 			turnsSinceOpen: z.number().int().min(0).max(100_000),
 			/** Since the newest turn began; null where none has. */
 			turnBeganAgoMs: ageMs.nullable(),
-			doing: z.enum([
-				"idle",
-				"working",
-				"awaiting_permission",
-				"awaiting_children",
-			]),
+			doing: z.enum(MASTER_PANE_DOINGS),
 			lastEventAgoMs: ageMs,
 		})
 		.nullable(),
@@ -178,6 +186,47 @@ export const masterPassRequestSchema = z.discriminatedUnion("op", [
 	}),
 ]);
 export const MASTER_PASS_SHAPE = `{ op: "open", sessionId: uuid, verb: ${MASTER_VERBS.join(" | ")}, issueKey?: string | null, trigger?: ${MASTER_PASS_TRIGGERS.join(" | ")} (default nudge) } or { op: "settle", sessionId: uuid, passId: uuid (the id the open answered), facts: { openedBy: ${MASTER_PASS_OPENERS.join(" | ")}, served, openedAgoMs, hooks, writtenAgoMs, dispatched, record } } — see @forge/contracts/master-standing masterPassFactsSchema`;
+
+/**
+ * What the master's pane hooks say now, sent on the master's beat whether or not a pass is open
+ * (ISS-951): the same facts a settle carries, so a page reads what the pane does between passes.
+ */
+export const masterPaneFactsSchema = z.strictObject({
+	doing: z.enum(MASTER_PANE_DOINGS),
+	lastEventAgoMs: ageMs,
+	/** Since the newest turn began; null where none has. */
+	turnBeganAgoMs: ageMs.nullable(),
+	/** Since its conversation was last written, children's included; null where it cannot be read. */
+	writtenAgoMs: ageMs.nullable(),
+});
+export type MasterPaneFacts = z.infer<typeof masterPaneFactsSchema>;
+
+export const masterPaneRequestSchema = z.strictObject({
+	sessionId: z.uuid(),
+	pane: masterPaneFactsSchema,
+});
+export const MASTER_PANE_SHAPE = `{ sessionId: uuid, pane: { doing: ${MASTER_PANE_DOINGS.join(" | ")}, lastEventAgoMs: integer ms, turnBeganAgoMs: integer ms | null, writtenAgoMs: integer ms | null } }`;
+
+/** What a pane report answered: whether `doing` moved from what core held before it. */
+export interface MasterPaneResponse {
+	sessionId: string;
+	changed: boolean;
+}
+
+/**
+ * The pane's latest facts as core holds them, each age turned into the time it names. `beat`: the
+ * runner's beat sent them, live between passes; `pass`: the box sends no beat facts (a runner older
+ * than ISS-951), so they are what its last pass settle said, as of then.
+ */
+export interface MasterPane {
+	doing: MasterPaneDoing;
+	lastEventAt: string;
+	turnBeganAt: string | null;
+	writtenAt: string | null;
+	/** When core heard them. */
+	seenAt: string;
+	source: "beat" | "pass";
+}
 
 /** A dialog the master's pane stopped on, as the runner read it; `null` clears it. */
 export const masterDialogRequestSchema = z.strictObject({
@@ -281,6 +330,11 @@ export interface MasterStanding {
 	/** The master session's own name, as the runner declared it. */
 	name: string | null;
 	device: { id: string; name: string } | null;
+	/**
+	 * When it entered its state, by the state's own record (ISS-951): the open pass's start, the
+	 * dialog's, the busy turn's, the last pass's end, the last beat of a silent master; never the
+	 * session's declaration, which says nothing of what it does now.
+	 */
 	since: string | null;
 	pass: MasterOpenPass | null;
 	/** The title of the issue the open pass names, where it names one of this project's; the key is the pass's. */
@@ -293,6 +347,8 @@ export interface MasterStanding {
 	silentAfterSeconds: number;
 	/** Set while state is waiting_person: the pane is stopped on a dialog only a person answers. */
 	waitingOn: MasterWaitingOn | null;
+	/** What the pane's hooks last said, live from its beat or as its last pass settled; null where the box never said. */
+	pane: MasterPane | null;
 	/** Permission dialogs the box answered (denied) for this project's panes, as its last heartbeat
 	 *  counted them; null where it reported none. */
 	dialogsAnswered: MasterDialogsAnswered | null;

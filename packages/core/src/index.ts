@@ -42,11 +42,16 @@ import { provideAssistantMethod } from './guides/index.js';
 import { valueCheckHeld } from './intake/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
 import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
-import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
+import {
+  assertVaultBootSafety,
+  provideForgeReads,
+  provideWorkEvidence,
+} from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import {
   activeIssuePrefix,
+  advanceStepOnEvidence,
   allRelationDigests,
   archivedIssueIdsSql,
   citedIssues,
@@ -322,6 +327,14 @@ provideForgeReads({
   projectsByIds: listProjectHeads,
   runProjectOf: pipelineRunProjectId,
   deviceProjects: deviceProjectIds,
+});
+// a change request opened for an issue moves its step to build, each issue in its own write (ISS-951)
+provideWorkEvidence({
+  changeRequestOpen: async (issueIds) => {
+    for (const issueId of issueIds) {
+      await db.transaction((tx) => advanceStepOnEvidence(tx, issueId, 'change_request_opened'));
+    }
+  },
 });
 provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);

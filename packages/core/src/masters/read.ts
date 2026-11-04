@@ -1,8 +1,13 @@
-import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  MASTER_SESSION_KIND,
+  RUN_ISSUES_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import type {
   MasterClosedPass,
   MasterOpenPass,
   MasterOutdated,
+  MasterPane,
   MasterPaneDialog,
   MasterPassCloseReason,
   MasterPassList,
@@ -12,6 +17,7 @@ import type {
   MasterPassTrigger,
   MasterPassView,
   MasterStanding,
+  MasterState,
   MasterVerb,
   MasterWaitingOn,
 } from '@forge/contracts/master-standing';
@@ -32,6 +38,7 @@ import {
 } from '../devices/index.js';
 import { NOT_PARKED } from '../jobs/index.js';
 import { slotsOf } from './rules.js';
+import { masterStateOf, storedPane } from './state.js';
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
 const list = (values: readonly string[]) =>
@@ -197,6 +204,7 @@ interface MasterRow {
   last_beat: string | Date | null;
   silent: boolean;
   pane_dialog: MasterPaneDialog | null;
+  pane: unknown;
   gate_report: unknown;
   outdated: unknown;
 }
@@ -211,6 +219,7 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
                  ${masterLastBeatSql('s')} AS last_beat,
                  ${masterSilentSql('s')} AS silent,
                  s.metadata -> 'paneDialog' AS pane_dialog,
+                 s.metadata -> 'pane' AS pane,
                  s.metadata -> 'outdated' AS outdated,
                  d.gate_report
             FROM agent_sessions s
@@ -306,6 +315,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       runsOut: 0,
       lastBeatAt: null,
       waitingOn: null,
+      pane: null,
       dialogsAnswered: null,
       outdated: null,
     };
@@ -319,31 +329,37 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
     master.device_id ? runsOutOf(projectId, master.device_id) : Promise.resolve(0),
   ]);
-  const passIssueTitle = pass?.issueKey ? await issueTitleOf(projectId, pass.issueKey) : null;
   const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
+  const pane = storedPane(master.pane);
+  const lastBeatAt = master.last_beat ? iso(master.last_beat) : null;
+  const read = masterStateOf({
+    silent: master.silent,
+    lastBeatAt,
+    dialogSeenAt: waitingOn?.since ?? null,
+    pass,
+    lastPassEndedAt: lastPass?.endedAt ?? null,
+    runsOut,
+    pane,
+    silentAfterSeconds: SESSION_SILENCE_TIMEOUT_S,
+    now: new Date(),
+  });
+  const passIssueTitle = pass?.issueKey ? await issueTitleOf(projectId, pass.issueKey) : null;
   return {
     ...base,
-    state: master.silent
-      ? 'silent'
-      : waitingOn
-        ? 'waiting_person'
-        : pass
-          ? 'in_pass'
-          : runsOut > 0
-            ? 'runs_out'
-            : 'idle',
+    state: read.state,
     runsOut,
     waitingOn,
+    pane,
     dialogsAnswered: readDialogsAnswered(master.gate_report, projectId),
     outdated: storedOutdated(master.outdated),
     sessionId: master.id,
     name: master.title,
     device,
-    since: master.started_at ? iso(master.started_at) : null,
+    since: read.since,
     pass,
     passIssueTitle,
     slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, held) : null,
-    lastBeatAt: master.last_beat ? iso(master.last_beat) : null,
+    lastBeatAt,
   };
 }
 
@@ -437,4 +453,166 @@ function storedSays(v: unknown): MasterOutdated['says'] | null {
   const why = saidSchema.safeParse(o.why);
   const heldBy = z.array(saidSchema).safeParse(o.heldBy);
   return why.success && heldBy.success ? { why: why.data, heldBy: heldBy.data } : null;
+}
+
+/**
+ * A project's master as a workspace's row reads it (ISS-951): its state derived as the standing
+ * derives it, the pass that stands, the last pass's facts, and what its box takes. One read per
+ * workspace, never one per project: a fixed number of statements however many projects it has.
+ */
+export interface MasterGlance {
+  state: MasterState;
+  since: string | null;
+  /** The open pass, where it still stands (`state.ts:masterStateOf`). */
+  pass: MasterOpenPass | null;
+  lastPass: { endedAt: string; dispatched: string[]; trigger: MasterPassTrigger } | null;
+  runsOut: number;
+  lastBeatAt: string | null;
+  pane: MasterPane | null;
+  dialog: string | null;
+  /** Its box's job panes are all held. */
+  slotsFull: boolean;
+  /** Its box takes no new run on the project: its runner there drains or is disabled, or core keeps the pane draining. */
+  poolClosed: boolean;
+  /** The first issue of its newest live run. */
+  newestRunIssue: string | null;
+}
+
+interface GlanceMasterRow {
+  id: string;
+  project_id: string;
+  device_id: string | null;
+  max_job_panes: number | null;
+  last_beat: string | Date | null;
+  silent: boolean;
+  pane_dialog: MasterPaneDialog | null;
+  pane: unknown;
+  outdated: unknown;
+  runner_closed: boolean;
+}
+
+const uuids = (ids: readonly string[]) =>
+  sql.join(
+    ids.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+
+export async function readMasterGlances(
+  projectIds: readonly string[],
+  now: Date = new Date(),
+): Promise<Map<string, MasterGlance>> {
+  const out = new Map<string, MasterGlance>();
+  if (projectIds.length === 0) return out;
+  const ids = uuids(projectIds);
+  const [masters, lastPasses, runs] = await Promise.all([
+    db.execute(sql`
+      SELECT DISTINCT ON (m.project_id) m.*
+        FROM (
+          SELECT s.id, s.project_id, s.device_id, d.max_job_panes,
+                 ${masterLastBeatSql('s')} AS last_beat,
+                 ${masterSilentSql('s')} AS silent,
+                 s.metadata -> 'paneDialog' AS pane_dialog,
+                 s.metadata -> 'pane' AS pane,
+                 s.metadata -> 'outdated' AS outdated,
+                 EXISTS (SELECT 1 FROM runners r
+                          WHERE r.project_id = s.project_id AND r.device_id = s.device_id
+                            AND r.status IN ('draining', 'disabled')) AS runner_closed
+            FROM agent_sessions s
+            LEFT JOIN devices d ON d.id = s.device_id
+           WHERE s.project_id IN (${ids})
+             AND s.kind = ${MASTER_SESSION_KIND}
+             AND s.status NOT IN (${TERMINAL})
+        ) m
+       ORDER BY m.project_id, m.last_beat DESC NULLS LAST`),
+    db.execute(sql`
+      SELECT p.id AS project_id, lp.ended_at, lp.dispatched, lp.trigger
+        FROM unnest(ARRAY[${ids}]) AS p(id)
+        CROSS JOIN LATERAL (
+          SELECT q.ended_at, q.dispatched, q.trigger FROM master_passes q
+           WHERE q.project_id = p.id AND q.ended_at IS NOT NULL
+           ORDER BY q.ended_at DESC, q.started_at DESC
+           LIMIT 1) lp`),
+    db.execute(sql`
+      SELECT s.project_id, s.device_id, s.metadata -> ${RUN_ISSUES_METADATA_KEY} AS issues,
+             COALESCE(s.started_at, s.created_at) AS at
+        FROM agent_sessions s
+       WHERE s.project_id IN (${ids})
+         AND s.kind = ${RUN_SESSION_KIND}
+         AND s.status IN (${list(LIVE_SESSION_STATUSES)})
+         AND ${NOT_PARKED}
+       ORDER BY at DESC`),
+  ]);
+  const masterRows = rowsOf<GlanceMasterRow>(masters);
+  const sessionIds = masterRows.map((m) => m.id);
+  const deviceIds = [...new Set(masterRows.flatMap((m) => (m.device_id ? [m.device_id] : [])))];
+  const [open, jobs] = await Promise.all([
+    sessionIds.length === 0
+      ? []
+      : rowsOf<PassRow>(
+          await db.execute(sql`
+            SELECT ${PASS_COLUMNS} FROM master_passes
+             WHERE master_session_id IN (${uuids(sessionIds)}) AND ended_at IS NULL`),
+        ),
+    deviceIds.length === 0
+      ? []
+      : rowsOf<{ device_id: string; n: number }>(
+          await db.execute(sql`
+            SELECT j.device_id, count(*)::int AS n FROM jobs j
+              LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+             WHERE j.device_id IN (${uuids(deviceIds)}) AND ${OCCUPYING}
+             GROUP BY j.device_id`),
+        ),
+  ]);
+  const openBySession = new Map(open.map((r) => [r.master_session_id, openPassOf(r)]));
+  const jobsByDevice = new Map(jobs.map((j) => [String(j.device_id), Number(j.n)]));
+  const lastByProject = new Map(
+    rowsOf<{
+      project_id: string;
+      ended_at: string | Date;
+      dispatched: string[];
+      trigger: MasterPassTrigger;
+    }>(lastPasses).map((r) => [
+      String(r.project_id),
+      { endedAt: iso(r.ended_at), dispatched: r.dispatched, trigger: r.trigger },
+    ]),
+  );
+  const runRows = rowsOf<{ project_id: string; device_id: string | null; issues: unknown }>(runs);
+  const firstIssue = (v: unknown) =>
+    Array.isArray(v) && typeof v[0] === 'string' ? (v[0] as string) : null;
+  for (const m of masterRows) {
+    const projectId = String(m.project_id);
+    const pass = openBySession.get(m.id) ?? null;
+    const lastPass = lastByProject.get(projectId) ?? null;
+    const projectRuns = runRows.filter((r) => String(r.project_id) === projectId);
+    const runsOut = projectRuns.filter((r) => r.device_id === m.device_id).length;
+    const pane = storedPane(m.pane);
+    const lastBeatAt = m.last_beat ? iso(m.last_beat) : null;
+    const dialog = m.silent ? null : m.pane_dialog;
+    const read = masterStateOf({
+      silent: m.silent,
+      lastBeatAt,
+      dialogSeenAt: dialog?.seenAt ?? null,
+      pass,
+      lastPassEndedAt: lastPass?.endedAt ?? null,
+      runsOut,
+      pane,
+      silentAfterSeconds: SESSION_SILENCE_TIMEOUT_S,
+      now,
+    });
+    const inUse = m.device_id ? (jobsByDevice.get(m.device_id) ?? 0) : 0;
+    out.set(projectId, {
+      state: read.state,
+      since: read.since,
+      pass: read.passStands ? pass : null,
+      lastPass,
+      runsOut,
+      lastBeatAt,
+      pane,
+      dialog: dialog?.text ?? null,
+      slotsFull: m.max_job_panes !== null && inUse >= m.max_job_panes,
+      poolClosed: m.runner_closed || storedOutdated(m.outdated)?.draining === true,
+      newestRunIssue: firstIssue(projectRuns[0]?.issues),
+    });
+  }
+  return out;
 }

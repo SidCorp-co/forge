@@ -2,7 +2,8 @@
  * ISS-838 (FB-428, adminhub-api ISS-78, 2026-10-31): a judge and later a reviewer were declared on an
  * issue at `in_progress:test`, and each declaration dropped it to an earlier step nobody chose. A run
  * declared to judge takes the issue's lease but moves no step; a run that builds still starts the
- * step over at triage, the reading `issues/work-state.ts:restartStepsForNewRun` was written for.
+ * step over, at build since ISS-951 round 2, the reading `issues/work-state.ts:restartStepsForNewRun`
+ * was written for.
  *
  * @direct-test-of packages/core/src/devices/run-take.ts
  * @direct-test-of packages/core/src/issues/work-state.ts
@@ -112,10 +113,10 @@ describe('ISS-838 a run declared on an issue at in_progress:test', () => {
     expect(await stepOf(seq), `closing the ${role} run moved the step`).toBe('test');
   });
 
-  it('a building run still starts the step over at triage', async () => {
+  it('a building run still starts the step over, at build: it is building', async () => {
     const res = await declare(randomUUID(), ['ISS-4'], 'runner');
     expect([res.status, codes(res.body)]).toEqual([200, []]);
-    expect(await stepOf(4)).toBe('triage');
+    expect(await stepOf(4)).toBe('build');
     await close(String((res.body as Doc).sessionId));
   });
 

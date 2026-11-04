@@ -74,7 +74,7 @@ const READS: DoorSpec<never>[] = [
   ),
   read(
     'steward_read_master_standing',
-    "Read whether the project's master serves: in_pass, runs_out, idle, waiting_person, silent or none.",
+    "Read whether the project's master serves: in_pass, busy, runs_out, idle, waiting_person, silent or none.",
     z.strictObject({}),
     (_a, ctx) => `/api/projects/${ctx.projectId}/masters/standing`,
   ),

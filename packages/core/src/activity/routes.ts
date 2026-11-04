@@ -1,17 +1,24 @@
-// `GET /api/orgs/:orgId/activity`: what each project of the workspace works now and next (ISS-951).
+// `GET /api/orgs/:orgId/activity`: what each project of the workspace works now and next, and
+// `GET /api/orgs/:orgId/activity/:projectId/recent`: what one of them recorded last (ISS-951).
 
+import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { db } from '../db/client.js';
+import { loadVisibleProjectIds } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { readOrgActivity } from './read.js';
+import { readProjectRecent } from './recent.js';
 
 const orgParam = z.object({ orgId: z.uuid() });
+const recentParam = z.object({ orgId: z.uuid(), projectId: z.uuid() });
 
 export const orgActivityRoutes = new Hono<{ Variables: AuthVars }>();
 orgActivityRoutes.use('/:orgId/activity', requireAuth(), assertEmailVerified());
+orgActivityRoutes.use('/:orgId/activity/*', requireAuth(), assertEmailVerified());
 
 // org.read admits the caller to the org; each project's row is there only where the caller reads it
 orgActivityRoutes.get(
@@ -32,5 +39,42 @@ orgActivityRoutes.get(
       ),
     );
     return c.json({ ...read, projects });
+  },
+);
+
+// the peek's Recent list, read when it is opened: a project of the org the caller reads, else absent
+orgActivityRoutes.get(
+  '/:orgId/activity/:projectId/recent',
+  zValidator(
+    'param',
+    recentParam,
+    invalid('invalid path: /api/orgs/<org uuid>/activity/<project uuid>/recent'),
+  ),
+  requiresOnParam('org.read', 'orgId'),
+  noQuery,
+  async (c) => {
+    const { orgId, projectId } = c.req.valid('param');
+    const agency = c.get('agency');
+    if (!agency)
+      throw new Error('orgs/activity/recent: a request reached its handler without an auth gate');
+    const [inOrg] = [
+      ...((await db.execute(
+        sql`SELECT name FROM projects WHERE id = ${projectId} AND org_id = ${orgId} AND archived_at IS NULL`,
+      )) as Iterable<{ name: string }>),
+    ];
+    const visible = inOrg && (await loadVisibleProjectIds(c.get('userId'))).includes(projectId);
+    if (!inOrg || !visible) {
+      return c.json(
+        {
+          code: 'NOT_FOUND',
+          error: `no project ${projectId} of this workspace that you can read: name one GET /api/orgs/${orgId}/activity lists`,
+        },
+        404,
+      );
+    }
+    const recent = await readProjectRecent(projectId);
+    return c.json(
+      await egressForRequest(agency, projectId, 'issue', recent, `${inOrg.name}'s recent activity`),
+    );
   },
 );

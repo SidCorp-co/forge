@@ -2,6 +2,8 @@ import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type {
   MasterOpenPass,
   MasterOutdated,
+  MasterPane,
+  MasterPaneFacts,
   MasterPassFacts,
   MasterPassSettleResponse,
   MasterPassTrigger,
@@ -39,6 +41,7 @@ import {
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
+import { paneFromFacts, storedPane } from './state.js';
 import { judged, masterVerdict, type OutdatedHold, outdatedHold } from './verdict.js';
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
@@ -161,6 +164,10 @@ export async function settleMasterPass(args: {
       const named = await readClosedPass(tx, { sessionId: master.id, passId: args.passId });
       return { ok: false, refusals: [passNotOpenRefusal({ passId: args.passId, named, open })] };
     }
+    const hooks = args.facts.hooks;
+    // a settle carries the pane's hooks too: a box that sends no beat facts is read as of its last pass
+    if (hooks)
+      await keepPane(tx, master, { ...hooks, writtenAgoMs: args.facts.writtenAgoMs }, 'pass');
     const end = passEnd(args.facts);
     if (!end) {
       return {
@@ -190,6 +197,46 @@ export async function settleMasterPass(args: {
       throw new Error(`settleMasterPass: pass ${args.passId} was read open and closed nothing`);
     await pushProjectNow(tx, master.projectId, 'master');
     return { ok: true, settled: { pass: closed, because: end.because } };
+  });
+}
+
+/**
+ * Keep what the pane's hooks said on its master session, and tell the project's pages where `doing`
+ * moved: the beat comes every half minute, and a page re-reads only when there is something to see.
+ * A report older than the one held (a settle racing a beat) changes nothing. Answers whether doing moved.
+ */
+async function keepPane(
+  tx: Tx,
+  master: { id: string; projectId: string },
+  facts: MasterPaneFacts,
+  source: MasterPane['source'],
+  now: Date = new Date(),
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ metadata: agentSessions.metadata })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, master.id))
+    .for('update')
+    .limit(1);
+  const held = storedPane((row?.metadata as Record<string, unknown> | null)?.pane);
+  // a box that beats is read live: its settles carry the same live hooks, so they keep the beat's word
+  const pane = paneFromFacts(facts, held?.source === 'beat' ? 'beat' : source, now);
+  if (held && new Date(held.lastEventAt) > new Date(pane.lastEventAt)) return false;
+  await mergeSessionMetadata(master.id, { pane }, tx);
+  const changed = held?.doing !== pane.doing;
+  if (changed) await pushProjectNow(tx, master.projectId, 'master');
+  return changed;
+}
+
+/** What the pane's hooks say now, on the master's beat, whether or not a pass is open (ISS-951). */
+export async function recordMasterPane(args: {
+  deviceId: string;
+  sessionId: string;
+  pane: MasterPaneFacts;
+}): Promise<{ changed: boolean }> {
+  return db.transaction(async (tx) => {
+    const master = await ownedMaster(tx, args.deviceId, args.sessionId);
+    return { changed: await keepPane(tx, master, args.pane, 'beat') };
   });
 }
 

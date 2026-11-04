@@ -54,6 +54,7 @@ function doing(m: MasterStanding, language: string): string {
   const t = productCopy(language);
   if (m.state === "in_pass" && m.pass) return t("agents.master.doingPass", { verb: enumLabel("masterVerb", m.pass.verb, language).toLowerCase() });
   if (m.state === "runs_out") return t(m.runsOut === 1 ? "agents.master.doingRunsOne" : "agents.master.doingRunsMany", { n: m.runsOut });
+  if (m.state === "busy") return t("agents.master.doingBusy");
   if (m.state === "idle") return t("agents.master.doingIdle");
   if (m.state === "waiting_person" && m.waitingOn) return said(m.waitingOn.says.act, language).toLowerCase();
   if (m.state === "silent") return t("agents.master.doingSilent", { when: m.lastBeatAt ? formatRelative(m.lastBeatAt, language) : t("agents.master.itsStart") });
@@ -113,7 +114,7 @@ export function MasterLine({ m }: { m: MasterStanding }) {
 function MasterBanner({ m, className }: { m: MasterStanding; className?: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const tone = m.state === "silent" ? "err" : m.state === "none" || m.state === "waiting_person" ? "you" : m.state === "in_pass" || m.state === "runs_out" ? "run" : "calm";
+  const tone = m.state === "silent" ? "err" : m.state === "none" || m.state === "waiting_person" ? "you" : m.state === "in_pass" || m.state === "busy" || m.state === "runs_out" ? "run" : "calm";
   const head = `${statusReading("masterState", m.state, language).label} ·`;
   const body =
     m.state === "in_pass" && m.pass

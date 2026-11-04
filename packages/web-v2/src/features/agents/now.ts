@@ -9,6 +9,8 @@ export type MasterWord = "working" | "idle" | "waiting" | "silent" | "absent";
 
 const MASTER_WORD: Record<MasterStanding["state"], MasterWord> = {
   in_pass: "working",
+  // no pass is open, and its pane works: somebody drives it by hand
+  busy: "working",
   // no pass is open: its runs are listed on their own
   runs_out: "idle",
   idle: "idle",

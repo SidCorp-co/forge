@@ -146,7 +146,8 @@ describe('ISS-951 GET /api/orgs/:orgId/activity', () => {
     expect(row.next.total).toBe(3);
     expect(row.awaitingRelease).toBe(1);
     expect(row.master.state).toBe('none');
-    expect(row.group, 'an issue in flight is working, whatever the master').toBe('working');
+    // the group follows the master, never an issue in flight (MK-9): no master, a backlog standing
+    expect(row.group, 'an issue in flight set the group, not the master').toBe('waiting');
     expect(res.body.totals).toMatchObject({
       inFlight: 1,
       queued: 3,
@@ -168,6 +169,7 @@ describe('ISS-951 GET /api/orgs/:orgId/activity', () => {
     expect(res.body.projects).toEqual([]);
     expect(res.body.totals).toEqual({
       projects: 0,
+      running: 0,
       inFlight: 0,
       queued: 0,
       people: 0,

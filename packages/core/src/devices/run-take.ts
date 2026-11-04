@@ -17,7 +17,7 @@ import { judgesOnly } from '../issues/index.js';
  * the runner refuses a declaration without `--role`.
  */
 /**
- * Whether a run's take starts the step of what it takes over at triage
+ * Whether a run's take starts the step of what it takes over at build
  * (`issues/work-state.ts:restartStepsForNewRun`). A run that builds does: the step an earlier run
  * reached is not where it is. A run declared to judge does not: it judges the step the issue stands
  * at, and moves none (adminhub-api ISS-78, 2026-10-31: a judge and a reviewer declared on an issue

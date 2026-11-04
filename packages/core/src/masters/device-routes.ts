@@ -1,11 +1,14 @@
 import {
   MASTER_DIALOG_SHAPE,
+  MASTER_PANE_SHAPE,
   MASTER_PASS_SHAPE,
   MASTER_SESSION_SHAPE,
+  type MasterPaneResponse,
   type MasterPassResponse,
   type MasterPassSettleResponse,
   type MasterSessionResponse,
   masterDialogRequestSchema,
+  masterPaneRequestSchema,
   masterPassRequestSchema,
   masterSessionRequestSchema,
 } from '@forge/contracts/master-standing';
@@ -24,6 +27,7 @@ import {
   judgeMaster,
   openMasterPass,
   recordMasterDialog,
+  recordMasterPane,
   settleMasterPass,
 } from './service.js';
 
@@ -96,6 +100,24 @@ deviceMasterRoutes.post(
       dialog: body.dialog,
     });
     return c.json({ sessionId: body.sessionId, dialog: body.dialog });
+  },
+);
+
+// the master's beat carries what its pane's hooks say between passes (ISS-951); a box that predates
+// it sends none, and its standing reads the pane as of its last pass
+deviceMasterRoutes.post(
+  '/me/master-session/pane',
+  requireDevice(),
+  BOX_OWN,
+  strictBody(masterPaneRequestSchema, MASTER_PANE_SHAPE),
+  async (c) => {
+    const body = c.req.valid('json');
+    const { changed } = await recordMasterPane({
+      deviceId: c.get('device').id,
+      sessionId: body.sessionId,
+      pane: body.pane,
+    });
+    return c.json({ sessionId: body.sessionId, changed } satisfies MasterPaneResponse);
   },
 );
 

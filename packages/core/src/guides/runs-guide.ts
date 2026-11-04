@@ -49,8 +49,9 @@ says when, or \`failsBy\` says that no silence reaper times the run out. A run t
 running again. A person wait is never stuck.
 
 ### The project master
-\`…/masters/standing\` answers the master's state (\`in_pass\`, \`runs_out\`, \`idle\`, \`waiting_person\`, \`silent\`, \`none\`), its open
-pass, its last closed pass (dispatched, skipped with each refusal, parked, and \`closeReason\`: how core judged it ended, from what the box reported)
+\`…/masters/standing\` answers the master's state (\`in_pass\`, \`busy\`, \`runs_out\`, \`idle\`, \`waiting_person\`, \`silent\`, \`none\`), its open
+pass, its \`pane\` (what the pane's hooks last said: live from the master's beat, or as of its last pass on a box that sends
+no beat facts), its last closed pass (dispatched, skipped with each refusal, parked, and \`closeReason\`: how core judged it ended, from what the box reported)
 and its slots: \`inUse\` counts the job panes
 \`max\` (the box's max_job_panes) caps, and \`runs\` the runs the box declared beside them, which no cap holds.
 \`runsOut\` counts the runs this project's master declared that are still live; between passes with one out the state is

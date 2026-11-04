@@ -96,12 +96,15 @@ async function tellStepMoved(executor: Executor, projectId: string): Promise<voi
 
 /**
  * What core records that puts an in-progress issue's work at a step, whoever did the work: a plan
- * written is planning, a passing merge check or a merge mark is a change built and landed, so what
- * remains is its judgement. Evidence never reaches `build` on its own: moving into build is the
- * design check's and the plan checkpoint's, asked on the step write that names it.
+ * written is planning; a change request opened for it is a change being built (ISS-951 round 2: a
+ * master's in-pane builder writes no step, and epod ISS-68 read triage with its MR open and CI
+ * running); a passing merge check or a merge mark is a change built and landed, so what remains is
+ * its judgement. A step a master writes itself, build included, still passes the design check and
+ * plan checkpoint on that write.
  */
 export const STEP_EVIDENCE = {
   plan_written: 'plan',
+  change_request_opened: 'build',
   merge_checked: 'test',
   merge_marked: 'test',
 } as const satisfies Record<string, WorkStep>;
@@ -134,10 +137,11 @@ export async function advanceStepOnEvidence(
 }
 
 /**
- * A new building run over issues already in progress starts their step over at triage (a judging
- * run leaves it, `devices/run-take.ts:restartsSteps`): the step an earlier
- * run reached, or a park kept, is not where this run is (HOP run 2026-10-05: ISS-1 re-dispatched to
- * write a design revision read `test` from the day before). The run's own step writes move it on.
+ * A new building run over issues already in progress starts their step over at build (a judging run
+ * leaves it, `devices/run-take.ts:restartsSteps`): the step an earlier run reached, or a park kept,
+ * is not where this run is (HOP run 2026-10-05: ISS-1 re-dispatched to write a design revision read
+ * `test` from the day before), and a run declared to build is building (ISS-951 round 2: a run's
+ * issue read the triage this wrote while it built). The run's own step writes move it on.
  */
 export async function restartStepsForNewRun(
   executor: Executor,
@@ -156,7 +160,7 @@ export async function restartStepsForNewRun(
         eq(issues.status, 'in_progress'),
       ),
     );
-  for (const row of rows) await setWorkStep(executor, row.id, 'triage', now, { restart: true });
+  for (const row of rows) await setWorkStep(executor, row.id, 'build', now, { restart: true });
 }
 
 async function readWorkStateForUpdate(

@@ -257,6 +257,7 @@ export const STATE_READINGS = {
 	},
 	masterState: {
 		in_pass: ["In a pass", "run", "●"],
+		busy: ["Busy by hand", "run", "●"],
 		runs_out: ["Runs out", "run", "◐"],
 		idle: ["Idle", "neutral", "○"],
 		waiting_person: ["Waiting on a person", "you", "?"],
