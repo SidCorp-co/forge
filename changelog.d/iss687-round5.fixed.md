@@ -1,0 +1,1 @@
+**The assistant never hands a person issue work.** Asked about stuck issues, every chat door says what the agents are doing and offers only the decision on the item; workflow pages say the wait once; Approvals shows no question id.

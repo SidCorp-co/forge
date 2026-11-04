@@ -18,6 +18,9 @@
 // Round 4 (judge run d47d6de0 at dev.489): ISS-639's Criteria section drew "Tie to REQ-66 criteria".
 // The issue page's Criteria files are walked too, and hold no tie. Planted red by restoring
 // `TieCriteria` in `criteria-acts.tsx` and its call in `issue-criteria.tsx`.
+// Round 5 (judge run 13b796d4 at dev.493): the BA door's Ask Agent told a person to "have the lease
+// holder schedule and land a correction". Every door a person talks to carries the one issue-work
+// line. Planted red by taking it out of the BA door.
 //
 // @direct-test-of packages/contracts/src/issue-standing.ts
 // @direct-test-of packages/contracts/src/modules.ts
@@ -26,6 +29,9 @@
 // @direct-test-of packages/contracts/src/chat-decide.ts
 // @direct-test-of packages/core/src/assistant/agreement/write-rule.ts
 // @direct-test-of packages/core/src/assistant/prompt/door-web.ts
+// @direct-test-of packages/core/src/assistant/prompt/door-ba.ts
+// @direct-test-of packages/core/src/assistant/prompt/door-web-agent.ts
+// @direct-test-of packages/core/src/assistant/prompt/issue-work-line.ts
 // @direct-test-of packages/core/src/mcp/registry.ts
 // @direct-test-of packages/core/src/mcp/server.ts
 // @direct-test-of packages/core/src/product-door/issues-tool.ts
@@ -43,7 +49,10 @@ import { NEEDS_YOU_AREAS, NEEDS_YOU_ENTITIES } from '@forge/contracts/needs-you'
 import { DECISION_ACTS, decisionOpensSchema } from '@forge/contracts/needs-you-decisions';
 import { describe, expect, it } from 'vitest';
 import { NOT_A_BUSINESS_WRITE } from '../assistant/agreement/write-rule.js';
+import { BA_DOOR_LAYER } from '../assistant/prompt/door-ba.js';
 import { WEB_DOOR_LAYER } from '../assistant/prompt/door-web.js';
+import { WEB_AGENT_DOOR_LAYER } from '../assistant/prompt/door-web-agent.js';
+import { ISSUE_WORK_LINE } from '../assistant/prompt/issue-work-line.js';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
 import type { McpContext } from '../lib/tool.js';
 import { actionCatalog } from '../mcp/action-catalog.js';
@@ -192,7 +201,16 @@ describe('the chat offers no button on an issue', () => {
 
   it("tells the web turn issue moves are the agent's, and names no tool that makes one", () => {
     expect(WEB_DOOR_LAYER.text).not.toContain('offer_act');
-    expect(WEB_DOOR_LAYER.text).toContain("is the project's agent's work, never a person's");
+    expect(WEB_DOOR_LAYER.text).toContain(ISSUE_WORK_LINE);
+  });
+
+  it("tells every door a person talks to that issue work is the agents', the BA door included", () => {
+    for (const door of [WEB_DOOR_LAYER, WEB_AGENT_DOOR_LAYER, BA_DOOR_LAYER]) {
+      expect(door.text, door.id).toContain(ISSUE_WORK_LINE);
+    }
+    expect(ISSUE_WORK_LINE).toContain(
+      'Never tell a person, or a role such as the lease holder, to act on an issue',
+    );
   });
 });
 
