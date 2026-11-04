@@ -553,7 +553,8 @@ mod tests {
     }
 
     /// A recorded path that breaks the rule removes nothing, and the `$TMPDIR` rule does not stand
-    /// in for it.
+    /// in for it. Unix only: the symlink it plants needs a privilege Windows does not grant a test.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_recorded_path_that_breaks_the_rule_is_refused_and_removes_nothing() {
         let mut t = TwoRoots::new();
