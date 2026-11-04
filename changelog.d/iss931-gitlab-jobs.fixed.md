@@ -1,1 +1,0 @@
-**A failed GitLab job's trace is reachable.** `checks/:checkId/jobs` lists a pipeline's jobs with their job ids, which `checks/:jobId/log` reads; a pipeline id sent to the log is refused `CHECK_ID_IS_A_PIPELINE`, naming the job list.

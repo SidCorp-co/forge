@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.480] - 2026-11-04
+
+GitLab checks list a pipeline's jobs so a failed job's log can be read
+
+### Fixed
+
+- **A failed GitLab job's trace is reachable.** `checks/:checkId/jobs` lists a pipeline's jobs with their job ids, which `checks/:jobId/log` reads; a pipeline id sent to the log is refused `CHECK_ID_IS_A_PIPELINE`, naming the job list.
+
 ## [0.4.0-dev.479] - 2026-11-04
 
 Runs that failed without a job or session show their recorded cause
