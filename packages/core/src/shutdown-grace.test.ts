@@ -16,7 +16,7 @@ const COOLIFY_DEFAULT_STOP_GRACE_MS = 30_000;
 /** The `stop_grace_period` of the `core` service, in ms, or why it cannot be read. */
 function coreStopGraceMs(compose: string): number | string {
   const lines = compose.split('\n');
-  const start = lines.findIndex((l) => l === '  core:');
+  const start = lines.indexOf('  core:');
   if (start < 0) return 'no `core` service at two spaces under `services`';
   const end = lines.findIndex((l, i) => i > start && /^ {0,2}\S/.test(l));
   const block = lines.slice(start + 1, end < 0 ? undefined : end);

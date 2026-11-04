@@ -140,7 +140,11 @@ export async function agreeTo(
   // proposal is his agreement to it (ISS-954). The owner the binding names settles a filing; any
   // other change takes his word only under owner mode, as builds, deploys and host changes are gated.
   const ownerWord = ownerSettles(grants, fix, writer.key);
-  const consent = ownRequest ? 'own_request' : ownerWord && decision === 'agree' ? 'owner_order' : null;
+  const consent = ownRequest
+    ? 'own_request'
+    : ownerWord && decision === 'agree'
+      ? 'owner_order'
+      : null;
   if (!consent && said.at.getTime() <= fix.createdAt.getTime()) {
     await audit('refused', fix, writer, { reason: 'before the proposal' });
     return no(
@@ -235,7 +239,9 @@ function ownerSettles(grants: SupportGrants, fix: ProposalRow, key: string | nul
 /** Which proposals the owner's order settles in this room, as a refusal names it. */
 function ownerScope(grants: SupportGrants): string {
   if (grants.abilities.includes('owner_mode')) return 'any proposal, under owner mode';
-  return grants.owner ? 'a filing, from the owner this room names' : 'none: this room names no owner';
+  return grants.owner
+    ? 'a filing, from the owner this room names'
+    : 'none: this room names no owner';
 }
 
 const gone = (proposal: string): Outcome<never> =>
