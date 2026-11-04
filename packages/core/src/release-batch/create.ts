@@ -9,6 +9,7 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import {
   activeIssuePrefix,
   designOnlyMarkSql,
+  markedCommitsOf,
   recordIssueMerge,
   setWorkStep,
 } from '../issues/index.js';
@@ -278,6 +279,7 @@ export async function createReleaseBatch(
   });
 
   const batchPrefix = await activeIssuePrefix(projectId);
+  const marked = await markedCommitsOf(issueIds);
   const promptString = buildReleaseBatchPrompt({
     runId: run.id,
     projectId,
@@ -289,6 +291,7 @@ export async function createReleaseBatch(
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(batchPrefix, r.issSeq) : r.id,
       title: r.title ?? '(untitled)',
+      markedCommit: marked.get(r.id)?.sha ?? null,
     })),
   });
 

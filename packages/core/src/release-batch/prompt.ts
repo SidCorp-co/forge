@@ -9,6 +9,8 @@ interface IssueSummary {
   id: string;
   displayId: string;
   title: string;
+  /** The commit the issue's mark names (`issues/mark-trail.ts:markedCommitsOf`), or null where none. */
+  markedCommit: string | null;
 }
 
 interface BuildReleaseBatchPromptArgs {
@@ -23,11 +25,27 @@ interface BuildReleaseBatchPromptArgs {
   releaseRunnerPreferenceMet: boolean;
 }
 
+/**
+ * What the run is told about the commits its roster landed at (ISS-955): each issue's marked commit
+ * on its roster line, and that the head it cuts must hold every one. The release is the agent's
+ * record (owner 2026-11-01), so Forge compares nothing at finish; the run is given what to check.
+ */
+function rosterLine(i: IssueSummary): string {
+  const title = markUntrusted(i.title, { source: 'issue.title' });
+  const at = i.markedCommit ? `marked at \`${i.markedCommit}\`` : 'no commit marked';
+  return `- ${i.displayId} (${at}) — ${title}`;
+}
+
+function renderMarkedCommits(issues: readonly IssueSummary[]): string {
+  if (!issues.some((i) => i.markedCommit)) return '';
+  return `
+Each issue above names the commit its mark claims. Cut this release from a head that holds every one: \`git merge-base --is-ancestor <commit> <head>\` exits 0 for each. An issue whose commit the head does not hold is not in this release — cut from a newer head that holds it, or abort naming that issue. Forge compares nothing at \`finish\`: this check is yours, and the release you record claims every issue on its roster.
+`;
+}
+
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
   const { runId, projectId, defaultBranch, path, issues, plan } = args;
-  const roster = issues
-    .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
-    .join('\n');
+  const roster = issues.map(rosterLine).join('\n');
   const baseLine = defaultBranch ? `\ndefaultBranch: ${defaultBranch}` : '';
   const production = path.production
     ? `\nproduction: environment \`${path.production.name}\`${path.production.declaration.deploysFrom ? `, deploys from \`${path.production.declaration.deploysFrom}\`` : ''}`
@@ -58,7 +76,7 @@ ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderReach(projectId, runId)}${renderMethod()}${renderProcedure(plan)}
+${renderMarkedCommits(issues)}${renderReach(projectId, runId)}${renderMethod()}${renderProcedure(plan)}
 Start by reading the batch context: \`forge-runner api ${releaseBatchPath(projectId, runId)}\`.
 `;
 }

@@ -1,0 +1,1 @@
+**A release run sees each issue's landing commit.** The release prompt now names the commit each issue on its roster landed at, and tells the run to cut from a head that holds every one, or abort naming the issue.
