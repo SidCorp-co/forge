@@ -80,7 +80,7 @@ export function dailyReviewBrief(args: {
  */
 function postLine(door: string, slug: string, threads: readonly ProjectThreadRef[]): string {
   if (threads.length === 0) {
-    return `Post: no Forge-Communicate thread is recorded for ${slug}, so a post there is refused SUPPORT_PROJECT_THREAD_UNRECORDED and never lands at its top level: record it first as \`operations.threads["<rid>"]["${slug}"]\` on that room's binding, then POST ${door} { text, rid }. Never post in a room whose readers are users.`;
+    return `Post: no Forge-Communicate thread is recorded for ${slug}, so a post there is refused SUPPORT_PROJECT_THREAD_UNRECORDED and never lands at its top level: record it first as \`operations.threads["<rid>"]["${slug}"]\` on this project's binding that names the room (GET then PUT /api/projects/<id>/bindings/<bindingId>), then POST ${door} { text, rid }. Never post in a room whose readers are users.`;
   }
   const where = threads.map((t) => `thread ${t.thread} of room ${t.rid}`).join(', or ');
   return `Post: POST ${door} { text, rid }, rid naming the Forge-Communicate room: it lands in this project's own ${where}, never at the room's top level and never in a room whose readers are users.`;

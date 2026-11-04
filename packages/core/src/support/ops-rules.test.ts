@@ -34,6 +34,17 @@ describe('an operations role (REQ-75 BC-22..BC-24)', () => {
     expect(operationsRoomConfigSchema.safeParse({ scope: 'org' }).success).toBe(false);
     expect(operationsRoomConfigSchema.safeParse({ scope: 'project', x: 1 }).success).toBe(false);
   });
+
+  // ISS-934: each project's own thread in a room the binding names, by rid and then by slug
+  it('takes each project’s thread by room and slug, and a thread only as a message id', () => {
+    const ok = { scope: 'forge', threads: { r1: { forge: 'XQHEiGjSv8HTytmpY' } } };
+    expect(operationsRoomConfigSchema.safeParse(ok).success).toBe(true);
+    const bad = { scope: 'forge', threads: { r1: { forge: 'not/a thread' } } };
+    expect(operationsRoomConfigSchema.safeParse(bad).success).toBe(false);
+    expect(
+      operationsRoomConfigSchema.safeParse({ scope: 'forge', threads: { r1: 'x' } }).success,
+    ).toBe(false);
+  });
 });
 
 describe('a binding attaching rooms', () => {
@@ -44,6 +55,25 @@ describe('a binding attaching rooms', () => {
       held: null,
     });
     expect(out.ok ? null : out.refusals[0]?.code).toBe('SUPPORT_ROOM_TWO_KINDS');
+  });
+
+  it('refuses a project thread recorded for a room the binding does not name (ISS-934)', async () => {
+    const threads = { r2: { forge: 'XQHEiGjSv8HTytmpY' } };
+    const out = await settleSupportRoom({
+      bindingId: 'b',
+      config: { rids: ['r1'], operations: { scope: 'forge', threads } },
+      held: null,
+    });
+    expect(out.ok ? null : out.refusals[0]).toMatchObject({
+      code: 'SUPPORT_ROOM_OVERRIDE_UNKNOWN',
+      path: '/operations/threads/r2',
+    });
+    const named = await settleSupportRoom({
+      bindingId: 'b',
+      config: { rids: ['r1', 'r2'], operations: { scope: 'forge', threads } },
+      held: null,
+    });
+    expect(named.ok).toBe(true);
   });
 
   it('lets an operations binding attach several rooms, and a support binding only one', async () => {
