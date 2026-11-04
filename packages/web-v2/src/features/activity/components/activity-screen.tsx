@@ -1,19 +1,16 @@
-// The workspace's Activity tab (ISS-951, mockups MK-8 and MK-9): one row per project, grouped where
-// core put it (Running · Idle with backlog · Waiting on a person · Quiet), with what its master's pane
-// does and how long since its box last spoke, what it does by name, its backlog and the people it
-// waits on, and its release counts. Names, counts and badges only; a row opens its peek for the rest.
-// The org's room keeps it live, and the last answer stays on screen while it reads again.
+// The workspace's Activity tab (ISS-951; MK-10 C, the timeline the owner chose): one lane per project
+// over its last two hours, grouped where core put it (Running · Idle with backlog · Waiting on a
+// person · Quiet), with its name and what it does on the left and its pane badge and how fresh that
+// is on the right. The strip filters it; a lane opens its peek for the rest (Now, Backlog, People, the
+// releases, Recent). The org's room keeps it live, and the last answer stays on screen while it reads again.
 
 import { ORG_ACTIVITY_GROUPS, type OrgActivity, type OrgActivityGroup, type OrgActivityProject } from "@forge/contracts/org-activity";
 import type { ReactNode } from "react";
 import {
   EmptyState,
   FilterChip,
-  GroupedList,
   type LegendTone,
-  type ListGroup,
   ListLayout,
-  type ListRowView,
   ListToolbar,
   PageTitle,
   rememberListOrigin,
@@ -32,7 +29,7 @@ import { useRouter } from "@/lib/navigation/router";
 import { cn } from "@/lib/utils/cn";
 import { useOrgActivity } from "../hooks";
 import { ActivityPeek } from "./activity-peek";
-import { Doing, PaneMark, ReleaseCounts } from "./pane";
+import { ActivityLanes, type LaneGroup } from "./lanes";
 
 export const ACTIVITY_LIST = "/activity";
 export const projectHref = (slug: string) => `/projects/${encodeURIComponent(slug)}`;
@@ -57,57 +54,7 @@ const countOf = (totals: OrgActivity["totals"], show: Show): number =>
 
 const SHOW_TONE: Partial<Record<Show, LegendTone>> = { running: "run", people: "you", release: "ready" };
 
-function Count({ n, label, pending, mark }: { n: number; label: string; pending?: boolean; mark?: ReactNode }) {
-  return (
-    <span className="inline-flex items-baseline gap-1" aria-label={`${label} ${pending ? "…" : n}`}>
-      <span aria-hidden className="text-11-5 text-subtle md:hidden">{label}</span>
-      {pending ? (
-        <span aria-hidden className="text-subtle">…</span>
-      ) : n > 0 ? (
-        <span aria-hidden className="font-mono text-12-5 font-semibold tabular-nums text-fg">
-          {n}
-        </span>
-      ) : (
-        <span aria-hidden className="text-subtle">—</span>
-      )}
-      {mark}
-    </span>
-  );
-}
-
-function rowOf(t: Copy, now: number) {
-  return (p: OrgActivityProject): ListRowView => ({
-    key: p.slug,
-    href: projectHref(p.slug),
-    title: p.name,
-    facts: [],
-    state: <PaneMark master={p.master} now={now} />,
-    waitingOn: <Doing master={p.master} />,
-    eta: (
-      <span className="grid w-full grid-cols-2 gap-2" data-testid="activity-counts">
-        <Count
-          n={p.next.total}
-          label={t("activity.col.backlog")}
-          mark={
-            p.next.skip ? (
-              <span
-                className="ml-1 inline-block size-2 rounded-full border-2 border-warn-9 align-middle"
-                title={t("activity.skip.title", { why: t(`activity.skip.${p.next.skip}`) })}
-                aria-label={t(`activity.skip.${p.next.skip}`)}
-                data-testid="activity-skip"
-              />
-            ) : undefined
-          }
-        />
-        <Count n={p.people.total} label={t("activity.col.people")} pending={p.peoplePending} />
-      </span>
-    ),
-    owner: <ReleaseCounts row={p} />,
-    age: null,
-  });
-}
-
-function groupsOf(rows: OrgActivityProject[], t: Copy): ListGroup<OrgActivityProject>[] {
+function groupsOf(rows: OrgActivityProject[], t: Copy): LaneGroup[] {
   return ORG_ACTIVITY_GROUPS.map((g) => ({ id: g, label: t(`activity.group.${g}`), tone: GROUP_TONE[g], rows: rows.filter((r) => r.group === g) }));
 }
 
@@ -167,17 +114,16 @@ function ActivityList({ data, orgId }: { data: OrgActivity; orgId: string }) {
             <EmptyState message={t("activity.empty")} />
           </div>
         ) : (
-          <GroupedList
+          <ActivityLanes
             ariaLabel={t("activity.title")}
             groups={groups}
             fold={fold}
-            row={rowOf(t, now)}
+            generatedAt={data.generatedAt}
+            now={now}
+            hrefOf={projectHref}
             selected={peek.open}
             onPeek={(k) => peek.set(k === peek.open ? null : k)}
             empty={t("activity.noMatch")}
-            keyColumn={false}
-            eta={{ label: t("activity.col.counts") }}
-            columns={{ title: t("activity.col.project"), state: t("activity.col.pane"), waitingOn: t("activity.col.doing"), meta: t("activity.col.release") }}
           />
         )}
       </div>

@@ -71,6 +71,10 @@ function useEventLine() {
         return `${t("activity.event.runStarted")}${on}`;
       case "run_ended":
         return `${t("activity.event.runEnded")}${on}`;
+      case "dialog_started":
+        return t("activity.event.dialogStarted");
+      case "dialog_ended":
+        return t("activity.event.dialogEnded");
     }
   };
 }
@@ -116,7 +120,6 @@ export function ActivityPeek({ row, orgId, peek, full, now }: { row: OrgActivity
       <PeekHead noun={t("activity.noun")} itemKey="" badge={<PaneMark master={m} now={now} />} title={row.name} />
       <div className="flex flex-col gap-1 px-4.5 text-13 text-muted">
         {m.doing ? <Doing master={m} /> : null}
-        {m.pane?.source === "pass" ? <span className="text-12 text-subtle" data-testid="activity-as-of-pass">{t("activity.asOfPass")}</span> : null}
         {m.dialog ? (
           <span className="truncate text-12" style={{ color: LEGEND.you.fg }} title={m.dialog} data-testid="activity-dialog">
             {m.dialog}
@@ -192,12 +195,21 @@ export function ActivityPeek({ row, orgId, peek, full, now }: { row: OrgActivity
           </RowList>
         )}
       </Part>
-      {row.release ? (
+      {row.awaitingRelease > 0 ? (
+        <Part label={t("activity.release.toRelease")} count={row.awaitingRelease}>
+          {null}
+        </Part>
+      ) : null}
+      {row.release || row.releasePending ? (
         <Part label={t("activity.release.next")} count={0}>
-          <div className="flex items-center justify-between gap-3">
-            <span className="min-w-0 truncate text-13">{row.release.title ?? t("activity.release.draft")}</span>
-            <ReleaseBar release={row.release} />
-          </div>
+          {row.release ? (
+            <div className="flex items-center justify-between gap-3" data-testid="activity-release">
+              <span className="min-w-0 truncate text-13">{row.release.title ?? t("activity.release.draft")}</span>
+              <ReleaseBar release={row.release} />
+            </div>
+          ) : (
+            <p className="py-1.5 text-13 text-subtle">…</p>
+          )}
         </Part>
       ) : null}
       <Recent orgId={orgId} projectId={row.projectId} />

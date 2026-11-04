@@ -1,0 +1,1 @@
+**Activity answers in under a second, and Recent fills.** Slow reads run one at a time behind the page, each leg is timed on Server-Timing, and a row known only by its last pass says "Last pass HH:MM".

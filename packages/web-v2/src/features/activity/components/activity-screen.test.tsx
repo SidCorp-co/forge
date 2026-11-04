@@ -1,10 +1,14 @@
-// ISS-951 (MK-8, then MK-9): the workspace's Activity tab draws core's rows in core's groups (Running ·
-// Idle with backlog · Waiting on a person · Quiet), each with its master's pane badge and how long since
-// its box last spoke, what it does by name, its backlog and people counts and two labelled release
-// counts; it filters by the strip, opens one project's peek (Now, Backlog, People, a dialog's text, a
-// Recent list read only when opened) that the arrow keys switch and Esc closes, listens on the org's
-// room, keeps its last answer on screen while it reads again, and never shows a slug or an id.
+// ISS-951 (MK-8, MK-9, then MK-10 C, the timeline the owner chose): the workspace's Activity tab draws
+// one lane per project in core's groups (Running · Idle with backlog · Waiting on a person · Quiet):
+// its passes as ticks, runs and dialogs as bars and status moves as dots over two hours, its name with
+// what it does or why it took nothing, and its pane badge and how fresh that is, or "Last pass HH:MM"
+// where no live facts stand. It filters by the strip, opens one project's peek (Now, Backlog, People,
+// a dialog's text, both release counts, a Recent list read only when opened) that the arrow keys
+// switch and Esc closes, listens on the org's room, keeps its last answer on screen while it reads
+// again, and never shows a slug or an id.
 //
+// @direct-test-of packages/web-v2/src/features/activity/components/lanes.tsx
+// @direct-test-of packages/web-v2/src/design/patterns/timeline.tsx
 // @direct-test-of packages/web-v2/src/features/activity/components/activity-peek.tsx
 // @direct-test-of packages/web-v2/src/features/activity/components/pane.tsx
 // @direct-test-of packages/web-v2/src/features/activity/hooks.ts
@@ -27,6 +31,7 @@ vi.mock("@/features/orgs", () => ({ useActiveOrg: () => ({ activeOrgId: ORG }) }
 const ORG = "0d1b2c3d-0000-4000-8000-000000000001";
 const QUESTION_ID = "80ed3d9e-0c25-40e0-b984-6ae230a9c4d6";
 const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+const LANE_EMPTY = { from: ago(7200), passes: [], runs: [], moves: [], dialogs: [] };
 
 const master = (over: Partial<OrgActivityMaster> = {}): OrgActivityMaster => ({
   state: "idle",
@@ -49,6 +54,7 @@ const project = (over: Partial<OrgActivityProject> & Pick<OrgActivityProject, "p
   release: null,
   releasePending: false,
   awaitingRelease: 0,
+  lane: over.master?.state === "none" ? null : LANE_EMPTY,
   ...over,
 });
 
@@ -67,13 +73,20 @@ const FORGE = project({
   next: { total: 10, items: [{ issueId: "i-935", key: "ISS-935", title: "The steward names the events door", priority: "medium" }], skip: null },
   people: { total: 43, items: [{ group: "answer", key: "ISS-103", title: "Can the stg vhost be changed today, or only in the Friday window?" }] },
   release: { key: "REQ-40", title: "Every release is a readable page", shipped: 7, awaitingRelease: 0, total: 8 },
+  lane: {
+    from: ago(7200),
+    passes: [ago(6600), ago(3600), ago(600)],
+    runs: [{ from: ago(5400), to: ago(4200) }, { from: ago(1800), to: null }],
+    moves: [ago(4200), ago(300)],
+    dialogs: [{ from: ago(2400), to: ago(2100) }],
+  },
 });
 const ADMINHUB = project({
   projectId: "p-ahfe",
   slug: "ahfe-slug",
   name: "AdminHub FE",
   group: "idle",
-  master: master({ state: "idle", lastBeatAt: ago(540) }),
+  master: master({ state: "idle", lastBeatAt: ago(20), lastPassEndedAt: "2026-11-04T08:32:00.000Z", pane: { doing: "working", lastEventAt: ago(600), turnBeganAt: null, writtenAt: null, seenAt: ago(55), source: "pass" } }),
   next: { total: 2, items: [], skip: "one_at_a_time" },
   people: { total: 5, items: [{ group: "answer", key: null, title: "Which agent template should replication copy?" }] },
 });
@@ -92,6 +105,13 @@ const CATALOG = project({
   master: master({ state: "none", lastBeatAt: null }),
   awaitingRelease: 44,
   release: { key: "REQ-4", title: "Two-way site sync", shipped: 7, awaitingRelease: 7, total: 15 },
+});
+const SILENT = project({
+  projectId: "p-orbit",
+  slug: "orbit-slug",
+  name: "Orbit",
+  group: "idle",
+  master: master({ state: "silent", lastBeatAt: ago(540) }),
 });
 const QUIET = project({ projectId: "p-q", slug: "quiet-slug", name: "SidDesk", group: "quiet" });
 
@@ -156,36 +176,6 @@ describe("the Activity tab", () => {
     expect(rooms).toContain(`org:${ORG}`);
   });
 
-  it("each row shows its pane badge, how long since its box spoke, and what it does by name", async () => {
-    serve(read([FORGE, ADMINHUB, AHAPI, CATALOG]));
-    renderWithQuery(<ActivityScreen />);
-    await screen.findByText("Forge");
-    const forge = rowOf("Forge");
-    expect(within(forge).getByTestId("activity-pane").getAttribute("data-pane")).toBe("busy");
-    expect(within(forge).getByTestId("activity-ago").textContent).toMatch(/^1[2-4]s ago$/);
-    expect(within(forge).getByTestId("activity-ago").getAttribute("data-late")).toBeNull();
-    expect(within(forge).getByTestId("activity-doing").textContent).toBe("DispatchISS-687");
-    const idle = rowOf("AdminHub FE");
-    expect(within(idle).getByTestId("activity-pane").getAttribute("data-pane")).toBe("idle");
-    expect(within(idle).getByTestId("activity-ago").textContent).toBe("9 min ago");
-    expect(within(idle).getByTestId("activity-ago").getAttribute("data-late"), "a box silent past the limit read as live").toBe("true");
-    expect(within(rowOf("AdminHub API")).getByTestId("activity-pane").getAttribute("data-pane")).toBe("dialog");
-    expect(within(rowOf("Catalog API")).getByTestId("activity-pane").getAttribute("data-pane")).toBe("none");
-  });
-
-  it("counts the backlog and people, marks why the last pass took nothing, and labels both release counts", async () => {
-    serve(read([FORGE, ADMINHUB, CATALOG]));
-    renderWithQuery(<ActivityScreen />);
-    await screen.findByText("Forge");
-    const counts = within(rowOf("Forge")).getByTestId("activity-counts");
-    expect(within(counts).getByLabelText("Backlog 10")).toBeTruthy();
-    expect(within(counts).getByLabelText("People 43")).toBeTruthy();
-    expect(within(rowOf("AdminHub FE")).getByTestId("activity-skip").getAttribute("title")).toBe("Took nothing: one at a time");
-    const catalog = rowOf("Catalog API");
-    expect(within(catalog).getByTestId("activity-to-release").textContent).toBe("To release44");
-    expect(within(catalog).getByTestId("activity-release").textContent).toBe("Next release7/15");
-  });
-
   it("shows no slug or id as text; the issue keys it shows are the ones a person reads", async () => {
     serve(read([FORGE, ADMINHUB, CATALOG, QUIET]));
     const { container } = renderWithQuery(<ActivityScreen />);
@@ -236,14 +226,14 @@ describe("the Activity tab", () => {
     await waitFor(() => expect(screen.queryByTestId("activity-peek")).toBeNull());
   });
 
-  it("a waiting dialog's text is in the peek, and a pane read as of the last pass says so", async () => {
+  it("a waiting dialog's text is in the peek, under its Dialog badge", async () => {
     serve(read([AHAPI]));
     renderWithQuery(<ActivityScreen />);
     await screen.findByText("AdminHub API");
     fireEvent.click(rowOf("AdminHub API"));
     const peek = await screen.findByTestId("activity-peek");
     expect(within(peek).getByTestId("activity-dialog").textContent).toBe("Allow Bash: curl -sS https://staging.example ?");
-    expect(within(peek).getByTestId("activity-as-of-pass").textContent).toBe("As of last pass");
+    expect(within(peek).getByTestId("activity-pane").getAttribute("data-pane")).toBe("dialog");
   });
 
   it("Recent is closed until clicked, and only then reads the project's events", async () => {
@@ -266,7 +256,7 @@ describe("the Activity tab", () => {
     serve(read([]));
     renderWithQuery(<ActivityScreen />);
     expect(await screen.findByText("No projects")).toBeTruthy();
-    expect(screen.queryByTestId("grouped-list")).toBeNull();
+    expect(screen.queryByTestId("activity-lanes")).toBeNull();
   });
 
   it("reads again when the org's room says a project moved, keeping the last answer on screen meanwhile", async () => {
@@ -305,4 +295,105 @@ describe("the Activity tab", () => {
     await new Promise((r) => setTimeout(r, 3_500));
     expect(reads(), "the page went on reading after core said it was done").toBe(2);
   }, 12_000);
+});
+
+describe("the Activity tab's lanes", () => {
+  it("each lane shows its pane badge and how fresh its facts are, and what it does by name", async () => {
+    serve(read([FORGE, AHAPI, CATALOG, SILENT]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    const forge = rowOf("Forge");
+    expect(within(forge).getByTestId("activity-pane").getAttribute("data-pane")).toBe("busy");
+    expect(within(forge).getByTestId("activity-ago").textContent).toMatch(/^\d+s ago$/);
+    expect(within(forge).getByTestId("activity-ago").getAttribute("data-late")).toBeNull();
+    expect(within(forge).getByTestId("activity-doing").textContent).toBe("DispatchISS-687");
+    expect(within(rowOf("AdminHub API")).getByTestId("activity-pane").getAttribute("data-pane")).toBe("dialog");
+    expect(within(rowOf("Catalog API")).getByTestId("activity-pane").getAttribute("data-pane")).toBe("none");
+    const silent = within(rowOf("Orbit"));
+    expect(silent.getByTestId("activity-pane").getAttribute("data-pane")).toBe("silent");
+    expect(silent.getByTestId("activity-ago").textContent).toBe("9 min ago");
+    expect(silent.getByTestId("activity-ago").getAttribute("data-late"), "a box silent past the limit read as live").toBe("true");
+  });
+
+  it("a pane known only as of its last pass makes no Idle or Busy claim: it says when the last pass was", async () => {
+    serve(read([ADMINHUB]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("AdminHub FE");
+    const row = within(rowOf("AdminHub FE"));
+    const pane = row.getByTestId("activity-pane");
+    expect(pane.getAttribute("data-pane"), "a pane as of its last pass read as live").toBe("pass");
+    expect(pane.textContent).not.toMatch(/Idle|Busy/);
+    // in the viewer's time, as a clock: never as an age
+    expect(row.getByTestId("activity-last-pass").textContent).toMatch(/^Last pass \d{1,2}:\d{2}( [AP]M)?$/);
+    // the box spoke 20 s ago, but that says nothing of what the pane does: no fresh-looking age
+    expect(row.queryByTestId("activity-ago")).toBeNull();
+  });
+
+  it("live pane facts older than the silence limit show their age in red, and no badge", async () => {
+    const stale = project({
+      projectId: "p-st",
+      slug: "st-slug",
+      name: "Stale",
+      group: "idle",
+      master: master({ state: "idle", lastBeatAt: ago(20), pane: { doing: "working", lastEventAt: ago(900), turnBeganAt: null, writtenAt: null, seenAt: ago(600), source: "beat" } }),
+    });
+    serve(read([stale]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Stale");
+    const row = within(rowOf("Stale"));
+    expect(row.getByTestId("activity-pane").getAttribute("data-pane")).toBe("pass");
+    expect(row.getByTestId("activity-ago").textContent).toBe("10 min ago");
+    expect(row.getByTestId("activity-ago").getAttribute("data-late")).toBe("true");
+  });
+
+  it("a lane draws its passes as ticks, its runs and dialogs as bars and its status moves as dots", async () => {
+    serve(read([FORGE, CATALOG]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    const lane = within(within(rowOf("Forge")).getByTestId("timeline-track"));
+    expect(lane.getAllByTestId("timeline-tick")).toHaveLength(3);
+    expect(lane.getAllByTestId("timeline-dot")).toHaveLength(2);
+    const bars = lane.getAllByTestId("timeline-bar");
+    expect(bars.map((b) => b.getAttribute("data-tone"))).toEqual(["run", "run", "wait"]);
+    // a pass 10 minutes before the read's now sits about 92% of the way along two hours
+    expect(Number.parseFloat(lane.getAllByTestId("timeline-tick")[2]?.style.left ?? "")).toBeCloseTo(91.7, 0);
+    // a run still running reaches the now edge; one that ended stops where it ended
+    expect(Number.parseFloat(bars[1]?.style.right ?? "")).toBeCloseTo(0, 0);
+    expect(Number.parseFloat(bars[0]?.style.right ?? "")).toBeCloseTo(58.3, 0);
+    const none = within(rowOf("Catalog API"));
+    expect(none.getByTestId("timeline-empty").textContent).toBe("no master");
+    expect(none.queryByTestId("timeline-tick")).toBeNull();
+  });
+
+  it("the left column says why an idle master took nothing", async () => {
+    serve(read([ADMINHUB]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("AdminHub FE");
+    expect(within(rowOf("AdminHub FE")).getByTestId("activity-skip").textContent).toBe("one at a time");
+  });
+
+  it("with the peek open, every lane keeps its name, its badge and its track: no column is dropped", async () => {
+    serve(read([FORGE, ADMINHUB, CATALOG, QUIET]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    fireEvent.click(rowOf("Forge"));
+    await screen.findByTestId("activity-peek");
+    for (const row of screen.getAllByTestId("list-row")) {
+      expect(within(row).getByTestId("activity-pane")).toBeTruthy();
+      expect(within(row).getByTestId("timeline-track")).toBeTruthy();
+      for (const cell of [row, ...row.querySelectorAll("*")]) {
+        expect(cell.className.toString(), "a lane's cell is hidden at a narrower list").not.toMatch(/max-(lg|xl|md):hidden/);
+      }
+    }
+  });
+
+  it("the peek labels both release counts", async () => {
+    serve(read([CATALOG]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Catalog API");
+    fireEvent.click(rowOf("Catalog API"));
+    const peek = await screen.findByTestId("activity-peek");
+    expect(within(peek).getByRole("region", { name: "To release" }).textContent).toBe("To release44");
+    expect(within(peek).getByTestId("activity-release").textContent).toContain("7/15");
+  });
 });

@@ -112,6 +112,7 @@ export {
 export { DetailLeadEnd, DetailTabs, DetailLayout, DetailPane, FieldLabel, useUrlTab, ViewHeading } from "./patterns/detail-tabs";
 export { ViewModeSwitcher, useViewMode, type ViewMode } from "./patterns/view-mode-switcher";
 export { ListToolbar, ListLayout, ToolbarSelect } from "./patterns/list-page";
+export { TimelineAxis, TimelineGroupHeader, TimelineLegend, TimelineRow, TimelineTrack, type TimelineBarTone, type TimelineMarks } from "./patterns/timeline";
 export { Section, PropertyList, Property } from "./patterns/section";
 export { RowList, RowItem, type RowItemProps } from "./patterns/row-list";
 export { StatRow, StatCell } from "./patterns/stat-row";
