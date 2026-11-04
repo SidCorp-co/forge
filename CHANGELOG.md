@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.486] - 2026-11-04
+
+Lighter lines, a live Activity timeline, and waiting issues that name no one
+
+### Changed
+
+- **An issue waiting on a question names nobody.** Its row and page read "An answer", never who must answer; the question is asked in Needs you. Each workflow page says who its design waits on and what is next.
+- **Activity shows what each master does, live.** The runner's beat carries the pane's state; core derives Busy, Idle and in-pass from it, moves a step to build on an open change request, and keeps slow reads off the page's path.
+- **Activity is a timeline.** Each project is a lane over the last two hours: passes as ticks, runs and dialog waits as bars, status moves as dots, with its pane badge on the right; release counts move to the peek.
+- **Lines between rows, items and regions are lighter.** Lists, tables and side panels draw their dividers at a lighter grey and region edges one step darker; fields keep their stronger border, and no line was removed.
+
+### Fixed
+
+- **Activity answers in under a second, and Recent fills.** Slow reads run one at a time behind the page, each leg is timed on Server-Timing, and a row known only by its last pass says "Last pass HH:MM".
+- **A lesson's knowledge entry is the agent's.** The steward decides every lesson, so its entry and any rewrite of it now record the agent as author, and a migration moves existing lesson entries off a person.
+
 ## [0.4.0-dev.485] - 2026-11-04
 
 No issue asks a person to act on it; workspace Activity tab shows masters' work

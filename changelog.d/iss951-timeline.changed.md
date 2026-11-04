@@ -1,1 +1,0 @@
-**Activity is a timeline.** Each project is a lane over the last two hours: passes as ticks, runs and dialog waits as bars, status moves as dots, with its pane badge on the right; release counts move to the peek.

@@ -1,1 +1,0 @@
-**A lesson's knowledge entry is the agent's.** The steward decides every lesson, so its entry and any rewrite of it now record the agent as author, and a migration moves existing lesson entries off a person.

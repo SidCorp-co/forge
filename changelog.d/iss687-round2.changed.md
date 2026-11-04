@@ -1,1 +1,0 @@
-**An issue waiting on a question names nobody.** Its row and page read "An answer", never who must answer; the question is asked in Needs you. Each workflow page says who its design waits on and what is next.

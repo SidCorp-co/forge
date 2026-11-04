@@ -1,1 +1,0 @@
-**Lines between rows, items and regions are lighter.** Lists, tables and side panels draw their dividers at a lighter grey and region edges one step darker; fields keep their stronger border, and no line was removed.

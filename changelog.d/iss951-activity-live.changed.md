@@ -1,1 +1,0 @@
-**Activity shows what each master does, live.** The runner's beat carries the pane's state; core derives Busy, Idle and in-pass from it, moves a step to build on an open change request, and keeps slow reads off the page's path.
