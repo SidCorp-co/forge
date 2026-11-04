@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.478] - 2026-11-04
+
+Stuck banner, waiting questions and Approvals peek read as short states
+
+### Fixed
+
+- **Stuck and re-kinded issues read as state.** The Stuck banner shows a short state, a re-kinded park names its resource and what it waits on, and the Approvals peek names its requirement once; codes move to the Developer view.
+
 ## [0.4.0-dev.477] - 2026-11-04
 
 Cleanup reports must name a real commit, and later reports replace earlier ones

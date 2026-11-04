@@ -1,1 +1,0 @@
-**Stuck and re-kinded issues read as state.** The Stuck banner shows a short state, a re-kinded park names its resource and what it waits on, and the Approvals peek names its requirement once; codes move to the Developer view.
