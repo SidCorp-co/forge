@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.495] - 2026-11-04
+
+Judges sign in through a session, never holding a member's password
+
+### Fixed
+
+- **judge-login now signs in itself and hands the judge only a session.** It writes a curl header file and a Playwright storage state, never the password; a secret it cannot sign in with is refused by name.
+
 ## [0.4.0-dev.494] - 2026-11-04
 
 The assistant leaves issue work to agents and offers only the decision on your item
