@@ -61,16 +61,19 @@ const ISSUES = [
 
 /**
  * Two drafts the steward asks about (REQ-48 r3 BC-16), so a judge sees on Approvals what a merge
- * offer is: one repeats ISS-1 and is offered the merge, saying what both are about; the other sits
- * beside ISS-3 with nothing in common, its merge into it is refused by name, and it is asked without.
+ * offer is: one repeats ISS-1, delivers ISS-1's requirement (`req`), so a person sees the decision on
+ * it (ISS-948), and is offered the merge, saying what both are about; the other sits beside ISS-3
+ * with nothing in common and serves no requirement or feedback item: its merge into it is refused by
+ * name, and it is asked without, as the master's decision.
  */
 const STEWARD_DRAFTS = {
   repeats: {
     title: 'Preview opens the issue page in a side frame',
     into: 1,
+    req: 0,
     shares: 'opening the issue page preview in a frame.',
   },
-  beside: { title: 'Export the call list as a spreadsheet', into: 3 },
+  beside: { title: 'Export the call list as a spreadsheet', into: 3, req: null },
 } as const;
 
 const FEEDBACK = [
@@ -135,7 +138,7 @@ export async function seedDemoWorld(): Promise<DemoWorld> {
       sql`UPDATE feedback SET title = ${fb.title} WHERE project_id = ${project.id} AND fb_seq = ${i + 1}`,
     );
   }
-  await seedStewardMerges(project.id, owner.id, issues, now);
+  await seedStewardMerges(project.id, owner.id, issues, requirements, now);
   return {
     project: { id: project.id, slug: 'demo' },
     member: { id: owner.id, email: owner.email },
@@ -162,6 +165,7 @@ async function seedStewardMerges(
   projectId: string,
   ownerId: string,
   issues: readonly { id: string; key: string }[],
+  requirements: readonly { id: string; key: string }[],
   now: number,
 ): Promise<void> {
   const { askStewardDecision } = await import('../../src/steward/decision-ask.js');
@@ -174,6 +178,7 @@ async function seedStewardMerges(
       priority: 'medium',
       createdAt: new Date(now - (i + 1) * HOUR),
       mergedAt: null,
+      requirementId: d.req === null ? null : (requirements[d.req]?.id ?? null),
     });
     await db.execute(sql`UPDATE issues SET title = ${d.title} WHERE id = ${made.id}`);
     drafts.push(made);
@@ -185,6 +190,7 @@ async function seedStewardMerges(
     draft: { id: string; key: string },
     merge: { into: string; shares: string } | null,
     why: string,
+    serious: boolean,
   ) =>
     askStewardDecision({
       projectId,
@@ -211,19 +217,22 @@ async function seedStewardMerges(
       recommendedOptionId: merge ? `steward.merge:${merge.into}` : 'steward.keep',
       why,
       basis: `demo seed: ${draft.key}`,
-      serious: true,
+      ...(serious ? { serious: true } : {}),
     });
-  // the steward's decisions reach a person on Needs you: serious, asked on a strict project (REQ-79 BC-13)
+  // a serious decision on a strict project reaches a person on Needs you (REQ-79 BC-13), asked about
+  // the item they see: the repeating draft's requirement. The draft serving none is the master's.
   await underStrict(projectId, ownerId, async () => {
     await ask(
       repeats,
       { into: into(STEWARD_DRAFTS.repeats.into), shares: STEWARD_DRAFTS.repeats.shares },
       `${repeats.key} asks for what ${into(STEWARD_DRAFTS.repeats.into)} already delivers.`,
+      true,
     );
     const refused = await ask(
       beside,
       { into: into(STEWARD_DRAFTS.beside.into), shares: 'the demo project.' },
       'It sits beside an issue about something else.',
+      false,
     ).then(
       () => null,
       (err: unknown) => String((err as { message?: string }).message ?? err),
@@ -233,7 +242,7 @@ async function seedStewardMerges(
         `the demo seed's merge of ${beside.key} into ${into(STEWARD_DRAFTS.beside.into)}, two items about different things, was not refused as STEWARD_MERGE_NOT_SAME_SUBJECT: ${refused ?? 'it was asked'}`,
       );
     }
-    await ask(beside, null, 'Nobody has said whether the call list export is wanted yet.');
+    await ask(beside, null, 'Nobody has said whether the call list export is wanted yet.', false);
   });
 }
 

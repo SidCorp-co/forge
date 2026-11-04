@@ -9,6 +9,7 @@
 import { createServer as createHttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { getRequestListener } from '@hono/node-server';
+import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 
@@ -21,7 +22,7 @@ import { app } from '../../src/index.js';
 import { attachWs } from '../../src/ws/index.js';
 import { api } from '../helpers/api.js';
 import { seedDemoWorld } from '../helpers/demo-world.js';
-import { truncateAll } from '../helpers/factories.js';
+import { rows, truncateAll } from '../helpers/factories.js';
 import { type Served, stopCore } from '../helpers/preview-world.js';
 
 function cookieOf(headers: Headers, name: string): string | undefined {
@@ -89,10 +90,17 @@ describe('GET /api/auth/demo in a demo core', () => {
     );
     expect(read.status).toBe(200);
     type Answer = { id: string; effect: string | null };
-    type Decision = { key: string; question: string; answers: Answer[] };
+    type Decision = {
+      question: string;
+      changes: string;
+      opens: { kind: string; key: string };
+      answers: Answer[];
+    };
     const decisions = read.body.decisions as Decision[];
-    const repeats = decisions.find((d) => d.key === 'ISS-6');
-    const beside = decisions.find((d) => d.key === 'ISS-7');
+    // ISS-948: the repeating draft delivers REQ-1, so its decision is asked about the item the
+    // member sees, and stands on their Needs you opening it
+    const repeats = decisions.find((d) => d.changes.includes('ISS-6'));
+    expect(repeats?.opens).toEqual({ kind: 'requirement', key: 'REQ-1' });
     expect(repeats?.answers.map((a) => a.id)).toEqual([
       'steward.merge:ISS-1',
       'steward.open',
@@ -102,12 +110,18 @@ describe('GET /api/auth/demo in a demo core', () => {
     expect(repeats?.answers[0]?.effect).toContain(
       'Both are about opening the issue page preview in a frame.',
     );
-    expect(beside?.answers.map((a) => a.id).sort()).toEqual([
-      'steward.drop',
-      'steward.keep',
-      'steward.open',
-    ]);
-    expect(JSON.stringify(beside)).not.toContain('ISS-3');
+    // the draft serving no item is the master's decision: asked, never on a person's Needs you,
+    // and without the merge into ISS-3 its seed was refused
+    expect(JSON.stringify(decisions)).not.toContain('ISS-7');
+    const beside = await rows<{ serious: boolean; steps: unknown }>(sql`
+      SELECT q.serious, q.steps FROM agent_questions q JOIN issues i ON i.id = q.issue_id
+       WHERE q.project_id = ${world.project.id} AND i.iss_seq = 7`);
+    expect(beside).toHaveLength(1);
+    expect(beside[0]?.serious).toBe(false);
+    const options = JSON.stringify(beside[0]?.steps);
+    for (const id of ['steward.open', 'steward.keep', 'steward.drop'])
+      expect(options).toContain(id);
+    expect(options).not.toContain('ISS-3');
   });
 
   it('refuses to seed a database that already holds a user, so it can never write over a real one', async () => {
