@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.497] - 2026-11-04
+
+A business criterion no linked issue can carry asks for an issue, not a trace
+
+### Fixed
+
+- **A business criterion no linked issue was built for asks for a new issue or a revision, not a trace.** A criterion traces only its own requirement's criteria, by tag or id alike, and the guides name the trace route.
+
 ## [0.4.0-dev.496] - 2026-11-04
 
 Approvals and releases load in seconds again on projects with hundreds of releases

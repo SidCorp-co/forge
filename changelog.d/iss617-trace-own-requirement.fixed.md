@@ -1,1 +1,0 @@
-**A business criterion no linked issue was built for asks for a new issue or a revision, not a trace.** A criterion traces only its own requirement's criteria, by tag or id alike, and the guides name the trace route.
