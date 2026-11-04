@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.496] - 2026-11-04
+
+Approvals and releases load in seconds again on projects with hundreds of releases
+
+### Fixed
+
+- **The Releases list, Needs you and status no longer slow down as releases pile up.** Each verdict re-read every run session to find its builder, and each criterion re-scanned every verdict; both are now read once.
+
 ## [0.4.0-dev.495] - 2026-11-04
 
 Judges sign in through a session, never holding a member's password
