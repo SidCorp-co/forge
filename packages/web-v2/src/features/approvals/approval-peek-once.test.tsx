@@ -1,6 +1,8 @@
 // The Approvals peek names the requirement a decision rests on once (ISS-680, FB-281; ui-copy-rule 3):
 // a question about REQ-n whose evidence is REQ-n rn says it in the evidence alone, never again as an
 // "About REQ-n" line under the question. A subject the evidence does not carry keeps its line.
+// A question's own key is its id, so its head names none (ISS-687 round 5: a uuid read beside
+// "Feedback"). Planted red by drawing `d.key` in the head again.
 //
 // @direct-test-of packages/web-v2/src/features/approvals/components/approval-peek.tsx
 
@@ -14,12 +16,14 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 const P = "11111111-1111-4111-8111-111111111111";
 
+const QID = "1152a5c3-0abf-4685-854f-d0cee04f7447";
+
 const decision = (subject: NeedsYouDecision["subject"]): NeedsYouDecision => ({
   id: "question:q41",
   group: "answer",
   area: "questions",
   entity: "question",
-  key: "ISS-41",
+  key: QID,
   title: "Pick the dashboard's first row",
   opens: { kind: "requirement", key: "REQ-41" },
   question: "Which row leads the dashboard?",
@@ -59,5 +63,18 @@ describe("the Approvals peek names the linked requirement once", () => {
   it("keeps the About line for a subject the evidence does not name", () => {
     draw(decision({ kind: "feedback", key: "FB-9", title: "Rows read as prose" }));
     expect(screen.getByTestId("question-subject")).toHaveTextContent("FB-9");
+  });
+});
+
+describe("the Approvals peek shows no question's id", () => {
+  it("names the kind of item in the head and no key, where the decision is a question", () => {
+    const text = draw({ ...decision(null), opens: { kind: "feedback", key: "FB-147" }, evidence: null });
+    expect(text).not.toContain(QID);
+    expect(screen.getByTestId("peek-head")).toHaveTextContent("Decision");
+  });
+
+  it("keeps the key in the head of a decision that is not a question", () => {
+    draw({ ...decision(null), entity: "release", key: "v1.2.0" });
+    expect(screen.getByTestId("peek-head")).toHaveTextContent("v1.2.0");
   });
 });

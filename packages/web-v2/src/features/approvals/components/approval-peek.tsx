@@ -197,6 +197,14 @@ interface PeekProps {
   onPress: (a: DecisionAnswer, words: string | null) => void;
 }
 
+/**
+ * The key the head names. A question's own key is its id, never shown as text (ui-copy-rule), and the
+ * item it opens is named where the question says it rests on it (its subject, its evidence, its
+ * impact), once: so a question's head names the item's kind alone (ISS-687 round 5, judge run
+ * 13b796d4 read a uuid beside "Feedback").
+ */
+const keyShown = (d: NeedsYouDecision): string | undefined => (d.entity === "question" ? undefined : d.key);
+
 export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPress }: PeekProps) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -216,9 +224,9 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
     >
       <PeekHead
         noun={noun}
-        itemKey={d.key}
+        itemKey={keyShown(d)}
         badge={d.touchedAt ? <span className="text-12 text-subtle">· {t("approvals.waiting", { age: time.age(d.touchedAt) })}</span> : undefined}
-        title={d.title || d.key}
+        title={d.title || keyShown(d)}
       />
       <div className="flex flex-col gap-5 px-4.5 pb-5">
         <Asked d={d} slug={slug} />

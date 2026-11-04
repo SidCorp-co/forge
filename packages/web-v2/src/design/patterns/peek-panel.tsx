@@ -162,7 +162,8 @@ export function PeekPanel({ peek, listLabel, noun, full, children, foot, testId 
 
 interface PeekHeadProps {
   noun: string;
-  itemKey: string;
+  /** The item's key, where it has one a person reads; never an id. */
+  itemKey?: string | undefined;
   badge?: ReactNode;
   title: ReactNode;
   /** The one primary act, the same the full page's header offers. */
@@ -177,7 +178,7 @@ export function PeekHead({ noun, itemKey, badge, title, action }: PeekHeadProps)
     <div className="px-[18px] pb-3 pt-3.5" data-testid="peek-head">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-12 text-subtle">{noun}</span>
-        <span className="font-mono text-12 font-semibold text-link">{itemKey}</span>
+        {itemKey ? <span className="font-mono text-12 font-semibold text-link">{itemKey}</span> : null}
         {badge}
       </div>
       <h2 className="mt-1.5 text-[17px] font-semibold leading-snug text-fg">
