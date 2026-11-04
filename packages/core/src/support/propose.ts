@@ -10,8 +10,8 @@ import {
   planCall,
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
-import { changeWaitsOnRole, whoConfirms } from './confirm-role.js';
-import { grantsOf, isOwner, supportConfigOf } from './grants.js';
+import { changeWaitsOnRole, requestIsConsent, whoConfirms } from './confirm-role.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, threadUnknown } from './outcome.js';
 import type { RecordRequest } from './record.js';
@@ -129,8 +129,8 @@ export async function offerChange(input: {
       proposal: fix.code,
       waitsOn,
       expiresAt: fix.expiresAt.toISOString(),
-      next: isOwner(grantsOf(await supportConfigOf(room)), asker.key)
-        ? `Nothing was posted. The owner asked for this himself, and his own request is his agreement: call agree { thread, proposal: "${fix.code}", message: <the id of his message asking for it> } now, and ask him nothing.`
+      next: (await requestIsConsent(room, grantsOf(await supportConfigOf(room)), asker))
+        ? `Nothing was posted. @${asker.label ?? asker.key} asked for this themselves and this room lets them confirm, so their own request is their agreement: call agree { thread, proposal: "${fix.code}", message: <the id of their message asking for it> } now, and ask them nothing.`
         : `Nothing was posted. Ask ${waitsOn} in your own words, in this thread. When they answer, call agree { thread, proposal: "${fix.code}", message: <their message id>, decision?: "decline" }.`,
     },
   };

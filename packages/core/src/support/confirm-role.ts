@@ -39,6 +39,20 @@ export async function mayConfirmChange(
   );
 }
 
+/**
+ * Whether an asker's own request is their consent to the change it asked for, whenever it was
+ * written (ISS-915, ISS-953): the room already lets that writer confirm — the owner under owner
+ * mode, a confirmer the binding names, or a member the channel record confirms in a confirm role.
+ * Who that is stays data on the binding and the record; a role the bot only inferred is no grant.
+ */
+export async function requestIsConsent(
+  room: RoomRow,
+  grants: SupportGrants,
+  asker: { key: string | null; label: string | null },
+): Promise<boolean> {
+  return mayConfirmChange(room, grants, asker);
+}
+
 /** Who can confirm, as the thread and the session are told it. */
 export function whoConfirms(room: Pick<RoomRow, 'kind'>, grants: SupportGrants): string {
   const who = (grants.confirmers ?? []).map((c) => `@${c}`);

@@ -17,8 +17,13 @@ import {
 } from '../integrations/support-api/index.js';
 import { runConfirmed } from './ability-run.js';
 import { memberMessage } from './channel-store.js';
-import { changeWaitsOnRole, mayConfirmChange, whoConfirms } from './confirm-role.js';
-import { grantsOf, isOwner, supportConfigOf } from './grants.js';
+import {
+  changeWaitsOnRole,
+  mayConfirmChange,
+  requestIsConsent,
+  whoConfirms,
+} from './confirm-role.js';
+import { grantsOf, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
 import { fileRecord, type RecordRequest } from './record.js';
@@ -60,7 +65,7 @@ export type Agreed =
  * `thread`, agreeing or declining (`decision`). Refused, by name and to the session alone, when no
  * proposal waits under the handle, the message is no member's message of this room, it is in another
  * thread than the proposal's, it was written before the proposal (unless it is the owner's own
- * request, `ownRequestOf`), or its writer may not agree to
+ * request and the room lets them confirm, `ownRequestOf`), or its writer may not agree to
  * it: the asker for a fix or a filing, a confirmer the room allows for a build, a deploy or a host
  * change (the asker may still decline one). The writer is the chat server's attribution of the
  * message, never what it says.
@@ -128,14 +133,14 @@ export async function agreeTo(
   const gated = waitsOnConfirmer(room, fix);
   const config = await supportConfigOf(room);
   const grants = grantsOf(config);
-  // the owner's own request is his consent (ISS-915): he asked for it, so he is never asked again
-  const ownRequest = ownRequestOf(grants, fix, writer, decision);
+  // an asker the room lets confirm consents by their own request (ISS-915, ISS-953): never asked again
+  const ownRequest = await ownRequestOf(room, grants, fix, writer, decision);
   if (!ownRequest && said.at.getTime() <= fix.createdAt.getTime()) {
     await audit('refused', fix, writer, { reason: 'before the proposal' });
     return no(
       'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
       '/message',
-      `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Only the owner's own request counts as his agreement. Nothing was done.`,
+      `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Only the own request of an asker this room lets confirm (${whoConfirms(room, grants)}) counts as their agreement. Nothing was done.`,
     );
   }
   const allowed = gated
@@ -187,18 +192,21 @@ export async function agreeTo(
 }
 
 /**
- * Whether the cited message is the owner's own request for this change (ISS-915): written by the
- * owner a channel agent's owner mode obeys (`isOwner`, by the user id the chat server signed), who is
- * the change's asker, agreeing. Such a message consents whenever it was written; every other writer
- * agrees only after the proposal. Who may confirm a gated change is still `mayConfirmChange`'s.
+ * Whether the cited message is the asker's own request for this change, agreeing, from a writer the
+ * room lets confirm (`confirm-role.ts:requestIsConsent`, by the id and username the chat server
+ * signed): the owner under owner mode (ISS-915), a named confirmer, or a member the channel record
+ * confirms in a confirm role (ISS-953). Such a message consents whenever it was written; every other
+ * writer agrees only after the proposal. Who may confirm a gated change is still `mayConfirmChange`'s.
  */
-function ownRequestOf(
+async function ownRequestOf(
+  room: RoomRow,
   grants: SupportGrants,
   fix: ProposalRow,
-  writer: { key: string },
+  writer: { key: string; label: string | null },
   decision: 'agree' | 'decline',
-): boolean {
-  return decision === 'agree' && writer.key === fix.askerKey && isOwner(grants, writer.key);
+): Promise<boolean> {
+  if (decision !== 'agree' || writer.key !== fix.askerKey) return false;
+  return requestIsConsent(room, grants, writer);
 }
 
 const gone = (proposal: string): Outcome<never> =>

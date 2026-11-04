@@ -1,0 +1,1 @@
+- A chat room takes the own request of a member it already lets confirm (a confirmer the binding names, or a member the channel record confirms as Technical or Maintenance) as their agreement, as it did for the owner alone, so they are not asked to say ok to what they just asked for (ISS-953).

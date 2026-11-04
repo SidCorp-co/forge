@@ -19,7 +19,8 @@ import type { Member } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/propose.ts
 // @direct-test-of packages/core/src/support/fixes.ts
 //
-// ISS-915: under owner mode the owner's own request, cited with agree, is his consent.
+// ISS-915: under owner mode the owner's own request, cited with agree, is his consent. ISS-953: so is
+// the own request of an asker the room lets confirm, a named confirmer or a confirmed Technical member.
 //
 // REQ-77 r1 part 2 (ISS-764), what the channel agent may change and hand over: a change to a running
 // system runs only on the word of a member whose role allows it (BC-10); confirmed work and anything
@@ -407,7 +408,7 @@ describe('ISS-915: the owner’s own request is his consent; everyone else agree
       'please record that the export times out on big shops',
     );
     // the session is told his request is his agreement, and asks him nothing
-    expect(String(own.proposed.next)).toContain('his own request is his agreement');
+    expect(String(own.proposed.next)).toContain('their own request is their agreement');
     expect(own.agreed, JSON.stringify(own.agreed)).toMatchObject({
       recorded: true,
       feedbackKey: expect.stringMatching(/^FB-\d+$/),
@@ -451,8 +452,42 @@ describe('ISS-915: the owner’s own request is his consent; everyone else agree
   it('still refuses a member’s earlier message as SUPPORT_AGREEMENT_BEFORE_PROPOSAL', async () => {
     const before = await filings();
     const bob = await fileAndCite(chat.bob, 'please record that my invoices show the wrong VAT');
-    expect(String(bob.proposed.next)).not.toContain('his own request');
+    expect(String(bob.proposed.next)).not.toContain('their own request');
     expect(code(bob.agreed), JSON.stringify(bob.agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
+    expect(await filings()).toBe(before);
+  });
+
+  it('takes the own request of an asker the room lets confirm as consent: a named confirmer and a confirmed Technical member (ISS-953)', async () => {
+    const before = await filings();
+    // zed is the confirmer the binding names; carol a Technical member the channel record confirms
+    for (const [who, text] of [
+      [zed, 'please record that the refund page shows no totals'],
+      [carol, 'please record that the sync log repeats each line'],
+    ] as const) {
+      const own = await fileAndCite(who, text);
+      expect(String(own.proposed.next)).toContain('their own request is their agreement');
+      expect(own.agreed, JSON.stringify(own.agreed)).toMatchObject({ recorded: true });
+      const [consent] = await rows<{ actor_key: string; output: unknown }>(sql`
+        SELECT actor_key, output FROM support_actions
+         WHERE project_id = ${w.projectId}::uuid AND thread = ${own.thread} AND kind = 'fix_confirmed'`);
+      expect(consent).toMatchObject({ actor_key: who.userId, output: { consent: 'own_request' } });
+    }
+    expect(await filings()).toBe(before + 2);
+  });
+
+  it('refuses a confirmer’s earlier message cited for another asker’s proposal (ISS-953)', async () => {
+    const before = await filings();
+    const zedSaid = await w.hear(() => chat.say(zed, 'we should log the slow exports'));
+    const cited = await fileAndCite(
+      chat.bob,
+      'please record the slow exports',
+      () => ({ message: zedSaid.id }),
+      zedSaid.id,
+    );
+    expect(String(cited.proposed.next)).not.toContain('their own request');
+    expect(code(cited.agreed), JSON.stringify(cited.agreed)).toBe(
+      'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
+    );
     expect(await filings()).toBe(before);
   });
 
