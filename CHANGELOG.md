@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.489] - 2026-11-04
+
+Issues waiting on a question name no one; Activity rows read one master state
+
+### Fixed
+
+- **An issue page draws no out-of-date steward note.** A note the issue has moved past waits until the steward writes it again, and the rail names an issue's requirement without a picker or Unlink.
+- **Activity shows no record keys, and each project's group matches its text.** People read the question's words, Recent and the master's work read issue titles, an idle master no longer reads busy by hand, and lines are lighter.
+
 ## [0.4.0-dev.488] - 2026-11-04
 
 Expired monitors no longer keep a draining master pane busy
