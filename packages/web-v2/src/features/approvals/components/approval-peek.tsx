@@ -19,15 +19,20 @@ function Heading({ children }: { children: React.ReactNode }) {
   return <h3 className="mb-2 text-11-5 font-semibold uppercase tracking-wide text-subtle">{children}</h3>;
 }
 
+/** The question's subject line, unless the evidence already names that requirement (each fact once, ISS-680). */
+const subjectOf = (d: NeedsYouDecision) =>
+  d.subject && !(d.subject.kind === "requirement" && d.evidence?.requirement?.key === d.subject.key) ? d.subject : null;
+
 /** What is asked, or what the agent proposes: one plain line under a small label, no box. */
 function Asked({ d, slug }: { d: NeedsYouDecision; slug: string }) {
   const t = useCopy();
   const p = d.proposal;
+  const subject = subjectOf(d);
   return (
     <section data-testid="approval-peek-proposal">
       <Heading>{t(p ? "approvals.peek.proposes" : "approvals.peek.asks")}</Heading>
       <p className="text-15 font-semibold leading-snug text-fg">{p ? (p.what ? `${p.verb}: ${p.what}` : p.verb) : d.question}</p>
-      {d.subject ? <QuestionSubjectLine subject={d.subject} slug={slug} className="mt-1.5" /> : null}
+      {subject ? <QuestionSubjectLine subject={subject} slug={slug} className="mt-1.5" /> : null}
     </section>
   );
 }
