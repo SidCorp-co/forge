@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.487] - 2026-11-04
+
+Releases on projects without a served commit are weighed at each landing commit
+
+### Fixed
+
+- **A release-record project weighs criteria at each landing.** Its live release no longer holds back work that landed after it; live-only criteria are judged on the release once it ships, and the batch read shows what an ended attempt carried.
+
 ## [0.4.0-dev.486] - 2026-11-04
 
 Lighter lines, a live Activity timeline, and waiting issues that name no one

@@ -1,1 +1,0 @@
-**A release-record project weighs criteria at each landing.** Its live release no longer holds back work that landed after it; live-only criteria are judged on the release once it ships, and the batch read shows what an ended attempt carried.
