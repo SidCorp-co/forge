@@ -249,15 +249,18 @@ async function withSession(room: RoomRow, binding?: SupportBinding): Promise<Roo
   const set = await db.transaction(async (tx) => {
     await lockXact(tx, 'supportRoom', lockKey(room.bindingId, room.rid, room.kind));
     const fresh = await roomOfBinding(room.bindingId, room.rid, tx);
-    if (fresh?.sessionId) return { room: fresh, used: false };
+    if (fresh?.sessionId) return { room: fresh, idle: 'another declaration gave it one first' };
+    // read under the lock `releaseUnboundRooms` takes: a binding switched off since this room was
+    // read bound keeps its room released, never handed a session the sweep has just let go
+    if (!(await roomIsBound(room))) return { room: fresh ?? room, idle: 'its binding let it go' };
     if (room.kind === 'agent') await setRoomsSession(tx, room.bindingId, session.id);
     else await setRoomSession(tx, room.id, session.id);
-    return { room: { ...room, sessionId: session.id }, used: true };
+    return { room: { ...room, sessionId: session.id }, idle: null };
   });
-  if (!set.used) {
+  if (set.idle) {
     logger.info(
       { roomId: room.id, sessionId: session.id },
-      'support: another declaration gave the room its session first; this one stays idle',
+      `support: the room took no session, as ${set.idle}; this one stays idle`,
     );
   }
   return set.room;

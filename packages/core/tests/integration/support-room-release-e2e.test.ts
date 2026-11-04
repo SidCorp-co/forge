@@ -6,7 +6,9 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { roomWithSession } from '../../src/support/dispatch.js';
 import { warmColdRooms } from '../../src/support/index.js';
+import { ensureSupportRoom } from '../../src/support/rooms.js';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, rows } from '../helpers/factories.js';
@@ -16,6 +18,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/rooms.ts
 // @direct-test-of packages/core/src/support/warm.ts
 // @direct-test-of packages/core/src/support/store.ts
+// @direct-test-of packages/core/src/support/dispatch.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/room-routing.ts
 // @direct-test-of packages/core/src/db/schema-support.ts
 //
@@ -31,6 +34,7 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 const w = new SupportWorld();
 let chat: StandInRocketChat;
 let other = '';
+let connectionId = '';
 const binding = { a: '', b: '' };
 const SUPPORT = { product: 'Catalog, the shop back office' };
 
@@ -85,7 +89,7 @@ beforeAll(async () => {
     ],
   });
   expect(rc.status, JSON.stringify(rc.body)).toBe(201);
-  const connectionId = String((rc.body.connection as { id: string }).id);
+  connectionId = String((rc.body.connection as { id: string }).id);
   const pairs = await rows<{ id: string; project_id: string }>(sql`
     SELECT id, project_id FROM integration_bindings WHERE connection_id = ${connectionId}::uuid`);
   binding.a = String(pairs.find((p) => p.project_id === w.projectId)?.id);
@@ -109,6 +113,24 @@ describe('a room is held by the bindings that answer it (ISS-933)', () => {
     expect(placed?.session).not.toBeNull();
     const released = held.find((r) => r.binding === binding.a);
     expect(released?.session, 'the switched-off binding holds no session').toBeNull();
+  });
+
+  it('gives a released room no session back, whether a message or a declaration reaches it', async () => {
+    // a message waiting on the room, or a sweep that read its binding on just before it was switched
+    // off, reaches it after the release: neither hands the session back
+    const [room] = (await heldOn(chat.rid)).filter((r) => r.binding === binding.a);
+    expect(room?.session).toBeNull();
+    expect((await roomWithSession(String(room?.id)))?.sessionId, 'by a message').toBeNull();
+    const declared = await ensureSupportRoom({
+      projectId: w.projectId,
+      bindingId: binding.a,
+      connectionId,
+      rid: chat.rid,
+      room: { kind: 'support', support: SUPPORT },
+    });
+    expect(declared.sessionId, 'by a declaration').toBeNull();
+    const [after] = (await heldOn(chat.rid)).filter((r) => r.binding === binding.a);
+    expect(after?.session, 'still released').toBeNull();
   });
 
   it('releases a rid a binding stops naming', async () => {

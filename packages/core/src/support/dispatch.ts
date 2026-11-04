@@ -44,7 +44,7 @@ import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
-import { agentMarkerOf, ensureSupportRoom } from './rooms.js';
+import { agentMarkerOf, ensureSupportRoom, roomIsBound } from './rooms.js';
 import { type ActionRow, insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
@@ -105,20 +105,22 @@ export async function sessionOf(room: RoomRow): Promise<SessionRow | null> {
   return room.sessionId ? sessionRowById(room.sessionId) : null;
 }
 
-/** The room as it stands, its session declared if its binding still names it as it was declared. */
+/**
+ * The room as it stands, its session declared if its binding is on and still names it as it was
+ * declared. A room its binding no longer answers gets none: the sweep released it (ISS-933).
+ */
 export async function roomWithSession(roomId: string): Promise<RoomRow | null> {
   const room = await roomById(roomId);
-  if (!room || room.sessionId) return room;
+  if (!room || room.sessionId || !(await roomIsBound(room))) return room;
   const pair = await findBindingWithConnectionById(room.bindingId);
   const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
-  const named = (config?.rids ?? []).includes(room.rid);
   const declared =
     room.kind === 'operations'
-      ? config?.operations && named
+      ? config?.operations
         ? ({ kind: 'operations', scope: config.operations.scope } as const)
         : null
       : room.kind === 'agent'
-        ? config?.agent && named
+        ? config?.agent
           ? ({ kind: 'agent', agent: config.agent } as const)
           : null
         : config?.support
