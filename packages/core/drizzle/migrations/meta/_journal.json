@@ -3816,6 +3816,13 @@
       "when": 1834704000000,
       "tag": "0599_a_later_cleanup_report_supersedes_its_fires_earlier_one",
       "breakpoints": true
+    },
+    {
+      "idx": 600,
+      "version": "7",
+      "when": 1834790400000,
+      "tag": "0600_a_bot_room_is_held_per_binding_not_per_connection",
+      "breakpoints": true
     }
   ]
 }

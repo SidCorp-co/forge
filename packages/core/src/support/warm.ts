@@ -28,7 +28,12 @@ import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { followedLine, grantsLine, roomsLine, toolsLine } from './prompt.js';
-import { declareSupportRooms, projectsWithUndeclaredRooms, roomIsBound } from './rooms.js';
+import {
+  declareSupportRooms,
+  projectsWithUndeclaredRooms,
+  releaseUnboundRooms,
+  roomIsBound,
+} from './rooms.js';
 import { type RoomRow, roomById, roomsOfSession } from './store.js';
 
 /** What the warm-up turn says: no member is waiting, so the session answers nothing. */
@@ -146,8 +151,10 @@ async function retellOf(room: RoomRow, deviceId: string): Promise<string | null>
   ].join('\n\n');
 }
 
-/** Warm every room of a project, as its binding is saved. */
+/** Release the rooms a project's bindings no longer answer, and warm every room they do, as a binding is saved. */
 export async function warmProjectRooms(projectId: string): Promise<void> {
+  // a binding switched off, or no longer naming a room, lets that room go (ISS-933)
+  await releaseUnboundRooms(projectId);
   for (const room of await declareSupportRooms(projectId)) {
     await warmSupportRoom(room.id, 'bindings').catch((err) =>
       logger.error({ err, roomId: room.id }, 'support: warming a room failed'),
@@ -170,7 +177,11 @@ export async function warmRoomsOfDevice(deviceId: string): Promise<void> {
  * warmed, and one whose grant change arrived mid-turn is told the new tools now.
  */
 export async function warmColdRooms(): Promise<void> {
-  // a room its binding names but nobody declared is declared first, then warmed below (ISS-933)
+  // a room its binding no longer answers lets go of its session, and a room an active binding names
+  // but nobody declared is declared, then warmed below (ISS-933)
+  await releaseUnboundRooms().catch((err) =>
+    logger.error({ err }, 'support: releasing unbound rooms failed'),
+  );
   for (const projectId of await projectsWithUndeclaredRooms()) {
     await declareSupportRooms(projectId).catch((err) =>
       logger.error({ err, projectId }, 'support: declaring a bound room failed'),

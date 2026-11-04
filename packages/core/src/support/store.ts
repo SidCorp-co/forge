@@ -6,7 +6,7 @@ import type {
   SupportActorKind,
   SupportFixState,
 } from '@forge/contracts/support';
-import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   supportActions,
@@ -58,6 +58,20 @@ export async function roomsOfSession(sessionId: string): Promise<RoomRow[]> {
     .orderBy(asc(supportRooms.createdAt));
 }
 
+/** Every room holding a session, or one project's, oldest first. */
+export async function roomsHoldingSessions(projectId?: string): Promise<RoomRow[]> {
+  return db
+    .select()
+    .from(supportRooms)
+    .where(
+      and(
+        isNotNull(supportRooms.sessionId),
+        projectId ? eq(supportRooms.projectId, projectId) : undefined,
+      ),
+    )
+    .orderBy(asc(supportRooms.createdAt));
+}
+
 /** A channel agent binding's rooms, which share one account and one session (REQ-77), oldest first. */
 export async function agentRoomsOfBinding(bindingId: string, exec: Exec = db): Promise<RoomRow[]> {
   return exec
@@ -96,7 +110,26 @@ export async function insertRoom(
   return row;
 }
 
-export async function setRoomSession(tx: Exec, roomId: string, sessionId: string): Promise<void> {
+/** A room re-declared under another kind (ISS-933): its kind, scope, account and session as given. */
+export async function setRoomPlacement(
+  tx: Exec,
+  roomId: string,
+  placement: Pick<RoomRow, 'kind' | 'scope' | 'principalUserId' | 'sessionId'>,
+): Promise<RoomRow> {
+  const [row] = await tx
+    .update(supportRooms)
+    .set(placement)
+    .where(eq(supportRooms.id, roomId))
+    .returning();
+  if (!row) throw new Error(`support: room ${roomId} is gone`);
+  return row;
+}
+
+export async function setRoomSession(
+  tx: Exec,
+  roomId: string,
+  sessionId: string | null,
+): Promise<void> {
   await tx.update(supportRooms).set({ sessionId }).where(eq(supportRooms.id, roomId));
 }
 

@@ -27,6 +27,9 @@ import {
   insertRoom,
   type RoomRow,
   roomOfBinding,
+  roomsHoldingSessions,
+  roomsOfSession,
+  setRoomPlacement,
   setRoomSession,
   setRoomsSession,
 } from './store.js';
@@ -56,7 +59,8 @@ export async function boundButUndeclared(projectId: string, rid: string): Promis
 }
 
 /**
- * The projects whose active bindings name a room nobody declared (ISS-933): a room is declared on a
+ * The projects whose active bindings name a room nobody declared, or one held under another kind or
+ * scope than the binding now declares (ISS-933): a room is declared on a
  * binding's `integration.changed` and on its first message, so one bound before the code that
  * declares its kind shipped, or whose declaration failed, would wait for a save that changes
  * something. A support binding naming other than one group is refused, never declared, so it is not
@@ -68,10 +72,20 @@ export async function projectsWithUndeclaredRooms(): Promise<string[]> {
     if (projects.has(binding.projectId)) continue;
     const config = binding.config as RocketChatBindingConfig | null;
     const rids = config?.rids ?? [];
-    const declares = config?.agent || config?.operations || (config?.support && rids.length === 1);
-    if (!declares) continue;
+    // the kind declareSupportRooms gives each room, in its order: agent, operations, then support
+    const kind = config?.agent
+      ? 'agent'
+      : config?.operations
+        ? 'operations'
+        : config?.support && rids.length === 1
+          ? 'support'
+          : null;
+    if (!kind) continue;
+    const scope = kind === 'operations' ? (config?.operations?.scope ?? null) : null;
     for (const rid of rids) {
-      if (await roomOfBinding(binding.id, rid)) continue;
+      const held = await roomOfBinding(binding.id, rid);
+      // held as the binding declares it: nothing to do; held under another kind: re-declared
+      if (held && held.kind === kind && held.scope === scope) continue;
       projects.add(binding.projectId);
       break;
     }
@@ -141,7 +155,8 @@ const lockKey = (bindingId: string, rid: string, kind: RoomRow['kind']) =>
  * declaring the same room at once declare one.
  */
 export async function ensureSupportRoom(binding: SupportBinding): Promise<RoomRow> {
-  let room = await roomOfBinding(binding.bindingId, binding.rid);
+  const held = await roomOfBinding(binding.bindingId, binding.rid);
+  let room = held ? await redeclared(held, binding) : null;
   let minted: string | null = null;
   if (!room) {
     const kind = binding.room.kind;
@@ -252,6 +267,92 @@ export async function replaceStaleAgentSession(
     "support: the channel agent's owner mode changed; its session is replaced",
   );
   return true;
+}
+
+/**
+ * Rooms whose binding is switched off, gone, or no longer names their rid let go of their session
+ * (ISS-933): the row keeps its project, binding and record, holds no session, and is never warmed
+ * again (`warm.ts:warmOnce` reads it unbound); its session is told closed on its box, as a replaced
+ * agent's is, unless a bound room still shares it. An active binding naming the same rid is placed
+ * on a room of its own. `projectId` narrows it to one project's rooms. The ids released come back.
+ */
+export async function releaseUnboundRooms(projectId?: string): Promise<string[]> {
+  const held = (await roomsHoldingSessions(projectId)).filter((r) => r.sessionId);
+  const released: string[] = [];
+  for (const room of held) {
+    if (await roomIsBound(room)) continue;
+    const sessionId = room.sessionId as string;
+    await db.transaction(async (tx) => {
+      await lockXact(tx, 'supportRoom', lockKey(room.bindingId, room.rid, room.kind));
+      await setRoomSession(tx, room.id, null);
+    });
+    released.push(room.id);
+    await letGoOfSession(sessionId);
+    logger.info(
+      { roomId: room.id, rid: room.rid, bindingId: room.bindingId, sessionId },
+      'support: a room its binding no longer answers let go of its session',
+    );
+  }
+  return released;
+}
+
+/**
+ * A session no room holds any longer is told closed on its box, as a replaced agent's is; one a
+ * room still holds (a channel agent's other groups) is left running.
+ */
+async function letGoOfSession(sessionId: string): Promise<void> {
+  if ((await roomsOfSession(sessionId)).length > 0) return;
+  const session = await sessionRowById(sessionId);
+  if (!session?.deviceId) return;
+  await closeResidentOnBox(session.id, session.deviceId).catch((err) =>
+    logger.error({ err, sessionId }, 'support: closing a let-go session failed'),
+  );
+}
+
+/** The kind and scope a binding declares its room under. */
+const placementOf = (binding: SupportBinding) => ({
+  kind: binding.room.kind,
+  scope: binding.room.kind === 'operations' ? binding.room.scope : null,
+});
+
+/**
+ * A room its active binding now declares under another kind or scope (support, agent, operations;
+ * ISS-933) is re-declared in place: its kind and scope as the binding says, the shared account and
+ * session of the binding's other agent rooms where it joins them, an account of its own where it
+ * leaves them, and its old session let go, so the next declaration places a new one. A room that
+ * already matches comes back as it is.
+ */
+async function redeclared(room: RoomRow, binding: SupportBinding): Promise<RoomRow> {
+  const want = placementOf(binding);
+  if (room.kind === want.kind && room.scope === want.scope) return room;
+  let minted: string | null = null;
+  const placed = await db.transaction(async (tx) => {
+    await lockXact(tx, 'supportRoom', lockKey(room.bindingId, room.rid, room.kind));
+    await lockXact(tx, 'supportRoom', lockKey(binding.bindingId, binding.rid, want.kind));
+    const others = (await agentRoomsOfBinding(binding.bindingId, tx)).filter(
+      (r) => r.id !== room.id,
+    );
+    // joining a channel agent: its account and session; leaving one: an account of its own
+    const sibling = want.kind === 'agent' ? others[0] : undefined;
+    let principalUserId = sibling?.principalUserId ?? room.principalUserId;
+    if (want.kind !== 'agent' && room.kind === 'agent' && others.length > 0) {
+      principalUserId = (await insertAgentAccount(tx, `support-${binding.bindingId.slice(0, 8)}`))
+        .id;
+      minted = principalUserId;
+    }
+    return setRoomPlacement(tx, room.id, {
+      ...want,
+      principalUserId,
+      sessionId: sibling?.sessionId ?? null,
+    });
+  });
+  if (minted) await setUserDisplayName(minted, ROOM_NAMES[placed.kind].account);
+  if (room.sessionId && room.sessionId !== placed.sessionId) await letGoOfSession(room.sessionId);
+  logger.info(
+    { roomId: room.id, rid: room.rid, from: room.kind, to: placed.kind },
+    'support: a room its binding now declares under another kind was re-declared',
+  );
+  return placed;
 }
 
 /**

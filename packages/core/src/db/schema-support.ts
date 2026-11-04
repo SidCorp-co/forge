@@ -63,7 +63,8 @@ export const supportRooms = pgTable(
   },
   (t) => ({
     bindingRidUq: uniqueIndex('support_rooms_binding_rid_uq').on(t.bindingId, t.rid),
-    roomUq: uniqueIndex('support_rooms_connection_rid_uq').on(t.connectionId, t.rid),
+    // a room is held per binding, never per connection: two bindings naming one rid on one bot are
+    // each placed, and a switched-off binding's room holds nothing back (ISS-933, migration 0600)
     // a channel agent's rooms share one account (REQ-77 BC-1); every other room has its own
     principalUq: uniqueIndex('support_rooms_principal_uq')
       .on(t.principalUserId)

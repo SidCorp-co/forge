@@ -7,7 +7,6 @@
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
 import type { OperationsRoomConfig } from '@forge/contracts/support-operations';
-import { logger } from '../../lib/logger.js';
 import { forgeReads, listBindingsForConnection } from '../index.js';
 import type { RocketChatBindingConfig } from './types.js';
 
@@ -25,6 +24,11 @@ export interface Route {
   operations: OperationsRoomConfig | null;
   /** Set where the binding's rooms are answered by the project's channel agent (REQ-77). */
   agent: SupportRoomConfig | null;
+  /**
+   * The other active bindings of this connection naming the same room, oldest first (ISS-933): each
+   * is placed and handed the room's messages too, and their prompts, not the routing, say who answers.
+   */
+  shared: Route[];
 }
 
 export async function buildRoutes(connectionId: string): Promise<Map<string, Route>> {
@@ -46,14 +50,7 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
     const proj = projectById.get(b.projectId);
     if (!proj) continue;
     for (const rid of rids) {
-      if (routes.has(rid)) {
-        logger.warn(
-          { connectionId, rid, projectId: b.projectId },
-          'rocketchat: room already routed to another project; skipping duplicate',
-        );
-        continue;
-      }
-      routes.set(rid, {
+      const route: Route = {
         rid,
         projectId: b.projectId,
         projectSlug: proj.slug,
@@ -62,7 +59,11 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
         support: (b.config as RocketChatBindingConfig | null)?.support ?? null,
         operations: (b.config as RocketChatBindingConfig | null)?.operations ?? null,
         agent: (b.config as RocketChatBindingConfig | null)?.agent ?? null,
-      });
+        shared: [],
+      };
+      const first = routes.get(rid);
+      if (first) first.shared.push(route);
+      else routes.set(rid, route);
     }
   }
   return routes;

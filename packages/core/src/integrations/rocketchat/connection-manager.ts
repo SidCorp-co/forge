@@ -274,19 +274,23 @@ class RocketChatConnectionManager {
       return;
     }
     // a support group and an operations room are each answered by their own session (REQ-75), and
-    // a channel agent's rooms by the agent's one session (REQ-77)
-    if (route.support || route.operations || route.agent) {
+    // a channel agent's rooms by the agent's one session (REQ-77); every active binding naming the
+    // room is handed the message, and their prompts say who answers (ISS-933)
+    const answered = (r: Route) => Boolean(r.support || r.operations || r.agent);
+    if (answered(route)) {
       if (ac.seenMessage(m.id)) return;
-      await supportRoomHandler()
-        .handle({ connectionId, ac, route, m, shape })
-        .catch((err) => {
-          ac.seenMessage.forget(m.id);
-          logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: support message failed');
-          reportFailure(err, {
-            tags: { area: 'rocketchat', phase: 'support' },
-            extra: { connectionId, rid: m.rid, projectId: route.projectId },
+      for (const each of [route, ...route.shared.filter(answered)]) {
+        await supportRoomHandler()
+          .handle({ connectionId, ac, route: each, m, shape })
+          .catch((err) => {
+            ac.seenMessage.forget(m.id);
+            logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: support message failed');
+            reportFailure(err, {
+              tags: { area: 'rocketchat', phase: 'support' },
+              extra: { connectionId, rid: m.rid, projectId: each.projectId },
+            });
           });
-        });
+      }
       return;
     }
     const owned = m.tmid
