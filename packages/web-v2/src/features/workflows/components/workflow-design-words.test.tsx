@@ -1,7 +1,7 @@
 // The design page's rail speaks to a BA: plain sentences first, the kernel's terms (Unrooted, Not
 // reconciled, Held, markers, permission strings) behind the Developer view (REQ-43 BC-7).
 
-import { say, sentence } from "@/test/said";
+import { RULE, say, sentence, waitingOn } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,7 +25,8 @@ const health = (over: Partial<WorkflowHealth> = {}): WorkflowHealth =>
   }) as unknown as WorkflowHealth;
 
 const HELD = say("designs.gate.held", { why: say("designs.gate.noApproval") });
-const design = { gate: { open: false, rule: sentence(HELD), says: { rule: HELD } }, builds: [], requirements: [], revisions: [], approver: "workflow-designs.approve", approvedRevision: null } as unknown as WorkflowDesign;
+const NOBODY = waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE });
+const design = { gate: { open: false, rule: sentence(HELD), says: { rule: HELD } }, builds: [], requirements: [], revisions: [], approver: "workflow-designs.approve", approvedRevision: null, waitingOn: NOBODY } as unknown as WorkflowDesign;
 
 const OBSERVED = { id: "o", atSha: "abc", revision: 2, createdAt: "2026-10-01T00:00:00Z", writtenBy: "u", writtenByAgency: "agent" as const };
 const ROOTED = { rooted: true, approvedRevision: 2, requirements: ["REQ-1"], missing: [] };

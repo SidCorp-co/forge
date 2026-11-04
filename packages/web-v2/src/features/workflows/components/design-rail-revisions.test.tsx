@@ -2,7 +2,7 @@
 // marks a pin below the approved revision, and says which revision each build was linked against.
 // Pins and builds are revision numbers, so they are read in the Developer view (REQ-43 BC-7).
 
-import { say, sentence } from "@/test/said";
+import { RULE, say, sentence, waitingOn } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,7 @@ const design = {
   approvedRevision: 7,
   revisions: [],
   approver: "workflow-designs.approve",
+  waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }),
   requirements: [
     { key: "REQ-25", title: "Checkout", status: "agreed", state: "in_delivery", pinnedRevision: 6 },
     { key: "REQ-26", title: "Refunds", status: "agreed", state: "agreed", pinnedRevision: 7 },

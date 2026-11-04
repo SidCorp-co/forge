@@ -9,7 +9,7 @@ import { TONE_META } from "@/design/status";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
-import { said } from "@/lib/i18n/said";
+import { said, saidView } from "@/lib/i18n/said";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { ReactNode } from "react";
 import { revisionReason } from "../decision-words";
@@ -315,6 +315,25 @@ export function codeMatchOf(health: WorkflowHealth | undefined): { stand: Stand;
   return { stand: "no", key: "workflows.stands.notConfirmed" };
 }
 
+/**
+ * Who the design waits on and what is next, in one line read off core's design standing
+ * (`workflows/design-standing.ts:designWaitingOn`), never derived here: "Design approver · approve or
+ * return the design", and where nobody owes a step, "Nobody · nothing next" (REQ-68 BC-5; ISS-687
+ * c2, judged short at dev.485 for saying neither on an approved design).
+ */
+function WaitsOnMark({ d }: { d: WorkflowDesign }) {
+  const t = useCopy();
+  const w = saidView(d.waitingOn, useInterfaceLanguage());
+  const stand: Stand = w.kind === "none" ? "yes" : w.kind === "you" ? "differs" : "no";
+  return (
+    <StandingMark label={t("workflows.stands.waitsOn")} stand={stand} testId="stands-waits-on" title={w.rule}>
+      <span className="min-w-0">
+        {w.who} · {w.act || t("workflows.stands.nothingNext")}
+      </span>
+    </StandingMark>
+  );
+}
+
 /** Where the design stands, as marks (REQ-10, ISS-781): approved, its requirement, whether the code matches. */
 function WhereItStands({ d, health, slug, projectId, title }: { d: WorkflowDesign; health: WorkflowHealth | undefined; slug: string; projectId: string | undefined; title: string }) {
   const t = useCopy();
@@ -325,6 +344,7 @@ function WhereItStands({ d, health, slug, projectId, title }: { d: WorkflowDesig
   return (
     <FactsGroup title={t("workflows.facts.whereItStands")} testId="facts-plain-status">
       <div data-testid="plain-status">
+        <WaitsOnMark d={d} />
         {/* the header pill says the design's state, so a draft's "not approved" is not said again; the row stays where an earlier revision is approved and the pill says something else (ISS-805) */}
         {d.approvedRevision !== null && d.status !== "approved" ? (
           <StandingMark label={t("workflows.facts.approved")} stand="yes" testId="stands-approved" title={by || undefined}>

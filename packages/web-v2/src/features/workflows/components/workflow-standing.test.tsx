@@ -5,6 +5,11 @@
  * REQ-68 BC-5 (ISS-687 c1): the workflow page shows the step its design is at, who it waits on and
  * what is next, read off core's design standing (`workflows/standing-read.ts` reads the same wait),
  * never derived here; a design nobody owes a step on names no one.
+ * ISS-687 c2, judged short at dev.485: Issue lifecycle and Forge in context, both approved, said
+ * neither who the design waits on nor what is next, though core said Nobody. Where it stands now
+ * carries that one line for every design, "Nobody · nothing next" where nobody owes a step. Planted
+ * red by leaving `WaitsOnMark` out of the panel.
+ * @direct-test-of packages/web-v2/src/features/workflows/components/workflow-design-facts.tsx
  */
 import { verbatim } from "@forge/contracts/said";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -89,5 +94,31 @@ describe("the workflow page says where its design stands (REQ-68 BC-5)", () => {
     open(designAt("approved", waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE })));
     expect(screen.getByTestId("workflow-design-screen")).toHaveTextContent("Approved");
     expect(screen.queryByTestId("design-banner")).toBeNull();
+  });
+});
+
+describe("the workflow page's Where it stands says who the design waits on and what is next (ISS-687 c2)", () => {
+  const line = () => screen.getByTestId("stands-waits-on");
+
+  it("says Nobody and that nothing is next on an approved design", () => {
+    open(designAt("approved", waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE })));
+    expect(line()).toHaveTextContent("Waits on");
+    expect(line()).toHaveTextContent("Nobody · nothing next");
+  });
+
+  it("names the approver and the act on a proposed design", () => {
+    open(
+      designAt(
+        "proposed",
+        waitingOn("person", { who: say("standing.who.holderOf", { perm: "workflow-designs.approve" }), act: say("designs.act.approveOrReturn"), rule: RULE }),
+      ),
+    );
+    expect(line()).toHaveTextContent("Design approver · approve or return the design");
+  });
+
+  it("names the writer and the revise on a returned design, in a few words", () => {
+    open(designAt("returned", waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("designs.act.reviseR", { r: 2 }), rule: RULE })));
+    expect(line()).toHaveTextContent("Ana · revise revision 2");
+    expect((line().textContent ?? "").split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(10);
   });
 });

@@ -345,7 +345,9 @@
     "workflows.stands.matches": "Matches",
     "workflows.stands.no": "No",
     "workflows.stands.notCompared": "Not compared",
+    "workflows.stands.nothingNext": "nothing next",
     "workflows.stands.notConfirmed": "Not confirmed",
+    "workflows.stands.waitsOn": "Waits on",
     "workflows.stands.yes": "Yes"
   },
   "vi": {
@@ -718,7 +720,9 @@
     "workflows.stands.matches": "Khớp",
     "workflows.stands.no": "Chưa",
     "workflows.stands.notCompared": "Chưa so sánh",
+    "workflows.stands.nothingNext": "không còn bước nào",
     "workflows.stands.notConfirmed": "Chưa xác nhận",
+    "workflows.stands.waitsOn": "Đang chờ",
     "workflows.stands.yes": "Có"
   }
 }
