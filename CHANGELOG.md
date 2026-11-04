@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.484] - 2026-11-04
+
+Release runs see each roster issue's landing commit and cut a head holding it
+
+### Fixed
+
+- **A release run sees each issue's landing commit.** The release prompt now names the commit each issue on its roster landed at, and tells the run to cut from a head that holds every one, or abort naming the issue.
+
 ## [0.4.0-dev.483] - 2026-11-04
 
 Support rooms take consent from the right person and see earlier bot answers
