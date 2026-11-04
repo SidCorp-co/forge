@@ -6,7 +6,14 @@
 // decision on its item (`steward/decision-ask.ts`). Planted red by putting one back: the `issue.admit`
 // act in `DECISION_ACTS`, an `issuesApi.transition` call on the requirement page, the `issues` area in
 // `NEEDS_YOU_AREAS`, the `admit` field on the `forge_issues` door.
+// The fix round after judge K163 (c1 and c3 failed at 0.4.0-dev.480): the Issues list grouped issues
+// under Needs you asking "You · take on or drop", "You · resume once", "You · answer a question", and
+// the issue page drew a primary Run pipeline and a Pause. No issue's standing groups Needs you or
+// names its reader, and the issue page's own files hold no move, run, pause, resume or release.
+// Planted red by putting `needs_you` back in `ISSUE_ATTENTION_GROUPS` and the old header back.
 //
+// @direct-test-of packages/contracts/src/issue-standing.ts
+// @direct-test-of packages/contracts/src/modules.ts
 // @direct-test-of packages/contracts/src/needs-you.ts
 // @direct-test-of packages/contracts/src/needs-you-decisions.ts
 // @direct-test-of packages/contracts/src/chat-decide.ts
@@ -21,6 +28,8 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decisionOutcomeRequestSchema } from '@forge/contracts/chat-decide';
 import { IDEA_OFFER_TOOL, ideaOfferParamsSchema } from '@forge/contracts/idea-offer';
+import { ISSUE_ATTENTION_GROUPS, ISSUE_WAITING_KINDS } from '@forge/contracts/issue-standing';
+import { MODULE_ATTENTION_GROUPS, MODULE_OPEN_KINDS } from '@forge/contracts/modules';
 import { NEEDS_YOU_AREAS, NEEDS_YOU_ENTITIES } from '@forge/contracts/needs-you';
 import { DECISION_ACTS, decisionOpensSchema } from '@forge/contracts/needs-you-decisions';
 import { describe, expect, it } from 'vitest';
@@ -83,6 +92,52 @@ describe('the web product pages hold no act on an issue', () => {
       );
     });
     expect(found).toEqual([]);
+  });
+});
+
+/** The issue page's own files: its screen, its header, its main column and its banners. */
+const ISSUE_PAGE = [
+  'features/issues/components/issue-detail-screen.tsx',
+  'features/issues/components/detail',
+  'features/issues/components/blocker-banner.tsx',
+  'features/issues/components/awaiting-release-banner.tsx',
+];
+
+/** What a person's act on an issue looks like on its page: a hook or control that moves, runs, pauses, resumes or releases it. */
+const PAGE_ACTS: { name: string; pattern: RegExp }[] = [
+  ...ISSUE_ACTS,
+  { name: 'a status move', pattern: /useGuardedTransition|useTransitionIssue|<StatusEdit\b/ },
+  { name: 'a run paused or resumed', pattern: /useResumeRun|usePauseRun|useCancelRun/ },
+  { name: 'a release cut from the issue', pattern: /useBatchRelease|ReleaseNowAct/ },
+  { name: "the blocker's button", pattern: /BlockerAct\b|onResumePark|onResumeRun/ },
+  {
+    name: 'a header act',
+    pattern: /issues\.actions\.(runPipeline|viewPipeline|pause|pauseHold)\b/,
+  },
+];
+
+describe('the issue page and the Issues list ask a person to do nothing to an issue', () => {
+  const files = ISSUE_PAGE.flatMap((p) => {
+    const path = join(WEB, p);
+    return statSync(path).isDirectory() ? sourcesUnder(path) : [path];
+  });
+
+  it('holds no move, run, pause, resume or release of the issue in its own files', () => {
+    expect(files.length).toBeGreaterThan(6);
+    const found = files.flatMap((f) => {
+      const text = readFileSync(f, 'utf8');
+      return PAGE_ACTS.filter((a) => a.pattern.test(text)).map(
+        (a) => `${relative(WEB, f)}: ${a.name}`,
+      );
+    });
+    expect(found).toEqual([]);
+  });
+
+  it('groups no issue and no module under Needs you, and waits on no reader as You', () => {
+    expect(ISSUE_ATTENTION_GROUPS as readonly string[]).not.toContain('needs_you');
+    expect(ISSUE_WAITING_KINDS as readonly string[]).not.toContain('you');
+    expect(MODULE_ATTENTION_GROUPS as readonly string[]).not.toContain('needs_you');
+    expect(MODULE_OPEN_KINDS as readonly string[]).not.toContain('needs_you');
   });
 });
 
