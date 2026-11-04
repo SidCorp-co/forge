@@ -6,8 +6,9 @@ const published: Array<{ room: string; event: string }> = [];
 const admins = new Map<string, string[]>();
 
 vi.mock('../outbox/index.js', () => ({
-  consume: (type: string, consumer: { handle: (payload: unknown) => unknown }) => {
-    handlers.set(type, consumer.handle);
+  // the room frames of each event, not the org room's own delivery beside them
+  consume: (type: string, consumer: { name: string; handle: (payload: unknown) => unknown }) => {
+    if (consumer.name !== 'org-activity') handlers.set(type, consumer.handle);
   },
   emitEvent: vi.fn(async (_tx: unknown, type: string, payload: unknown) => {
     emitted.push({ type, payload });

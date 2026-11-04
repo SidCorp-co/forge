@@ -8,6 +8,7 @@ import type { OutboxEventType } from "./outbox-events.js";
 export const OUTBOX_CONSUMERS = {
 	"issue.created": [
 		"ws-broadcast",
+		"org-activity",
 		"activity-feed",
 		"master-wake",
 		"memory-indexer",
@@ -16,6 +17,7 @@ export const OUTBOX_CONSUMERS = {
 	"issue.updated": ["ws-broadcast", "activity-feed", "memory-indexer"],
 	"issue.transitioned": [
 		"ws-broadcast",
+		"org-activity",
 		"activity-feed",
 		"master-wake",
 		"notify-transitions",
@@ -31,6 +33,7 @@ export const OUTBOX_CONSUMERS = {
 		"paused-run-wedge-resolve",
 		"release-batch-claims",
 		"run-status-broadcast",
+		"org-activity",
 		"release-highlights",
 		"release-naming",
 	],
@@ -39,8 +42,8 @@ export const OUTBOX_CONSUMERS = {
 	"comment.deleted": ["activity-feed", "ws-broadcast"],
 	"comment.mentioned": ["activity-feed", "notify-mentions"],
 	"question.answered": ["answer-resume", "master-wake", "requirement-reason"],
-	"question.asked": ["ws-broadcast", "question-suggest"],
-	"question.transitioned": ["ws-broadcast"],
+	"question.asked": ["ws-broadcast", "org-activity", "question-suggest"],
+	"question.transitioned": ["ws-broadcast", "org-activity"],
 	"notification.created": ["ws-broadcast"],
 	"notification.read": ["ws-broadcast"],
 	"user.preferencesChanged": ["ws-broadcast"],
@@ -87,7 +90,9 @@ export const OUTBOX_CONSUMERS = {
 	"job.changed": ["ws-broadcast"],
 	"session.changed": ["ws-broadcast"],
 	"device.pushed": ["ws-broadcast", "support-rooms"],
-	"session.pushed": ["ws-broadcast"],
+	// the workspace's Activity room is told by a delivery of its own (ISS-951): a failed org lookup
+	// retries that leg alone, never the project frame beside it
+	"session.pushed": ["ws-broadcast", "org-activity"],
 	"issue.pushed": ["ws-broadcast"],
 	"conversation.pushed": ["ws-broadcast"],
 	"preview.transitioned": ["ws-broadcast"],

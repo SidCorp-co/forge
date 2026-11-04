@@ -6,8 +6,9 @@ const handlers = new Map<string, (payload: unknown) => unknown>();
 const published: Array<{ room: string; event: string; data: unknown }> = [];
 
 vi.mock('../outbox/index.js', () => ({
-  consume: (type: string, consumer: { handle: (payload: unknown) => unknown }) => {
-    handlers.set(type, consumer.handle);
+  // the room frames of each event, not the org room's own delivery beside them
+  consume: (type: string, consumer: { name: string; handle: (payload: unknown) => unknown }) => {
+    if (consumer.name !== 'org-activity') handlers.set(type, consumer.handle);
   },
   emitEvent: vi.fn(),
 }));
@@ -24,9 +25,6 @@ vi.mock('../lib/rooms.js', async (importOriginal) => {
   };
 });
 
-// the workspace's Activity room is told too (ISS-951): the project's org, read where the project is
-vi.mock('../projects/index.js', () => ({ findProjectOrgId: vi.fn(async () => 'o1') }));
-
 const { registerWsBroadcastSubscribers } = await import('./broadcast-subscribers.js');
 
 describe('a question change reaches the open screens of its project', () => {
@@ -38,14 +36,9 @@ describe('a question change reaches the open screens of its project', () => {
 
   it('an ask is a question.changed frame in the project room', async () => {
     await handlers.get('question.asked')?.({ questionId: 'q1', projectId: 'p1', issueId: 'i1' });
-    expect(published).toHaveLength(2);
+    expect(published).toHaveLength(1);
     expect(published[0]?.event).toBe('question.changed');
     expect(published[0]?.data).toMatchObject({ questionId: 'q1', issueId: 'i1', change: 'asked' });
-    expect(published[1]).toEqual({
-      room: 'org:o1',
-      event: 'org.activity.changed',
-      data: { orgId: 'o1', projectId: 'p1', source: 'question' },
-    });
   });
 
   it.each(['answered', 'void', 'expired'])('a move to %s is told with its state', async (to) => {
