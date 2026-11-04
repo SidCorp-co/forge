@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.481] - 2026-11-04
+
+The in-app assistant's tools and the demo world work again
+
+### Added
+
+- **Each core start reports to Sentry.** When a Sentry DSN is set, core sends one info event, "core started <version>", as it begins serving, so every deploy shows its error reports reach the tracker.
+
+### Fixed
+
+- **A master's post reaches its room and its thread.** Bound rooms are declared; Forge-Communicate posts land in the project's recorded thread. A switched-off binding releases its room, and a re-kinded room is re-declared.
+- **The in-app assistant runs its own tools again.** Every assistant tool declares the permission it checks, and a tool declaring none stops its toolset from building. The demo seed asks its steward decision on a requirement a person sees.
+
 ## [0.4.0-dev.480] - 2026-11-04
 
 GitLab checks list a pipeline's jobs so a failed job's log can be read
