@@ -12,6 +12,7 @@
 
 import { contentLanguageName, releaseNoteAttention } from '@forge/contracts/content-language';
 import { releaseNoteUnwritten, sentencesIn } from '@forge/contracts/release-notes';
+import type { ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
@@ -22,6 +23,7 @@ import { nextRunFor } from '../schedules/index.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
+import { carriersIn, carriersOf } from './version-rule.js';
 import { currentReleaseVersion } from './version-store.js';
 
 export interface ReleaseRosterEntry {
@@ -263,7 +265,48 @@ interface ReleaseBatchContext {
   deployPlanned: boolean;
   promotePlanned: boolean;
   releaseRunner: ReleaseRunnerAccount | null;
+  /**
+   * What outside Forge carries this run's version, as it was said (`carried.ts:recordCarried`): the
+   * carriers, who said it and when; null where nobody said.
+   */
+  carried: { carriers: ReleaseVersionCarrier[]; by: string | null; at: string | null } | null;
+  /**
+   * Whether this run's end still owes that answer: it ended failed or aborted, unshipped, after a box
+   * took its job, and nothing says what left the box, so the next cut of its roster is refused
+   * `RELEASE_VERSION_UNDECIDED` until `POST …/carried` says it (`version-rule.ts:carriersOf`).
+   */
+  carriedOwed: boolean;
   issues: ReleaseBatchIssue[];
+}
+
+/** What the run records of its carriers, and whether its end still owes them. */
+async function carriedAccount(
+  runId: string,
+  meta: Record<string, unknown>,
+  ended: boolean,
+): Promise<Pick<ReleaseBatchContext, 'carried' | 'carriedOwed'>> {
+  const said = meta.carried as { carriers?: unknown; by?: unknown; at?: unknown } | undefined;
+  const carried =
+    said && typeof said === 'object'
+      ? {
+          carriers: carriersIn(said.carriers),
+          by: typeof said.by === 'string' ? said.by : null,
+          at: typeof said.at === 'string' ? said.at : null,
+        }
+      : null;
+  if (!ended) return { carried, carriedOwed: false };
+  const [taken] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.pipelineRunId, runId),
+        sql`(${jobs.dispatchedAt} IS NOT NULL OR ${jobs.heldBy} IS NOT NULL)`,
+      ),
+    )
+    .limit(1);
+  const reading = carriersOf({ metadata: meta, reachedBox: taken !== undefined });
+  return { carried, carriedOwed: reading.kind === 'unknown' };
 }
 
 /** The declared preference and its verdict, off the run's own metadata. */
@@ -294,6 +337,8 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       projectId: pipelineRuns.projectId,
       metadata: pipelineRuns.metadata,
       releaseVersion: pipelineRuns.releaseVersion,
+      status: pipelineRuns.status,
+      releasedAt: pipelineRuns.releaseReleasedAt,
     })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
@@ -335,6 +380,12 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     deployPlanned,
     promotePlanned,
     releaseRunner: await releaseRunnerAccount(runId, meta),
+    // an ended, unshipped run: what the version rule reads off it before the next cut
+    ...(await carriedAccount(
+      runId,
+      meta,
+      run.releasedAt === null && (run.status === 'failed' || run.status === 'cancelled'),
+    )),
     issues: claimedIssues.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(claimedPrefix, r.issSeq) : r.id,

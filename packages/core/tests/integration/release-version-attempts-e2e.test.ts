@@ -238,6 +238,42 @@ describe('an attempt that never said what left its box', () => {
   });
 });
 
+// ISS-957 extra fix: agenfold's failed 0.122.0 (run 59ba3e8d) read back with no word on what left its
+// box, while the next cut of its roster was refused RELEASE_VERSION_UNDECIDED on exactly that.
+describe('the batch read says what carries an ended attempt, and whether that is still owed', () => {
+  const read = async (runId: string) => {
+    const r = await call('GET', `/release-batches/${runId}`);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    return r.body as { carried: unknown; carriedOwed: unknown };
+  };
+
+  it('reads null and owed on an aborted attempt nobody spoke for, then the carriers once said', async () => {
+    const roster = [await fx.insertIssue()];
+    const first = await cut(roster);
+    expect(await read(first.runId)).toMatchObject({ carried: null, carriedOwed: false });
+    await boxTook(first.runId);
+    await abort(first.runId, {});
+
+    expect(await read(first.runId)).toMatchObject({ carried: null, carriedOwed: true });
+
+    const tag = { kind: 'tag', name: `v${first.version}` };
+    const said = await call('POST', `/release-batches/${first.runId}/carried`, { carried: [tag] });
+    expect(said.status, JSON.stringify(said.body)).toBe(200);
+    const after = await read(first.runId);
+    expect(after).toMatchObject({
+      carried: { carriers: [tag], by: ownerId, at: expect.any(String) },
+      carriedOwed: false,
+    });
+  });
+
+  it('owes nothing where the abort said nothing left the box', async () => {
+    const first = await cut([await fx.insertIssue()]);
+    await boxTook(first.runId);
+    await abort(first.runId, { pushed: false });
+    expect(await read(first.runId)).toMatchObject({ carried: null, carriedOwed: false });
+  });
+});
+
 describe('the version lock', () => {
   it('holds a re-cut while a declaration of what carries the version is uncommitted, then bumps past it', async () => {
     const roster = [await fx.insertIssue()];
