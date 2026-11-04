@@ -30,6 +30,7 @@ import {
   roomsHoldingSessions,
   roomsOfProject,
   roomsOfSession,
+  roomsOnRid,
   setRoomPlacement,
   setRoomSession,
   setRoomsSession,
@@ -95,14 +96,33 @@ export async function projectsWithUndeclaredRooms(): Promise<string[]> {
 }
 
 /**
- * The rooms a project holds now: those whose binding is on and still names their group (ISS-933).
- * A released room keeps its row for its record, and is never read as a room the project holds, nor
- * as a fault of one.
+ * Whether another active binding than `except` holds a room on group `rid` (ISS-933): the group was
+ * taken by a binding that answers it now.
  */
+export async function heldElsewhere(rid: string, except: { projectId: string }): Promise<boolean> {
+  for (const room of await roomsOnRid(rid)) {
+    if (room.projectId === except.projectId) continue;
+    if (await roomIsBound(room)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a room was released (ISS-933): its binding is off or no longer names its group, and
+ * another binding holds a room on that group now. It keeps its row for its record, and is never read
+ * as a room its project holds, nor as a fault of one. A room switched off that nobody took is still
+ * the project's, and says why it cannot answer (REQ-75 BC-26).
+ */
+export async function isReleased(room: RoomRow): Promise<boolean> {
+  if (await roomIsBound(room)) return false;
+  return heldElsewhere(room.rid, room);
+}
+
+/** The rooms a project holds: every room of it but those released to another binding (ISS-933). */
 export async function heldRoomsOfProject(projectId: string): Promise<RoomRow[]> {
   const held: RoomRow[] = [];
   for (const room of await roomsOfProject(projectId)) {
-    if (await roomIsBound(room)) held.push(room);
+    if (!(await isReleased(room))) held.push(room);
   }
   return held;
 }

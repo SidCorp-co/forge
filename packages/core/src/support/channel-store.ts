@@ -15,7 +15,7 @@ import {
 } from '../db/schema-support.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
-import { heldRoomsOfProject, roomIsBound } from './rooms.js';
+import { heldElsewhere, heldRoomsOfProject } from './rooms.js';
 
 export type ChannelRow = typeof supportChannels.$inferSelect;
 export type MemberRow = typeof supportChannelMembers.$inferSelect;
@@ -46,9 +46,7 @@ export async function channelOf(projectId: string, rid: string): Promise<Channel
  * switched off keeps its groups' records, as a room taken out of its binding does.
  */
 async function namedRids(projectId: string): Promise<{ forge: string[]; outside: string[] }> {
-  // a binding switched off attaches nothing: its groups are no channel of the project (ISS-933)
   const configs = (await listBindingsForProject(projectId))
-    .filter((p) => p.binding.active && p.connection.active)
     .map((p) => p.binding)
     .filter((b) => b.provider === 'rocketchat')
     .reverse()
@@ -72,17 +70,40 @@ export async function boundRidsOf(projectId: string): Promise<string[]> {
   // the groups of the rooms the project holds, oldest first: a released room is none (ISS-933)
   const held = await heldRoomsOfProject(projectId);
   const named = await namedRids(projectId);
-  return [...new Set([...held.map((r) => r.rid), ...named.forge, ...named.outside])];
+  const kept = [];
+  for (const rid of [...named.forge, ...named.outside]) {
+    if (!(await releasedGroup(projectId, rid))) kept.push(rid);
+  }
+  return [...new Set([...held.map((r) => r.rid), ...kept])];
+}
+
+/**
+ * A group a project's bindings name only while switched off, or not at all, and another binding now
+ * holds (ISS-933): released, so no channel of the project. A group switched off that nobody took
+ * keeps its record, as a room taken out of its binding does.
+ */
+async function releasedGroup(projectId: string, rid: string): Promise<boolean> {
+  const active = (await listBindingsForProject(projectId)).some(
+    (p) =>
+      p.binding.provider === 'rocketchat' &&
+      p.binding.active &&
+      p.connection.active &&
+      [
+        ...((p.binding.config as RocketChatBindingConfig | null)?.rids ?? []),
+        ...((p.binding.config as RocketChatBindingConfig | null)?.outsideRids ?? []),
+      ].includes(rid),
+  );
+  return !active && (await heldElsewhere(rid, { projectId }));
 }
 
 /**
  * Whether the group has a channel record in this project, whoever answers it: a room of the project
- * was declared for it, or a binding of the project names it.
+ * was declared for it, or a binding of the project names it; never a group released to another
+ * binding (ISS-933).
  */
 export async function channelIsBound(projectId: string, rid: string): Promise<boolean> {
-  for (const room of await roomsOfChannel(projectId, rid)) {
-    if (await roomIsBound(room)) return true;
-  }
+  if (await releasedGroup(projectId, rid)) return false;
+  if ((await roomsOfChannel(projectId, rid)).length > 0) return true;
   const named = await namedRids(projectId);
   return named.forge.includes(rid) || named.outside.includes(rid);
 }

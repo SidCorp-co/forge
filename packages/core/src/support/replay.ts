@@ -15,15 +15,9 @@ import {
 import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../lib/logger.js';
 import { handleSupportMessage } from './inbound.js';
+import { hasOperation, lastMemberMessageOn, recordedMessageIdsOn } from './replay-store.js';
 import { roomIsBound } from './rooms.js';
-import {
-  hasOperation,
-  insertAction,
-  lastMemberMessageOn,
-  type RoomRow,
-  recordedMessageIdsOn,
-  roomsHoldingSessions,
-} from './store.js';
+import { insertAction, type RoomRow, roomsHoldingSessions } from './store.js';
 import { roomAuth } from './thread.js';
 
 /**

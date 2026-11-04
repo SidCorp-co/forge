@@ -55,6 +55,9 @@ const read = async (projectId: string, path: string) => {
   return got.body as Record<string, unknown>;
 };
 
+/** No turn runs on the box. */
+const idle = () => expect.poll(() => w.box.idle(), { timeout: 20_000 }).toBe(true);
+
 const turnsCarrying = (id: string) =>
   w.box.asked().filter((t) => t.messages.some((m) => m.message === id));
 
@@ -96,21 +99,11 @@ beforeAll(async () => {
 
 afterAll(() => w.stop());
 
-describe('a released room reads as no room the project holds (ISS-933)', () => {
-  it('leaves a room its binding switched off out of the rooms, turns and channels reads', async () => {
-    await setBinding(binding.a, false, { rids: [chat.rid], support: SUPPORT });
-    await sweep();
-    const rooms = (await read(other, 'rooms')).rooms as { rid: string; health: unknown }[];
-    expect(rooms, 'no held room, so no unhealthy one').toEqual([]);
-    const turns = (await read(other, 'turns')) as { rooms?: unknown[] };
-    expect(turns.rooms ?? []).toEqual([]);
-    const channels = (await read(other, 'channels')).channels as { rid: string }[];
-    expect(channels.map((c) => c.rid)).not.toContain(chat.rid);
-  });
-});
-
 describe('a placed room is handed what its group said while nothing answered it (ISS-933)', () => {
   it('hands a person’s message written while unplaced to the session once, and nothing else', async () => {
+    // sidcorp-mail's binding is switched off: nothing answers the group
+    await setBinding(binding.a, false, { rids: [chat.rid], support: SUPPORT });
+    await sweep();
     const now = Date.now();
     const asked = chat.wroteWhileAway(
       chat.rid,
@@ -150,11 +143,28 @@ describe('a placed room is handed what its group said while nothing answered it 
       SELECT count(*)::int AS n FROM support_actions a JOIN support_rooms r ON r.id = a.room_id
        WHERE r.rid = ${chat.rid} AND a.kind = 'message_in' AND a.external_id = ${asked}`);
     expect(recorded?.n).toBe(1);
-    // the next sweeps and a binding change hand it on no more
-    await w.settleWarm();
+    // the next sweeps hand it on no more
+    await idle();
     await sweep();
     await sweep();
-    await w.settleWarm();
+    await idle();
     expect(turnsCarrying(asked).length).toBe(1);
+  });
+});
+
+describe('a released room reads as no room the project holds (ISS-933)', () => {
+  it('leaves a room another binding took out of its old project’s rooms, turns and channels reads', async () => {
+    // sidcorp-mail's binding is off and still names the group; sid-desk's holds it now
+    const rooms = (await read(other, 'rooms')).rooms as { rid: string; health: unknown }[];
+    expect(rooms, 'no held room, so no unhealthy one').toEqual([]);
+    const turns = (await read(other, 'turns')) as { rooms?: unknown[] };
+    expect(turns.rooms ?? []).toEqual([]);
+    const channels = (await read(other, 'channels')).channels as { rid: string }[];
+    expect(channels.map((c) => c.rid)).not.toContain(chat.rid);
+    const one = await api(w.owner, 'GET', `/api/projects/${other}/support/channels/${chat.rid}`);
+    expect(one.status).toBe(404);
+    // the room that took it is the one its project reads
+    const taken = (await read(w.projectId, 'rooms')).rooms as { rid: string }[];
+    expect(taken.map((r) => r.rid)).toContain(chat.rid);
   });
 });
