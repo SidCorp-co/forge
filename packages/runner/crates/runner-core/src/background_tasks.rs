@@ -12,9 +12,10 @@
 //!   for a shell, `isAsync` with `agentId` for an agent, `taskId` with
 //!   `timeoutMs` for a monitor;
 //! - its end, as the `<task-notification>` carrying its `<task-id>` and a
-//!   `<status>` (`completed`, `failed`, `killed`, `stopped`). A monitor's
-//!   events carry no status and end nothing; `TaskStop`'s result ends the
-//!   task it names.
+//!   `<status>` (`completed`, `failed`, `killed`, `stopped`); a monitor's
+//!   expiry (ISS-960) is an `<event>` beginning `[Monitor expired after `
+//!   with no status, and ends it too, while its other events end nothing;
+//!   `TaskStop`'s result ends the task it names.
 //!
 //! This is evidence only. How long a reader waits on a child whose end it has
 //! not read is that reader's policy.
@@ -185,16 +186,24 @@ fn between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
     Some(text[from..to].trim())
 }
 
+/// What a monitor's own last event begins with when its watch runs out (ISS-960): the one
+/// form seen in this box's transcripts, worded three ways after it ("no events", "1 event",
+/// "N events delivered").
+const MONITOR_EXPIRED: &str = "[Monitor expired after ";
+
 /// The ids of the tasks whose end the notifications in `text` say: a
-/// notification with a status. A monitor's event carries none, and ends nothing.
+/// notification with a status, or a monitor's expiry. Any other monitor event
+/// is a line of its watch, and ends nothing.
 fn notified_ends(text: &str) -> Vec<String> {
     text.split("<task-notification>")
         .skip(1)
         .filter_map(|block| {
             let block = block.split("</task-notification>").next().unwrap_or(block);
             let id = between(block, "<task-id>", "</task-id>")?;
-            between(block, "<status>", "</status>")?;
-            (!id.is_empty()).then(|| id.to_string())
+            let ended = between(block, "<status>", "</status>").is_some()
+                || between(block, "<event>", "</event>")
+                    .is_some_and(|e| e.starts_with(MONITOR_EXPIRED));
+            (ended && !id.is_empty()).then(|| id.to_string())
         })
         .collect()
 }
@@ -276,6 +285,47 @@ mod tests {
             .map(|s| format!("<status>{s}</status>\n"))
             .unwrap_or_default();
         format!("<task-notification>\n<task-id>{id}</task-id>\n{status}<summary>x</summary>\n</task-notification>")
+    }
+
+    fn event(id: &str, text: &str) -> String {
+        format!("<task-notification>\n<task-id>{id}</task-id>\n<event>{text}</event>\n</task-notification>")
+    }
+
+    /// ISS-960: a monitor that expires says so in an event with no status (agenfold's
+    /// byge5xot0, 2026-11-04, held a draining master's replacement until the 3 h ceiling).
+    /// Each wording below is one seen on this box's transcripts.
+    #[test]
+    fn an_expired_monitor_ends_without_a_status() {
+        let expiries = [
+            "[Monitor expired after 30m with 8 events delivered. Re-arm it if you still need the watch.]",
+            "[Monitor expired after 30m with 1 event delivered. Re-arm it if you still need the watch.]",
+            "[Monitor expired after 5m 20s with no events delivered. Re-arm it if you still need the watch — and widen the filter if silence was unexpected.]",
+            "[Monitor expired after 30m with 8 events delivered. Re-arm it…]",
+        ];
+        for text in expiries {
+            let entries = [
+                json!({"type": "user", "toolUseResult": {"taskId": "byge5xot0", "timeoutMs": 1_800_000, "persistent": false}}),
+                json!({"type": "user", "message": {"content": event("byge5xot0", text)}}),
+            ];
+            let t = fold(&entries);
+            assert!(
+                t.ended("byge5xot0"),
+                "an expiry did not end its monitor: {text}"
+            );
+            assert!(
+                t.open().next().is_none(),
+                "an expired monitor still reads open: {text}"
+            );
+        }
+        // Any other event is one of the watch's lines, and ends nothing.
+        let watching = [
+            json!({"type": "user", "toolUseResult": {"taskId": "bfqqk3ok6", "timeoutMs": 1_800_000, "persistent": false}}),
+            json!({"type": "user", "message": {"content": event("bfqqk3ok6", "deploy=0 Monitor expired is just text in a line")}}),
+        ];
+        assert_eq!(
+            ids(&fold(&watching)),
+            vec![("bfqqk3ok6".to_string(), Kind::Monitor)]
+        );
     }
 
     #[test]
