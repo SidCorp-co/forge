@@ -1,0 +1,1 @@
+**A workspace Activity tab shows what each project's master works now and next, live.** Counts, master state and release progress per project, details on open; an in-progress issue's step now follows its plan, merge check and merge mark.
