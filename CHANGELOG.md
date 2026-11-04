@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.479] - 2026-11-04
+
+Runs that failed without a job or session show their recorded cause
+
+### Fixed
+
+- **A swept run names its cause.** A failed run with no job or session cause now shows the failure its own close recorded, such as heartbeat_timeout, instead of reading unclassified on the runs page.
+
 ## [0.4.0-dev.478] - 2026-11-04
 
 Stuck banner, waiting questions and Approvals peek read as short states
