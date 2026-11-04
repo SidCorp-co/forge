@@ -381,16 +381,18 @@ mod tests {
         let real = std::fs::canonicalize(&r.0).unwrap();
         let mine = real.join(format!("{PREFIX}{RUN}"));
         assert_eq!(check_recorded(&mine, RUN), Ok(()));
+        // spelled, not joined: Windows' canonical path is verbatim (`\\?\`), and a join onto a
+        // verbatim path resolves `..` away, leaving no `..` to refuse
+        let sep = std::path::MAIN_SEPARATOR;
+        let mut dotted = real.clone().into_os_string();
+        dotted.push(format!("{sep}x{sep}..{sep}{PREFIX}{RUN}"));
         #[allow(unused_mut)]
         let mut cases = vec![
             (
                 PathBuf::from(format!("{PREFIX}{RUN}")),
                 "not an absolute path",
             ),
-            (
-                real.join("x").join("..").join(format!("{PREFIX}{RUN}")),
-                "`..`",
-            ),
+            (PathBuf::from(dotted), "`..`"),
             (real.join(format!("{PREFIX}{OTHER}")), "not named"),
             (real.join("forge-judge-self"), "not named"),
         ];
