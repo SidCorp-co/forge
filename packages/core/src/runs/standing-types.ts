@@ -44,6 +44,8 @@ export interface RunFacts {
     boxRunId: string | null;
     /** Where a person declared the run for review: its declaration ends it, not silence. */
     review?: { declaredBy: string; profile: string; expiresAt: Date } | null;
+    /** The failure the run's own close recorded (`metadata.failure`), read where no job or session names one. */
+    failure?: { code: string; detail: string } | null;
     /** The take refusal a box's declaration is queued behind, until core admits it. */
     declarationRefusal: {
       code: string;

@@ -7,6 +7,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { readHoldState } from '../jobs/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { readRunFailure } from '../pipeline/index.js';
 import {
   type BaseRun,
   date,
@@ -215,6 +216,7 @@ function runPart(b: BaseRun, lane: RunFacts['run']['rawLane'], t: Tables): RunFa
     boxRunId: str(metadataObject(b.metadata).boxRunId) ?? null,
     declarationRefusal: declarationRefusalOf(metadataObject(b.metadata).declarationRefusal),
     review: reviewOf(b.metadata),
+    failure: readRunFailure(b.metadata),
   };
 }
 

@@ -192,8 +192,19 @@ export function finalOf(f: RunFacts): Derived | null {
     };
   }
   if (f.run.status === 'failed') {
-    const raw = f.job?.sessionFailureReason ?? f.job?.failureReason ?? s?.failureReason ?? null;
-    return failedOutcome(f, raw, f.job?.sessionFailureDetail ?? s?.failureDetail ?? null);
+    // A run with no job or session cause (a system run the sweeper failed) names the failure its own
+    // close recorded, so it never reads unclassified over a cause it holds (ISS-932).
+    const raw =
+      f.job?.sessionFailureReason ??
+      f.job?.failureReason ??
+      s?.failureReason ??
+      f.run.failure?.code ??
+      null;
+    return failedOutcome(
+      f,
+      raw,
+      f.job?.sessionFailureDetail ?? s?.failureDetail ?? f.run.failure?.detail ?? null,
+    );
   }
   return null;
 }
