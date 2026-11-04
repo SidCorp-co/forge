@@ -27,7 +27,7 @@ describe("the nav model", () => {
     const items = workspaceNavItems(7, undefined);
     expect(items.map((e) => e.key)).toEqual(["overview", "activity", "runners", "integrations", "ecosystem"]);
     expect(items[0]).toMatchObject({ badge: 7 });
-    const eco = items[3];
+    const eco = items[4];
     expect(isNavGroup(eco) && eco.defaultOpen).toBe(true);
     expect(isNavGroup(eco) && eco.items.map((it) => it.key)).toEqual(["eco-threads", "eco-new"]);
   });
