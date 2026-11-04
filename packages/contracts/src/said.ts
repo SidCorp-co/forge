@@ -180,7 +180,7 @@ export function renderSaid(s: Said, reader: SaidReader): string {
 	const template = entry ? reader.template(s.key) : undefined;
 	if (!entry || template === undefined) return reader.unknown(s.key);
 	const kinds = entry.vars ?? {};
-	return template.replace(/\{(\w+)\}/g, (slot, name: string) => {
+	const filled = (slot: string, name: string): string => {
 		const kind = kinds[name];
 		const v = s.vars?.[name];
 		if (kind === undefined || v === undefined) return slot;
@@ -192,7 +192,19 @@ export function renderSaid(s: Said, reader: SaidReader): string {
 		}
 		if (typeof v === "object") return renderSaid(v as Said, reader);
 		return reader.value(kind, v as string | number);
-	});
+	};
+	// A filled slot that already ends a sentence takes the template's own full stop after it, so
+	// "{rule}." over a rule ending "…first." reads once, never "first..".
+	let out = "";
+	let at = 0;
+	for (const m of template.matchAll(/\{(\w+)\}/g)) {
+		const end = (m.index ?? 0) + m[0].length;
+		const text = filled(m[0], m[1] as string);
+		out += template.slice(at, m.index) + text;
+		at = end;
+		if (template[end] === "." && /[.!?…]$/.test(text)) at = end + 1;
+	}
+	return out + template.slice(at);
 }
 
 const JOINERS: Partial<Record<SaidKind, string>> = {
@@ -213,7 +225,9 @@ const STEP_WORD: Record<string, string> = {
 
 /** The role a permission's holder reads as; checked() refuses an id without one before it is read. */
 const roleOf = (permission: string): string => {
-	const role = (PERMISSION_ROLE_LABELS as Readonly<Record<string, string>>)[permission];
+	const role = (PERMISSION_ROLE_LABELS as Readonly<Record<string, string>>)[
+		permission
+	];
 	if (role === undefined)
 		throw new SaidRefused(
 			"SAID_VAR_KIND",
@@ -290,7 +304,9 @@ export function saidDisagreements(value: unknown, path = "$"): string[] {
 	const out: string[] = [];
 	const walk = (v: unknown, p: string): void => {
 		if (Array.isArray(v)) {
-			v.forEach((x, i) => walk(x, `${p}[${i}]`));
+			v.forEach((x, i) => {
+				walk(x, `${p}[${i}]`);
+			});
 			return;
 		}
 		if (typeof v !== "object" || v === null) return;
@@ -311,13 +327,21 @@ export function saidDisagreements(value: unknown, path = "$"): string[] {
 				if (Array.isArray(s)) {
 					// a list of sentences beside the list of their English, one for one
 					if (!Array.isArray(en) || en.length !== s.length) {
-						out.push(`${p}.${k}: says ${s.length} sentence(s) beside ${JSON.stringify(en)}`);
+						out.push(
+							`${p}.${k}: says ${s.length} sentence(s) beside ${JSON.stringify(en)}`,
+						);
 						continue;
 					}
 					s.forEach((x, i) => {
 						const parsed = saidSchema.safeParse(x);
-						if (!parsed.success) out.push(`${p}.says.${k}[${i}]: ${parsed.error.issues[0]?.message ?? "not a said sentence"}`);
-						else if (sayEn(parsed.data) !== en[i]) out.push(`${p}.${k}[${i}]: says ${JSON.stringify(sayEn(parsed.data))} beside ${JSON.stringify(en[i])}`);
+						if (!parsed.success)
+							out.push(
+								`${p}.says.${k}[${i}]: ${parsed.error.issues[0]?.message ?? "not a said sentence"}`,
+							);
+						else if (sayEn(parsed.data) !== en[i])
+							out.push(
+								`${p}.${k}[${i}]: says ${JSON.stringify(sayEn(parsed.data))} beside ${JSON.stringify(en[i])}`,
+							);
 					});
 					continue;
 				}
