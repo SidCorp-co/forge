@@ -433,8 +433,9 @@ supportRoutes.post(
   },
 );
 
-// the project's master posts its own words in the project's team room: its daily review at the top
-// level (ISS-862), or a result in the asker's own thread (ISS-871)
+// the project's master posts its own words in any room its project binds, as that room's bot: its
+// daily review at the top level (ISS-862), a result in the asker's own thread (ISS-871), in a support,
+// channel agent or operations room alike (ISS-943)
 supportRoutes.post(
   '/:id/support/master-posts',
   projectParam,

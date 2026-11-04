@@ -410,13 +410,11 @@ export async function routeNeed(
 }
 
 /**
- * The one top-level post (BC-39): news that changes something for everyone, screened as plain
- * words since everyone reads it, naming nobody, and at most one per channel an hour.
+ * Why news for everyone may not go to a channel's top level now (BC-39), or null where it may: it
+ * names nobody, and the channel was told no news at its top level within the hour. The rule the
+ * channel's bot keeps, and a master posting at the top level of a room its users read (ISS-943).
  */
-export async function announce(
-  room: RoomRow,
-  input: { text: string },
-): Promise<Outcome<{ messageId: string | null }>> {
+export async function newsRefusal<T>(room: RoomRow, text: string): Promise<Outcome<T> | null> {
   const since = new Date(Date.now() - SUPPORT_ANNOUNCE_EVERY_MS);
   if (await announcedSince(await channelRoomIds(room), since)) {
     return no(
@@ -425,13 +423,26 @@ export async function announce(
       `this channel was already told news at top level in the last ${SUPPORT_ANNOUNCE_EVERY_MS / 60_000} minutes; post in the thread the news belongs to. Nothing was posted.`,
     );
   }
-  if (mentionsIn(input.text).length > 0) {
+  if (mentionsIn(text).length > 0) {
     return no(
       'SUPPORT_MENTION_REFUSED',
       '/text',
-      'an announcement is for everyone and mentions nobody; nothing was posted',
+      'news at the top level is for everyone and mentions nobody; nothing was posted',
     );
   }
+  return null;
+}
+
+/**
+ * The one top-level post (BC-39): news that changes something for everyone, screened as plain
+ * words since everyone reads it, naming nobody, and at most one per channel an hour.
+ */
+export async function announce(
+  room: RoomRow,
+  input: { text: string },
+): Promise<Outcome<{ messageId: string | null }>> {
+  const refused = await newsRefusal<{ messageId: string | null }>(room, input.text);
+  if (refused) return refused;
   const text = await scrubbedForRoom(room, input.text);
   const admitted = await screenForThread(room, null, TOP_LEVEL, text, 'support-reply', 'announce');
   if (!admitted.ok) return admitted;

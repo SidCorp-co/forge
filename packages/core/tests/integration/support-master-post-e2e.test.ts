@@ -146,8 +146,8 @@ describe("the master's post in its project's room (ISS-862)", () => {
 });
 
 // ISS-871: a master's result goes back into the thread of the person who asked for it, as a switched
-// hand bot's did. The thread is one a member wrote in, of the named room or of the one team room
-// holding it; any other is refused by name and nothing is posted.
+// hand bot's did. The thread is one of the named room or of the one bound room holding it (ISS-943:
+// by the project's record or by the chat server); any other is refused by name and nothing is posted.
 describe("the master's result in the asker's own thread (ISS-871)", () => {
   const RESULT = 'Đã xong: đơn PO 1453 đã gửi lại cho nhà cung cấp, bạn kiểm tra giúp nhé.';
   let asked = '';
@@ -170,11 +170,26 @@ describe("the master's result in the asker's own thread (ISS-871)", () => {
     const none = await post(owner, { text: RESULT, thread: 'no-such-thread' });
     expect([none.status, codeOf(none)]).toEqual([404, 'SUPPORT_THREAD_UNKNOWN']);
     const other = await post(owner, { text: RESULT, thread: asked, rid: chat.rid });
-    expect([other.status, codeOf(other)]).toEqual([404, 'SUPPORT_THREAD_UNKNOWN']);
-    expect(JSON.stringify(other.body)).toContain(`thread ${asked} of ${chat.rid}`);
+    expect([other.status, codeOf(other)]).toEqual([409, 'SUPPORT_THREAD_OF_ANOTHER_ROOM']);
+    expect(JSON.stringify(other.body)).toContain(`thread ${asked} is in room ${chat.rid2}`);
     const gone = await post(owner, { text: RESULT, thread: asked, rid: 'not-a-room' });
     expect([gone.status, codeOf(gone)]).toEqual([404, 'SUPPORT_ROOM_UNKNOWN']);
     expect(chat.linesIn(chat.rid).length + chat.linesIn(chat.rid2).length).toBe(before);
+  });
+
+  // ISS-943: a thread of a team room nobody recorded (an app's post, or the bot's own relayed one) is
+  // still that room's, as the chat server places its first message; another room's is refused by name
+  it("posts in a team room's thread no member wrote in, as the chat server places it", async () => {
+    const app = chat.wroteWhileAway(chat.rid, chat.alice, 'Bản phát hành tối nay', new Date(), {
+      bot: true,
+    });
+    const res = await post(owner, { text: RESULT, thread: app });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ rid: chat.rid, thread: app });
+    expect(w.threadLines(chat.rid, app).map((l) => l.text)).toEqual([RESULT]);
+    const other = await post(owner, { text: RESULT, thread: app, rid: chat.rid2 });
+    expect([other.status, codeOf(other)]).toEqual([409, 'SUPPORT_THREAD_OF_ANOTHER_ROOM']);
+    expect(w.threadLines(chat.rid2, app)).toEqual([]);
   });
 
   it('refuses a thread that is no message id, by its shape', async () => {

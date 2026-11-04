@@ -20,10 +20,12 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 //
 // ISS-872 (owner trial 2026-11-02): a channel agent's group the product's users read took four
 // unasked top-level "Cần quyết định…" posts in five minutes, each a project question in internal
-// codes. A master posts top level only in a room the team reads, and into a users' room only into an
-// asker's thread; a question for the owner goes only to the binding's owner room; and a post into a
-// users' room holding an issue key, an MR or PR number, an environment variable name, a sha or a
-// credential word is refused by name, nothing posted. Order numbers and PO codes stay.
+// codes. A master's post naming no room goes only to a room the team reads, and into a users' room
+// only into an asker's thread or, named by rid, as news for everyone at its top level, held to the
+// rules the room's bot keeps (ISS-943); a question for the owner goes only to the binding's owner
+// room; and a post into a users' room holding an issue key, an MR or PR number, an environment
+// variable name, a sha or a credential word is refused by name, nothing posted. Order numbers and PO
+// codes stay.
 //
 // The world binds the agent over two groups: rid, read by users, and rid2, the owner's room.
 
@@ -83,16 +85,15 @@ describe('ISS-872: the binding names the owner room among its groups', () => {
   });
 });
 
-describe("ISS-872: a master's post reaches a users' room only in an asker's thread", () => {
+describe("ISS-872: a master's post reaches a users' room only in plain words", () => {
   it('refuses the four top-level posts of the trial in the users room, posting nothing', async () => {
     const before = allLines();
     for (const text of FOUR) {
       const res = await post({ text, rid: chat.rid });
       expect([res.status, codeOf(res)], JSON.stringify(res.body)).toEqual([
-        409,
-        'SUPPORT_MASTER_POST_USERS_ROOM',
+        400,
+        'SUPPORT_INTERNAL_CODE',
       ]);
-      expect(JSON.stringify(res.body)).toContain(chat.rid2);
     }
     expect(topLines(chat.rid)).toEqual([]);
     expect(allLines()).toBe(before);

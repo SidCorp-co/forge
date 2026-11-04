@@ -186,17 +186,18 @@ export const supportAnnounceRequestSchema = z.strictObject({
 });
 
 /**
- * `POST /api/projects/:id/support/master-posts` (ISS-862): the project's master posts its own words,
- * a daily review say, at the top level of the project's bound room. `rid` names the room where the
- * project binds several. Core writes none of the words (agent-is-the-voice): it screens, posts and
- * records who posted.
+ * `POST /api/projects/:id/support/master-posts` (ISS-862, ISS-943): the project's master posts its
+ * own words in any room its project binds (a support room, a channel agent's group, an operations
+ * room), as that room's bot. `rid` names the room; with none, the project's one room the team reads.
+ * Core writes none of the words (agent-is-the-voice): it screens, posts and records who posted.
  */
 export const supportMasterPostRequestSchema = z.strictObject({
 	text: z.string().trim().min(3).max(4000),
 	rid: z.string().trim().min(1).max(200).optional(),
 	/**
-	 * The thread the master answers in (ISS-871): one a member wrote in, of the named room or of the
-	 * one team room that holds it. Absent, the post is at the room's top level.
+	 * The thread the post goes in (ISS-871, ISS-943), by its first message's id: one of the named
+	 * room, or of whichever bound room holds it; in a room the product's users read, only one a member
+	 * wrote in. Absent, the post is at the room's top level.
 	 */
 	thread: supportThreadIdSchema.optional(),
 });

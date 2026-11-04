@@ -179,6 +179,12 @@ export class StandInRocketChat implements ChatServer {
           .slice(0, count);
         return json(200, { success: true, messages });
       }
+      case '/api/v1/chat.getMessage': {
+        // any message a group holds, the bot's own and an app's included, with the room it is in
+        const found = this.history.find((m) => m._id === url.searchParams.get('msgId'));
+        if (!found) return json(400, { success: false, error: 'error-not-allowed' });
+        return json(200, { success: true, message: found });
+      }
       case '/api/v1/chat.react':
         this.reactions.push({ messageId: body.messageId, emoji: body.emoji });
         return json(200, { success: true });

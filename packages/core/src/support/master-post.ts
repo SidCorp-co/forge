@@ -1,17 +1,28 @@
-// The project's master posts in its project's room (ISS-862): the daily review, in the master's own
-// words, at the room's top level; or a result into the thread of the person who asked for it
-// (ISS-871), a thread a member wrote in, of the named room or the one room holding it. Core writes
-// none of the words (agent-is-the-voice): it picks the room, screens the text for the room's readers,
-// posts it and records who posted. A customer support group is never one. A room the product's users
-// read takes a master's words only in an asker's thread, never at its top level (ISS-872). An
-// operations room every project of the organization shares takes them in the project's own thread its
-// binding records, never at its top level (ISS-934).
+// The project's master posts in any room its project binds (ISS-862, ISS-871, ISS-943): a support
+// room, a channel agent's group or an operations room, at its top level or in a named thread, as that
+// room's bot. Core writes none of the words (agent-is-the-voice): it picks the room, screens the text
+// for the room's readers, posts it and records who posted.
+//
+// The door is core's, not a chat plugin's on the master's box: one post, made with the bot credential
+// core already holds for the room, screened by the room's rules and recorded as the master's in the
+// room's own record, which the channel agent and the daily review read. A plugin posting straight to
+// the chat server would hold the bot's credential on a box, skip the screen and leave no record.
+//
+// A room the product's users read keeps the rules its own bot keeps toward them: a master answers
+// there only in an asker's thread (a member wrote in it), naming nobody but the asker or a member the
+// channel lists; it posts at its top level only news for everyone, naming nobody, and at most once an
+// hour with the bot's own announcements; and every post there is plain words, no internal code
+// (`screen.ts`). An operations room every project of the organization shares takes a top-level post
+// only in the project's own thread its binding records (ISS-934).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
+import { findBindingWithConnectionById } from '../integrations/index.js';
+import { fetchMessage } from '../integrations/rocketchat/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { askerOf, mentionRefusal, newsRefusal } from './channel.js';
 import { readersOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
-import { boundButUndeclared, declareSupportRooms, roomIsBound } from './rooms.js';
+import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import {
   insertAction,
@@ -24,6 +35,7 @@ import {
   postForTopLevel,
   postInThread,
   projectThreadOfRoom,
+  roomAuth,
   scrubbedForRoom,
   TOP_LEVEL,
   topLevelThreadOf,
@@ -36,9 +48,12 @@ interface Postable {
   team: boolean;
 }
 
-/** The project's bound rooms a master may post in, a channel agent's group or an operations room, with who reads each. */
+type Actor = { userId: string; projectId: string };
+type Posted = Outcome<{ rid: string; messageId: string | null; thread?: string }>;
+
+/** Every room the project's bindings answer now, of any kind, with who reads each. */
 async function postableRoomsOf(projectId: string): Promise<Postable[]> {
-  const rooms = (await roomsOfProject(projectId)).filter((r) => r.kind !== 'support');
+  const rooms = await roomsOfProject(projectId);
   const bound = await Promise.all(
     rooms.map(async (room) =>
       (await roomIsBound(room)) ? { room, team: (await readersOf(room)) === 'team' } : null,
@@ -65,37 +80,54 @@ async function postableRoomsNaming(
   return postableRoomsOf(projectId);
 }
 
-type Posted = Outcome<{ rid: string; messageId: string | null; thread?: string }>;
-
 const doorOf = (p: Postable): SessionDoor => (p.team ? 'operations-reply' : 'support-reply');
 const ridsOf = (ps: readonly Postable[]) => ps.map((p) => p.room.rid).join(', ');
+const WHERE_BOUND = 'Project settings → Integrations → Rocket.Chat';
 
-/** Why a room the users read takes no top-level post, and where one goes instead. */
-function usersRoomRefusal(users: readonly Postable[], team: readonly Postable[]): Outcome<never> {
-  const where = team.length
-    ? `post the top level in a room the team reads (${ridsOf(team)})`
-    : "this project binds no room the team reads: a project admin names the owner's room as the binding's `agent.ownerRoom`, or binds a room with `readers: team`";
+/** Why a room the project held once takes no post now. */
+async function whyUnbound(room: RoomRow): Promise<string> {
+  const pair = await findBindingWithConnectionById(room.bindingId);
+  const why = !pair
+    ? 'the binding that named it is gone'
+    : !pair.binding.active
+      ? `its binding ${room.bindingId} is switched off`
+      : !pair.connection.active
+        ? `its Rocket.Chat connection ${pair.connection.id} is switched off`
+        : `its binding ${room.bindingId} no longer names it`;
+  return (await heldElsewhere(room.rid, room))
+    ? `${why}, and another project's binding answers that group now, so a post there is that project's master's`
+    : `${why}; a project admin switches the binding on, or names the room in it again, in ${WHERE_BOUND}`;
+}
+
+/** The refusal for a named room no binding of the project answers now: one it never bound, or one switched off. */
+async function roomRefusal(
+  projectId: string,
+  rid: string,
+  rooms: readonly Postable[],
+): Promise<Outcome<never>> {
+  const held = (await roomsOfProject(projectId)).find((r) => r.rid === rid);
+  if (held) {
+    return no(
+      'SUPPORT_ROOM_SWITCHED_OFF',
+      '/rid',
+      `${rid} was bound to this project, but ${await whyUnbound(held)}. Nothing was posted.`,
+    );
+  }
   return no(
-    'SUPPORT_MASTER_POST_USERS_ROOM',
+    'SUPPORT_ROOM_UNKNOWN',
     '/rid',
-    `${ridsOf(users)} ${users.length > 1 ? 'are' : 'is'} read by the product's users, so a master posts there only into an asker's thread, named as \`thread\`; ${where}. Nothing was posted.`,
+    `${rid} is no room a binding of this project names${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
   );
 }
 
-/** The room a top-level post names, or the project's one team room, or the refusal naming what it saw. */
+/**
+ * The room a top-level post names, or the project's one team room. A room the product's users read
+ * is taken only by name: a post naming no room never lands where the users read it.
+ */
 function topLevelRoomOf(rooms: readonly Postable[], rid: string | undefined): Outcome<Postable> {
+  const named = rid ? rooms.find((r) => r.room.rid === rid) : undefined;
+  if (named) return { ok: true, value: named };
   const team = rooms.filter((r) => r.team);
-  if (rid) {
-    const named = rooms.find((r) => r.room.rid === rid);
-    if (!named) {
-      return no(
-        'SUPPORT_ROOM_UNKNOWN',
-        '/rid',
-        `${rid} is no bound room of this project${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
-      );
-    }
-    return named.team ? { ok: true, value: named } : usersRoomRefusal([named], team);
-  }
   if (team.length === 1 && team[0]) return { ok: true, value: team[0] };
   if (team.length > 1) {
     return no(
@@ -104,44 +136,112 @@ function topLevelRoomOf(rooms: readonly Postable[], rid: string | undefined): Ou
       `this project binds ${team.length} rooms the team reads (${ridsOf(team)}): name one with \`rid\`. Nothing was posted.`,
     );
   }
-  if (rooms.length > 0) return usersRoomRefusal(rooms, team);
+  if (rooms.length > 0) {
+    return no(
+      'SUPPORT_ROOM_AMBIGUOUS',
+      '/rid',
+      `this project binds no room the team reads, and ${ridsOf(rooms)} ${rooms.length > 1 ? 'are' : 'is'} read by the product's users: name the room with \`rid\` to post news for everyone there, or name an asker's \`thread\`. Nothing was posted.`,
+    );
+  }
   return no(
     'SUPPORT_ROOM_UNKNOWN',
     '',
-    'this project binds no team room (a channel agent group or an operations room), so there is nowhere to post. Nothing was posted.',
+    'this project binds no Rocket.Chat room (a support room, a channel agent group or an operations room), so there is nowhere to post. Nothing was posted.',
   );
 }
 
-/** The room of the named ones in which a member wrote `thread`, and its conversation; or the refusal. */
-async function roomOfThread(
-  rooms: readonly Postable[],
-  rid: string | undefined,
+/** Where a thread was found: its room, and the conversation its record is on where it has one. */
+interface Placed {
+  at: Postable;
+  conversationId: string | null;
+}
+
+/**
+ * The thread in its room, admitted where the room takes a master's words in it: any thread of a
+ * room the team reads; only an asker's thread of a room the product's users read (ISS-872).
+ */
+async function admitThread(
+  at: Postable,
   thread: string,
-): Promise<Outcome<{ at: Postable; conversationId: string }>> {
-  const named = rid ? rooms.filter((r) => r.room.rid === rid) : rooms;
-  if (rid && named.length === 0) {
-    return no(
-      'SUPPORT_ROOM_UNKNOWN',
-      '/rid',
-      `${rid} is no bound room of this project${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
-    );
-  }
-  for (const at of named) {
-    // an asker's thread: a member wrote in it, never a top-level post's own
-    if ((await threadMembers(at.room.id, thread)).length === 0) continue;
-    const conversationId = await threadConversation(at.room.id, thread);
-    if (conversationId) return { ok: true, value: { at, conversationId } };
+  conversationId: string | null,
+): Promise<Outcome<Placed>> {
+  if (at.team || (await threadMembers(at.room.id, thread)).length > 0) {
+    return { ok: true, value: { at, conversationId } };
   }
   return no(
     'SUPPORT_THREAD_UNKNOWN',
     '/thread',
-    `no member has written in thread ${thread} of ${rid ?? (ridsOf(named) || 'any room of this project')}, so there is no asker to answer there. Nothing was posted.`,
+    `no member has written in thread ${thread} of ${at.room.rid}, which the product's users read: a master answers there only in an asker's thread, or posts news for everyone at its top level. Nothing was posted.`,
   );
 }
 
-/** The master's answer in the asker's own thread, screened for the room's readers and recorded as the master's. */
-async function postInAskersThread(
-  actor: { userId: string; projectId: string },
+/** The chat server's word on a thread: the room its first message is in, a reply's own thread, or nothing. */
+type Root = { kind: 'root'; rid: string } | { kind: 'reply'; tmid: string } | { kind: 'unknown' };
+
+/** Ask the chat server, through each named room's bot, which room the thread's first message is in. */
+async function rootOf(rooms: readonly Postable[], thread: string): Promise<Root> {
+  const asked = new Set<string>();
+  for (const { room } of rooms) {
+    if (asked.has(room.connectionId)) continue;
+    asked.add(room.connectionId);
+    const { auth } = await roomAuth(room);
+    const message = await fetchMessage(auth, thread);
+    if (!message?.rid) continue;
+    if (message.tmid) return { kind: 'reply', tmid: message.tmid };
+    return { kind: 'root', rid: message.rid };
+  }
+  return { kind: 'unknown' };
+}
+
+/** The room of the named ones a thread is in, by the project's record and then by the chat server. */
+async function roomOfThread(
+  rooms: readonly Postable[],
+  rid: string | undefined,
+  thread: string,
+): Promise<Outcome<Placed>> {
+  const named = rid ? rooms.filter((r) => r.room.rid === rid) : rooms;
+  for (const at of named) {
+    const conversationId = await threadConversation(at.room.id, thread);
+    if (conversationId) return admitThread(at, thread, conversationId);
+  }
+  const where = rid ?? (ridsOf(named) || 'any room of this project');
+  const root = await rootOf(named, thread);
+  if (root.kind === 'reply') {
+    return no(
+      'SUPPORT_THREAD_UNKNOWN',
+      '/thread',
+      `${thread} is a reply in thread ${root.tmid}, not a thread's first message: name ${root.tmid} as \`thread\`. Nothing was posted.`,
+    );
+  }
+  if (root.kind === 'root') {
+    const at = named.find((r) => r.room.rid === root.rid);
+    if (at) return admitThread(at, thread, null);
+    return no(
+      'SUPPORT_THREAD_OF_ANOTHER_ROOM',
+      '/thread',
+      `thread ${thread} is in room ${root.rid}, not in ${where}${rid ? '' : ', the rooms this project binds'}. Nothing was posted.`,
+    );
+  }
+  for (const other of rooms) {
+    if (named.includes(other)) continue;
+    if (await threadConversation(other.room.id, thread)) {
+      return no(
+        'SUPPORT_THREAD_OF_ANOTHER_ROOM',
+        '/thread',
+        `thread ${thread} is in room ${other.room.rid}, not in ${where}. Nothing was posted.`,
+      );
+    }
+  }
+  return no(
+    'SUPPORT_THREAD_UNKNOWN',
+    '/thread',
+    `neither this project's record nor the chat server holds a thread ${thread} in ${where}. Nothing was posted.`,
+  );
+}
+
+/** The master's post in a named thread of its room, screened for the room's readers and recorded as the master's. */
+async function postInNamedThread(
+  actor: Actor,
   rooms: readonly Postable[],
   input: SupportMasterPostRequest & { thread: string },
 ): Promise<Posted> {
@@ -150,6 +250,15 @@ async function postInAskersThread(
   const { at, conversationId } = found.value;
   const room = at.room;
   const text = await scrubbedForRoom(room, input.text);
+  if (!at.team) {
+    // toward users a post names at most one person, the asker or a member the channel lists
+    const mentions = await mentionRefusal<never>(
+      room,
+      text,
+      (await askerOf(room, input.thread)).username,
+    );
+    if (mentions) return mentions;
+  }
   const admitted = await screenForThread(
     room,
     conversationId,
@@ -182,16 +291,22 @@ async function postInAskersThread(
 /**
  * The master's post where a room's top level would take it (`thread.ts:topLevelThreadOf`, `to`):
  * its project's own thread of an operations room recording one, else the top level; screened as a
- * top-level post is, since everyone in the room reads it, and recorded as the master's.
+ * top-level post is, since everyone in the room reads it, and recorded as the master's. A room the
+ * product's users read takes it only as news for everyone, as its bot's announcement is.
  */
 async function postAtTop(
-  actor: { userId: string; projectId: string },
-  room: RoomRow,
+  actor: Actor,
+  at: Postable,
   given: string,
   to: string | null,
 ): Promise<Posted> {
+  const room = at.room;
+  if (!at.team) {
+    const refused = await newsRefusal<never>(room, given);
+    if (refused) return refused;
+  }
   const text = await scrubbedForRoom(room, given);
-  const admitted = await screenForThread(room, null, TOP_LEVEL, text, 'operations-reply', TOOL);
+  const admitted = await screenForThread(room, null, TOP_LEVEL, text, doorOf(at), TOOL);
   if (!admitted.ok) return admitted;
   const out = await postForTopLevel({
     room,
@@ -236,24 +351,24 @@ async function roomRecording(
 }
 
 /**
- * Posts the master's text at the top level of a room its project's team reads, in its project's own
- * thread where the room is an operations room recording one, or in the asker's thread it names,
- * recorded as the master's. A room every project of the organization shares takes no top-level post.
+ * Posts the master's text in a room its project binds, as that room's bot: in the thread it names,
+ * its project's own thread of an operations room recording one, or at the top level of the room it
+ * names or the project's one team room; recorded as the master's.
  */
-export async function postAsMaster(
-  actor: { userId: string; projectId: string },
-  input: SupportMasterPostRequest,
-): Promise<Posted> {
+export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest): Promise<Posted> {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
   const rooms = await postableRoomsNaming(actor.projectId, input.rid);
+  if (input.rid && !rooms.some((r) => r.room.rid === input.rid)) {
+    return roomRefusal(actor.projectId, input.rid, rooms);
+  }
   if (input.thread) {
     const own = await roomRecording(rooms, input.rid, input.thread);
-    if (own) return postAtTop(actor, own.room, input.text, input.thread);
-    return postInAskersThread(actor, rooms, { ...input, thread: input.thread });
+    if (own) return postAtTop(actor, own, input.text, input.thread);
+    return postInNamedThread(actor, rooms, { ...input, thread: input.thread });
   }
   const chosen = topLevelRoomOf(rooms, input.rid);
   if (!chosen.ok) return chosen;
   const to = await topLevelThreadOf(chosen.value.room);
   if (!to.ok) return to;
-  return postAtTop(actor, chosen.value.room, input.text, to.value);
+  return postAtTop(actor, chosen.value, input.text, to.value);
 }
