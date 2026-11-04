@@ -1,7 +1,7 @@
 import { chatRoleSchema, operationsRoomConfigSchema } from '@forge/contracts/support-operations';
 import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
-import { answersOfConfig } from './grants.js';
+import { operationsBrief } from './ops-prompt.js';
 import { isPublicAddress, pageText, readPublicPage } from './ops-research.js';
 import { grantRefusal } from './ops-role.js';
 
@@ -136,22 +136,30 @@ describe('research reads only a public page (REQ-75 BC-24)', () => {
   });
 });
 
-// ISS-933: an operations room is where people and other bots talk, so it answers only when addressed
-describe('which messages reach a room’s session', () => {
-  const ops = { rid: 'r1', kind: 'operations' as const };
-  it('answers an operations room’s mentions only, unless its binding says every message', () => {
-    expect(answersOfConfig(ops, null, { scope: 'forge' })).toBe('mentions');
-    expect(answersOfConfig(ops, null, null)).toBe('mentions');
-    expect(answersOfConfig(ops, null, { scope: 'forge', answers: 'every-message' })).toBe(
-      'every-message',
+// ISS-933 (owner ruling, forge decision 1592b79d): no code holds a room's message back; whom an
+// operations room's session answers is its own judgement, told in its brief. The brief is checked
+// here; whether a live session follows it is not.
+describe('an operations room session’s brief says when to answer', () => {
+  const brief = operationsBrief({
+    role: { ...SY, grants: [...SY.grants] },
+    scope: 'forge',
+    reach: [{ id: 'p1', slug: 'forge', name: 'Forge', issuePrefix: 'ISS' }],
+  });
+
+  it('answers a message that names it, asks it something, or is about Forge or its projects', () => {
+    expect(brief).toContain(
+      'When to answer: a message that names you, asks you something, or is about Forge or a project in your scope.',
     );
   });
 
-  it('keeps every message for a support group and a channel agent that name nothing', () => {
-    expect(answersOfConfig({ rid: 'r1', kind: 'support' }, null)).toBe('every-message');
-    expect(answersOfConfig({ rid: 'r1', kind: 'agent' }, {})).toBe('every-message');
-    expect(answersOfConfig({ rid: 'r1', kind: 'support' }, { answers: 'mentions' })).toBe(
-      'mentions',
+  it('stays silent on reports, other bots and people talking among themselves', () => {
+    expect(brief).toContain(
+      "Stay silent, calling nothing, on reports, other bots' posts and people talking among themselves.",
     );
+  });
+
+  it("answers only in the asker's thread, short", () => {
+    expect(brief).toContain("Answer only in the asker's thread, never at the room's top level.");
+    expect(brief).toMatch(/be short/);
   });
 });

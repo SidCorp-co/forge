@@ -11,7 +11,6 @@ import {
   type SupportReaders,
   type SupportRoomConfig,
 } from '@forge/contracts/support';
-import type { OperationsRoomConfig } from '@forge/contracts/support-operations';
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import { holderNames } from '../permissions/index.js';
@@ -44,25 +43,14 @@ export function readersOfConfig(
 }
 
 /**
- * Which messages of a group reach its session: an operations room's own `answers`, mentions when it
- * names none; otherwise the group's own `rooms` entry (ISS-874), then the binding's `answers`, every
- * message when it names none.
+ * Which messages of a group reach its session: the group's own `rooms` entry (ISS-874), then the
+ * binding's `answers`, every message when it names none.
  */
 export function answersOfConfig(
-  room: Pick<RoomRow, 'rid' | 'kind'>,
+  room: Pick<RoomRow, 'rid'>,
   config: SupportRoomConfig | null,
-  operations: OperationsRoomConfig | null = null,
 ): SupportAnswers {
-  // an operations room, where people and other bots talk, answers only when addressed (ISS-933)
-  if (room.kind === 'operations') return operations?.answers ?? 'mentions';
   return config?.rooms?.[room.rid]?.answers ?? config?.answers ?? 'every-message';
-}
-
-/** An operations room's block as its binding holds it now; null for any other room or a gone binding. */
-export async function operationsConfigOf(room: RoomRow): Promise<OperationsRoomConfig | null> {
-  if (room.kind !== 'operations') return null;
-  const pair = await findBindingWithConnectionById(room.bindingId);
-  return (pair?.binding.config as RocketChatBindingConfig | null)?.operations ?? null;
 }
 
 /** Who reads a room, by its binding as it holds it now. */

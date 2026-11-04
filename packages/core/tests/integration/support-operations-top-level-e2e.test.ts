@@ -16,18 +16,16 @@ import { rows } from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
-// @direct-test-of packages/core/src/support/inbound.ts
-// @direct-test-of packages/core/src/support/grants.ts
 // @direct-test-of packages/core/src/support/thread.ts
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/checks.ts
 // @direct-test-of packages/core/src/support/question-task.ts
 //
 // ISS-933: the warm sweep declares forge's shared Forge-Communicate operations room, where people
-// and other bots talk. Two things hold there. The room answers only when addressed: a message that
-// does not name the bot is kept as the thread's context and handed to no session. And nothing reaches
-// the room's top level: an announcement, the day's questions opener and a check's finding land in
-// the project's own thread its binding records, or are refused by name with none recorded.
+// and other bots talk. Nothing a session posts reaches the room's top level: an announcement, the
+// day's questions opener and a check's finding land in the project's own thread its binding records,
+// or are refused by name with none recorded. Which messages the session answers is its own judgement,
+// in its brief (owner ruling, forge decision 1592b79d): no code holds a member's message back.
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
@@ -38,8 +36,6 @@ const BABO = {
   grants: ['read'],
 };
 const THREAD = 'XQHEiGjSv8HTytmpY';
-/** A person in the room who talks to the team, never to the bot. */
-const CHUONGLD = { userId: 'u-chuongld', username: 'chuongld' };
 
 const w = new SupportWorld();
 let chat: StandInRocketChat;
@@ -60,27 +56,6 @@ async function writeOperations(operations: Record<string, unknown>) {
     document: { ...document, target: { ...document.target, operations } },
   });
 }
-
-/** The room's `message_in` row for one chat message, once the handler has recorded it. */
-async function recorded(id: string) {
-  let row: { delivered: boolean; addressed: string | null } | undefined;
-  await expect
-    .poll(
-      async () => {
-        [row] = await rows<{ delivered: boolean; addressed: string | null }>(sql`
-          SELECT delivered_at IS NOT NULL AS delivered, input->>'addressed' AS addressed
-            FROM support_actions
-           WHERE room_id = ${room.id}::uuid AND kind = 'message_in' AND external_id = ${id}`);
-        return Boolean(row);
-      },
-      { timeout: 15_000 },
-    )
-    .toBe(true);
-  return row as { delivered: boolean; addressed: string | null };
-}
-
-const turnsCarrying = (id: string) =>
-  w.box.asked().filter((t) => t.messages.some((m) => m.message === id));
 
 beforeAll(async () => {
   await w.start();
@@ -107,9 +82,6 @@ beforeAll(async () => {
     sql`SELECT id FROM integration_bindings WHERE connection_id = ${w.rcConnectionId}::uuid`,
   );
   bindingPath = `/api/projects/${w.projectId}/bindings/${String(b?.id)}`;
-  // the bot listens on the room, as the binding door's world does
-  const { startRocketChatManager } = await import('../../src/integrations/rocketchat/index.js');
-  await startRocketChatManager();
   await settleOutbox();
   await w.settleWarm();
   const [declared] = await roomsOfProject(w.projectId);
@@ -118,50 +90,6 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(() => w.stop());
-
-describe('an operations room answers only when addressed (ISS-933)', () => {
-  it("keeps chuongld's plain top-level message as context: no turn, no post, no reaction", async () => {
-    const linesBefore = (await chat.botLines()).length;
-    const plain = await chat.sayIn(
-      chat.rid,
-      CHUONGLD,
-      'Mọi người ơi, bản build mới lên rồi, ai rảnh xem giúp nhé',
-    );
-    const row = await recorded(plain);
-    expect(row, 'recorded as context, handed to nobody').toEqual({
-      delivered: true,
-      addressed: null,
-    });
-    // a message that names the bot is handed on, and the plain one is in no turn before or with it
-    const asked = await chat.sayIn(chat.rid, chat.bob, '@supportbot bản build mới lên chưa?');
-    await expect.poll(() => turnsCarrying(asked).length, { timeout: 20_000 }).toBe(1);
-    await w.settleWarm();
-    expect(turnsCarrying(plain), 'no session was handed the plain message').toEqual([]);
-    expect((await chat.botLines()).length, 'nothing was posted by any door').toBe(linesBefore);
-    expect(chat.reactions.filter((r) => r.messageId === plain)).toEqual([]);
-  });
-
-  it('hands a message that names the bot to the session, marked as for it', async () => {
-    const asked = await chat.sayIn(chat.rid, chat.alice, '@supportbot ai đang giữ bản phát hành?');
-    await expect.poll(() => turnsCarrying(asked).length, { timeout: 20_000 }).toBe(1);
-    expect(await recorded(asked)).toEqual({ delivered: true, addressed: 'you' });
-    const [turn] = turnsCarrying(asked);
-    expect(turn?.messages.find((m) => m.message === asked)?.text).toContain('ai đang giữ');
-  });
-
-  it('answers every message where the binding says so', async () => {
-    const put = await writeOperations({ scope: 'forge', answers: 'every-message' });
-    expect(put.status, JSON.stringify(put.body)).toBe(200);
-    await settleOutbox();
-    await w.settleWarm();
-    const plain = await chat.sayIn(chat.rid, CHUONGLD, 'Có ai xem log hôm qua chưa?');
-    await expect.poll(() => turnsCarrying(plain).length, { timeout: 20_000 }).toBe(1);
-    const back = await writeOperations({ scope: 'forge' });
-    expect(back.status, JSON.stringify(back.body)).toBe(200);
-    await settleOutbox();
-    await w.settleWarm();
-  });
-});
 
 describe('nothing reaches the top level of a forge-scope operations room (ISS-933)', () => {
   const NEWS = 'Bản phát hành mới đã lên, mọi thứ chạy bình thường.';
