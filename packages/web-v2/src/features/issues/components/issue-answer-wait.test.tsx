@@ -17,7 +17,7 @@ import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { WaitingOn } from "@/design/patterns/waiting-on";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
-import { productCopy } from "@/lib/i18n/product-copy";
+import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { renderWithQuery } from "@/test/render";
 import { IssueStateHead } from "./detail/issue-state-head";
 import { IssueStuckBanner } from "./issue-standing-bits";
@@ -60,7 +60,7 @@ const standing = (w: ReturnType<typeof owed>, stuck: boolean) =>
   }) as unknown as IssueStanding;
 
 /** Words that would ask a person to act on the issue, or name who must, in English and in vi's own copy. */
-const ACT_KEYS = ["issues.standing.act.answer", "issues.standing.act.decide", "issues.standing.act.supply"];
+const ACT_KEYS: ProductCopyKey[] = ["issues.standing.act.answer", "issues.standing.act.decide", "issues.standing.act.supply"];
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const PERSON_ACT = new RegExp(
   ["answer a question", "make a decision", "supply what it asks", "must answer", "orchestrator", ...ACT_KEYS.map((k) => productCopy("vi")(k))].map(escape).join("|"),
