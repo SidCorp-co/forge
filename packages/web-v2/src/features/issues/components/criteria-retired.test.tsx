@@ -80,7 +80,7 @@ describe("a criterion tied again", () => {
 
   it("shows no retired section where nothing was retired", async () => {
     fakeCore((c) => (c.method === "GET" && c.path === "/issues/i1/criteria" ? { body: { criteria: [live], retired: [] } } : undefined));
-    renderWithQuery(<IssueCriteria issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-37" />);
+    renderWithQuery(<IssueCriteria issue={issue} checklist={[]} canWrite={false} />);
     // a person's view reads the statement without its trace code (REQ-43 BC-7)
     expect(await screen.findByText("The output cap names its size")).toBeInTheDocument();
     expect(screen.queryByTestId("retired-criteria")).toBeNull();

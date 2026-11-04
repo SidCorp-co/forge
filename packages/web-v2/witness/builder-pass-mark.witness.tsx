@@ -51,7 +51,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <div className="min-h-screen bg-app p-4">
         <div className="mx-auto grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-8">
-          <IssueCriteria issue={{ id: "witness", status: "awaiting_release" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey={null} />
+          <IssueCriteria issue={{ id: "witness", status: "awaiting_release" } as IssueDetail} checklist={[]} canWrite={false} />
           <div data-testid="release-row">
             <ChangeDetail page={page} change={change} checks={checksByIssue(page).get("ISS-1")} reach={{ authed: true }} />
           </div>

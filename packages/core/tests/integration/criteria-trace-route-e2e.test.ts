@@ -1,11 +1,14 @@
 /**
  * Tying an issue to business criteria of its requirement (`POST /api/issues/:id/criteria/traces`),
- * the act a person takes from the issue's Criteria tab: one appended criterion per BC, worded as
+ * the agents' act on their tokens (REQ-68 BC-6; a person at the web is refused
+ * CRITERIA_TRACE_ACT_FORBIDDEN, ISS-687 round 4): one appended criterion per BC, worded as
  * the BC is at the requirement's current revision and traced to that wording (a trace left on an
  * earlier wording is refreshed: coverage-newest-verdict-e2e.test.ts). A closed
  * issue takes it, and then takes a verdict on it, since verifying shipped work is the point. Wrong
  * input is refused by name, with nothing written. Through the app's own routes, against real
  * Postgres.
+ *
+ * @direct-test-of packages/core/src/issues/criteria/routes.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -237,5 +240,28 @@ describe('wrong input is refused by name and writes nothing', () => {
     expect((await trace(issueId, [])).status).toBe(400);
     expect((await trace(issueId, ['BC-1'], viewerToken)).status).toBe(403);
     expect(await criteriaOf(issueId)).toHaveLength(0);
+  });
+});
+
+// ISS-687 round 4 (judge run d47d6de0 at dev.489, c3): ISS-639's Criteria section offered a person
+// "Tie to REQ-66 criteria". The web's session cookie is refused by name, nothing is written, and the
+// same person's token still ties. Planted red by taking `agentsTie` off the route: the web ties.
+describe("a person at the web ties nothing: tying is the agents' act", () => {
+  it('refuses the session cookie CRITERIA_TRACE_ACT_FORBIDDEN and writes nothing', async () => {
+    const req = await agreedRequirement();
+    const issueId = await closedIssueOf(req);
+
+    const web = await api(
+      null,
+      'POST',
+      `/api/issues/${issueId}/criteria/traces`,
+      { codes: ['BC-1'] },
+      { cookie: `forge_auth=${token}` },
+    );
+
+    expect(web.status, JSON.stringify(web.body)).toBe(403);
+    expect(refusalCode(web.body)?.code).toBe('CRITERIA_TRACE_ACT_FORBIDDEN');
+    expect(await criteriaOf(issueId)).toHaveLength(0);
+    expect((await trace(issueId, ['BC-1'])).status).toBe(201);
   });
 });

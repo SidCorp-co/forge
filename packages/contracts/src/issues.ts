@@ -20,6 +20,8 @@ export const CRITERIA_REFUSAL_CODES = [
 	"CRITERIA_TRACE_UNRESOLVED",
 	"CRITERIA_TRACE_DROPPED",
 	"CRITERIA_TRACE_DUPLICATE",
+	/** A person tying an issue to its requirement's criteria from the web: the agents' act (REQ-68 BC-6). */
+	"CRITERIA_TRACE_ACT_FORBIDDEN",
 	"CRITERIA_RENUMBER_AMBIGUOUS",
 	/** A trace taking up a criterion that stands failed on the issue that delivered it, named (REQ-74 BC-3). */
 	"CRITERION_FAILURE_OWNED",

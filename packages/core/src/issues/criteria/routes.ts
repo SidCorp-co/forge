@@ -9,15 +9,17 @@
  *   GET  /api/issues/:id/criteria/:ref   one live criterion (`ref` its number or id) with its wording history
  *   PATCH /api/issues/:id/criteria/:ref  correct its wording: keeps its id and every verdict on it,
  *                                   recording the old and new text on its history
- *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording)
+ *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording);
+ *                                   the agents' act, refused from the web on a person's session (REQ-68 BC-6)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion, with the probe it keeps, answering
  *                                   `notCounted` by name where it will never count (ISS-475)
  *   GET  /api/issues/:id/judged-build   the build a verdict on it defaults to (REQ-6 BC-2, BC-4)
  */
 
 import { PROBE_SHAPE } from '@forge/contracts/criterion-probes';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { egressForRequest } from '../../lib/data-egress.js';
+import { refused } from '../../lib/refusal.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -141,10 +143,33 @@ issueCriteriaRoutes.patch(
   },
 );
 
+/**
+ * Tying an issue to its requirement's criteria is the agents' act, never a product page's (REQ-68
+ * BC-6): the master and its runs tie through this door on their tokens; a person at the web, on its
+ * session cookie, is refused by name and nothing is written (judge run d47d6de0 at dev.489 read a
+ * "Tie to REQ-66 criteria" dialog on ISS-639).
+ */
+const agentsTie: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
+  if (!c.get('sessionCookie')) return next();
+  return refused(
+    c,
+    [
+      {
+        code: 'CRITERIA_TRACE_ACT_FORBIDDEN',
+        path: '',
+        detail:
+          "a person ties no issue to its requirement's criteria: the project's agents keep an issue's criteria, and a stuck one reaches you as a decision on the requirement",
+      },
+    ],
+    'CRITERIA_TRACE_ACT_FORBIDDEN',
+  );
+};
+
 issueCriteriaRoutes.post(
   '/:id/criteria/traces',
   zValidator('param', idParamSchema),
   requiresOnResolved('project.write', ISSUE_PROJECT),
+  agentsTie,
   zValidator('json', criteriaTracePostSchema),
   async (c) => {
     const { id } = c.req.valid('param');

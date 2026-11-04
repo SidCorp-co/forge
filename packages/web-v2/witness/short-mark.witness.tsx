@@ -41,7 +41,7 @@ createRoot(root).render(
   <InRouter>
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <div className="mx-auto max-w-3xl space-y-3 p-4">
-        <IssueCriteria issue={{ id: "witness", status: "in_progress" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey={null} />
+        <IssueCriteria issue={{ id: "witness", status: "in_progress" } as IssueDetail} checklist={[]} canWrite={false} />
         <p className="text-12 text-subtle" data-witness="measured" />
       </div>
     </QueryClientProvider>

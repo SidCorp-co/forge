@@ -83,7 +83,7 @@ const earlierAndOther = {
         body: "One.",
         verdict: "stale", verdicts: [],
         counts: null,
-        why: "ISS-7 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
+        why: "ISS-7 trace only an earlier wording of this criterion, so no verdict on them counts: the agent ties it to this wording, then it is judged again",
         issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit aaaaaaaaaaaa", commit: "a".repeat(40), inLiveBuild: null, notCounted: null, stale: true }],
       },
       {
@@ -225,7 +225,7 @@ describe("a criterion's evidence", () => {
     render(<CriteriaChecklist d={earlierAndOther} slug="epod" />);
     const [earlier, other] = screen.getAllByTestId("criterion-row");
     expect(within(earlier).getByTestId("verdict-dot")).toHaveAccessibleName("Stale");
-    expect(within(earlier).getByTestId("criterion-why")).toHaveTextContent("tie it again from the issue's Criteria tab");
+    expect(within(earlier).getByTestId("criterion-why")).toHaveTextContent("the agent ties it to this wording");
     expect(within(other).getByTestId("verdict-dot")).toHaveAccessibleName("Not live");
     expect(within(other).getByTestId("criterion-why")).toHaveTextContent("judged only at builds the live one does not hold");
   });

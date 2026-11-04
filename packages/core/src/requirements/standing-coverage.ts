@@ -462,7 +462,7 @@ function whyOf(
       return 'it was judged only on an earlier wording of this criterion, so no verdict counts: judge it again on the running build';
     }
     const one = new Set(links.map((l) => l.displayId)).size === 1;
-    return `${keys(links)} ${one ? 'traces' : 'trace'} only an earlier wording of this criterion, so no verdict on ${one ? 'it' : 'them'} counts: tie it again from the issue's Criteria tab, then judge it`;
+    return `${keys(links)} ${one ? 'traces' : 'trace'} only an earlier wording of this criterion, so no verdict on ${one ? 'it' : 'them'} counts: the agent ties it to this wording, then it is judged again`;
   }
   const uncounted: Uncounted[] = [
     ...links.flatMap((l) =>

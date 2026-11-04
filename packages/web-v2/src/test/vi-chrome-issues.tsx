@@ -356,8 +356,8 @@ export const SCREENS = [
         detailQueries(),
         <>
           <IssueChanges issue={ISSUE} slug="hop" developer />
-          <IssueCriteria issue={ISSUE} projectId={P} checklist={[]} canWrite requirementKey="REQ-1" />
-          <IssueCriteria issue={{ ...ISSUE, id: "i2" }} projectId={P} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} requirementKey={null} />
+          <IssueCriteria issue={ISSUE} checklist={[]} canWrite />
+          <IssueCriteria issue={{ ...ISSUE, id: "i2" }} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} />
           <RunsTab issueId="i1" slug="hop" sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
           <RunsTab issueId="i1" slug="hop" sessions={RUNS} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={[]} expandedStep={null} onToggleStep={noop} />
           <CommentThread issueId="i1" comments={COMMENTS} members={undefined} />

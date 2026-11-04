@@ -1,15 +1,15 @@
 
-// The acts a person takes on an issue's criteria from its Criteria tab: record a verdict on one
+// The act a judge takes on an issue's criteria from its Criteria tab: record a verdict on one
 // criterion (pass, pass short of its wording, fail, or could not judge with a reason, judged against
-// a whole commit core names by default, with a note and a screenshot or a short clip new, or a file already attached), and
-// tie the issue to business criteria of the requirement it delivers. Both are taken on a closed issue
-// too: judging shipped work is the point. Judging again records a newer verdict, which is the one
-// counted. Core refuses by name.
+// a whole commit core names by default, with a note and a screenshot or a short clip new, or a file
+// already attached), taken on a closed issue too: judging shipped work is the point. Judging again
+// records a newer verdict, which is the one counted. Core refuses by name. Tying the issue to its
+// requirement's criteria is the agent's act, never this page's (REQ-68 BC-6, ISS-687 round 4).
 
 import { useEffect, useState } from "react";
 import { safeAttachmentName } from "@forge/contracts/attachments";
 import type { JudgedBuild } from "@forge/contracts/verdict-identity";
-import { Button, Checkbox, ConfirmDialog, Field, Input, NativeSelect, SegmentedControl, Textarea } from "@/design";
+import { Button, ConfirmDialog, Field, Input, NativeSelect, SegmentedControl, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -25,11 +25,9 @@ import {
   type PersonVerdict,
   useJudgedBuild,
   useRecordVerdict,
-  useTraceCriteria,
   type VerdictEvidence,
 } from "../criteria";
 import { useAttachments } from "../detail-hooks";
-import { useRequirementCriteria } from "../requirement-link";
 
 const VERDICTS: readonly PersonVerdict[] = ["pass", "short", "fail", "skipped"];
 
@@ -222,72 +220,4 @@ function ClipPreview({ file }: { file: File }) {
   const [url] = useState(() => URL.createObjectURL(file));
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   return <video src={url} controls muted preload="metadata" className="max-h-48 w-full border-y border-line-subtle" />;
-}
-
-/**
- * Tie the issue to business criteria of its requirement: the requirement's BCs, those this issue
- * already traces at their current wording shown ticked and fixed, the rest to pick. Each picked BC
- * becomes a criterion of the issue worded as the BC is now, so it can be judged. A BC this issue
- * traces only at an earlier wording is matched as coverage matches it, by wording: it is pickable,
- * and tying it refreshes that criterion to the current wording, to be judged again.
- */
-export function TieCriteria({
-  issueId,
-  projectId,
-  requirementKey,
-}: {
-  issueId: string;
-  projectId: string;
-  requirementKey: string;
-}) {
-  const t = useCopy();
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<string[]>([]);
-  const bcs = useRequirementCriteria(projectId, open ? requirementKey : null);
-  const tie = useTraceCriteria(issueId, projectId, requirementKey);
-  const mine = (bc: { issues: { issueId: string; stale: boolean }[] }) => bc.issues.filter((i) => i.issueId === issueId);
-  const held = new Set((bcs.data ?? []).filter((bc) => mine(bc).some((i) => !i.stale)).map((bc) => bc.code));
-  const earlier = new Set((bcs.data ?? []).filter((bc) => !held.has(bc.code) && mine(bc).some((i) => i.stale)).map((bc) => bc.code));
-  const note = (code: string) => (held.has(code) ? ` · ${t("issues.tieAct.held")}` : earlier.has(code) ? ` · ${t("issues.tieAct.earlier")}` : "");
-  const close = () => {
-    setOpen(false);
-    setPicked([]);
-    tie.reset();
-  };
-  const toggle = (code: string, on: boolean) => setPicked((p) => (on ? [...p, code] : p.filter((c) => c !== code)));
-  return (
-    <>
-      <Button size="sm" variant="secondary" onClick={() => setOpen(true)} data-testid="criteria-tie">
-        {t("issues.tieAct.open", { req: requirementKey })}
-      </Button>
-      <ConfirmDialog
-        open={open}
-        title={t("issues.tieAct.title", { req: requirementKey })}
-        confirmLabel={t("issues.tieAct.submit", { n: picked.length })}
-        loading={tie.isPending}
-        confirmDisabled={picked.length === 0}
-        onClose={close}
-        onConfirm={() => tie.mutate(picked, { onSuccess: close })}
-        message={
-          <div className="grid gap-3" data-testid="tie-form">
-            {bcs.isLoading ? <p className="text-13 text-subtle">{t("issues.steps.loading")}</p> : null}
-            <RefusalLine error={bcs.error} testid="tie-read-refusal" />
-            <ul className="max-h-112 divide-y divide-line-divider overflow-y-auto border-y border-line-divider">
-              {(bcs.data ?? []).map((bc) => (
-                <li key={bc.code} className="py-2" data-testid={`tie-${bc.code}`}>
-                  <Checkbox
-                    checked={held.has(bc.code) || picked.includes(bc.code)}
-                    disabled={held.has(bc.code)}
-                    onChange={(on) => toggle(bc.code, on)}
-                    label={`${bc.code} ${bc.body}${note(bc.code)}`}
-                  />
-                </li>
-              ))}
-            </ul>
-            <RefusalLine error={tie.error} testid="tie-refusal" />
-          </div>
-        }
-      />
-    </>
-  );
 }

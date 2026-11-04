@@ -68,7 +68,7 @@ describe("a criterion's verdict on the issue Criteria tab", () => {
       urlOf(input).endsWith("/download") ? new Response("webm", { headers: { "content-type": "video/webm" } }) : core(input, init),
     );
     vi.stubGlobal("fetch", fetchMock);
-    renderWithQuery(<IssueCriteria issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
+    renderWithQuery(<IssueCriteria issue={issue} checklist={[]} canWrite={false} />);
     // the row is one line; its evidence is on the open row
     await userEvent.click((await screen.findByTestId("criterion-1-verdict")).closest("button") as HTMLElement);
     const evidence = await screen.findByTestId("verdict-evidence");
@@ -89,7 +89,7 @@ describe("a criterion's verdict on the issue Criteria tab", () => {
           ? { body: [] }
           : undefined,
     );
-    renderWithQuery(<IssueCriteria issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-40" />);
+    renderWithQuery(<IssueCriteria issue={issue} checklist={[]} canWrite={false} />);
     await userEvent.click((await screen.findByTestId("criterion-1-verdict")).closest("button") as HTMLElement);
     expect(await screen.findAllByText("Each release has a page.")).not.toHaveLength(0);
     expect(screen.queryByTestId("verdict-evidence")).toBeNull();

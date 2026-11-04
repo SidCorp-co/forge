@@ -1,33 +1,22 @@
 
-// The issue's criteria with the act that ties the issue to its requirement's criteria, taken on a
-// closed issue too: judging shipped work is the point.
+// The issue's criteria. Tying the issue to its requirement's criteria is the agent's act: the page
+// offers none (REQ-68 BC-6; judge run d47d6de0 at dev.489 read "Tie to REQ-66 criteria" on ISS-639).
 
 import type { IssueDetail } from "../types";
-import { TieCriteria } from "./criteria-acts";
 import { CriteriaList } from "./criteria-list";
 
 export function IssueCriteria({
   issue,
-  projectId,
   checklist,
   canWrite,
-  requirementKey,
   developer = false,
 }: {
   issue: Pick<IssueDetail, "id" | "status">;
-  /** The requirement's project: the issue's own, or the sibling project whose requirement it delivers. */
-  projectId: string;
   /** The lines of the acceptance-criteria text, read where the issue has no criterion rows yet. */
   checklist: { key: string; text: string; checked: boolean }[];
   canWrite: boolean;
-  /** The requirement the issue delivers, by key; null where it delivers none. */
-  requirementKey: string | null;
   /** The developer view: trace codes and commits drawn. */
   developer?: boolean;
 }) {
-  const tie =
-    canWrite && requirementKey && issue.status !== "dropped" ? (
-      <TieCriteria issueId={issue.id} projectId={projectId} requirementKey={requirementKey} />
-    ) : null;
-  return <CriteriaList issueId={issue.id} judge={canWrite} headingAct={tie} checklist={checklist} developer={developer} />;
+  return <CriteriaList issueId={issue.id} judge={canWrite} checklist={checklist} developer={developer} />;
 }

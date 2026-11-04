@@ -33,7 +33,7 @@ async function drawn() {
       ? { body: { criteria: [criterion(1, judged("pass")), criterion(2, judged("short")), criterion(3, judged("fail")), criterion(4, judged("skipped")), criterion(5, null)] } }
       : undefined,
   );
-  renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "in_progress" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey={null} />);
+  renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "in_progress" } as IssueDetail} checklist={[]} canWrite={false} />);
   await screen.findByTestId("criterion-2-verdict");
   return (n: number) => ({ mark: screen.getByTestId(`criterion-${n}-verdict`), word: screen.queryByTestId(`criterion-${n}-word`) });
 }
@@ -80,7 +80,7 @@ describe("a builder's pass counted under the cutover on the Criteria tab (ISS-68
         ? { body: { criteria: [criterion(1, { ...judged("pass"), countedUnderCutover: true } as ReturnType<typeof judged>), criterion(2, judged("pass"))] } }
         : undefined,
     );
-    renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "in_progress" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey={null} />);
+    renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "in_progress" } as IssueDetail} checklist={[]} canWrite={false} />);
     const word = await screen.findByTestId("criterion-1-builder");
     expect(word).toHaveTextContent(/^Builder$/);
     expect(word).toHaveAttribute("title", "Passed by the run that built it, before independent judging began");

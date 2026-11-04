@@ -171,19 +171,3 @@ export function useRecordVerdict(issueId: string) {
   });
 }
 
-/**
- * Ties the issue to business criteria of its requirement (`POST /issues/:id/criteria/traces`): core
- * appends one criterion per code, worded as the BC, and takes it on a closed issue too.
- */
-export function useTraceCriteria(issueId: string, projectId: string, requirementKey: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (codes: string[]) =>
-      apiClient<{ criteria: CriterionRow[] }>(`/issues/${issueId}/criteria/traces`, { method: "POST", body: JSON.stringify({ codes }) }),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      void qc.invalidateQueries({ queryKey: ["issues", "standing"] });
-      if (requirementKey) void qc.invalidateQueries({ queryKey: ["requirement", projectId, requirementKey] });
-    },
-  });
-}

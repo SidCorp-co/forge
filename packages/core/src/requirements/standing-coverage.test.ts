@@ -179,14 +179,14 @@ describe('the verdict a business criterion counts', () => {
     const c = read([row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0')]);
     expect(c).toMatchObject({ verdict: 'stale', counts: null });
     expect(c?.why).toBe(
-      "ISS-1 traces only an earlier wording of this criterion, so no verdict on it counts: tie it again from the issue's Criteria tab, then judge it",
+      'ISS-1 traces only an earlier wording of this criterion, so no verdict on it counts: the agent ties it to this wording, then it is judged again',
     );
     const two = read([
       row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0'),
       row(2, 'pass', '2026-10-05T00:00:00Z', B, 'c0'),
     ]);
     expect(two?.why).toBe(
-      "ISS-1, ISS-2 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
+      'ISS-1, ISS-2 trace only an earlier wording of this criterion, so no verdict on them counts: the agent ties it to this wording, then it is judged again',
     );
   });
 

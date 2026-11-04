@@ -327,7 +327,8 @@ export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	passing:
 		"passing: the newest verdict that counts is a pass; a short never counts",
 	failing: "failing: the newest verdict on a tracing criterion is a fail",
-	stale: "stale: traces only an earlier wording; tie it again, then judge it",
+	stale:
+		"stale: traces only an earlier wording; the agent ties it again, then it is judged",
 	not_live:
 		"not_live: judged only on builds the live one lacks; judge it on live",
 	not_judged: "not_judged: no verdict on this wording counts yet",

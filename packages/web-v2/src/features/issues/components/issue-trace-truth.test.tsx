@@ -169,7 +169,7 @@ describe("a Short verdict on the Criteria tab", () => {
           }
         : undefined,
     );
-    renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "closed" } as IssueDetail} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-37" />);
+    renderWithQuery(<IssueCriteria issue={{ id: "i1", projectId: "p1", status: "closed" } as IssueDetail} checklist={[]} canWrite={false} />);
     const short = await screen.findByTestId("criterion-1-verdict");
     expect(short).toHaveAccessibleName("Short");
     expect(screen.getByTestId("criterion-2-verdict")).toHaveAccessibleName("Pass");
