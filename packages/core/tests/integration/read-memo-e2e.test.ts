@@ -20,6 +20,9 @@ import {
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
 // The needs-you read loads release facts for each project, so a change there is its statement count:
 // e467a1157 put one more a project in them and nothing selected this test (ISS-900).
+// ISS-961's ended-run read did the same through each project's releases list (cf0741f89).
+// @direct-test-of packages/core/src/release-batch/ended-claims.ts
+// @direct-test-of packages/core/src/release-batch/release-read.ts
 // @direct-test-of packages/core/src/release-batch/release-facts.ts
 // @direct-test-of packages/core/src/release-batch/released-line.ts
 // @direct-test-of packages/core/src/release-batch/version-store.ts
