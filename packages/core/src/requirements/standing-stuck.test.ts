@@ -40,10 +40,8 @@ const issueInput = (status: IssueStatus, master: MasterServing): IssueStandingIn
   releaseApproval: false,
   releaseNoted: true,
   releaseHold: null,
-  viewer: null,
   writers: ['Ana'],
   admins: ['Ana'],
-  admit: { permission: 'project.write', holders: ['Ana'] },
   withheld: null,
   statusSince: SENT_BACK,
   master,
@@ -70,7 +68,6 @@ function carrier(status: IssueStatus, master: MasterServing): StandingIssue {
 const requirement = (issues: StandingIssue[], master: MasterServing): StandingInput => ({
   status: 'agreed',
   owner: { id: 'u1', name: 'Ba', kind: 'human' },
-  viewer: null,
   revisions: [
     {
       revision: 2,

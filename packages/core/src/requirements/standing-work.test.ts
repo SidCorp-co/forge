@@ -167,19 +167,21 @@ describe('whom a requirement waits on while its issues are worked', () => {
     );
   });
 
-  it("makes a parked issue the viewer's turn where its own wait is the viewer's", () => {
-    const yours = waitingOn('you', {
-      who: say('standing.who.you'),
+  // ISS-687: an issue's wait never names its reader (REQ-68 BC-6), so its requirement names the
+  // people it waits on and the question reaches them in Needs you, not as this requirement's group
+  it('names the people a parked issue waits on, never its reader as You', () => {
+    const theirs = waitingOn('person', {
+      who: say('standing.who.named', { name: 'Ana' }),
       act: say('issues.standing.act.answer'),
       rule: say('issues.rule.needsInfo'),
     });
-    const s = deriveStanding(input([parked(1, yours), issue(2, 'open', false)]));
+    const s = deriveStanding(input([parked(1, theirs), issue(2, 'open', false)]));
     expect(s.waitingOn).toMatchObject({
-      kind: 'you',
-      who: 'You',
+      kind: 'person',
+      who: 'Ana',
       act: 'answer a question on ISS-1',
     });
-    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.attentionGroup).not.toBe('needs_you');
   });
 
   it('refuses by name a parked issue whose own wait the gather did not read', () => {

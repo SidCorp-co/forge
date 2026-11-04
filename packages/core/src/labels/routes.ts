@@ -132,11 +132,7 @@ labelProjectRoutes.get(
     const { activeWithinDays } = c.req.valid('query');
 
     return c.json(
-      await moduleRollupWithStanding(
-        projectId,
-        activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS,
-        viewerOf(c),
-      ),
+      await moduleRollupWithStanding(projectId, activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS),
     );
   },
 );

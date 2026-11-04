@@ -16,7 +16,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { listIssueStanding, STANDING_LIMIT, type StandingViewer } from '../issues/standing-read.js';
+import { listIssueStanding, STANDING_LIMIT } from '../issues/standing-read.js';
 import { readMasterStanding } from '../masters/read.js';
 import {
   type ContractChangeFact,
@@ -227,12 +227,12 @@ function contractsSignal(
 
 export async function readDevelopmentOverview(
   projectId: string,
-  viewer: StandingViewer | null,
+  viewer: { userId: string } | null,
   now: Date = new Date(),
 ): Promise<DevelopmentOverview> {
   const [open, closed] = await Promise.all([
-    listIssueStanding(projectId, 'open', viewer, now),
-    listIssueStanding(projectId, 'closed', viewer, now),
+    listIssueStanding(projectId, 'open', now),
+    listIssueStanding(projectId, 'closed', now),
   ]);
   const rows = [...open.issues, ...closed.issues];
   const [lanes, mods, master, proposed, changes, runs] = await Promise.all([

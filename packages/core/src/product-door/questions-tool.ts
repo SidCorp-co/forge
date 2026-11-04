@@ -22,7 +22,7 @@ import {
   shownQuestion,
 } from '../questions/index.js';
 import { parseArgs } from './args.js';
-import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
+import { actorOf, readAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
 
@@ -113,9 +113,9 @@ async function parkedProgress(ctx: McpContext, projectId: string, issueId: strin
   if (!issueId) return null;
   const row = await findIssueById(issueId);
   if (!row) return null;
-  const access = await readAccess(ctx, projectId);
+  await readAccess(ctx, projectId);
   const [forecast, agents, keys] = await Promise.all([
-    readIssueForecast(projectId, row.issSeq, forecastViewerOf(ctx, access)),
+    readIssueForecast(projectId, row.issSeq),
     agentStatesOf(projectId, [issueId]),
     issueDisplayIds([issueId]),
   ]);

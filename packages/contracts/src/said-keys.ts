@@ -300,22 +300,22 @@ export const SAID = {
 		vars: { keys: "key" },
 	},
 	"issues.blocker.whoNamesWhere": {
-		en: "A person names where it goes, then resumes it.",
+		en: "The master names where it goes, then resumes it.",
 	},
 	"issues.blocker.whoOtherQuestion": {
 		en: "It moves on once that question is answered.",
 	},
 	"issues.blocker.whoPaused": {
-		en: "An operator can resume it when the work is wanted again.",
+		en: "The master resumes it when the work is wanted again.",
 	},
 	"issues.blocker.whoRefused": {
-		en: "Clear what the refusal names, then move it on. Resume it from the status menu once it can go on.",
+		en: "The master clears what the refusal names, then moves it on.",
 	},
 	"issues.blocker.whoResource": {
 		en: "Supply it, then resume it where it stopped.",
 	},
 	"issues.blocker.whoResumes": {
-		en: "A person resumes it from the status menu.",
+		en: "The master resumes it.",
 	},
 	"issues.blocker.whoRunReads": {
 		en: "That run moves the issue on once it reads the answer.",
@@ -325,7 +325,7 @@ export const SAID = {
 		vars: { key: "key" },
 	},
 	"issues.blocker.whoWaitOver": {
-		en: "A person resumes it once that wait is over.",
+		en: "The master resumes it once that wait is over.",
 	},
 	"issues.gate.issue_busy.detail": {
 		en: "Another job is already active on this issue.",
@@ -415,7 +415,9 @@ export const SAID = {
 		en: "design {flow} r{r} was returned: a run revises and proposes it",
 		vars: { flow: "name", r: "count" },
 	},
-	"issues.rule.draft": { en: "a draft is not work until a person accepts it" },
+	"issues.rule.draft": {
+		en: "a draft is not work until the master takes it on",
+	},
 	"issues.rule.ended": {
 		en: "the issue is {status}",
 		vars: { status: "status" },
@@ -453,7 +455,9 @@ export const SAID = {
 		en: "a run parked it on_hold behind {key}, which still holds it: {why}",
 		vars: { key: "key", why: "said" },
 	},
-	"issues.rule.personPaused": { en: "a person paused it; a person resumes it" },
+	"issues.rule.personPaused": {
+		en: "a person paused it; the master resumes it",
+	},
 	"issues.rule.queued": { en: "a job is queued; no run session holds it yet" },
 	"issues.rule.markOwed": {
 		en: "change request !{n} merged at {sha}; no merged mark records it",

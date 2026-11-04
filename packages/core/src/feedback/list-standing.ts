@@ -34,7 +34,7 @@ export async function standingFactsOf(
     .filter((i) => carrying.has(i.id) && i.status !== 'closed' && i.status !== 'dropped')
     .map((i) => i.id);
   const [waits, decidedAt, master] = await Promise.all([
-    issueWaitsOf(projectId, owed, null),
+    issueWaitsOf(projectId, owed),
     decidedAtOf(rows.map((r) => r.id)),
     masterServingOf(projectId),
   ]);

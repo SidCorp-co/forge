@@ -100,7 +100,7 @@ export async function readAttention(
     listRequirementsAs(viewer, projectId),
     listFeedbackAs(viewer, projectId),
     listReleases(projectId, viewer),
-    listIssueStanding(projectId, 'open', { userId: viewer.userId }, now),
+    listIssueStanding(projectId, 'open', now),
     readContractStanding(projectId, viewer.userId, now),
     automationOf(projectId, viewer.userId, now),
     designHealthOf(viewer, projectId),

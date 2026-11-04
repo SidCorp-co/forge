@@ -1,13 +1,17 @@
 // What a `needs_info` park still waits on once its question was answered (ISS-258): read from what
 // the answer said (its hold, ISS-257) and what the answer resume recorded it did. The blocker and
-// the standing both word it from here, so the banner and the list cannot disagree.
+// the standing both word it from here, so the banner and the list cannot disagree. What is left is
+// never a person's: the master resumes a park (REQ-68).
 
 import type { ParkAnsweredView } from '@forge/contracts/park';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 
 export interface AnsweredWait {
-  /** Whom it waits on, in the standing's vocabulary. */
-  on: 'person' | 'run' | 'issue' | 'master';
+  /** Whom it waits on, in the standing's vocabulary: never a person, since resuming is the master's
+   *  act (REQ-68), and the person's part is the answer already given. */
+  on: 'run' | 'issue' | 'master';
+  /** What is left is a resume where it stopped, rather than a run reading or another question. */
+  resumes: boolean;
   /** The blocking issue's key, where it waits on one. */
   ref: string | null;
   /** The few words a list shows. */
@@ -27,6 +31,7 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
     const key = hold.blockedBy.key;
     return {
       on: 'issue',
+      resumes: false,
       ref: key,
       act: say('issues.standing.act.waitOn', { key }),
       reason: say('issues.blocker.waitsOnKey', { key, why: hold.reason }),
@@ -35,7 +40,8 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
   }
   if (hold) {
     return {
-      on: 'person',
+      on: 'master',
+      resumes: true,
       ref: null,
       act: say('issues.standing.act.resumeOnce', { why: verbatim(clip(hold.reason, 80)) }),
       reason: say('issues.blocker.stillWaits', { why: hold.reason }),
@@ -46,6 +52,7 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
     case 'sent_to_run':
       return {
         on: 'run',
+        resumes: false,
         ref: null,
         act: say('issues.standing.act.readAnswer'),
         reason: say('issues.blocker.sentToRun', { id: resume.sessionId }),
@@ -54,6 +61,7 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
     case 'box_reads':
       return {
         on: 'run',
+        resumes: false,
         ref: null,
         act: say('issues.standing.act.readAnswerBack'),
         reason: say('issues.blocker.boxReads'),
@@ -62,6 +70,7 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
     case 'other_question':
       return {
         on: 'master',
+        resumes: false,
         ref: null,
         act: say('issues.standing.act.answerOther'),
         reason:
@@ -72,7 +81,8 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
       };
     case 'no_left_status':
       return {
-        on: 'person',
+        on: 'master',
+        resumes: true,
         ref: null,
         act: say('issues.standing.act.moveOn'),
         reason: say('issues.blocker.noLeftStatus'),
@@ -80,7 +90,8 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
       };
     case 'staged':
       return {
-        on: 'person',
+        on: 'master',
+        resumes: true,
         ref: null,
         act: say('issues.standing.act.resume'),
         reason: say('issues.blocker.staged'),
@@ -88,7 +99,8 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
       };
     case 'refused':
       return {
-        on: 'person',
+        on: 'master',
+        resumes: true,
         ref: null,
         act: say('issues.standing.act.moveOnRefused', { code: resume.code }),
         reason: say('issues.blocker.refused', { code: resume.code, detail: resume.detail }),
@@ -96,7 +108,8 @@ export function answeredWait(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>
       };
     default:
       return {
-        on: 'person',
+        on: 'master',
+        resumes: true,
         ref: null,
         act: say('issues.standing.act.resume'),
         reason: say('issues.blocker.unrecorded'),

@@ -39,7 +39,6 @@ export interface CarrierStanding {
  * question on the item, never as this wait.
  */
 const KIND_OF: Record<IssueWaitingKind, FeedbackWaitingKind> = {
-  you: 'agent',
   person: 'agent',
   run: 'agent',
   master: 'agent',
@@ -50,7 +49,7 @@ const KIND_OF: Record<IssueWaitingKind, FeedbackWaitingKind> = {
 };
 
 /** The carrier waits on a person, which the item reads as its master's to move on. */
-const PERSON_KINDS: ReadonlySet<IssueWaitingKind> = new Set(['you', 'person']);
+const PERSON_KINDS: ReadonlySet<IssueWaitingKind> = new Set(['person']);
 
 const MASTER = say('standing.who.projectMaster');
 

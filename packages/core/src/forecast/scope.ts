@@ -46,7 +46,7 @@ export async function readsFor(
   const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
   const anchor = await readAnchor(projectId, now);
   const [f, release, shipped] = await Promise.all([
-    simulate(projectId, now, viewer, anchor),
+    simulate(projectId, now, anchor),
     readReleaseFacts(projectId, anchor.at, viewer),
     readShipped(projectId, closed),
   ]);

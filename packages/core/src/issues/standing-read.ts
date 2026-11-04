@@ -63,7 +63,6 @@ import {
   requirementsOf,
   tracedCodesOf,
 } from './standing-facts-read.js';
-import { admitOf, viewerOf } from './standing-viewer-read.js';
 import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
 import { stepFactsOf } from './step-facts-read.js';
@@ -199,10 +198,6 @@ const latest = (...times: (string | null)[]) =>
     Math.max(...times.filter((t): t is string => t !== null).map((t) => new Date(t).getTime())),
   );
 
-export interface StandingViewer {
-  userId: string;
-}
-
 type Facts = {
   key: (seq: number) => string;
   edges: BlockingEdge[];
@@ -213,10 +208,8 @@ type Facts = {
   feedback: Awaited<ReturnType<typeof feedbackOf>>;
   people: Awaited<ReturnType<typeof peopleOf>>;
   releaseApproval: boolean;
-  viewer: Awaited<ReturnType<typeof viewerOf>>;
   writers: string[];
   admins: string[];
-  admit: IssueStandingInput['admit'];
   withheld: Map<string, IssueWithheld>;
   releaseHolds: Map<string, ReleaseHoldView>;
   master: MasterServing;
@@ -314,10 +307,8 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     releaseNoted: r.release_noted,
     releaseHold: f.releaseHolds.get(r.id) ?? null,
     owedMark: r.owed_mark,
-    viewer: f.viewer,
     writers: f.writers,
     admins: f.admins,
-    admit: f.admit,
     withheld: f.withheld.get(r.id) ?? null,
     statusSince: new Date(r.status_since),
     master: f.master,
@@ -328,12 +319,10 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
 async function standingRows(
   projectId: string,
   raws: readonly IssueRowRaw[],
-  viewer: StandingViewer | null,
   now: Date,
 ): Promise<IssueStandingRow[]> {
   if (raws.length === 0) return [];
   const ids = raws.map((r) => r.id);
-  const admitting = admitOf(projectId);
   const [
     prefix,
     edges,
@@ -341,11 +330,9 @@ async function standingRows(
     modules,
     feedback,
     releaseApproval,
-    who,
     withheld,
     writers,
     admins,
-    admit,
     master,
     releaseHolds,
   ] = await Promise.all([
@@ -355,11 +342,9 @@ async function standingRows(
     modulesOf(projectId, ids),
     feedbackOf(ids),
     approvalRequired(projectId),
-    viewerOf(viewer, projectId, admitting),
     withheldOf(projectId, raws),
     holderNames('project.write', projectId),
     holderNames('project.admin', projectId),
-    admitting,
     masterServingOf(projectId),
     releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
@@ -382,10 +367,8 @@ async function standingRows(
     feedback,
     people,
     releaseApproval,
-    viewer: who,
     writers,
     admins,
-    admit,
     withheld,
     releaseHolds,
     master,
@@ -443,7 +426,6 @@ async function scopeCounts(projectId: string) {
 export async function listIssueStanding(
   projectId: string,
   scope: IssueStandingScope,
-  viewer: StandingViewer | null,
   now: Date = new Date(),
   limit: number = STANDING_LIMIT,
 ): Promise<IssueStandingList> {
@@ -452,14 +434,13 @@ export async function listIssueStanding(
     scopeCounts(projectId),
     approvalRequired(projectId),
   ]);
-  const issues = await standingRows(projectId, raws, viewer, now);
+  const issues = await standingRows(projectId, raws, now);
   return {
     issues,
     counts: {
       open: counts.open,
       closed: counts.closed,
       all: counts.open + counts.closed,
-      needsYou: issues.filter((i) => i.standing.attentionGroup === 'needs_you').length,
       blocked: issues.filter((i) => i.standing.blockedBy.length > 0).length,
       blocking: issues.filter((i) => i.standing.blocks.length > 0).length,
     },
@@ -476,7 +457,6 @@ export async function listIssueStanding(
 export async function issueWaitsOf(
   projectId: string,
   ids: readonly string[],
-  viewer: StandingViewer | null,
   now: Date = new Date(),
 ): Promise<Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>> {
   if (ids.length === 0) return new Map();
@@ -484,12 +464,7 @@ export async function issueWaitsOf(
     ids.map((id) => sql`${id}`),
     sql`, `,
   )})`;
-  const rows = await standingRows(
-    projectId,
-    await issueRows(projectId, where, ids.length),
-    viewer,
-    now,
-  );
+  const rows = await standingRows(projectId, await issueRows(projectId, where, ids.length), now);
   return new Map(rows.map((r) => [r.id, { key: r.key, standing: r.standing }]));
 }
 
@@ -497,14 +472,13 @@ export async function issueWaitsOf(
 export async function readIssueStanding(
   projectId: string,
   issSeq: number,
-  viewer: StandingViewer | null,
   now: Date = new Date(),
 ): Promise<IssueStandingDetail | null> {
   const raws = await issueRows(projectId, scopeSql('one', issSeq), 1);
   const raw = raws[0];
   if (!raw) return null;
   const [[row], releaseApproval, health, park, steps] = await Promise.all([
-    standingRows(projectId, raws, viewer, now),
+    standingRows(projectId, raws, now),
     approvalRequired(projectId),
     safeHydratePipelineHealthForIssues(projectId, [raw.id]),
     loadIssuePark(raw.id),

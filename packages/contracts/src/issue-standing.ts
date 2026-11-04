@@ -12,9 +12,9 @@ import type {
 import type { StandingTimes } from "./steward.js";
 import type { WrittenLang } from "./written-lang.js";
 
-/** The list's attention groups, in the order they are drawn. */
+/** The list's attention groups, in the order they are drawn. No issue groups Needs you: a person
+ *  never acts on an issue, and what one owes a person is a decision on its item (REQ-68 BC-4, BC-6). */
 export const ISSUE_ATTENTION_GROUPS = [
-	"needs_you",
 	"stuck",
 	"moving",
 	"queued",
@@ -25,11 +25,6 @@ export type IssueAttentionGroup = (typeof ISSUE_ATTENTION_GROUPS)[number];
 
 export const ISSUE_ATTENTION_LABELS: StandingGroupLabels<IssueAttentionGroup> =
 	{
-		needs_you: {
-			label: "Needs you",
-			tone: "you",
-			collapsed: false,
-		},
 		moving: {
 			label: "Moving",
 			tone: "run",
@@ -57,10 +52,10 @@ export const ISSUE_ATTENTION_LABELS: StandingGroupLabels<IssueAttentionGroup> =
 		},
 	};
 
-/** Whom an issue waits on: the viewer, another person, a run that holds it, the master that takes
- *  it next, the judge of a change that landed, another issue that blocks it, the release, or nobody. */
+/** Whom an issue waits on: people named (never the viewer as "You", REQ-68 BC-6), a run that holds
+ *  it, the master that takes it next, the judge of a change that landed, another issue that blocks
+ *  it, the release, or nobody. */
 export const ISSUE_WAITING_KINDS = [
-	"you",
 	"person",
 	"run",
 	"master",
@@ -238,7 +233,6 @@ export interface IssueStandingList {
 	issues: IssueStandingRow[];
 	/** Rows in each scope, so the scope switch can count without a second read. */
 	counts: Record<IssueStandingScope, number> & {
-		needsYou: number;
 		blocked: number;
 		blocking: number;
 	};

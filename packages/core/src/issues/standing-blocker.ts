@@ -95,16 +95,15 @@ function parkBlocker(park: IssuePark, refs: readonly IssueEdgeRef[]): IssueBlock
   const at = park.resume.at;
   if (park.answered) {
     const wait = answeredWait(park.answered);
-    const act =
-      wait.on === 'issue' ? OPEN_BLOCKER : wait.on === 'person' && at ? resumeAct(at) : NO_ACT;
+    const act = wait.on === 'issue' ? OPEN_BLOCKER : wait.resumes && at ? resumeAct(at) : NO_ACT;
     return blocker(
       {
-        tone: wait.on === 'person' ? 'attention' : 'info',
+        tone: wait.resumes ? 'attention' : 'info',
         reason: wait.reason,
         whoMustAct: wait.who,
         act,
         ...(act.kind === 'resume_park' && at ? { resumeAt: at } : {}),
-        ...(wait.on === 'person' && !at ? { detail: NOTHING_TO_RESUME_AT } : {}),
+        ...(wait.resumes && !at ? { detail: NOTHING_TO_RESUME_AT } : {}),
       },
       refs,
     );

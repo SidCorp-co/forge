@@ -39,8 +39,7 @@ forecastRoutes.get(
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const viewer = await forecastViewerFor(projectId, c.get('userId'));
-    const read = await readProjectForecast(projectId, viewer);
+    const read = await readProjectForecast(projectId);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', read, 'the forecast'),
     );
@@ -54,13 +53,12 @@ forecastRoutes.get(
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, key } = c.req.valid('param');
-    const viewer = await forecastViewerFor(projectId, c.get('userId'));
     const parsed = parseIssueRef(
       key,
       issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
     );
     if (!parsed.ok) throw badRequest(parsed.message);
-    const read = await readIssueForecast(projectId, parsed.issSeq, viewer);
+    const read = await readIssueForecast(projectId, parsed.issSeq);
     if (!read) throw notFound(`issue ${key} not found in this project`);
     return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', read, key));
   },

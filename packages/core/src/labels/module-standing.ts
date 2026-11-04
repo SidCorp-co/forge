@@ -85,7 +85,7 @@ export function subtreesOf(
   return out;
 }
 
-const HEADLINE_ORDER: ModuleOpenKind[] = ['needs_you', 'stuck', 'moving'];
+const HEADLINE_ORDER: ModuleOpenKind[] = ['stuck', 'moving'];
 
 const newest = (a: OpenIssue, b: OpenIssue) =>
   b.standing.touchedAt.localeCompare(a.standing.touchedAt) || a.key.localeCompare(b.key);
@@ -113,7 +113,6 @@ function waitingOf(
 }
 
 function attentionOf(byKind: Record<ModuleOpenKind, number>): ModuleAttentionGroup {
-  if (byKind.needs_you > 0) return 'needs_you';
   if (byKind.stuck > 0) return 'stuck';
   if (byKind.moving > 0) return 'moving';
   return 'quiet';
@@ -303,13 +302,7 @@ export function couplingsOf(
   return observedOut.sort((a, b) => b.issueCount - a.issueCount || byName(a, b));
 }
 
-const OPEN_RAIL_ORDER: readonly ModuleOpenKind[] = [
-  'needs_you',
-  'stuck',
-  'moving',
-  'queued',
-  'paused',
-];
+const OPEN_RAIL_ORDER: readonly ModuleOpenKind[] = ['stuck', 'moving', 'queued', 'paused'];
 
 export function railOrder(open: readonly OpenIssue[]): OpenIssue[] {
   const rank = (i: OpenIssue) => {

@@ -204,12 +204,11 @@ export const issuesReadOf = (
 export async function moduleRollupWithStanding(
   projectId: string,
   activeWithinDays: number,
-  viewer: ModuleViewer,
 ): Promise<ModuleRollupResponse> {
   const [counts, nodes, list, prefix, traces, issueModules] = await Promise.all([
     moduleRollup(projectId, activeWithinDays),
     readNodes(projectId),
-    listIssueStanding(projectId, 'open', { userId: viewer.userId }),
+    listIssueStanding(projectId, 'open'),
     activeIssuePrefix(projectId),
     readTraces(projectId),
     readIssueModuleSets(projectId),

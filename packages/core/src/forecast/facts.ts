@@ -322,8 +322,7 @@ export async function projectWaitOf(projectId: string): Promise<Wait | null> {
 /** Whom a row waits on where it is a person or a gate rather than a run, a master or a blocker. */
 export function waitOf(row: IssueStandingRow): Wait | null {
   const { attentionGroup, waitingOn } = row.standing;
-  const person = waitingOn.kind === 'you' || waitingOn.kind === 'person';
-  if (attentionGroup === 'needs_you' || attentionGroup === 'paused' || person) {
+  if (attentionGroup === 'paused' || waitingOn.kind === 'person') {
     return waitOn(
       { who: waitingOn.says.who, act: waitingOn.says.act, reason: waitingOn.says.rule },
       waitingOn.ref,

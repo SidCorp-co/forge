@@ -24,7 +24,7 @@ import { onArg } from '../permissions/index.js';
 import { readQuestionsForIssue } from '../questions/index.js';
 import { issueRequirementOf } from '../requirements/index.js';
 import { parseArgs } from './args.js';
-import { actorOf, forecastViewerOf, projectAccess, readerOf } from './context.js';
+import { actorOf, projectAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
 
@@ -64,7 +64,7 @@ const DESCRIPTION = `Delivery work as a person following it reads it: each issue
 - action=create { projectId, title, description?, priority?, category?, relations? }: files an issue as you, the way any other door does: it needs project.write, is born at \`draft\`, where the project's master admits it (no person admits an issue), and answers its key. An issue is the delivery side, so start from the product: a problem or idea a person reports goes to Feedback (project_feedback.submit), and new or changed behaviour to a Requirement (requirements.create, or requirements.revise for one that exists); their triage and delivery file the issues. File one here directly when it is delivery work someone will build that an agreed requirement or a triaged feedback item already covers, or a defect found while building, and name in its description what it delivers. When the person asks for an issue and the work has no requirement or feedback behind it, or you cannot tell which it is, ask them before filing.`;
 
 async function list(ctx: McpContext, i: Input) {
-  const access = await projectAccess(ctx, i.projectId);
+  await projectAccess(ctx, i.projectId);
   const listed = await listIssues(
     i.projectId,
     { status: i.status, statusNot: i.statusNot, search: i.search },
@@ -76,7 +76,7 @@ async function list(ctx: McpContext, i: Input) {
   const rows = out.value;
   const [prefix, forecast, agents] = await Promise.all([
     activeIssuePrefix(i.projectId),
-    readProjectForecast(i.projectId, forecastViewerOf(ctx, access)),
+    readProjectForecast(i.projectId),
     agentStatesOf(
       i.projectId,
       rows.map((r) => r.id),
@@ -104,7 +104,7 @@ async function list(ctx: McpContext, i: Input) {
 
 async function get(ctx: McpContext, i: Input) {
   const { issue: ref } = need(i, 'get', 'issue');
-  const access = await projectAccess(ctx, i.projectId);
+  await projectAccess(ctx, i.projectId);
   const row = await readingArgument('/issue', () =>
     resolveIssueRouteRef(ref, i.projectId, ctx.principal.userId),
   );
@@ -116,7 +116,7 @@ async function get(ctx: McpContext, i: Input) {
   const issue = out.value;
   const [prefix, forecast, agents, questions, delivered] = await Promise.all([
     activeIssuePrefix(i.projectId),
-    readIssueForecast(i.projectId, issue.issSeq, forecastViewerOf(ctx, access)),
+    readIssueForecast(i.projectId, issue.issSeq),
     agentStatesOf(i.projectId, [issue.id]),
     readQuestionsForIssue(issue.id, ctx.principal.userId),
     issueRequirementOf(issue.id),

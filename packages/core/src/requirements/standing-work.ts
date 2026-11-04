@@ -62,7 +62,6 @@ type Turn = WorkTurn;
 
 /** An issue's party as a requirement's: the runs, the master and the judge are all agents to it. */
 const KIND_OF: Record<IssueWaitingKind, RequirementWaitingKind> = {
-  you: 'you',
   person: 'person',
   run: 'agent',
   master: 'agent',

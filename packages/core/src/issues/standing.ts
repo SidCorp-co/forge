@@ -25,7 +25,6 @@ import type {
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { ParkAnsweredView } from '@forge/contracts/park';
-import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/standing';
@@ -105,19 +104,8 @@ export interface IssueStandingInput {
   owedMark?: { number: number; commit: string } | null;
   /** The automatic release's standing hold on it (`release-batch/hold.ts:releaseHoldsOf`), else null. */
   releaseHold: ReleaseHoldView | null;
-  /**
-   * Null for a reader with no person behind it; nothing then reads as theirs. `canWrite` is
-   * project.write, what an answer, a decision, a resource or a resume asks; `canAdmit` is what the
-   * admit gate asks (`admit.permission`), which taking a draft on asks.
-   */
-  viewer: { userId: string; canWrite: boolean; canAdmit: boolean } | null;
   /** The names of the people holding project.write, whom a person's turn names (FB-104). */
   writers: readonly string[];
-  /**
-   * What taking a draft on asks (`transition-guards.ts`, `approvals.admit`): issues.admit where the
-   * gate is on, project.write where it is off, and the names of the people holding it.
-   */
-  admit: { permission: ProjectPermission; holders: readonly string[] };
   /** The names of the people holding project.admin, whom an act only an admin takes names. */
   admins: readonly string[];
   /** The refusal the admissible list withholds it by (`devices/admissible.ts`), first that holds. */
@@ -131,7 +119,6 @@ export interface IssueStandingInput {
 
 export type IssueWaitingOn = WaitingOn<IssueWaitingKind>;
 
-const YOU = say('standing.who.you');
 const MASTER = say('standing.who.master');
 const NOBODY = say('standing.who.nobody');
 const named = (name: string) => say('standing.who.named', { name });
@@ -139,38 +126,22 @@ const named = (name: string) => say('standing.who.named', { name });
 const minutesSince = (from: Date | null, now: Date) =>
   from ? Math.max(0, Math.round((now.getTime() - from.getTime()) / 60_000)) : null;
 
-type People = Pick<IssueStandingInput, 'viewer' | 'writers' | 'admit'>;
+type People = Pick<IssueStandingInput, 'writers'>;
 
 /**
- * The permission a person's act on an issue asks: an answer, a decision, a resource and a resume ask
- * project.write (the answer route's floor, `questions/routes.ts`; the transition guard); taking a
- * draft on asks what the admit gate asks.
- */
-type Need = 'write' | 'admit';
-
-const holdsNeed = (viewer: People['viewer'], need: Need) =>
-  need === 'admit' ? viewer?.canAdmit === true : viewer?.canWrite === true;
-
-const needOf = (people: People, need: Need) =>
-  need === 'admit'
-    ? people.admit
-    : { permission: 'project.write' as const, holders: people.writers };
-
-/**
- * Whose a person's act is (ISS-926): the viewer's, grouped `needs_you`, only where they hold the
- * permission the act asks; else its holders' by name, grouped `queued` as a wait on them, never on
- * the viewer; else nobody's, said with where the permission is granted, never "A project writer"
- * naming no one (FB-104). The group follows the kind and the permission together.
+ * Whose a person's answer is: its holders' by name, grouped `queued` as a wait on them, never on the
+ * viewer, since no issue asks its reader to act (REQ-68 BC-6: the answer is asked as a decision on
+ * the item the issue serves, in Needs you); else nobody's, said with where the permission is
+ * granted, never "A project writer" naming no one (FB-104). An answer asks project.write (the answer
+ * route's floor, `questions/routes.ts`).
  */
 function forPerson(
   people: People,
   act: Said,
   rule: Said,
-  need: Need = 'write',
 ): { group: IssueAttentionGroup; waitingOn: IssueWaitingOn } {
-  if (holdsNeed(people.viewer, need))
-    return { group: 'needs_you', waitingOn: wait('you', YOU, act, rule) };
-  const { permission, holders } = needOf(people, need);
+  const permission = 'project.write' as const;
+  const holders = people.writers;
   if (holders.length === 0) {
     return {
       group: 'stuck',
@@ -188,9 +159,10 @@ function forPerson(
 const held = (lease: IssueLeaseView | null) =>
   lease !== null && (lease.verdict === 'live' || lease.verdict === 'shared');
 
-// whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
-// needs_info or an open human question → a person answers (the steward's decision on a stuck draft
-// among them); draft → its live blocker first, else a person takes it on or drops it; awaiting_release → the hold the
+// whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused, the master
+// resuming it; needs_info or an open human question → the people who may answer, by name, never the
+// reader (the question is asked on the item the issue serves); draft → its live blocker first, else
+// the master takes it on or drops it; awaiting_release → the hold the
 // automatic release recorded where one stands (ISS-577), else the master while a criterion no longer passes or no note is written, else
 // a person approves where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
@@ -242,14 +214,11 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
   };
 }
 
-/** A park whose question was answered and that did not move: what it still waits on, never an answer owed. */
-function answeredParkTurn(
-  answered: Pick<ParkAnsweredView, 'hold' | 'resume'>,
-  people: People,
-): Turn {
+/** A park whose question was answered and that did not move: what it still waits on, never an answer
+ *  owed, and never a person's resume (REQ-68: the master resumes it). */
+function answeredParkTurn(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>): Turn {
   const w = answeredWait(answered);
   const rule = say('issues.rule.answered', { reason: w.reason, who: w.who });
-  if (w.on === 'person') return forPerson(people, w.act, rule);
   if (w.on === 'issue' && w.ref) {
     return { group: 'stuck', waitingOn: wait('issue', named(w.ref), w.act, rule, w.ref) };
   }
@@ -259,7 +228,7 @@ function answeredParkTurn(
   return { group: 'queued', waitingOn: wait('master', MASTER, w.act, rule) };
 }
 
-/** A status only a person moves on from: done, paused, a question owed, a draft. */
+/** A status the run cannot move on from by itself: done, paused, a question owed, a draft. */
 function personTurn(input: IssueStandingInput): Turn | null {
   const { status } = input;
   if (status === 'closed' || status === 'dropped') {
@@ -276,11 +245,19 @@ function personTurn(input: IssueStandingInput): Turn | null {
   if (status === 'on_hold') {
     const parked = agentParkTurn(input);
     if (parked) return parked;
-    const r = forPerson(input, say('issues.standing.act.resume'), say('issues.rule.personPaused'));
-    return { group: 'paused', waitingOn: r.waitingOn };
+    // resuming is an agent act (REQ-68): the master resumes what a person paused, never its reader
+    return {
+      group: 'paused',
+      waitingOn: wait(
+        'master',
+        MASTER,
+        say('issues.standing.act.resume'),
+        say('issues.rule.personPaused'),
+      ),
+    };
   }
   if (status === 'needs_info' && !input.owesAnswer && input.answered) {
-    return answeredParkTurn(input.answered, input);
+    return answeredParkTurn(input.answered);
   }
   if (status === 'needs_info') {
     return forPerson(
@@ -296,12 +273,16 @@ function personTurn(input: IssueStandingInput): Turn | null {
     // a draft behind a live blocker waits on that blocker first, not on a person's Needs you
     const blocker = input.blockedBy.find((b) => b.holds);
     if (blocker) return blockerTurn(blocker);
-    return forPerson(
-      input,
-      say('issues.standing.act.takeOnOrDrop'),
-      say('issues.rule.draft'),
-      'admit',
-    );
+    // the master takes a draft on or drops it (REQ-68: admission is an agent act), never its reader
+    return {
+      group: 'queued',
+      waitingOn: wait(
+        'master',
+        MASTER,
+        say('issues.standing.act.takeOnOrDrop'),
+        say('issues.rule.draft'),
+      ),
+    };
   }
   return null;
 }

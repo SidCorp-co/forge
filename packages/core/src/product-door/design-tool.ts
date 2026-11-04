@@ -60,7 +60,7 @@ import {
   workflowView,
 } from '../workflows/index.js';
 import { parseArgs } from './args.js';
-import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
+import { actorOf, readAccess, readerOf } from './context.js';
 import { DESIGN_PERMISSION } from './design-permission.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
@@ -155,9 +155,9 @@ async function buildsProgress(
   builds: readonly { issueId: string; displayId: string; title: string; status: string }[],
 ) {
   if (builds.length === 0) return [];
-  const access = await readAccess(ctx, projectId);
+  await readAccess(ctx, projectId);
   const [forecast, agents] = await Promise.all([
-    readProjectForecast(projectId, forecastViewerOf(ctx, access)),
+    readProjectForecast(projectId),
     agentStatesOf(
       projectId,
       builds.map((b) => b.issueId),

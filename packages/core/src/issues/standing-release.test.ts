@@ -31,10 +31,8 @@ const atGate = (over: Partial<IssueStandingInput> = {}): IssueStandingInput => (
   releaseApproval: false,
   releaseNoted: true,
   releaseHold: null,
-  viewer: { userId: 'u1', canWrite: true, canAdmit: true },
   writers: ['Ann'],
   admins: [],
-  admit: { permission: 'project.write', holders: [] },
   withheld: null,
   statusSince: now,
   master: 'serves',
@@ -64,19 +62,19 @@ const releaseHold: ReleaseHoldView = {
 };
 
 describe('a held issue at the release gate (ISS-577 criterion 2)', () => {
-  it('reads a hold a person owes as stuck on the viewer who can write, the hold its rule', () => {
+  it('reads a hold a person owes as stuck on the writers by name, never on "You", the hold its rule', () => {
     const s = derive(atGate({ releaseHold: personHold }));
     expect(s.releaseHold).toEqual(personHold);
     expect(s.attentionGroup).toBe('stuck');
-    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'record the landing' });
+    expect(s.waitingOn).toMatchObject({ kind: 'person', act: 'record the landing' });
     expect(s.waitingOn.rule).toBe(`NO_RELEASE_GATE: ${personHold.reason}`);
   });
 
-  it('names the writers to a viewer who cannot act, and nobody where none can', () => {
-    const named = derive(atGate({ releaseHold: personHold, viewer: null }));
+  it('names the writers, and nobody where none can', () => {
+    const named = derive(atGate({ releaseHold: personHold }));
     expect(named.waitingOn).toMatchObject({ kind: 'person', who: 'Ann' });
     expect(named.attentionGroup).toBe('stuck');
-    const nobody = derive(atGate({ releaseHold: personHold, viewer: null, writers: [] }));
+    const nobody = derive(atGate({ releaseHold: personHold, writers: [] }));
     expect(nobody.waitingOn.kind).toBe('none');
     expect(nobody.attentionGroup).toBe('stuck');
     expect(nobody.waitingOn.rule).toContain('NO_RELEASE_GATE');
@@ -129,7 +127,7 @@ describe('who clears a release hold, and the act, in plain words (ISS-684)', () 
 
   it('says a code it has no words for plainly by who owes it, never the waiting-for noun', () => {
     const human = derive(atGate({ releaseHold: { ...runnerHold, code: 'RELEASE_SOMETHING_NEW' } }));
-    expect(human.waitingOn).toMatchObject({ kind: 'you', act: 'clear the refusal' });
+    expect(human.waitingOn).toMatchObject({ kind: 'person', who: 'Ann', act: 'clear the refusal' });
     const agent = derive(
       atGate({ releaseHold: { ...runnerHold, code: 'RELEASE_SOMETHING_NEW', owes: 'agent' } }),
     );

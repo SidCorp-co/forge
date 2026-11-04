@@ -210,7 +210,6 @@ async function workFactsOf(
     issueWaitsOf(
       projectId,
       unshipped.map((i) => i.id),
-      viewer ? { userId: viewer.userId } : null,
       now,
     ),
     releaseOwed ? requirementDependents().releaseLeg(projectId, viewer?.userId ?? null) : null,

@@ -89,7 +89,6 @@ export async function waitingOf(
   const standing = await issueWaitsOf(
     projectId,
     waiting.map((r) => r.id),
-    null,
   );
   const out = new Map<string, IssueWaiting>();
   await Promise.all(

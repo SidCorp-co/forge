@@ -154,7 +154,6 @@ const runStarts = (runs: readonly RunStanding[]) => runs.map((r) => r.since);
 export async function homeItemsOf(
   project: HomeProject,
   part: HomeProjectReads,
-  viewer: HomeViewer,
   now: Date = new Date(),
 ): Promise<HomeProjectItems> {
   const of = { projectSlug: project.slug, projectName: project.name };
@@ -189,10 +188,9 @@ export async function homeItemsOf(
     issueWaitsOf(
       project.id,
       open.map((i) => i.id),
-      { userId: viewer.userId },
       now,
     ),
-    readProjectForecast(project.id, null),
+    readProjectForecast(project.id),
   ]);
   const dates = new Map(forecast.issues.map((f) => [f.key, f.forecast]));
   for (const i of open) {
@@ -200,7 +198,6 @@ export async function homeItemsOf(
     const running = part.running.has(i.key);
     const standing = waits.get(i.id)?.standing;
     const w = standing?.waitingOn;
-    if (w?.kind === 'you') continue;
     const lastMovedAt = lastMoveOf(i.updatedAt, standing?.times.since, ...runStarts(runs));
     const f = dates.get(i.key);
     out.moving.push({

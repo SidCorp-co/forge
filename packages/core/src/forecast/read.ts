@@ -33,7 +33,6 @@ import {
   type Wait,
   type WorkItem,
 } from './model.js';
-import type { ForecastViewer } from './release.js';
 
 export interface Facts {
   /** The simulation's clock: the anchor's moment (`facts.ts:readAnchor`). */
@@ -59,12 +58,7 @@ export const clockOf = (anchor: Pick<Anchor, 'at'>, readAt: Date) => ({
  * read as of the anchor, so a read with no event since answers the same dates; lateness is measured
  * against `now`, so an item still grows late while nothing happens.
  */
-export async function simulate(
-  projectId: string,
-  now: Date,
-  viewer: ForecastViewer | null,
-  anchored?: Anchor,
-): Promise<Facts> {
+export async function simulate(projectId: string, now: Date, anchored?: Anchor): Promise<Facts> {
   const [anchor, master] = await Promise.all([
     anchored ? Promise.resolve(anchored) : readAnchor(projectId, now),
     readMasterStanding(projectId),
@@ -72,7 +66,7 @@ export async function simulate(
   const clock = clockOf(anchor, now);
   const at = clock.now;
   const [standing, history, projectWait, prefix, policy, writers] = await Promise.all([
-    listIssueStanding(projectId, 'open', viewer ? { userId: viewer.userId } : null, now),
+    listIssueStanding(projectId, 'open', now),
     readHistory(projectId, at, master.slots?.max ?? null),
     projectWaitOf(projectId),
     activeIssuePrefix(projectId),
@@ -143,10 +137,9 @@ export { pausedOf };
 
 export async function readProjectForecast(
   projectId: string,
-  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<ProjectForecast> {
-  const f = await simulate(projectId, now, viewer);
+  const f = await simulate(projectId, now);
   return {
     ...stamp(f.run.asOf),
     projectId,
@@ -167,12 +160,11 @@ export function forecastOf(f: Facts, row: IssueRow): Forecast {
 export async function readIssueForecast(
   projectId: string,
   issSeq: number,
-  viewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<{ issueId: string; key: string; forecast: Forecast } | null> {
   const [row] = await issueRowsBySeq(projectId, issSeq);
   if (!row) return null;
-  const f = await simulate(projectId, now, viewer);
+  const f = await simulate(projectId, now);
   return {
     issueId: row.id,
     key: f.keyOf.get(row.id) ?? formatIssueRef(f.prefix, row.iss_seq),

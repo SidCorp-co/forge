@@ -135,7 +135,7 @@ export async function moduleDetailOf(
   const prefix = await activeIssuePrefix(projectId);
   const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 13));
   const [list, traces, latest, landings, activity, seqs, entry, drift] = await Promise.all([
-    listIssueStanding(projectId, 'open', { userId: viewer.userId }),
+    listIssueStanding(projectId, 'open'),
     readTraces(projectId),
     readLatestLandings(projectId, prefix),
     readRecentLandings(projectId, subtree, prefix),

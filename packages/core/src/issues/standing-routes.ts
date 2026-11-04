@@ -33,8 +33,7 @@ issueStandingRoutes.get(
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { scope } = c.req.valid('query');
-    const userId = c.get('userId');
-    const listed = await listIssueStanding(projectId, scope, userId ? { userId } : null);
+    const listed = await listIssueStanding(projectId, scope);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', listed, 'the issue list'),
     );
@@ -48,13 +47,12 @@ issueStandingRoutes.get(
   noQuery,
   async (c) => {
     const { id: projectId, key } = c.req.valid('param');
-    const userId = c.get('userId');
     const parsed = parseIssueRef(
       key,
       issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
     );
     if (!parsed.ok) throw badRequest(parsed.message);
-    const row = await readIssueStanding(projectId, parsed.issSeq, userId ? { userId } : null);
+    const row = await readIssueStanding(projectId, parsed.issSeq);
     if (!row) throw notFound(`issue ${key} not found in this project`);
     return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', row, key));
   },

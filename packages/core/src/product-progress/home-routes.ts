@@ -88,7 +88,7 @@ meHomeRoutes.get(
             ...part.issues.map((i) => i.key),
             ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
           ]);
-          return { ...(await homeItemsOf(p, part, viewer, now)), live: liveOf(p, releases, mine) };
+          return { ...(await homeItemsOf(p, part, now)), live: liveOf(p, releases, mine) };
         }),
       ),
     );

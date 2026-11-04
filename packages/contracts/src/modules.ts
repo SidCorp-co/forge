@@ -12,8 +12,8 @@ import type {
 	WaitingOn,
 } from "./standing.js";
 
+/** A module's groups, read from its open issues; none groups Needs you, as no issue does (REQ-68). */
 export const MODULE_ATTENTION_GROUPS = [
-	"needs_you",
 	"moving",
 	"stuck",
 	"quiet",
@@ -21,11 +21,6 @@ export const MODULE_ATTENTION_GROUPS = [
 export type ModuleAttentionGroup = (typeof MODULE_ATTENTION_GROUPS)[number];
 
 export const MODULE_ATTENTION_LABELS: StandingGroupLabels<ModuleAttentionGroup> = {
-	needs_you: {
-		label: "Needs you",
-		tone: "you",
-		collapsed: false,
-	},
 	moving: {
 		label: "Moving",
 		tone: "run",
@@ -44,7 +39,6 @@ export const MODULE_ATTENTION_LABELS: StandingGroupLabels<ModuleAttentionGroup> 
 };
 
 export const MODULE_OPEN_KINDS = [
-	"needs_you",
 	"moving",
 	"stuck",
 	"queued",

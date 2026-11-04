@@ -53,7 +53,7 @@ async function feedbackItems(projectId: string, reportsOnly = false): Promise<It
 }
 
 async function issueItems(projectId: string): Promise<ItemStanding[]> {
-  const list = await listIssueStanding(projectId, 'open', null);
+  const list = await listIssueStanding(projectId, 'open');
   return list.issues.map((i: IssueStandingRow) =>
     itemOf({ kind: 'issue', id: i.id, key: i.key }, i.title, i.standing),
   );

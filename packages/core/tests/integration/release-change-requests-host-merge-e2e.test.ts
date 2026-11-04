@@ -112,7 +112,7 @@ describe('a merge the host reports writes nothing, and names the mark each deliv
       expect((await issueRow(id))?.merged_at).toBeNull();
       expect((await issueRow(id))?.merged_commit_sha).toBeNull();
     }
-    const waits = await issueWaitsOf(world.projectId, [one, two, three, four], null);
+    const waits = await issueWaitsOf(world.projectId, [one, two, three, four]);
     for (const id of [one, two, three]) {
       const said = JSON.stringify(waits.get(id)?.standing.waitingOn);
       expect(said).toContain('issues.standing.act.markMerged');
