@@ -15,8 +15,12 @@
  * release range`): which files changed, then the two ends of each file this reader reads
  * (`rangeReads`). The reading is kept on the release run (`metadata.range`) with the changed files
  * themselves, which the developer view sorts into what the release changes, and the page reads it
- * from there; no source host is called, so a project with no repository binding reads the same way
- * as one with one. A range not reported is `unread` with why, never an empty answer.
+ * from there; no source host is asked what the range ships, so a project with no repository binding
+ * reads the same way as one with one. A range not reported is `unread` with why, never an empty answer.
+ *
+ * Before the reading is kept and the tag owed, the head is weighed against the gate (ISS-962,
+ * `range-outside.ts`): a head carrying the landing of a gate issue outside the roster is refused by
+ * name, and a gate issue whose landing could not be placed is kept on the reading as `unchecked`.
  */
 
 import { posix } from 'node:path';
@@ -29,6 +33,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { writeRunMetadata } from '../pipeline/index.js';
+import { outsideSentence, readOutsideLandings, uncheckedOf } from './range-outside.js';
 import { refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
 import { shippedReleaseRuns } from './shipped-releases.js';
@@ -281,7 +286,16 @@ export async function shippedBetween(
       dependenciesOf(host, alive(changed, MANIFEST), base, head),
       settingsOf(host, alive(changed, COMPOSE), base, head),
     ]);
-    return { state: 'read', base, head, migrations, contracts, dependencies, settings };
+    return {
+      state: 'read',
+      base,
+      head,
+      migrations,
+      contracts,
+      dependencies,
+      settings,
+      unchecked: [],
+    };
   } catch (err) {
     return {
       state: 'unread',
@@ -332,8 +346,10 @@ const KEY = 'range';
 
 /**
  * Keep what the release run reports its range ships (BC-7, BC-9), read by `shippedBetween`. Refused
- * by name, with nothing kept: a release with no release before it, a base that is not the commit that
- * release served, a file the reader reads that was not sent, and one it does not read.
+ * by name, with nothing kept and no tag owed: a release with no release before it, a base that is not
+ * the commit that release served, a file the reader reads that was not sent, one it does not read, and
+ * a head carrying the landing of a gate issue outside the roster (ISS-962). A gate issue outside the
+ * roster whose landing could not be placed is kept on the reading as `unchecked`, with why.
  */
 export async function recordRange(args: {
   projectId: string;
@@ -369,7 +385,17 @@ export async function recordRange(args: {
       '/files',
     );
   }
-  const read = await shippedBetween(reportedHost(report), report.base, report.head);
+  const outside = await readOutsideLandings(args.projectId, args.runId, report.base, report.head);
+  if (outside.carried.length > 0) {
+    throw refuseRelease(
+      'RELEASE_RANGE_OUTSIDE_ROSTER',
+      outsideSentence(report.head, args.version, outside.carried),
+      '/head',
+    );
+  }
+  const shipped = await shippedBetween(reportedHost(report), report.base, report.head);
+  const read: ReleaseShipped =
+    shipped.state === 'read' ? { ...shipped, unchecked: outside.unchecked } : shipped;
   const changed = read.state === 'read' ? { changed: report.changes } : {};
   await writeRunMetadata(args.runId, {
     merge: { [KEY]: { ...read, ...changed, reportedAt: new Date().toISOString() } },
@@ -417,6 +443,7 @@ function storedOf(value: unknown): ReleaseShipped | null {
         ? [{ name: x.name as string, required: x.required === true }]
         : [],
     ),
+    unchecked: uncheckedOf(v.unchecked),
   };
 }
 

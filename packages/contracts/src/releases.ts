@@ -1047,6 +1047,8 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_RANGE_FILE_MISSING",
 	/** A range report that sends a file the reader does not read, or one its changes do not name. */
 	"RELEASE_RANGE_FILE_UNREAD",
+	/** A range report whose head carries the landing of a gate issue outside the release's roster (ISS-962). */
+	"RELEASE_RANGE_OUTSIDE_ROSTER",
 	/** A name or summary written for a version that is neither the drafted release nor one cut. */
 	"RELEASE_VERSION_UNKNOWN",
 	/** A change-request release's declared order that is not exactly its roster's change requests. */
@@ -1064,6 +1066,7 @@ export const RELEASE_REFUSAL_STATUSES = {
 	CLAIM_CONFLICT: 409,
 	RELEASE_RANGE_NO_BASE: 409,
 	RELEASE_RANGE_BASE_MOVED: 409,
+	RELEASE_RANGE_OUTSIDE_ROSTER: 409,
 	RELEASE_VERSION_UNKNOWN: 404,
 	RELEASE_CARRY_PROVEN: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;

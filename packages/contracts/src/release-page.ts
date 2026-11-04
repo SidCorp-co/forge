@@ -746,8 +746,21 @@ export type ReleaseShipped =
 			dependencies: string[];
 			/** Environment settings a deployment file of the range names that its base did not. */
 			settings: { name: string; required: boolean }[];
+			/**
+			 * Gate issues outside the release's roster whose landing the range could not be checked
+			 * against, each with why (ISS-962); null on a reading kept before that check existed.
+			 */
+			unchecked: ReleaseRangeUnchecked[] | null;
 	  }
 	| { state: "unread"; why: string };
+
+/** A gate issue outside a release's roster whose landing its range could not be placed against, and why. */
+export interface ReleaseRangeUnchecked {
+	issueKey: string;
+	/** The commit its merge names; null where it names none. */
+	commit: string | null;
+	why: string;
+}
 
 /** The changed files of a range, as the release run's checkout names them; a rename is its old path removed and its new one added. */
 export const RELEASE_RANGE_CHANGES = ["added", "changed", "removed"] as const;
@@ -989,6 +1002,17 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 				settings: z.array(
 					z.strictObject({ name: z.string(), required: z.boolean() }),
 				),
+				// a page frozen before ISS-962 checked the gate outside its roster says it was not checked
+				unchecked: z
+					.array(
+						z.strictObject({
+							issueKey: z.string().min(1),
+							commit: z.string().nullable(),
+							why: z.string().min(1),
+						}),
+					)
+					.nullable()
+					.default(null),
 			}),
 			z.strictObject({ state: z.literal("unread"), why: z.string().min(1) }),
 		])
