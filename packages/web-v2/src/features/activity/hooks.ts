@@ -26,10 +26,18 @@ export function useOrgActivity(orgId: string | null) {
   });
 }
 
-/** One project's Recent list, read only once a person opens it. */
+/**
+ * The root of a project's Recent list: not under {@link ORG_ACTIVITY_ROOT}, which every org frame
+ * invalidates. An invalidation cancels a read in flight and starts it again, so while frames came
+ * faster than Recent answered it was never answered, and the peek showed "…" (ISS-951 round 3).
+ */
+export const ORG_ACTIVITY_RECENT_ROOT = "org-activity-recent";
+
+/** One project's Recent list, read once a person opens it, and again each time it is opened. */
 export function useProjectRecent(orgId: string | null, projectId: string, open: boolean) {
   return useQuery({
-    queryKey: [ORG_ACTIVITY_ROOT, orgId ?? "", "recent", projectId],
+    queryKey: [ORG_ACTIVITY_RECENT_ROOT, orgId ?? "", projectId],
+    staleTime: 0,
     queryFn: () => activityApi.recent(orgId as string, projectId),
     enabled: Boolean(orgId) && open,
   });

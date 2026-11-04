@@ -397,3 +397,35 @@ describe("the Activity tab's lanes", () => {
     expect(within(peek).getByTestId("activity-release").textContent).toContain("7/15");
   });
 });
+
+describe("the peek's Recent list", () => {
+  it("answers while the org's room moves faster than Recent reads: a frame does not cancel its read", async () => {
+    const calls: string[] = [];
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const path = new URL(input, "http://forge.test").pathname.replace(/^\/api/, "");
+        calls.push(path);
+        if (path === `/orgs/${ORG}/activity`) return json(read([FORGE]));
+        // Recent takes longer than the room's frames come
+        await new Promise((r) => setTimeout(r, 600));
+        return json(RECENT);
+      }),
+    );
+    const { client } = renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    fireEvent.click(rowOf("Forge"));
+    const recent = within(await screen.findByTestId("activity-peek")).getByTestId("activity-recent");
+    fireEvent.click(within(recent).getByText("Recent"));
+    const frames = setInterval(() => {
+      routeEvent({ event: "org.activity.changed", data: { orgId: ORG, projectId: "p-forge", source: "master" }, timestamp: new Date().toISOString() }, client);
+    }, 150);
+    try {
+      await waitFor(() => expect(within(recent).getAllByTestId("row-item")).toHaveLength(3), { timeout: 4_000 });
+    } finally {
+      clearInterval(frames);
+    }
+    expect(calls.filter((c) => c.endsWith("/recent")), "each frame cancelled Recent's read and started it again").toHaveLength(1);
+  }, 10_000);
+});

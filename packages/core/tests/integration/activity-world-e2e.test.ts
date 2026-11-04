@@ -363,6 +363,7 @@ describe('ISS-951 round 3 (2) a pane known only as of its last pass claims nothi
   it('a pass settled with the pane working reads idle by the pass state, not busy, and groups by its backlog', async () => {
     await db.execute(sql`
       UPDATE agent_sessions SET last_heartbeat_at = now(), metadata = metadata || ${JSON.stringify({
+        paneDialog: null,
         pane: {
           doing: 'working',
           lastEventAt: new Date(Date.now() - 10_000).toISOString(),
