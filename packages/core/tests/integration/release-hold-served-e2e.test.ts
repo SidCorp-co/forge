@@ -91,14 +91,16 @@ describe('a release hold on the issue read (criterion 1)', () => {
 });
 
 describe('a release hold on the standing (criterion 2)', () => {
-  it('reads a hold a person owes as stuck on that person, its code and reason the rule', async () => {
+  // the people a hold names, never the reader as "You": no issue asks its reader to act (ISS-687)
+  it('reads a hold a person owes as stuck on the people who clear it, its code and reason the rule', async () => {
     const held = await atGate('stuck for a person');
     await hold(held.id, NO_RELEASE_GATE_HOLD);
 
     const s = await standing(held.key);
     expect(s.releaseHold).toMatchObject({ code: 'NO_RELEASE_GATE', owes: 'human' });
     expect(s.attentionGroup).toBe('stuck');
-    expect(s.waitingOn.kind).toBe('you');
+    expect(s.waitingOn.kind).toBe('person');
+    expect(s.waitingOn.who).not.toBe('You');
     // the act is the verb that clears the hold (ISS-684), never the noun the release waits for
     expect(s.waitingOn.act).toBe('record the landing');
     expect(s.waitingOn.rule).toContain('NO_RELEASE_GATE');

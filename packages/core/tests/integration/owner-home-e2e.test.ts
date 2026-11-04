@@ -328,16 +328,31 @@ describe("an issue's act on a person's Needs you", () => {
     return (attention.needsYou as Doc[]).find((p) => p.projectSlug === decidedSlug) ?? null;
   };
 
-  it('reads a decision a read-only member cannot take as waiting on the writers, never needs_you', async () => {
-    const standing = await standingOf('reader');
+  // ISS-687 (REQ-68 BC-6): no issue waits on its reader, whoever reads it: an answer names the writers
+  // who may give it, and a draft is the master's to take on or drop
+  const readsNoIssueAsTheirs = (standing: Map<string, Doc>) => {
     for (const key of keys) {
       const s = standing.get(key);
       expect(s?.attentionGroup, key).not.toBe('needs_you');
-      expect(s?.waitingOn, key).toMatchObject({ kind: 'person' });
+      expect(s?.waitingOn.kind, key).not.toBe('you');
       expect(s?.waitingOn.who, key).not.toBe('You');
     }
-    expect(standing.get('ISS-1')?.waitingOn.act).toBe('answer a question');
-    expect(standing.get('ISS-2')?.waitingOn.act).toBe('make a decision');
+    expect(standing.get('ISS-1')?.waitingOn).toMatchObject({
+      kind: 'person',
+      act: 'answer a question',
+    });
+    expect(standing.get('ISS-2')?.waitingOn).toMatchObject({
+      kind: 'person',
+      act: 'make a decision',
+    });
+    expect(standing.get('ISS-3')?.waitingOn).toMatchObject({
+      kind: 'master',
+      act: 'take on or drop',
+    });
+  };
+
+  it('reads an answer a read-only member cannot give as waiting on the writers, and a draft on the master', async () => {
+    readsNoIssueAsTheirs(await standingOf('reader'));
   });
 
   it("counts no decision and no owed row of them on the read-only member's /attention", async () => {
@@ -354,15 +369,10 @@ describe("an issue's act on a person's Needs you", () => {
     expect((items.items as Doc[]).map((i) => i.key)).toEqual(expect.not.arrayContaining(keys));
   });
 
-  // REQ-68 BC-6: Needs you lists no issue; the run's question on ISS-1 is a decision of its own
-  it('keeps each owed by the writer who can take it, and the question on ISS-1 a decision of their Needs you', async () => {
-    const standing = await standingOf('writer');
-    for (const key of keys) {
-      expect(standing.get(key), key).toMatchObject({
-        attentionGroup: 'needs_you',
-        waitingOn: { kind: 'you', who: 'You' },
-      });
-    }
+  // REQ-68 BC-6: Needs you lists no issue; the run's question on ISS-1 is a decision of its own, and
+  // the writer who may answer it reads the issue as waiting on the writers by name, never as theirs
+  it("reads no issue as the writer's own, and keeps the question on ISS-1 a decision of their Needs you", async () => {
+    readsNoIssueAsTheirs(await standingOf('writer'));
     const part = await attentionOf('writer');
     const decisions = (part?.decisions as Doc[] | undefined) ?? [];
     expect(decisions.map((d) => d.key)).toContain(questionId);
