@@ -50,6 +50,10 @@ import { Written } from "@/lib/i18n/written";
 import { useReportShown } from "@/design/hooks/use-page-shown";
 import { WaitingFilter } from "@/features/chat-dock";
 
+
+/** What an issue can wait on: an agent or a running job, never its reader (ISS-687). */
+const ISSUE_WAITING_FILTERS: readonly UiWaitingFilter[] = ["agent", "running"];
+
 type BoardMode = "attention" | "module" | "waves";
 
 const QUICK = ["blocked", "blocking"] as const;
@@ -294,7 +298,7 @@ function Toolbar({ data, scope, search, quick, onQuick, waiting, children }: {
         onChange={(v) => set({ filter: v === "open" ? null : v, peek: null })}
       />
       <ListSearch noun={t("issues.board.searchNoun")} {...search} />
-      <WaitingFilter value={waiting ?? undefined} />
+      <WaitingFilter value={waiting ?? undefined} kinds={ISSUE_WAITING_FILTERS} />
       {chips.map((c) => (
         <FilterChip key={c.id} on={quick.has(c.id)} onToggle={() => onQuick(c.id)} count={c.count ?? 0} testId={`quick-${c.id}`}>
           {c.label}

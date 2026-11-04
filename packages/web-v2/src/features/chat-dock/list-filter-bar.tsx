@@ -38,13 +38,23 @@ function setListParam(field: UiFilterField, value: string | null): void {
 
 const WAITING_PARAM = UI_FILTER_PARAMS.waitingOn;
 
-/** Anyone · You · An agent · Running: whom a row waits on, read from its standing (BC-5). */
-export function WaitingFilter({ value }: { value: UiWaitingFilter | undefined }) {
+/**
+ * Anyone · You · An agent · Running: whom a row waits on, read from its standing (BC-5). `kinds` is
+ * what the list's rows can wait on, so no pill offers a value that can match nothing (ISS-687: no
+ * issue waits on its reader).
+ */
+export function WaitingFilter({
+  value,
+  kinds = UI_WAITING_FILTERS,
+}: {
+  value: UiWaitingFilter | undefined;
+  kinds?: readonly UiWaitingFilter[];
+}) {
   const t = useCopy();
   const assistantSet = useAssistantSetFilter();
   const options: { v: UiWaitingFilter | null; label: string }[] = [
     { v: null, label: t("conversations.list.waiting.any") },
-    ...UI_WAITING_FILTERS.map((v) => ({ v, label: t(`conversations.list.waiting.${v}`) })),
+    ...kinds.map((v) => ({ v, label: t(`conversations.list.waiting.${v}`) })),
   ];
   return (
     <fieldset className="m-0 flex items-center gap-1 border-0 p-0" data-testid="waiting-filter">

@@ -142,13 +142,14 @@ describe("the Issues list filters by whom an issue waits on (BC-5)", () => {
     expect(JSON.parse(screen.getByTestId("snapshot").textContent ?? "{}")).toMatchObject({ route: "issues", filter: { waitingOn: "agent" }, shown: ["ISS-2"] });
   });
 
-  it("narrows by running from the person's own pills, and You keeps no issue", async () => {
+  it("narrows by running from the person's own pills, and offers no You pill, since no issue waits on its reader (ISS-687)", async () => {
     page("/projects/demo/issues");
     await waitFor(() => expect(shownRows()).toEqual(["ISS-3", "ISS-1", "ISS-2"]));
-    fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "Running" }));
+    const pills = within(screen.getByTestId("waiting-filter"));
+    expect(pills.queryByRole("button", { name: "You" })).toBeNull();
+    expect(pills.getByRole("button", { name: "An agent" })).toBeInTheDocument();
+    fireEvent.click(pills.getByRole("button", { name: "Running" }));
     await waitFor(() => expect(shownRows()).toEqual(["ISS-3"]));
-    fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "You" }));
-    await waitFor(() => expect(shownRows()).toEqual([]));
     fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "All" }));
     await waitFor(() => expect(shownRows()).toEqual(["ISS-3", "ISS-1", "ISS-2"]));
   });
