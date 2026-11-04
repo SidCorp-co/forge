@@ -1,3 +1,4 @@
+import type { DesignOwed } from '@forge/contracts/design-owed';
 import { verbatim } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import { KERNEL_DECIDER_NAME, type PinOnlyChange } from '@forge/contracts/workflows';
@@ -78,7 +79,7 @@ export async function approverRefusalFor(
   );
 }
 
-async function rowIn(projectId: string, id: string): Promise<StoredWorkflow> {
+export async function rowIn(projectId: string, id: string): Promise<StoredWorkflow> {
   const row = await readWorkflow(db, id);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${id}`);
@@ -100,7 +101,16 @@ function pinOnlyOf(
   return pinOnlyChange(approved, proposed, findTemplate(templates ?? [], proposed.template));
 }
 
-export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
+/**
+ * The design as its page and every design act answer it. `owed` is what it owes a person past its
+ * step (`design-read.ts:designOwedOf`), read only by the page's own read: where it is left out, the
+ * wait is the step's alone.
+ */
+export async function designView(
+  row: StoredWorkflow,
+  viewer: WorkflowWriter | null,
+  owed: DesignOwed | null = null,
+) {
   // who decides it, as the project's approvals.designs stands: the approve permission, or the write one
   const approver = (await personGateOf(row.projectId, 'designs')).permission;
   const [designs, builds, prefix, requirements, held, templates] = await Promise.all([
@@ -154,6 +164,7 @@ export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | n
       latest,
       canDecide,
       baseUnapproved: blocked,
+      owed,
     }),
     // what the approver reads before Approve: a refusal core already knows, and the designs it strands
     approvalBlocked: blocked
@@ -198,11 +209,6 @@ export async function designView(row: StoredWorkflow, viewer: WorkflowWriter | n
     requirements,
     matchingRequirement: await matchingRequirementOf(row, requirements.length),
   };
-}
-
-export async function readDesignAs(viewer: WorkflowWriter, projectId: string, id: string) {
-  await requireDeclaredOn(projectId, viewer.userId, 'project.read');
-  return designView(await rowIn(projectId, id), viewer);
 }
 
 export async function proposeDesign(input: {

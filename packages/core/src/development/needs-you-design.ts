@@ -4,10 +4,10 @@
  * the health markers waiting on a person.
  */
 
+import { repinOwedWait, settleOwedWait } from '@forge/contracts/design-owed';
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';
 import { say, verbatim } from '@forge/contracts/said';
 import type { Standing } from '@forge/contracts/standing';
-import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import type { DesignRepinGroup } from './ports.js';
 import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
@@ -32,25 +32,14 @@ export function repinRowOf(group: DesignRepinGroup, canDecide: boolean): DesignR
     its: n === 1 ? 'its' : 'their',
     r: group.revision,
   });
-  const act = say('designs.act.repinBatch', {
-    n,
-    changes: n === 1 ? 'change' : 'changes',
-    r: group.revision,
-  });
-  const rule = say('designs.rule.repinBatch', { flow: group.flow, r: group.revision });
   return {
     entity: 'workflow',
     key: group.flow,
     ...composedTitle(title),
     standing: {
       attentionGroup: 'needs_you',
-      waitingOn: canDecide
-        ? waitingOn('you', { who: say('standing.who.you'), act, rule })
-        : waitingOn('person', {
-            who: say('standing.who.holderOf', { perm: 'workflow-designs.approve' }),
-            act,
-            rule,
-          }),
+      // the one wait the design's own page says too (`@forge/contracts/design-owed`)
+      waitingOn: repinOwedWait({ flow: group.flow, revision: group.revision, n }, canDecide),
     },
     touchedAt: group.approvedAt,
   };
@@ -76,18 +65,7 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
     ...writtenTitle(h.title ?? h.flow, null),
     standing: {
       attentionGroup: 'needs_you',
-      waitingOn: waitingOn(
-        'person',
-        {
-          who: say('designs.who.aPerson'),
-          act: say('designs.act.settleMarkers', {
-            n: h.needsYou,
-            places: h.needsYou === 1 ? 'place' : 'places',
-          }),
-          rule: say('designs.rule.needsYou'),
-        },
-        { ref: h.flow },
-      ),
+      waitingOn: settleOwedWait(h.needsYou, h.flow),
     },
     touchedAt: h.markers.reduce<string | null>(
       (at, m) => (m.since && (!at || m.since > at) ? m.since : at),

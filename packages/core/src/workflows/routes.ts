@@ -16,13 +16,13 @@ import {
   zValidator,
 } from '../middleware/zod-validator.js';
 import { DESIGN_DECISIONS } from './design.js';
+import { readDesignAs } from './design-read.js';
 import { readRepinPlanAs, repinAs } from './design-repin-service.js';
 import {
   type DesignOutcome,
   decideDesignAs,
   linkBuildAs,
   proposeDesign,
-  readDesignAs,
   withdrawDesignAs,
 } from './design-service.js';
 import { readWorkflowHealthAs } from './health-read.js';

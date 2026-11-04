@@ -1,3 +1,4 @@
+import { type DesignOwed, owedWait } from '@forge/contracts/design-owed';
 import type { DesignRevisionState, DesignStatus } from '@forge/contracts/design-status';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
@@ -20,6 +21,11 @@ interface DesignHeadFacts {
 interface DesignStandingInput extends DesignHeadFacts {
   latest: { revision: number; author: string | null } | null;
   canDecide: boolean;
+  /**
+   * What the design owes a person past its step, as Needs you lists it (`@forge/contracts/design-owed`):
+   * where its step owes nobody, this is what it waits on. Left out where the reader does not read it.
+   */
+  owed?: DesignOwed | null;
   /** The refusal approving the proposed revision would meet on its bases now (`standingBaseRefusal`). */
   baseUnapproved?: { revision: number; bases: readonly DesignBaseFault[] } | null;
 }
@@ -83,8 +89,17 @@ function baseApprovalWait(
 // Whose turn a design is, first rule wins: proposed on a base proposed at its pin → the base's
 // approver; proposed on a base it must be re-pinned off → its writer; proposed → its approver (you
 // when you may decide); returned → the project's master, which `owed-designs.ts` carries it to; draft → the writer drawing
-// it; approved, withdrawn or not under approval → nobody
+// it; approved, withdrawn or not under approval → nobody, unless it owes a person past its step: the
+// pin-only changes its approval left, or places its code and design differ (`owedWait`), the wait
+// Needs you lists on it, so the page never says nothing is next while Needs you counts what is owed
 export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
+  const step = stepWaitingOn(input);
+  if (step.kind !== 'none' || !input.owed) return step;
+  return owedWait(input.owed, input.canDecide) ?? step;
+}
+
+/** Whose turn the design's own step is, first rule wins (above). */
+function stepWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   const latest = input.latest?.revision ?? null;
   const author = input.latest?.author;
   const writer = author ? say('standing.who.named', { name: author }) : say('standing.who.master');

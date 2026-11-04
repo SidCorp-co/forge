@@ -1,5 +1,6 @@
 // @direct-test-of packages/core/src/workflows/routes.ts
 // @direct-test-of packages/core/src/workflows/route-declarations.ts
+// @direct-test-of packages/core/src/workflows/design-read.ts
 /**
  * The HOP shape (2026-10-07/08): approving access at a new revision left six approved designs on its
  * old revision, and each was re-proposed and approved one by one though only its pin moved. One act
@@ -210,6 +211,12 @@ describe('a base approved at a new revision, with designs that only need their p
       title: '6 designs only need their pin moved → r2',
       waitingOn: { kind: 'you' },
     });
+    // the base's own page says the same wait Needs you lists on it, never "Nobody" (ISS-687 round 4:
+    // Issue lifecycle read "Nobody · nothing next" beside "Approve 4 pin-only changes" on dev.489)
+    const base = await read('access');
+    expect(base.status).toBe('approved');
+    expect(base.waitingOn).toMatchObject({ kind: 'you', act: 'approve 6 pin-only changes → r2' });
+    expect(base.waitingOn).toEqual(designs.find((i: Doc) => i.key === 'access').waitingOn);
 
     const named = (flows: readonly string[]) =>
       flows.map((flow) => {
@@ -264,6 +271,7 @@ describe('a base approved at a new revision, with designs that only need their p
 
     const after = await plan();
     expect(after.ready).toEqual([]);
+    expect((await read('access')).waitingOn.kind).toBe('none');
     expect(after.refused.map((r: Doc) => r.flow)).toEqual(['billing-ux']);
     const settled = ok(await say('owner', 'GET', at('/needs-you')));
     expect(settled.items.filter((i: Doc) => i.area === 'designs').map((i: Doc) => i.key)).toEqual([

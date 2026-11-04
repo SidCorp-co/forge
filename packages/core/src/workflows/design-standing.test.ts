@@ -1,5 +1,7 @@
 import { saidDisagreements } from '@forge/contracts/said';
+import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
+import { designRowOf, repinRowOf } from '../development/needs-you-design.js';
 import { designWaitingOn } from './design-standing.js';
 
 // A proposed design resting on a base not approved at the revision it names waits on its writer, and
@@ -99,5 +101,81 @@ describe('a proposed design on a base proposed at the revision it pins', () => {
     const w = designWaitingOn(mixed);
     expect(w.kind).toBe('agent');
     expect(w.says.act.key).toBe('designs.act.repin');
+  });
+});
+
+// ISS-687 round 4 (judge run d47d6de0 at dev.489, c2 short): Issue lifecycle's page read "Waits on:
+// Nobody · nothing next" beside "Needs you 2" and "Approve 4 pin-only changes", while Needs you listed
+// "Issue lifecycle · next: decide 2 places where the code and the design differ". An approved design's
+// line says what it still owes a person, in the very words Needs you lists it by, and "Nobody" only
+// where nothing is owed. Planted red by dropping `owed` from `designWaitingOn`: the line reads Nobody.
+describe("an approved design's line agrees with what Needs you counts on it", () => {
+  const approved = {
+    status: 'approved' as const,
+    proposedRevision: null,
+    approvedRevision: 20,
+    latest: { revision: 20, author: null },
+    canDecide: true,
+  };
+  const health = {
+    flow: 'issue-lifecycle',
+    needsYou: 2,
+    markers: [],
+    proposal: null,
+  } as unknown as WorkflowHealth;
+  const group = {
+    baseId: 'wf-issue-lifecycle',
+    flow: 'issue-lifecycle',
+    title: 'Issue lifecycle',
+    revision: 20,
+    ready: ['a', 'b', 'c', 'd'].map((flow, i) => ({
+      workflowId: `wf-${flow}`,
+      flow,
+      source: 'approved' as const,
+      revision: 1 + i,
+      approves: 2 + i,
+      pins: [{ workflow: 'issue-lifecycle', from: 19, to: 20 }],
+    })),
+    refused: 0,
+    approvedAt: '2026-11-04T00:00:00.000Z',
+  };
+
+  it('names the places to decide, as the Needs you row on the design does', () => {
+    const line = designWaitingOn({
+      ...approved,
+      owed: { flow: 'issue-lifecycle', repin: null, settle: 2 },
+    });
+    const row = designRowOf(health)?.standing.waitingOn;
+    expect(line).toEqual(row);
+    expect(`${line.who} · ${line.act}`).toBe(
+      'A person · decide 2 places where the code and the design differ',
+    );
+    expect(saidDisagreements(line)).toEqual([]);
+  });
+
+  it('names the pin-only changes first, as the re-pin row on Needs you does', () => {
+    const owed = {
+      flow: 'issue-lifecycle',
+      repin: { flow: 'issue-lifecycle', revision: 20, n: 4 },
+      settle: 2,
+    };
+    const line = designWaitingOn({ ...approved, owed });
+    expect(line).toEqual(repinRowOf(group, true).standing.waitingOn);
+    expect(line.act).toBe('approve 4 pin-only changes → r20');
+  });
+
+  it('reads Nobody · nothing only where nothing is owed, and a step that owes somebody keeps its own wait', () => {
+    const none = designWaitingOn({
+      ...approved,
+      owed: { flow: 'issue-lifecycle', repin: null, settle: 0 },
+    });
+    expect(none.kind).toBe('none');
+    const proposed = designWaitingOn({
+      ...approved,
+      status: 'proposed',
+      proposedRevision: 21,
+      owed: { flow: 'issue-lifecycle', repin: null, settle: 2 },
+    });
+    expect(proposed.act).toBe('approve or return the design');
   });
 });

@@ -9,8 +9,14 @@
  * neither who the design waits on nor what is next, though core said Nobody. Where it stands now
  * carries that one line for every design, "Nobody · nothing next" where nobody owes a step. Planted
  * red by leaving `WaitsOnMark` out of the panel.
+ * ISS-687 round 4, judged short at dev.489: Issue lifecycle read "Waits on: Nobody · nothing next"
+ * beside "Needs you 2" and "Approve 4 pin-only changes". An approved design's line is what core says
+ * it still owes a person, in the words Needs you lists it by (`@forge/contracts/design-owed`); the step
+ * stays the header's pill, said once (REQ-43 BC-5). Planted red by core's round-2 line ("Nobody").
+ * @direct-test-of packages/web-v2/src/features/workflows/components/workflow-where-it-stands.tsx
  * @direct-test-of packages/web-v2/src/features/workflows/components/workflow-design-facts.tsx
  */
+import { repinOwedWait, settleOwedWait } from "@forge/contracts/design-owed";
 import { verbatim } from "@forge/contracts/said";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
@@ -49,6 +55,7 @@ const designAt = (status: WorkflowDesign["status"], wait: WorkflowDesign["waitin
   }) as unknown as WorkflowDesign;
 
 let shown: WorkflowDesign;
+let health: unknown;
 
 vi.mock("../hooks", async (importOriginal) => {
   const q = (data: unknown) => ({ data, isLoading: false, error: null });
@@ -57,13 +64,14 @@ vi.mock("../hooks", async (importOriginal) => {
     useWorkflows: () => q({ workflows: [record], returned: 1, canWrite: false }),
     useWorkflowTemplates: () => q({ templates: [] }),
     useWorkflowDesign: () => q(shown),
-    useWorkflowHealth: () => q(undefined),
+    useWorkflowHealth: () => q(health),
     useDesignDecision: () => ({ mutate: vi.fn(), isPending: false, error: null }),
   };
 });
 
-const open = (d: WorkflowDesign) => {
+const open = (d: WorkflowDesign, h: unknown = undefined) => {
   shown = d;
+  health = h;
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <WorkflowDesignScreen projectId="p-1" slug="acme" flow="intake" />
@@ -120,5 +128,24 @@ describe("the workflow page's Where it stands says who the design waits on and w
     open(designAt("returned", waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("designs.act.reviseR", { r: 2 }), rule: RULE })));
     expect(line()).toHaveTextContent("Ana · revise revision 2");
     expect((line().textContent ?? "").split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(10);
+  });
+});
+
+describe("the workflow page's line agrees with what Needs you counts on the design (ISS-687 round 4)", () => {
+  const line = () => screen.getByTestId("stands-waits-on");
+
+  it("says the places to decide on an approved design, beside the same count, its step in the header", () => {
+    open(designAt("approved", settleOwedWait(2, "intake")), { needsYou: 2, markers: [], nodes: [], counts: {}, rooted: { rooted: false, missing: [] }, observation: null, reconciliation: { state: "unreconciled" } });
+    // the step is the header's pill, said once on the page (REQ-43 BC-5)
+    expect(screen.getAllByTestId("design-pill")[0]).toHaveTextContent("Approved");
+    expect(screen.queryByTestId("stands-step")).toBeNull();
+    expect(line()).toHaveTextContent("A person · decide 2 places where the code and the design differ");
+    expect(line()).not.toHaveTextContent("Nobody");
+    expect(screen.getByTestId("stands-needs-you")).toHaveTextContent("2");
+  });
+
+  it("says the pin-only changes to approve on an approved design they follow", () => {
+    open(designAt("approved", repinOwedWait({ flow: "intake", revision: 2, n: 4 }, true)));
+    expect(line()).toHaveTextContent("You · approve 4 pin-only changes → r2");
   });
 });
