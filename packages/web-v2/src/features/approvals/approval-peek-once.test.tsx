@@ -21,7 +21,7 @@ const decision = (subject: NeedsYouDecision["subject"]): NeedsYouDecision => ({
   entity: "question",
   key: "ISS-41",
   title: "Pick the dashboard's first row",
-  opens: { kind: "issue", key: "ISS-41" },
+  opens: { kind: "requirement", key: "REQ-41" },
   question: "Which row leads the dashboard?",
   changes: "What happens next on it",
   impact: "It waits on this until it is decided.",
@@ -37,7 +37,7 @@ const decision = (subject: NeedsYouDecision["subject"]): NeedsYouDecision => ({
   proposal: null,
   evidence: { requirement: { key: "REQ-41", title: "The dashboard reads as state", revision: 3 }, criteria: { count: 2, codes: [] } },
   ...(subject ? { subject } : {}),
-}) as NeedsYouDecision;
+});
 
 const peek = { open: "question:q41", position: { at: 1, of: 1 }, set: () => {}, move: () => {} };
 
