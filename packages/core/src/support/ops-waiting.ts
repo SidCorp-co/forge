@@ -1,12 +1,16 @@
 // What a parked issue waits on, as a room's tracker read hands it to the agent (ISS-877): the open
-// question in the asker's words with its options, and who owes the answer. Nothing here decides who
-// owes what: the wait is the issue's own standing (`issues/standing.ts`), the question rows are the
+// question in the asker's words with its options, and who owes the answer. The wait is the issue's own
+// standing (`issues/standing.ts`); where that waits on an answer, which names nobody on the issue,
+// the people owing it are the project's writers, as the answer route asks. The question rows are the
 // open person questions Needs you reads (`questions/needs-you-read.ts`), and a park asked only in
 // the thread is its park view (`issues/park-view.ts`). Plain words stand beside every id, so an
 // agent tells a person what they owe without sending them to look it up.
 
+import { type SaidKey, say, sayEn } from '@forge/contracts/said';
+import { holdersWho, type WaitingOn } from '@forge/contracts/standing';
 import { isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import { issueWaitsOf, loadIssuePark } from '../issues/index.js';
+import { holderNames } from '../permissions/index.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
 
 /** One option of an open question: the id `answer_question` takes, and what it says. */
@@ -69,6 +73,24 @@ function questionOf(q: OpenPersonQuestion): WaitingQuestion {
   };
 }
 
+/** What the people who may answer owe, by what the issue waits on (`issues/standing.ts:OWED`). */
+const OWES: Readonly<Record<string, SaidKey>> = {
+  'issues.standing.who.answer': 'issues.standing.act.answer',
+  'issues.standing.who.decision': 'issues.standing.act.decide',
+  'issues.standing.who.supply': 'issues.standing.act.supply',
+};
+
+/**
+ * Who owes a wait and what, for the room's agent to tell them: an issue waiting on an answer names
+ * nobody on its own page (REQ-68 BC-6, ISS-687), so the agent is told the people who may give it,
+ * the project's writers (the answer route's floor), and the act; any other wait as it is said.
+ */
+function owedBy(wait: WaitingOn, writers: readonly string[]): { who: string; owes: string } {
+  if (wait.kind !== 'answer') return { who: wait.who, owes: wait.act };
+  const act = OWES[wait.says.who.key] ?? 'issues.standing.act.answer';
+  return { who: sayEn(holdersWho(writers)), owes: sayEn(say(act)) };
+}
+
 /**
  * Each of `rows` that waits on a person's answer — parked at `needs_info`, or holding an open
  * question a person owes — with what it waits on, keyed by issue id. Other rows are absent.
@@ -86,10 +108,13 @@ export async function waitingOf(
   const waiting = rows.filter((r) => r.status === 'needs_info' || asked.has(r.id));
   if (waiting.length === 0) return new Map();
   // no viewer: the read is the room's, so a person's wait names the people who owe it, never "You"
-  const standing = await issueWaitsOf(
-    projectId,
-    waiting.map((r) => r.id),
-  );
+  const [standing, writers] = await Promise.all([
+    issueWaitsOf(
+      projectId,
+      waiting.map((r) => r.id),
+    ),
+    holderNames('project.write', projectId),
+  ]);
   const out = new Map<string, IssueWaiting>();
   await Promise.all(
     waiting.map(async (r) => {
@@ -97,8 +122,7 @@ export async function waitingOf(
       if (!wait) return;
       const park = await loadIssuePark(r.id);
       out.set(r.id, {
-        who: wait.who,
-        owes: wait.act,
+        ...owedBy(wait, writers),
         questions: (asked.get(r.id) ?? []).map(questionOf),
         reason: park?.threadQuestion?.prompt ?? park?.reason ?? null,
       });

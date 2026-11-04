@@ -41,11 +41,13 @@ import { landedWait } from './strand-rules.js';
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
 const DONE: readonly string[] = ISSUE_TERMINAL_STATUSES;
 
-const NEEDS_INFO_ACT: Record<string, Said> = {
-  needs_answer: say('issues.standing.act.answer'),
-  needs_decision: say('issues.standing.act.decide'),
-  needs_resource: say('issues.standing.act.supply'),
+/** What a parked issue waits on, by the kind of park: the thing owed, never who owes it or their act. */
+const OWED: Record<string, Said> = {
+  needs_answer: say('issues.standing.who.answer'),
+  needs_decision: say('issues.standing.who.decision'),
+  needs_resource: say('issues.standing.who.supply'),
 };
+const ANSWER = say('issues.standing.who.answer');
 
 export interface StandingEdge {
   /** The other issue's id, key, title and status. */
@@ -121,6 +123,7 @@ export type IssueWaitingOn = WaitingOn<IssueWaitingKind>;
 
 const MASTER = say('standing.who.master');
 const NOBODY = say('standing.who.nobody');
+const NO_ACT = say('standing.act.none');
 const named = (name: string) => say('standing.who.named', { name });
 
 const minutesSince = (from: Date | null, now: Date) =>
@@ -129,11 +132,9 @@ const minutesSince = (from: Date | null, now: Date) =>
 type People = Pick<IssueStandingInput, 'writers'>;
 
 /**
- * Whose a person's answer is: its holders' by name, grouped `queued` as a wait on them, never on the
- * viewer, since no issue asks its reader to act (REQ-68 BC-6: the answer is asked as a decision on
- * the item the issue serves, in Needs you); else nobody's, said with where the permission is
- * granted, never "A project writer" naming no one (FB-104). An answer asks project.write (the answer
- * route's floor, `questions/routes.ts`).
+ * A person's act the release owes, by its holders' names, grouped `queued` as a wait on them, never on
+ * the viewer; else nobody's, said with where the permission is granted, never "A project writer"
+ * naming no one (FB-104). It asks project.write.
  */
 function forPerson(
   people: People,
@@ -156,12 +157,36 @@ function forPerson(
   return { group: 'queued', waitingOn: wait('person', holdersWho(holders), act, rule) };
 }
 
+/**
+ * A question a person owes, as the issue reads it: it waits on the answer (or the decision, or what is
+ * supplied), never on a person's act and never naming who gives it. The question is asked where it
+ * lives, as a decision in Needs you on the requirement or feedback item it is about, else as the
+ * project's question (REQ-68 BC-4, BC-6; ISS-687's judge at dev.485 read "orchestrator, qa · answer
+ * a question" on four parked rows). Queued while someone holds project.write, the answer route's
+ * floor (`questions/routes.ts`); stuck where nobody does, the rule naming where it is granted.
+ */
+function answerTurn(people: People, owed: Said, rule: Said): Turn {
+  const permission = 'project.write' as const;
+  if (people.writers.length === 0) {
+    return {
+      group: 'stuck',
+      waitingOn: wait(
+        'answer',
+        owed,
+        NO_ACT,
+        say('issues.rule.noWriter', { rule, perm: permission }),
+      ),
+    };
+  }
+  return { group: 'queued', waitingOn: wait('answer', owed, NO_ACT, rule) };
+}
+
 const held = (lease: IssueLeaseView | null) =>
   lease !== null && (lease.verdict === 'live' || lease.verdict === 'shared');
 
 // whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused, the master
-// resuming it; needs_info or an open human question → the people who may answer, by name, never the
-// reader (the question is asked on the item the issue serves); draft → its live blocker first, else
+// resuming it; needs_info or an open human question → the answer it waits on, naming no person and
+// no act (the question is asked in Needs you, on the item it is about); draft → its live blocker first, else
 // the master takes it on or drops it; awaiting_release → the hold the
 // automatic release recorded where one stands (ISS-577), else the master while a criterion no longer passes or no note is written, else
 // a person approves where the project requires it, else queued for the release; a live lease or a job in flight →
@@ -183,12 +208,7 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
   const reason = park.reason?.trim();
   const why = reason ? verbatim(reason) : say('issues.rule.noReason');
   if (input.owesAnswer) {
-    const r = forPerson(
-      input,
-      say('issues.standing.act.answer'),
-      say('issues.rule.parkedAsked', { why }),
-    );
-    return { group: r.group, waitingOn: r.waitingOn };
+    return answerTurn(input, ANSWER, say('issues.rule.parkedAsked', { why }));
   }
   const blocker = input.blockedBy.find((b) => b.holds);
   if (blocker) {
@@ -260,15 +280,9 @@ function personTurn(input: IssueStandingInput): Turn | null {
     return answeredParkTurn(input.answered);
   }
   if (status === 'needs_info') {
-    return forPerson(
-      input,
-      NEEDS_INFO_ACT[input.waitingKind ?? ''] ?? say('issues.standing.act.answer'),
-      say('issues.rule.needsInfo'),
-    );
+    return answerTurn(input, OWED[input.waitingKind ?? ''] ?? ANSWER, say('issues.rule.needsInfo'));
   }
-  if (input.owesAnswer) {
-    return forPerson(input, say('issues.standing.act.answer'), say('issues.rule.runAsked'));
-  }
+  if (input.owesAnswer) return answerTurn(input, ANSWER, say('issues.rule.runAsked'));
   if (status === 'draft') {
     // a draft behind a live blocker waits on that blocker first, not on a person's Needs you
     const blocker = input.blockedBy.find((b) => b.holds);

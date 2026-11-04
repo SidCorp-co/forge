@@ -5,7 +5,7 @@ import { saidDisagreements } from '@forge/contracts/said';
 // project's writers, or says that no person holds write and where an admin grants it.
 // ISS-687 (REQ-68 BC-4, BC-6): no issue asks its reader to act. Judge K163 read the Issues list's
 // Needs you group asking "You · take on or drop", "You · resume once", "You · answer a question" and
-// "You · make a decision"; a draft and a resume are the master's now, and an answer names its people.
+// "You · make a decision"; a draft and a resume are the master's now, and an answer owed names nobody.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { describe, expect, it } from 'vitest';
@@ -63,43 +63,50 @@ const parked = (writers: string[], waitingKind: string) => ({
   waitingKind,
 });
 
-describe("a person's answer names who can give it", () => {
-  it('names the one writer, or each of a few, and counts the rest', () => {
-    expect(deriveIssueStanding(parked(['Ana'], 'needs_answer')).waitingOn).toMatchObject({
-      kind: 'person',
-      who: 'Ana',
-      act: 'answer a question',
-    });
-    expect(deriveIssueStanding(parked(['Ana', 'Bo'], 'needs_answer')).waitingOn.who).toBe(
-      'Ana, Bo',
-    );
-    expect(
-      deriveIssueStanding(parked(['Ana', 'Bo', 'Chi', 'Dao', 'Em'], 'needs_answer')).waitingOn.who,
-    ).toBe('Ana, Bo, Chi +2');
+// ISS-687 round 2 (judge run 6c6e24b4 at dev.485): four parked rows still read "orchestrator, qa ·
+// answer a question" and ISS-643's page "Orchestrator and QA must answer the question". An issue a
+// person owes an answer waits on the answer, naming no person and no act; the question is asked in
+// Needs you, on the item it is about. Planted red by putting back the holders' names and the act.
+describe('a question a person owes reads as the answer the issue waits on, naming no one', () => {
+  it.each([
+    ['needs_answer', 'An answer'],
+    ['needs_decision', 'A decision'],
+    ['needs_resource', 'Something supplied'],
+  ])('a needs_info park (%s) waits on %s, queued, with no act and no name', (kind, owed) => {
+    const s = deriveIssueStanding(parked(['Ana', 'Bo'], kind));
+    expect(s.attentionGroup).toBe('queued');
+    expect(s.waitingOn).toMatchObject({ kind: 'answer', who: owed, act: '' });
+    expect(JSON.stringify(s.waitingOn)).not.toMatch(/Ana|Bo\b|answer a question|make a decision/);
   });
 
-  it('says no person holds write, and where it is granted, when nobody does', () => {
-    const s = deriveIssueStanding(parked([], 'needs_answer'));
-    expect(s.attentionGroup).toBe('stuck');
-    expect(s.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
-    expect(s.waitingOn.act).toBe(
-      'answer a question: nobody holds project.write; grant it under Settings → Members',
-    );
-  });
-
-  it.each(['needs_answer', 'needs_decision', 'needs_resource'])(
-    'groups a needs_info park (%s) as waiting on the writers, never needs_you',
-    (kind) => {
-      const s = deriveIssueStanding(parked(['Ana'], kind));
-      expect(s.attentionGroup).toBe('queued');
-      expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ana' });
-    },
-  );
-
-  it('groups a question a run asked as waiting on the writers, never needs_you', () => {
+  it('a question a run asked waits on an answer, never on the writers', () => {
     const s = deriveIssueStanding({ ...input('in_progress', ['Ana']), owesAnswer: true });
     expect(s.attentionGroup).toBe('queued');
-    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ana', act: 'answer a question' });
+    expect(s.waitingOn).toMatchObject({ kind: 'answer', who: 'An answer', act: '' });
+  });
+
+  it('a run that parked it on_hold with a question waits on an answer too', () => {
+    const s = deriveIssueStanding({
+      ...input('on_hold', ['Ana']),
+      owesAnswer: true,
+      park: { reason: 'which plan applies?', byAgent: true },
+    });
+    expect(s.waitingOn).toMatchObject({ kind: 'answer', who: 'An answer', act: '' });
+  });
+
+  it('reads stuck where nobody holds write, the rule saying where it is granted, still naming no act', () => {
+    const s = deriveIssueStanding(parked([], 'needs_answer'));
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.waitingOn).toMatchObject({ kind: 'answer', who: 'An answer', act: '' });
+    expect(s.waitingOn.rule).toContain('no person holds project.write');
+  });
+
+  it('falls overdue as the answer being due, never as someone who owed it', () => {
+    const since = new Date('2026-09-01T10:00:00Z');
+    const s = deriveIssueStanding({ ...parked(['Ana'], 'needs_answer'), statusSince: since });
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.times.stuck?.code).toBe('overdue');
+    expect(s.times.stuck?.reason).toMatch(/^An answer was due by \d{4}-\d{2}-\d{2}\.$/);
   });
 });
 

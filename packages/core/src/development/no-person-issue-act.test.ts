@@ -11,6 +11,10 @@
 // the issue page drew a primary Run pipeline and a Pause. No issue's standing groups Needs you or
 // names its reader, and the issue page's own files hold no move, run, pause, resume or release.
 // Planted red by putting `needs_you` back in `ISSUE_ATTENTION_GROUPS` and the old header back.
+// Fix round 2 (judge run 6c6e24b4 at dev.485): four needs_info rows still read "orchestrator, qa ·
+// answer a question". An issue's standing writers say no person's act on a question at all: it waits
+// on the answer (`issues/standing.ts:answerTurn`), and the steward's notes are told the same. Planted
+// red by putting `issues.standing.act.answer` back in the needs_info turn.
 //
 // @direct-test-of packages/contracts/src/issue-standing.ts
 // @direct-test-of packages/contracts/src/modules.ts
@@ -22,6 +26,8 @@
 // @direct-test-of packages/core/src/mcp/registry.ts
 // @direct-test-of packages/core/src/mcp/server.ts
 // @direct-test-of packages/core/src/product-door/issues-tool.ts
+// @direct-test-of packages/core/src/issues/standing.ts
+// @direct-test-of packages/core/src/steward/prompts.ts
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -40,6 +46,7 @@ import type { McpContext } from '../lib/tool.js';
 import { actionCatalog } from '../mcp/action-catalog.js';
 import { forgeMcpInstructions, mcpTools } from '../mcp/server.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
+import { actPrompt } from '../steward/prompts.js';
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '../../../web-v2/src');
 
@@ -254,5 +261,30 @@ describe('no product MCP door moves an issue', () => {
     const text = forgeMcpInstructions();
     expect(text).toContain('no door here admits, moves or links an issue');
     expect(text).not.toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
+  });
+});
+
+describe("no issue's standing says a person's act on a question (fix round 2)", () => {
+  const CORE = join(dirname(fileURLToPath(import.meta.url)), '..');
+  // what a person owes on a question, as an act: Needs you's own row and a requirement may say it
+  const ANSWER_ACTS = /issues\.standing\.act\.(answer|answerOther|decide|supply)'/;
+  const writers = readdirSync(join(CORE, 'issues'))
+    .filter((n) => /^standing.*\.ts$/.test(n) && !n.endsWith('.test.ts'))
+    .map((n) => join(CORE, 'issues', n));
+
+  it('walks every issue standing writer', () => {
+    expect(writers.map((f) => relative(CORE, f))).toContain('issues/standing.ts');
+    expect(writers.length).toBeGreaterThan(5);
+  });
+
+  it('says no answer, decision or supply act in any of them', () => {
+    const found = writers.filter((f) => ANSWER_ACTS.test(readFileSync(f, 'utf8')));
+    expect(found.map((f) => relative(CORE, f))).toEqual([]);
+  });
+
+  it('tells the steward a note on an issue names nobody who must act on it', () => {
+    expect(actPrompt('note')).toContain(
+      'A note on an issue never names a person who must act on it',
+    );
   });
 });

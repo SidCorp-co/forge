@@ -48,19 +48,19 @@ describe('forecast read', () => {
     expect(typeof f.asOf).toBe('string');
   });
 
-  it('says paused and who owes the move for a needs_info issue, by name, with no date', async () => {
+  it('says paused on the answer a needs_info issue waits on, naming nobody, with no date', async () => {
     const reader = await createTestUser({ verified: true });
     await addProjectMember(w.projectId, reader.id, 'viewer');
     const asReader = { ...w, token: await userToken(reader.id) };
     const f = (await read(asReader, `/issues/${keys.parked}`)).forecast as Body;
-    // the project's one writer, named (FB-104), never "A project writer" naming nobody
-    const writer = (await peopleOf([w.userId])).get(w.userId)?.name;
-    expect(f).toMatchObject({ kind: 'paused', who: writer, act: 'answer a question' });
+    // ISS-687 round 2 (REQ-68 BC-6): an issue names no person's act, so its forecast waits on the
+    // answer, and the question is asked in Needs you, on the item it is about
+    expect(f).toMatchObject({ kind: 'paused', who: 'An answer', act: '' });
     expect(f).not.toHaveProperty('p50At');
-    // ISS-687 (REQ-68 BC-6): no issue waits on its reader, so the writer who owes the answer reads it
-    // by name too, never "You" (JU-7's own turn is asked in Needs you, on the item the issue serves)
+    const writer = (await peopleOf([w.userId])).get(w.userId)?.name;
     const own = (await read(w, `/issues/${keys.parked}`)).forecast as Body;
-    expect(own).toMatchObject({ kind: 'paused', who: writer, act: 'answer a question' });
+    expect(own).toMatchObject({ kind: 'paused', who: 'An answer', act: '' });
+    expect([own.who, own.act]).not.toContain(writer);
     expect(own.who).not.toBe('You');
   });
 

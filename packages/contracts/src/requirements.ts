@@ -231,6 +231,7 @@ export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttent
 export const REQUIREMENT_WAITING_KINDS = [
 	"you",
 	"person",
+	"answer",
 	"agent",
 	"issue",
 	"release",

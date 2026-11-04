@@ -143,10 +143,13 @@ describe('whom a requirement waits on once its issues exist', () => {
 
   it('names what a parked issue waits on, its key linked, while another issue runs', async () => {
     const wait = await waitOf(w, memberToken, req.parked);
+    // ISS-687 round 2: the decision the issue waits on names nobody's act; the requirement says it is for the issue
     expect(wait).toMatchObject({
+      kind: 'answer',
+      who: 'A decision',
       refers: 'issue',
       ref: parkedKey,
-      act: `make a decision on ${parkedKey}`,
+      act: `for ${parkedKey}`,
     });
     expect(wait.who).not.toBe('Issues');
   });

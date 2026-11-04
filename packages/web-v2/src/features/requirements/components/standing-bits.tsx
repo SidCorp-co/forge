@@ -83,6 +83,7 @@ function Stepper({ state, next }: { state: RequirementState; next: RequirementSt
 const BANNER_TONE: Record<RequirementWaitingKind, BannerTone> = {
   you: "you",
   person: "calm",
+  answer: "calm",
   agent: "agent",
   issue: "run",
   release: "run",

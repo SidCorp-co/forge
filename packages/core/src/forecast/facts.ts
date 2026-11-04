@@ -319,10 +319,10 @@ export async function projectWaitOf(projectId: string): Promise<Wait | null> {
   return null;
 }
 
-/** Whom a row waits on where it is a person or a gate rather than a run, a master or a blocker. */
+/** What a row waits on where it is a person, an answer owed or a pause rather than a run, a master or a blocker. */
 export function waitOf(row: IssueStandingRow): Wait | null {
   const { attentionGroup, waitingOn } = row.standing;
-  if (attentionGroup === 'paused' || waitingOn.kind === 'person') {
+  if (attentionGroup === 'paused' || waitingOn.kind === 'person' || waitingOn.kind === 'answer') {
     return waitOn(
       { who: waitingOn.says.who, act: waitingOn.says.act, reason: waitingOn.says.rule },
       waitingOn.ref,

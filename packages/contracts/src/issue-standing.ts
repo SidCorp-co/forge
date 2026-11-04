@@ -52,11 +52,13 @@ export const ISSUE_ATTENTION_LABELS: StandingGroupLabels<IssueAttentionGroup> =
 		},
 	};
 
-/** Whom an issue waits on: people named (never the viewer as "You", REQ-68 BC-6), a run that holds
- *  it, the master that takes it next, the judge of a change that landed, another issue that blocks
- *  it, the release, or nobody. */
+/** Whom an issue waits on: people named (never the viewer as "You", REQ-68 BC-6), the answer to a
+ *  question a person owes (naming nobody: the question is asked on its item, in Needs you), a run
+ *  that holds it, the master that takes it next, the judge of a change that landed, another issue
+ *  that blocks it, the release, or nobody. */
 export const ISSUE_WAITING_KINDS = [
 	"person",
+	"answer",
 	"run",
 	"master",
 	"judge",

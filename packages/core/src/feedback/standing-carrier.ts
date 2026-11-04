@@ -40,6 +40,7 @@ export interface CarrierStanding {
  */
 const KIND_OF: Record<IssueWaitingKind, FeedbackWaitingKind> = {
   person: 'agent',
+  answer: 'agent',
   run: 'agent',
   master: 'agent',
   judge: 'agent',
@@ -48,8 +49,8 @@ const KIND_OF: Record<IssueWaitingKind, FeedbackWaitingKind> = {
   none: 'none',
 };
 
-/** The carrier waits on a person, which the item reads as its master's to move on. */
-const PERSON_KINDS: ReadonlySet<IssueWaitingKind> = new Set(['person']);
+/** The carrier waits on a person, or on an answer a person owes, which the item reads as its master's to move on. */
+const PERSON_KINDS: ReadonlySet<IssueWaitingKind> = new Set(['person', 'answer']);
 
 const MASTER = say('standing.who.projectMaster');
 

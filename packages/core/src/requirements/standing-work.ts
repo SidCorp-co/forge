@@ -63,6 +63,7 @@ type Turn = WorkTurn;
 /** An issue's party as a requirement's: the runs, the master and the judge are all agents to it. */
 const KIND_OF: Record<IssueWaitingKind, RequirementWaitingKind> = {
   person: 'person',
+  answer: 'answer',
   run: 'agent',
   master: 'agent',
   judge: 'agent',
@@ -83,6 +84,12 @@ const wait = (
 const groupOf = (kind: RequirementWaitingKind): RequirementAttentionGroup =>
   kind === 'you' ? 'needs_you' : 'moving';
 
+/** The issue's act said on the requirement; an answer it waits on names no act, only the issue it is for. */
+const onIssueAct = (w: Pick<ParkedWait, 'kind' | 'says'>, key: string): Said =>
+  w.kind === 'answer'
+    ? say('standing.act.forIssue', { key })
+    : say('standing.act.onIssue', { act: w.says.act, key });
+
 /** The requirement's wait on one of its issues, said as that issue's own wait (`standing.act.onIssue`). */
 function onIssue(
   first: WorkIssue,
@@ -97,7 +104,7 @@ function onIssue(
       kind,
       {
         who: w.says.who,
-        act: say('standing.act.onIssue', { act: w.says.act, key: first.displayId }),
+        act: onIssueAct(w, first.displayId),
         rule: say(rule, {
           keys: keys.map((i) => i.displayId).join(', '),
           key: first.displayId,

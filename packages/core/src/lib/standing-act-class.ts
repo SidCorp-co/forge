@@ -13,6 +13,7 @@ const BY_KIND: Record<WaitingKind, StandingActClass> = {
   person: 'person_decide',
   admins: 'person_decide',
   writers: 'person_decide',
+  answer: 'person_decide',
   agent: 'master_take',
   master: 'master_take',
   run: 'run',

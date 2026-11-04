@@ -337,13 +337,16 @@ describe("an issue's act on a person's Needs you", () => {
       expect(s?.waitingOn.kind, key).not.toBe('you');
       expect(s?.waitingOn.who, key).not.toBe('You');
     }
+    // ISS-687 round 2: an answer owed names nobody and no act on the issue; it is asked in Needs you
     expect(standing.get('ISS-1')?.waitingOn).toMatchObject({
-      kind: 'person',
-      act: 'answer a question',
+      kind: 'answer',
+      who: 'An answer',
+      act: '',
     });
     expect(standing.get('ISS-2')?.waitingOn).toMatchObject({
-      kind: 'person',
-      act: 'make a decision',
+      kind: 'answer',
+      who: 'A decision',
+      act: '',
     });
     expect(standing.get('ISS-3')?.waitingOn).toMatchObject({
       kind: 'master',
@@ -351,7 +354,7 @@ describe("an issue's act on a person's Needs you", () => {
     });
   };
 
-  it('reads an answer a read-only member cannot give as waiting on the writers, and a draft on the master', async () => {
+  it('reads an answer a read-only member cannot give as the answer the issue waits on, and a draft on the master', async () => {
     readsNoIssueAsTheirs(await standingOf('reader'));
   });
 
@@ -370,7 +373,7 @@ describe("an issue's act on a person's Needs you", () => {
   });
 
   // REQ-68 BC-6: Needs you lists no issue; the run's question on ISS-1 is a decision of its own, and
-  // the writer who may answer it reads the issue as waiting on the writers by name, never as theirs
+  // the writer who may answer it reads the issue as waiting on the answer, naming nobody, never as theirs
   it("reads no issue as the writer's own, and keeps the question on ISS-1 a decision of their Needs you", async () => {
     readsNoIssueAsTheirs(await standingOf('writer'));
     const part = await attentionOf('writer');

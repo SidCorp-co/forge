@@ -124,11 +124,14 @@ const parkOf = async (issueId: string) =>
   ok(await say('owner', 'GET', `/api/issues/${issueId}/park`)).park as Doc;
 
 /** What the issue list reads the issue as waiting on: its act's key and its whole wait. */
-async function standingOf(key: string): Promise<{ act: string; waitingOn: Doc }> {
+/** The act a standing names, and, where it waits on what a person owes, what that is (ISS-687: no act). */
+async function standingOf(key: string): Promise<{ act: string; owed: string; waitingOn: Doc }> {
   const row = ok(await say('owner', 'GET', `/api/projects/${projectId}/issues/standing/${key}`));
   const standing = (row.standing ?? row) as Doc;
   const waitingOn = standing.waitingOn as Doc;
-  return { act: ((waitingOn.says as Doc).act as Doc).key as string, waitingOn };
+  const says = waitingOn.says as Doc;
+  const owed = waitingOn.kind === 'answer' ? ((says.who as Doc).key as string) : '';
+  return { act: (says.act as Doc).key as string, owed, waitingOn };
 }
 
 /** Answer the park's decision, saying it still waits: the answer does not move it (ISS-257). */
@@ -182,7 +185,7 @@ describe('a needs_info park changes its waiting kind without leaving needs_info'
     expect((after.record as Doc).kind).toBe('needs_resource');
     expect((after.resume as Doc).at).toBe('in_progress');
     const standing = await standingOf(issue.key);
-    expect(standing.act, JSON.stringify(standing.waitingOn)).toBe('issues.standing.act.supply');
+    expect(standing.owed, JSON.stringify(standing.waitingOn)).toBe('issues.standing.who.supply');
 
     // the thread says what changed, as a notice no run reads as a person's reply
     const notices = (ok(await say('owner', 'GET', `/api/issues/${issue.id}/comments`)).items ??
@@ -217,7 +220,7 @@ describe('a needs_info park changes its waiting kind without leaving needs_info'
       waitingKind: 'needs_decision',
     });
     expect((await parkOf(issue.id)).owes).toBe('decision');
-    expect((await standingOf(issue.key)).act).toBe('issues.standing.act.decide');
+    expect((await standingOf(issue.key)).owed).toBe('issues.standing.who.decision');
   });
 
   it('takes a person re-kinding the park, which asks nothing, and the standing reads the new kind', async () => {
@@ -235,7 +238,7 @@ describe('a needs_info park changes its waiting kind without leaving needs_info'
     expect(await openOn(issue.id)).toEqual([]);
     expect((await issueOf(issue.id)).waitingKind).toBe('needs_resource');
     expect((await parkOf(issue.id)).answered).toBeNull();
-    expect((await standingOf(issue.key)).act).toBe('issues.standing.act.supply');
+    expect((await standingOf(issue.key)).owed).toBe('issues.standing.who.supply');
   });
 
   it('withdraws a question the park asked that nobody answered yet, naming the new wait', async () => {
@@ -316,7 +319,7 @@ describe('a needs_info park re-kinded onto a merge mark waits only on its own (I
       waitingKind: 'needs_resource',
     });
     expect((await parkOf(issue.id)).answered).toBeNull();
-    expect((await standingOf(issue.key)).act).toBe('issues.standing.act.supply');
+    expect((await standingOf(issue.key)).owed).toBe('issues.standing.who.supply');
   });
 
   it("refuses a re-kind onto another issue's merge mark as ordering, naming the blocks edge, and writes nothing (ISS-738)", async () => {

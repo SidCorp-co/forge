@@ -55,6 +55,7 @@
     "standing.act.markMerge": "đánh dấu đã merge{on}",
     "standing.act.recordRelease": "ghi nhận bản phát hành production đang chạy",
     "standing.act.none": "",
+    "standing.act.forIssue": "cho {key}",
     "standing.act.pairRunner": "ghép một runner",
     "standing.act.productionReadable": "cho production một cách để đọc được",
     "standing.act.promoteDraft": "đưa 1 issue nháp vào làm",

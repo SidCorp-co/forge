@@ -61,11 +61,12 @@ const reading = (code: StuckReading['code'], since: Date, said: Said, via: strin
 
 function overdueOf(w: WaitingOn, f: TimesFacts, due: Date | null): StuckReading | null {
   if (!due || f.now.getTime() <= due.getTime()) return null;
-  const said = say('standing.stuck.overdue', {
-    who: w.says.who,
-    date: due.toISOString().slice(0, 10),
-    act: w.says.act,
-  });
+  const date = due.toISOString().slice(0, 10);
+  // an answer a wait names is owed by nobody it names: it was due, never "someone owed it"
+  const said =
+    w.kind === 'answer'
+      ? say('standing.stuck.answerOverdue', { what: w.says.who, date })
+      : say('standing.stuck.overdue', { who: w.says.who, date, act: w.says.act });
   return reading('overdue', due, said, null);
 }
 

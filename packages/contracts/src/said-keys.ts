@@ -434,7 +434,7 @@ export const SAID = {
 		en: "lease held by a run session that has not ended",
 	},
 	"issues.rule.needsInfo": {
-		en: "parked at needs_info: a person owes the answer; it wakes the master",
+		en: "parked at needs_info: its question is asked in Needs you, and the answer wakes the master",
 	},
 	"issues.rule.noApproval": {
 		en: "its work merged; the project releases without an approval",
@@ -734,7 +734,9 @@ export const SAID = {
 	"issues.standing.act.takeOnOrDrop": { en: "take on or drop" },
 	"issues.standing.act.waitOn": { en: "wait on {key}", vars: { key: "key" } },
 	"issues.standing.act.working": { en: "working" },
+	"issues.standing.who.answer": { en: "An answer" },
 	"issues.standing.who.contractProvider": { en: "The contract provider" },
+	"issues.standing.who.decision": { en: "A decision" },
 	"issues.standing.who.designApprover": { en: "A design approver" },
 	"issues.standing.who.nextRun": { en: "Next run" },
 	"issues.standing.who.noHolder": { en: "No holder" },
@@ -742,6 +744,7 @@ export const SAID = {
 	"issues.standing.who.queuedRun": { en: "Queued run" },
 	"issues.standing.who.release": { en: "Release" },
 	"issues.standing.who.run": { en: "Run" },
+	"issues.standing.who.supply": { en: "Something supplied" },
 	"issues.standing.act.markMerged": {
 		en: "mark merged !{n} at {sha}",
 		vars: { n: "count", sha: "code" },
@@ -1069,6 +1072,10 @@ export const SAID = {
 	"standing.act.onIssue": {
 		en: "{act} on {key}",
 		vars: { act: "said", key: "key" },
+	},
+	"standing.act.forIssue": {
+		en: "for {key}",
+		vars: { key: "key" },
 	},
 	"standing.act.trace": {
 		en: "trace {codes} to an issue criterion",
@@ -3353,6 +3360,10 @@ export const SAID = {
 	"standing.stuck.overdue": {
 		en: "{who} owed it by {date}: {act}.",
 		vars: { who: "said", date: "date", act: "said" },
+	},
+	"standing.stuck.answerOverdue": {
+		en: "{what} was due by {date}.",
+		vars: { what: "said", date: "date" },
 	},
 	"standing.stuck.via": {
 		en: "{key}: {reason}",
