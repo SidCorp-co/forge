@@ -1,0 +1,1 @@
+**judge-login now signs in itself and hands the judge only a session.** It writes a curl header file and a Playwright storage state, never the password; a secret it cannot sign in with is refused by name.

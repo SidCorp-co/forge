@@ -59,6 +59,13 @@ describe('a run a master declared reads the testing secrets of the environment i
       environment: 'stg',
       profileId: 'stg',
       secrets: [{ ref: REF, value: VALUE }],
+      // the origins `forge-runner judge-login` signs in at for the judge (ISS-959)
+      deployment: {
+        environment: 'stg',
+        url: 'https://stg.adminhub.example.test',
+        services: {},
+        routes: null,
+      },
     });
     const audit = await rows<{ payload: Record<string, unknown> }>(sql`
       SELECT payload FROM activity_log WHERE issue_id = ${issueId} AND action = 'testing_secrets.resolved'`);

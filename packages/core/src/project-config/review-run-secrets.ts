@@ -5,6 +5,7 @@ import { readProjectConfig } from './service.js';
 import {
   type DeclaredRun,
   decryptedValues,
+  judgedDeployment,
   profileRefs,
   refuse,
   type SecretChoice,
@@ -80,6 +81,7 @@ export async function resolveForReviewRun(args: {
       environment,
       profileId,
       secrets: values.secrets,
+      deployment: judgedDeployment(project?.document, environment),
     },
   };
 }

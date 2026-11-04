@@ -12,6 +12,7 @@ import { readProjectConfig } from './service.js';
 import {
   type DeclaredRun,
   decryptedValues,
+  judgedDeployment,
   profileRefs,
   type Refused,
   refuse,
@@ -153,7 +154,16 @@ export async function resolveTestingSecrets(args: {
     jobId,
     secrets.map((s) => s.value),
   );
-  return { ok: true, resolved: { jobId, environment, profileId, secrets } };
+  return {
+    ok: true,
+    resolved: {
+      jobId,
+      environment,
+      profileId,
+      secrets,
+      deployment: judgedDeployment(project.document, environment),
+    },
+  };
 }
 
 /**
@@ -292,6 +302,7 @@ async function resolveForDeclaredRun(args: {
       environment,
       profileId,
       secrets: values.secrets,
+      deployment: judgedDeployment(project.document, environment),
     },
   };
 }

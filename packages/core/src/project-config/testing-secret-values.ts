@@ -7,6 +7,7 @@ import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import type { TestingProfile } from './policy-schema.js';
 import type { projectConfigPorts } from './ports.js';
+import type { ProjectDocument } from './schema.js';
 import { credentialRefs, readTestingProfile } from './service.js';
 import { drizzleConfigStore } from './store.js';
 import { effectiveVariables } from './variables-rules.js';
@@ -29,6 +30,36 @@ interface ResolvedTestingSecrets {
   environment: string | null;
   profileId: string;
   secrets: { ref: string; value: string }[];
+  /** The origins of the environment judged; null where no one environment is. */
+  deployment: JudgedDeployment | null;
+}
+
+/**
+ * The origins of the environment a run judges, as the project document declares them: its `url`,
+ * its `services`, and the `routes` naming the path prefixes each service answers (ISS-470).
+ * `forge-runner judge-login` signs in at the origin answering the sign-in path its secret names, so
+ * the password goes to the deployment judged and the judge holds only the session (ISS-959).
+ */
+export interface JudgedDeployment {
+  environment: string;
+  url: string | null;
+  services: Record<string, string>;
+  routes: Record<string, string[]> | null;
+}
+
+/** {@link JudgedDeployment} of `environment` in `document`; null where either is absent. */
+export function judgedDeployment(
+  document: ProjectDocument | null | undefined,
+  environment: string | null,
+): JudgedDeployment | null {
+  const declared = environment === null ? undefined : document?.environments[environment];
+  if (!declared || environment === null) return null;
+  return {
+    environment,
+    url: declared.url ?? null,
+    services: declared.services ?? {},
+    routes: declared.routes ?? null,
+  };
 }
 
 export type Refused = { ok: false; refusal: TestingSecretsRefusal };

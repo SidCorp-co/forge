@@ -65,6 +65,7 @@ export async function judgedProject(projectId: string): Promise<void> {
         deploysFrom: 'release/stg',
         deployment: { mode: 'external' },
         testing: 'stg',
+        url: 'https://stg.adminhub.example.test',
       },
     },
   });

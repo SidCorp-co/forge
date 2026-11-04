@@ -62,13 +62,17 @@ Read these before judging anything, while whoever sent you can still equip you.
   (\`source: judged-on\`), judged there as a \`runtime\` verdict at that commit.
 - \`GET /api/projects/:id/config\` answers the project document: each environment's address and the
   testing profile its testers get in through, whose \`limits\` say what that environment does not have.
-- \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets?actor=<actor>\` answers the one secret
-  behind that actor of the profile, to log in with (\`service=<service>\` for a service, \`ref=<ref>\`
-  for one reference). Name the one actor the criterion needs: a read naming none is refused
+- To act as an actor of the testing profile, run \`forge-runner judge-login <profile> <actor> --run <run>\`
+  on the box: it reads that actor's secret and signs in itself at the deployment you judge, and
+  writes only a session, a header file for \`curl -H @<file>\` and a Playwright storage state, whose
+  paths it prints. You never hold the password: never open, print or measure either file, and the
+  run's close removes them. A secret it cannot sign in with, or a sign-in refused, is refused by name
+  and nothing is written: report it, never read the value instead. It reads
+  \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets?actor=<actor>\`, the one secret behind that
+  actor (\`service=<service>\` for a service, \`ref=<ref>\` for one reference), which answers the value
+  itself. Name the one actor the criterion needs: a read naming none is refused
   \`TESTING_SECRET_UNCHOSEN\` with the profile's actor and service names, and no read answers the
-  whole profile. On a box, prefer \`forge-runner judge-login <profile> <actor>\` from inside the
-  run's checkout: it writes that one secret to a 0600 file and prints only the file's path and field
-  names, so the value never enters your transcript. A job sends \`self\`. A run a master declared reads under
+  whole profile. A job sends \`self\`. A run a master declared reads under
   its box's credential with \`forge-runner api 'jobs/self/testing-profiles/<profile>/secrets?actor=<actor>'\` from
   inside its own checkout, where the box sends the id of the run declared over that checkout in place
   of \`self\` and says so on stderr; from anywhere else it sends that run id as \`<run>\` itself. Core learns of a declared run on the box's next sweep,

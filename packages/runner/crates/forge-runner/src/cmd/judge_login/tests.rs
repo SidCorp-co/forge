@@ -227,6 +227,10 @@ async fn no_file_judge_login_writes_holds_the_password() {
         "{sent:?}"
     );
     assert!(sent[0].body.contains(PASSWORD));
+    assert!(
+        sent[0].headers.contains("content-type: application/json"),
+        "{sent:?}"
+    );
 
     let written = files_in(&dir);
     let names: Vec<_> = written
@@ -315,11 +319,12 @@ async fn the_header_file_reaches_the_api_as_curl_sends_it() {
     let (files, _) = login_into(&answer(&api, &forge_secret()), &dir, "dev", "member")
         .await
         .unwrap();
+    // the API answers what curl sends from the file, and the file is that one header line
+    assert_eq!(get_me_with(&files.header, &api).await, "200");
     assert_eq!(
         std::fs::read_to_string(&files.header).unwrap(),
         format!("Authorization: Bearer {TOKEN}\n")
     );
-    assert_eq!(get_me_with(&files.header, &api).await, "200");
 
     // a sign-in answering no token hands the cookies it set as one `Cookie:` line instead
     let (cookies_only, _) = stub(Answers::CookiesOnly).await;

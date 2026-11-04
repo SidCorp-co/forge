@@ -158,6 +158,9 @@ beforeEach(async () => {
         deploysFrom: 'dev',
         deployment: { mode: 'external' },
         testing: 'dev',
+        url: 'https://forge-dev.example.test',
+        services: { api: 'https://forge-dev-api.example.test' },
+        routes: { api: ['/api'] },
       },
       demo: { tier: 'preview', deploysFrom: 'dev', deployment: { mode: 'external' } },
     },
@@ -197,10 +200,18 @@ describe('a person-declared review run reads the testing profile it names under 
       run: { session: string; id: string };
       environment: string | null;
       secrets: Array<{ ref: string; value: string }>;
+      deployment: unknown;
     };
     expect(body.run).toEqual({ session: run.sessionId, id: run.runId });
     // the one environment naming `dev`, though two deploy the branch and the issue has not landed
     expect(body.environment).toBe('dev');
+    // its origins, where `forge-runner judge-login` signs in for the judge (ISS-959)
+    expect(body.deployment).toEqual({
+      environment: 'dev',
+      url: 'https://forge-dev.example.test',
+      services: { api: 'https://forge-dev-api.example.test' },
+      routes: { api: ['/api'] },
+    });
     // the one actor it named, never the profile's other actor (ISS-868)
     expect(body.secrets).toEqual([{ ref: MEMBER_REF, value: MEMBER }]);
     expect(JSON.stringify(body)).not.toContain(OWNER);
@@ -272,7 +283,7 @@ describe('a person-declared review run reads the testing profile it names under 
     expect(Date.parse(run.expiresAt) - Date.now()).toBeLessThanOrEqual(5 * 60_000);
     const res = await secrets(world.boxToken, run.runId);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect((res.body as { environment: unknown }).environment).toBeNull();
+    expect(res.body).toMatchObject({ environment: null, deployment: null });
   });
 
   it('serves only the profile it was declared for', async () => {
