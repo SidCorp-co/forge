@@ -99,6 +99,7 @@ pub async fn run(
         );
     }
     let mut dialogs = crate::standing_dialogs::BoxDialogs::new();
+    let mut panes = master_pass::PaneBeat::default();
     dialogs.pass(&client).await;
     let mut passes = tokio::time::interval(master_pass::TICK);
     passes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -110,6 +111,7 @@ pub async fn run(
                 if let Some(led) = ledger.as_mut() {
                     master_pass::reconcile(&client, &shared.masters, &shared.activity, led, master_pass::this_process(), None).await;
                 }
+                master_pass::beat_panes(&client, &shared.masters, &shared.activity, &mut panes).await;
             }
             _ = &mut sweep_due => {
                 dialogs.pass(&client).await;

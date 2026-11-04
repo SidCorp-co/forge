@@ -93,6 +93,84 @@ pub(crate) fn pass_facts(
     }
 }
 
+/// How often a master's pane facts are sent while `doing` holds still: the
+/// minute beat a page reads "last update" from. A move of `doing` is sent at
+/// the next tick, whatever this says.
+pub(crate) const PANE_BEAT_EVERY_MS: i64 = 60_000;
+
+/// What `seen` says about the pane at `now_ms`, as ages.
+pub(crate) fn pane_facts(
+    seen: &Activity,
+    written_ms: Option<i64>,
+    now_ms: i64,
+) -> master_api::PaneFacts {
+    let ago = |at_ms: i64| u64::try_from(now_ms.saturating_sub(at_ms)).unwrap_or(0);
+    master_api::PaneFacts {
+        doing: seen.doing().wire(),
+        last_event_ago_ms: ago(seen.last_event_at),
+        turn_began_ago_ms: seen.turn_began_at.map(ago),
+        written_ago_ms: written_ms.map(ago),
+    }
+}
+
+/// What each master session's pane was last sent as, and when.
+#[derive(Debug, Default)]
+pub(crate) struct PaneBeat {
+    sent: std::collections::HashMap<String, (&'static str, i64)>,
+    /// Said once: the core this box serves has no pane route.
+    unheard: bool,
+}
+
+impl PaneBeat {
+    /// A pane is sent when its `doing` moved, or once a minute while it holds.
+    pub(crate) fn due(&self, session_id: &str, doing: &str, now_ms: i64) -> bool {
+        match self.sent.get(session_id) {
+            None => true,
+            Some((was, at)) => *was != doing || now_ms.saturating_sub(*at) >= PANE_BEAT_EVERY_MS,
+        }
+    }
+
+    pub(crate) fn sent(&mut self, session_id: &str, doing: &'static str, now_ms: i64) {
+        self.sent.insert(session_id.to_string(), (doing, now_ms));
+    }
+}
+
+/// The master's beat (ISS-951): each live master session's pane facts, sent
+/// when `doing` moves and once a minute otherwise, pass or no pass. A session
+/// whose hooks reported nothing sends nothing: there is nothing to say.
+pub(crate) async fn beat_panes(
+    client: &CoreClient,
+    masters: &Masters,
+    activity: &Activities,
+    beat: &mut PaneBeat,
+) {
+    let now_ms = runner_core::agent_activity::now_ms();
+    let live = masters.live_sessions();
+    beat.sent.retain(|s, _| live.iter().any(|(_, l)| l == s));
+    for (project_id, session_id) in live {
+        let Some(seen) = activity.get(&session_id) else {
+            continue;
+        };
+        let facts = pane_facts(&seen, written_ms(Some(&seen)), now_ms);
+        if !beat.due(&session_id, facts.doing, now_ms) {
+            continue;
+        }
+        match master_api::report_pane(client, &session_id, &facts).await {
+            Ok(()) => beat.sent(&session_id, facts.doing, now_ms),
+            Err(e) => {
+                if !beat.unheard {
+                    tracing::warn!(
+                        "[master] {project_id}: core did not take the pane's facts ({e}); it reads this master as of its last pass until it does"
+                    );
+                    beat.unheard = true;
+                }
+                // a refusal is not retried every tick: it waits the minute like a held pane
+                beat.sent(&session_id, facts.doing, now_ms);
+            }
+        }
+    }
+}
+
 // contract -> packages/core/src/masters/rules.ts — passAlreadyOpenRefusal names the open pass as
 // `id <uuid>` in its detail, and that is the only place core says which pass it holds open
 pub(crate) fn named_pass_id(detail: &str) -> Option<String> {
@@ -593,6 +671,56 @@ fn adopt_orphan(led: &mut Ledger, nudged: &Nudged<'_>, detail: &str) {
             row.project_id,
             row.pass_id
         );
+    }
+}
+
+#[cfg(test)]
+mod pane_beat_tests {
+    use super::*;
+    use runner_core::agent_activity::{Event, Report};
+
+    #[test]
+    fn a_moved_doing_is_sent_at_once_and_a_still_one_once_a_minute() {
+        let mut beat = PaneBeat::default();
+        assert!(beat.due("s", "working", 0), "a pane never sent is due");
+        beat.sent("s", "working", 0);
+        assert!(
+            !beat.due("s", "working", 5_000),
+            "an unmoved pane was sent again within the minute"
+        );
+        assert!(
+            beat.due("s", "idle", 5_000),
+            "a moved doing waited for the minute"
+        );
+        assert!(
+            beat.due("s", "working", PANE_BEAT_EVERY_MS),
+            "a still pane was not sent once a minute"
+        );
+        assert!(
+            beat.due("other", "working", 5_000),
+            "one session's beat held another's"
+        );
+    }
+
+    #[test]
+    fn a_pane_is_reported_by_its_own_hooks_as_ages() {
+        let a = Activities::default();
+        let at = 1_000_000_i64;
+        let seen = a.record(
+            "s",
+            Report {
+                event: Event::PromptSubmitted,
+                at: at - 20_000,
+                subject: None,
+                conversation: Some("c"),
+                transcript: None,
+            },
+        );
+        let facts = pane_facts(&seen, Some(at - 2_000), at);
+        assert_eq!(facts.doing, "working");
+        assert_eq!(facts.turn_began_ago_ms, Some(20_000));
+        assert_eq!(facts.last_event_ago_ms, 20_000);
+        assert_eq!(facts.written_ago_ms, Some(2_000));
     }
 }
 

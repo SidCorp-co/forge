@@ -236,6 +236,34 @@ pub async fn report_dialog(
     Ok(())
 }
 
+/// What the master's pane hooks say now, sent on its beat between passes
+/// as well as inside them (ISS-951): the page reads what a master does from
+/// it, live, rather than from its last settle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaneFacts {
+    /// `idle`, `working`, `awaiting_permission` or `awaiting_children`.
+    pub doing: &'static str,
+    pub last_event_ago_ms: u64,
+    pub turn_began_ago_ms: Option<u64>,
+    pub written_ago_ms: Option<u64>,
+}
+
+/// The body `POST /api/devices/me/master-session/pane` validates.
+pub fn pane_body(session_id: &str, pane: &PaneFacts) -> serde_json::Value {
+    serde_json::json!({ "sessionId": session_id, "pane": pane })
+}
+
+/// Send the pane's facts. A core older than ISS-951 answers 404, which the
+/// caller says once and goes on: that core reads the pane as of the last pass.
+pub async fn report_pane(client: &CoreClient, session_id: &str, pane: &PaneFacts) -> Result<()> {
+    let req = client
+        .post("/api/devices/me/master-session/pane")
+        .json(&pane_body(session_id, pane));
+    status::send_within(req, "master-session/pane", CALL_DEADLINE).await?;
+    Ok(())
+}
+
 pub async fn report_limit(
     client: &CoreClient,
     reason: &str,
@@ -325,6 +353,28 @@ mod tests {
                 "writtenAgoMs": null,
                 "dispatched": ["ISS-1"],
                 "record": { "worked": false, "refusal": { "reason": "usage_limit", "detail": "limit" } }
+            })
+        );
+    }
+}
+
+#[cfg(test)]
+mod pane_tests {
+    use super::*;
+
+    #[test]
+    fn a_pane_beat_is_sent_in_the_shape_core_validates() {
+        let pane = PaneFacts {
+            doing: "working",
+            last_event_ago_ms: 1_200,
+            turn_began_ago_ms: Some(20_000),
+            written_ago_ms: None,
+        };
+        assert_eq!(
+            pane_body("4b0c4f1e-0000-4000-8000-000000000001", &pane),
+            serde_json::json!({
+                "sessionId": "4b0c4f1e-0000-4000-8000-000000000001",
+                "pane": { "doing": "working", "lastEventAgoMs": 1200, "turnBeganAgoMs": 20000, "writtenAgoMs": null }
             })
         );
     }
