@@ -1,1 +1,0 @@
-**A release no longer waits for verdicts on a build that cannot hold its changes.** Where production moves only by its releases, a waiting issue is judged at its landing, and every hold says which basis it used and why.
