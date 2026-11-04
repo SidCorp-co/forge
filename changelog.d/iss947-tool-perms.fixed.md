@@ -1,0 +1,1 @@
+**The in-app assistant runs its own tools again.** Every assistant tool declares the permission it checks, and a tool declaring none stops its toolset from building. The demo seed asks its steward decision on a requirement a person sees.
