@@ -172,6 +172,25 @@ describe('a release holds an issue only for the round it carried (ISS-967)', () 
     expect(warnings.filter((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')).toEqual([]);
   });
 
+  it('lets a fail at the landing the reopen rejected stop holding, before any release', async () => {
+    const fixed = await landedIssue(1, C1);
+    await designed(fixed, [[3, 'observable']]);
+    await stored(fixed, 3, { commit: C1 }, 'fail');
+    // the reopen leaves the gate, not a shipped release: no release ever carried this issue
+    await db.execute(sql`
+      INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type,
+                                      actor_agency, source, created_at)
+      VALUES (${randomUUID()}, 'issue', ${fixed}, 'awaiting_release', 'reopen', 'system', 'agent',
+              'fixture', clock_timestamp())
+    `);
+    await seedIssueStatus(fixed, 'reopen');
+    await relanded(fixed, F4);
+    for (const n of [1, 2]) await stored(fixed, n, { commit: F4 });
+    const r = await report(fixed);
+    expect(r.unearned).toEqual([]);
+    expect(r.afterRelease.map((c) => c.criterion)).toEqual([3]);
+  });
+
   it('never counts a pass on the release that carried the round before the reopen', async () => {
     const { fixed } = await reopenedAfterR1();
     await stored(fixed, 1, { release: R1 });
