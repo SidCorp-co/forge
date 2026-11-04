@@ -2,6 +2,7 @@
 // exact. A new copy file is one line here. Every copy file lives beside this one under `copy/`, one
 // per feature (`copy/<feature>.json`) and one per shared area, so lib never reaches into a feature.
 
+import activityCopy from "./copy/activity.json";
 import agentAccountsCopy from "./copy/agent-accounts.json";
 import agentsCopy from "./copy/agents.json";
 import approvalsCopy from "./copy/approvals.json";
@@ -63,6 +64,7 @@ import writtenCopy from "./copy/written.json";
  * key's file is named by its prefix (`scripts/split-product-copy.mjs:PREFIX_HOMES`).
  */
 export const COPY_FILES = {
+  "lib/i18n/copy/activity.json": activityCopy,
   "lib/i18n/copy/agent-accounts.json": agentAccountsCopy,
   "lib/i18n/copy/agents.json": agentsCopy,
   "lib/i18n/copy/approvals.json": approvalsCopy,

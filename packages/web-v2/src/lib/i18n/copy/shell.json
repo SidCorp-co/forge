@@ -1,5 +1,6 @@
 {
   "en": {
+    "nav.activity": "Activity",
     "nav.attention": "Attention",
     "nav.chat": "Ask Agent",
     "nav.delivery": "Delivery",
@@ -297,6 +298,7 @@
     "shell.waitingAcross": "{n} decisions waiting on you across your projects"
   },
   "vi": {
+    "nav.activity": "Hoạt động",
     "nav.attention": "Cần chú ý",
     "nav.chat": "Hỏi Agent",
     "nav.eco-new": "Hệ sinh thái mới",

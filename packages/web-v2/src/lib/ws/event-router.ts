@@ -6,6 +6,8 @@ import { scheduleInvalidation } from "./invalidation-coalescer";
 
 /** The Agents run list's root key (agents `RUNS_STANDING_ROOT`); a job or run move invalidates it. */
 const RUNS_STANDING_ROOT = "runs-standing";
+/** The workspace's Activity read (activity `ORG_ACTIVITY_ROOT`); an org frame invalidates it. */
+const ORG_ACTIVITY_ROOT = "org-activity";
 /** The support rooms' turns the project bar reads (agents `SUPPORT_TURNS_ROOT`). */
 const SUPPORT_TURNS_ROOT = "support-turns";
 
@@ -136,6 +138,11 @@ function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 				scheduleInvalidation(qc, [RUNS_STANDING_ROOT, data.projectId]);
 				scheduleInvalidation(qc, [SUPPORT_TURNS_ROOT, data.projectId]);
 			}
+			return true;
+		}
+		// one of the workspace's projects moved: its Activity page reads again (ISS-951)
+		case "org.activity.changed": {
+			scheduleInvalidation(qc, [ORG_ACTIVITY_ROOT, data.orgId]);
 			return true;
 		}
 		// what runs on the project moved where no other frame says so (REQ-15 BC-10)

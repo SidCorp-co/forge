@@ -25,7 +25,7 @@ const project = (over: Partial<SwitcherProject>): SwitcherProject => ({
 describe("the nav model", () => {
   it("puts the attention count on Overview and ends the workspace tier with the Ecosystem group, open by default", () => {
     const items = workspaceNavItems(7, undefined);
-    expect(items.map((e) => e.key)).toEqual(["overview", "runners", "integrations", "ecosystem"]);
+    expect(items.map((e) => e.key)).toEqual(["overview", "activity", "runners", "integrations", "ecosystem"]);
     expect(items[0]).toMatchObject({ badge: 7 });
     const eco = items[3];
     expect(isNavGroup(eco) && eco.defaultOpen).toBe(true);

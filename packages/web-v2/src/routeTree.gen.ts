@@ -18,6 +18,7 @@ import { Route as GuidesIndexRouteImport } from './routes/guides/index'
 import { Route as LinkChatIndexRouteImport } from './routes/link-chat/index'
 import { Route as AuthLoginIndexRouteImport } from './routes/_auth/login/index'
 import { Route as AuthRegisterIndexRouteImport } from './routes/_auth/register/index'
+import { Route as WorkspaceActivityIndexRouteImport } from './routes/_workspace/activity/index'
 import { Route as WorkspaceAttentionIndexRouteImport } from './routes/_workspace/attention/index'
 import { Route as WorkspaceDocsIndexRouteImport } from './routes/_workspace/docs/index'
 import { Route as WorkspaceEcosystemsIndexRouteImport } from './routes/_workspace/ecosystems/index'
@@ -128,6 +129,11 @@ const AuthRegisterIndexRoute = AuthRegisterIndexRouteImport.update({
   id: '/register/',
   path: '/register/',
   getParentRoute: () => AuthRouteRoute,
+} as any)
+const WorkspaceActivityIndexRoute = WorkspaceActivityIndexRouteImport.update({
+  id: '/activity/',
+  path: '/activity/',
+  getParentRoute: () => WorkspaceRouteRoute,
 } as any)
 const WorkspaceAttentionIndexRoute = WorkspaceAttentionIndexRouteImport.update({
   id: '/attention/',
@@ -521,6 +527,7 @@ export interface FileRoutesByFullPath {
   '/projects/$slug': typeof WorkspaceProjectsSlugRouteRouteWithChildren
   '/login/': typeof AuthLoginIndexRoute
   '/register/': typeof AuthRegisterIndexRoute
+  '/activity/': typeof WorkspaceActivityIndexRoute
   '/attention/': typeof WorkspaceAttentionIndexRoute
   '/docs/': typeof WorkspaceDocsIndexRoute
   '/ecosystems/': typeof WorkspaceEcosystemsIndexRoute
@@ -595,6 +602,7 @@ export interface FileRoutesByTo {
   '/link-chat': typeof LinkChatIndexRoute
   '/login': typeof AuthLoginIndexRoute
   '/register': typeof AuthRegisterIndexRoute
+  '/activity': typeof WorkspaceActivityIndexRoute
   '/attention': typeof WorkspaceAttentionIndexRoute
   '/docs': typeof WorkspaceDocsIndexRoute
   '/ecosystems': typeof WorkspaceEcosystemsIndexRoute
@@ -674,6 +682,7 @@ export interface FileRoutesById {
   '/_workspace/projects/$slug': typeof WorkspaceProjectsSlugRouteRouteWithChildren
   '/_auth/login/': typeof AuthLoginIndexRoute
   '/_auth/register/': typeof AuthRegisterIndexRoute
+  '/_workspace/activity/': typeof WorkspaceActivityIndexRoute
   '/_workspace/attention/': typeof WorkspaceAttentionIndexRoute
   '/_workspace/docs/': typeof WorkspaceDocsIndexRoute
   '/_workspace/ecosystems/': typeof WorkspaceEcosystemsIndexRoute
@@ -752,6 +761,7 @@ export interface FileRouteTypes {
     | '/projects/$slug'
     | '/login/'
     | '/register/'
+    | '/activity/'
     | '/attention/'
     | '/docs/'
     | '/ecosystems/'
@@ -826,6 +836,7 @@ export interface FileRouteTypes {
     | '/link-chat'
     | '/login'
     | '/register'
+    | '/activity'
     | '/attention'
     | '/docs'
     | '/ecosystems'
@@ -904,6 +915,7 @@ export interface FileRouteTypes {
     | '/_workspace/projects/$slug'
     | '/_auth/login/'
     | '/_auth/register/'
+    | '/_workspace/activity/'
     | '/_workspace/attention/'
     | '/_workspace/docs/'
     | '/_workspace/ecosystems/'
@@ -1050,6 +1062,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/register/'
       preLoaderRoute: typeof AuthRegisterIndexRouteImport
       parentRoute: typeof AuthRouteRoute
+    }
+    '/_workspace/activity/': {
+      id: '/_workspace/activity/'
+      path: '/activity'
+      fullPath: '/activity/'
+      preLoaderRoute: typeof WorkspaceActivityIndexRouteImport
+      parentRoute: typeof WorkspaceRouteRoute
     }
     '/_workspace/attention/': {
       id: '/_workspace/attention/'
@@ -1668,6 +1687,7 @@ const WorkspaceProjectsSlugRouteRouteWithChildren =
 interface WorkspaceRouteRouteChildren {
   WorkspaceIndexRoute: typeof WorkspaceIndexRoute
   WorkspaceProjectsSlugRouteRoute: typeof WorkspaceProjectsSlugRouteRouteWithChildren
+  WorkspaceActivityIndexRoute: typeof WorkspaceActivityIndexRoute
   WorkspaceAttentionIndexRoute: typeof WorkspaceAttentionIndexRoute
   WorkspaceDocsIndexRoute: typeof WorkspaceDocsIndexRoute
   WorkspaceEcosystemsIndexRoute: typeof WorkspaceEcosystemsIndexRoute
@@ -1689,6 +1709,7 @@ interface WorkspaceRouteRouteChildren {
 const WorkspaceRouteRouteChildren: WorkspaceRouteRouteChildren = {
   WorkspaceIndexRoute: WorkspaceIndexRoute,
   WorkspaceProjectsSlugRouteRoute: WorkspaceProjectsSlugRouteRouteWithChildren,
+  WorkspaceActivityIndexRoute: WorkspaceActivityIndexRoute,
   WorkspaceAttentionIndexRoute: WorkspaceAttentionIndexRoute,
   WorkspaceDocsIndexRoute: WorkspaceDocsIndexRoute,
   WorkspaceEcosystemsIndexRoute: WorkspaceEcosystemsIndexRoute,

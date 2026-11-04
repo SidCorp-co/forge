@@ -16,6 +16,8 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
   // (its live count rides on this row's badge).
   { key: "overview", label: en("nav.overview"), icon: "grid", href: "/" },
+  // what each project's master works now and next, across the workspace (ISS-951)
+  { key: "activity", label: en("nav.activity"), icon: "activity", href: "/activity" },
   { key: "runners", label: en("nav.runners"), icon: "server", href: "/runners" },
   { key: "integrations", label: en("nav.integrations"), icon: "link", href: "/integrations" },
 ];
