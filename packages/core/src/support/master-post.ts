@@ -1,25 +1,24 @@
 // The project's master posts in any room its project binds (ISS-862, ISS-871, ISS-943): a support
-// room, a channel agent's group or an operations room, at its top level or in a named thread, as that
-// room's bot. Core writes none of the words (agent-is-the-voice): it picks the room, screens the text
-// for the room's readers, posts it and records who posted.
+// room, a channel agent's group or an operations room, in a named thread, or at the top level of a
+// room the team reads, as that room's bot. Core writes none of the words (agent-is-the-voice): it
+// picks the room, screens the text for the room's readers, posts it and records who posted.
 //
 // The door is core's, not a chat plugin's on the master's box: one post, made with the bot credential
 // core already holds for the room, screened by the room's rules and recorded as the master's in the
 // room's own record, which the channel agent and the daily review read. A plugin posting straight to
 // the chat server would hold the bot's credential on a box, skip the screen and leave no record.
 //
-// A room the product's users read keeps the rules its own bot keeps toward them: a master answers
-// there only in an asker's thread (a member wrote in it), naming nobody but the asker or a member the
-// channel lists; it posts at its top level only news for everyone, naming nobody, and at most once an
-// hour with the bot's own announcements; and every post there is plain words, no internal code
-// (`screen.ts`). An operations room every project of the organization shares takes a top-level post
-// only in the project's own thread its binding records (ISS-934).
+// A room the product's users read takes a master's words only in an asker's thread (a member wrote
+// in it), never at its top level (ISS-872, the owner's trial of 2026-11-02), naming nobody but the
+// asker or a member the channel lists, in plain words with no internal code (`screen.ts`). An
+// operations room every project of the organization shares takes a top-level post only in the
+// project's own thread its binding records (ISS-934).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import { fetchMessage } from '../integrations/rocketchat/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { askerOf, mentionRefusal, newsRefusal } from './channel.js';
+import { askerOf, mentionRefusal } from './channel.js';
 import { readersOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
@@ -120,14 +119,23 @@ async function roomRefusal(
   );
 }
 
-/**
- * The room a top-level post names, or the project's one team room. A room the product's users read
- * is taken only by name: a post naming no room never lands where the users read it.
- */
+/** Why a room the users read takes no top-level post, and where one goes instead (ISS-872). */
+function usersRoomRefusal(users: readonly Postable[], team: readonly Postable[]): Outcome<never> {
+  const where = team.length
+    ? `post the top level in a room the team reads (${ridsOf(team)})`
+    : "this project binds no room the team reads: a project admin names the owner's room as the binding's `agent.ownerRoom`, or binds a room with `readers: team`";
+  return no(
+    'SUPPORT_MASTER_POST_USERS_ROOM',
+    '/rid',
+    `${ridsOf(users)} ${users.length > 1 ? 'are' : 'is'} read by the product's users, so a master posts there only in an asker's thread, named as \`thread\`; ${where}. Nothing was posted.`,
+  );
+}
+
+/** The room a top-level post names, or the project's one team room; a room the users read takes none. */
 function topLevelRoomOf(rooms: readonly Postable[], rid: string | undefined): Outcome<Postable> {
-  const named = rid ? rooms.find((r) => r.room.rid === rid) : undefined;
-  if (named) return { ok: true, value: named };
   const team = rooms.filter((r) => r.team);
+  const named = rid ? rooms.find((r) => r.room.rid === rid) : undefined;
+  if (named) return named.team ? { ok: true, value: named } : usersRoomRefusal([named], team);
   if (team.length === 1 && team[0]) return { ok: true, value: team[0] };
   if (team.length > 1) {
     return no(
@@ -136,13 +144,7 @@ function topLevelRoomOf(rooms: readonly Postable[], rid: string | undefined): Ou
       `this project binds ${team.length} rooms the team reads (${ridsOf(team)}): name one with \`rid\`. Nothing was posted.`,
     );
   }
-  if (rooms.length > 0) {
-    return no(
-      'SUPPORT_ROOM_AMBIGUOUS',
-      '/rid',
-      `this project binds no room the team reads, and ${ridsOf(rooms)} ${rooms.length > 1 ? 'are' : 'is'} read by the product's users: name the room with \`rid\` to post news for everyone there, or name an asker's \`thread\`. Nothing was posted.`,
-    );
-  }
+  if (rooms.length > 0) return usersRoomRefusal(rooms, team);
   return no(
     'SUPPORT_ROOM_UNKNOWN',
     '',
@@ -171,7 +173,7 @@ async function admitThread(
   return no(
     'SUPPORT_THREAD_UNKNOWN',
     '/thread',
-    `no member has written in thread ${thread} of ${at.room.rid}, which the product's users read: a master answers there only in an asker's thread, or posts news for everyone at its top level. Nothing was posted.`,
+    `no member has written in thread ${thread} of ${at.room.rid}, which the product's users read: a master posts there only in an asker's thread. Nothing was posted.`,
   );
 }
 
@@ -290,9 +292,9 @@ async function postInNamedThread(
 
 /**
  * The master's post where a room's top level would take it (`thread.ts:topLevelThreadOf`, `to`):
- * its project's own thread of an operations room recording one, else the top level; screened as a
- * top-level post is, since everyone in the room reads it, and recorded as the master's. A room the
- * product's users read takes it only as news for everyone, as its bot's announcement is.
+ * its project's own thread of an operations room recording one, else the top level of a room the
+ * team reads; screened as a top-level post is, since everyone in the room reads it, and recorded as
+ * the master's.
  */
 async function postAtTop(
   actor: Actor,
@@ -301,10 +303,6 @@ async function postAtTop(
   to: string | null,
 ): Promise<Posted> {
   const room = at.room;
-  if (!at.team) {
-    const refused = await newsRefusal<never>(room, given);
-    if (refused) return refused;
-  }
   const text = await scrubbedForRoom(room, given);
   const admitted = await screenForThread(room, null, TOP_LEVEL, text, doorOf(at), TOOL);
   if (!admitted.ok) return admitted;
@@ -352,8 +350,8 @@ async function roomRecording(
 
 /**
  * Posts the master's text in a room its project binds, as that room's bot: in the thread it names,
- * its project's own thread of an operations room recording one, or at the top level of the room it
- * names or the project's one team room; recorded as the master's.
+ * its project's own thread of an operations room recording one, or at the top level of the team room
+ * it names or the project's one team room; recorded as the master's.
  */
 export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest): Promise<Posted> {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));

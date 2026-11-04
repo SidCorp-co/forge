@@ -1083,6 +1083,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_READ_FAILED",
 	/** A post holds an internal code outside a team member's own thread (ISS-872, ISS-873). */
 	"SUPPORT_INTERNAL_CODE",
+	/** A master's top-level post into a room the product's users read (ISS-872). */
+	"SUPPORT_MASTER_POST_USERS_ROOM",
 	/** A master's post into a room its project held once, whose binding is switched off or no longer names it (ISS-943). */
 	"SUPPORT_ROOM_SWITCHED_OFF",
 	/** A master's post into a thread whose first message the chat server places in another room than the one named (ISS-943). */
@@ -1176,6 +1178,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_READ_ARGS: 400,
 	SUPPORT_READ_FAILED: 503,
 	SUPPORT_INTERNAL_CODE: 400,
+	SUPPORT_MASTER_POST_USERS_ROOM: 409,
 	SUPPORT_ROOM_SWITCHED_OFF: 409,
 	SUPPORT_THREAD_OF_ANOTHER_ROOM: 409,
 	SUPPORT_PROJECT_THREAD_UNRECORDED: 409,

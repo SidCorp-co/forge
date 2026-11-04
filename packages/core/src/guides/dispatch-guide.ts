@@ -146,18 +146,18 @@ screens the words for the room's readers and records the post as the master's.
   agent's group, an operations room. \`GET /api/projects/:id/support/rooms\` lists them with who
   reads each (\`readers\`). \`rid\` names the room; with none, the project's one room the team reads.
 - **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
-  result. With none the post goes at the room's top level, or, in an operations room every project
-  shares, in the project's own thread its binding records.
-- **A room its users read** takes a master's words as it takes its bot's: in an asker's thread (one
-  a member wrote in), mentioning at most the asker or a member the channel lists; at its top level
-  only news for everyone, the room named by \`rid\`, mentioning nobody, at most once an hour
-  counting the bot's own announcements. Plain words, things named as the user sees them on screen:
-  no issue key, MR or PR number, environment variable name, commit sha or credential word.
+  result. With none the post goes at the top level of a room the team reads, or, in an operations
+  room every project shares, in the project's own thread its binding records.
+- **A room its users read** takes a master's words only in an asker's thread (one a member wrote
+  in), never at its top level, mentioning at most the asker or a member the channel lists. Plain
+  words, things named as the user sees them on screen: no issue key, MR or PR number, environment
+  variable name, commit sha or credential word.
 - **Refused by name, nothing posted:** \`SUPPORT_ROOM_UNKNOWN\` (no binding of the project names the
   room), \`SUPPORT_ROOM_SWITCHED_OFF\` (its binding is off or no longer names it),
+  \`SUPPORT_MASTER_POST_USERS_ROOM\` (a top-level post in a room its users read),
   \`SUPPORT_THREAD_OF_ANOTHER_ROOM\`, \`SUPPORT_THREAD_UNKNOWN\`, \`SUPPORT_ROOM_AMBIGUOUS\` (name the
-  room), \`SUPPORT_PROJECT_THREAD_UNRECORDED\`, \`SUPPORT_INTERNAL_CODE\`, \`SUPPORT_MENTION_REFUSED\`
-  and \`SUPPORT_ANNOUNCE_LIMIT\`. The caller holds project write on the project.
+  room), \`SUPPORT_PROJECT_THREAD_UNRECORDED\`, \`SUPPORT_INTERNAL_CODE\` and
+  \`SUPPORT_MENTION_REFUSED\`. The caller holds project write on the project.
 
 ### Direct mode: a project that runs fast
 A project whose gate profile is not \`strict\` (\`GET /api/projects/:id/gates\`) and whose project

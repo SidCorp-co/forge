@@ -18,10 +18,10 @@ import { SupportWorld } from '../helpers/support-world.js';
 //
 // ISS-943: sid-desk's master had no way to post its release line into a thread of #sid-email, the
 // support room its project binds, so the orchestrator relayed it by hand as the bot. The master's
-// door takes every room kind its project binds: a support room the product's users read, in an
-// asker's thread or at its top level as news for everyone, held to the rules that room's bot keeps
-// toward users. A room no binding of the project names, a room whose binding is switched off and a
-// thread of another room are refused by name, and nothing is posted.
+// door takes every room kind its project binds. A support room the product's users read takes a
+// master's post only in an asker's thread, held to the rules that room's bot keeps toward users,
+// never at its top level (ISS-872). A room no binding of the project names, a room whose binding is
+// switched off and a thread of another room are refused by name, and nothing is posted.
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
@@ -95,30 +95,26 @@ describe("ISS-943: a master posts in its project's support room", () => {
     expect(threadLines(asked)).toEqual([]);
   });
 
-  it('posts news for everyone at its top level, naming nobody, at most once an hour', async () => {
-    const named = await post({ text: `@bob ${NEWS}`, rid: chat.rid });
-    expect(said(named), JSON.stringify(named.body)).toEqual([409, 'SUPPORT_MENTION_REFUSED']);
+  it("refuses a top-level post in the users' room, named or not, and posts nothing", async () => {
+    const named = await post({ text: NEWS, rid: chat.rid });
+    expect(said(named), JSON.stringify(named.body)).toEqual([
+      409,
+      'SUPPORT_MASTER_POST_USERS_ROOM',
+    ]);
+    expect(refusalOf(named)?.detail).toContain("only in an asker's thread");
+    const unnamed = await post({ text: NEWS });
+    expect(said(unnamed)).toEqual([409, 'SUPPORT_MASTER_POST_USERS_ROOM']);
     expect(topLines()).toEqual([]);
-    const res = await post({ text: NEWS, rid: chat.rid });
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect((res.body as { rid: string }).rid).toBe(chat.rid);
-    expect(topLines().map((l) => l.text)).toEqual([NEWS]);
-    const again = await post({ text: NEWS, rid: chat.rid });
-    expect(said(again), JSON.stringify(again.body)).toEqual([409, 'SUPPORT_ANNOUNCE_LIMIT']);
-    expect(topLines()).toHaveLength(1);
-  });
-
-  it('asks for the room by rid where the project binds no room the team reads, posting nothing', async () => {
-    const res = await post({ text: NEWS });
-    expect(said(res), JSON.stringify(res.body)).toEqual([400, 'SUPPORT_ROOM_AMBIGUOUS']);
-    expect(refusalOf(res)?.detail).toContain(chat.rid);
   });
 
   it("refuses a thread of the users' room no member wrote in", async () => {
-    const own = topLines()[0]?.id as string;
-    const res = await post({ text: RESULT, rid: chat.rid, thread: own });
+    // an app's post in the room, which the chat server places there and no member answered
+    const app = chat.wroteWhileAway(chat.rid, chat.alice, 'Thư mới từ khách', new Date(), {
+      bot: true,
+    });
+    const res = await post({ text: RESULT, rid: chat.rid, thread: app });
     expect(said(res), JSON.stringify(res.body)).toEqual([404, 'SUPPORT_THREAD_UNKNOWN']);
-    expect(threadLines(own)).toEqual([]);
+    expect(threadLines(app)).toEqual([]);
   });
 
   it('refuses a thread of another room, by the room the chat server places it in', async () => {

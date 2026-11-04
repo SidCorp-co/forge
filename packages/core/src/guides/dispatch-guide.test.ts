@@ -77,14 +77,15 @@ describe('the dispatch guide names the room door a master posts its own results 
   });
 
   it('names the rules of a room its users read, and each refusal', () => {
-    expect(prose).toContain("in an asker's thread (one a member wrote in)");
-    expect(prose).toContain('only news for everyone, the room named by `rid`, mentioning nobody');
+    expect(prose).toContain(
+      "only in an asker's thread (one a member wrote in), never at its top level",
+    );
     for (const code of [
       'SUPPORT_ROOM_UNKNOWN',
       'SUPPORT_ROOM_SWITCHED_OFF',
       'SUPPORT_THREAD_OF_ANOTHER_ROOM',
       'SUPPORT_THREAD_UNKNOWN',
-      'SUPPORT_ANNOUNCE_LIMIT',
+      'SUPPORT_MASTER_POST_USERS_ROOM',
     ]) {
       expect(prose).toContain(code);
     }

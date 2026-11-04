@@ -197,7 +197,8 @@ export const supportMasterPostRequestSchema = z.strictObject({
 	/**
 	 * The thread the post goes in (ISS-871, ISS-943), by its first message's id: one of the named
 	 * room, or of whichever bound room holds it; in a room the product's users read, only one a member
-	 * wrote in. Absent, the post is at the room's top level.
+	 * wrote in. Absent, the post is at the top level of a room the team reads; a room the product's
+	 * users read takes none (ISS-872).
 	 */
 	thread: supportThreadIdSchema.optional(),
 });
