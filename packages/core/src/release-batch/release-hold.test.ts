@@ -1,21 +1,31 @@
-// ISS-900: a project whose production names no commit it serves (agenfold, `release-is-the-agents-record`)
-// weighs an issue's verdicts on its agent's release record. Its criteria hold names the release to judge
-// on, on the issue, never a source probe the owner's rule rules out; any other project's hold names
-// what is served, as before.
+// ISS-900, ISS-957: a project whose production names no commit it serves (agenfold,
+// `release-is-the-agents-record`) weighs a waiting issue at its landing: the release its record says is
+// live cannot hold a change that has not shipped (FB-493). Its hold names the landing commit to judge
+// at, never that release nor a source probe the owner's rule rules out; any other project's hold
+// names what is served, as before.
 // @direct-test-of packages/core/src/release-batch/hold.ts
 
 import type { ReleasedLine } from '@forge/contracts/released-line';
 import { describe, expect, it } from 'vitest';
 import type { IssueCriteriaReport } from '../issues/index.js';
-import { criteriaHold } from './hold.js';
+import type { LandingCriteriaReport } from './criteria-basis.js';
+import { criteriaHold, landingCriteriaHold } from './hold.js';
 
-const line: ReleasedLine = {
-  why: "its production `production` declares no source probe, so no commit is read for what it serves: its releases are its agent's record by version",
-  live: { version: '0.76.0', at: new Date('2026-11-02T00:00:00Z') },
-  shipped: new Map([
-    ['0.76.0', { at: new Date('2026-11-02T00:00:00Z'), carried: true, carries: [] }],
-  ]),
-};
+const LANDING = 'f4e5fb66700ba7b35c8c607c8f7309fc5980861a';
+const BY_RECORD = {
+  kind: 'landing',
+  why: 'release-record',
+  landsOn: 'main',
+  deploysFrom: 'main',
+} as const;
+
+const landed = (afterRelease: number[] = []): LandingCriteriaReport => ({
+  issueId: '00000000-0000-4000-8000-000000000002',
+  landing: LANDING,
+  unearned: [{ criterion: 2, why: 'no verdict was recorded for it' }],
+  afterRelease: afterRelease.map((criterion) => ({ criterion, why: 'judged after release' })),
+  counted: [],
+});
 
 const report = (released: ReleasedLine | null): IssueCriteriaReport => ({
   issueId: '00000000-0000-4000-8000-000000000001',
@@ -44,24 +54,21 @@ const report = (released: ReleasedLine | null): IssueCriteriaReport => ({
 });
 
 describe('the criteria hold where verdicts count on a release', () => {
-  it('names the live release to judge on, on the issue, and no probe', () => {
-    const held = criteriaHold(report(line), 'agent');
-    expect(held.reason).toContain(
-      "judge it on release 0.76.0, naming `{ kind: 'release', version: '0.76.0' }` on the issue",
-    );
+  it('names the landing commit to judge at, never the live release that predates the change', () => {
+    const held = landingCriteriaHold(landed(), BY_RECORD, 'agent');
+    expect(held.reason).toContain('judged at its landing commit `f4e5fb66700b` on `main`');
+    expect(held.reason).toContain('names no commit it serves');
+    expect(held.reason).not.toContain('0.76.0');
+    expect(held.reason).not.toContain('promotion');
     expect(held.reason).not.toContain('declare one');
-    expect(held.waitingFor).toBe('a verdict on each criterion named on the live release');
+    expect(held.waitingFor).toBe('a verdict on each criterion named at its landing commit');
+    expect(held.criteria).toEqual([2]);
   });
 
-  it('names the release record to make, and how, where none is recorded: never a probe', () => {
-    const held = criteriaHold(report({ ...line, live: null, shipped: new Map() }), 'agent');
-    expect(held.reason).toContain(
-      'record the release production serves (POST /api/projects/:id/release-records',
-    );
-    expect(held.reason).not.toContain('declare one');
-    expect(held.waitingFor).toBe(
-      'the release production serves recorded, then a verdict on each criterion named on it',
-    );
+  it('names a live-only criterion as not held, judged after the release', () => {
+    const held = landingCriteriaHold(landed([1]), BY_RECORD, 'agent');
+    expect(held.reason).toContain('Not held: criterion 1, judged after release.');
+    expect(held.criteria).toEqual([2]);
   });
 
   it('names what is served where production reads the commit it serves', () => {
