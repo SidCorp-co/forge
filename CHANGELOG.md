@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.483] - 2026-11-04
+
+Support rooms take consent from the right person and see earlier bot answers
+
+### Fixed
+
+- **A placed room sees earlier bot answers.** A room newly placed on a group now reads what the bot and apps posted there while nothing answered, beside people's messages, so it does not answer twice.
+- **A confirmer's own request is their agreement.** A chat room now takes the request of a member it already lets confirm as their agreement, as it did for the owner, so they are not asked to repeat it.
+- **The owner's order settles a filing.** In a chat room the owner the binding names now settles a filing in its thread whoever reported it, before or after the proposal. Builds and deploys keep their confirmer.
+
 ## [0.4.0-dev.482] - 2026-11-04
 
 Bot rooms follow their binding and catch up once on what was missed

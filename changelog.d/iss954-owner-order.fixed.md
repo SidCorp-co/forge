@@ -1,1 +1,0 @@
-**The owner's order settles a filing.** In a chat room the owner the binding names now settles a filing in its thread whoever reported it, before or after the proposal. Builds and deploys keep their confirmer.

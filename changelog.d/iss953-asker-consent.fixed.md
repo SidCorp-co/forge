@@ -1,1 +1,0 @@
-**A confirmer's own request is their agreement.** A chat room now takes the request of a member it already lets confirm as their agreement, as it did for the owner, so they are not asked to repeat it.
