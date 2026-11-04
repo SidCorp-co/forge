@@ -105,13 +105,18 @@ describe("the workflow page says where its design stands (REQ-68 BC-5)", () => {
   });
 });
 
-describe("the workflow page's Where it stands says who the design waits on and what is next (ISS-687 c2)", () => {
-  const line = () => screen.getByTestId("stands-waits-on");
+// Round 5: where the design waits on someone, the banner says who and what, and Where it stands does
+// not say it again (the page read 94 words on a budget of 90); its mark stays for "Nobody · nothing
+// next", where the banner draws nothing. Planted red by drawing the mark whatever the wait.
+describe("the workflow page says who the design waits on and what is next, once (ISS-687 c2)", () => {
+  const line = () => screen.getByTestId("design-banner-line");
+  const saidOnce = () => expect(screen.queryByTestId("stands-waits-on")).toBeNull();
 
   it("says Nobody and that nothing is next on an approved design", () => {
     open(designAt("approved", waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE })));
-    expect(line()).toHaveTextContent("Waits on");
-    expect(line()).toHaveTextContent("Nobody · nothing next");
+    expect(screen.queryByTestId("design-banner-line")).toBeNull();
+    expect(screen.getByTestId("stands-waits-on")).toHaveTextContent("Waits on");
+    expect(screen.getByTestId("stands-waits-on")).toHaveTextContent("Nobody · nothing next");
   });
 
   it("names the approver and the act on a proposed design", () => {
@@ -121,31 +126,35 @@ describe("the workflow page's Where it stands says who the design waits on and w
         waitingOn("person", { who: say("standing.who.holderOf", { perm: "workflow-designs.approve" }), act: say("designs.act.approveOrReturn"), rule: RULE }),
       ),
     );
-    expect(line()).toHaveTextContent("Design approver · approve or return the design");
+    expect(line()).toHaveTextContent("Waiting on Design approver: approve or return the design");
+    saidOnce();
   });
 
   it("names the writer and the revise on a returned design, in a few words", () => {
     open(designAt("returned", waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("designs.act.reviseR", { r: 2 }), rule: RULE })));
-    expect(line()).toHaveTextContent("Ana · revise revision 2");
+    expect(line()).toHaveTextContent("Waiting on Ana: revise revision 2");
+    saidOnce();
     expect((line().textContent ?? "").split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(10);
   });
 });
 
 describe("the workflow page's line agrees with what Needs you counts on the design (ISS-687 round 4)", () => {
-  const line = () => screen.getByTestId("stands-waits-on");
+  const line = () => screen.getByTestId("design-banner-line");
 
   it("says the places to decide on an approved design, beside the same count, its step in the header", () => {
     open(designAt("approved", settleOwedWait(2, "intake")), { needsYou: 2, markers: [], nodes: [], counts: {}, rooted: { rooted: false, missing: [] }, observation: null, reconciliation: { state: "unreconciled" } });
     // the step is the header's pill, said once on the page (REQ-43 BC-5)
     expect(screen.getAllByTestId("design-pill")[0]).toHaveTextContent("Approved");
     expect(screen.queryByTestId("stands-step")).toBeNull();
-    expect(line()).toHaveTextContent("A person · decide 2 places where the code and the design differ");
+    expect(line()).toHaveTextContent("Waiting on A person: decide 2 places where the code and the design differ");
+    expect(screen.queryByTestId("stands-waits-on")).toBeNull();
     expect(line()).not.toHaveTextContent("Nobody");
     expect(screen.getByTestId("stands-needs-you")).toHaveTextContent("2");
   });
 
   it("says the pin-only changes to approve on an approved design they follow", () => {
     open(designAt("approved", repinOwedWait({ flow: "intake", revision: 2, n: 4 }, true)));
-    expect(line()).toHaveTextContent("You · approve 4 pin-only changes → r2");
+    expect(line()).toHaveTextContent("Waiting on you: approve 4 pin-only changes → r2");
+    expect(screen.queryByTestId("stands-waits-on")).toBeNull();
   });
 });

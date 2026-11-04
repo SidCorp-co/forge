@@ -10,6 +10,8 @@
 // test runs on every change; it reads only the web package and its own fresh profile. A box without
 // Chrome fails here by name rather than skipping.
 // @gate-input whole-tree
+// @direct-test-of packages/web-v2/src/features/workflows/components/workflow-where-it-stands.tsx
+// @direct-test-of packages/web-v2/src/features/workflows/components/design-banner.tsx
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";

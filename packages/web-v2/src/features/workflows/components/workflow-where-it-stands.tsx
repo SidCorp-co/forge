@@ -96,14 +96,17 @@ export function codeMatchOf(health: WorkflowHealth | undefined): { stand: Stand;
  * as Needs you lists it on the design (pin-only changes to approve, places the code and the design
  * differ), and "Nobody · nothing next" only where nothing is owed (REQ-68 BC-5; ISS-687 c2, judged
  * short at dev.485 for saying neither, and at dev.489 for "Nobody · nothing next" beside "Needs you 2").
- * The step is the header's design pill, said once on the page (REQ-43 BC-5), never again here.
+ * The step is the header's design pill, said once on the page (REQ-43 BC-5), never again here. Where
+ * the design waits on someone, the banner over the page already says who and what in these words
+ * (`design-banner.tsx`), so the mark is drawn only where the banner is not: "Nobody · nothing next"
+ * (ISS-687 round 5: said twice, the page read 94 words on a budget of 90).
  */
 function WaitsOnMark({ d }: { d: WorkflowDesign }) {
   const t = useCopy();
   const w = saidView(d.waitingOn, useInterfaceLanguage());
-  const stand: Stand = w.kind === "none" ? "yes" : w.kind === "you" || w.kind === "person" ? "differs" : "no";
+  if (w.kind !== "none") return null;
   return (
-    <StandingMark label={t("workflows.stands.waitsOn")} stand={stand} testId="stands-waits-on" title={w.rule}>
+    <StandingMark label={t("workflows.stands.waitsOn")} stand="yes" testId="stands-waits-on" title={w.rule}>
       <span className="min-w-0">
         {w.who} · {w.act || t("workflows.stands.nothingNext")}
       </span>
