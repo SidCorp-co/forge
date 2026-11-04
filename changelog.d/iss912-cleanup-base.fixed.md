@@ -1,1 +1,0 @@
-**A cleanup report's base is checked.** Its `base.sha` must be a commit on `base.branch` as the project's source host reads it, or the report is refused by name; a later report from one fire supersedes the earlier.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.477] - 2026-11-04
+
+Cleanup reports must name a real commit, and later reports replace earlier ones
+
+### Fixed
+
+- **A cleanup report's base is checked.** Its `base.sha` must be a commit on `base.branch` as the project's source host reads it, or the report is refused by name; a later report from one fire supersedes the earlier.
+
 ## [0.4.0-dev.476] - 2026-11-03
 
 A project's deployer sets its own app's environment through Forge's Coolify connection
