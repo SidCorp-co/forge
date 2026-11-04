@@ -154,7 +154,7 @@ describe("the shell", () => {
     expect(shellRoute).toMatch(/className="[^"]*\bbg-shell\b[^"]*" data-print="frame" data-shell/);
     expect(shellRoute).toMatch(/<main className=\{WORKSPACE_MAIN\}/);
     expect(workspaceFrame).toMatch(/export const WORKSPACE_MAIN = "[^"]*\bbg-app\b/);
-    expect(navRail).toMatch(/data-layer="shell"\s+className=\{cn\(\s+"flex h-full flex-none flex-col border-r border-line bg-shell"/);
+    expect(navRail).toMatch(/data-layer="shell"\s+className=\{cn\(\s+"flex h-full flex-none flex-col border-r border-line-region bg-shell"/);
   });
 
   it("stands the phone's nav drawer on the same base layer as the sidebar", () => {
