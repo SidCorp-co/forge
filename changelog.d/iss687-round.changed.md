@@ -1,0 +1,1 @@
+**No issue asks a person to act on it.** The Issues list has no Needs you group, and the issue page no run, pause, reopen or answer. The master admits and resumes issues; questions are answered on their item.
