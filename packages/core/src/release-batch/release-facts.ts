@@ -25,6 +25,7 @@ import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
 import {
   activeIssuePrefix,
+  builderCandidatesAcrossSql,
   type CriterionWithVerdict,
   closedAtOf,
   criterionRoutesOf,
@@ -114,13 +115,24 @@ export interface CarriedVerdict extends ReleaseVerdictReading {
 }
 
 /**
- * Every verdict on `criterionIds`, oldest first: what a release reads a criterion it carries by.
- * The page reads the same rows (`release-page/facts.ts`), so the two cannot count differently.
+ * Every verdict on `criterionIds`, by criterion, each oldest first: what a release reads a criterion
+ * it carries by. The page reads the same rows (`release-page/facts.ts`), so the two cannot count
+ * differently. Keyed so a reader takes one criterion's own verdicts, never a scan of all of them per
+ * criterion: across a project's releases that scan grew with the square of its release count.
  */
 export async function carriedVerdictsOf(
   criterionIds: readonly string[],
-): Promise<CarriedVerdict[]> {
-  if (criterionIds.length === 0) return [];
+): Promise<Map<string, CarriedVerdict[]>> {
+  const out = new Map<string, CarriedVerdict[]>();
+  if (criterionIds.length === 0) return out;
+  const ids = [...new Set(criterionIds)];
+  // every carried issue's builder sessions, read once for the statement rather than per verdict
+  const candidates = builderCandidatesAcrossSql(
+    sql`(SELECT ic.issue_id FROM issue_criteria ic WHERE ic.id IN (${sql.join(
+      ids.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    )}))`,
+  );
   const rows = await db
     .select({
       id: criterionVerdicts.id,
@@ -140,28 +152,34 @@ export async function carriedVerdictsOf(
         authorDevice: sql`${criterionVerdicts.authorDeviceId}`,
         at: sql`${criterionVerdicts.createdAt}`,
         runSession: sql`${criterionVerdicts.runSessionId}`,
+        candidates,
       }),
       authored: sql<boolean>`(${criterionVerdicts.authorUserId} IS NOT NULL OR ${criterionVerdicts.authorDeviceId} IS NOT NULL)`,
     })
     .from(criterionVerdicts)
-    .where(inArray(criterionVerdicts.criterionId, [...criterionIds]))
+    .where(inArray(criterionVerdicts.criterionId, ids))
     .orderBy(asc(criterionVerdicts.createdAt));
-  return rows.map((v) => ({
-    id: v.id,
-    criterionId: v.criterionId,
-    verdict: v.verdict as CarriedVerdict['verdict'],
-    identityKind: v.identityKind,
-    commitSha: v.commitSha,
-    runtimeRef: v.runtimeRef,
-    releaseVersion: v.releaseVersion,
-    at: v.createdAt.toISOString(),
-    reason: v.reason,
-    evidence: v.evidence ?? [],
-    agency: v.agency,
-    byBuilder: v.byBuilder === true,
-    authored: v.authored === true,
-    recordedAt: v.createdAt.toISOString(),
-  }));
+  for (const v of rows) {
+    const held = out.get(v.criterionId) ?? [];
+    held.push({
+      id: v.id,
+      criterionId: v.criterionId,
+      verdict: v.verdict as CarriedVerdict['verdict'],
+      identityKind: v.identityKind,
+      commitSha: v.commitSha,
+      runtimeRef: v.runtimeRef,
+      releaseVersion: v.releaseVersion,
+      at: v.createdAt.toISOString(),
+      reason: v.reason,
+      evidence: v.evidence ?? [],
+      agency: v.agency,
+      byBuilder: v.byBuilder === true,
+      authored: v.authored === true,
+      recordedAt: v.createdAt.toISOString(),
+    });
+    out.set(v.criterionId, held);
+  }
+  return out;
 }
 
 /**
@@ -322,6 +340,25 @@ async function cuttersOf(runIds: readonly string[]): Promise<Map<string, Release
   return out;
 }
 
+/**
+ * One criterion's verdicts, oldest first, split at the instant its issue's last reopen voids them
+ * (`voidedUpTo`, ISS-845): those after it, which it earned since, and those it voided, which a
+ * release shipped before the reopen still reads (ISS-900); `voidedBy` is that instant, or undefined
+ * where the reopen voids none of them.
+ */
+function splitAtReopen(
+  own: readonly CarriedVerdict[],
+  reopenedAt: Date | undefined,
+): { voidedBy: Date | undefined; kept: CarriedVerdict[]; voided: CarriedVerdict[] } {
+  const newestFirst = [...own].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  const voidedBy = voidedUpTo(newestFirst, reopenedAt) ?? undefined;
+  const cut = voidedBy?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const kept: CarriedVerdict[] = [];
+  const voided: CarriedVerdict[] = [];
+  for (const v of own) (new Date(v.at).getTime() > cut ? kept : voided).push(v);
+  return { voidedBy, kept, voided };
+}
+
 export async function loadReleaseFacts(
   projectId: string,
   issueIds: readonly string[],
@@ -371,54 +408,43 @@ export async function loadReleaseFacts(
     carriedVerdictsOf(criterionIds),
     criterionRoutesOf(criterionIds),
   ]);
-  // a reopen voids what was judged before it on a criterion not passing then (`voidedUpTo`,
-  // ISS-845), as `criterionView` reads the latest
-  const voidedFor = (issueId: string, criterionId: string) =>
-    voidedUpTo(
-      verdicts
-        .filter((v) => v.criterionId === criterionId)
-        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
-      reopened.get(issueId),
-    ) ?? undefined;
-  const judged = (issueId: string, kept: boolean) =>
-    new Map(
-      (criteria.get(issueId) ?? []).map((c) => {
-        const voidedBy = voidedFor(issueId, c.id)?.getTime() ?? Number.NEGATIVE_INFINITY;
-        const after = (v: CarriedVerdict) => new Date(v.at).getTime() > voidedBy;
-        return [c.n, verdicts.filter((v) => v.criterionId === c.id && after(v) === kept)];
-      }),
-    );
   const byIssue = new Map<string, IssueFact>(
-    rows.map((r) => [
-      r.id,
-      {
-        id: r.id,
-        key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id,
-        title: r.title ?? '(untitled)',
-        status: r.status,
-        updatedAt: r.updatedAt,
-        releaseNotes: r.releaseNotes ?? null,
-        requirementId: r.requirementId,
-        criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, voidedFor(r.id, c.id))),
-        classes: new Map(
-          (criteria.get(r.id) ?? []).flatMap((c) => {
-            const route = routes.get(c.id);
-            return route ? [[c.n, route.class] as const] : [];
-          }),
-        ),
-        verdicts: judged(r.id, true),
-        voided: judged(r.id, false),
-        reopenedAt: reopened.get(r.id) ?? null,
-        closedAt: closed.get(r.id) ?? [],
-        merged: {
-          at: r.mergedAt,
-          landing: r.mergedLanding,
-          artifacts: r.mergedArtifacts ?? null,
-          commitSha: r.mergedCommitSha?.trim() ? r.mergedCommitSha.trim() : null,
-          readPaths: r.mergedPaths ?? null,
+    rows.map((r) => {
+      const read = (criteria.get(r.id) ?? []).map((c) => ({
+        c,
+        ...splitAtReopen(verdicts.get(c.id) ?? [], reopened.get(r.id)),
+      }));
+      return [
+        r.id,
+        {
+          id: r.id,
+          key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id,
+          title: r.title ?? '(untitled)',
+          status: r.status,
+          updatedAt: r.updatedAt,
+          releaseNotes: r.releaseNotes ?? null,
+          requirementId: r.requirementId,
+          criteria: read.map(({ c, voidedBy }) => criterionView(c, voidedBy)),
+          classes: new Map(
+            read.flatMap(({ c }) => {
+              const route = routes.get(c.id);
+              return route ? [[c.n, route.class] as const] : [];
+            }),
+          ),
+          verdicts: new Map(read.map(({ c, kept }) => [c.n, kept])),
+          voided: new Map(read.map(({ c, voided }) => [c.n, voided])),
+          reopenedAt: reopened.get(r.id) ?? null,
+          closedAt: closed.get(r.id) ?? [],
+          merged: {
+            at: r.mergedAt,
+            landing: r.mergedLanding,
+            artifacts: r.mergedArtifacts ?? null,
+            commitSha: r.mergedCommitSha?.trim() ? r.mergedCommitSha.trim() : null,
+            readPaths: r.mergedPaths ?? null,
+          },
         },
-      },
-    ]),
+      ];
+    }),
   );
   for (const req of reqs.values()) {
     for (const bc of req.coverage) {

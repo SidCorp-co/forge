@@ -161,14 +161,24 @@ export interface Lineage {
 
 /**
  * Chains each attempted run to the one it re-cut. A run has at most one successor: of two later
- * runs on its roster, the second re-cuts the first, never it.
+ * runs on its roster, the second re-cuts the first, never it. Only a run on the same roster can be
+ * one's predecessor, so each run asks among those alone: asked among every run, the chaining grew
+ * with the square of the project's release count, and every read of its releases paid it.
  */
 export function lineageOf(runs: readonly LineageRun[]): Lineage {
   const ordered = runs.filter(attempted).sort((a, b) => (isLater(a, b) ? 1 : -1));
+  const onRoster = new Map<string, LineageRun[]>();
+  for (const r of ordered) {
+    const key = rosterKey(r.roster);
+    const held = onRoster.get(key);
+    if (held) held.push(r);
+    else onRoster.set(key, [r]);
+  }
   const next = new Map<string, LineageRun>();
   const roots: LineageRun[] = [];
   for (const r of ordered) {
-    const pred = predecessorOf(ordered, r.roster, r.startedAt, r.id);
+    const same = onRoster.get(rosterKey(r.roster)) ?? [];
+    const pred = predecessorOf(same, r.roster, r.startedAt, r.id);
     if (pred) next.set(pred.id, r);
     else roots.push(r);
   }

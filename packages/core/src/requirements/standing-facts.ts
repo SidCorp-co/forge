@@ -11,7 +11,12 @@ import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
-import { reopenedAtOf, verdictByBuilderSql, voidedUpTo } from '../issues/index.js';
+import {
+  builderCandidatesAcrossSql,
+  reopenedAtOf,
+  verdictByBuilderSql,
+  voidedUpTo,
+} from '../issues/index.js';
 import { waivedOf } from './acceptance-waived.js';
 import { requirementDependents } from './dependents.js';
 import { recordedLandingsOf } from './recorded-landings.js';
@@ -121,6 +126,10 @@ export async function issueCriteriaOf(
   asReturned: readonly string[] = [],
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
+  const issueList = sql.join(
+    issueIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
   const rows = (await ex.execute(sql`
     SELECT c.id AS criterion_id, c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.reason, v.evidence,
            v.identity_kind,
@@ -134,6 +143,7 @@ export async function issueCriteriaOf(
              authorDevice: sql`v.author_device_id`,
              at: sql`v.verdict_at`,
              runSession: sql`v.run_session_id`,
+             candidates: builderCandidatesAcrossSql(sql`(${issueList})`),
            })}) AS by_builder,
            (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored,
            (SELECT d.criterion_class FROM issue_design_criteria d
@@ -169,10 +179,7 @@ export async function issueCriteriaOf(
            AND pp.slug || '/' || p.contract_slug = v.contract_ref
          LIMIT 1
       ) cp ON true
-     WHERE c.issue_id IN (${sql.join(
-       issueIds.map((id) => sql`${id}`),
-       sql`, `,
-     )})
+     WHERE c.issue_id IN (${issueList})
        AND c.retired_at IS NULL
      ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[];
   // A verdict recorded at or before the issue's latest reopen, on a criterion that was not passing

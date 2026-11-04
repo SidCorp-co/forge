@@ -23,7 +23,11 @@
 // recorded makes it a builder. A `qa` run is read by when it was declared, as above: it judges the
 // running build, which carries the work only once it has landed.
 
-import { RUN_ISSUE_STATUSES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  RUN_GROUP_METADATA_KEY,
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import { ISSUE_DISPATCH_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
@@ -147,6 +151,42 @@ function builderCandidatesSql(issueId: SQL): SQL {
 }
 
 /**
+ * `builderCandidatesSql` for every issue `issues` yields (a parenthesized subquery or list of issue
+ * ids), read in one pass, as one jsonb object from each issue's id to its candidate session ids. A
+ * read weighing many issues' verdicts hands it to `verdictByBuilderSql` as `candidates`: asked per
+ * verdict, the run-session branch read every run session against the issue's project's runs again
+ * for each one, so a project's releases list paid its verdicts times its sessions and runs (forge,
+ * 472 releases: 15.9 s in the database). Here each run's group is spelled out once and joined to
+ * the issues by key; the jsonb `?` the per-verdict branch asks matches a group's string elements,
+ * an object's keys or a string scalar, and each is spelled out here.
+ */
+export function builderCandidatesAcrossSql(issues: SQL): SQL {
+  const group = sql`r.metadata -> ${RUN_GROUP_METADATA_KEY}`;
+  return sql`(SELECT COALESCE(jsonb_object_agg(q.issue_id, q.sessions), '{}'::jsonb) FROM (
+    SELECT bc.issue_id::text AS issue_id, jsonb_agg(DISTINCT bc.session_id) AS sessions FROM (
+      SELECT k.issue_id, k.run_session_id AS session_id FROM issue_check_runs k
+       WHERE k.issue_id IN ${issues} AND k.kind <> 'review' AND k.run_session_id IS NOT NULL
+      UNION ALL
+      SELECT bi.id, ds.id FROM pipeline_runs r
+        CROSS JOIN LATERAL (
+          SELECT jsonb_array_elements_text(${group}) WHERE jsonb_typeof(${group}) = 'array'
+          UNION ALL SELECT jsonb_object_keys(${group}) WHERE jsonb_typeof(${group}) = 'object'
+          UNION ALL SELECT ${group} #>> '{}' WHERE jsonb_typeof(${group}) = 'string'
+        ) g(key)
+        JOIN issues bi ON bi.project_id = r.project_id AND ${canonicalIssueKeySql(sql`bi.iss_seq`)} = g.key
+        JOIN agent_sessions ds ON ds.pipeline_run_id = r.id AND ds.kind = ${RUN_SESSION_KIND}
+       WHERE bi.id IN ${issues}
+         AND r.project_id IN (SELECT bp.project_id FROM issues bp WHERE bp.id IN ${issues})
+      UNION ALL
+      SELECT bi.id, l.session_id FROM issue_leases l
+        JOIN issues bi ON l.project_id = bi.project_id
+                      AND l.issue_key = ${canonicalIssueKeySql(sql`bi.iss_seq`)}
+       WHERE bi.id IN ${issues}
+    ) bc GROUP BY bc.issue_id
+  ) q)`;
+}
+
+/**
  * Whether the issue's work stood landed when run `r` was declared: its merge was recorded before the
  * declaration, and nothing sent it back to `reopen` between the two. A reopen means the work is being
  * built again, so a run declared over it builds, whatever merge stands from before
@@ -237,14 +277,19 @@ export function verdictByBuilderSql(args: {
   authorDevice: SQL;
   at: SQL;
   runSession: SQL;
+  /** Every issue's builder candidates, read once for the statement (`builderCandidatesAcrossSql`);
+   *  absent, the verdict's own issue's are read for it alone. */
+  candidates?: SQL;
 }): SQL<boolean> {
   const { issueId, authorUser, authorDevice, at, runSession } = args;
+  const candidates = args.candidates
+    ? sql`(SELECT c.id::uuid FROM jsonb_array_elements_text(${args.candidates} -> (${issueId})::text) AS c(id))`
+    : builderCandidatesSql(issueId);
   return sql<boolean>`(
     (${runSession} IS NOT NULL AND ${builtBySessionSql(issueId, runSession)})
     OR (${runSession} IS NULL AND ${authorDevice} IS NOT NULL AND EXISTS (
-      SELECT 1 FROM agent_sessions s
-       WHERE s.id IN ${builderCandidatesSql(issueId)}
-         AND s.device_id = ${authorDevice}
+      SELECT 1 FROM ${candidates} AS b(id) JOIN agent_sessions s ON s.id = b.id
+       WHERE s.device_id = ${authorDevice}
          -- a building session live on the box when the verdict was recorded
          AND s.created_at <= ${at}
          AND (s.status NOT IN (${TERMINAL}) OR s.updated_at >= ${at})

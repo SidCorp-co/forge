@@ -1,0 +1,1 @@
+**The Releases list, Needs you and status no longer slow down as releases pile up.** Each verdict re-read every run session to find its builder, and each criterion re-scanned every verdict; both are now read once.

@@ -3,7 +3,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
-import { verdictByBuilderSql } from '../built-by.js';
+import { builderCandidatesAcrossSql, verdictByBuilderSql } from '../built-by.js';
 import { type LatestVerdict, type ListRow, latestOf } from './store.js';
 
 /** A verdict with who recorded it, as the verified rule reads it (contracts `verified-rule.ts`). */
@@ -30,12 +30,17 @@ export async function liveVerdictsOfIssues(
     issueIds.map((id) => [id, new Map()]),
   );
   if (issueIds.length === 0) return out;
+  const issueList = sql.join(
+    issueIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
   const byBuilder = verdictByBuilderSql({
     issueId: sql`c.issue_id`,
     authorUser: sql`v.author_user_id`,
     authorDevice: sql`v.author_device_id`,
     at: sql`v.created_at`,
     runSession: sql`v.run_session_id`,
+    candidates: builderCandidatesAcrossSql(sql`(${issueList})`),
   });
   const rows = (await executor.execute(sql`
     SELECT c.issue_id::text AS issue_id, c.n, v.id AS v_id, v.verdict, v.reason, v.identity_kind,
@@ -49,10 +54,7 @@ export async function liveVerdictsOfIssues(
       FROM issue_criteria c
       JOIN criterion_verdicts v ON v.criterion_id = c.id
       LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
-     WHERE c.issue_id IN (${sql.join(
-       issueIds.map((id) => sql`${id}::uuid`),
-       sql`, `,
-     )}) AND c.retired_at IS NULL
+     WHERE c.issue_id IN (${issueList}) AND c.retired_at IS NULL
      ORDER BY c.issue_id, c.n, v.created_at DESC, v.id DESC`)) as unknown as (ListRow & {
     issue_id: string;
     by_builder: boolean | null;

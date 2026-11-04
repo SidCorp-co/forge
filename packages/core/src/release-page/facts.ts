@@ -37,7 +37,7 @@ export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCri
   return detail.issues.flatMap((issue) => {
     const traced = detail.issueCriteria.find((i) => i.key === issue.key)?.criteria ?? [];
     return (criteria.get(issue.id) ?? []).map((c) => {
-      const own = verdicts.filter((v) => v.criterionId === c.id);
+      const own = verdicts.get(c.id) ?? [];
       const voidedBy =
         voidedUpTo([...own].reverse(), reopened.get(issue.id))?.getTime() ??
         Number.NEGATIVE_INFINITY;
