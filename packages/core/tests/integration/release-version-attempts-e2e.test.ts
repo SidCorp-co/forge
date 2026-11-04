@@ -8,6 +8,7 @@
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { releaseEndedRunClaims } from '../../src/issues/index.js';
 import { closeRunIfOneShot } from '../../src/pipeline/index.js';
 import { stampReleaseShipped } from '../../src/pipeline/run-records.js';
 import { recordCarried } from '../../src/release-batch/carried.js';
@@ -329,6 +330,9 @@ describe('a re-cut below a version claimed since', () => {
     const other = await cut([await fx.insertIssue()]);
     await boxTook(other.runId);
     await ship(other.runId);
+    // the pipeline sweep lets go of what a shipped run claimed within a minute: until it has, a cut
+    // refuses naming that claim (ISS-961, RELEASE_HELD_BY_ENDED_RUN)
+    await releaseEndedRunClaims();
     expect(above(other.version, first.version), 'the other roster shipped above the first').toBe(
       true,
     );
