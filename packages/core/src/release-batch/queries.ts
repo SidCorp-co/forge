@@ -12,6 +12,7 @@
 
 import { contentLanguageName, releaseNoteAttention } from '@forge/contracts/content-language';
 import { releaseNoteUnwritten, sentencesIn } from '@forge/contracts/release-notes';
+import type { ReleaseRangeUnchecked } from '@forge/contracts/release-page';
 import type { ReleaseEndedRunHold, ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -24,6 +25,7 @@ import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { readEndedRunHolds } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
+import { uncheckedOf } from './range-outside.js';
 import { carriersIn, carriersOf } from './version-rule.js';
 import { currentReleaseVersion } from './version-store.js';
 
@@ -283,6 +285,11 @@ interface ReleaseBatchContext {
    * carry them, each with the act that frees them (`ended-claims.ts`, ISS-961).
    */
   endedRunHolds: ReleaseEndedRunHold[];
+  /**
+   * Gate issues outside the roster the range this run reported could not be placed against, each with
+   * why (`range-outside.ts`, ISS-962); null where no range was kept with that check.
+   */
+  rangeUnchecked: ReleaseRangeUnchecked[] | null;
 }
 
 /** What the run records of its carriers, and whether its end still owes them. */
@@ -402,6 +409,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     endedRunHolds: (await readEndedRunHolds(run.projectId, gateStatus)).filter(
       (h) => h.runId !== runId,
     ),
+    rangeUnchecked: uncheckedOf((meta.range as { unchecked?: unknown } | undefined)?.unchecked),
   };
 }
 

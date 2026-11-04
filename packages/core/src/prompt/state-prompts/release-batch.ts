@@ -33,8 +33,10 @@ text. Do not look for another credential on this machine.
    dependencies, settings) are read from this report, and from nothing else. Forge tags the head
    you report \`v<version>\` on the source host, once, so the build you deploy reads its version.
    A refusal names what to fix: \`RELEASE_RANGE_BASE_MOVED\` names the commit the range starts at, and a base this
-   checkout lacks is fetched (\`git fetch origin\`) and the report sent again. It never holds the
-   release: where it cannot be sent, say why in your report and go on to \`finish\`.
+   checkout lacks is fetched (\`git fetch origin\`) and the report sent again. Where it cannot be sent,
+   say why in your report and go on to \`finish\`, except \`RELEASE_RANGE_OUTSIDE_ROSTER\`: your head
+   carries issues waiting at the gate outside this roster, so do NOT deploy it. Cut from a head holding
+   only the roster's landings and report again, or abort if none exists; the refusal names them.
 4. \`release-batches/<runId>/finish -X POST -d '{"commit":"<sha>"}'\` → answers at once with the attempt at
    \`accepted\`; your finish is the release's record, and the server closes every claimed issue on
    its own. \`commit\` is the SHA you pushed, kept as your evidence and never compared.
