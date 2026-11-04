@@ -1,6 +1,8 @@
-// The steward's note on a requirement or feedback page (REQ-48 BC-7): its two lines above the
-// properties, each record it cites linked where the line names it. A note the standing has moved
-// past is greyed and says so; the standing's own banner above it leads either way.
+// The steward's note on a requirement, feedback or issue page (REQ-48 BC-7): its two lines above the
+// properties, each record it cites linked where the line names it. A note the standing has moved past
+// (`stale`, its basis no longer the standing's) is not drawn until the steward writes it again: it
+// says what was true then, and ISS-643's, written before ISS-687 round 2, still named people who must
+// answer under the Stuck banner. The standing's own banner says what is true now.
 
 import type { StewardCite, StewardCiteKind, StewardNote } from "@forge/contracts/steward";
 import { Link } from "@/lib/navigation/router";
@@ -48,19 +50,13 @@ function NoteLine({ text, cites, slug }: { text: string; cites: readonly Steward
 
 export function StewardNoteLines({ note, slug, className }: { note: StewardNote | null; slug: string; className?: string }) {
   const t = useCopy();
-  if (!note) return null;
+  if (!note || note.stale) return null;
   const [first, second] = note.lines;
   return (
-    <section
-      aria-label={t("steward.note.label")}
-      className={cn("flex flex-col gap-0.5 border-b border-line-subtle py-2", note.stale ? "text-subtle" : "text-fg", className)}
-      data-testid="steward-note"
-      data-stale={note.stale ? "true" : "false"}
-    >
+    <section aria-label={t("steward.note.label")} className={cn("flex flex-col gap-0.5 border-b border-line-subtle py-2 text-fg", className)} data-testid="steward-note">
       {/* line 1 says what happened and what blocks; line 2, where written, what is next and by when */}
       {first ? <NoteLine text={first} cites={note.cites} slug={slug} /> : null}
       {second ? <NoteLine text={second} cites={note.cites} slug={slug} /> : null}
-      {note.stale ? <p className="fg-caption text-subtle">{t("steward.note.stale")}</p> : null}
     </section>
   );
 }

@@ -9,8 +9,7 @@
     "steward.budget.spent": "The steward's budget for today is spent until {at}.",
     "steward.budget.sweepPaced": "{n} stuck items wait for tomorrow; new feedback and requirements still run.",
     "steward.budget.sweepSpent": "Stuck items wait for tomorrow; new feedback and requirements still run.",
-    "steward.note.label": "Steward note",
-    "steward.note.stale": "Out of date"
+    "steward.note.label": "Steward note"
   },
   "vi": {
     "standing.act.acceptR": "nghiệm thu r{r}",

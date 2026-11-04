@@ -1,89 +1,40 @@
-
-// The issue rail's Requirement property: the requirement the issue delivers, which a person links
-// or unlinks there. An issue serves one requirement, so a linked one is unlinked before another is
-// picked; picking one asks before it links, since a link changes what the issue is read against.
-// Core refuses a requirement not agreed yet, or one the issue cannot join, by name. A sibling
-// project's requirement is named, linked to and unlinked on that project, by the issue's uuid.
+// The issue rail's Requirement property: the requirement the issue delivers, read by its title and
+// linked to its page, its key on hover (REQ-11 BC-19). Linking and unlinking an issue is the
+// project's agents' act, never a person's (REQ-68 BC-6, ISS-687): core refuses it from the web by
+// name (`REQUIREMENT_ISSUE_ACT_FORBIDDEN`), so the rail offers no picker and no Unlink. A sibling
+// project's requirement is named with its project and links there.
 
 import { Link } from "@/lib/navigation/router";
-import { useState } from "react";
-import { Button, ConfirmDialog, Select } from "@/design";
-import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
 import { cn } from "@/lib/utils/cn";
 import type { OtherProject } from "@forge/contracts/requirements";
-import { useIssueRequirementLink, useLinkableRequirements } from "../requirement-link";
 
 export function IssueRequirementProperty({
-  projectId,
   slug,
-  issue,
   current,
   currentTitle = null,
   requirementProject = null,
-  disabled,
 }: {
-  projectId: string;
   slug: string;
-  issue: { id: string; displayId: string };
   /** The requirement it delivers, by key; null while it delivers none. */
   current: string | null;
   /** That requirement's title, the link's face; its key is the tooltip (REQ-11 BC-19). */
   currentTitle?: string | null;
   /** The requirement's project, where it is a sibling project's rather than the issue's own. */
   requirementProject?: OtherProject | null;
-  disabled: boolean;
 }) {
   const t = useCopy();
-  const issueKey = issue.displayId;
-  const list = useLinkableRequirements(current || disabled ? undefined : projectId);
-  const act = useIssueRequirementLink(requirementProject?.id ?? projectId, requirementProject ? issue.id : issueKey);
-  const [asking, setAsking] = useState<{ key: string; title: string } | null>(null);
-  if (current) {
-    return (
-      <div className="grid justify-items-end gap-1" data-testid="issue-requirement">
-        <span className="flex items-center gap-2">
-          <Link
-            href={requirementHref(requirementProject?.slug ?? slug, current)}
-            className={cn("min-w-0 truncate text-12 font-semibold text-link hover:underline", !currentTitle && "font-mono")}
-            title={requirementProject ? `${requirementProject.slug}/${current}` : current}
-          >
-            {currentTitle || (requirementProject ? `${requirementProject.slug}/${current}` : current)}
-          </Link>
-          {disabled ? null : (
-            <Button variant="ghost" size="sm" disabled={act.isPending} onClick={() => act.mutate({ req: current, unlink: true })} data-testid="issue-requirement-unlink">
-              {t("issues.rail.requirementUnlink")}
-            </Button>
-          )}
-        </span>
-        <RefusalLine error={act.error} testid="issue-requirement-refusal" />
-      </div>
-    );
-  }
-  if (disabled) return <span className="fg-body-sm text-subtle">{t("issues.rail.requirementNone")}</span>;
-  const options = (list.data ?? []).map((r) => ({ value: r.key, label: `${r.key} ${r.title}` }));
+  if (!current) return <span className="fg-body-sm text-subtle">{t("issues.rail.requirementNone")}</span>;
+  const named = requirementProject ? `${requirementProject.slug}/${current}` : current;
   return (
-    <div className="grid justify-items-end gap-1" data-testid="issue-requirement">
-      <Select
-        aria-label={t("issues.rail.requirementPick")}
-        placeholder={t("issues.rail.requirementPick")}
-        value=""
-        options={options}
-        disabled={act.isPending || list.isLoading}
-        onChange={(req) => setAsking({ key: req, title: list.data?.find((r) => r.key === req)?.title ?? "" })}
-        className="w-48"
-      />
-      <RefusalLine error={act.error} testid="issue-requirement-refusal" />
-      <ConfirmDialog
-        open={asking !== null}
-        title={t("issues.rail.requirementConfirmTitle", { issue: issueKey, req: asking?.key ?? "" })}
-        message={t("issues.rail.requirementConfirm", { issue: issueKey, req: asking?.key ?? "", title: asking?.title ?? "" })}
-        confirmLabel={t("issues.rail.requirementConfirmAct")}
-        loading={act.isPending}
-        onClose={() => setAsking(null)}
-        onConfirm={() => asking && act.mutate({ req: asking.key, unlink: false }, { onSettled: () => setAsking(null) })}
-      />
-    </div>
+    <Link
+      href={requirementHref(requirementProject?.slug ?? slug, current)}
+      className={cn("min-w-0 truncate text-12 font-semibold text-link hover:underline", !currentTitle && "font-mono")}
+      title={named}
+      data-testid="issue-requirement"
+    >
+      {currentTitle || named}
+    </Link>
   );
 }

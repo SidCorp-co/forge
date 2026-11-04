@@ -294,7 +294,7 @@ export interface StewardNote {
 	cites: StewardCite[];
 	claims: StewardClaims;
 	basis: string;
-	/** The standing has moved since the note was written: the page shows it marked stale, under the standing. */
+	/** The standing has moved since the note was written: no page draws it until the steward writes it again. */
 	stale: boolean;
 	writtenAt: string;
 	writtenBy: { id: string; name: string | null; kind: "human" | "agent" };

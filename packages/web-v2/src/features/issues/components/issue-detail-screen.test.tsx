@@ -8,6 +8,8 @@
 // @direct-test-of packages/web-v2/src/features/issues/components/detail/issue-page-main.tsx
 // @direct-test-of packages/web-v2/src/features/issues/components/detail/issue-state-head.tsx
 // @direct-test-of packages/web-v2/src/features/questions/components/question-view.tsx
+// @direct-test-of packages/web-v2/src/features/standing/components/steward-note.tsx
+// @direct-test-of packages/web-v2/src/features/issues/components/requirement-property.tsx
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -177,11 +179,11 @@ function visibleWords(root: HTMLElement): number {
   return words;
 }
 
-async function page(search = "", over: Record<string, unknown> = {}) {
+async function page(search = "", over: Record<string, unknown> = {}, served: (c: Call) => { body: unknown } | undefined = () => undefined) {
   window.history.replaceState(null, "", `/projects/forge/issues/ISS-451${search}`);
   fakeCore((c) => {
     const path = c.path.split("?")[0] ?? "";
-    return path === `/issues/${ID}` || path === "/issues/ISS-451" ? { body: { ...issue, ...over } } : core(c);
+    return path === `/issues/${ID}` || path === "/issues/ISS-451" ? { body: { ...issue, ...over } } : (served(c) ?? core(c));
   });
   renderWithQuery(<IssueDetailScreen projectId={P} slug="forge" id="ISS-451" />);
   const screenEl = await screen.findByTestId("issue-detail");
@@ -315,6 +317,60 @@ describe("an issue page asks a writer to do nothing to the issue (ISS-687)", () 
     expect(within(root).queryAllByRole("button", { name: ACTS })).toEqual([]);
     expect(within(root).queryAllByRole("button", { name: /^Change status/ })).toEqual([]);
     expect(within(root).queryByTestId("issue-needs-you")).toBeNull();
+  });
+});
+
+// Judge run e0121211 at dev.486 (ISS-687 round 3): ISS-643, ISS-639 and ISS-582 still drew the steward
+// note written before round 2 under the Stuck banner, "Orchestrator and QA must answer the question;
+// review again once they respond.", labelled "Out of date". A note the standing has moved past says
+// what was true then; it is not drawn until the steward writes it again.
+describe("an issue page draws no steward note the standing has moved past (ISS-687)", () => {
+  const note = (stale: boolean) => ({
+    subject: { kind: "issue", id: ID, key: "ISS-451" },
+    lines: ["Orchestrator and QA owe an overdue answer on ISS-451.", "Orchestrator and QA must answer the question; review again once they respond."],
+    cites: [{ kind: "issue", ref: "ISS-451" }],
+    claims: { group: "stuck", waitingKind: "person", ref: null, stuck: true, stuckCode: "overdue", dueAt: null },
+    basis: "before-round-2",
+    stale,
+    writtenAt: AT,
+    writtenBy: { id: "u9", name: "steward", kind: "agent" },
+    runId: null,
+  });
+  const notes: Call[] = [];
+  const serving = (stale: boolean) => (c: Call) => {
+    if (!(c.path.split("?")[0] ?? "").endsWith("/steward-notes/issue/ISS-451")) return undefined;
+    notes.push(c);
+    return { body: { note: note(stale) } };
+  };
+
+  it.each([["person's", ""], ["developer", "?view=developer"]])("a stale note naming who must answer is not drawn, in the %s view", async (_, search) => {
+    notes.length = 0;
+    const root = await page(search, {}, serving(true));
+    await waitFor(() => expect(notes.length).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(root).queryByTestId("steward-note")).toBeNull();
+    expect(root.textContent).not.toMatch(/must answer|Out of date/);
+  });
+
+  it("a note the steward wrote on the standing as it stands is drawn", async () => {
+    const root = await page("", {}, serving(false));
+    expect(await within(root).findByTestId("steward-note")).toHaveTextContent("review again once they respond");
+  });
+});
+
+// The rail's requirement picker (Link to a requirement…, Unlink) was a person's act on the issue, and
+// one core refuses from the web by name (REQUIREMENT_ISSUE_ACT_FORBIDDEN): judge run e0121211 read it at
+// dev.486. The rail names the requirement the issue delivers and offers nothing to do to the link.
+describe("an issue page's rail links nothing to a requirement (ISS-687)", () => {
+  it("names the requirement it delivers by its title, its key on hover, with no picker and no Unlink", async () => {
+    railBeside();
+    const root = await page();
+    const req = within(root).getByTestId("issue-requirement");
+    expect(req).toHaveTextContent("Checklists");
+    expect(req).toHaveAttribute("title", "REQ-34");
+    expect(req).toHaveAttribute("href", "/projects/forge/requirements/REQ-34");
+    expect(within(root).queryByRole("combobox", { name: /requirement/i })).toBeNull();
+    expect(within(root).queryByRole("button", { name: /^(Unlink|Link)$/ })).toBeNull();
   });
 });
 
