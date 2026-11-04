@@ -1,0 +1,1 @@
+- In a chat room, the owner the binding names now settles a filing in its thread whoever reported it: his order counts as agreement whether it came before or after the proposal, so he is no longer asked to say ok to work he just ordered. Builds, deploys and host changes keep their confirmer gate, which only owner mode opens to him (ISS-954).

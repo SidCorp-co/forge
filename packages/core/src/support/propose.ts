@@ -11,7 +11,7 @@ import {
   type SupportCallArgs,
 } from '../integrations/support-api/index.js';
 import { changeWaitsOnRole, requestIsConsent, whoConfirms } from './confirm-role.js';
-import { grantsOf, supportConfigOf } from './grants.js';
+import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, threadUnknown } from './outcome.js';
 import type { RecordRequest } from './record.js';
@@ -129,11 +129,25 @@ export async function offerChange(input: {
       proposal: fix.code,
       waitsOn,
       expiresAt: fix.expiresAt.toISOString(),
-      next: (await requestIsConsent(room, grantsOf(await supportConfigOf(room)), asker))
-        ? `Nothing was posted. @${asker.label ?? asker.key} asked for this themselves and this room lets them confirm, so their own request is their agreement: call agree { thread, proposal: "${fix.code}", message: <the id of their message asking for it> } now, and ask them nothing.`
+      next: (await ownRequestConsents(room, fix, asker))
+        ? `Nothing was posted. @${asker.label ?? asker.key} asked for this themselves, and in this room their own request is their agreement: call agree { thread, proposal: "${fix.code}", message: <the id of their message asking for it> } now, and ask them nothing.`
         : `Nothing was posted. Ask ${waitsOn} in your own words, in this thread. When they answer, call agree { thread, proposal: "${fix.code}", message: <their message id>, decision?: "decline" }.`,
     },
   };
+}
+
+/**
+ * Whether the asker's own request will be their agreement to this proposal: an asker the room lets
+ * confirm (ISS-953), or the owner the binding names asking for a filing (ISS-954).
+ */
+async function ownRequestConsents(
+  room: RoomRow,
+  fix: ProposalRow,
+  asker: { key: string; label: string | null },
+): Promise<boolean> {
+  const grants = grantsOf(await supportConfigOf(room));
+  if (fix.kind === 'filing' && isNamedOwner(grants, asker.key)) return true;
+  return requestIsConsent(room, grants, asker);
 }
 
 export async function proposeFix(input: {
