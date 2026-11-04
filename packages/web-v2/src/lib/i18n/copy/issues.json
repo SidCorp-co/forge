@@ -1123,7 +1123,7 @@
     "issues.stuckState.draft_carrier": "Còn bản nháp",
     "issues.stuckState.releaseHeld": "Đang bị giữ",
     "issues.stuckState.unknown": "Đang chờ",
-    "issues.thread.waitChanged": "Đổi việc chờ",
+    "issues.thread.waitChanged": "Chờ thứ khác",
     "issues.thread.nowWaitsOn": "Giờ đang chờ: {what}",
     "issues.waitingKind.unknown": "Đang chờ",
     "issues.needs.supply": "Cung cấp {what}",
@@ -1145,10 +1145,10 @@
     "issues.releaseHold.act.noReleaseGate": "ghi nhận thay đổi đã merge",
     "issues.releaseHold.act.releaseNoActor": "chỉ định chủ project",
     "issues.releaseHold.act.releaseCutFailed": "sửa lần phát hành bị lỗi",
-    "issues.releaseHold.act.releaseCutRefused": "gỡ lý do bị từ chối",
-    "issues.releaseHold.act.releaseAbortBlocked": "gỡ lần hủy đang bị chặn",
+    "issues.releaseHold.act.releaseCutRefused": "khắc phục nguyên nhân bị từ chối",
+    "issues.releaseHold.act.releaseAbortBlocked": "bỏ chặn thao tác hủy",
     "issues.releaseHold.act.releaseUnclosedQuestion": "trả lời hoặc hủy câu hỏi",
-    "issues.releaseHold.act.releaseUnclosedRefused": "gỡ lý do bị từ chối, rồi cắt bản thủ công",
+    "issues.releaseHold.act.releaseUnclosedRefused": "khắc phục nguyên nhân bị từ chối rồi cắt bản thủ công",
     "issues.releaseHold.act.batchInFlight": "hoàn tất lần phát hành đang chạy",
     "issues.releaseHold.act.claimConflict": "thử lại ở lượt quét sau",
     "issues.releaseHold.act.noRunnerOnline": "bật một runner",
@@ -1161,8 +1161,8 @@
     "issues.releaseHold.act.releaseRosterEmpty": "merge thay đổi để phát hành",
     "issues.releaseHold.act.releaseRosterOversize": "chia nhỏ bản phát hành",
     "issues.releaseHold.act.releaseVersionUndecided": "chọn số phiên bản",
-    "issues.releaseHold.act.releaseWorkUnmerged": "merge thay đổi của nó",
-    "issues.releaseHold.act.humanFallback": "gỡ lý do bị từ chối",
+    "issues.releaseHold.act.releaseWorkUnmerged": "merge thay đổi",
+    "issues.releaseHold.act.humanFallback": "khắc phục nguyên nhân bị từ chối",
     "issues.releaseHold.act.agentFallback": "phát hành ở lượt quét sau"
   }
 }
