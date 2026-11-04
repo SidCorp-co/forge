@@ -16,7 +16,7 @@ import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { type CriteriaBasis, type LandingCriteriaReport, landingWhere } from './criteria-basis.js';
+import { type LandingCriteriaReport, landingWhere, servingWhere } from './criteria-basis.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
 
 /** What holds a row back, as the sweep decided it. */
@@ -158,7 +158,7 @@ export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${reasons}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
+      `this one is not — ${reasons}. I${servingWhere(report.weighedOn).slice(1)}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
       '`awaiting_release` if it is not to ship.',
     owes,
     waitingFor: `a verdict on each criterion named at the running deployment${owes === 'human' ? ', or the issue closed by hand' : ''}`,
@@ -168,14 +168,14 @@ export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer
 
 /**
  * A row weighed at its landing (`criteria-basis.ts`): where a promotion stands between the branch
- * work lands on and the one production deploys from, or where production names no commit it serves
- * and the release its record says is live predates the change (ISS-957), what production serves
+ * work lands on and the one production deploys from, or production is deployed only by a release and
+ * nothing the project judges on serves the change first (ISS-957, ISS-964), what production serves
  * cannot hold the change before its release, so a verdict counts at the landing commit, or on the
  * testing environment `delivery.judgedOn` names. Never a release that predates the change.
  */
 export function landingCriteriaHold(
   report: LandingCriteriaReport,
-  basis: Extract<CriteriaBasis, { kind: 'landing' }>,
+  basis: Parameters<typeof landingWhere>[0],
   owes: CriteriaHoldOwer,
 ): ReleaseHold {
   const at = report.landing

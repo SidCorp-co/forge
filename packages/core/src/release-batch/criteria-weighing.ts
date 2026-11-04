@@ -1,9 +1,9 @@
 // forge-core-61 — one issue's criteria weighed as the gate that will decide it weighs them, for the
 // criteria read (`issues/criteria-weighing.ts`). It calls the release's own weighings and no other:
-// a promotion project, or one whose production names no commit it serves (ISS-957), at the landing
-// (`criteria-basis.ts:landingCriteriaReports`), any other at what
-// is served (`issues/criteria-verdicts.ts:unearnedCriteriaReports`, the judged-on environment until
-// the issue is released). Where no basis can be computed, every criterion says why.
+// a project where nothing it judges on serves a change before its release (a promotion, or production
+// deployed only by a release: ISS-957, ISS-964) at the landing (`criteria-basis.ts:landingCriteriaReports`),
+// one judging on a `delivery.judgedOn` environment at what is served
+// (`issues/criteria-verdicts.ts:unearnedCriteriaReports`, that environment until the issue is released). Where no basis can be computed, every criterion says why.
 
 import type { CriterionWeighing, IssueCriteriaWeighing } from '../issues/index.js';
 import { unearnedCriteriaReports } from '../issues/index.js';
@@ -30,7 +30,7 @@ async function atLanding(
   if (!report) return { kind: 'none', why: 'the landing weighing returned nothing for this issue' };
   const { landsOn, deploysFrom } = basis;
   const weighedOn = { basis: 'landing', landing: report.landing, landsOn, deploysFrom } as const;
-  const where = `${landingWhere(basis)}, so a criterion is earned at the landing${basis.why === 'promotion' ? '' : ' or on a release that holds it'}`;
+  const where = `${landingWhere(basis)}, so a criterion is earned at the landing${basis.byRecord ? ' or on a release that holds it' : ''}`;
   const criteria = new Map<number, CriterionWeighing>();
   for (const { criterion, why } of report.unearned) {
     criteria.set(criterion, {
