@@ -123,7 +123,9 @@ describe('a production that moves only by its releases weighs a waiting issue at
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(hold?.reason).toContain(`judged at its landing commit \`${LANDED.slice(0, 12)}\``);
     expect(hold?.reason).toContain('production is deployed only by a release');
-    expect(hold?.reason).toContain('every commit it serves is one a release shipped');
+    expect(hold?.reason).toContain(
+      '`on-land`: it serves only what its releases shipped while a change landed since waits',
+    );
     expect(hold?.reason).not.toContain(SERVED);
   });
 });
@@ -136,7 +138,7 @@ describe('a production a landing reached keeps weighing at what it serves', () =
 
     expect(await criteriaBasisOf(projectId)).toEqual({
       kind: 'serving',
-      why: 'on-land',
+      why: 'landing-reaches',
       judgedOn: null,
     });
     const result = await sweepAutomaticReleases();
@@ -145,7 +147,7 @@ describe('a production a landing reached keeps weighing at what it serves', () =
     const hold = await fx.holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(hold?.reason).toContain(
-      "It is weighed at what this project's production serves, which deploys on land",
+      "It is weighed at what this project's production serves, a commit no release shipped",
     );
     expect(hold?.reason).toContain(SERVED);
     expect(await coverageLandingHolds(projectId, [id])).toBeNull();

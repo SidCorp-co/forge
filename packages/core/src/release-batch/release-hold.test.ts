@@ -77,7 +77,7 @@ describe('the criteria hold where verdicts count on a release', () => {
   it('names what is served where production reads the commit it serves, and why it is weighed there', () => {
     const held = criteriaHold(report(null), 'human');
     expect(held.reason).toContain(
-      "It is weighed at what this project's production serves, which deploys on land",
+      "It is weighed at what this project's production serves, a commit no release shipped",
     );
     expect(held.reason).toContain('declare one');
     expect(held.waitingFor).toBe(

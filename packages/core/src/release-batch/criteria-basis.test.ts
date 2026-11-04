@@ -1,6 +1,7 @@
 // ISS-964: where a release weighs criteria turns on whether any environment the project judges on can
-// serve a landed change before its release, read per trigger: agenfold's on-land production, serving
-// only what its releases shipped, held draft 0.125.0 for verdicts at the 0.123.0 build for ever.
+// serve a landed change before its release. No trigger answers it, so production's reading does:
+// agenfold's on-land production, serving only what its releases shipped, held draft 0.125.0 for
+// verdicts at the 0.123.0 build for ever.
 // @direct-test-of packages/core/src/release-batch/criteria-basis.ts
 
 import { describe, expect, it } from 'vitest';
@@ -48,47 +49,42 @@ function path(
 
 const binding = (trigger: 'on-land' | 'on-request' | 'provider') => ({ binding: 'b-1', trigger });
 
-describe('where a project weighs its criteria, per trigger (ISS-964)', () => {
-  it.each([
-    ['on-request', binding('on-request')],
-    ['provider', binding('provider')],
-    ['external', { mode: 'external' } as const],
-  ])(
-    'weighs a %s production at the landing, whatever its reading names',
+const TRIGGERS = [
+  ['on-land', binding('on-land')],
+  ['on-request', binding('on-request')],
+  ['provider', binding('provider')],
+  ['external', { mode: 'external' } as const],
+] as const;
+
+describe('where a project weighs its criteria, for every trigger (ISS-964)', () => {
+  it.each(TRIGGERS)(
+    'weighs a %s production serving only what its releases shipped at the landing',
     (deployment, declared) => {
-      for (const moves of ['releases', 'lands', 'unread', 'none'] as const) {
+      expect(basisOfPath(path(declared), 'releases')).toEqual({
+        kind: 'landing',
+        why: 'release-only',
+        landsOn: 'main',
+        deploysFrom: 'main',
+        byRecord: false,
+        deployment,
+      });
+    },
+  );
+
+  it.each(TRIGGERS)(
+    'weighs a %s production a landing reached at what it serves, and keeps it where the reading says nothing',
+    (_, declared) => {
+      for (const moves of ['lands', 'unread', 'none'] as const) {
         expect(basisOfPath(path(declared), moves)).toEqual({
-          kind: 'landing',
-          why: 'release-only',
-          landsOn: 'main',
-          deploysFrom: 'main',
-          byRecord: false,
-          deployment,
+          kind: 'serving',
+          why: 'landing-reaches',
+          judgedOn: null,
         });
       }
     },
   );
 
-  it('weighs an on-land production that serves only what its releases shipped at the landing', () => {
-    expect(basisOfPath(path(binding('on-land')), 'releases')).toMatchObject({
-      kind: 'landing',
-      why: 'release-only',
-      deployment: 'on-land',
-      byRecord: false,
-    });
-  });
-
-  it('weighs an on-land production a landing reached at what it serves, and keeps the declaration where the reading says nothing', () => {
-    for (const moves of ['lands', 'unread', 'none'] as const) {
-      expect(basisOfPath(path(binding('on-land')), moves)).toEqual({
-        kind: 'serving',
-        why: 'on-land',
-        judgedOn: null,
-      });
-    }
-  });
-
-  it('weighs an on-land production naming no commit at the landing where nothing answers (ISS-957)', () => {
+  it('weighs a production naming no commit at the landing where nothing answers (ISS-957)', () => {
     expect(basisOfPath(path(binding('on-land'), { probe: false }), 'unread')).toMatchObject({
       kind: 'landing',
       why: 'release-only',
@@ -100,12 +96,8 @@ describe('where a project weighs its criteria, per trigger (ISS-964)', () => {
     });
   });
 
-  it('weighs at what the judged-on environment serves, whatever the trigger', () => {
-    for (const declared of [
-      binding('on-land'),
-      binding('on-request'),
-      { mode: 'external' } as const,
-    ]) {
+  it('weighs at what the judged-on environment serves, whatever production serves', () => {
+    for (const [, declared] of TRIGGERS) {
       expect(basisOfPath(path(declared, { judgedOn: 'stg' }), 'releases')).toEqual({
         kind: 'serving',
         why: 'judged-on',
@@ -131,28 +123,27 @@ describe('where a project weighs its criteria, per trigger (ISS-964)', () => {
 });
 
 describe('the words a hold names its basis in', () => {
-  it('says production moves only by a release, and how, never that it names no commit where it does', () => {
-    const basis = basisOfPath(path(binding('on-land')), 'releases');
+  const landing = (declared: Deployment, probe = true) => {
+    const basis = basisOfPath(path(declared, { probe }), probe ? 'releases' : 'unread');
     if (basis.kind !== 'landing') throw new Error('not a landing basis');
-    const words = landingWhere(basis);
-    expect(words).toContain('production is deployed only by a release');
-    expect(words).toContain('every commit it serves is one a release shipped');
+    return landingWhere(basis);
+  };
+
+  it('says production moves only by a release, by what it serves, never that it names no commit where it does', () => {
+    const words = landing(binding('on-land'));
+    expect(words).toContain(
+      'production is deployed only by a release (`on-land`: it serves only what its releases shipped while a change landed since waits)',
+    );
     expect(words).not.toContain('names no commit');
+    expect(landing({ mode: 'external' })).toContain('(deployed outside Forge: it serves only');
   });
 
-  it('names the trigger of each production deployed only by a release', () => {
-    const said = (declared: Deployment) => {
-      const basis = basisOfPath(path(declared), 'none');
-      if (basis.kind !== 'landing') throw new Error('not a landing basis');
-      return landingWhere(basis);
-    };
-    expect(said(binding('on-request'))).toContain('`on-request` trigger');
-    expect(said(binding('provider'))).toContain('`provider` trigger');
-    expect(said({ mode: 'external' })).toContain('deployed outside Forge');
+  it('says a production naming no commit is read on its release record', () => {
+    expect(landing(binding('on-land'), false)).toContain('it names no commit it serves');
   });
 
   it('says what is served and why, for production and for a judged-on environment', () => {
-    expect(servingWhere(null)).toContain('which deploys on land');
+    expect(servingWhere(null)).toContain('a commit no release shipped');
     expect(servingWhere('stg')).toContain('`stg` serves');
   });
 });
