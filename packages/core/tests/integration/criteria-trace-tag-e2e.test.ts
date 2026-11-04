@@ -8,6 +8,7 @@
  * leading and the form that traces. Through the app's own routes, against real Postgres.
  *
  * @direct-test-of packages/core/src/issues/criteria/store.ts
+ * @direct-test-of packages/core/src/issues/criteria/own-requirement.ts
  * @direct-test-of packages/core/src/issues/criteria/criteria-text.ts
  * @direct-test-of packages/core/src/issues/checklist-record.ts
  * @direct-test-of packages/contracts/src/gate-profiles.ts
@@ -170,6 +171,61 @@ describe('a criterion whose line opens with its BC tag', () => {
     expect(refusal?.code).toBe('CRITERIA_TRACE_INVALID');
     expect(refusal?.detail).toContain('"(req-1 bc-2)"');
     expect(refusal?.detail).toContain(LEADING_SHAPE);
+  });
+});
+
+// ISS-617 (FB-209): PUT /criteria took a `requirementCriterionId` of another requirement's BC that the
+// tag path refused, so a criterion could be traced across requirements by the id where its tag could
+// not. Both read one own-requirement rule now, and each is refused with the same sentence.
+describe("a criterion traced to another requirement's BC", () => {
+  const RULE = "a criterion proves a BC of its own issue's requirement";
+  let foreign: string;
+
+  beforeEach(async () => {
+    const other = await createReadyDraftIssue(projectId, ownerId, 2, 2);
+    const [row] = await rows<{ id: string }>(sql`
+      SELECT id FROM requirement_criteria WHERE requirement_id = ${other.requirementId} AND code = 'BC-1'
+    `);
+    foreign = String(row?.id);
+  });
+
+  it('is refused by name on PUT /criteria by requirementCriterionId, and nothing is stored', async () => {
+    const before = await criteriaOf();
+    const r = await put([
+      { n: 1, statement: 'it holds here', requirementCriterionId: bc1 },
+      { n: 2, statement: 'Something holds', requirementCriterionId: foreign },
+    ]);
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    const refusal = refusalOf(r.body);
+    expect(refusal?.code).toBe('CRITERIA_TRACE_UNRESOLVED');
+    expect(refusal?.path).toBe('/criteria');
+    expect(refusal?.detail).toContain(RULE);
+    expect(refusal?.detail).toContain('this issue serves REQ-1');
+    expect(await criteriaOf()).toEqual(before);
+    expect((await criteriaOf()).map((c) => c.requirementCriterionId)).not.toContain(foreign);
+  });
+
+  it.each([
+    ['PUT /criteria', '/criteria'],
+    ['the text path', '/acceptanceCriteria'],
+  ])('is refused by the same rule on %s by its lead tag', async (_door, path) => {
+    const before = await criteriaOf();
+    const r =
+      path === '/criteria'
+        ? await put([
+            { n: 1, statement: 'it holds here' },
+            { n: 2, statement: '(REQ-2 BC-1) Something holds' },
+          ])
+        : await writeText('1. it holds here\n2. (REQ-2 BC-1) Something holds');
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    const refusal = refusalOf(r.body);
+    expect(refusal?.code).toBe('CRITERIA_TRACE_UNRESOLVED');
+    expect(refusal?.path).toBe(path);
+    expect(refusal?.detail).toContain(RULE);
+    expect(refusal?.detail).toContain('this issue serves REQ-1');
+    expect(await criteriaOf()).toEqual(before);
   });
 });
 

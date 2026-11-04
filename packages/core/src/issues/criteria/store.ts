@@ -43,6 +43,7 @@ import {
   matchCriteria,
   sameCriteria,
 } from './match.js';
+import { foreignTraceFault } from './own-requirement.js';
 import { liveWordingAt } from './trace-wording.js';
 
 export const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
@@ -198,7 +199,9 @@ async function refuseDroppedTraces(
  * The criteria with the trace each one's words state, for every criterion sent without
  * `requirementCriterionId` (the text path sends none): a lead `(REQ-n BC-m)` resolved to the wording
  * of that code live at the revision the issue was planned against (its requirement's current one
- * where it records none). A tag naming another requirement, a code with no live wording, or a lead
+ * where it records none). A trace naming another requirement's BC, by its tag or by
+ * `requirementCriterionId`, is refused by the one own-requirement rule
+ * (`own-requirement.ts:foreignTraceFault`); a code with no live wording, or a lead
  * tag of another shape is refused by name, and so is a tag after the start of the line (ISS-625),
  * which would trace nothing in silence. A criterion kept word for word is not judged again, so a row
  * written before these rules never blocks an unrelated write; the issue-ready checklist names it
@@ -237,33 +240,28 @@ async function tracedInputs(
       );
     }
   }
-  const stated = desired.flatMap((c) => c.requirementCriterionId ?? []);
-  if (tags.every((t) => t.tag.kind !== 'tag') && stated.length === 0) return [...desired];
-  const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
-  refuseForeignTraces(desired, req, wordings, path);
-  const revision = req?.revision ?? null;
+  const byId = desired.some((c) => c.requirementCriterionId);
+  if (tags.every((t) => t.tag.kind !== 'tag') && !byId) return [...desired];
+  const own = await traceWordingsOf(tx, issueId);
+  for (const { c, tag } of tags) {
+    const stated = c.requirementCriterionId
+      ? { requirementCriterionId: c.requirementCriterionId }
+      : tag.kind === 'tag'
+        ? { requirementSeq: tag.requirementSeq, code: tag.code }
+        : null;
+    const fault = stated && foreignTraceFault(c.n, stated, own);
+    if (fault) throw refuseCriteria('CRITERIA_TRACE_UNRESOLVED', fault, path);
+  }
+  const { wordings } = own;
+  const revision = own.requirement?.revision ?? null;
   const traced = tags.map(({ c, i, tag }) => {
     if (tag.kind !== 'tag') return c;
     const where = `criterion ${c.n} traces REQ-${tag.requirementSeq} ${tag.code}`;
-    if (!req) {
-      throw refuseCriteria(
-        'CRITERIA_TRACE_UNRESOLVED',
-        `${where}, and this issue serves no requirement: link it to REQ-${tag.requirementSeq} first, or drop the tag`,
-        path,
-      );
-    }
-    if (req.seq !== tag.requirementSeq) {
-      throw refuseCriteria(
-        'CRITERIA_TRACE_UNRESOLVED',
-        `${where}, and this issue serves REQ-${req.seq}: a criterion proves a BC of its own issue's requirement`,
-        path,
-      );
-    }
     const live = liveWordingAt(wordings, tag.code, revision);
     if (!live) {
       throw refuseCriteria(
         'CRITERIA_TRACE_UNRESOLVED',
-        `${where}, and REQ-${req.seq} has no wording of ${tag.code} live at revision ${revision ?? 'none'}, the one this issue was planned against`,
+        `${where}, and REQ-${tag.requirementSeq} has no wording of ${tag.code} live at revision ${revision ?? 'none'}, the one this issue was planned against`,
         path,
       );
     }
@@ -279,33 +277,6 @@ async function tracedInputs(
   const owned = await failureOwnedElsewhere(tx, issueId, taken);
   if (owned) throw refuseCriteria('CRITERION_FAILURE_OWNED', owned, path);
   return traced;
-}
-
-/**
- * A criterion sent with `requirementCriterionId` traces a wording of its own issue's requirement, or
- * is refused by name: an id of another requirement's BC (or of none) was written and then counted
- * as no proof anywhere, so the trace the writer stated vanished in silence.
- */
-function refuseForeignTraces(
-  desired: readonly CriterionInput[],
-  req: Awaited<ReturnType<typeof traceWordingsOf>>['requirement'],
-  wordings: Awaited<ReturnType<typeof traceWordingsOf>>['wordings'],
-  path: CriteriaPath,
-): void {
-  const own = new Set(wordings.map((w) => w.id));
-  const foreign = desired.find(
-    (c) => c.requirementCriterionId && !own.has(c.requirementCriterionId),
-  );
-  if (!foreign) return;
-  throw refuseCriteria(
-    'CRITERIA_TRACE_UNRESOLVED',
-    `criterion ${foreign.n} is sent with requirementCriterionId ${foreign.requirementCriterionId}, which is ${
-      req
-        ? `no business criterion of REQ-${req.seq}, the requirement this issue delivers`
-        : 'a business criterion of no requirement this issue delivers: it delivers none'
-    }; send the id of one of its BCs (GET /api/issues/:id/requirement lists them under \`revision.criteria\`), or null for none`,
-    path,
-  );
 }
 
 /** Refuse a desired set whose numbers repeat or fall below 1, or whose statements are blank. */

@@ -340,7 +340,9 @@ describe("the issue's criteria traced to the sibling's requirement", () => {
     ]);
     expect(foreign.status, JSON.stringify(foreign.body)).toBe(422);
     expect(JSON.stringify(foreign.body)).toContain('CRITERIA_TRACE_UNRESOLVED');
-    expect(JSON.stringify(foreign.body)).toContain(`no business criterion of ${key}`);
+    expect(JSON.stringify(foreign.body)).toContain(
+      `this issue serves ${key}: a criterion proves a BC of its own issue's requirement`,
+    );
     expect((await traces())[0]).toEqual({ n: 1, id: bc('BC-3') });
   });
 });
