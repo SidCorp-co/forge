@@ -7,6 +7,7 @@
  *
  * @direct-test-of packages/core/src/activity/read.ts
  * @direct-test-of packages/core/src/activity/routes.ts
+ * @direct-test-of packages/core/src/activity/index.ts
  * @direct-test-of packages/core/src/devices/admissible.ts
  * @direct-test-of packages/core/src/development/needs-you-viewer.ts
  */

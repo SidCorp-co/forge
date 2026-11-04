@@ -1,6 +1,14 @@
 // ISS-951 (MK-8): the workspace's Activity tab draws core's rows in core's groups, names and counts
 // only, filters by the strip, opens one project's peek (Now, Next, People by title) that the arrow
 // keys switch and Esc closes, listens on the org's room, and never shows a raw key, slug or id.
+//
+// @direct-test-of packages/web-v2/src/features/activity/components/activity-peek.tsx
+// @direct-test-of packages/web-v2/src/features/activity/hooks.ts
+// @direct-test-of packages/web-v2/src/features/activity/api.ts
+// @direct-test-of packages/web-v2/src/features/activity/index.ts
+// @direct-test-of packages/web-v2/src/lib/ws/rooms.ts
+// @direct-test-of packages/web-v2/src/lib/ws/event-router.ts
+// @direct-test-of packages/web-v2/src/routes/_workspace/activity/index.tsx
 
 import type { OrgActivity, OrgActivityProject } from "@forge/contracts/org-activity";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
