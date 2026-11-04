@@ -11,6 +11,7 @@
  *    table of transitions that are nearly all some other project's or entity's;
  * 2. a pane known only as of its last pass makes no claim about now.
  *
+ * @direct-test-of packages/core/src/activity/events.ts
  * @direct-test-of packages/core/src/activity/glance-cache.ts
  * @direct-test-of packages/core/src/activity/read.ts
  * @direct-test-of packages/core/src/activity/recent.ts
