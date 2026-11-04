@@ -442,7 +442,7 @@
     "feedback.row.confirmWaitOrRoom": "Đến {date} hoặc khi phòng có tin nhắn",
     "feedback.rule.duplicate": "đã lên kế hoạch: mục gốc mà nó trùng mang nó",
     "feedback.rule.issueCarries": "đã lên kế hoạch: issue của nó mang nó",
-    "feedback.rule.carrierAsked": "{key} mang mục này và đang chờ một câu trả lời, đã hỏi trong mục Cần bạn; Master chuyển tiếp khi có câu trả lời",
+    "feedback.rule.carrierAsked": "{key} mang mục này, đang chờ câu trả lời đã hỏi trong Cần bạn",
     "feedback.rule.issuesCarry": "đã lên kế hoạch: các issue của nó mang nó",
     "feedback.rule.linkedWork": "đã lên kế hoạch: việc được liên kết mang nó",
     "feedback.rule.newRequirement": "đã lên kế hoạch: một requirement mới mang nó",

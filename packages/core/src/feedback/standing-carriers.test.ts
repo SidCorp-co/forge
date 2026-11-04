@@ -164,9 +164,7 @@ describe('a feedback item whose carrier waits on an answer names no role (ISS-68
   it('says what waits, the answer asked in Needs you, naming nobody who owes it', () => {
     const w = standingOf(parkedOn('answer', '')).waitingOn;
     expect(w.act).toBe('move ISS-582 on once answered');
-    expect(w.rule).toBe(
-      'ISS-582 carries it and waits on an answer, asked in Needs you; the master moves it on once answered',
-    );
+    expect(w.rule).toBe('ISS-582 carries it and waits on an answer asked in Needs you');
     expect(`${w.who} ${w.act} ${w.rule}`).not.toMatch(/orchestrator|\bqa\b|owe/i);
   });
 

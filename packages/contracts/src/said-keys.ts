@@ -3354,7 +3354,7 @@ export const SAID = {
 		vars: { key: "key" },
 	},
 	"feedback.rule.carrierAsked": {
-		en: "{key} carries it and waits on an answer, asked in Needs you; the master moves it on once answered",
+		en: "{key} carries it and waits on an answer asked in Needs you",
 		vars: { key: "key" },
 	},
 	"feedback.rule.carrierWaits": {
