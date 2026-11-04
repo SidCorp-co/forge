@@ -123,6 +123,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'Get the check to run on that commit, or have a project admin declare `validation.gate` as `{ "type": "none" }` if the project has no such check.',
   RELEASE_GATE_CHECK_UNREAD:
     'Nothing was cut: a check that cannot be read is not a pass. Restore the repository binding or the host, then cut again.',
+  RELEASE_HELD_BY_ENDED_RUN:
+    '{named} {wait} at the release gate still claimed by a release run that has ended, so no roster carries {them} and a cut now would deploy {their} code with no record of {them}. Abort that run with `POST /api/projects/:projectId/release-batches/:runId/abort` and `{"promotedRoster":"return-to-gate","carried":[…]}` (with `shippedIn` where a later shipped release carried the code), or wait the minute the pipeline sweep takes to let go of a claim it does not keep, then cut again.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -167,6 +169,7 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_GATE_CHECK_PENDING: [],
   RELEASE_GATE_CHECK_SILENT: [],
   RELEASE_GATE_CHECK_UNREAD: [],
+  RELEASE_HELD_BY_ENDED_RUN: [],
   RELEASE_CHECK_UNEVALUATED: [],
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
@@ -338,6 +341,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_SHIPPED_IN_OWED' && Array.isArray(details?.versions)) {
     return fillNamed(remedy.replace('{versions}', details.versions.join(', ')), details);
   }
+  if (code === 'RELEASE_HELD_BY_ENDED_RUN' && Array.isArray(details?.holds)) {
+    return heldByEndedRunSentence(details.holds as { sentence?: unknown }[], remedy);
+  }
   if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.reason === 'string') {
     return `Nowhere is declared for a release to land: ${details.reason}.`;
   }
@@ -403,6 +409,13 @@ function carriesUnreleasedSentence(list: unknown[]): string {
     'to accept. Bring each such issue to `awaiting_release` and name it in this release, or take ' +
     "its key out of the request's branch or description, then cut again."
   );
+}
+
+/** Each ended run's own sentence (`ended-claims.ts:endedRunSentence`), then why the cut waits on them. */
+function heldByEndedRunSentence(holds: { sentence?: unknown }[], remedy: string): string {
+  const said = holds.flatMap((h) => (typeof h.sentence === 'string' ? [h.sentence] : []));
+  if (said.length === 0) return remedy;
+  return `${said.join(' ')} A cut waits until no ended run claims an issue at the gate: it would deploy their code, and its record would not carry them.`;
 }
 
 /** Names the version, the attempt that went silent and the call that ends the silence (ADR 0011). */

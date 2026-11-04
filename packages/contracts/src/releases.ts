@@ -470,6 +470,26 @@ export interface ReleaseLanding {
 	closedAll: boolean;
 }
 
+/**
+ * A release run that ended and still claims issues waiting at the release gate, so no roster carries
+ * them and the next cut would deploy their code unrecorded (core `release-batch/ended-claims.ts`,
+ * ISS-961). `abort` is owed by an agent: the run recorded a deploy and no ship, so its claims stay
+ * until its abort. `sweep` is a claim the pipeline sweep lets go within a minute.
+ */
+export interface ReleaseEndedRunHold {
+	runId: string;
+	version: string | null;
+	/** How the run ended: `failed`, `cancelled` or `completed`. */
+	runStatus: string;
+	/** The issues it still claims, oldest merge first. */
+	issues: { issueId: string; key: string }[];
+	act: "abort" | "sweep";
+	/** A release that shipped after this run was cut, which may already carry its roster's code: the abort's `shippedIn` where git says it does. */
+	shippedIn: string | null;
+	/** The run, its issues and the act that frees them, in one sentence. */
+	sentence: string;
+}
+
 export interface ReleaseListResponse {
 	releases: ReleaseSummary[];
 	counts: Record<ReleaseAttentionGroup, number>;
@@ -477,6 +497,8 @@ export interface ReleaseListResponse {
 	production: ReleaseProduction;
 	/** Landings recorded before versioning, newest first, on any project; versioned ones are `releases`. */
 	landings: ReleaseLanding[];
+	/** Every ended run still claiming issues at the gate, each with the act that frees them (ISS-961). */
+	endedRunHolds: ReleaseEndedRunHold[];
 }
 
 export interface ReleaseIssueView {
@@ -917,6 +939,8 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_GATE_CHECK_SILENT",
 	/** The host would not say what the check reads: refused, never read as a pass. */
 	"RELEASE_GATE_CHECK_UNREAD",
+	/** An issue at the gate still claimed by a release run that ended: its abort is owed, or the sweep lets it go, before a cut deploys its code (ISS-961). */
+	"RELEASE_HELD_BY_ENDED_RUN",
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 
@@ -1034,6 +1058,7 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_FINISH_LEASE_LOST: 409,
 	RELEASE_VERSION_CONFLICT: 409,
 	RELEASE_VERSION_UNDECIDED: 409,
+	RELEASE_HELD_BY_ENDED_RUN: 409,
 	RELEASE_CARRIED_RUN_OPEN: 409,
 	RELEASE_CARRIED_SHIPPED: 409,
 	CLAIM_CONFLICT: 409,

@@ -127,10 +127,19 @@ describe('a release that failed at deploy, with its roster still claimed, then a
         issues: held.map((issueId, i) => ({ issueId, key: keys[i] })),
       }),
     ]);
-    const draft = (list.releases as Array<{ state: string; gates: Gate[] }>).find(
+    const draft = (list.releases as Array<{ state: string; version: string }>).find(
       (r) => r.state === 'draft',
     );
-    expect(named(draft?.gates), 'the draft names the held roster').toBeDefined();
+    expect(draft, 'the new work is drafted').toBeDefined();
+    const drafted = await api(
+      token,
+      'GET',
+      `/api/projects/${projectId}/releases/${draft?.version}`,
+    );
+    expect(drafted.status).toBe(200);
+    const gate = named((drafted.body.release as { gates: Gate[] }).gates);
+    expect(gate, 'the draft names the held roster').toBeDefined();
+    for (const key of keys) expect(gate?.detail).toContain(key);
 
     // the cut itself: refused by name, never a cut that silently leaves the roster out
     const cut = await api(token, 'POST', `/api/projects/${projectId}/release-batches`, {

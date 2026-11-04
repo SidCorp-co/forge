@@ -30,6 +30,7 @@ const none: Parameters<typeof owedLine>[0] = {
   filings: [],
   recordings: [],
   releaseHolds: [],
+  endedRunHolds: [],
   requests: [],
   carriers: [],
   reviews: [],
@@ -184,5 +185,41 @@ describe('releaseHoldsLine: the release holds whose act is the master’s', () =
       releaseHolds: [{ ...criteria, code: 'NO_RELEASE_GATE' }, shippedIn],
     };
     expect(workDigest([], recoded)).not.toBe(workDigest([], owed));
+  });
+});
+
+describe('the ended release runs still claiming gate issues (ISS-961)', () => {
+  const abort = {
+    runId: 'run-0122',
+    version: '0.122.0',
+    runStatus: 'failed',
+    issues: [
+      { issueId: 'i137', key: 'ISS-137' },
+      { issueId: 'i139', key: 'ISS-139' },
+    ],
+    act: 'abort' as const,
+    shippedIn: null,
+    sentence: 'ISS-137, ISS-139 are waiting at the release gate still claimed by release 0.122.0.',
+  };
+  const sweep = { ...abort, runId: 'run-0120', act: 'sweep' as const, sentence: 'swept soon.' };
+
+  it('names each run owing its abort, with its own sentence, as the master\'s act', () => {
+    const line = owedLine({ ...none, endedRunHolds: [abort] });
+    expect(line).toContain(
+      '1 release run that ended still claims issues at the release gate and owes its abort, which you owe; no cut is taken until then: ISS-137, ISS-139 are waiting',
+    );
+  });
+
+  it('names a claim the sweep lets go of without asking an abort', () => {
+    const line = owedLine({ ...none, endedRunHolds: [sweep] });
+    expect(line).toContain('swept soon.');
+    expect(line).not.toContain('owes its abort');
+  });
+
+  it('counts as owed work, and the digest moves when the act or the issues do', () => {
+    expect(dispatched({ ...none, endedRunHolds: [abort] }).owed).toBe(1);
+    const digest = workDigest([], { ...none, endedRunHolds: [abort] });
+    expect(digest).not.toBe(workDigest([], none));
+    expect(workDigest([], { ...none, endedRunHolds: [{ ...abort, act: 'sweep' }] })).not.toBe(digest);
   });
 });

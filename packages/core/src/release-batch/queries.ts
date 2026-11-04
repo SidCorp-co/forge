@@ -12,7 +12,7 @@
 
 import { contentLanguageName, releaseNoteAttention } from '@forge/contracts/content-language';
 import { releaseNoteUnwritten, sentencesIn } from '@forge/contracts/release-notes';
-import type { ReleaseVersionCarrier } from '@forge/contracts/releases';
+import type { ReleaseEndedRunHold, ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
@@ -21,6 +21,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { readReleasePath } from '../project-config/index.js';
 import { nextRunFor } from '../schedules/index.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
+import { readEndedRunHolds } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
 import { carriersIn, carriersOf } from './version-rule.js';
@@ -277,6 +278,11 @@ interface ReleaseBatchContext {
    */
   carriedOwed: boolean;
   issues: ReleaseBatchIssue[];
+  /**
+   * Gate issues other release runs still claim though they ended, so this run's roster could not
+   * carry them, each with the act that frees them (`ended-claims.ts`, ISS-961).
+   */
+  endedRunHolds: ReleaseEndedRunHold[];
 }
 
 /** What the run records of its carriers, and whether its end still owes them. */
@@ -393,10 +399,12 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       releaseNotes: r.releaseNotes,
       status: r.status,
     })),
+    endedRunHolds: (await readEndedRunHolds(run.projectId, gateStatus)).filter(
+      (h) => h.runId !== runId,
+    ),
   };
 }
 
-/** Every issue waiting unclaimed at the gate on this project, oldest merge first. */
 /**
  * The issues waiting at the gate that the draft release refuses `RELEASE_RECORD_MISSING` for, the
  * same test `issues/release-record-required.ts` applies. Writing each note is the project master's
@@ -490,6 +498,11 @@ export async function warnedReleaseNotes(
   });
 }
 
+/**
+ * Every issue waiting unclaimed at the gate on this project, oldest merge first: the roster a cut,
+ * the draft and the sweep read. An issue a release run still claims after it ended is in none of
+ * them; `ended-claims.ts:readEndedRunHolds` is the read that names it, beside each of these (ISS-961).
+ */
 export async function waitingIssueIds(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ id: issues.id })

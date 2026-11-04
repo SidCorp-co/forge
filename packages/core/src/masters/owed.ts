@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { contentLanguageName } from '@forge/contracts/content-language';
 import type { MasterMode } from '@forge/contracts/master-mode';
 import type { MasterWork } from '@forge/contracts/master-verdict';
+import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import type { AnswerResume } from '@forge/contracts/questions';
 import {
   RELEASE_NAME_WORDS_MAX,
@@ -12,7 +13,7 @@ import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
 import { confirmsLine } from './owed-confirms.js';
-import { recordingsLine, releaseHoldsLine } from './owed-release-gate.js';
+import { endedRunHoldsLine, recordingsLine, releaseHoldsLine } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
 import {
   type AgentConfirmOwed,
@@ -82,6 +83,8 @@ interface Owed {
   reviews: ReviewOwed[];
   /** Release holds on waiting issues whose act is the master's, each named with its command (ISS-888). */
   releaseHolds: ReleaseHoldOwed[];
+  /** Ended release runs still claiming gate issues no roster carries, each with its act (ISS-961). */
+  endedRunHolds: ReleaseEndedRunHold[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -255,6 +258,7 @@ export function owedLine(owed: Owed): string {
     landedWorkLine(owed.landedWork) +
     mergesLine(owed.marks, owed.filings) +
     recordingsLine(owed.recordings) +
+    endedRunHoldsLine(owed.endedRunHolds) +
     releaseHoldsLine(owed.releaseHolds) +
     confirmsLine(owed.confirms) +
     requestsLine(owed.requests) +
@@ -360,6 +364,9 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.carriers.map((c) => `carrier:${c.key}`),
     ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
     ...owed.releaseHolds.map((h) => `release-hold:${h.issueId}|${h.code}`),
+    ...owed.endedRunHolds.map(
+      (h) => `ended-run-hold:${h.runId}|${h.act}|${h.issues.map((i) => i.issueId).join(',')}`,
+    ),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -459,6 +466,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const carriers = await ports.draftCarriersWaiting(projectId);
   const reviews = await ports.reviewsOwed(projectId);
   const releaseHolds = await ports.releaseHoldsOwed(projectId);
+  const endedRunHolds = await ports.endedRunHolds(projectId);
   const carried = new Set(carriers.map((c) => c.key));
   const requests = (
     (await ports.masterGate(projectId)).mode === 'enforce'
@@ -497,6 +505,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       carriers,
       reviews,
       releaseHolds,
+      endedRunHolds,
       contentLanguage,
     },
     mode,

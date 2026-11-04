@@ -90,7 +90,8 @@ const withSubject = (
     | 'standing.gate.unmerged'
     | 'standing.gate.changeRequestMissing'
     | 'standing.gate.shippedInOwed'
-    | 'standing.gate.cleanupPending',
+    | 'standing.gate.cleanupPending'
+    | 'standing.gate.heldByEndedRun',
   d: Details,
   verb: [string, string],
 ): Said => {
@@ -122,6 +123,13 @@ const gateCheck = (state: keyof typeof GATE_CHECK): Reading => ({
 });
 
 const versionOf = (d: Details): string => (typeof d?.version === 'string' ? d.version : '?');
+
+/** The versions of the ended runs a `RELEASE_HELD_BY_ENDED_RUN` names, the first first. */
+const endedVersionOf = (d: Details): string => {
+  const holds = Array.isArray(d?.holds) ? (d.holds as { version?: unknown }[]) : [];
+  const versions = holds.map((h) => (typeof h.version === 'string' ? h.version : '?'));
+  return versions.length === 0 ? '?' : versions.join(', ');
+};
 
 const READINGS: Record<ReleaseReasonCode, Reading> = {
   RELEASE_VERSION_UNDECIDED: {
@@ -205,6 +213,10 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   RELEASE_CLEANUP_PENDING: {
     title: 'standing.gate.title.cleanupPending',
     plain: (d) => withSubject('standing.gate.cleanupPending', d, ['is', 'are']),
+  },
+  RELEASE_HELD_BY_ENDED_RUN: {
+    title: 'standing.gate.title.heldByEndedRun',
+    plain: (d) => withSubject('standing.gate.heldByEndedRun', d, ['is', 'are']),
   },
   RELEASE_GATE_CHECK_RED: gateCheck('Red'),
   RELEASE_GATE_CHECK_PENDING: gateCheck('Pending'),
@@ -336,6 +348,10 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
   RELEASE_SHIPPED_IN_OWED: { by: 'master', act: onThem('standing.act.recordShippedIn') },
   RELEASE_CLEANUP_PENDING: { by: 'master', act: onThem('standing.act.runCleanup') },
+  RELEASE_HELD_BY_ENDED_RUN: {
+    by: 'master',
+    act: (d) => say('standing.act.abortEndedRun', { v: endedVersionOf(d) }),
+  },
   RELEASE_GATE_CHECK_RED: { by: 'master', act: act('standing.act.fixGateCheck') },
   RELEASE_GATE_CHECK_PENDING: { by: 'system', act: act('standing.act.waitGateCheck') },
   RELEASE_GATE_CHECK_SILENT: { by: 'admin', act: act('standing.act.reviveGateCheck') },

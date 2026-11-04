@@ -24,6 +24,7 @@ const none = {
   filings: [],
   recordings: [],
   releaseHolds: [],
+  endedRunHolds: [],
   requests: [],
   carriers: [],
   reviews: [],

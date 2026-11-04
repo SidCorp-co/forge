@@ -41,7 +41,10 @@ export async function agentOwedHolds(projectId: string): Promise<AgentOwedHold[]
       ),
     )
     .orderBy(asc(releaseHolds.heldAt), asc(releaseHolds.issueId));
-  const owed = rows.filter((r) => releaseHoldWords(r).actor !== 'release');
+  // the abort of an ended run is named once, by its run with every issue it holds (`ended-claims.ts`)
+  const owed = rows.filter(
+    (r) => releaseHoldWords(r).actor !== 'release' && r.code !== 'RELEASE_HELD_BY_ENDED_RUN',
+  );
   const keys = await issueDisplayIds(owed.map((r) => r.issueId));
   return owed.map((r) => ({
     issueId: r.issueId,

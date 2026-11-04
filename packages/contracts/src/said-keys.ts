@@ -73,6 +73,15 @@ export const SAID = {
 		vars: { subject: "said", verb: "agreement" },
 	},
 	"standing.gate.title.shippedInOwed": { en: "Shipped-in owed" },
+	"standing.gate.heldByEndedRun": {
+		en: "{subject} {verb} still claimed by a release that ended.",
+		vars: { subject: "said", verb: "agreement" },
+	},
+	"standing.gate.title.heldByEndedRun": { en: "Held by an ended release" },
+	"standing.act.abortEndedRun": {
+		en: "abort release {v}, saying what it carried",
+		vars: { v: "version" },
+	},
 	"standing.gate.cleanupPending": {
 		en: "{subject} {verb} rated high impact, held for a green cleanup before production.",
 		vars: { subject: "said", verb: "agreement" },
@@ -523,6 +532,12 @@ export const SAID = {
 	},
 	"issues.releaseHold.act.releaseShippedInOwed": {
 		en: "record which release holds its landing, read with git",
+	},
+	"issues.releaseHold.cause.releaseHeldByEndedRun": {
+		en: "A release that ended still claims issues at the gate",
+	},
+	"issues.releaseHold.act.releaseHeldByEndedRun": {
+		en: "abort that release, saying what it carried",
 	},
 	"issues.releaseHold.act.releaseQueuedBehind": {
 		en: "take it in a later release",

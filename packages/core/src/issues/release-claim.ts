@@ -22,22 +22,6 @@ export function heldByEndedRelease(claimer: SQL): SQL {
   )`;
 }
 
-/** The rows of a project at its release gate still claimed by a release that ended unshipped. */
-export async function heldByEndedReleaseIds(
-  projectId: string,
-  gateStatus: string,
-): Promise<string[]> {
-  const rows = await db.execute<{ id: string }>(sql`
-    SELECT id FROM issues
-     WHERE project_id = ${projectId}
-       AND status = ${gateStatus}
-       AND release_batch_run_id IS NOT NULL
-       AND ${heldByEndedRelease(sql`issues.release_batch_run_id`)}
-     ORDER BY merged_at ASC NULLS LAST, id ASC
-  `);
-  return rows.map((r) => r.id);
-}
-
 /**
  * A release run claims the named issues of a project waiting at its gate, only where no other run
  * holds them. Answers the ids it claimed; the caller decides what a short claim means.
@@ -125,6 +109,25 @@ export async function releaseRunClaims(
 }
 
 /**
+ * True where an ended release's claim on the `issues` row is kept for the abort it owes, which no
+ * sweep lets go: the row is at the gate held at its release step, its run recorded a production
+ * deploy and recorded no ship, so its code may be live (`releaseEndedRunClaims`). Read by that sweep
+ * and by the read that names the abort owed (`release-batch/ended-claims.ts`), so the two cannot
+ * disagree on which claim waits for an agent.
+ */
+export function keptForItsAbort(): SQL {
+  return sql`(
+    issues.status = 'awaiting_release'
+    AND EXISTS (SELECT 1 FROM issue_work_state w WHERE w.issue_id = issues.id AND w.step = 'release')
+    AND EXISTS (
+      SELECT 1 FROM release_attempts a
+       WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'deploy'
+    )
+    AND ${heldByEndedRelease(sql`issues.release_batch_run_id`)}
+  )`;
+}
+
+/**
  * Clear the claims of release runs that ended, so their issues can join another batch. A roster
  * whose run recorded a production deploy, recorded no ship, and is still held at its release step
  * stays claimed: a person settles it, and its claims are the only index a `return-to-gate` abort
@@ -142,15 +145,7 @@ export async function releaseEndedRunClaims(): Promise<number> {
           WHERE r.id = issues.release_batch_run_id
             AND r.status NOT IN (${LIVE})
         )
-        AND NOT (
-          issues.status = 'awaiting_release'
-          AND EXISTS (SELECT 1 FROM issue_work_state w WHERE w.issue_id = issues.id AND w.step = 'release')
-          AND EXISTS (
-            SELECT 1 FROM release_attempts a
-            WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'deploy'
-          )
-          AND ${heldByEndedRelease(sql`issues.release_batch_run_id`)}
-        )
+        AND NOT ${keptForItsAbort()}
       RETURNING id
     `);
     const ids = [...released].map((r) => r.id);

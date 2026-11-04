@@ -39,10 +39,12 @@ import {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
+import { heldIssues, readEndedRunHolds } from './ended-claims.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import { waitingIssueIds } from './queries.js';
 import {
   reportClaimedFailure,
+  reportEndedRunHolds,
   reportHeldBack,
   reportUncorroborated,
 } from './release-sweep-report.js';
@@ -65,6 +67,8 @@ export interface AutomaticReleaseSweepResult {
   holdsWritten: number;
   /** How many waiting issues owe their agent a record of the earlier release that shipped them. */
   shippedInOwed: number;
+  /** How many gate issues a release run that ended still claims, so no roster carries them (ISS-961). */
+  endedRunClaims: number;
 }
 
 interface CandidateRow {
@@ -296,6 +300,13 @@ async function sweepProject(
     return;
   }
 
+  // A gate issue an ended release still claims is in no roster below: it is named here, and the cut
+  // is refused naming the act that frees it (`blockers.ts`, RELEASE_HELD_BY_ENDED_RUN), never cut
+  // around (ISS-961).
+  const ended = await readEndedRunHolds(projectId);
+  result.endedRunClaims += heldIssues(ended).length;
+  reportEndedRunHolds(projectId, ended);
+
   const owner = (await loadCreatedBy(projectId)) ?? null;
   // First, a row whose landing an earlier release may already have shipped is its agent's to settle
   // (ISS-774): it is held naming the act, never closed here, and no cut is opened that would find
@@ -372,6 +383,7 @@ export async function sweepAutomaticReleases(
     issuesExcluded: 0,
     holdsWritten: 0,
     shippedInOwed: 0,
+    endedRunClaims: 0,
   };
   await clearStaleReleaseHolds();
   const projectIds = await candidateProjectIds(now);

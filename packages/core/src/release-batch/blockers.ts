@@ -43,6 +43,7 @@ import {
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { cleanupBlocker } from './cleanup-hold.js';
 import { criteriaHold } from './criteria-hold.js';
+import { heldIssues, readEndedRunHolds } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import { promotionBlockers } from './promotion-standing.js';
 import { getActiveReleaseBatch } from './queries.js';
@@ -144,6 +145,25 @@ async function claimBlockers(
   );
   if (!conflicts || conflicts.length === 0) return;
   out.push(blocker('CLAIM_CONFLICT', claimConflictDetails(projectId, gateStatus, conflicts)));
+}
+
+/**
+ * Gate issues a release run still claims after it ended (ISS-961): no roster carries them, and a cut
+ * now would deploy their code with no record of them, so the batch door refuses naming each run, its
+ * issues and the act that frees them. Read whichever issues a cut names, since the code it deploys is
+ * the branch's, not the roster's.
+ */
+async function endedRunBlocker(projectId: string, out: ReleaseBlocker[]): Promise<void> {
+  const holds = await evaluate('ended-run-claims', () => readEndedRunHolds(projectId), out);
+  if (!holds || holds.length === 0) return;
+  const held = heldIssues(holds);
+  out.push(
+    blocker('RELEASE_HELD_BY_ENDED_RUN', {
+      issueIds: held.map((i) => i.issueId),
+      displayIds: held.map((i) => i.key),
+      holds,
+    }),
+  );
 }
 
 /** `ISS-nn` for each, in the order given, so a refusal names the rows it is about (ISS-1346). A
@@ -417,6 +437,7 @@ async function gatedBlockers(
     await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, roster);
   }
   await rosterBlockers(projectId, door, found?.ids ?? [], roster);
+  if (door === 'batch') await endedRunBlocker(projectId, roster);
 
   const machinery: ReleaseBlocker[] = [];
   if (ch.failure) machinery.push(ch.failure);
@@ -474,6 +495,7 @@ async function changeRequestReleaseBlockers(
   }
   const roster = issueIds && issueIds.length > 0 ? (found?.ids ?? []) : (found?.unclaimed ?? []);
   await rosterBlockers(projectId, 'batch', roster, out);
+  await endedRunBlocker(projectId, out);
   if (read.kind === 'change-requests') await changeRequestBlockers(projectId, roster, out);
   else await promotionBlockers(projectId, read, roster, out);
   const active = await evaluate(

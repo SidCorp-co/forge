@@ -47,6 +47,7 @@ const none = {
   filings: [] as FilingOwed[],
   recordings: [] as FilingRecordOwed[],
   releaseHolds: [],
+  endedRunHolds: [],
   requests: [] as WaitingRequest[],
   carriers: [] as { key: string }[],
   reviews: [],

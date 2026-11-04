@@ -28,6 +28,7 @@ import {
 } from './channel.js';
 import { draftNotApprovableWhy, standingDraftApproval } from './draft-approval.js';
 import { draftVersionOf } from './draft-version.js';
+import { readEndedRunHolds } from './ended-claims.js';
 import { readFinishRecord } from './finish-record.js';
 import { landingRecordsOf } from './landing-records.js';
 import { readLandingReadings } from './landing-surfaces.js';
@@ -317,7 +318,9 @@ export async function listReleases(
   ) as ReleaseListResponse['counts'];
   // A landing recorded before versioning stays listed after the project declares production.
   const landings = await landingRecordsOf(projectId);
-  return { releases, counts, approvalRequired: required, production, landings };
+  // an ended run still claiming gate issues is in no part's roster: it is named here with its act
+  const endedRunHolds = await readEndedRunHolds(projectId);
+  return { releases, counts, approvalRequired: required, production, landings, endedRunHolds };
 }
 
 const REWORKED: IssueLandingReading = {

@@ -1,4 +1,5 @@
 export { type AgentOwedHold, agentOwedHolds } from './agent-owed-holds.js';
+export { readEndedRunHolds } from './ended-claims.js';
 export { registerReleaseApprovalWake } from './approval-wake.js';
 export {
   approvalRequired,

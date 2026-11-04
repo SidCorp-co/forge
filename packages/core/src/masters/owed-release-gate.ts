@@ -1,6 +1,8 @@
-// What waits at the release gate on the master's own record (ISS-774, ISS-888): the drafts filed for
-// an owed merge, and every release hold whose act is the agent's, each named with its command.
+// What waits at the release gate on the master's own record (ISS-774, ISS-888, ISS-961): the drafts
+// filed for an owed merge, every release hold whose act is the agent's, and every ended release run
+// still claiming gate issues, each named with its command.
 
+import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { guideCall } from '../guides/index.js';
 import type { FilingRecordOwed, ReleaseHoldOwed } from './ports.js';
 
@@ -50,6 +52,25 @@ export function releaseHoldsLine(holds: ReleaseHoldOwed[]): string {
   }
   if (other.length > 0) {
     line += ` ${other.length} issue${plural(other.length, ' waits', 's wait')} at the release gate on a hold whose act is yours (${named(other)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold.reason\` names the act and its door) and take that act, or move the issue out of \`awaiting_release\` if it is not to ship, saying why.`;
+  }
+  return line;
+}
+
+/**
+ * ISS-961: a release run that ended still claiming gate issues keeps them out of every roster, and a
+ * cut is refused until no ended run does. The abort it owes is the master's act; a claim the sweep
+ * lets go of within a minute is named too, so the master is not left reading a refusal it cannot place.
+ */
+export function endedRunHoldsLine(holds: ReleaseEndedRunHold[]): string {
+  if (holds.length === 0) return '';
+  const owed = holds.filter((h) => h.act === 'abort');
+  const passing = holds.filter((h) => h.act === 'sweep');
+  let line = '';
+  if (owed.length > 0) {
+    line += ` ${owed.length} release run${plural(owed.length, ' that ended still claims', 's that ended still claim')} issues at the release gate and ${plural(owed.length, 'owes its', 'owe their')} abort, which you owe; no cut is taken until then: ${owed.map((h) => h.sentence).join(' ')}`;
+  }
+  if (passing.length > 0) {
+    line += ` ${passing.map((h) => h.sentence).join(' ')}`;
   }
   return line;
 }

@@ -214,7 +214,7 @@ export { writeIssueRelations } from './relations-service.js';
 export {
   claimIssuesForRelease,
   heldByEndedRelease,
-  heldByEndedReleaseIds,
+  keptForItsAbort,
   releaseEndedRunClaims,
   releaseRunClaims,
   returnTakenClaims,

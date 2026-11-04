@@ -1,6 +1,8 @@
 // What the release sweep says about the rows it could not release: a comment on a row a failed cut
-// claimed anyway, and the log lines naming each criterion that holds a row back.
+// claimed anyway, the log lines naming each criterion that holds a row back, and each ended release
+// run still claiming gate issues no roster carries.
 
+import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { inArray } from 'drizzle-orm';
 import { postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
@@ -97,6 +99,31 @@ export function reportUncorroborated(
       `release-sweep: ${report.issueId} earned criterion ${report.uncorroborated.join(', ')} at a ` +
         `runtime nothing here could re-read — ${why} The verdict counts, and it is weaker ` +
         'evidence than a reading would have made it; whether this issue ships is its own criteria',
+    );
+  }
+}
+
+/**
+ * Each release run that ended and still claims issues at the gate (ISS-961): those issues are in no
+ * roster this sweep reads, so they are named with the run and the act that frees them, never counted
+ * past. The cut it attempts is refused on the same reading and holds its rows naming it.
+ */
+export function reportEndedRunHolds(
+  projectId: string,
+  holds: readonly ReleaseEndedRunHold[],
+): void {
+  for (const hold of holds) {
+    logger.warn(
+      {
+        projectId,
+        runId: hold.runId,
+        version: hold.version,
+        runStatus: hold.runStatus,
+        act: hold.act,
+        shippedIn: hold.shippedIn,
+        issues: hold.issues.map((i) => i.key),
+      },
+      `release-sweep: ${hold.sentence}`,
     );
   }
 }

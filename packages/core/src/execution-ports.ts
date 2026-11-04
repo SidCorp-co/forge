@@ -102,6 +102,7 @@ import {
 import {
   agentOwedHolds,
   createReleaseBatch,
+  readEndedRunHolds,
   heldFromUnattendedCut,
   loadReleaseRoster,
   owedReleaseNotes,
@@ -348,6 +349,7 @@ export function provideExecutionPorts(): void {
     draftCarriersWaiting: draftFeedbackCarriers,
     reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
     releaseHoldsOwed: agentOwedHolds,
+    endedRunHolds: (projectId) => readEndedRunHolds(projectId),
     requestsWaiting: async (projectId) => [
       ...(await draftIssuesPeopleFiled(projectId)).map((r) => ({
         kind: 'issue' as const,

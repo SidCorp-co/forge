@@ -312,13 +312,19 @@ function withoutAges(text: string): string {
     .replace(/ (?:It last reported|Last seen) \d+s ago\./g, '');
 }
 
+/** Refusals whose clearing act is the project's agent's, and what it is. */
+const AGENT_ACT: Readonly<Record<string, string>> = {
+  RELEASE_HELD_BY_ENDED_RUN:
+    'the abort of the ended release run named here, which frees the issues it still claims',
+};
+
 export function refusalHold(code: string, reasons: readonly string[]): ReleaseHold {
-  const selfClearing = SELF_CLEARING[code];
+  const waitingFor = SELF_CLEARING[code] ?? AGENT_ACT[code];
   return {
     code,
     reason: withoutAges(`The automatic release was refused: ${reasons.join(' ')}`),
-    owes: selfClearing ? 'agent' : 'human',
-    waitingFor: selfClearing ?? 'the refusal named here to be cleared',
+    owes: waitingFor ? 'agent' : 'human',
+    waitingFor: waitingFor ?? 'the refusal named here to be cleared',
   };
 }
 

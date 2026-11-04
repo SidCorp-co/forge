@@ -2,6 +2,7 @@ import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { MasterMode } from '@forge/contracts/master-mode';
 import type { AnswerResume } from '@forge/contracts/questions';
 import type { ReleaseNamer } from '@forge/contracts/release-naming';
+import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import type { StandingSubjectKind } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -192,6 +193,11 @@ interface MastersPorts {
   reviewsOwed(projectId: string): Promise<ReviewOwed[]>;
   /** The release holds on waiting issues that name an act the master owes (ISS-888). */
   releaseHoldsOwed(projectId: string): Promise<ReleaseHoldOwed[]>;
+  /**
+   * The ended release runs still claiming gate issues, each with the act that frees them
+   * (`release-batch/ended-claims.ts:readEndedRunHolds`, ISS-961).
+   */
+  endedRunHolds(projectId: string): Promise<ReleaseEndedRunHold[]>;
 }
 
 const slot = portSlot<MastersPorts>('masters', 'provideMastersPorts');
