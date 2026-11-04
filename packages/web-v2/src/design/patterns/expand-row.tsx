@@ -77,7 +77,7 @@ export function ExpandRow({ id, head, trail, children, className, testId }: Expa
   const detailId = useId();
   const isOpen = ctx.open === id;
   return (
-    <div role="listitem" data-expand-row={id} data-open={isOpen ? "" : undefined} data-testid={testId} className={cn("border-b border-line-subtle", className)}>
+    <div role="listitem" data-expand-row={id} data-open={isOpen ? "" : undefined} data-testid={testId} className={cn("border-b border-line-divider", className)}>
       <div className="flex min-h-row min-w-0 items-center">
         <button
           type="button"

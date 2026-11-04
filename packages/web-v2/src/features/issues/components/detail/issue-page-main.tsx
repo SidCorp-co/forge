@@ -88,7 +88,7 @@ export function IssuePageMain(props: {
             {developer && agentState ? <LiveAgent state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
             {/* where the issue stands and what it needs is this page's lead: below 1024px the rail follows it */}
             <DetailLeadEnd inset />
-            <div className="border-b border-line-subtle py-4">
+            <div className="border-b border-line-divider py-4">
               <IssueCriteria
                 issue={issue}
                 projectId={standingQ.data?.standing.requirement?.project?.id ?? projectId}
@@ -98,7 +98,7 @@ export function IssuePageMain(props: {
                 developer={developer}
               />
             </div>
-            <div className="border-b border-line-subtle py-4" data-highlight="preview">
+            <div className="border-b border-line-divider py-4" data-highlight="preview">
               <IssuePreview
                 issueId={issue.id}
                 issueLabel={issue.displayId}

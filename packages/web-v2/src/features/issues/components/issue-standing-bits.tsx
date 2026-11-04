@@ -243,7 +243,7 @@ export function IssuePeekProperties({
   const language = useInterfaceLanguage();
   const sub = (text: ReactNode) => <span className="mt-0.5 block text-12 text-subtle">{text}</span>;
   return (
-    <div className="divide-y divide-line-subtle" data-testid="issue-peek-facts">
+    <div className="divide-y divide-line-divider" data-testid="issue-peek-facts">
       {s.attentionGroup !== "done" ? (
         <Fact label={t("issues.facts.waitsOn")}>
           <span className="min-w-0">

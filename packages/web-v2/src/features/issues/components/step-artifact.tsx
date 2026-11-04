@@ -81,7 +81,7 @@ export function StepArtifact({ outcome, open, onToggle }: StepArtifactCardProps)
   return (
     <div
       id={`step-card-${outcome.step}`}
-      className="scroll-mt-24 border-b border-l-2 border-line-subtle border-l-transparent"
+      className="scroll-mt-24 border-b border-l-2 border-line-divider border-l-transparent"
       style={open ? { borderLeftColor: "var(--accent)" } : undefined}
     >
       <button
@@ -120,7 +120,7 @@ export function StepArtifact({ outcome, open, onToggle }: StepArtifactCardProps)
       </button>
 
       {open && (
-        <div className="forge-fade space-y-3 border-t border-line-subtle px-3 py-3">
+        <div className="forge-fade space-y-3 border-t border-line-divider px-3 py-3">
           {!outcome.handoff && !hasBody && (
             <p className="fg-body-sm text-muted">{t("issues.step.noHandoff")}</p>
           )}
@@ -144,7 +144,7 @@ export function StepArtifact({ outcome, open, onToggle }: StepArtifactCardProps)
           ))}
 
           {outcome.handoff && (
-            <div className="border-t border-line-subtle pt-2">
+            <div className="border-t border-line-divider pt-2">
               <button
                 type="button"
                 onClick={() => setShowRaw((v) => !v)}

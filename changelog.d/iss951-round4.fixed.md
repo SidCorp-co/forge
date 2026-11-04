@@ -1,0 +1,1 @@
+**Activity shows no record keys, and each project's group matches its text.** People read the question's words, Recent and the master's work read issue titles, an idle master no longer reads busy by hand, and lines are lighter.

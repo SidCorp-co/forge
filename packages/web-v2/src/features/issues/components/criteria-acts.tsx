@@ -272,7 +272,7 @@ export function TieCriteria({
           <div className="grid gap-3" data-testid="tie-form">
             {bcs.isLoading ? <p className="text-13 text-subtle">{t("issues.steps.loading")}</p> : null}
             <RefusalLine error={bcs.error} testid="tie-read-refusal" />
-            <ul className="max-h-112 divide-y divide-line-subtle overflow-y-auto border-y border-line-subtle">
+            <ul className="max-h-112 divide-y divide-line-divider overflow-y-auto border-y border-line-divider">
               {(bcs.data ?? []).map((bc) => (
                 <li key={bc.code} className="py-2" data-testid={`tie-${bc.code}`}>
                   <Checkbox

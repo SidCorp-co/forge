@@ -98,7 +98,7 @@ export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug:
       <ViewHeading right={view.checks.length ? <span className="text-12 text-muted tabular-nums">{t("issues.checks.total", { took: formatDuration(view.totalMs, language) })}</span> : undefined}>
         {t("issues.checks.title")}
       </ViewHeading>
-      <ul className="divide-y divide-line-subtle border-y border-line-subtle">
+      <ul className="divide-y divide-line-divider border-y border-line-divider">
         {view.kinds.map((kind) => (
           <CheckKind key={kind.kind} kind={kind} t={t} />
         ))}
@@ -106,7 +106,7 @@ export function CheckTimes({ issueId, slug, sessions }: { issueId: string; slug:
       {view.checks.length === 0 ? (
         <p className="mt-2 text-12 text-subtle">{t("issues.checks.none")}</p>
       ) : (
-        <ul className="mt-3 divide-y divide-line-subtle" aria-label={t("issues.checks.each")}>
+        <ul className="mt-3 divide-y divide-line-divider" aria-label={t("issues.checks.each")}>
           {view.checks.map((c) => (
             <CheckTime key={c.id} check={c} sessions={sessions} slug={slug} t={t} />
           ))}

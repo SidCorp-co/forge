@@ -374,6 +374,22 @@ describe("an issue page's rail links nothing to a requirement (ISS-687)", () => 
   });
 });
 
+// ISS-956's divider spec, fixed forward under ISS-951 round 4: judge run e0121211 at dev.486 read the
+// issue page's item dividers at --border-subtle (neutral-6). Its sections, criteria rows, rail groups
+// and facts sit on the divider (neutral-4); a control keeps its own border.
+describe("an issue page draws its item dividers with the divider token (ISS-956)", () => {
+  it.each([["person's", ""], ["developer", "?view=developer"]])("in the %s view, no item or section line is the subtle one", async (_, search) => {
+    railBeside();
+    const root = await page(search);
+    const control = (e: Element) => e.closest("button, a, kbd, input, textarea, select, video") !== null;
+    const lines = [root, ...root.querySelectorAll("*")]
+      .filter((e) => !control(e))
+      .flatMap((e) => (e.getAttribute("class") ?? "").split(/\s+/).filter((c) => /(^|:)(border|divide|bg)-line-subtle$/.test(c)).map((c) => `${e.getAttribute("data-testid") ?? e.tagName}: ${c}`));
+    expect(lines).toEqual([]);
+    expect(within(root).getAllByTestId("criterion-row")[1]).toHaveClass("border-line-divider");
+  });
+});
+
 describe("an issue page in the developer view", () => {
   it("opens every fold: the plan, the files and the voided question", async () => {
     const root = await page("?view=developer");

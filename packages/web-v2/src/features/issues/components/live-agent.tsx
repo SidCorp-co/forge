@@ -194,7 +194,7 @@ export function OperatorDetails({ tags, children }: { tags: [tag: OperatorTag, v
         {t("issues.live.operatorDetails")}
       </button>
       {open ? (
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-line-divider pt-2">
           {tags.filter((tag): tag is [OperatorTag, string] => !!tag[1]).map(([tag, value]) => (
             <span key={tag} className="inline-flex items-center gap-1">
               <span className="fg-caption text-muted">{t(`issues.live.ops.${tag}`)}</span>

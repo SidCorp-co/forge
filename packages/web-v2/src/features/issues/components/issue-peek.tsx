@@ -65,7 +65,7 @@ export function IssuePeek({
           </FactsGroup>
         ) : null}
         {issue ? (
-          <section className="border-t border-line-subtle py-3.5 first:border-t-0 first:pt-0" data-testid="issue-peek-criteria">
+          <section className="border-t border-line-divider py-3.5 first:border-t-0 first:pt-0" data-testid="issue-peek-criteria">
             <CriteriaList issueId={issue.id} />
           </section>
         ) : null}

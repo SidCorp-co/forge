@@ -114,7 +114,7 @@ function CriterionItem({
   const row = line.row;
   const statement = developer ? line.statement : withoutCriterionCode(line.statement);
   return (
-    <li className="border-t border-line-subtle first:border-t-0" data-testid="criterion-row">
+    <li className="border-t border-line-divider first:border-t-0" data-testid="criterion-row">
       <button
         type="button"
         aria-expanded={open}
@@ -247,7 +247,7 @@ function RetiredCriteria({ rows }: { rows: RetiredCriterionRow[] }) {
       <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">
         {t("issues.criteria.retired", { n: rows.length })}
       </summary>
-      <ol className="mt-1 divide-y divide-line-subtle">
+      <ol className="mt-1 divide-y divide-line-divider">
         {rows.map((row) => (
           <li key={row.id} className="py-2" data-testid="retired-criterion">
             <div className="flex items-start gap-3">

@@ -53,7 +53,7 @@ export function StewardNoteLines({ note, slug, className }: { note: StewardNote 
   if (!note || note.stale) return null;
   const [first, second] = note.lines;
   return (
-    <section aria-label={t("steward.note.label")} className={cn("flex flex-col gap-0.5 border-b border-line-subtle py-2 text-fg", className)} data-testid="steward-note">
+    <section aria-label={t("steward.note.label")} className={cn("flex flex-col gap-0.5 border-b border-line-divider py-2 text-fg", className)} data-testid="steward-note">
       {/* line 1 says what happened and what blocks; line 2, where written, what is next and by when */}
       {first ? <NoteLine text={first} cites={note.cites} slug={slug} /> : null}
       {second ? <NoteLine text={second} cites={note.cites} slug={slug} /> : null}

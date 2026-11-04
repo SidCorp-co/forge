@@ -94,7 +94,7 @@ function AddBlocker({ edit }: { edit: BlockerEdit }) {
         }
       }}
     >
-      <div className="flex items-center gap-2 border-t border-line-subtle pt-1.5">
+      <div className="flex items-center gap-2 border-t border-line-divider pt-1.5">
         <input
           value={key}
           onChange={(e) => setKey(e.target.value)}
@@ -123,7 +123,7 @@ function EdgeRows({ edges, self, slug, label, testId, edit, expired = false }: {
   return (
     <section className={expired ? "pt-4 opacity-60" : "pt-4"} data-testid={testId} data-expired={expired || undefined}>
       <h3 className="mb-1 text-13 font-semibold text-muted" data-facts-title>{label}</h3>
-      <ul className="divide-y divide-line-subtle">
+      <ul className="divide-y divide-line-divider">
         {shown.map((e) => {
           const other = otherEnd(e, self);
           return (
@@ -211,7 +211,7 @@ export function PropertiesRail({
   return (
     <div data-testid="issue-properties">
       <FactsGroup title={t("issues.rail.properties")} testId="facts-properties">
-        <div className="divide-y divide-line-subtle">
+        <div className="divide-y divide-line-divider">
           {requirementKey !== undefined ? (
             <Row label={t("issues.facts.requirement")}>
               <IssueRequirementProperty slug={slug} current={requirementKey} currentTitle={standing?.requirement?.title ?? null} requirementProject={standing?.requirement?.project ?? null} />

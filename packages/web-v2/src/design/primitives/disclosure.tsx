@@ -33,7 +33,7 @@ export function Disclosure({ title, count, countUnit, hint, printsOpen = false, 
       defaultOpen={defaultOpen}
       open={open}
       onOpenChange={onOpenChange}
-      className="group/fold border-t border-line-subtle first:border-t-0"
+      className="group/fold border-t border-line-divider first:border-t-0"
       data-testid={testId}
       data-highlight={highlight}
     >

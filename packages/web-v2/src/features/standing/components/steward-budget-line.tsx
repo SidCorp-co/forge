@@ -17,7 +17,7 @@ export function StewardBudgetSentence({ budget }: { budget: StewardBudgetView })
         ? t("steward.budget.sweepPaced", { n: budget.paced })
         : t("steward.budget.sweepSpent");
   return (
-    <p className="border-b border-line-subtle py-2 text-13 text-muted" data-testid="steward-budget-line" data-quiet={budget.quiet}>
+    <p className="border-b border-line-divider py-2 text-13 text-muted" data-testid="steward-budget-line" data-quiet={budget.quiet}>
       {text}
     </p>
   );

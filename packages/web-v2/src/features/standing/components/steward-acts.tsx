@@ -12,7 +12,7 @@ function StewardAct({ act, canWrite, onUndo, pending, fault }: { act: StewardAct
   const t = useCopy();
   const time = useTimeFormat();
   return (
-    <li className="flex gap-2.5 border-b border-line-subtle py-2.5 text-14 last:border-0" data-testid="steward-act" data-act-id={act.id}>
+    <li className="flex gap-2.5 border-b border-line-divider py-2.5 text-14 last:border-0" data-testid="steward-act" data-act-id={act.id}>
       <span className="w-5 flex-none pt-px">
         <WhoMark kind="agent" who={t("steward.acts.who")} size={18} />
       </span>

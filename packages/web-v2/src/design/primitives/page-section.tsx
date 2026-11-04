@@ -12,7 +12,7 @@ export function PageSection({ className, ...props }: HTMLAttributes<HTMLDivEleme
 export function PageSectionHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("flex items-center justify-between gap-3 border-b border-line-subtle py-3", className)}
+      className={cn("flex items-center justify-between gap-3 border-b border-line-divider py-3", className)}
       {...props}
     />
   );

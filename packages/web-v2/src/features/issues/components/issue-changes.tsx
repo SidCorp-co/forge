@@ -24,7 +24,7 @@ export function IssueChanges({ issue, slug, developer }: { issue: Pick<IssueDeta
   if (issue.status === "dropped" || (!note && !issue.shippedIn && !issue.landedIn)) return null;
   const none = !note || note.section === "Skip" || note.userFacing.trim() === "";
   return (
-    <section aria-label={t("issues.changes.title")} data-testid="issue-changes" className="grid gap-2 border-b border-line-subtle py-4">
+    <section aria-label={t("issues.changes.title")} data-testid="issue-changes" className="grid gap-2 border-b border-line-divider py-4">
       <div className="flex min-w-0 items-baseline gap-3">
         <h2 className="w-21 flex-none text-12 font-medium uppercase tracking-wide text-subtle">{t("issues.changes.title")}</h2>
         <span className="min-w-0 flex-1 truncate text-14" title={none ? undefined : firstLine(note?.userFacing ?? "")}>

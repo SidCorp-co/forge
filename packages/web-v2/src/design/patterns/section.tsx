@@ -16,7 +16,7 @@ export function Section({
   ...rest
 }: { title?: ReactNode; right?: ReactNode; children?: ReactNode; id?: string; testId?: string; className?: string } & Omit<HTMLAttributes<HTMLElement>, "title" | "children">) {
   return (
-    <section {...rest} id={id} className={cn("scroll-mt-24 border-t border-line-subtle py-5 first:border-t-0 first:pt-0", className)} data-testid={testId}>
+    <section {...rest} id={id} className={cn("scroll-mt-24 border-t border-line-divider py-5 first:border-t-0 first:pt-0", className)} data-testid={testId}>
       {title || right ? (
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           {title ? <h2 className="text-15 font-bold leading-snug text-accent-text">{title}</h2> : null}
@@ -31,7 +31,7 @@ export function Section({
 /** Label-and-value rows in a page's main column; the rail's narrower kin is `Fact`. */
 export function PropertyList({ children, testId }: { children: ReactNode; testId?: string }) {
   return (
-    <dl className="divide-y divide-line-subtle" data-testid={testId}>
+    <dl className="divide-y divide-line-divider" data-testid={testId}>
       {children}
     </dl>
   );

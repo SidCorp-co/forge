@@ -41,7 +41,7 @@ function RunList({ slug, sessions }: { slug: string; sessions: IssueAgentSession
   const rows = [...sessions].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
     <section aria-label={t("issues.tab.runs")}>
-      <ul className="divide-y divide-line-subtle border-y border-line-subtle">
+      <ul className="divide-y divide-line-divider border-y border-line-divider">
         {rows.map((s) => (
           <li key={s.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2 text-13" data-testid="issue-run">
             <Link

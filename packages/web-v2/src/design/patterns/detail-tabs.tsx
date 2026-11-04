@@ -102,7 +102,7 @@ function RailFacts({ children }: { children: ReactNode }) {
     return () => mo.disconnect();
   }, []);
   return (
-    <div className="border-y border-line-subtle" data-testid="rail-facts">
+    <div className="border-y border-line-divider" data-testid="rail-facts">
       <button
         type="button"
         className="flex w-full items-center gap-2 px-8 py-3 text-left hover:bg-hover max-md:px-4"
@@ -115,7 +115,7 @@ function RailFacts({ children }: { children: ReactNode }) {
         {groups ? <span className="min-w-0 truncate text-13 text-muted" data-testid="rail-facts-groups">{groups}</span> : null}
         <Icon name={open ? "chevronDown" : "chevronRight"} size={14} className="ml-auto flex-none text-subtle" />
       </button>
-      <div id={id} ref={bodyRef} hidden={!open} className="border-t border-line-subtle">
+      <div id={id} ref={bodyRef} hidden={!open} className="border-t border-line-divider">
         {children}
       </div>
     </div>

@@ -30,7 +30,7 @@ interface CountSectionProps {
 export function CountSection({ label, count, unit, holds, note, children, defaultOpen = false, open, onOpenChange, testId, highlight }: CountSectionProps) {
   if (count === 0 && !holds) {
     return (
-      <div data-testid={testId} data-count-section="empty" data-highlight={highlight} className="flex h-row items-center gap-3 border-t border-line-subtle pl-7 first:border-t-0">
+      <div data-testid={testId} data-count-section="empty" data-highlight={highlight} className="flex h-row items-center gap-3 border-t border-line-divider pl-7 first:border-t-0">
         <span className="text-14 font-medium text-muted">
           {label}
           <span className="ml-1.5 text-12 font-medium text-subtle">{unit ? `0 ${unit}` : 0}</span>

@@ -29,7 +29,7 @@ export function FactsRail({
 }) {
   const t = useCopy();
   return (
-    <aside className={cn("min-w-0 border-line-subtle lg:border-l", className)} aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
+    <aside className={cn("min-w-0 border-line-region lg:border-l", className)} aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
       <div
         className={cn(
           "px-5 py-5 max-md:px-4 lg:sticky lg:overflow-y-auto",
@@ -48,7 +48,7 @@ const GroupTitleContext = createContext<string | null>(null);
 
 export function FactsGroup({ title, count, children, testId }: { title: string; count?: ReactNode; children: ReactNode; testId?: string }) {
   return (
-    <section className="border-t border-line-subtle py-3.5 first:border-t-0 first:pt-0" data-testid={testId ?? "facts-group"}>
+    <section className="border-t border-line-divider py-3.5 first:border-t-0 first:pt-0" data-testid={testId ?? "facts-group"}>
       <h3 className="mb-2 flex items-baseline gap-2 text-14 font-bold text-accent-text">
         <span data-facts-title>{title}</span>
         {count ? <span className="ml-auto text-12 font-medium text-muted">{count}</span> : null}

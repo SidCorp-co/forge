@@ -40,7 +40,7 @@ export function IssueStateHead({
   const done = standing.attentionGroup === "done";
   const eta = forecast && forecast.kind !== "landed" && forecast.kind !== "ended" ? etaOfForecast(forecast, clock) : null;
   return (
-    <div className="grid gap-1.5 border-b border-line-subtle pb-4" data-testid="issue-state-head">
+    <div className="grid gap-1.5 border-b border-line-divider pb-4" data-testid="issue-state-head">
       <Line label={t("issues.now.now")} testId="issue-now">
         {done ? t("issues.attention.done") : [w.who, w.act].filter(Boolean).join(" · ")}
       </Line>
