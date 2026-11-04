@@ -380,10 +380,8 @@ mod tests {
         let real = std::fs::canonicalize(&r.0).unwrap();
         let mine = real.join(format!("{PREFIX}{RUN}"));
         assert_eq!(check_recorded(&mine, RUN), Ok(()));
-        let link = real.join("link");
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-        for (bad, says) in [
+        #[allow(unused_mut)]
+        let mut cases = vec![
             (
                 PathBuf::from(format!("{PREFIX}{RUN}")),
                 "not an absolute path",
@@ -394,8 +392,16 @@ mod tests {
             ),
             (real.join(format!("{PREFIX}{OTHER}")), "not named"),
             (real.join("forge-judge-self"), "not named"),
-            (link.join(format!("{PREFIX}{RUN}")), "under a symlink"),
-        ] {
+        ];
+        // the symlink case needs a privilege Windows does not grant a test, and with no link
+        // planted its parent reads as absent, which is no refusal
+        #[cfg(unix)]
+        {
+            let link = real.join("link");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            cases.push((link.join(format!("{PREFIX}{RUN}")), "under a symlink"));
+        }
+        for (bad, says) in cases {
             let why = check_recorded(&bad, RUN).unwrap_err();
             assert!(why.contains(says), "{}: {why}", bad.display());
             let refused = remove_recorded(&bad, RUN);
