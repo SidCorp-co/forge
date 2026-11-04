@@ -68,13 +68,13 @@ describe("the Approvals peek names the linked requirement once", () => {
 
 describe("the Approvals peek shows no question's id", () => {
   it("names the kind of item in the head and no key, where the decision is a question", () => {
-    const text = draw({ ...decision(null), opens: { kind: "feedback", key: "FB-147" }, evidence: null });
+    const text = draw({ ...decision(undefined), opens: { kind: "feedback", key: "FB-147" }, evidence: undefined });
     expect(text).not.toContain(QID);
     expect(screen.getByTestId("peek-head")).toHaveTextContent("Decision");
   });
 
   it("keeps the key in the head of a decision that is not a question", () => {
-    draw({ ...decision(null), entity: "release", key: "v1.2.0" });
+    draw({ ...decision(undefined), entity: "release", key: "v1.2.0" });
     expect(screen.getByTestId("peek-head")).toHaveTextContent("v1.2.0");
   });
 });
