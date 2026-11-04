@@ -35,6 +35,7 @@ import { can, onHost, type Routes } from './source-door.js';
 import { registerChangeRequestLinks } from './source-link-routes.js';
 import { registerSourceProjectionRoutes } from './source-projection-routes.js';
 import {
+  checkJobsParamSchema,
   checkLogParamSchema,
   checkLogQuerySchema,
   commentBodySchema,
@@ -65,6 +66,17 @@ function registerSourceReads(routes: Routes): void {
     async (c) => {
       const { number } = c.req.valid('param');
       return c.json(await onHost(c.req.param('projectId'), (host) => host.diff({ number })));
+    },
+  );
+  // a check's jobs by the ids the log below takes: a GitLab pipeline's jobs, a GitHub check run itself
+  routes.get(
+    '/:projectId/integrations/source/checks/:checkId/jobs',
+    can('project.read'),
+    zValidator('param', checkJobsParamSchema),
+    noQuery,
+    async (c) => {
+      const { checkId } = c.req.valid('param');
+      return c.json(await onHost(c.req.param('projectId'), (host) => host.checkJobs({ checkId })));
     },
   );
   routes.get(

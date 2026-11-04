@@ -1,5 +1,6 @@
 import type {
   ChangeRequestDiff,
+  CheckJobs,
   CheckLog,
   OpenedChangeRequest,
   RequestedReview,
@@ -72,6 +73,35 @@ function tailLines(text: string, lines: number): { text: string; truncated: bool
   const all = text.split('\n');
   if (all.length <= lines) return { text, truncated: false };
   return { text: all.slice(all.length - lines).join('\n'), truncated: true };
+}
+
+/**
+ * A check run's jobs: a GitHub check run already is one job, so it lists itself, by the check-run id
+ * `readCheckRunLog` takes. One shape on both hosts, so an agent lists a check's jobs, then reads one.
+ */
+export async function readCheckRunJobs(
+  client: GitHubAgentClient,
+  args: { checkId: number },
+): Promise<CheckJobs> {
+  const run = await client.json<CheckRunBody>({
+    method: 'GET',
+    path: `/repos/${client.owner}/${client.repo}/check-runs/${args.checkId}`,
+  });
+  return {
+    checkId: args.checkId,
+    jobs: [
+      {
+        jobId: args.checkId,
+        name: run.name ?? '(unnamed check)',
+        stage: null,
+        status: run.status ?? 'unknown',
+        conclusion: run.conclusion ?? null,
+        failureReason: run.output?.title ?? null,
+        detailsUrl: run.details_url ?? run.html_url ?? null,
+      },
+    ],
+    truncated: false,
+  };
 }
 
 /** A failing check run's log, scrubbed and tailed — or the reason Forge cannot fetch it. */

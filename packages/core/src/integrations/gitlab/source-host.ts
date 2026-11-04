@@ -11,6 +11,7 @@ import type {
 import { SourceHostCallError } from '../source-host/index.js';
 import { gitlabAgentVerbs } from './agent-verbs.js';
 import { gitlabChangeRequestVerbs } from './change-requests.js';
+import { gitlabCheckVerbs } from './check-jobs.js';
 import { buildGitLabClient, type GitLabClient } from './client.js';
 import { GITLAB_MERGE_METHODS, mergeGitLabMergeRequest } from './merge.js';
 import { gitlabBindingReports } from './report.js';
@@ -221,6 +222,7 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
     },
 
     ...gitlabAgentVerbs(client, branchHead),
+    ...gitlabCheckVerbs(client),
     ...gitlabChangeRequestVerbs(client),
     merge: (args) => mergeGitLabMergeRequest(client, args),
     tagCommit: (args) => tagGitLabCommit(client, args),

@@ -55,3 +55,16 @@ const refuseHostInput = refuser<IntegrationRefusalCode>('SOURCE_HOST_INPUT_REFUS
 export function refuseSourceHostInput(detail: string): RefusalError {
   return refuseHostInput('SOURCE_HOST_INPUT_REFUSED', detail);
 }
+
+const refuseCheck = refuser<IntegrationRefusalCode>('SOURCE_HOST_INPUT_REFUSED');
+
+/**
+ * A check id sent to the route that takes the other kind: a GitLab pipeline id to a job's log, or a
+ * job id to a pipeline's jobs. Refused by name, with the route that takes it, never a host 404.
+ */
+export function refuseCheckIdKind(
+  code: 'CHECK_ID_IS_A_PIPELINE' | 'CHECK_ID_IS_A_JOB',
+  detail: string,
+): RefusalError {
+  return refuseCheck(code, detail);
+}

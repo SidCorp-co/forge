@@ -12,6 +12,9 @@ export const linkParamSchema = z.object({
 
 export const checkLogParamSchema = z.object({ checkRunId: z.coerce.number().int().positive() });
 
+/** A check's id as the checks reads answer it: a GitLab pipeline id, a GitHub check-run id. */
+export const checkJobsParamSchema = z.object({ checkId: z.coerce.number().int().positive() });
+
 /** `lines` is how many trailing lines to keep: rejected outside 1..1000, never clamped. */
 export const checkLogQuerySchema = z
   .object({ lines: z.coerce.number().int().min(1).max(1000).optional() })

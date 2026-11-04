@@ -1,22 +1,10 @@
-import type { CheckLog, SourceHost } from '../source-host/index.js';
+import type { SourceHost } from '../source-host/index.js';
 import { refuseSourceHostInput, SourceHostCallError } from '../source-host/index.js';
 import type { GitLabClient } from './client.js';
 import type { MergeRequestBody } from './merge.js';
-import { checkStatusOf, conclusionOf } from './status.js';
 
 const DIFF_CAP_BYTES = 256 * 1024;
 const DIFF_MAX_PAGES = 10;
-const LOG_CAP_BYTES = 2 * 1024 * 1024;
-const DEFAULT_LOG_LINES = 100;
-
-interface JobBody {
-  id?: number;
-  name?: string;
-  status?: string;
-  stage?: string;
-  web_url?: string | null;
-  failure_reason?: string | null;
-}
 
 interface UserBody {
   id?: number;
@@ -25,22 +13,16 @@ interface UserBody {
 
 const enc = encodeURIComponent;
 
-function tail(text: string, lines: number): { text: string; truncated: boolean } {
-  const all = text.split('\n');
-  if (all.length <= lines) return { text, truncated: false };
-  return { text: all.slice(all.length - lines).join('\n'), truncated: true };
-}
-
 function mergeRequestUrl(client: GitLabClient, iid: number): string | null {
   return client.webUrl ? `${client.webUrl}/-/merge_requests/${iid}` : null;
 }
 
 type AgentVerbs = Pick<
   SourceHost,
-  'diff' | 'checkLog' | 'comment' | 'openChangeRequest' | 'requestReview' | 'submitReview'
+  'diff' | 'comment' | 'openChangeRequest' | 'requestReview' | 'submitReview'
 >;
 
-/** The judgement verbs on a GitLab merge request: notes, reviewers, approvals, a diff, a job trace. */
+/** The judgement verbs on a GitLab merge request: notes, reviewers, approvals, a diff. */
 export function gitlabAgentVerbs(
   client: GitLabClient,
   branchHead: (branch: string) => Promise<string>,
@@ -87,40 +69,6 @@ export function gitlabAgentVerbs(
         bytes: buf.byteLength,
         truncated,
         diff: truncated ? buf.subarray(0, cap).toString('utf8') : whole,
-      };
-    },
-
-    async checkLog({ checkRunId, lines }): Promise<CheckLog> {
-      const job = await client.json<JobBody>('GET', client.project(`/jobs/${checkRunId}`));
-      const base = {
-        checkRunId,
-        name: job.name ?? '(unnamed job)',
-        app: 'gitlab-ci',
-        status: checkStatusOf(job.status),
-        conclusion: conclusionOf(job.status),
-        detailsUrl: job.web_url ?? null,
-        summary: job.failure_reason ?? null,
-      };
-      let raw: { body: string; bytes: number; truncated: boolean };
-      try {
-        raw = await client.text(client.project(`/jobs/${checkRunId}/trace`), LOG_CAP_BYTES, 'tail');
-      } catch (err) {
-        if (err instanceof SourceHostCallError) {
-          return {
-            ...base,
-            log: null,
-            truncated: false,
-            refusal: `GitLab answered HTTP ${err.status} for the trace of job ${checkRunId} — a 404 is a trace GitLab has erased or a job it has removed, a 403 a permission the token does not hold on ${client.fullName}. Nothing was retried.`,
-          };
-        }
-        throw err;
-      }
-      const tailed = tail(raw.body, lines ?? DEFAULT_LOG_LINES);
-      return {
-        ...base,
-        log: tailed.text,
-        truncated: tailed.truncated || raw.truncated,
-        refusal: null,
       };
     },
 

@@ -5,7 +5,12 @@ export {
   relinkChangeRequestIssue,
   unlinkChangeRequestIssue,
 } from './change-request-links.js';
-export { refuseSourceHostInput, SourceHostCallError, SourceHostUnavailable } from './errors.js';
+export {
+  refuseCheckIdKind,
+  refuseSourceHostInput,
+  SourceHostCallError,
+  SourceHostUnavailable,
+} from './errors.js';
 export {
   GIT_RELAY_PREFIX,
   gitRelayRequestOf,

@@ -14,6 +14,7 @@ import {
 } from './agent-client.js';
 import {
   openPullRequest,
+  readCheckRunJobs,
   readCheckRunLog,
   readPullRequestDiff,
   requestReview,
@@ -226,6 +227,7 @@ function githubSourceHostOf(
     readFile: (path, ref, maxBytes) => readFileAt(client, path, ref, maxBytes),
 
     diff: (args) => readPullRequestDiff(agent(), args),
+    checkJobs: (args) => readCheckRunJobs(agent(), args),
     checkLog: (args) => readCheckRunLog(agent(), args),
     comment: (args) => writePullRequestComment(agent(), args),
     openChangeRequest: (args) => openPullRequest(agent(), args),

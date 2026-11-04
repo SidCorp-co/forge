@@ -72,6 +72,29 @@ export interface CheckLog {
   refusal: string | null;
 }
 
+/**
+ * One job of a check, by the id `checkLog` takes: on GitLab one job of the pipeline the check is,
+ * on GitHub the check run itself, since a check run already is one job.
+ */
+export interface CheckJob {
+  jobId: number;
+  name: string;
+  /** The stage the job ran in, where the host has stages (GitLab); null on GitHub. */
+  stage: string | null;
+  status: string;
+  conclusion: string | null;
+  /** Why the host says the job failed (GitLab's `failure_reason`); null where it names none. */
+  failureReason: string | null;
+  detailsUrl: string | null;
+}
+
+/** The jobs of one check, each readable at `checks/:jobId/log`; `truncated` where the list filled the read's cap, so more may stand. */
+export interface CheckJobs {
+  checkId: number;
+  jobs: CheckJob[];
+  truncated: boolean;
+}
+
 export interface WrittenComment {
   commentId: number;
   url: string | null;
@@ -196,6 +219,13 @@ export interface SourceHost {
   readFile(path: string, ref: string, maxBytes: number): Promise<string | { missing: string }>;
 
   diff(args: { number: number; maxBytes?: number }): Promise<ChangeRequestDiff>;
+  /**
+   * The jobs of one check the checks reads answered, each with the id `checkLog` takes. A GitLab
+   * check is a pipeline, so it lists the pipeline's jobs; a GitHub check run is one job, so it lists
+   * itself.
+   */
+  checkJobs(args: { checkId: number }): Promise<CheckJobs>;
+  /** One job's log by the id `checkJobs` names; a GitLab pipeline id is refused by name. */
   checkLog(args: { checkRunId: number; lines?: number }): Promise<CheckLog>;
   comment(args: { number: number; body: string }): Promise<WrittenComment>;
   openChangeRequest(args: {
