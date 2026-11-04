@@ -85,7 +85,7 @@ function rowOf(t: Copy) {
       </span>
     ),
     owner: p.release ? <ReleaseBar release={p.release} /> : <span className="text-subtle">—</span>,
-    age: p.awaitingRelease > 0 ? { text: String(p.awaitingRelease), title: t("activity.approveHint", { n: p.awaitingRelease }) } : null,
+    age: p.awaitingRelease > 0 ? { text: String(p.awaitingRelease), title: t("activity.show.release") } : null,
   });
 }
 
@@ -110,8 +110,9 @@ function Live({ at }: { at: string }) {
   const t = useCopy();
   const time = new Date(at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   return (
-    <span className="inline-flex items-center gap-1.5 text-12 text-subtle" title={t("activity.liveHint")} data-testid="activity-live">
+    <span className="inline-flex items-center gap-1.5 text-12 text-subtle" data-testid="activity-live">
       <span aria-hidden className="size-1.5 rounded-full bg-ok-9" />
+      <span className="sr-only">{t("activity.live")}</span>
       {time}
     </span>
   );

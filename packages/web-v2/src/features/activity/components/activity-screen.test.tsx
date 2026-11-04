@@ -150,7 +150,7 @@ describe("the Activity tab", () => {
   it("an org with no project the reader can read says so", async () => {
     serve(read([]));
     renderWithQuery(<ActivityScreen />);
-    expect(await screen.findByText("No projects you can read here")).toBeTruthy();
+    expect(await screen.findByText("No projects")).toBeTruthy();
     expect(screen.queryByTestId("grouped-list")).toBeNull();
   });
 
