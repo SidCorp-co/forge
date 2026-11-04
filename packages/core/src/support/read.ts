@@ -16,8 +16,10 @@ import { latencySamples } from './delivery.js';
 import { answersOfConfig, readersOfConfig, supportConfigOf } from './grants.js';
 import { roomHealth } from './health.js';
 import { roleOfRoom } from './ops-role.js';
+import { heldRoomsOfProject } from './rooms.js';
 import { percentile } from './rules.js';
-import { type ActionRow, actionsOfRoom, recentThreads, roomById, roomsOfProject } from './store.js';
+import { type ActionRow, actionsOfRoom, recentThreads, roomById } from './store.js';
+import { projectThreadOfRoom } from './thread.js';
 
 const ACTIONS_SHOWN = 500;
 
@@ -26,7 +28,8 @@ export async function supportRoomsOf(
   projectId: string,
 ): Promise<SupportRoomView[]> {
   await requireDeclaredOn(projectId, viewer, 'project.read');
-  const rooms = await roomsOfProject(projectId);
+  // a released room is no room the project holds (ISS-933)
+  const rooms = await heldRoomsOfProject(projectId);
   if (rooms.length === 0) return [];
   const statusOf = await sessionStatusesByIds(
     rooms.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
@@ -56,6 +59,7 @@ export async function supportRoomsOf(
         grants: config?.grants ?? null,
         health,
         threads: (await recentThreads(r.id, 1000)).length,
+        projectThread: await projectThreadOfRoom(r),
         latency: latencyOf(await latencySamples(r.id, SUPPORT_LATENCY_WINDOW)),
         createdAt: r.createdAt.toISOString(),
       };

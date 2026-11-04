@@ -14,8 +14,9 @@ import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { supportConfigOf } from './grants.js';
+import { heldRoomsOfProject } from './rooms.js';
 import { RELEASE_THREAD_PREFIX } from './rules.js';
-import { insertAction, type RoomRow, roomsOfProject } from './store.js';
+import { insertAction, type RoomRow } from './store.js';
 
 /** How often a room is handed release notes, at most: the channel's one top-level post an hour. */
 const TELL_EVERY_MS = 60 * 60_000;
@@ -44,7 +45,7 @@ async function userFacingNotes(issueIds: readonly string[]): Promise<ReleaseNote
 /** The rooms of a project whose binding opted in to releases. */
 async function announcingRooms(projectId: string): Promise<RoomRow[]> {
   const out: RoomRow[] = [];
-  for (const room of await roomsOfProject(projectId)) {
+  for (const room of await heldRoomsOfProject(projectId)) {
     if (room.kind === 'operations') continue;
     if ((await supportConfigOf(room))?.announce?.releases === true) out.push(room);
   }

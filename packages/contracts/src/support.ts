@@ -977,7 +977,14 @@ export interface SupportRoomView {
 	/** What the room's binding grants (BC-27); a support group without a grant holds no ability. */
 	grants: SupportGrants | null;
 	health: SupportRoomHealth;
+	/** The threads Forge has recorded a message or an act in, in this room. */
 	threads: number;
+	/**
+	 * This project's own thread in an operations room, as the room's binding records it in
+	 * `operations.threads` (ISS-934): where the master's posts and the room's top-level posts land.
+	 * Null in any other room, or where none is recorded.
+	 */
+	projectThread: string | null;
 	latency: SupportLatencyView;
 	createdAt: string;
 }

@@ -15,6 +15,7 @@ import {
 } from '../db/schema-support.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
+import { heldRoomsOfProject, roomIsBound } from './rooms.js';
 
 export type ChannelRow = typeof supportChannels.$inferSelect;
 export type MemberRow = typeof supportChannelMembers.$inferSelect;
@@ -45,7 +46,9 @@ export async function channelOf(projectId: string, rid: string): Promise<Channel
  * switched off keeps its groups' records, as a room taken out of its binding does.
  */
 async function namedRids(projectId: string): Promise<{ forge: string[]; outside: string[] }> {
+  // a binding switched off attaches nothing: its groups are no channel of the project (ISS-933)
   const configs = (await listBindingsForProject(projectId))
+    .filter((p) => p.binding.active && p.connection.active)
     .map((p) => p.binding)
     .filter((b) => b.provider === 'rocketchat')
     .reverse()
@@ -66,14 +69,10 @@ export async function answeredOutside(projectId: string, rid: string): Promise<b
  * for, oldest first, then every other group a binding of the project names.
  */
 export async function boundRidsOf(projectId: string): Promise<string[]> {
-  const rows = await db
-    .select({ rid: supportRooms.rid, first: sql<Date>`min(${supportRooms.createdAt})` })
-    .from(supportRooms)
-    .where(eq(supportRooms.projectId, projectId))
-    .groupBy(supportRooms.rid)
-    .orderBy(asc(sql`min(${supportRooms.createdAt})`));
+  // the groups of the rooms the project holds, oldest first: a released room is none (ISS-933)
+  const held = await heldRoomsOfProject(projectId);
   const named = await namedRids(projectId);
-  return [...new Set([...rows.map((r) => r.rid), ...named.forge, ...named.outside])];
+  return [...new Set([...held.map((r) => r.rid), ...named.forge, ...named.outside])];
 }
 
 /**
@@ -81,7 +80,9 @@ export async function boundRidsOf(projectId: string): Promise<string[]> {
  * was declared for it, or a binding of the project names it.
  */
 export async function channelIsBound(projectId: string, rid: string): Promise<boolean> {
-  if ((await roomsOfChannel(projectId, rid)).length > 0) return true;
+  for (const room of await roomsOfChannel(projectId, rid)) {
+    if (await roomIsBound(room)) return true;
+  }
   const named = await namedRids(projectId);
   return named.forge.includes(rid) || named.outside.includes(rid);
 }

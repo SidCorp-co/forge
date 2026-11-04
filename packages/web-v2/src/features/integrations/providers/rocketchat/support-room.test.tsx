@@ -99,6 +99,7 @@ const room = (over: Partial<SupportRoomView>): SupportRoomView => ({
   grants: { abilities: ["read_checkout", "file_items"] },
   health: { healthy: true, causes: [], checkedAt: "2026-10-28T10:00:00.000Z" },
   threads: 0,
+  projectThread: null,
   latency: {
     measured: 0,
     p50Ms: null,

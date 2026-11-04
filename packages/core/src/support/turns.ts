@@ -14,7 +14,7 @@ import { sessionStatusesByIds } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { requireDeclaredOn } from '../permissions/index.js';
-import { roomsOfProject } from './store.js';
+import { heldRoomsOfProject } from './rooms.js';
 
 interface RoomFacts {
   waiting: number;
@@ -59,7 +59,7 @@ export function turnStateOf(sessionStatus: string | null, waiting: number): Supp
 /** Every support room of the project with its turn, oldest room first. */
 export async function supportTurnsOf(viewer: string, projectId: string): Promise<SupportTurnsView> {
   await requireDeclaredOn(projectId, viewer, 'project.read');
-  const rooms = await roomsOfProject(projectId);
+  const rooms = await heldRoomsOfProject(projectId);
   const [statusOf, factsOf] = await Promise.all([
     sessionStatusesByIds(rooms.flatMap((r) => (r.sessionId ? [r.sessionId] : []))),
     factsOfRooms(rooms.map((r) => r.id)),

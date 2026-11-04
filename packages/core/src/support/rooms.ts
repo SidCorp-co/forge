@@ -28,6 +28,7 @@ import {
   type RoomRow,
   roomOfBinding,
   roomsHoldingSessions,
+  roomsOfProject,
   roomsOfSession,
   setRoomPlacement,
   setRoomSession,
@@ -91,6 +92,19 @@ export async function projectsWithUndeclaredRooms(): Promise<string[]> {
     }
   }
   return [...projects];
+}
+
+/**
+ * The rooms a project holds now: those whose binding is on and still names their group (ISS-933).
+ * A released room keeps its row for its record, and is never read as a room the project holds, nor
+ * as a fault of one.
+ */
+export async function heldRoomsOfProject(projectId: string): Promise<RoomRow[]> {
+  const held: RoomRow[] = [];
+  for (const room of await roomsOfProject(projectId)) {
+    if (await roomIsBound(room)) held.push(room);
+  }
+  return held;
 }
 
 /** Whether a rocketchat binding's config names the group `rid`. */

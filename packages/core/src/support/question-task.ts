@@ -20,9 +20,10 @@ import { grantsOf, supportConfigOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { ownerOwedQuestion } from './owner-owed.js';
 import type { Refusal } from './refusals.js';
+import { heldRoomsOfProject } from './rooms.js';
 import { questionThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
-import { type ActionRow, insertAction, type RoomRow, roomsOfProject } from './store.js';
+import { type ActionRow, insertAction, type RoomRow } from './store.js';
 import { postForTopLevel, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
 
 const ANSWER = 'answer_question';
@@ -41,7 +42,7 @@ const passedOn = <T>(
 
 /** The owner's room of the project's channel agent; why there is none; or null with no channel agent. */
 async function ownerRoomOf(projectId: string): Promise<RoomRow | string | null> {
-  const rooms = (await roomsOfProject(projectId)).filter((r) => r.kind === 'agent');
+  const rooms = (await heldRoomsOfProject(projectId)).filter((r) => r.kind === 'agent');
   if (rooms.length === 0) return null;
   for (const room of rooms) {
     const ownerRoom = (await supportConfigOf(room))?.ownerRoom;

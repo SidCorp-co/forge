@@ -17,6 +17,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/support/thread.ts
+// @direct-test-of packages/core/src/support/read.ts
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/checks.ts
 // @direct-test-of packages/core/src/support/question-task.ts
@@ -147,6 +148,13 @@ describe('nothing reaches the top level of a forge-scope operations room (ISS-93
       threads: { [chat.rid]: { [slug]: THREAD } },
     });
     expect(put.status, JSON.stringify(put.body)).toBe(200);
+    // the rooms read names the thread the binding records (ISS-933 round 2)
+    const listed = await api(w.owner, 'GET', `/api/projects/${w.projectId}/support/rooms`);
+    expect(
+      (listed.body as { rooms: { rid: string; projectThread: string | null }[] }).rooms.find(
+        (r) => r.rid === chat.rid,
+      )?.projectThread,
+    ).toBe(THREAD);
     // the binding change re-tells the room's session; it settles before the box closes
     await settleOutbox();
     await w.settleWarm();
