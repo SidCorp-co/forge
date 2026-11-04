@@ -410,11 +410,9 @@ async fn the_storage_state_is_playwrights_shape() {
     );
 }
 
-#[tokio::test]
-async fn a_profile_it_cannot_sign_in_for_is_refused_by_name_and_nothing_is_written() {
-    let (api, _) = stub(Answers::TokenAndCookies).await;
-    let (redirecting, _) = stub(Answers::Redirect).await;
-    let root = Scratch::new("refused");
+/// Each answer `judge-login` cannot sign in with, and what its refusal says: `api` signs the
+/// right password in, `redirecting` answers it with a redirect.
+fn refusals(api: &str, redirecting: &str) -> Vec<(&'static str, Value, &'static str)> {
     let with = |extra: Value| {
         let mut o =
             json!({ "signIn": "POST /api/auth/local", "email": EMAIL, "password": PASSWORD });
@@ -428,50 +426,50 @@ async fn a_profile_it_cannot_sign_in_for_is_refused_by_name_and_nothing_is_writt
         o.to_string()
     };
     let unrouted = {
-        let mut a = answer(&api, &forge_secret());
+        let mut a = answer(api, &forge_secret());
         a["deployment"]["routes"] = Value::Null;
         a
     };
     let undeployed = {
-        let mut a = answer(&api, &forge_secret());
+        let mut a = answer(api, &forge_secret());
         a.as_object_mut().unwrap().remove("deployment");
         a
     };
-    let cases: Vec<(&str, Value, &str)> = vec![
+    vec![
         (
             "a plain account:password value",
-            answer(&api, &format!("{EMAIL}:{PASSWORD}")),
+            answer(api, &format!("{EMAIL}:{PASSWORD}")),
             "is not the self-describing form",
         ),
         (
             "a key with no password",
-            answer(&api, &secret(json!({ "kind": "api-key", "key": PASSWORD }))),
+            answer(api, &secret(json!({ "kind": "api-key", "key": PASSWORD }))),
             "(kind `api-key`) names no `password`",
         ),
         (
             "an account under no field a route reads",
-            answer(&api, &with(json!({ "email": null, "account": EMAIL }))),
+            answer(api, &with(json!({ "email": null, "account": EMAIL }))),
             "names its account as `account`",
         ),
         (
             "two accounts",
-            answer(&api, &with(json!({ "login": EMAIL }))),
+            answer(api, &with(json!({ "login": EMAIL }))),
             "names `email` and `login` at once",
         ),
         (
             "no sign-in route",
-            answer(&api, &with(json!({ "signIn": null }))),
+            answer(api, &with(json!({ "signIn": null }))),
             "names no sign-in route",
         ),
         (
             "a GET route",
-            answer(&api, &with(json!({ "signIn": "GET /api/auth/local" }))),
+            answer(api, &with(json!({ "signIn": "GET /api/auth/local" }))),
             "is a `GET`",
         ),
         (
             "a plain-http route off this machine",
             answer(
-                &api,
+                api,
                 &with(json!({ "signIn": "http://forge.test/api/auth/local" })),
             ),
             "over https only",
@@ -479,19 +477,19 @@ async fn a_profile_it_cannot_sign_in_for_is_refused_by_name_and_nothing_is_writt
         (
             "a route with a user part",
             answer(
-                &api,
+                api,
                 &with(json!({ "signIn": "https://u:p@forge.test/api/auth/local" })),
             ),
             "carries a user part",
         ),
         (
             "a wrong password",
-            answer(&api, &with(json!({ "password": "not-the-password" }))),
+            answer(api, &with(json!({ "password": "not-the-password" }))),
             "was refused: 401 Unauthorized INVALID_CREDENTIALS; nothing was written",
         ),
         (
             "a redirect",
-            answer(&redirecting, &forge_secret()),
+            answer(redirecting, &forge_secret()),
             "a redirect, and judge-login sends a password to no second origin",
         ),
         (
@@ -504,8 +502,15 @@ async fn a_profile_it_cannot_sign_in_for_is_refused_by_name_and_nothing_is_writt
             undeployed,
             "core answered no deployment",
         ),
-    ];
-    for (i, (case, answered, says)) in cases.into_iter().enumerate() {
+    ]
+}
+
+#[tokio::test]
+async fn a_profile_it_cannot_sign_in_for_is_refused_by_name_and_nothing_is_written() {
+    let (api, _) = stub(Answers::TokenAndCookies).await;
+    let (redirecting, _) = stub(Answers::Redirect).await;
+    let root = Scratch::new("refused");
+    for (i, (case, answered, says)) in refusals(&api, &redirecting).into_iter().enumerate() {
         let dir = root.0.join(format!("case-{i}"));
         let err = login_into(&answered, &dir, "dev", "member")
             .await
