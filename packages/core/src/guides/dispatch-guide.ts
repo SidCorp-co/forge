@@ -145,7 +145,9 @@ approval, design record, review or judge before the landing. It works in batches
 2. Build in this session, or hand each file-disjoint part to a general-purpose subagent: its issues,
    its tree, the base branch and the standing rules. A gap a loose issue leaves is filled by
    judgement, the assumption written as one line on the issue or in the commit body. No issue gets
-   its own plan, its own full suite or its own release.
+   its own plan, its own full suite or its own release. When an issue's build starts, move its step
+   to build (\`PATCH /api/issues/:id\` \`{ workState: { step: 'build' } }\`): a builder here writes
+   none, and core moves it on itself only at a plan, the merge check and the mark.
 3. Land the batch once, by the route its project lands by, when the merged batch builds with its
    typecheck; each issue's key stays in its own commit subject, so each mark reads its commit as
    that issue's. Where the project lands by change request (\`release.changeRequests\` on its

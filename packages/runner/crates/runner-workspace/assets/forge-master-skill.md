@@ -92,6 +92,11 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   File overlap and conflict risk are the only bound on how many run at once. No shipped role is
   dispatched, so nothing is declared and no brief is printed; the box's dispatch gate and the
   plugin's brief gate both ask only of a shipped role.
+- **Say where each issue is.** A builder here writes no step, so the step the claim wrote stands at
+  `triage` unless you move it: when its build starts, move it to build
+  (`forge-runner api issues/<id> -X PATCH -d '{"workState":{"step":"build"}}'`). Core moves it on by
+  itself to plan when a plan is written and to test at the merge check and the mark, so the
+  workspace's Activity reads the real step while your pane holds it.
 - **Per issue, no ceremony.** No plan approval, no design record, no review and no judge stand
   between the build and the base branch, and no issue gets its own full suite or its own release.
   A loose issue is filled in by judgement, each assumption one line on the issue or in its commit

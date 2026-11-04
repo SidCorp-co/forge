@@ -478,6 +478,8 @@ mod tests {
             "so does each one that arrives while it runs",
             "Builders that run side by side hold disjoint files; issues that touch the same files go to one builder.",
             "no issue gets its own full suite or its own release",
+            // ISS-951: an in-pane build writes no step, so the master writes build when it starts
+            "\"workState\":{\"step\":\"build\"}",
             "each assumption one line on the issue or in its commit body",
             "**Once per batch: one landing.** **Land through the project's own landing route** once the merged batch builds, typecheck included",
             "fixed forward in the next batch",
