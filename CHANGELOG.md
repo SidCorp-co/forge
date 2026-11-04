@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.488] - 2026-11-04
+
+Expired monitors no longer keep a draining master pane busy
+
+### Fixed
+
+- **An expired monitor no longer keeps a lead's pane busy.** The runner now reads a monitor's "Monitor expired" event as that monitor's end, so a lead whose watches ran out is no longer counted as still waiting on background work.
+
 ## [0.4.0-dev.487] - 2026-11-04
 
 Releases on projects without a served commit are weighed at each landing commit

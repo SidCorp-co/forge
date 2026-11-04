@@ -1,1 +1,0 @@
-**An expired monitor no longer keeps a lead's pane busy.** The runner now reads a monitor's "Monitor expired" event as that monitor's end, so a lead whose watches ran out is no longer counted as still waiting on background work.
