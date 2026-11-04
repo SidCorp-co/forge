@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.492] - 2026-11-04
+
+A release refuses to tag a head carrying changes outside its list
+
+### Fixed
+
+- **A release is no longer tagged at a head that ships issues outside its roster.** A range report whose head carries another waiting issue's landing is refused naming it, and one Forge could not place is named on the release.
+
 ## [0.4.0-dev.491] - 2026-11-04
 
 Automatic releases stop waiting on verdicts for the build already live
