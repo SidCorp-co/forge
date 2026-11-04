@@ -64,6 +64,17 @@ export function reportCondition(message: string, context: ReportContext = {}): v
   }
 }
 
+/**
+ * One info event as a core process starts serving (ISS-939): core otherwise reports only failures,
+ * so each deploy shows its reports reach the tracker without waiting for something to break.
+ */
+export function reportStarted(version: string, commit: string | null): void {
+  reportCondition(`core started ${version}`, {
+    level: 'info',
+    tags: { version, commit: commit ?? 'unknown' },
+  });
+}
+
 /** A step recorded beside whatever failure is reported next in this process. */
 export function traceStep(step: TraceStep): void {
   if (!tracker) return;

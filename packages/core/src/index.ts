@@ -4,6 +4,7 @@ import './error-tracking-init.js';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import pkg from '../package.json' with { type: 'json' };
 import {
   admitChatRestWrite,
   agreedRecordsIn,
@@ -75,8 +76,10 @@ import { provideDataPolicy } from './lib/data-egress.js';
 import { coreDrain } from './lib/drain.js';
 import { env } from './lib/env.js';
 import { provideEphemeralPublisher } from './lib/ephemeral.js';
+import { reportStarted } from './lib/error-tracking.js';
 import { installFatalExit } from './lib/fatal-exit.js';
 import { logger } from './lib/logger.js';
+import { sourceCommit } from './lib/source-commit.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
 import {
   CHAT_READ_MODEL_TOOLS,
@@ -441,6 +444,7 @@ if (isMain) {
     },
     (info) => {
       logger.info({ port: info.port }, '@forge/core listening');
+      reportStarted(pkg.version, sourceCommit);
     },
   );
 
