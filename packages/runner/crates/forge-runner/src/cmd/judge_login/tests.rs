@@ -170,7 +170,7 @@ fn secret(fields: Value) -> String {
 fn forge_secret() -> String {
     secret(json!({
         "kind": "forge-password",
-        "signIn": "POST /api/auth/local",
+        "loginRoute": "/api/auth/local",
         "email": EMAIL,
         "password": PASSWORD,
     }))
@@ -280,6 +280,47 @@ async fn no_file_judge_login_writes_holds_the_password() {
         "{line}"
     );
     assert!(line.ends_with("recorded on run x"), "{line}");
+}
+
+/// The dev QA secret's own shape (forge-core-61's re-write, 2026-11-04; key names only, fake values
+/// here): `kind`, `loginRoute`, `email` and `password`. The route is a bare path or a URL with no
+/// method, and either signs in with a POST.
+#[tokio::test]
+async fn the_dev_secrets_own_shape_signs_in() {
+    let (api, seen) = stub(Answers::TokenAndCookies).await;
+    let root = Scratch::new("devshape");
+    for (i, route) in [
+        "/api/auth/local".to_string(),
+        format!("{api}/api/auth/local"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let value = secret(json!({
+            "kind": "email-password",
+            "loginRoute": route,
+            "email": EMAIL,
+            "password": PASSWORD,
+        }));
+        let dir = root.0.join(format!("shape-{i}"));
+        let (files, _) = login_into(&answer(&api, &value), &dir, "dev", "member")
+            .await
+            .unwrap_or_else(|e| panic!("{route}: {e}"));
+        assert_eq!(
+            std::fs::read_to_string(&files.header).unwrap(),
+            format!("Authorization: Bearer {TOKEN}\n"),
+            "{route}"
+        );
+        assert!(
+            !holds(&std::fs::read(&files.state).unwrap(), PASSWORD),
+            "{route}"
+        );
+    }
+    let sent = seen.lock().unwrap().clone();
+    assert_eq!(sent.len(), 2, "{sent:?}");
+    assert!(sent
+        .iter()
+        .all(|s| s.line.starts_with("POST /api/auth/local ")));
 }
 
 /// curl as a judge runs it, or — on a box with none — the header sent as curl sends a `-H @file`
@@ -393,7 +434,7 @@ async fn the_storage_state_is_playwrights_shape() {
 
     // a secret naming the key its web app reads the token from has it stored for the web origin
     let keyed = secret(json!({
-        "signIn": "POST /api/auth/local",
+        "loginRoute": "/api/auth/local",
         "email": EMAIL,
         "password": PASSWORD,
         "storageKey": "forge.token",
@@ -415,7 +456,7 @@ async fn the_storage_state_is_playwrights_shape() {
 fn refusals(api: &str, redirecting: &str) -> Vec<(&'static str, Value, &'static str)> {
     let with = |extra: Value| {
         let mut o =
-            json!({ "signIn": "POST /api/auth/local", "email": EMAIL, "password": PASSWORD });
+            json!({ "loginRoute": "/api/auth/local", "email": EMAIL, "password": PASSWORD });
         for (k, v) in extra.as_object().unwrap() {
             if v.is_null() {
                 o.as_object_mut().unwrap().remove(k);
@@ -458,19 +499,27 @@ fn refusals(api: &str, redirecting: &str) -> Vec<(&'static str, Value, &'static 
         ),
         (
             "no sign-in route",
-            answer(api, &with(json!({ "signIn": null }))),
+            answer(api, &with(json!({ "loginRoute": null }))),
             "names no sign-in route",
         ),
         (
+            "a route under a key no real secret uses",
+            answer(
+                api,
+                &with(json!({ "loginRoute": null, "signIn": "POST /api/auth/local" })),
+            ),
+            "names no sign-in route (it holds keys email, password, signIn)",
+        ),
+        (
             "a GET route",
-            answer(api, &with(json!({ "signIn": "GET /api/auth/local" }))),
+            answer(api, &with(json!({ "loginRoute": "GET /api/auth/local" }))),
             "is a `GET`",
         ),
         (
             "a plain-http route off this machine",
             answer(
                 api,
-                &with(json!({ "signIn": "http://forge.test/api/auth/local" })),
+                &with(json!({ "loginRoute": "http://forge.test/api/auth/local" })),
             ),
             "over https only",
         ),
@@ -478,7 +527,7 @@ fn refusals(api: &str, redirecting: &str) -> Vec<(&'static str, Value, &'static 
             "a route with a user part",
             answer(
                 api,
-                &with(json!({ "signIn": "https://u:p@forge.test/api/auth/local" })),
+                &with(json!({ "loginRoute": "https://u:p@forge.test/api/auth/local" })),
             ),
             "carries a user part",
         ),

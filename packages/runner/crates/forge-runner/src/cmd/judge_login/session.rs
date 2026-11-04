@@ -5,12 +5,18 @@
 //! line for `curl -H @<file>` and a Playwright storage state — and no file holds the password.
 //!
 //! The secret is the self-describing form, a JSON object:
-//! `{ "kind": "...", "signIn": "POST /api/auth/local", "email": "...", "password": "..." }`.
+//! `{ "kind": "...", "loginRoute": "/api/auth/local", "email": "...", "password": "..." }`, the
+//! shape the dev QA secret was re-written in (forge-core-61, 2026-11-04). `kind` says what the
+//! secret is for a person reading the vault; judge-login reads no meaning from it and names it only in
+//! a refusal.
 //! - `password` is required: a secret with none (an API key, a token) is the credential itself and is
 //!   refused by name, never written to a file.
 //! - The account is named by the field its sign-in route reads: exactly one of `email`, `username`
-//!   or `login`, sent under that name. `account` or `user` names no field and is refused.
-//! - The route is exactly one of `signIn`, `signInRoute` or `route`: `[POST ]<https URL | /path>`. A
+//!   or `login`, sent under that name. These are not aliases of one key: each is the request field
+//!   itself (forge's `/api/auth/local` reads `email`; other products read `username` or `login`), so
+//!   the secret says which field to send. `account` or `user` names no field and is refused.
+//! - The route is `loginRoute`, the one key a real secret uses (no alias is read):
+//!   `[POST ]<https URL | /path>`, a POST where no method is given. A
 //!   path is sent to the origin of the judged deployment that answers it (core's `deployment`, the
 //!   environment's `url`, `services` and `routes`, ISS-470); a secret naming no route is refused, as
 //!   the testing profile declares no sign-in route and none is guessed.
@@ -31,7 +37,7 @@ use serde_json::{json, Map, Value};
 /// The fields an account may be named by: each is also the field the sign-in route reads.
 const ACCOUNT_FIELDS: [&str; 3] = ["email", "username", "login"];
 /// The keys a sign-in route may be named by.
-const ROUTE_KEYS: [&str; 3] = ["signIn", "signInRoute", "route"];
+const ROUTE_KEYS: [&str; 1] = ["loginRoute"];
 /// The fields of a sign-in's answer read as its bearer token.
 const TOKEN_FIELDS: [&str; 3] = ["token", "accessToken", "access_token"];
 
@@ -134,7 +140,7 @@ fn keys_of(o: &Map<String, Value>) -> String {
 }
 
 const SHAPE: &str =
-    "a JSON object naming `signIn` (`POST <https URL or /path>`), the account by the \
+    "a JSON object naming `loginRoute` (`<https URL or /path>`), the account by the \
                      field its route reads (`email`, `username` or `login`) and `password`";
 
 /// The one string named by exactly one of `keys`, or the line refusing none or two.
@@ -202,8 +208,8 @@ pub(crate) fn parse_secret(value: &str) -> Result<Secret, String> {
     let Some((_, route)) = one_of(&o, &ROUTE_KEYS)? else {
         return Err(format!(
             "the secret{kind} names no sign-in route (it holds {}), and a testing profile declares \
-             none, so where to sign in is not known and nothing is guessed; add `signIn`, \
-             `POST <https URL or /path>`",
+             none, so where to sign in is not known and nothing is guessed; add `loginRoute`, \
+             `<https URL or /path>`",
             keys_of(&o)
         ));
     };
@@ -639,6 +645,18 @@ mod tests {
             target("POST /api/auth/local"),
             Ok(Target::Path("/api/auth/local".into()))
         );
+        // no method is a POST, to a path or a URL alike; another method is refused
+        assert_eq!(
+            target("/api/auth/local"),
+            Ok(Target::Path("/api/auth/local".into()))
+        );
+        assert!(matches!(
+            target("https://api.forge.test/api/auth/local"),
+            Ok(Target::Url(_))
+        ));
+        assert!(target("PUT /api/auth/local")
+            .unwrap_err()
+            .contains("is a `PUT`"));
     }
 
     #[test]
@@ -671,7 +689,7 @@ mod tests {
     #[test]
     fn neither_debug_shows_a_value() {
         let secret = parse_secret(
-            &json!({ "signIn": "/api/auth/local", "email": "e@x.test", "password": "pw-959-secret" })
+            &json!({ "loginRoute": "/api/auth/local", "email": "e@x.test", "password": "pw-959-secret" })
                 .to_string(),
         )
         .unwrap();
