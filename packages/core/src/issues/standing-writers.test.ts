@@ -103,7 +103,7 @@ describe("a person's answer names who can give it", () => {
   });
 });
 
-describe('a draft and a resume are the master\'s, never a person\'s (REQ-68)', () => {
+describe("a draft and a resume are the master's, never a person's (REQ-68)", () => {
   it('a draft waits on the master to take it on or drop it, whoever may admit', () => {
     const s = deriveIssueStanding(input('draft', ['Ana']));
     expect(s.attentionGroup).toBe('queued');
@@ -158,7 +158,7 @@ describe('a draft behind a live blocker', () => {
     expect(s.waitingOn).toMatchObject({ kind: 'issue', who: 'ISS-3', ref: 'ISS-3' });
   });
 
-  it('is the master\'s turn again once the blocker no longer holds', () => {
+  it("is the master's turn again once the blocker no longer holds", () => {
     const s = deriveIssueStanding({
       ...input('draft', ['Ana']),
       blockedBy: [{ ...blocker, holds: false }],
