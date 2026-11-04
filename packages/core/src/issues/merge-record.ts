@@ -1,9 +1,8 @@
 import type { LandingArtifact, MergedHead, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
-import { and, desc, eq, isNotNull, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { emitEvent } from '../outbox/index.js';
 import {
@@ -511,41 +510,4 @@ export async function recordMergeTarget(
         sql`coalesce(trim(${issues.mergedCommitSha}), '') = ''`,
       ),
     );
-}
-
-/**
- * Every merge the host reports of a change request linking the issue, into `base` where named, with
- * the branch it merged into, latest first: an issue delivered across several requests lands at the
- * last. A link is what a request says it delivers, so a reader takes the first whose commit is the
- * issue's landing (`merge-identity.ts:identifiedMergeForIssue`), never the first alone.
- */
-export async function observedMergesForIssue(
-  executor: MergeRecordExecutor,
-  issueId: string,
-  base?: string,
-  promotes: readonly string[] = [],
-): Promise<Array<{ commitSha: string; mergedAt: Date; target: string }>> {
-  const rows = await executor
-    .select({
-      sha: repoPullRequests.mergeCommitSha,
-      at: repoPullRequests.mergedAt,
-      base: repoPullRequests.baseRef,
-    })
-    .from(repoPullRequestIssues)
-    .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
-    .where(
-      and(
-        eq(repoPullRequestIssues.issueId, issueId),
-        eq(repoPullRequests.state, 'merged'),
-        isNotNull(repoPullRequests.mergeCommitSha),
-        isNotNull(repoPullRequests.mergedAt),
-        base === undefined ? undefined : eq(repoPullRequests.baseRef, base),
-        // a promotion of landed work is nobody's landing (REQ-45 BC-16)
-        promotes.length > 0 ? notInArray(repoPullRequests.headRef, [...promotes]) : undefined,
-      ),
-    )
-    .orderBy(desc(repoPullRequests.mergedAt));
-  return rows.flatMap((r) =>
-    r.sha && r.at ? [{ commitSha: r.sha, mergedAt: r.at, target: r.base }] : [],
-  );
 }

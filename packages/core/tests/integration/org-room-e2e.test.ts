@@ -83,7 +83,9 @@ async function listen(bearer: string): Promise<{ ws: WebSocket; frames: Frame[];
   const frames: Frame[] = [];
   const answer = await new Promise<string>((resolve, reject) => {
     ws.on('error', reject);
-    ws.on('open', () => ws.send(JSON.stringify({ type: 'subscribe', room: orgRoom(orgId), replayMs: 0 })));
+    ws.on('open', () =>
+      ws.send(JSON.stringify({ type: 'subscribe', room: orgRoom(orgId), replayMs: 0 })),
+    );
     ws.on('message', (raw) => {
       const frame = JSON.parse(String(raw)) as Frame;
       frames.push(frame);
@@ -128,7 +130,9 @@ describe('ISS-951 the org room', () => {
     const heard = await new Promise<Frame | null>((resolve) => {
       const started = Date.now();
       const look = () => {
-        const f = frames.find((x) => x.event === 'org.activity.changed' && x.data.source === 'step');
+        const f = frames.find(
+          (x) => x.event === 'org.activity.changed' && x.data.source === 'step',
+        );
         if (f) resolve(f);
         else if (Date.now() - started > 25_000) resolve(null);
         else setTimeout(look, 200);

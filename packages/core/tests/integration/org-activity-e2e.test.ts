@@ -64,15 +64,39 @@ beforeAll(async () => {
   await addProjectMember(archived, member.id, 'member');
 
   const at = new Date(Date.now() - 3_600_000);
-  ids.building = (await createTestIssue(readable, owner.id, 1, { status: 'in_progress', createdAt: at })).id;
+  ids.building = (
+    await createTestIssue(readable, owner.id, 1, { status: 'in_progress', createdAt: at })
+  ).id;
   await db.execute(sql`
     INSERT INTO issue_work_state (issue_id, step, step_started_at, updated_at)
     VALUES (${ids.building}, 'build', now() - interval '20 minutes', now())`);
-  ids.low = (await createTestIssue(readable, owner.id, 2, { status: 'open', createdAt: at, priority: 'low' })).id;
-  ids.high = (await createTestIssue(readable, owner.id, 3, { status: 'open', createdAt: at, priority: 'high' })).id;
-  ids.medium = (await createTestIssue(readable, owner.id, 4, { status: 'open', createdAt: at, priority: 'medium' })).id;
-  ids.landed = (await createTestIssue(readable, owner.id, 5, { status: 'awaiting_release', createdAt: at, mergedAt: at })).id;
-  ids.secret = (await createTestIssue(hidden, owner.id, 1, { status: 'in_progress', createdAt: at })).id;
+  ids.low = (
+    await createTestIssue(readable, owner.id, 2, { status: 'open', createdAt: at, priority: 'low' })
+  ).id;
+  ids.high = (
+    await createTestIssue(readable, owner.id, 3, {
+      status: 'open',
+      createdAt: at,
+      priority: 'high',
+    })
+  ).id;
+  ids.medium = (
+    await createTestIssue(readable, owner.id, 4, {
+      status: 'open',
+      createdAt: at,
+      priority: 'medium',
+    })
+  ).id;
+  ids.landed = (
+    await createTestIssue(readable, owner.id, 5, {
+      status: 'awaiting_release',
+      createdAt: at,
+      mergedAt: at,
+    })
+  ).id;
+  ids.secret = (
+    await createTestIssue(hidden, owner.id, 1, { status: 'in_progress', createdAt: at })
+  ).id;
 
   tokens.owner = await userToken(owner.id);
   tokens.member = await userToken(member.id);
@@ -102,7 +126,9 @@ describe('ISS-951 GET /api/orgs/:orgId/activity', () => {
   it('the org owner reads every live project of the org', async () => {
     const res = await activity('owner');
     expect(res.status).toBe(200);
-    expect((res.body.projects as Doc[]).map((p) => p.projectId).sort()).toEqual([readable, hidden].sort());
+    expect((res.body.projects as Doc[]).map((p) => p.projectId).sort()).toEqual(
+      [readable, hidden].sort(),
+    );
   });
 
   it('now carries the in-flight issue at its recorded step; next is the master admissible order', async () => {
@@ -112,15 +138,21 @@ describe('ISS-951 GET /api/orgs/:orgId/activity', () => {
     expect(row.now.map((n: Doc) => [n.issueId, n.step])).toEqual([[ids.building, 'build']]);
     expect(row.now[0].stepSince).toEqual(expect.any(String));
     const master = await readAdmissibleForProjects([readable], 5);
-    expect(row.next.items.map((n: Doc) => n.issueId), 'the page re-derived the order').toEqual(
-      master.items.map((a) => a.issueId),
-    );
+    expect(
+      row.next.items.map((n: Doc) => n.issueId),
+      'the page re-derived the order',
+    ).toEqual(master.items.map((a) => a.issueId));
     expect(row.next.items.map((n: Doc) => n.issueId)).toEqual([ids.high, ids.medium, ids.low]);
     expect(row.next.total).toBe(3);
     expect(row.awaitingRelease).toBe(1);
     expect(row.master.state).toBe('none');
     expect(row.group, 'an issue in flight is working, whatever the master').toBe('working');
-    expect(res.body.totals).toMatchObject({ inFlight: 1, queued: 3, awaitingRelease: 1, noMaster: 1 });
+    expect(res.body.totals).toMatchObject({
+      inFlight: 1,
+      queued: 3,
+      awaitingRelease: 1,
+      noMaster: 1,
+    });
   });
 
   it('next counts every admissible issue while it names only the first few', async () => {

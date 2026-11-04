@@ -53,7 +53,12 @@ vi.mock('../projects/index.js', () => ({
   }),
 }));
 vi.mock('../pipeline/index.js', () => ({
-  runStatusView: vi.fn(async (id: string) => ({ runId: id, projectId: 'p2', issueId: null, status: 'running' })),
+  runStatusView: vi.fn(async (id: string) => ({
+    runId: id,
+    projectId: 'p2',
+    issueId: null,
+    status: 'running',
+  })),
 }));
 
 const { registerWsBroadcastSubscribers } = await import('./broadcast-subscribers.js');
@@ -98,13 +103,20 @@ describe('the org room hears what moved on its projects', () => {
     registerWsBroadcastSubscribers();
   });
 
-  it.each(['runs', 'master', 'rooms', 'step'])('a project.now.changed of %s reaches the org room', async (source) => {
-    await deliver('session.pushed', nowPush('p1', source));
-    expect(published.map((p) => p.room)).toEqual(['project:p1', 'org:o1']);
-    expect(orgFrames()).toEqual([
-      { room: 'org:o1', event: 'org.activity.changed', data: { orgId: 'o1', projectId: 'p1', source } },
-    ]);
-  });
+  it.each(['runs', 'master', 'rooms', 'step'])(
+    'a project.now.changed of %s reaches the org room',
+    async (source) => {
+      await deliver('session.pushed', nowPush('p1', source));
+      expect(published.map((p) => p.room)).toEqual(['project:p1', 'org:o1']);
+      expect(orgFrames()).toEqual([
+        {
+          room: 'org:o1',
+          event: 'org.activity.changed',
+          data: { orgId: 'o1', projectId: 'p1', source },
+        },
+      ]);
+    },
+  );
 
   it('an issue status move and a new issue reach the org room as a status change', async () => {
     await deliver('issue.transitioned', {
@@ -117,13 +129,20 @@ describe('the org room hears what moved on its projects', () => {
       at: '2026-11-04T00:00:00.000Z',
     });
     await deliver('issue.created', { issueId: 'i2', projectId: 'p1', actor: { id: 'u1' } });
-    expect(orgFrames().map((f) => (f.data as { source: string }).source)).toEqual(['status', 'status']);
+    expect(orgFrames().map((f) => (f.data as { source: string }).source)).toEqual([
+      'status',
+      'status',
+    ]);
   });
 
   it('a run move reaches the org of the run project', async () => {
     await deliver('run.transitioned', { id: 'r1' });
     expect(orgFrames()).toEqual([
-      { room: 'org:o2', event: 'org.activity.changed', data: { orgId: 'o2', projectId: 'p2', source: 'run' } },
+      {
+        room: 'org:o2',
+        event: 'org.activity.changed',
+        data: { orgId: 'o2', projectId: 'p2', source: 'run' },
+      },
     ]);
   });
 
@@ -146,19 +165,33 @@ describe('the org room hears what moved on its projects', () => {
 
   it.each([
     ['session.pushed', nowPush('p1', 'step')],
-    ['issue.transitioned', { id: 'i1', projectId: 'p1', from: 'open', to: 'in_progress', actor: { id: 'u1' }, reason: null, at: '2026-11-04T00:00:00.000Z' }],
+    [
+      'issue.transitioned',
+      {
+        id: 'i1',
+        projectId: 'p1',
+        from: 'open',
+        to: 'in_progress',
+        actor: { id: 'u1' },
+        reason: null,
+        at: '2026-11-04T00:00:00.000Z',
+      },
+    ],
     ['issue.created', { issueId: 'i2', projectId: 'p1', actor: { id: 'u1' } }],
     ['question.asked', { questionId: 'q1', projectId: 'p1', issueId: 'i1' }],
     ['question.transitioned', { id: 'q1', projectId: 'p1', issueId: null, to: 'answered' }],
-  ] as const)('an org lookup that throws on %s leaves the project frame sent once and retries the org frame alone', async (type, payload) => {
-    lookup.fails = 1;
-    const failures = await deliver(type, payload);
-    expect(projectFrames(), 'the project room heard the frame other than once').toHaveLength(1);
-    expect(failures, 'the failed org lookup was swallowed, or failed another delivery').toEqual([
-      'org-activity: connect ECONNREFUSED: the org lookup failed',
-    ]);
-    expect(orgFrames(), 'the retried org delivery never told the org room').toHaveLength(1);
-  });
+  ] as const)(
+    'an org lookup that throws on %s leaves the project frame sent once and retries the org frame alone',
+    async (type, payload) => {
+      lookup.fails = 1;
+      const failures = await deliver(type, payload);
+      expect(projectFrames(), 'the project room heard the frame other than once').toHaveLength(1);
+      expect(failures, 'the failed org lookup was swallowed, or failed another delivery').toEqual([
+        'org-activity: connect ECONNREFUSED: the org lookup failed',
+      ]);
+      expect(orgFrames(), 'the retried org delivery never told the org room').toHaveLength(1);
+    },
+  );
 
   it('a run move whose org lookup throws sends its project frame once and retries the org frame alone', async () => {
     lookup.fails = 1;
@@ -169,8 +202,18 @@ describe('the org room hears what moved on its projects', () => {
   });
 
   it('each event that tells the org room has an org-activity delivery of its own', () => {
-    for (const type of ['session.pushed', 'issue.transitioned', 'issue.created', 'question.asked', 'question.transitioned', 'run.transitioned'] as const) {
-      expect(OUTBOX_CONSUMERS[type] as readonly string[], `${type} has no org-activity delivery`).toContain('org-activity');
+    for (const type of [
+      'session.pushed',
+      'issue.transitioned',
+      'issue.created',
+      'question.asked',
+      'question.transitioned',
+      'run.transitioned',
+    ] as const) {
+      expect(
+        OUTBOX_CONSUMERS[type] as readonly string[],
+        `${type} has no org-activity delivery`,
+      ).toContain('org-activity');
     }
   });
 });

@@ -88,14 +88,23 @@ describe('ISS-951 the step follows what core records about the work', () => {
     const id = await claimed();
     const framesBefore = await stepFrames();
 
-    const planned = await api(token, 'PATCH', `/api/issues/${id}`, { plan: '1. build it\n2. prove it' });
-    expect([planned.status, JSON.stringify(planned.body).slice(0, 300)]).toEqual([200, expect.any(String)]);
+    const planned = await api(token, 'PATCH', `/api/issues/${id}`, {
+      plan: '1. build it\n2. prove it',
+    });
+    expect([planned.status, JSON.stringify(planned.body).slice(0, 300)]).toEqual([
+      200,
+      expect.any(String),
+    ]);
     expect((await stepOf(id)).step, 'a written plan left the claim step standing').toBe('plan');
 
     await mark(id);
     const after = await stepOf(id);
     expect(after.step, 'a merge mark left the step before test').toBe('test');
-    expect(after.log, 'each move is a step of the log, oldest first').toEqual(['triage', 'plan', 'test']);
+    expect(after.log, 'each move is a step of the log, oldest first').toEqual([
+      'triage',
+      'plan',
+      'test',
+    ]);
     expect(await stepFrames(), 'each move tells the project room').toBe(framesBefore + 2);
   });
 
@@ -107,13 +116,19 @@ describe('ISS-951 the step follows what core records about the work', () => {
     const planned = await api(token, 'PATCH', `/api/issues/${id}`, { plan: 'a revised plan' });
     expect(planned.status).toBe(200);
     expect((await stepOf(id)).step, 'a plan rewritten at test dropped the step back').toBe('test');
-    expect(await stepFrames(), 'a step that did not move told the room it moved').toBe(framesBefore);
+    expect(await stepFrames(), 'a step that did not move told the room it moved').toBe(
+      framesBefore,
+    );
   });
 
   it('an issue that is not in progress takes no step from evidence', async () => {
     const id = await claimed('open');
-    await db.execute(sql`UPDATE issue_work_state SET step = NULL, step_started_at = NULL, steps = '[]'::jsonb WHERE issue_id = ${id}`);
-    const planned = await api(token, 'PATCH', `/api/issues/${id}`, { plan: 'planned before anyone took it' });
+    await db.execute(
+      sql`UPDATE issue_work_state SET step = NULL, step_started_at = NULL, steps = '[]'::jsonb WHERE issue_id = ${id}`,
+    );
+    const planned = await api(token, 'PATCH', `/api/issues/${id}`, {
+      plan: 'planned before anyone took it',
+    });
     expect(planned.status).toBe(200);
     expect((await stepOf(id)).step, 'an open issue was given a run step').toBeNull();
   });
@@ -124,7 +139,10 @@ describe('ISS-951 the step follows what core records about the work', () => {
       plan: 'clarify first',
       workState: { step: 'clarify' },
     });
-    expect([written.status, JSON.stringify(written.body).slice(0, 300)]).toEqual([200, expect.any(String)]);
+    expect([written.status, JSON.stringify(written.body).slice(0, 300)]).toEqual([
+      200,
+      expect.any(String),
+    ]);
     expect((await stepOf(id)).step).toBe('clarify');
   });
 

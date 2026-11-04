@@ -3,6 +3,7 @@
 // later router mounted under the same prefix, so the area functions below run in sequence.
 
 import type { Hono } from 'hono';
+import { orgActivityRoutes } from './activity/routes.js';
 import { adminAggregateRoutes, adminAlertRoutes, adminRoutes } from './admin/routes.js';
 import {
   agentSessionAttachmentRoutes,
@@ -142,7 +143,6 @@ import { notificationVolumeRoutes } from './notifications/index.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
-import { orgActivityRoutes } from './activity/routes.js';
 import { outboxAdminRoutes } from './outbox/routes.js';
 import { requiresNoPermission } from './permissions/index.js';
 import {

@@ -5,7 +5,14 @@ import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason } from '@forge/contr
 import type { ProjectNowFrame } from '@forge/contracts/project-now';
 import type { WsFrameName, WsFramePayloads } from '@forge/contracts/ws-frames';
 import { refuser } from '../lib/refusal.js';
-import { deviceRoom, orgRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
+import {
+  deviceRoom,
+  orgRoom,
+  projectRoom,
+  roomManager,
+  runnerRoom,
+  userRoom,
+} from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
 import { runStatusView } from '../pipeline/index.js';
 import { findProjectOrgId } from '../projects/index.js';

@@ -5,6 +5,9 @@
 // (`development/needs-you-viewer.ts:readNeedsYouAcross`), its next release's progress
 // (`forecast/scope.ts:readComingNext`) and the issues landed and waiting for a release.
 
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import type { WorkStep } from '@forge/contracts/issue-vocabulary';
+import type { MasterStanding } from '@forge/contracts/master-standing';
 import {
   ORG_ACTIVITY_GROUPS,
   ORG_ACTIVITY_LIST_LIMIT,
@@ -16,9 +19,6 @@ import {
   type OrgActivityRelease,
 } from '@forge/contracts/org-activity';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { WorkStep } from '@forge/contracts/issue-vocabulary';
-import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { MasterStanding } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readNeedsYouAcross } from '../development/index.js';

@@ -22,7 +22,8 @@ orgActivityRoutes.get(
   async (c) => {
     const { orgId } = c.req.valid('param');
     const agency = c.get('agency');
-    if (!agency) throw new Error('orgs/activity: a request reached its handler without an auth gate');
+    if (!agency)
+      throw new Error('orgs/activity: a request reached its handler without an auth gate');
     const read = await readOrgActivity(orgId, { userId: c.get('userId'), agency });
     // each row carries its project's issue text, so each passes that project's egress policy
     const projects = await Promise.all(

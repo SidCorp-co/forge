@@ -24,7 +24,7 @@ import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-proje
 import { logger } from '../lib/logger.js';
 import { insertActivityRow } from './activity-log.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { observedMergesForIssue } from './merge-record.js';
+import { observedMergesForIssue } from './observed-merges.js';
 import { owedFilingOfMark } from './owed-merges.js';
 import {
   declaredIssueSeqs,
