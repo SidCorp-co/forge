@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.494] - 2026-11-04
+
+The assistant leaves issue work to agents and offers only the decision on your item
+
+### Fixed
+
+- **A support room whose binding is switched off stays released.** A message or a sweep reaching it after the release no longer hands it a session back.
+- **The assistant never hands a person issue work.** Asked about stuck issues, every chat door says what the agents are doing and offers only the decision on the item; workflow pages say the wait once; Approvals shows no question id.
+
 ## [0.4.0-dev.493] - 2026-11-04
 
 Stuck issues ask you on their requirement or feedback item
