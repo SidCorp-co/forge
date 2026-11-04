@@ -76,6 +76,12 @@ const OVERRIDES: readonly { door: RegExp; override: string; person: string }[] =
     person: "The act's holders were told. Take it on the item's page.",
   },
   {
+    door: /^ASK /,
+    override:
+      "nothing to undo: the issue's open question was placed on the item it serves, where a person answers it; void the question (`POST /api/questions/:id/void`) to withdraw it",
+    person: 'Nothing to undo: the question is asked on its item.',
+  },
+  {
     door: /^SAY /,
     override:
       'nothing to undo: the steward only said why it could ask nobody, and moved nothing; act on the item yourself',

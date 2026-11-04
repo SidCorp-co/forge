@@ -15,7 +15,7 @@ import { type StewardUndo, stewardActs, stewardRuns } from '../db/schema-steward
 import { refuser } from '../lib/refusal.js';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { stewardAccountOf } from './account.js';
-import { actTouchesSql, itemIdOfKey } from './acts-on-item.js';
+import { actTouchesSql, isIssueKey, itemIdOfKey } from './acts-on-item.js';
 import { mintStewardCredential } from './credential.js';
 import { bearer, callDoor, type DoorAnswer, type DoorMethod } from './door-call.js';
 import { isInverseDoor, overrideOf, personOverrideOf } from './undo-rules.js';
@@ -93,11 +93,29 @@ export async function actsOfRuns(
   return out;
 }
 
+/** The doors whose acts only said something to a person: why nobody was asked, and a note's words. */
+const SAID_ONLY: readonly RegExp[] = [/^SAY /, /^PUT \/api\/projects\/[^/]+\/steward-notes\//];
+
+/**
+ * An issue's Activity as a person reads it (REQ-68 BC-4, BC-6): the issue is the agent's, so no act on
+ * it tells the reader to act. An act that only said something (why nobody could be asked, naming who
+ * owed the act; a note's words, which the note itself carries under its Stuck banner while it stands)
+ * is not drawn, so an old one naming a person stands nowhere, the rule round 3 of ISS-687 applied to
+ * stale notes; and no act carries a way for the reader to override it on the issue. Judge run d47d6de0
+ * at dev.489 read "Asked nobody about ISS-643 … waits on orchestrator, qa … Act on the item yourself".
+ */
+function asIssueActivity(acts: StewardActRecord[]): StewardActRecord[] {
+  return acts
+    .filter((a) => !SAID_ONLY.some((re) => re.test(a.door)))
+    .map((a) => ({ ...a, override: null }));
+}
+
 /**
  * Every act the steward took on one item, across all its runs, newest first: an item page's Activity
  * reads this, not the runs list, so an act on an old run is never cut off by newer runs (REQ-48 BC-12).
  * An act is the item's where its run was about the item, or where it changed the item from another
- * item's run (`actTouchesSql`): ISS-603's plan, written by FB-180's run, reads on ISS-603.
+ * item's run (`actTouchesSql`): ISS-603's plan, written by FB-180's run, reads on ISS-603. An issue's
+ * reads as `asIssueActivity` draws it.
  */
 export async function actsOfSubject(projectId: string, key: string): Promise<StewardActRecord[]> {
   const itemId = await itemIdOfKey(projectId, key);
@@ -112,7 +130,8 @@ export async function actsOfSubject(projectId: string, key: string): Promise<Ste
       ),
     )
     .orderBy(desc(stewardActs.at), desc(stewardActs.id));
-  return rows.map((r) => actRecordOf(r.act));
+  const acts = rows.map((r) => actRecordOf(r.act));
+  return itemId !== null && isIssueKey(key) ? asIssueActivity(acts) : acts;
 }
 
 /** The record an inverse door wrote, from its answer: a re-proposed suggestion, a reopened item. */

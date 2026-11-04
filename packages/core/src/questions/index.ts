@@ -43,6 +43,12 @@ export {
   readDetachedOpenQuestions,
   readOpenPersonQuestions,
 } from './needs-you-read.js';
+export {
+  type IssueItem,
+  issueItemOf,
+  type PlacedOnItem,
+  placeOpenQuestionsOnItem,
+} from './on-item.js';
 export { decisionOwedBy } from './owed.js';
 export { type AgentOwedQuestion, questionsOwedToAgents } from './owed-to-agents.js';
 export { provideQuestionPorts, type StewardDecisionAnswer } from './ports.js';

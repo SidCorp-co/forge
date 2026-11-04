@@ -10,6 +10,11 @@
 // (REQ-68 BC-3), so the steward asks the master it, by the one rule both read, `masterTakesWait`
 // (ISS-758). Otherwise the master's account does not take a person's act for them
 // (`permissions/holders-named.ts`), so the master is not asked it (ISS-739).
+// An issue that waits on a person's answer to its open question (kind `answer`) is asked nobody and
+// no master: the ask is that question itself, placed on the item the issue serves, so it reaches a
+// person as a decision on that item in Needs you (REQ-68 BC-4; `questions/on-item.ts`). Round 2 of
+// ISS-687 turned that wait from `person` to `answer`, and the steward then woke the master about a
+// question only a person answers, where before it had logged "asked nobody, act on the item yourself".
 
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { ReleaseNamer } from '@forge/contracts/release-naming';
@@ -82,6 +87,8 @@ export async function waitsOnPerson(
   projectId: string,
   standing: Pick<ItemStanding, 'waitingOn'>,
 ): Promise<boolean> {
+  // a person's answer is no master's act: the master answers no question a person owes
+  if (standing.waitingOn.kind === 'answer') return true;
   if (!PERSON_WAITS.has(standing.waitingOn.kind) || heldActOf(standing) !== null) return false;
   return !(await stewardPorts().masterTakes(projectId, standing.waitingOn.says.act));
 }
@@ -101,8 +108,18 @@ export type ActAddressee =
   | { to: 'holders'; act: HeldAct; holders: NamedHolder[]; unread: string[] }
   | { to: 'nobody'; act: HeldAct; why: string; unread: string[] };
 
-/** Whom an ask goes to: whoever takes the act, or the person a wait names, whose act it is (ISS-739). */
-export type AskAddressee = ActAddressee | { to: 'person'; who: string; act: string };
+/**
+ * Whom an ask goes to: whoever takes the act, the person a wait names, whose act it is (ISS-739), or,
+ * for an issue waiting on a person's answer, the item that issue serves, where the question is asked.
+ */
+export type AskAddressee =
+  | ActAddressee
+  | { to: 'person'; who: string; act: string }
+  | { to: 'item'; issueId: string };
+
+/** Whether the item is an issue waiting on a person's answer to its question (`issues/standing.ts:answerTurn`). */
+export const waitsOnAnswer = (standing: Pick<ItemStanding, 'waitingOn' | 'subject'>): boolean =>
+  standing.subject.kind === 'issue' && standing.waitingOn.kind === 'answer';
 
 /**
  * Whether an account the project's master acts as holds `permission` on the project, and the serving
@@ -130,16 +147,17 @@ export function unreadLine(unread: readonly string[]): string {
 }
 
 /**
- * Whom an ask about an item with this standing goes to. A held act the master may take is the
- * master's; one it may not is its holders', the steward's own account never among them; one nobody
+ * Whom an ask about an item with this standing goes to. An issue's answer a person owes is asked on
+ * the item the issue serves. A held act the master may take is the master's; one it may not is its holders', the steward's own account never among them; one nobody
  * holds is nobody's, said by name. Any other act a person owes is that person's, never the master's,
  * unless the master's account holds what it asks (ISS-758).
  */
 export async function askAddresseeOf(
   projectId: string,
-  standing: Pick<ItemStanding, 'waitingOn'> | null,
+  standing: Pick<ItemStanding, 'waitingOn' | 'subject'> | null,
   stewardId: string | null,
 ): Promise<AskAddressee> {
+  if (standing && waitsOnAnswer(standing)) return { to: 'item', issueId: standing.subject.id };
   const act = heldActOf(standing);
   if (act) return addresseeOfAct(projectId, act, stewardId);
   if (standing && (await waitsOnPerson(projectId, standing))) {

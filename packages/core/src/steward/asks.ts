@@ -31,6 +31,12 @@ import { questionOfBasis } from './standing-question.js';
 export const WAKE_DOOR = 'WAKE master.wake steward';
 
 /**
+ * The act door an issue's question is asked under once placed on the item it serves (`door-wake.ts`):
+ * the question itself is the ask, so it holds the standing as an ask of the master does.
+ */
+export const ASK_ON_ITEM_DOOR = 'ASK question on its item';
+
+/**
  * Hold the ask lock on one item of a project until the transaction ends: whoever asks about the item
  * next waits, then reads the ask this one wrote, so two runs at once ask once.
  */
@@ -225,7 +231,11 @@ async function asksOnStanding(projectId: string, standing: AskedStanding, began:
         eq(stewardActs.projectId, projectId),
         isNull(stewardActs.undoneAt),
         gte(stewardActs.at, began),
-        or(isNotNull(stewardActs.masterAsk), like(stewardActs.door, NOTIFY_HOLDERS)),
+        or(
+          isNotNull(stewardActs.masterAsk),
+          like(stewardActs.door, NOTIFY_HOLDERS),
+          eq(stewardActs.door, ASK_ON_ITEM_DOOR),
+        ),
         or(
           sql`upper(${stewardActs.wrote} ->> 'ref') = ${key}`,
           sql`upper(${stewardActs.masterAsk}) LIKE ${`${key}: %`}`,
@@ -271,6 +281,9 @@ export async function askedAlready(
     return `${own.subject.key}, whose run asks about ${key}, has a decision recorded on its standing, so a decision answered it (${ownAnswer.at.toISOString()}: ${ownAnswer.decision ?? ownAnswer.why}). ${askNothingUntil(ownAnswer)}`;
   }
   for (const ask of await asksOnStanding(projectId, standing, began)) {
+    if (ask.door === ASK_ON_ITEM_DOOR) {
+      return `${key}'s question was asked on the item it serves on this standing (${ask.at.toISOString()}), and waits on its answer there. Ask nothing more; write the note.`;
+    }
     if (toldHolders(ask.door)) {
       return `the holders of the act ${key} waits on were asked about it on this standing (${ask.at.toISOString()}). Ask nothing until its standing moves; write the note.`;
     }

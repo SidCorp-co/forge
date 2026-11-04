@@ -108,7 +108,8 @@ export function IssueDetails({
             past={
               <>
                 <IssuePatternList issueId={issue.id} projectId={projectId} show="decided" />
-                <StewardActs projectId={projectId} subjectKey={issue.displayId} canWrite={canWrite} />
+                {/* the issue is the agent's: its acts read as a record, with no Undo on the issue (REQ-68 BC-6) */}
+                <StewardActs projectId={projectId} subjectKey={issue.displayId} canWrite={false} />
                 <IssueQuestions issueId={issue.id} show="past" slug={slug} />
                 <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} />
                 <IssueRetiredCriteria issueId={issue.id} />

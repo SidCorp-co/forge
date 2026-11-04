@@ -15,6 +15,9 @@
 // answer a question". An issue's standing writers say no person's act on a question at all: it waits
 // on the answer (`issues/standing.ts:answerTurn`), and the steward's notes are told the same. Planted
 // red by putting `issues.standing.act.answer` back in the needs_info turn.
+// Round 4 (judge run d47d6de0 at dev.489): ISS-639's Criteria section drew "Tie to REQ-66 criteria".
+// The issue page's Criteria files are walked too, and hold no tie. Planted red by restoring
+// `TieCriteria` in `criteria-acts.tsx` and its call in `issue-criteria.tsx`.
 //
 // @direct-test-of packages/contracts/src/issue-standing.ts
 // @direct-test-of packages/contracts/src/modules.ts
@@ -108,6 +111,10 @@ const ISSUE_PAGE = [
   'features/issues/components/detail',
   'features/issues/components/blocker-banner.tsx',
   'features/issues/components/awaiting-release-banner.tsx',
+  // its Criteria section, where round 4's judge (d47d6de0, dev.489) read "Tie to REQ-66 criteria"
+  'features/issues/components/issue-criteria.tsx',
+  'features/issues/components/criteria-acts.tsx',
+  'features/issues/criteria.ts',
 ];
 
 /** What a person's act on an issue looks like on its page: a hook or control that moves, runs, pauses, resumes or releases it. */
@@ -120,6 +127,10 @@ const PAGE_ACTS: { name: string; pattern: RegExp }[] = [
   {
     name: 'a header act',
     pattern: /issues\.actions\.(runPipeline|viewPipeline|pause|pauseHold)\b/,
+  },
+  {
+    name: "a tie of the issue to its requirement's criteria",
+    pattern: /criteria\/traces|TieCriteria|useTraceCriteria|issues\.tieAct\./,
   },
 ];
 
@@ -282,9 +293,9 @@ describe("no issue's standing says a person's act on a question (fix round 2)", 
     expect(found.map((f) => relative(CORE, f))).toEqual([]);
   });
 
-  it('tells the steward a note on an issue names nobody who must act on it', () => {
+  it('tells the steward no note names a person or role who must act on an issue', () => {
     expect(actPrompt('note')).toContain(
-      'A note on an issue never names a person who must act on it',
+      'No note names a person or a role who must act on an issue',
     );
   });
 });

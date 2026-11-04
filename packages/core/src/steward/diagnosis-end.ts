@@ -3,7 +3,9 @@
 // ended on its note alone is finished here: Forge asks through the wake door, which picks whom from
 // the standing (`ask-addressee.ts`), and where that asks nobody, the reason is logged on the item. A
 // finished diagnosis counts for its basis only where it ended so (`runs-store.ts:ranOnBasis`), so one
-// that ended on a note alone is diagnosed again once, never skipped forever.
+// that ended on a note alone is diagnosed again once, never skipped forever. An issue waiting on a
+// person's answer is never "asked nobody": the wake door places its question on the item it serves,
+// or leaves it the project's question in Needs you (ISS-687 round 4, ISS-643 on dev.489).
 
 import type { ItemStanding } from '@forge/contracts/steward';
 import { inArray } from 'drizzle-orm';

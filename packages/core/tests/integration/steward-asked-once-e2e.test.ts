@@ -328,7 +328,7 @@ describe("the steward's questions and acts show on their item, the Steward named
       RETURNING id`);
     const acts = ok(
       await say('owner', 'GET', `/api/projects/${projectId}/steward-acts?subject=${issue.key}`),
-    ).acts as { door: string; undo: unknown; override: string | null }[];
+    ).acts as { id: string; door: string; undo: unknown; override: string | null }[];
     const asked = acts.find((a) => a.door.endsWith('/decisions'));
     expect(asked?.undo).toMatchObject({
       door: expect.stringMatching(/^POST \/api\/questions\/.+\/void$/),
@@ -336,9 +336,16 @@ describe("the steward's questions and acts show on their item, the Steward named
     expect(asked?.override).toBeNull();
     const moved = acts.find((a) => a.door.endsWith('/transition'));
     expect(moved?.undo).toBeNull();
-    expect(moved?.override).toBe(
-      'Move the issue yourself: put it on hold, drop it, or send it on.',
+    // an issue is the agent's (REQ-68 BC-6, ISS-687 round 4): its Activity tells no reader to move it;
+    // the undo door's refusal still names the override to whoever calls it
+    expect(moved?.override).toBeNull();
+    const refused = await say(
+      'owner',
+      'POST',
+      `/api/projects/${projectId}/steward-acts/${moved?.id ?? ''}/undo`,
     );
+    expect(JSON.stringify(refused.json)).toContain('STEWARD_ACT_NOT_UNDOABLE');
+    expect(JSON.stringify(refused.json)).toContain('move the issue yourself');
   });
 
   it('keeps an act on the oldest run in the list after 60 newer runs that took none', async () => {

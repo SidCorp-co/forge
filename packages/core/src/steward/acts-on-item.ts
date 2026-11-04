@@ -11,6 +11,10 @@ import { requirements } from '../db/schema-requirements.js';
 import { stewardActs } from '../db/schema-steward-runs.js';
 import { issueIdOfKey } from '../issues/index.js';
 
+/** Whether a key names an issue (its project's prefix and a number), not a requirement or feedback item. */
+export const isIssueKey = (key: string): boolean =>
+  /^[A-Z][A-Z0-9]*-\d+$/i.test(key) && !/^(REQ|FB)-\d+$/i.test(key);
+
 /** The id of the item a key names in this project: a requirement, a feedback item or an issue. */
 export async function itemIdOfKey(projectId: string, key: string): Promise<string | null> {
   const req = /^REQ-(\d+)$/.exec(key);
