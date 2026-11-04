@@ -83,7 +83,7 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
       { kind: "step", sentence: "Start a worker on the release-highlights queue.", ref: null, issues: ["ISS-1"] },
       { kind: "migration", sentence: "Back up the database before this release deploys: it changes the schema.", ref: "0478_release_highlights.sql", issues: ["ISS-1"] },
     ],
-    shipped: { state: "read", base: "b".repeat(40), head: BUILD, migrations: ["packages/core/drizzle/migrations/0478_release_highlights.sql"], contracts: [], dependencies: [], settings: [] },
+    shipped: { state: "read", base: "b".repeat(40), head: BUILD, migrations: ["packages/core/drizzle/migrations/0478_release_highlights.sql"], contracts: [], dependencies: [], settings: [], unchecked: [] },
     knownIssues: [
       { issueKey: "ISS-3", requirementKey: "REQ-40", bc: "BC-8", statement: "Known issues are listed.", standing: "short", reason: "the list is empty on mobile", elsewhere: null },
       { issueKey: "ISS-4", requirementKey: "REQ-40", bc: "BC-9", statement: "A developer view adds notes.", standing: "not_judged", reason: null, elsewhere: { verdict: "pass", commitSha: "b".repeat(40) } },

@@ -187,6 +187,7 @@
     "releases.page.technical.none": "None.",
     "releases.page.technical.range": "Read from the range {base}..{head} that the release run reported.",
     "releases.page.technical.settings": "Settings",
+    "releases.page.technical.unchecked": "Not checked",
     "releases.page.technical.unread": "The range was not read: {why}.",
     "releases.page.unnoted.held": "note held back until rewritten",
     "releases.page.unnoted.many": "{n} changes have no note for users",

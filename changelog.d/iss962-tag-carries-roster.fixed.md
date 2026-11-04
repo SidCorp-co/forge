@@ -1,0 +1,1 @@
+**A release is no longer tagged at a head that ships issues outside its roster.** A range report whose head carries another waiting issue's landing is refused naming it, and one Forge could not place is named on the release.

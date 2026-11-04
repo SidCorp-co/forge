@@ -73,6 +73,14 @@ export function Technical({ page, slug }: { page: ReleasePage; slug?: string | u
         <List title={t("releases.page.technical.contracts")} items={tech.contracts} testId="page-technical-contracts" />
         <List title={t("releases.page.technical.dependencies")} items={tech.dependencies} testId="page-technical-dependencies" />
         <List title={t("releases.page.technical.settings")} items={tech.settings} testId="page-technical-settings" />
+        {/* gate issues outside the roster the range could not be placed against, named, never assumed absent (ISS-962) */}
+        {page.shipped.state === "read" && page.shipped.unchecked?.length ? (
+          <List
+            title={t("releases.page.technical.unchecked")}
+            items={page.shipped.unchecked.map((u) => `${u.issueKey}: ${u.why}`)}
+            testId="page-technical-unchecked"
+          />
+        ) : null}
         <div data-testid="release-technical">
           <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="release-technical-toggle">
             {t("releases.page.technical.changes")}

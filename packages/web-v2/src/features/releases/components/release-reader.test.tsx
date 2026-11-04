@@ -443,6 +443,8 @@ describe("the Technical view (BC-9)", () => {
     const range = within(tech).getByTestId("page-technical-range");
     expect(range).toHaveTextContent("aaaaaaa");
     expect(range).toHaveTextContent("Read from the range bbbbbbb..aaaaaaa that the release run reported.");
+    // nothing outside the roster went unplaced, so nothing is drawn for it
+    expect(within(tech).queryByTestId("page-technical-unchecked")).toBeNull();
   });
 
   it("shows an issue's technical note under its row, read off the page it already holds", () => {

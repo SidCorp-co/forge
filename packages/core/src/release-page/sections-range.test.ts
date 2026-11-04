@@ -94,6 +94,7 @@ describe("the developer view's What it changes is the range's own (BC-9, J9 on 0
     contracts: [],
     dependencies: [],
     settings: [],
+    unchecked: [],
   };
   const files: RangeChange[] = [
     { path: M494, change: 'added' },

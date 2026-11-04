@@ -250,6 +250,7 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
       { name: 'PREVIEW_DOMAIN', required: false },
       { name: 'FORGE_VAULT_KEY', required: true },
     ],
+    unchecked: [],
   };
 
   it('asks an admin once for the migrations, naming no file, and for each new required setting though no issue filled a field', () => {
@@ -345,6 +346,7 @@ describe('a read range is what the release ships, whatever its issues landed bef
     contracts: [],
     dependencies: [],
     settings: [],
+    unchecked: [],
   };
 
   it('lists no migration, contract or dependency the range does not change', () => {
