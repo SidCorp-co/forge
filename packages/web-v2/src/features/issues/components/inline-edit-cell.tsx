@@ -11,8 +11,6 @@ import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { agentHoldsMove, heldByAgent } from "../edit-lock";
 import { useStatusTone } from "../release-approval";
-import type { ParkReading } from "../derive";
-import { type ParkMenuActions, parkMenuItems } from "../park";
 import type { IssueAgentStatus, IssueStatus } from "../types";
 
 interface InlineSelectProps {
@@ -99,8 +97,6 @@ interface StatusEditProps {
   onTransition: (toStatus: IssueStatus) => void;
   disabled?: boolean;
   size?: "sm" | "md";
-  /** On the issue page: what a person owes this issue, so a park offers its decision first (ISS-1310). */
-  park?: { reading: ParkReading; actions: ParkMenuActions };
 }
 
 /**
@@ -116,7 +112,6 @@ export function StatusEdit({
   onTransition,
   disabled,
   size,
-  park,
 }: StatusEditProps) {
   const tone = useStatusTone(status);
   const t = useCopy();
@@ -129,17 +124,6 @@ export function StatusEdit({
     items = [{ label: agentHoldsMove(t), disabled: true }];
   } else {
     items = ordinaryItems({ status, grouped, onTransition, t, statusWord });
-    const parkItems = park
-      ? parkMenuItems({
-          status,
-          moves,
-          reading: park.reading,
-          ordinary: items,
-          actions: park.actions,
-          words: { t, status: statusWord },
-        })
-      : null;
-    if (parkItems) items = parkItems;
   }
   const chip = <StatusBadge family="issue" value={status} step={step} tone={tone} size={size} />;
   if (disabled) return chip;

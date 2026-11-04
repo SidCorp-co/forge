@@ -36,13 +36,6 @@ interface MovedIssue {
 
 interface GuardedTransition {
   requestTransition: (issue: MovedIssue, toStatus: IssueStatus, opts?: RequestOptions) => void;
-  /** ISS-1310 — Move anyway (pick from `targets`) or Not needed (void, then resume at `targets[0]`); both ask why. */
-  requestParkLeave: (
-    id: string,
-    mode: "move_anyway" | "not_needed",
-    targets: IssueStatus[],
-    opts?: RequestOptions,
-  ) => void;
   dialog: ReactNode;
   isPending: boolean;
 }
@@ -60,7 +53,6 @@ interface ReasonPrompt {
   target: IssueStatus;
   successMessage: string;
   onSuccess?: () => void;
-  targets?: IssueStatus[];
 }
 
 /** A move its checklist refused, held open so the person answers and moves it again. */
@@ -81,14 +73,11 @@ function reasonMove(
   reason: string,
   open: readonly AgentQuestion[],
   waitingKind?: WaitingCause,
-  picked?: IssueStatus,
 ) {
-  const { id, status } = prompt;
-  const target = status === "move_anyway" ? (picked ?? prompt.target) : prompt.target;
+  const { id, status, target } = prompt;
   const kind = waitingKind ? { waitingKind } : {};
   const voids = endsTheIssue(target) && open.length > 0 ? { voidQuestions: reason } : {};
   if (status === "void_questions") return { target, body: { id, toStatus: target, voidQuestions: reason } };
-  if (status === "not_needed") return { target, body: { id, toStatus: target, reason, voidQuestions: reason } };
   return { target, body: { id, toStatus: target, reason, ...kind, ...voids } };
 }
 
@@ -183,23 +172,10 @@ export function useGuardedTransition(): GuardedTransition {
     );
   };
 
-  const requestParkLeave: GuardedTransition["requestParkLeave"] = (id, mode, targets, opts) => {
-    const first = targets[0];
-    if (!first) return;
-    setPrompt({
-      id,
-      status: mode,
-      target: first,
-      targets,
-      successMessage: opts?.successMessage ?? (mode === "not_needed" ? t("issues.toast.withdrawn") : t("issues.toast.moved")),
-      onSuccess: opts?.onSuccess,
-    });
-  };
-
-  const onConfirm = (reason: string, waitingKind?: WaitingCause, picked?: IssueStatus) => {
+  const onConfirm = (reason: string, waitingKind?: WaitingCause) => {
     if (!prompt) return;
     const { id, successMessage, onSuccess } = prompt;
-    const { body } = reasonMove(prompt, reason, listedOpen(id), waitingKind, picked);
+    const { body } = reasonMove(prompt, reason, listedOpen(id), waitingKind);
     transition.mutate(body, {
       onSuccess: succeed(successMessage, () => {
         forgetChecklistDrafts(id);
@@ -213,7 +189,6 @@ export function useGuardedTransition(): GuardedTransition {
 
   return {
     requestTransition,
-    requestParkLeave,
     isPending: transition.isPending,
     dialog: (
       <>
@@ -229,7 +204,6 @@ export function useGuardedTransition(): GuardedTransition {
         status={prompt?.status ?? null}
         issueId={prompt?.id}
         moveTo={prompt?.target}
-        targets={prompt?.targets}
         loading={transition.isPending}
         failure={transition.error}
         onConfirm={onConfirm}

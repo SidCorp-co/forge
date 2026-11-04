@@ -2,6 +2,9 @@
 // 900 in the person's view, however long the record behind it. ISS-451's page was 2,325 words: a plan
 // of rounds, thirteen file chips, a voided question on top, "Running" three times. The fixture is that
 // shape (18 criteria, a 26-step plan, 13 files, a voided question, a run, two relations).
+// ISS-687 (REQ-68 BC-4, BC-6, BC-9): the page asks no person to act on the issue. Judge K163 read a
+// primary "Run pipeline" on a needs_info issue and "Pause" on a running one at 0.4.0-dev.480; the
+// page also drew a Needs you line with the reader's act and a question to answer on the issue.
 // @direct-test-of packages/web-v2/src/features/issues/components/detail/issue-page-main.tsx
 // @direct-test-of packages/web-v2/src/features/issues/components/detail/issue-state-head.tsx
 // @direct-test-of packages/web-v2/src/features/questions/components/question-view.tsx
@@ -174,9 +177,12 @@ function visibleWords(root: HTMLElement): number {
   return words;
 }
 
-async function page(search = "") {
+async function page(search = "", over: Record<string, unknown> = {}) {
   window.history.replaceState(null, "", `/projects/forge/issues/ISS-451${search}`);
-  fakeCore((c) => core(c));
+  fakeCore((c) => {
+    const path = c.path.split("?")[0] ?? "";
+    return path === `/issues/${ID}` || path === "/issues/ISS-451" ? { body: { ...issue, ...over } } : core(c);
+  });
   renderWithQuery(<IssueDetailScreen projectId={P} slug="forge" id="ISS-451" />);
   const screenEl = await screen.findByTestId("issue-detail");
   await screen.findByTestId("criterion-18-verdict");
@@ -197,9 +203,10 @@ describe("an issue page in the person's view", () => {
     for (let el: HTMLElement | null = main; el && el !== root; el = el.parentElement) expect(el.className).not.toMatch(/(^|\s)max-w-/);
   });
 
-  it("opens on Now, Needs you and Done by, then the criteria rows, and holds the long record folded", async () => {
+  it("opens on Now and Done by, then the criteria rows, and holds the long record folded", async () => {
     const root = await page();
-    const order = ["issue-now", "issue-needs-you", "view-criteria", "issue-details"].map((id) => within(root).getByTestId(id));
+    expect(within(root).queryByTestId("issue-needs-you")).toBeNull();
+    const order = ["issue-now", "issue-done-by", "view-criteria", "issue-details"].map((id) => within(root).getByTestId(id));
     for (const [i, el] of order.slice(1).entries()) {
       expect(order[i]?.compareDocumentPosition(el) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     }
@@ -255,8 +262,9 @@ describe("an issue page in the person's view", () => {
   });
 });
 
-// ISS-581 on forge-dev 0.4.0-dev.268: a decision waiting on the reader drew between Done by and the
-// criteria, each option under four lines saying who may choose it and the call it names (REQ-43 BC-9).
+// ISS-581 on forge-dev 0.4.0-dev.268 drew a decision waiting on the reader between Done by and the
+// criteria (REQ-43 BC-9). Since ISS-687 a question an issue waits on is answered in Needs you, on the
+// item the issue serves (REQ-68 BC-4, BC-9): the person's view of the issue draws none of it.
 const decision = {
   ...question,
   id: "q2",
@@ -276,30 +284,37 @@ async function decisionPage(search = "") {
   renderWithQuery(<IssueDetailScreen projectId={P} slug="forge" id="ISS-451" />);
   const root = await screen.findByTestId("issue-detail");
   await screen.findByTestId("criterion-18-verdict");
-  await within(root).findByText("Drop or keep this draft?");
+  await waitFor(() => expect(within(root).queryByTestId("issue-now")).not.toBeNull());
   return root;
 }
 
-describe("an issue page whose decision waits on the reader", () => {
-  it("draws the decision under Needs you, so Done by and then the criteria rows follow it (BC-9)", async () => {
-    const root = await decisionPage();
-    const order = ["issue-now", "issue-needs-you", "issue-needs-you-panels", "issue-done-by", "view-criteria"].map((id) => within(root).getByTestId(id));
-    for (const [i, el] of order.slice(1).entries()) {
-      expect(order[i]?.compareDocumentPosition(el) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    }
-    expect(within(root).getByTestId("issue-state-head")).toContainElement(within(root).getByText("Drop or keep this draft?"));
-  });
-
-  it("reads each option and its button, and leaves who may choose it and the call it names to the developer view (BC-4, BC-7)", async () => {
+describe("an issue page whose question waits on a person", () => {
+  it("draws neither the question nor an answer in the person's view: Needs you asks it on its item", async () => {
     const person = await decisionPage();
-    expect(within(person).getByRole("button", { name: /Drop it/ })).toBeInTheDocument();
-    expect(person.textContent).not.toMatch(/steward:q2:drop/);
-    expect(person.textContent).not.toMatch(/Any project member can choose this/);
+    await screen.findByTestId("details-files");
+    expect(within(person).queryByText("Drop or keep this draft?")).toBeNull();
+    expect(within(person).queryByRole("button", { name: /Drop it|Keep it/ })).toBeNull();
+    expect(within(person).queryByTestId("issue-needs-you")).toBeNull();
   });
 
-  it("draws what an option means in the developer view", async () => {
+  it("draws the question, and what an option means, in the developer view", async () => {
     const developer = await decisionPage("?view=developer");
+    expect(await within(developer).findByText("Drop or keep this draft?")).toBeInTheDocument();
     expect(within(developer).getAllByText(/steward:q2:drop/).length).toBeGreaterThan(0);
+  });
+});
+
+describe("an issue page asks a writer to do nothing to the issue (ISS-687)", () => {
+  const ACTS = /^(Run pipeline|View pipeline|Pause|Reopen|Resume|Release now|Answer)$/;
+  it.each([
+    ["running", {}],
+    ["parked for information", { status: "needs_info", agentStatus: null, waitingKind: "needs_answer", agentSessions: [] }],
+    ["paused", { status: "on_hold", agentStatus: null, agentSessions: [] }],
+  ])("a %s issue draws no run, pause, reopen or answer, and its status is no control", async (_, over) => {
+    const root = await page("", over);
+    expect(within(root).queryAllByRole("button", { name: ACTS })).toEqual([]);
+    expect(within(root).queryAllByRole("button", { name: /^Change status/ })).toEqual([]);
+    expect(within(root).queryByTestId("issue-needs-you")).toBeNull();
   });
 });
 

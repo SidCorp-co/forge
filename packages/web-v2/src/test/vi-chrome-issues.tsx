@@ -95,10 +95,10 @@ const srow = (n: number, over: Partial<IssueStandingRow["standing"]> = {}, statu
 
 export const STANDING_ROWS: IssueStandingRow[] = [
   srow(1),
-  srow(2, { attentionGroup: "needs_you", tone: "you", waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }), wave: 1, blockedBy: [{ key: "ISS-1", title: "Muc", status: "in_progress", group: "moving", landed: false, designHold: null }] }, "needs_info"),
+  srow(2, { attentionGroup: "queued", tone: "ready", waitingOn: waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("issues.standing.act.answer"), rule: RULE }), wave: 1, blockedBy: [{ key: "ISS-1", title: "Muc", status: "in_progress", group: "moving", landed: false, designHold: null }] }, "needs_info"),
   srow(3, { attentionGroup: "stuck", tone: "blocked", waitingOn: waitingOn("issue", { who: say("standing.who.named", { name: "ISS-1" }), act: say("issues.standing.act.landedWaitsJudge"), rule: RULE }, { ref: "ISS-1" }), wave: 2, module: null }, "open"),
   srow(4, { attentionGroup: "queued", tone: "ready", waitingOn: waitingOn("master", { who: say("standing.who.master"), act: say("issues.standing.act.dispatch"), rule: RULE }), wave: null }, "open"),
-  srow(5, { attentionGroup: "paused", tone: "neutral", waitingOn: waitingOn("person", { who: say("standing.who.holderOf", { perm: "project.write" }), act: say("issues.standing.act.resume"), rule: RULE }) }, "on_hold"),
+  srow(5, { attentionGroup: "paused", tone: "neutral", waitingOn: waitingOn("master", { who: say("standing.who.master"), act: say("issues.standing.act.resume"), rule: RULE }) }, "on_hold"),
   srow(6, { attentionGroup: "done", tone: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("issues.standing.act.shipped"), rule: RULE }), wave: null }, "closed"),
 ];
 
@@ -199,7 +199,7 @@ const RUNS = [
 ] as never;
 
 const DETAIL: IssueStandingDetail = {
-  ...srow(1, { attentionGroup: "needs_you", tone: "you", waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }) }, "needs_info"),
+  ...srow(1, { attentionGroup: "queued", tone: "ready", waitingOn: waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("issues.standing.act.answer"), rule: RULE }) }, "needs_info"),
   steps: [],
   releaseApproval: true,
   blocker: blockerView({
@@ -298,18 +298,17 @@ const MOOT_QUESTION: AgentQuestion = {
 function Dialogs() {
   return (
     <>
-      {(["reopen", "needs_info", "on_hold", "dropped", "void_questions", "not_needed"] as const).map((s) => (
+      {(["reopen", "needs_info", "on_hold", "dropped", "void_questions"] as const).map((s) => (
         <TransitionReasonDialog
           key={s}
           status={s}
           issueId="i1"
-          moveTo={s === "void_questions" ? "closed" : s === "not_needed" ? "open" : s}
+          moveTo={s === "void_questions" ? "closed" : s}
           loading={false}
           onConfirm={noop}
           onClose={noop}
         />
       ))}
-      <TransitionReasonDialog status="move_anyway" targets={["open", "needs_info"]} loading={false} onConfirm={noop} onClose={noop} />
       <BatchReleaseDialog projectId={P} selectedIssues={[{ id: "i4", displayId: "ISS-4", title: "Muc bon" }]} open onClose={noop} onSuccess={noop} />
     </>
   );
@@ -381,11 +380,11 @@ export const SCREENS = [
         detailQueries(),
         <>
           {BLOCKERS.map((b) => (
-            <BlockerBanner key={b.reason} blocker={b} slug="hop" pending={false} onResumePark={noop} onResumeRun={noop} onProvideInfo={noop} />
+            <BlockerBanner key={b.reason} blocker={b} slug="hop" />
           ))}
           <LiveAgent state={{ kind: "live", session: { id: "s1", status: "running", heartbeat: "stale", startedAt: AT, deviceId: "dev-1234567" } as never }} step="build" slug="hop" issueId="i1" />
           <LiveAgent state={{ kind: "queued", step: { jobId: "j1", jobType: "triage", queuedAt: AT, nextAttempt: "", retryAfterAt: "2026-10-08T09:00:00.000Z", gate: { reason: "issue_busy", short: "Another job active", detail: "Another job is already active on this issue.", who: "Wait for the active run to finish.", needsAction: false } } }} step="—" slug="hop" issueId="i1" />
-          <AwaitingReleaseBanner projectId={P} issueId="i1" canWrite />
+          <AwaitingReleaseBanner projectId={P} issueId="i1" />
         </>,
       ),
   },

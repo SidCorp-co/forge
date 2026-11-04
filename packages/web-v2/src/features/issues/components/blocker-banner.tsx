@@ -1,73 +1,21 @@
-
 import type { IssueBlocker } from "@forge/contracts/issue-standing";
-import { Banner, Button } from "@/design";
+import { Banner } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said, saidOrNull } from "@/lib/i18n/said";
-import type { IssueStatus } from "../types";
 import { IssueRefBadge } from "./issue-ref-badge";
 
-interface BlockerBannerProps {
-  blocker: IssueBlocker;
-  slug: string;
-  pending: boolean;
-  /** Move the issue back to the status its park left — `needs_info` or `on_hold` (ISS-1310, ISS-54). */
-  onResumePark: (to: IssueStatus) => void;
-  onResumeRun: (runId: string) => void;
-  onProvideInfo: () => void;
-}
-
-/** The one act a blocker offers its reader, as a button; nothing where it offers none. */
-export function BlockerAct({
-  blocker,
-  pending,
-  onResumePark,
-  onResumeRun,
-  onProvideInfo,
-}: Omit<BlockerBannerProps, "slug">) {
-  const { act: cta, runId, resumeAt } = blocker;
-  const language = useInterfaceLanguage();
-  const label = said(blocker.says.act, language);
-  if (cta.kind === "resume_park" && resumeAt) {
-    return (
-      <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onResumePark(resumeAt)}>
-        {label}
-      </Button>
-    );
-  }
-  if (cta.kind === "provide_info") {
-    return (
-      <Button variant="primary" size="sm" icon="mail" onClick={onProvideInfo}>
-        {label}
-      </Button>
-    );
-  }
-  if (cta.kind === "resume_run" && runId) {
-    return (
-      <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onResumeRun(runId)}>
-        {label}
-      </Button>
-    );
-  }
-  return null;
-}
-
-export function BlockerBanner({
-  blocker,
-  slug,
-  pending,
-  onResumePark,
-  onResumeRun,
-  onProvideInfo,
-}: BlockerBannerProps) {
+/**
+ * Why the issue is not moving and who moves it, for the developer's view. It offers no button: a
+ * person never resumes, answers on or reruns an issue here (REQ-68 BC-6); the master resumes a park
+ * and a paused run, and a question is answered in Needs you, on the item it serves.
+ */
+export function BlockerBanner({ blocker, slug }: { blocker: IssueBlocker; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const detail = saidOrNull(blocker.says.detail, language);
-  const action = (
-    <BlockerAct blocker={blocker} pending={pending} onResumePark={onResumePark} onResumeRun={onResumeRun} onProvideInfo={onProvideInfo} />
-  );
 
   return (
-    <Banner tone={blocker.tone} action={action}>
+    <Banner tone={blocker.tone}>
       <div className="space-y-1">
         <p className="font-medium">{said(blocker.says.reason, language)}</p>
         <p className="opacity-90">{said(blocker.says.whoMustAct, language)}</p>

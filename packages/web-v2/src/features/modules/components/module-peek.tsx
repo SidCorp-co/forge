@@ -7,7 +7,7 @@ import { CoverageBar, PeekHead, PeekPanel, type FullPage, type PeekState } from 
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useModuleDetail } from "../hooks";
-import { ActivityBars, AttentionBadge, ModuleAction, ModuleBanner, openSegments } from "./module-bits";
+import { ActivityBars, AttentionBadge, ModuleBanner, openSegments } from "./module-bits";
 import { ModuleProperties } from "./module-facts";
 
 export function ModulePeek({
@@ -31,7 +31,7 @@ export function ModulePeek({
       <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
         {(d) => (
           <>
-            <PeekHead noun={t("modules.noun")} itemKey={d.module.path} badge={<AttentionBadge group={d.standing.attentionGroup} />} title={d.module.name} action={<ModuleAction standing={d.standing} slug={slug} />} />
+            <PeekHead noun={t("modules.noun")} itemKey={d.module.path} badge={<AttentionBadge group={d.standing.attentionGroup} />} title={d.module.name} />
             {d.standing.attentionGroup !== "quiet" ? <ModuleBanner standing={d.standing} slug={slug} className="px-4.5" /> : null}
             <div className="grid gap-4 px-4.5 pb-2 pt-4">
               {d.standing.open > 0 ? <CoverageBar segments={openSegments(d.standing, language)} /> : <p className="text-13 text-subtle">{t("modules.nothingOpen")}</p>}

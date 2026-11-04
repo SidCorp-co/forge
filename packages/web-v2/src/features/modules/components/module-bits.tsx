@@ -1,8 +1,8 @@
 
 import { ISSUE_ATTENTION_LABELS } from "@forge/contracts/issue-standing";
 import { MODULE_ATTENTION_LABELS, MODULE_OPEN_KINDS } from "@forge/contracts/modules";
-import { Link, useRouter } from "@/lib/navigation/router";
-import { type BannerTone, Button, type CoverageSegment, LEGEND, ToneBadge, WaitBanner, type WaitingOnView } from "@/design";
+import { Link } from "@/lib/navigation/router";
+import { type BannerTone, type CoverageSegment, LEGEND, ToneBadge, WaitBanner, type WaitingOnView } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { copyOr, productCopy } from "@/lib/i18n/product-copy";
 import { saidView } from "@/lib/i18n/said";
@@ -103,10 +103,10 @@ export function moduleWaitingView(s: ModuleStanding, language = "en"): WaitingOn
   };
 }
 
-const BANNER: Record<ModuleAttentionGroup, BannerTone> = { needs_you: "you", moving: "agent", stuck: "blocked", quiet: "calm" };
+const BANNER: Record<ModuleAttentionGroup, BannerTone> = { moving: "agent", stuck: "blocked", quiet: "calm" };
 function bannerText(group: ModuleAttentionGroup, w: { kind: string; who: string; act: string }, language: string): string {
   const tail = w.act ? ` · ${w.act}` : "";
-  if (group === "needs_you" || group === "quiet") return w.act;
+  if (group === "quiet") return w.act;
   if (group === "stuck" && w.kind === "issue") return `${productCopy(language)("modules.banner.waitsOn", { who: w.who })}${tail}`;
   return `${w.who}${tail}`;
 }
@@ -115,17 +115,12 @@ function bannerText(group: ModuleAttentionGroup, w: { kind: string; who: string;
 export function ModuleBanner({ standing, slug, className }: { standing: ModuleStanding; slug: string; className?: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const linked = standing.attentionGroup !== "needs_you";
   const w = saidView(standing.waitingOn, language);
   const key = standing.leadIssue;
   const lead = key ? (
-    linked ? (
     <Link href={issueHref(slug, key)} className="font-mono text-12 font-semibold text-link hover:underline">
       {key}
     </Link>
-    ) : (
-      <span className="font-mono text-12 font-semibold">{key}</span>
-    )
   ) : null;
   const act = bannerText(standing.attentionGroup, w, language);
   return (
@@ -141,18 +136,5 @@ export function ModuleBanner({ standing, slug, className }: { standing: ModuleSt
       className={className}
       testId="module-banner"
     />
-  );
-}
-
-/** The one primary act of a module that waits on you: open the issue that leads it. */
-export function ModuleAction({ standing, slug }: { standing: ModuleStanding; slug: string }) {
-  const router = useRouter();
-  const t = useCopy();
-  const key = standing.attentionGroup === "needs_you" ? standing.leadIssue : null;
-  if (!key) return null;
-  return (
-    <Button type="button" variant="primary" size="sm" onClick={() => router.push(issueHref(slug, key))} data-testid="module-action">
-      {t("modules.action.open", { key })}
-    </Button>
   );
 }

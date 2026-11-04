@@ -8,17 +8,14 @@ import type { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
 import { useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
-import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { IssueStatus, WaitingCause } from "../types";
 import { endsTheIssue, MootQuestions, useMootQuestions } from "./moot-questions";
 
 export type ReasonStatus = (typeof REASON_REQUIRED_STATUSES)[number];
-/**
- * ISS-1257 — a close the server refused because questions on the issue are still open.
- * ISS-1310 — the two ways out of a park that leave its question unanswered, each asking why.
- */
-export type DialogMode = ReasonStatus | "void_questions" | "move_anyway" | "not_needed";
+/** ISS-1257 — a close the server refused because questions on the issue are still open. */
+export type DialogMode = ReasonStatus | "void_questions";
 
 interface CopySpec {
   title: string;
@@ -42,12 +39,10 @@ interface TransitionReasonDialogProps {
   issueId?: string;
   /** Where the move goes: the reason status itself, or the close a `void_questions` prompt held up. */
   moveTo?: IssueStatus;
-  /** Every target a `move_anyway` may pick, the transitions map unchanged. */
-  targets?: IssueStatus[];
   loading: boolean;
   /** The last refused move's error: a refusal that keeps the dialog open frees its confirm again. */
   failure?: unknown;
-  onConfirm: (reason: string, waitingKind?: WaitingCause, target?: IssueStatus) => void;
+  onConfirm: (reason: string, waitingKind?: WaitingCause) => void;
   onClose: () => void;
 }
 
@@ -61,7 +56,6 @@ function ReasonForm({
   status,
   issueId,
   moveTo,
-  targets,
   loading,
   failure,
   onConfirm,
@@ -69,11 +63,9 @@ function ReasonForm({
 }: TransitionReasonDialogProps & { status: DialogMode }) {
   const [reason, setReason] = useState("");
   const [kind, setKind] = useState<WaitingCause>("needs_answer");
-  const [target, setTarget] = useState<IssueStatus | null>(null);
   /** Set on the first confirm, so a second click before `loading` arrives sends no second move. */
   const [sent, setSent] = useState(false);
   const t = useCopy();
-  const L = useLabel();
 
   // a move that settled (loading went false) frees the confirm again, and so does a refusal that
   // settled before a render saw it pending
@@ -90,30 +82,15 @@ function ReasonForm({
 
   const copy = copyOf(t, status);
   const trimmed = reason.trim();
-  const picking = status === "move_anyway";
-  const asksKind = status === "needs_info" || (picking && target === "needs_info");
-  const lands = picking ? target : moveTo;
-  const shows = endsTheIssue(lands) && issueId ? issueId : null;
+  const asksKind = status === "needs_info";
+  const shows = endsTheIssue(moveTo) && issueId ? issueId : null;
   const moot = useMootQuestions(shows);
-  const ready = trimmed.length > 0 && (!picking || target !== null) && !moot.loading;
+  const ready = trimmed.length > 0 && !moot.loading;
 
   return (
     <SlideOver open onClose={onClose} title={copy.title} width={480}>
       <div className="flex h-full flex-col gap-4">
         {shows && <MootQuestions issueId={shows} />}
-        {picking && (
-          <Field label={t("issues.reason.moveTo")} required>
-            <RadioGroup
-              name="moveAnywayTarget"
-              value={target ?? ""}
-              onChange={(v) => setTarget(v as IssueStatus)}
-            >
-              {(targets ?? []).map((to) => (
-                <Radio key={to} value={to} label={L("issueStatus", to)} />
-              ))}
-            </RadioGroup>
-          </Field>
-        )}
         {asksKind && (
           <Field label={t("issues.reason.whatNeeded")} required>
             <RadioGroup
@@ -147,9 +124,7 @@ function ReasonForm({
             onClick={() => {
               if (sent) return;
               setSent(true);
-              const kindSent = asksKind ? kind : undefined;
-              if (picking && target) onConfirm(trimmed, kindSent, target);
-              else onConfirm(trimmed, kindSent);
+              onConfirm(trimmed, asksKind ? kind : undefined);
             }}
           >
             {copy.confirm}

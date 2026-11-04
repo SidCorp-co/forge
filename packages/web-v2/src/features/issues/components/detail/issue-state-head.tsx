@@ -1,9 +1,8 @@
 
-// What is true of an issue right now, in three lines and a stepper: Now, Needs you, Done by. The
-// words are the standing's own (core's `waitingOn`) and the forecast's, so the page writes no
-// sentence of its own here. What a person answers on the page itself — an open question or a
-// decision, a pattern to approve — sits under Needs you, before Done by, so the page reads Now,
-// Needs you, Done by and then the criteria rows whatever waits on the reader (REQ-43 BC-9).
+// What is true of an issue right now, in two lines and a stepper: Now and Done by. The words are the
+// standing's own (core's `waitingOn`) and the forecast's, so the page writes no sentence of its own
+// here. No line asks the reader to act: a person never works an issue, and what one owes a person is
+// asked as a decision on its item, in Needs you (REQ-68 BC-4, BC-6; ISS-687).
 
 import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStanding } from "@forge/contracts/issue-standing";
@@ -12,7 +11,7 @@ import { EtaInline } from "@/features/forecast";
 import { etaOfForecast } from "@/features/forecast";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { saidView, saysKey } from "@/lib/i18n/said";
+import { saidView } from "@/lib/i18n/said";
 import { IssueSteps } from "../issue-standing-bits";
 
 function Line({ label, children, testId }: { label: string; children: ReactNode; testId: string }) {
@@ -27,48 +26,25 @@ function Line({ label, children, testId }: { label: string; children: ReactNode;
 export function IssueStateHead({
   standing,
   forecast,
-  act,
-  needs,
-  resource = null,
+  panels,
 }: {
   standing: IssueStanding;
   forecast: Forecast | undefined;
-  /** The one thing a person can do about what the issue owes them: a button, or nothing. */
-  act?: ReactNode;
-  /** What the reader answers here, drawn under Needs you: the open questions and patterns. */
-  needs?: ReactNode;
-  /** What a park waiting on a resource needs supplied, as its question names it (ISS-680). */
-  resource?: string | null;
+  /** What the page draws under Now: the patterns, and in the developer's view the open questions. */
+  panels?: ReactNode;
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const clock = useEtaClock();
-  const view = saidView(standing.waitingOn, language);
-  // "supply what it asks for" names nothing: where the park's question says what, the act names it
-  const w = resource && saysKey(standing.waitingOn.says.act, "issues.standing.act.supply") ? { ...view, act: t("issues.needs.supply", { what: resource }) } : view;
+  const w = saidView(standing.waitingOn, language);
   const done = standing.attentionGroup === "done";
-  const owesYou = standing.waitingOn.kind === "you";
   const eta = forecast && forecast.kind !== "landed" && forecast.kind !== "ended" ? etaOfForecast(forecast, clock) : null;
   return (
     <div className="grid gap-1.5 border-b border-line-subtle pb-4" data-testid="issue-state-head">
       <Line label={t("issues.now.now")} testId="issue-now">
-        {/* a wait on you says its act once, under Needs you; Now names who holds it */}
-        {done ? t("issues.attention.done") : owesYou ? w.who : [w.who, w.act].filter(Boolean).join(" · ")}
+        {done ? t("issues.attention.done") : [w.who, w.act].filter(Boolean).join(" · ")}
       </Line>
-      <Line label={t("issues.attention.needs_you")} testId="issue-needs-you">
-        {owesYou ? (
-          <span className="inline-flex flex-wrap items-center gap-2">
-            {w.act}
-            {act}
-          </span>
-        ) : (
-          <span className="inline-flex flex-wrap items-center gap-2">
-            <span className="text-muted">{t("issues.now.nothing")}</span>
-            {act}
-          </span>
-        )}
-      </Line>
-      {needs}
+      {panels}
       {done ? null : (
         <Line label={t("issues.now.doneBy")} testId="issue-done-by">
           {eta ? <EtaInline eta={eta} clock={clock} /> : <span className="text-muted">{t("issues.now.unknown")}</span>}

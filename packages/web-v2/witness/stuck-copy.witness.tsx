@@ -171,7 +171,7 @@ createRoot(root).render(
           </InterfaceLanguageScope>
         </Part>
         <Part name="parked">
-          <IssueStateHead standing={parked} forecast={undefined} resource={NEEDED} needs={<IssueQuestions issueId="i1" parkedForInfo waitingKind="needs_resource" show="now" />} />
+          <IssueStateHead standing={parked} forecast={undefined} panels={<IssueQuestions issueId="i1" parkedForInfo waitingKind="needs_resource" show="now" />} />
         </Part>
         <Part name="notice">
           <CommentThread issueId="i1" comments={[notice]} members={undefined} readOnly />

@@ -52,7 +52,7 @@ import { WaitingFilter } from "@/features/chat-dock";
 
 type BoardMode = "attention" | "module" | "waves";
 
-const QUICK = ["you", "blocked", "blocking"] as const;
+const QUICK = ["blocked", "blocking"] as const;
 type Quick = (typeof QUICK)[number];
 
 const scopeOf = (raw: string | null): IssueStandingScope =>
@@ -68,7 +68,6 @@ interface Narrowing {
 }
 
 function narrows(r: IssueStandingRow, n: Narrowing): boolean {
-  if (n.quick.has("you") && r.standing.attentionGroup !== "needs_you") return false;
   if (n.quick.has("blocked") && r.standing.blockedBy.length === 0) return false;
   if (n.quick.has("blocking") && r.standing.blocks.length === 0) return false;
   if (n.statuses.length && !n.statuses.includes(r.status)) return false;
@@ -87,7 +86,7 @@ function attentionGroups(rows: IssueStandingRow[], t: Copy): ListGroup<IssueStan
   }));
 }
 
-const SUMMARY_GROUPS = ["needs_you", "moving", "stuck"] as const;
+const SUMMARY_GROUPS = ["moving", "stuck"] as const;
 
 function moduleGroups(rows: IssueStandingRow[], t: Copy): ListGroup<IssueStandingRow>[] {
   const by = new Map<string, IssueStandingRow[]>();
@@ -199,11 +198,6 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
         {compact ? null : (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12 text-subtle">
             {r.standing.module ? <span className="font-mono underline decoration-dotted underline-offset-2">{r.standing.module.path}</span> : null}
-            {r.standing.attentionGroup === "needs_you" ? (
-              <span className="rounded-sm px-1.5" style={{ color: LEGEND.you.fg, background: LEGEND.you.bg }}>
-                {t("issues.board.waitingOnYou")}
-              </span>
-            ) : null}
             {r.standing.blocks.length > 1 ? <span>{t("issues.deps.blocks", { n: r.standing.blocks.length })}</span> : null}
           </span>
         )}
@@ -254,7 +248,6 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line-subtle px-5 py-2.5 text-12 text-muted" data-testid="waves-legend">
         {(
           [
-            ["you", t("issues.board.waitingOnYou")],
             ["run", t("issues.wave.legendRun")],
             ["blocked", t("issues.attention.stuck")],
             ["ready", t("issues.wave.legendQueued")],
@@ -289,7 +282,6 @@ function Toolbar({ data, scope, search, quick, onQuick, waiting, children }: {
   const t = useCopy();
   const counts = data?.counts;
   const chips: { id: Quick; label: ReactNode; count: number | undefined }[] = [
-    { id: "you", label: t("issues.board.waitingOnYou"), count: counts?.needsYou },
     { id: "blocked", label: <span className="font-mono text-12">{t("issues.board.quickBlocked")}</span>, count: counts?.blocked },
     { id: "blocking", label: <span className="font-mono text-12">{t("issues.board.quickBlocking")}</span>, count: counts?.blocking },
   ];
@@ -304,7 +296,7 @@ function Toolbar({ data, scope, search, quick, onQuick, waiting, children }: {
       <ListSearch noun={t("issues.board.searchNoun")} {...search} />
       <WaitingFilter value={waiting ?? undefined} />
       {chips.map((c) => (
-        <FilterChip key={c.id} on={quick.has(c.id)} onToggle={() => onQuick(c.id)} count={c.count ?? 0} tone={c.id === "you" ? "you" : undefined} testId={`quick-${c.id}`}>
+        <FilterChip key={c.id} on={quick.has(c.id)} onToggle={() => onQuick(c.id)} count={c.count ?? 0} testId={`quick-${c.id}`}>
           {c.label}
         </FilterChip>
       ))}

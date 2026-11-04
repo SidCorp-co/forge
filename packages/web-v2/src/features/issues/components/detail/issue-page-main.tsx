@@ -1,16 +1,16 @@
 
 import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { DetailLeadEnd, type RecordView, RecordViewSwitch } from "@/design";
 import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
 import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { settingsHref } from "@/features/project-settings";
-import { IssueQuestions, currentRoundOf, useIssueQuestions } from "@/features/questions";
+import { IssueQuestions } from "@/features/questions";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
-import type { IssueDetail, IssueStatus } from "../../types";
+import type { IssueDetail } from "../../types";
 import { AwaitingReleaseBanner } from "../awaiting-release-banner";
 import { BlockerBanner } from "../blocker-banner";
 import { IssueChanges } from "../issue-changes";
@@ -21,40 +21,20 @@ import { IssueDetails } from "./issue-details";
 import { IssueStuckBanner } from "../issue-standing-bits";
 import { IssueStateHead } from "./issue-state-head";
 
-/**
- * What a park waiting on a resource asks the person to supply (ISS-680): what its open question
- * says it needs, so Needs you names it. Null for any other park, or where none is open.
- */
-function useParkResource(issue: IssueDetail): string | null {
-  const parked = issue.status === "needs_info" && issue.waitingKind === "needs_resource";
-  const questions = useIssueQuestions(issue.id).data?.questions ?? [];
-  if (!parked) return null;
-  for (const q of questions) {
-    const round = currentRoundOf(q);
-    if (q.status === "open" && round?.answerShape === "free_text" && round.needed.trim()) return round.needed.trim();
-  }
-  return null;
-}
-
-/** The main column of the page: the state head, what needs a person, the criteria, the preview, the change and the Details. */
+/** The main column of the page: the state head, the criteria, the preview, the change and the Details. */
 export function IssuePageMain(props: {
   issue: IssueDetail;
   projectId: string;
   slug: string;
   id: string;
   canWrite: boolean;
-  pending: boolean;
   /** A person's view, or a developer's with every fold open and the agent text drawn. */
   view: RecordView;
   onView: (view: RecordView) => void;
   standingQ: ReturnType<typeof useIssueStandingOf>;
   blocker: IssueBlocker | null;
-  needsYouAct: ReactNode;
   threadQuestion: ParkThreadQuestion | null;
   onAnswerInThread: ((text: string) => Promise<unknown>) | undefined;
-  onTransition: (to: IssueStatus) => void;
-  onResumeRun: (runId: string) => void;
-  onProvideInfo: () => void;
   agentState: LiveAgentState | null;
   liveStep: string | null;
   attachmentsQ: ReturnType<typeof useAttachments>;
@@ -64,27 +44,28 @@ export function IssuePageMain(props: {
   mockupTarget: ComponentProps<typeof IssueDetails>["mockupTarget"];
   mockupCount: number | undefined;
   checklist: { key: string; text: string; checked: boolean }[];
-  reasonDialog: ReactNode;
 }) {
-  const { issue, projectId, slug, id, canWrite, pending, view, standingQ, blocker, agentState, liveStep } = props;
+  const { issue, projectId, slug, id, canWrite, view, standingQ, blocker, agentState, liveStep } = props;
   const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
   const developer = view === "developer";
   const standing = standingQ.data?.standing;
   const note = useStewardNote(projectId, "issue", issue.displayId);
-  const resource = useParkResource(issue);
-  const needsPanels = (
-    <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
-      <IssueQuestions
-        show="now"
-        issueId={issue.id}
-        slug={slug}
-        parkedForInfo={issue.status === "needs_info"}
-        waitingKind={issue.status === "needs_info" ? (issue.waitingKind ?? null) : null}
-        threadQuestion={props.threadQuestion}
-        onAnswerInThread={props.onAnswerInThread}
-      />
+  // a question the issue waits on is answered in Needs you, on the item it serves (REQ-68 BC-4, BC-9);
+  // only the developer's view draws it here, as the record it is
+  const panels = (
+    <div className="grid gap-3 empty:hidden" data-testid="issue-panels">
+      {developer ? (
+        <IssueQuestions
+          show="now"
+          issueId={issue.id}
+          slug={slug}
+          parkedForInfo={issue.status === "needs_info"}
+          waitingKind={issue.status === "needs_info" ? (issue.waitingKind ?? null) : null}
+          threadQuestion={props.threadQuestion}
+          onAnswerInThread={props.onAnswerInThread}
+        />
+      ) : null}
       <IssuePatternList issueId={issue.id} projectId={issue.projectId} show="open" />
-      {props.reasonDialog}
     </div>
   );
   return (
@@ -92,26 +73,18 @@ export function IssuePageMain(props: {
             <div className="mb-3 flex justify-end" data-testid="issue-view-switch">
               <RecordViewSwitch view={view} onView={props.onView} />
             </div>
-            {/* what the reader answers on the page is Needs you's, before Done by and the criteria (REQ-43 BC-9) */}
             <div data-highlight="waiting question">
-              {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} needs={needsPanels} resource={resource} /> : needsPanels}
+              {standing ? <IssueStateHead standing={standing} forecast={forecast} panels={panels} /> : panels}
             </div>
             {/* a stuck issue says why, then the steward's note on it (REQ-48 BC-5, BC-7) */}
             {standing ? <IssueStuckBanner standing={standing} developer={developer} className="mt-3 rounded-md" /> : null}
             <StewardNoteLines note={note} slug={slug} />
             {developer && blocker ? (
               <div className="mt-3">
-                <BlockerBanner
-                  blocker={blocker}
-                  slug={slug}
-                  pending={pending || !canWrite}
-                  onResumePark={props.onTransition}
-                  onResumeRun={props.onResumeRun}
-                  onProvideInfo={props.onProvideInfo}
-                />
+                <BlockerBanner blocker={blocker} slug={slug} />
               </div>
             ) : null}
-            {developer ? <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} canWrite={canWrite} /> : null}
+            {developer ? <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} /> : null}
             {developer && agentState ? <LiveAgent state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
             {/* where the issue stands and what it needs is this page's lead: below 1024px the rail follows it */}
             <DetailLeadEnd inset />

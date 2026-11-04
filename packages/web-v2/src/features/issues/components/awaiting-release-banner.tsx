@@ -1,37 +1,21 @@
 
-import { Banner, Button } from "@/design";
+import { Banner } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useBatchRelease, useReleaseRoster } from "../hooks";
-
-/** The release-now act of an issue waiting at the release gate, as a button; nothing where it is not offered. */
-export function ReleaseNowAct({ projectId, issueId, canWrite }: { projectId: string; issueId: string; canWrite: boolean }) {
-	const { data } = useReleaseRoster(projectId);
-	const batch = useBatchRelease(projectId);
-	const t = useCopy();
-	const entry = data?.issues.find((i) => i.id === issueId);
-	if (!canWrite || !data?.gateStatus || !entry || entry.claimedByRunId) return null;
-	return (
-		<Button size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
-			{t("issues.batch.releaseNow")}
-		</Button>
-	);
-}
+import { useReleaseRoster } from "../hooks";
 
 /**
  * What "awaiting release" means, on the issue a person is actually reading:
- * it is merged, it is not shipped, and here is when that changes.
+ * it is merged, it is not shipped, and here is when that changes. It releases nothing itself: a
+ * person never works an issue (REQ-68 BC-6), and a release is cut on Releases or by its schedule.
  */
 export function AwaitingReleaseBanner({
 	projectId,
 	issueId,
-	canWrite,
 }: {
 	projectId: string;
 	issueId: string;
-	canWrite: boolean;
 }) {
 	const { data } = useReleaseRoster(projectId);
-	const batch = useBatchRelease(projectId);
 	const t = useCopy();
 	const time = useTimeFormat();
 
@@ -48,20 +32,7 @@ export function AwaitingReleaseBanner({
 	}
 
 	return (
-		<Banner
-			tone="info"
-			action={
-				canWrite ? (
-					<Button
-						size="sm"
-						disabled={batch.isPending}
-						onClick={() => batch.mutate({ issueIds: [issueId] })}
-					>
-						{t("issues.batch.releaseNow")}
-					</Button>
-				) : undefined
-			}
-		>
+		<Banner tone="info">
 			<span className="font-medium">{t("issues.awaiting.notShipped", { merged })}</span>{" "}
 			{data.nextCutAt
 				? t("issues.awaiting.nextCut", { when: time.countdown(data.nextCutAt) })

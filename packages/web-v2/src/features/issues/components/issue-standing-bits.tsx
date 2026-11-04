@@ -86,7 +86,6 @@ export const issueRowView =
   });
 
 const BANNER: Record<IssueStanding["attentionGroup"], BannerTone> = {
-  needs_you: "you",
   moving: "agent",
   stuck: "blocked",
   queued: "calm",
@@ -102,7 +101,7 @@ export function IssueBanner({ standing, className }: { standing: IssueStanding; 
   return (
     <WaitBanner
       tone={BANNER[g]}
-      head={g === "done" ? `${t("issues.attention.done")}.` : g === "stuck" ? t("issues.banner.stuck") : t("issues.banner.waitingOn", { who: w.kind === "you" ? t("issues.banner.you") : w.who })}
+      head={g === "done" ? `${t("issues.attention.done")}.` : g === "stuck" ? t("issues.banner.stuck") : t("issues.banner.waitingOn", { who: w.who })}
       body={g === "done" ? t("issues.banner.nothingOwed") : g === "stuck" ? `${w.who}${w.act ? ` · ${w.act}` : ""}` : w.act}
       rule={w.rule}
       className={className}

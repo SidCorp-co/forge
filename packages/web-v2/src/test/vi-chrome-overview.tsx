@@ -63,7 +63,7 @@ export const DEV: DevelopmentOverview = {
     total: 9,
     stages: [
       { id: "draft", count: 0, parts: [] },
-      { id: "open", count: 4, parts: [{ group: "queued", count: 3 }, { group: "needs_you", count: 1 }] },
+      { id: "open", count: 4, parts: [{ group: "queued", count: 3 }, { group: "stuck", count: 1 }] },
       { id: "in_progress", count: 3, parts: [{ group: "moving", count: 2 }, { group: "stuck", count: 1 }] },
       { id: "awaiting_release", count: 1, parts: [{ group: "queued", count: 1 }] },
       { id: "closed", count: 1, parts: [{ group: "done", count: 1 }] },

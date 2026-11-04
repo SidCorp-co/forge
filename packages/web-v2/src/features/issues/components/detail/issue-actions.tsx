@@ -1,41 +1,36 @@
-import { Button, HelpButton, IconButton, Menu, type MenuItem } from "@/design";
+import { HelpButton, IconButton, Menu, type MenuItem } from "@/design";
 import { AskAboutThis } from "@/features/chat-dock";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { copyShareLink } from "@/lib/navigation/copy-share-link";
 import { useRouter } from "@/lib/navigation/router";
-import type { IssueDetail, IssueStatus } from "../../types";
+import type { IssueDetail } from "../../types";
 import { type StartReading, StartIssueAction } from "../start-issue-action";
 import { issueSessionsHref } from "@/lib/routes/agents";
 
-/** The header's one primary act, asking and help, and the actions menu. */
+/**
+ * The header's asking and help, and a menu that only opens and copies. A person never works an
+ * issue (REQ-68 BC-6): running, pausing, resuming and reopening it are the agents' acts, so the
+ * header offers none of them. The one start it keeps is a manual-intake project's, which its policy
+ * names a person's (`start-issue-action.tsx`).
+ */
 export function IssueActions({
   issue,
   slug,
   linkId,
-  canWrite,
-  pending,
   start,
   isRunActive,
-  exitsHere,
-  onTransition,
   onStarted,
 }: {
   issue: IssueDetail;
   slug: string;
   /** The id the page was opened by, as the shared link repeats it. */
   linkId: string;
-  canWrite: boolean;
-  pending: boolean;
   start: StartReading;
   isRunActive: boolean;
-  /** The statuses the issue machine draws from this one; Pause and Reopen are offered only where it does. */
-  exitsHere: IssueStatus[];
-  onTransition: (toStatus: IssueStatus) => void;
   onStarted: () => void;
 }) {
   const router = useRouter();
   const t = useCopy();
-  const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const openSessions = () => router.push(issueSessionsHref(slug, issue.id));
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
@@ -46,54 +41,13 @@ export function IssueActions({
   const moreItems: MenuItem[] = [
     { label: t("issues.actions.openSession"), icon: "agent", onSelect: openSessions },
     { label: t("issues.actions.openPipeline"), icon: "pipeline", onSelect: openPipeline },
-    ...(!exitsHere.includes("on_hold") || !canWrite
-      ? []
-      : [
-          {
-            label: t("issues.actions.pauseHold"),
-            icon: "stop",
-            onSelect: () => onTransition("on_hold"),
-          } as MenuItem,
-        ]),
-    ...(!exitsHere.includes("reopen") || !canWrite
-      ? []
-      : [
-          {
-            label: t("issues.reason.reopen.confirm"),
-            icon: "rerun",
-            onSelect: () => onTransition("reopen"),
-          } as MenuItem,
-        ]),
     { label: t("issues.actions.copyLink"), icon: "link", onSelect: copyLink },
   ];
 
-  const primary =
-    start.kind !== "none" && !isRunActive ? (
-      <StartIssueAction issueId={issue.id} reading={start} onStarted={onStarted} />
-    ) : !canWrite || isTerminal ? (
-      canWrite ? (
-        <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
-          {t("issues.reason.reopen.confirm")}
-        </Button>
-      ) : (
-        <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
-          {t("issues.actions.viewPipeline")}
-        </Button>
-      )
-    ) : isRunActive ? (
-      <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>
-        {t("issues.actions.pause")}
-      </Button>
-    ) : (
-      <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
-        {t("issues.actions.runPipeline")}
-      </Button>
-    );
-
   return (
     <span className="flex items-center gap-1.5" data-testid="issue-actions">
-      {primary}
-      {/* below 768px of page column the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
+      {start.kind !== "none" && !isRunActive ? <StartIssueAction issueId={issue.id} reading={start} onStarted={onStarted} /> : null}
+      {/* below 768px of page column the bar holds the back control, the start where one is owed and the menu; asking and help wait for the room */}
       <span className="contents max-column-md:hidden">
         <AskAboutThis about={null} />
         <HelpButton

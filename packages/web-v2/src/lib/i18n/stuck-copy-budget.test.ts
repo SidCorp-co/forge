@@ -26,7 +26,7 @@ const LABELS = [
   "standing.who.runnerOwner",
   "standing.who.projectAdmin",
 ];
-const STRINGS = ["issues.thread.nowWaitsOn", "issues.needs.supply"];
+const STRINGS = ["issues.thread.nowWaitsOn"];
 /** Core's acts a person must take on a release hold: their vi words are this change's. */
 const HOLD_ACTS = Object.keys(SAID_ENTRIES).filter((k) => k.startsWith("issues.releaseHold.act."));
 

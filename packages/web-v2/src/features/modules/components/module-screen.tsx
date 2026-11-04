@@ -8,7 +8,7 @@ import { useModuleDetail, useModuleRollup } from "../hooks";
 import { MODULES_LIST, moduleHref, modulesHref } from "@/lib/routes/modules";
 import { ancestorsOf } from "../tree";
 import type { ModuleRollupRow } from "../types";
-import { AttentionBadge, ModuleAction } from "./module-bits";
+import { AttentionBadge } from "./module-bits";
 import { ModulePage, useModuleTab } from "./module-detail";
 import { ModuleLevel } from "./module-level";
 
@@ -57,7 +57,6 @@ export function ModuleScreen({ projectId, slug, moduleSlug }: { projectId: strin
         title={row?.name ?? moduleSlug}
         badge={row ? <AttentionBadge group={row.standing.attentionGroup} /> : null}
         views={parent ? <ViewModeSwitcher modes={views} value={view} onChange={setView} placement="header" /> : null}
-        action={row ? <ModuleAction standing={row.standing} slug={slug} /> : null}
       />
       <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
         {(data) =>

@@ -1,6 +1,6 @@
 // A park re-kinded to wait on a resource (ISS-631) reads as state on the issue page (ISS-680,
-// FB-281): its question is headed by what it waits on, never "Decision waiting"; Needs you names
-// the resource its question asks for, never "supply what it asks for"; and the re-point notice in
+// FB-281): its question is headed by what it waits on, never "Decision waiting"; the issue page asks
+// its reader nothing (ISS-687), the question naming the resource; and the re-point notice in
 // the thread says what the park waits on now as a label, the waiting-kind codes in the Developer
 // view alone.
 //
@@ -59,34 +59,36 @@ describe("a re-kinded resource question's heading", () => {
   }
 });
 
+// ISS-687 (REQ-68 BC-4, BC-6): the issue page names who the park waits on and asks its reader
+// nothing; the resource is asked by its question, in Needs you, on the item the issue serves.
 const standing = {
-  attentionGroup: "needs_you",
+  attentionGroup: "queued",
   state: "needs_info",
   step: null,
   stepStartedAt: null,
-  tone: "you",
+  tone: "ready",
   waitingOn: {
-    kind: "you",
-    who: "You",
+    kind: "person",
+    who: "Ana",
     act: "supply what it asks for",
     rule: null,
     ref: null,
     dueAt: null,
-    says: { who: { key: "standing.who.you" }, act: { key: "issues.standing.act.supply" }, rule: null },
+    says: { who: { key: "standing.who.named", vars: { name: "Ana" } }, act: { key: "issues.standing.act.supply" }, rule: null },
   },
 } as unknown as IssueStanding;
 
-describe("Needs you on a resource park", () => {
+describe("the state head of a resource park", () => {
   for (const language of ["en", "vi"] as const) {
-    it(`names the resource the person must provide (${language})`, () => {
+    it(`names who supplies it and asks the reader nothing (${language})`, () => {
       renderWithQuery(
         <InterfaceLanguageScope language={language}>
-          <IssueStateHead standing={standing} forecast={undefined} resource={NEEDED} />
+          <IssueStateHead standing={standing} forecast={undefined} />
         </InterfaceLanguageScope>,
       );
-      const needs = screen.getByTestId("issue-needs-you").textContent ?? "";
-      expect(needs).toContain(productCopy(language)("issues.needs.supply", { what: NEEDED }));
-      expect(needs).not.toContain("supply what it asks for");
+      expect(screen.getByTestId("issue-now").textContent).toContain("Ana");
+      expect(screen.queryByTestId("issue-needs-you")).toBeNull();
+      expect(screen.queryByRole("button")).toBeNull();
     });
   }
 });
