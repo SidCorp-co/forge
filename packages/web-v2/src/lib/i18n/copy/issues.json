@@ -934,7 +934,7 @@
     "issues.rule.ended": "issue ở trạng thái {status}",
     "issues.rule.leaseHeld": "{holder} đang giữ quyền",
     "issues.rule.leaseHeldSession": "một phiên chạy chưa kết thúc đang giữ quyền",
-    "issues.rule.needsInfo": "dừng ở needs_info: câu hỏi được hỏi trong mục Cần bạn, và câu trả lời sẽ đánh thức Master",
+    "issues.rule.needsInfo": "dừng ở needs_info: hỏi trong mục Cần bạn; câu trả lời đánh thức Master",
     "issues.rule.noApproval": "mọi tiêu chí đã đạt; project phát hành không cần duyệt",
     "issues.rule.noReason": "lượt chạy không nêu lý do",
     "issues.rule.noWriter": "{rule}; không ai trong project có quyền {perm}",

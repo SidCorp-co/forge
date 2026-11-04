@@ -434,7 +434,7 @@ export const SAID = {
 		en: "lease held by a run session that has not ended",
 	},
 	"issues.rule.needsInfo": {
-		en: "parked at needs_info: its question is asked in Needs you, and the answer wakes the master",
+		en: "parked at needs_info: asked in Needs you; the answer wakes the master",
 	},
 	"issues.rule.noApproval": {
 		en: "its work merged; the project releases without an approval",
