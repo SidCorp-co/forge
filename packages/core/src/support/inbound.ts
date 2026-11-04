@@ -43,7 +43,8 @@ export function addressedOf(mentions: readonly string[], botUserId: string): Add
 
 export async function handleSupportMessage(input: {
   connectionId: string;
-  ac: ActiveConnection;
+  /** The live connection, or what a replay knows of it: whose messages are the bot's own. */
+  ac: Pick<ActiveConnection, 'botUserId'>;
   route: Route;
   m: RocketChatIncomingMessage;
   shape: RoomShape;

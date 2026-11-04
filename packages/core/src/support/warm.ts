@@ -28,6 +28,7 @@ import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { followedLine, grantsLine, roomsLine, toolsLine } from './prompt.js';
+import { replayPlacedRooms } from './replay.js';
 import {
   declareSupportRooms,
   projectsWithUndeclaredRooms,
@@ -160,6 +161,8 @@ export async function warmProjectRooms(projectId: string): Promise<void> {
       logger.error({ err, roomId: room.id }, 'support: warming a room failed'),
     );
   }
+  // a room placed now is handed what its group said while nothing answered it (ISS-933)
+  await replayPlacedRooms(projectId);
 }
 
 /** A box came online: every room of the projects it serves is warmed, resident or not. */
@@ -187,6 +190,8 @@ export async function warmColdRooms(): Promise<void> {
       logger.error({ err, projectId }, 'support: declaring a bound room failed'),
     );
   }
+  // a room placed since the last sweep is handed what its group said while nothing answered it
+  await replayPlacedRooms();
   const now = Date.now();
   for (const { id: roomId, sessionId } of await roomsToWarm()) {
     const why: WarmReason = retellOwed.has(roomId) ? 'bindings' : 'sweep';

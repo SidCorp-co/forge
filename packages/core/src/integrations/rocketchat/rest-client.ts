@@ -126,6 +126,30 @@ export async function fetchRoomHistory(
   return (await readRoomMessages(auth, HISTORY_ENDPOINTS, params)) ?? [];
 }
 
+/**
+ * Up to `count` most recent messages of a room newer than `oldest` (ISO), as the server sends them,
+ * unmapped; null where the room cannot be read. `missed-messages.ts` reads them in the stream's shape.
+ */
+export async function fetchRawRoomHistory(
+  auth: RocketChatRestAuth,
+  rid: string,
+  opts: { count: number; oldest: string },
+): Promise<unknown[] | null> {
+  const params = { roomId: rid, count: String(opts.count), oldest: opts.oldest };
+  const key = `${HISTORY_ENDPOINTS[0]} ${rid}`;
+  const cached = endpointByRoom.get(key);
+  const order = cached
+    ? [cached, ...HISTORY_ENDPOINTS.filter((e) => e !== cached)]
+    : HISTORY_ENDPOINTS;
+  for (const endpoint of order) {
+    const raw = (await rcGet(auth, endpoint, params))?.messages;
+    if (!Array.isArray(raw)) continue;
+    endpointByRoom.set(key, endpoint);
+    return raw;
+  }
+  return null;
+}
+
 /** The `count` messages nearest to `ts` on one side of it, oldest-first. */
 export async function fetchMessagesBeside(
   auth: RocketChatRestAuth,

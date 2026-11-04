@@ -41,6 +41,8 @@ export interface RocketChatIncomingMessage {
   replyToId?: string | undefined;
   /** The account ids the message mentions, as the server parsed them (`mentions[]._id`). */
   mentions: string[];
+  /** Posted by a bot or an app, as the server marks it (`bot`); absent where it does not say. */
+  isBot?: boolean;
 }
 
 /** The ids of the accounts a message mentions; an `@all` or `@here` names no account. */
@@ -105,8 +107,11 @@ function tsOf(ts: unknown): string | undefined {
   return typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
 
-/** Map a raw `stream-room-messages` arg to our shape, or null if unusable. */
-function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMessage | null {
+/**
+ * Map a raw `stream-room-messages` arg to our shape, or null if unusable. A REST history message has
+ * the same shape, so a room's missed messages are read through it too (ISS-933).
+ */
+export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMessage | null {
   if (!arg || typeof arg !== 'object') return null;
   const m = arg as Record<string, unknown>;
   const rid = m.rid;
@@ -125,6 +130,7 @@ function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMes
     images: extractMessageImages(m as Parameters<typeof extractMessageImages>[0], serverUrl),
     replyToId: replyTargetOf(m),
     mentions: mentionsOf((m as { mentions?: unknown }).mentions),
+    ...(m.bot != null && m.bot !== false ? { isBot: true } : {}),
   };
 }
 

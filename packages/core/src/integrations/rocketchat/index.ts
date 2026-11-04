@@ -16,7 +16,9 @@ export {
 } from './connection-manager.js';
 export type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
 export { directRoomFor } from './direct-room.js';
+export { decideSkip } from './inbound-gate.js';
 export { type LiveConnection, liveConnectionFor } from './live-connections.js';
+export { fetchRoomMessagesSince } from './missed-messages.js';
 export { namespaceFromServerUrl } from './namespace.js';
 export {
   FIXED_REPLY_CONSTANT,
@@ -53,7 +55,7 @@ export {
   provideRoomHandlers,
   provideSupportRoomHandler,
 } from './room-handlers.js';
-export type { Route } from './room-routing.js';
+export { buildRoutes, type Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
 export {
   dailyThread,

@@ -66,6 +66,29 @@ export class StandInRocketChat implements ChatServer {
   private subs = new Set<{ ws: WebSocket; id: string }>();
   /** Every subscription core has made to the message stream: one more each time it redials. */
   subscriptions = 0;
+  /** Every message the groups hold, as `groups.history` serves it: members', the bot's and apps'. */
+  private readonly history: Record<string, unknown>[] = [];
+
+  /**
+   * A message written in group `rid` at `at` while no binding answered it: kept in the group's
+   * history, never on the stream core listens to (ISS-933). `bot` marks an app's or another bot's.
+   */
+  wroteWhileAway(rid: string, who: Member, text: string, at: Date, opts: { bot?: boolean } = {}) {
+    const id = this.nextId();
+    this.history.push({
+      _id: id,
+      rid,
+      msg: text,
+      ts: at.toISOString(),
+      u: { _id: who.userId, username: who.username },
+      mentions: this.mentionsIn(text),
+      ...(opts.bot ? { bot: { i: 'app' } } : {}),
+    });
+    return id;
+  }
+
+  /** How many times a group's history was read. */
+  historyReads = 0;
   private seq = 0;
 
   async start(): Promise<void> {
@@ -145,6 +168,17 @@ export class StandInRocketChat implements ChatServer {
           },
         });
       }
+      case '/api/v1/groups.history': {
+        this.historyReads += 1;
+        const rid = url.searchParams.get('roomId') ?? '';
+        const oldest = url.searchParams.get('oldest') ?? '';
+        const count = Number(url.searchParams.get('count') ?? '50');
+        const messages = this.history
+          .filter((m) => m.rid === rid && String(m.ts) > oldest)
+          .sort((a, b) => String(b.ts).localeCompare(String(a.ts)))
+          .slice(0, count);
+        return json(200, { success: true, messages });
+      }
       case '/api/v1/chat.react':
         this.reactions.push({ messageId: body.messageId, emoji: body.emoji });
         return json(200, { success: true });
@@ -205,6 +239,7 @@ export class StandInRocketChat implements ChatServer {
   }
 
   private push(message: Record<string, unknown>, ts = Date.now()): void {
+    this.history.push({ ...message, ts: new Date(ts).toISOString() });
     const frame = JSON.stringify({
       msg: 'changed',
       collection: 'stream-room-messages',
