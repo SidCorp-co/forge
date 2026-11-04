@@ -20,7 +20,7 @@ import {
 import { toolCallRefusal } from '../../lib/tool-call-guard.js';
 import { assertToolDeclaresAccess, toolGrantFor } from '../../lib/tool-grant.js';
 import { type CallToolResult, toToolCallContent } from '../../lib/tool-result.js';
-import { runDeclaredTool } from '../../permissions/index.js';
+import { assertToolDeclaresPermission, runDeclaredTool } from '../../permissions/index.js';
 
 /** One entry in the chat tool allowlist. */
 export interface ChatToolSpec {
@@ -135,6 +135,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
   for (const spec of specs) {
     const tool = spec.factory(ctx);
     assertToolDeclaresAccess(tool);
+    assertToolDeclaresPermission(tool, spec.allowedActions);
     const name = sanitizeName(tool.name);
     if (bySanitized.has(name)) continue;
     const schema = tool.inputSchema as { properties?: Record<string, unknown> } & Record<

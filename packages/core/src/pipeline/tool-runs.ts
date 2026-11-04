@@ -7,11 +7,12 @@
 import { z } from 'zod';
 import { pipelineRunStatuses } from '../db/schema.js';
 import { principalAgency } from '../issues/index.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import { patEffectiveProjectIds, principalUserId } from '../lib/tool.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { requireDeclared } from '../permissions/index.js';
 import { listProjectPipelineRuns } from './read.js';
 import { refusePipeline } from './refuse.js';
 import { readPipelineRun } from './runs.js';
@@ -45,7 +46,8 @@ const outsideFence = (principal: McpPrincipal, projectId: string): boolean => {
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
   const row = await readPipelineRun(runId);
   if (!row || outsideFence(principal, row.projectId)) throw runNotFound(runId);
-  await requireCan(actorFor(principal.userId), 'project.read', projectResource(row.projectId));
+  // what the action declares on the run's project: project.read to read it, project.write to move it
+  requireDeclared(await loadProjectAccess(row.projectId, principal.userId));
   return row;
 }
 
@@ -55,7 +57,7 @@ export async function pipelineRunsListHandler(
   input: z.infer<typeof pipelineRunsListInputSchema>,
 ) {
   if (outsideFence(principal, input.projectId)) throw notFound();
-  await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
+  requireDeclared(await loadProjectAccess(input.projectId, principal.userId));
 
   const runsLimit = input.limit ?? 50;
   const { items, total } = await listProjectPipelineRuns(input.projectId, {
@@ -91,8 +93,7 @@ export async function pipelineRunsPauseHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
-  const loaded = await loadRunForPrincipal(principal, input.runId);
-  await requireCan(actorFor(principal.userId), 'project.write', projectResource(loaded.projectId));
+  await loadRunForPrincipal(principal, input.runId);
   const run = await pausePipelineRun(input.runId, {
     type: 'user',
     id: principalUserId(principal),
@@ -105,8 +106,7 @@ export async function pipelineRunsResumeHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
-  const loaded = await loadRunForPrincipal(principal, input.runId);
-  await requireCan(actorFor(principal.userId), 'project.write', projectResource(loaded.projectId));
+  await loadRunForPrincipal(principal, input.runId);
   const run = await resumePipelineRun(input.runId, {
     type: 'user',
     id: principalUserId(principal),
@@ -119,8 +119,7 @@ export async function pipelineRunsCancelHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsCancelInputSchema>,
 ) {
-  const loaded = await loadRunForPrincipal(principal, input.runId);
-  await requireCan(actorFor(principal.userId), 'project.write', projectResource(loaded.projectId));
+  await loadRunForPrincipal(principal, input.runId);
   return cancelPipelineRun(input.runId, {
     actorUserId: principalUserId(principal),
     actorAgency: principalAgency(principal),

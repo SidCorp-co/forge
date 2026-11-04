@@ -6,6 +6,7 @@ import {
 import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
+import { onArg } from '../permissions/index.js';
 import { addAttachment } from './attachments.js';
 import { targetCountRefusal } from './rules.js';
 import { createFeedback } from './service.js';
@@ -92,6 +93,7 @@ export const projectFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
+  permission: onArg('project.write'),
   description: [
     "File a person's report or wish about this project as its Feedback (FB-n), as the person you are talking to. From a",
     'chat it is held for their agreement: core keeps it as a proposal they see as a confirm card.',

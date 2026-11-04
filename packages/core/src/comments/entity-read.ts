@@ -29,7 +29,7 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan, requireDeclaredOn } from '../permissions/index.js';
+import { requireDeclaredOn } from '../permissions/index.js';
 import { datedAhead } from './dated-ahead.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
 import { feedbackRowIn, requirementRowIn } from './ports.js';
@@ -309,7 +309,7 @@ export async function listDecisionsAs(
   query: ListDecisionsQuery = {},
   door: ReadDoor = {},
 ): Promise<DecisionListResponse> {
-  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
+  await requireDeclaredOn(projectId, actor.userId, 'project.read');
   const limit = query.limit ?? DECISIONS_DEFAULT_LIMIT;
   const by = query.by ?? 'people';
   const narrowed = await decisionFilters(projectId, query);

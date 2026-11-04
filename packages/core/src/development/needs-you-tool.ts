@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
-import { requireHeld } from '../permissions/index.js';
+import { onArg } from '../permissions/index.js';
 import { readNeedsYouDecisions } from './needs-you-decisions-read.js';
 import { needsYouViewerOf } from './needs-you-viewer.js';
 
@@ -29,13 +29,14 @@ export const forgeNeedsYouTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  permission: onArg('project.read'),
   description: `What waits on the person asking: ONLY the decisions they must make, the read the Needs you list and the project home draw. Call it for "what needs me", "what is waiting on me", "what should I decide". Each decision has its group (${groups}, in that order, oldest first), the record it opens, the question, the recommended answer with why and who recommended it (or noRecommendation saying why there is none), and its answers: the buttons the chat draws under your reply from this result, which the person presses themselves. \`total\` counts every decision, \`decisions\` holds the first \`limit\` (default ${NEEDS_YOU_TOOL_LIMIT_DEFAULT}). \`notDecisions\` counts the rows Needs you also lists that are not a decision, by reason (own_work: their own draft to finish; triage: a feedback item theirs to triage on its page; work: a task, not a choice) — end the reply with one line naming what was left out, by reason and count.`,
   inputSchema: zodToMcpSchema(input),
   handler: async (args) => {
     const { projectId, limit } = input.parse(args);
     const userId = ctx.principal.userId;
+    // project.read was checked at the door; the access shapes whose decisions these are
     const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
     const read = await readNeedsYouDecisions(
       projectId,
       needsYouViewerOf(access, userId, principalAgency(ctx.principal)),

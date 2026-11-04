@@ -22,18 +22,18 @@ import {
 } from './assistant/index.js';
 import { demoMemberId } from './auth/index.js';
 import { runOnceBackfills, startDeferredBackfills } from './boot-backfills.js';
+import { CHAT_PROVIDED_TOOLS } from './chat-tools.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { provideCredentialsPorts } from './credentials/ports.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
-import { forgeNeedsYouTool, needsYouViewerOf, readNeedsYouDecisions } from './development/index.js';
+import { needsYouViewerOf, readNeedsYouDecisions } from './development/index.js';
 import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
 import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import {
   embedFeedback,
-  forgeRecordingTool,
   provideFeedbackDependents,
   requirementFeedbackAs,
 } from './feedback/index.js';
@@ -81,12 +81,7 @@ import { installFatalExit } from './lib/fatal-exit.js';
 import { logger } from './lib/logger.js';
 import { sourceCommit } from './lib/source-commit.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
-import {
-  CHAT_READ_MODEL_TOOLS,
-  CHAT_RECORD_TOOLS,
-  CHAT_RECORD_VETS,
-  CHAT_REPORT_TOOLS,
-} from './mcp/index.js';
+import { CHAT_RECORD_VETS } from './mcp/index.js';
 import {
   provideMemoryIssueReads,
   registerMemoryReconcileWorker,
@@ -179,10 +174,8 @@ import { startTimers, stopTimers } from './schedules/index.js';
 import { provideShareSubjectSources } from './shares/index.js';
 import { runShutdown, type ShutdownSteps } from './shutdown.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
-import { forgeStandingTool } from './standing/index.js';
 import { provideStandingPorts } from './standing-ports.js';
 import { provideStatusReportsPorts, statusReportShareSource } from './status-reports/index.js';
-import { forgeStewardNoteTool } from './steward-notes/index.js';
 import { provideStewardDomainPorts } from './steward-ports.js';
 import {
   proposeRequirementDuplicate,
@@ -296,17 +289,7 @@ provideProjectConfigPorts({
 registerReportQueries();
 provideReportPorts();
 provideStandingPorts();
-// the needs-me read (REQ-41 BC-1) is the development module's own tool, and the recording read
-// (BC-19) the feedback module's, wired here beside the read models
-provideChatTools([
-  ...CHAT_READ_MODEL_TOOLS,
-  { factory: forgeNeedsYouTool },
-  { factory: forgeRecordingTool },
-  { factory: forgeStandingTool },
-  { factory: forgeStewardNoteTool },
-  ...CHAT_RECORD_TOOLS,
-  ...CHAT_REPORT_TOOLS,
-]);
+provideChatTools(CHAT_PROVIDED_TOOLS);
 provideHeldWriteVets(CHAT_RECORD_VETS);
 // the decisions the chat makes on the person's word (REQ-41 BC-25) are the ones their Needs you reads
 provideNeedsYouDecisionRead(async (projectId, userId) => {

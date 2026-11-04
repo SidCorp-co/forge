@@ -10,7 +10,7 @@ import { db } from '../db/client.js';
 import { principalAgency } from '../issues/index.js';
 import { MCP_DOOR } from '../lib/data-egress.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
-import { requireDeclaredOn } from '../permissions/index.js';
+import { onArg } from '../permissions/index.js';
 import { criteriaFromDocument } from './document-criteria.js';
 import { designsNamed, draftLinked } from './draft-linked.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
@@ -44,6 +44,7 @@ export const forgeRequirementsTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  permission: onArg('project.read'),
   description:
     "This project's requirements (REQ-n), as the Requirements screen lists them: each with its state (draft, agreed, in_delivery, delivered, accepted, deferred, dropped), whom it waits on and the act, its BCs proven of total, and its shipped/started/live issues. forge_requirement reads one in full.",
   inputSchema: zodToMcpSchema(listInput),
@@ -77,6 +78,7 @@ export const forgeRequirementTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  permission: onArg('project.read'),
   description:
     "One requirement (`requirement`: REQ-12) as its page reads it: its current revision (goal, scope, BCs), each BC's proof and the issues tracing it, its issues with the release that shipped each, the releases it shipped in, its open tasks, a deferral's reason, and whom it waits on.",
   inputSchema: zodToMcpSchema(getInput),
@@ -241,12 +243,13 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
+  // checked at the door on the project projectId names, before the draft is vetted or written
+  permission: onArg('project.write'),
   description: `Draft a NEW requirement (REQ-n at revision 1, draft) for a wish about how the product should behave that no existing requirement covers — look with forge_requirements first, and revise the one that covers it instead. ${DRAWS} ${WRITE_RULE} Where the criteria are an attached document's list, take them with criteriaFrom, never retyped: call with preview: true first, tell the person the count and the lines, then call it without preview.`,
   inputSchema: zodToMcpSchema(draftInput),
   handler: async (args) => {
     const { projectId, title, criteriaFrom, preview, designs, ...write } = draftInput.parse(args);
     // the caller is refused for the right it lacks before anything is said of what it drew
-    await requireDeclaredOn(projectId, ctx.principal.userId, 'project.write');
     const unfit = await undrawn('forge_requirement_draft', args);
     if (unfit.length) return refusedAnswer(unfit, 'REQUIREMENT_REFUSED');
     const linked = await designsNamed(projectId, designs ?? []);
@@ -361,11 +364,12 @@ export const forgeRequirementReviseTool: ContextScopedMcpToolFactory = (ctx) => 
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
+  // checked at the door on the project projectId names, before the draft is vetted or written
+  permission: onArg('project.write'),
   description: `Draft a revision of an EXISTING requirement (REQ-n) a wish changes: read it with forge_requirement first and write the whole revision on top of its head — every criterion that stays, kept with its code, plus the change: a new criterion carries no code (Forge numbers it), and a code the head does not hold is refused (CRITERION_CODE_UNKNOWN). Kind left out keeps the head's, and with it the head's picture; spec left out keeps the head's, and spec {} clears it; where the kind changes or the head shows none, draw it: ${DRAWS} ${WRITE_RULE}`,
   inputSchema: zodToMcpSchema(reviseInput),
   handler: async (args) => {
     const { projectId, requirement, baseRevision, ...write } = reviseInput.parse(args);
-    await requireDeclaredOn(projectId, ctx.principal.userId, 'project.write');
     const unfit = await undrawn('forge_requirement_revise', args);
     if (unfit.length) return refusedAnswer(unfit, 'REQUIREMENT_REFUSED');
     return drafted(

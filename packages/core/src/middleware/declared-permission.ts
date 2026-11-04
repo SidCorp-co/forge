@@ -119,6 +119,49 @@ export function toolPermissionFor(
     : undefined;
 }
 
+/** The actions a tool's input takes: its `action` enum or const, or none for a tool with no action. */
+export function toolActionsOf(inputSchema: Record<string, unknown>): string[] {
+  const action = (inputSchema.properties as Record<string, Record<string, unknown>> | undefined)
+    ?.action;
+  if (Array.isArray(action?.enum)) return action.enum.map(String);
+  if (action?.const !== undefined) return [String(action.const)];
+  return [];
+}
+
+/**
+ * Where a tool's declaration falls short, as every door reads it (ISS-824, ISS-947): `undeclared`
+ * names each act that declares no permission (`tool.action`, or `tool` for one taking no action),
+ * `unknown` each `tool.action` a per-action declaration names that the tool does not take. `served`
+ * narrows the actions owed a declaration to those a door serves (the chat's allowlist); the
+ * declaration may still name only actions the input takes.
+ */
+export function toolPermissionGaps(
+  tool: {
+    name: string;
+    inputSchema: Record<string, unknown>;
+    permission?: ToolPermission | undefined;
+  },
+  served?: readonly string[],
+): { undeclared: string[]; unknown: string[] } {
+  const actions = toolActionsOf(tool.inputSchema);
+  const owed = served ?? actions;
+  const undeclared =
+    actions.length === 0
+      ? toolPermissionFor(tool.permission, undefined) === undefined
+        ? [tool.name]
+        : []
+      : owed
+          .filter((action) => toolPermissionFor(tool.permission, action) === undefined)
+          .map((action) => `${tool.name}.${action}`);
+  const unknown =
+    tool.permission && 'byAction' in tool.permission
+      ? Object.keys(tool.permission.byAction)
+          .filter((action) => !actions.includes(action))
+          .map((action) => `${tool.name}.${action}`)
+      : [];
+  return { undeclared, unknown };
+}
+
 const declared = new WeakMap<object, DeclaredPermission>();
 
 /** What the API contract reads off a mounted handler. */

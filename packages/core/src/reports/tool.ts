@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import { byRule, onArg } from '../permissions/index.js';
 import { attachVisualBlock } from './blocks.js';
 import { computeExecution } from './compute.js';
 import { refuseExecution } from './executors.js';
@@ -61,6 +62,11 @@ export const forgeReportTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  // as POST /api/projects/:id/report-queries/:queryId/runs
+  permission: byRule(
+    'reports/runs.ts:runReport',
+    'the query declares the permission it is run under, held by the caller on the project; refused by name otherwise',
+  ),
   description: `Runs a registered report query as the asker, kept 30 days; answers { runId, queryId, asOf, frame: { fields, rows } }. Use it for figures; draw the run with forge_show, and state only figures its frame holds. Queries: ${chatQueries()
     .map((q) => {
       const params = Object.keys((q.params as { shape: object }).shape);
@@ -89,6 +95,11 @@ export const forgeShowTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/conversations',
   grant: 'assistant:write',
+  // as POST /api/conversations/:id/blocks
+  permission: byRule(
+    'reports/blocks.ts:attachVisualBlock',
+    'a reader of the room (readableConversation), about the project the call names (REPORT_RUN_OTHER_PROJECT), drawing a run or execution the caller made',
+  ),
   description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId } or forge_compute's { executionId, frame? }, finding?, ...fields } where fields name the frame's fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a differing frame is refused naming each figure, as is a title, label or finding with a number the run lacks. The block is held and shown above your reply only once the reply passes the check; a rewrite shows only the blocks it draws again. Answers its text; don't repeat it. Write times as ISO 8601 (2026-10-09T01:03:00Z): screens read them in the viewer's timezone.`,
   inputSchema: zodToMcpSchema(showInput),
   handler: async (args) => {
@@ -153,6 +164,12 @@ export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  // as the template run and narrative routes: a run is decided by runTemplate, a narrative call by
+  // checkTemplateNarrative over runs the caller made
+  permission: byRule(
+    'reports/templates.ts:runTemplate',
+    "each of the template's queries declares the permission it is run under, held by the caller on the project; a narrative names only the template's own runs the caller made (checkTemplateNarrative)",
+  ),
   description: `Runs a report template as the asker: ${listReportTemplates()
     .map(
       (t) => `${t.id} (${t.title}${t.params.length > 0 ? `; params ${t.params.join(', ')}` : ''})`,
@@ -206,6 +223,8 @@ export const forgeComputeTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
+  // as POST /api/projects/:id/executions
+  permission: onArg('assistant.exec'),
   description: `Runs a short JavaScript script (language "javascript") in Forge's isolated script sandbox, only where no report query answers. It reaches no network and cannot write: ${EXECUTION_IO}. Inputs are runIds this turn made, or []. A turn may run ${EXECUTION_TURN_CAPS.calls} executions and ${EXECUTION_TURN_CAPS.wallMs} ms in all. Answers { executionId, exit, stopped?, frames, logs, error?, reads }; draw a frame with forge_show source { executionId, frame? }, labelled computed. In your reply show the script and its result, and act on it only once the person confirms.`,
   inputSchema: zodToMcpSchema(computeInput),
   handler: async (args) => {

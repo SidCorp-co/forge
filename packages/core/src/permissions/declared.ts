@@ -25,6 +25,7 @@ import {
   permissionless,
   registerDeclaredPermission,
   toolPermissionFor,
+  toolPermissionGaps,
 } from '../middleware/declared-permission.js';
 import { assertInstanceAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -294,6 +295,27 @@ export function requiresInstanceAdmin(why: string): MiddlewareHandler {
 }
 
 // ---- the tool door: /mcp and the chat assistant run a tool's action through the same check ----
+
+/**
+ * A door that serves a tool it does not publish in a contract (the chat assistant's own toolsets)
+ * checks the declaration where it builds the toolset, as `contracts:generate` does for `/mcp`: an
+ * act with no permission would be refused on every call by `runDeclaredTool`, so the toolset is
+ * refused instead, naming each one (ISS-947). `served` is the door's allowlist of actions.
+ */
+export function assertToolDeclaresPermission(
+  tool: Pick<McpTool, 'name' | 'permission' | 'inputSchema'>,
+  served?: readonly string[],
+): void {
+  const { undeclared, unknown } = toolPermissionGaps(tool, served);
+  const faults = [
+    ...undeclared.map((act) => `${act} declares no permission`),
+    ...unknown.map((act) => `${act} is declared and the tool takes no such action`),
+  ];
+  if (faults.length === 0) return;
+  throw new Error(
+    `tool ${tool.name} is not served: ${faults.join('; ')} — give it a \`permission\` (onArg, onResolved, byRule, instanceAdmin or permissionless, middleware/declared-permission.ts)`,
+  );
+}
 
 /**
  * Runs a tool's action through what it declares, as `/mcp` and the chat assistant both do after the

@@ -29,11 +29,7 @@ export function undeclaredPermission(
   return `${name}: declares no permission — mount requiresOnParam, requiresOnResolved, requiresByRule, requiresInstanceAdmin, requiresSelf, requiresPublic or requiresNoPermission (permissions/declared.ts) on it`;
 }
 
-/** Why a tool action (or a tool that takes no action) that declares no permission is refused, or null. */
-export function undeclaredActionPermission(
-  name: string,
-  declared: DeclaredPermission | undefined,
-): string | null {
-  if (declared !== undefined) return null;
+/** Why a tool action (or a tool that takes no action) that declares no permission is refused. */
+export function undeclaredActionPermission(name: string): string {
   return `${name}: declares no permission — give the tool a \`permission\` naming it (onArg, onResolved, byRule, instanceAdmin or permissionless, middleware/declared-permission.ts)`;
 }

@@ -21,7 +21,7 @@ import {
   refusedAnswer,
 } from '../../lib/tool.js';
 import { listMockupsAs, mockupCommentsAs, proposeMockup } from '../../mockups/index.js';
-import { actorOf, type BaRoom } from './ba-room.js';
+import { actorOf, type BaRoom, inRoom } from './ba-room.js';
 
 const answerSchema = z.strictObject({
   comment: z.uuid(),
@@ -74,6 +74,8 @@ export const proposeMockupTool =
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
+    // proposeMockup checks it
+    permission: inRoom('project.write'),
     description: DESCRIPTION,
     inputSchema: z.toJSONSchema(shown) as Record<string, unknown>,
     handler: async (args) => {

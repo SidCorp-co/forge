@@ -6,13 +6,14 @@
  * `./tool-runs.ts`. This file owns input validation, required-field
  * checks per action, and routing. Authorization is re-applied inside each
  * handler — list gates on the projectId argument, the runId-resolved actions
- * gate after the run lookup, both through `requireCan(…, 'project.read', projectResource(…))` — so the
- * dispatcher does NOT collapse auth into a single pre-switch call.
+ * gate after the run lookup, each checking what its action declares (`requireDeclared`) once the
+ * token's fence has answered not-found — so the dispatcher does NOT collapse auth into one door check.
  */
 
 import { z } from 'zod';
 import { pipelineRunStatuses } from '../db/schema.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { onResolved } from '../permissions/index.js';
 import { refusePipeline } from './refuse.js';
 import {
   pipelineRunsCancelHandler,
@@ -60,6 +61,18 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({ prin
     'cancel parks the linked issue at `on_hold` by default, because every other status it could be left at is actionable and a master would take the issue up again on its next pass. Pass `parkIssue: false` for the other intent — "kill this run so a clean one starts" — and that pickup becomes the point. Cancelling returns `issueParked`, and `parkRefused` naming the refusal when the park was refused, so you can tell which happened. ' +
     'list answers the REST list (`GET /projects/:id/pipeline-runs`) rows plus `total`; get answers the REST run summary (`GET /pipeline-runs/:id`). ' +
     'Authorization: list scopes to project membership; get/pause/resume/cancel resolve the run first then enforce project membership; both additionally pass the token projectIds allowlist.',
+  permission: {
+    byAction: {
+      list: onResolved(
+        'project.read',
+        'the project its projectId names, once the token fence admits it',
+      ),
+      get: onResolved('project.read', "the run's project"),
+      pause: onResolved('project.write', "the run's project"),
+      resume: onResolved('project.write', "the run's project"),
+      cancel: onResolved('project.write', "the run's project"),
+    },
+  },
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);

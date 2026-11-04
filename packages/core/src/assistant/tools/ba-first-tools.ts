@@ -23,7 +23,7 @@ import { firstRequirementsJourneys } from '../../onboarding/index.js';
 import { similarRequirements } from '../../requirements/index.js';
 import { createSuggestion } from '../../suggestions/index.js';
 import { sendFirstRequirementsQuestionnaire } from './ba-ask-tools.js';
-import { actorOf, schema } from './ba-room.js';
+import { actorOf, inRoom, requireInRoom, schema } from './ba-room.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 
 interface CaseRoom {
@@ -33,29 +33,35 @@ interface CaseRoom {
 
 const readJourneys =
   (room: CaseRoom): ContextScopedMcpToolFactory =>
-  () => ({
+  (ctx) => ({
     name: 'ba_read_journeys',
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:read',
+    permission: inRoom('project.read'),
     description:
       "Read the designs onboarding drafted: each one's id, flow, title, design status, approved revision, steps (id, label, does) and the requirement drafts already suggested on it. Draft only from designs whose designStatus is approved.",
     inputSchema: schema(z.strictObject({})),
-    handler: async () => ({ journeys: await firstRequirementsJourneys(room.projectId) }),
+    handler: async () => {
+      await requireInRoom(ctx, room.projectId);
+      return { journeys: await firstRequirementsJourneys(room.projectId) };
+    },
   });
 
 const findSimilar =
   (room: CaseRoom): ContextScopedMcpToolFactory =>
-  () => ({
+  (ctx) => ({
     name: 'ba_find_similar',
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:read',
+    permission: inRoom('project.read'),
     description:
       "Find this project's requirements most similar to a text (dedup). provider_not_configured or withheld_by_policy does not mean none are similar; say so.",
     inputSchema: schema(z.strictObject({ text: z.string().trim().min(3).max(8_000) })),
     handler: async (args) => {
       const { text } = z.strictObject({ text: z.string().trim().min(3).max(8_000) }).parse(args);
+      await requireInRoom(ctx, room.projectId);
       return similarRequirements(room.projectId, text, 'conversation');
     },
   });
@@ -83,6 +89,8 @@ const suggestRequirement =
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
+    // createSuggestion checks it
+    permission: inRoom('project.write'),
     description:
       'Suggest one first requirement for one approved journey: title, reason, business criteria (statements by default), its kind and its picture, drawn with it (kind, picture; one without is REQUIREMENT_PICTURE_NOT_DRAWN), and the other approved designs it serves. One per journey: a second is SUGGESTION_JOURNEY_SUGGESTED; a design not approved is SUGGESTION_DESIGN_NOT_APPROVED, one not in the project SUGGESTION_DESIGN_UNKNOWN. A person accepts it, which creates the requirement linked to those designs.',
     inputSchema: schema(suggestRequirementInput),

@@ -27,6 +27,7 @@ export {
   visibleFilter,
 } from './can.js';
 export {
+  assertToolDeclaresPermission,
   byRule,
   type DeclaredPermission,
   declaredPermissions,

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
+import { permissionless } from '../../permissions/index.js';
 import { runForgeCli } from './forge-cli.js';
 import { admitVerb } from './forge-cli-argv.js';
 import { readFormsLine } from './forge-cli-forms.js';
@@ -33,6 +34,10 @@ export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
   grant: {
     none: 'it runs the forge CLI under the turn token, whose own grant every door it reaches reads',
   },
+  permission: permissionless(
+    'credential',
+    'it runs the forge CLI under the turn token, and each route the CLI reaches declares and checks its own permission',
+  ),
   description: DESCRIPTION,
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,
   handler: async (raw: Record<string, unknown>) => {

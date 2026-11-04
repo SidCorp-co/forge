@@ -19,7 +19,7 @@ import {
   roundsInConversation,
 } from '../../questionnaires/index.js';
 import { askQuestion } from '../../questions/index.js';
-import { actorOf, type BaRoom, schema } from './ba-room.js';
+import { actorOf, type BaRoom, inRoom, requireInRoom, schema } from './ba-room.js';
 
 export async function clarificationOf(requirementId: string) {
   const [q] = await db
@@ -69,12 +69,14 @@ const questionnaireTool =
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
+    permission: inRoom('project.write'),
     description,
     inputSchema: schema(postQuestionnaireRequestSchema),
     handler: async (args) => {
       const body = postQuestionnaireRequestSchema.parse(args);
       const conversationId = ctx.turn?.conversationId;
       if (!conversationId) throw new Error('ba_send_questionnaire runs inside a BA room');
+      await requireInRoom(ctx, thread.projectId);
       const actor = actorOf(ctx);
       let batchId = '';
       let messageId: string | null = null;
@@ -118,16 +120,18 @@ const clarifyInput = z.strictObject({
 
 export const askClarification =
   (room: BaRoom): ContextScopedMcpToolFactory =>
-  () => ({
+  (ctx) => ({
     name: 'ba_ask_clarification',
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
+    permission: inRoom('project.write'),
     description:
       'Ask the requirement owner one clarification question (a repro step, a screenshot, an environment); each is its own open question on the requirement. `needed` says what would settle it. A business question the next revision must settle goes in that revision as spec.openQuestions instead (ba_suggest), where it can block the agree. Ask the questions you need, beside an open questionnaire card or not.',
     inputSchema: schema(clarifyInput),
     handler: async (args) => {
       const input = clarifyInput.parse(args);
+      await requireInRoom(ctx, room.projectId);
       const q = await askQuestion({
         id: randomUUID(),
         projectId: room.projectId,

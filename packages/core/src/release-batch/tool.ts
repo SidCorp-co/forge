@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds, onArg } from '../permissions/index.js';
 import { listReleases, readRelease } from './release-read.js';
 import { releaseToolView } from './tool-view.js';
 
@@ -23,11 +23,10 @@ const getInput = z.strictObject({
   version: z.string().min(1).describe('the release version, e.g. 0.3.0'),
 });
 
-/** The reader, with the grants that make a release's waiting act theirs; refused without project.read. */
+/** The reader, with the grants that make a release's waiting act theirs; project.read was checked at the door. */
 async function viewerOf(ctx: Parameters<ContextScopedMcpToolFactory>[0], projectId: string) {
   const userId = ctx.principal.userId;
   const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
   return {
     userId,
     agency: principalAgency(ctx.principal),
@@ -41,6 +40,7 @@ export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  permission: onArg('project.read'),
   description: `This project's releases, as the Releases screen lists them, newest first (optionally one \`state\`: ${RELEASE_STATES.join(' | ')}), each with version, state, releasedAt, its name and summary (null until the cut or PUT …/releases/:version/naming writes them), issue count, requirements, what was verified (criteria proven of total, and how the deploy was checked) and whom it waits on. forge_release reads one in full.`,
   inputSchema: zodToMcpSchema(listInput),
   handler: async (args) => {
@@ -74,6 +74,7 @@ export const forgeReleaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  permission: onArg('project.read'),
   description:
     'One release (`version`: 0.3.0), for the one a person asks about — never once per listed release; the list and forge_project_status already say what each carries. As its page reads it: what users get (the user-facing notes by section; approved designs apart), the requirements it completes or advances, its issues with their proof, what stands in the way, the approval, and what was verified. `attempts` holds every cut of it, each with its roster, the refusal that ended it (code, meaning, words), the abort reason and what carries it; `attempt` is the one wearing the asked version and `continuedAs` where its roster went on — read them for why a version was cancelled or failed.',
   inputSchema: zodToMcpSchema(getInput),

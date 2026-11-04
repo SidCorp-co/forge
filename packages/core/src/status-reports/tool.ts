@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { onArg } from '../permissions/index.js';
 import { saveTemplateReport } from './save.js';
 
 // The Assistant's one save act: a template run it made this turn, with the narrative it wrote, kept
@@ -39,6 +40,8 @@ export const forgeTemplateSaveTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
+  // as POST /api/projects/:id/status/reports
+  permission: onArg('project.write'),
   description:
     "Saves a forge_template run of this turn to the project's report history, with its narrative, when the person asks to save or keep the report: answers the kept report's { id, templateId, asOf, … }. A slot stating a figure no block of the template shows is refused by name, as forge_template refuses it. Say a report is saved only after this answers, and name what it answered.",
   inputSchema: zodToMcpSchema(saveInput),

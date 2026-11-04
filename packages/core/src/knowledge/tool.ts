@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ProjectReader } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, projectReaderOf, zodToMcpSchema } from '../lib/tool.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { onArg } from '../permissions/index.js';
 import {
   knowledgeAuthoredByEnum,
   knowledgeConfidenceEnum,
@@ -42,59 +42,46 @@ const required = (value: string | undefined, field: string, action: Input['actio
   return value;
 };
 
-const requireOn = (
-  userId: string,
-  permission: Parameters<typeof requireCan>[1],
-  projectId: string,
-) => requireCan(actorFor(userId), permission, projectResource(projectId));
-
-const actions: Record<
-  Input['action'],
-  (userId: string, input: Input, reader: ProjectReader) => Promise<unknown>
-> = {
-  list: async (userId, { projectId, kindFilter, injectionFilter }) => {
-    await requireOn(userId, 'project.read', projectId);
-    return listKnowledgeEntries({ projectId, kind: kindFilter, injection: injectionFilter });
-  },
-  get: async (userId, input) => {
-    const slug = required(input.slug, 'slug', 'get');
-    await requireOn(userId, 'project.read', input.projectId);
-    const entry = await readKnowledgeEntry(input.projectId, slug);
-    if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
-    return entry;
-  },
-  upsert: async (userId, input) => {
-    const slug = required(input.slug, 'slug', 'upsert');
-    const title = required(input.title, 'title', 'upsert');
-    const body = required(input.body, 'body', 'upsert');
-    await requireOn(userId, 'project.write', input.projectId);
-    const { projectId, kind, injection, confidence, authoredBy, orderIndex, metadata } = input;
-    return upsertKnowledgeEntry(
-      upsertKnowledgeInputSchema.parse({
-        projectId,
-        slug,
-        title,
-        body,
-        kind,
-        injection,
-        confidence,
-        authoredBy,
-        orderIndex,
-        metadata,
-      }),
-    );
-  },
-  delete: async (userId, input) => {
-    const slug = required(input.slug, 'slug', 'delete');
-    await requireOn(userId, 'project.write', input.projectId);
-    return { deleted: (await deleteKnowledgeEntry(input.projectId, slug)) > 0 };
-  },
-  search: async (userId, { projectId, query, scope, topK, strategy }, reader) => {
-    const text = required(query, 'query', 'search');
-    await requireOn(userId, 'project.read', projectId);
-    return runUnifiedSearch({ projectId, reader, query: text, scope, topK, strategy });
-  },
-};
+const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => Promise<unknown>> =
+  {
+    list: async ({ projectId, kindFilter, injectionFilter }) => {
+      return listKnowledgeEntries({ projectId, kind: kindFilter, injection: injectionFilter });
+    },
+    get: async (input) => {
+      const slug = required(input.slug, 'slug', 'get');
+      const entry = await readKnowledgeEntry(input.projectId, slug);
+      if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
+      return entry;
+    },
+    upsert: async (input) => {
+      const slug = required(input.slug, 'slug', 'upsert');
+      const title = required(input.title, 'title', 'upsert');
+      const body = required(input.body, 'body', 'upsert');
+      const { projectId, kind, injection, confidence, authoredBy, orderIndex, metadata } = input;
+      return upsertKnowledgeEntry(
+        upsertKnowledgeInputSchema.parse({
+          projectId,
+          slug,
+          title,
+          body,
+          kind,
+          injection,
+          confidence,
+          authoredBy,
+          orderIndex,
+          metadata,
+        }),
+      );
+    },
+    delete: async (input) => {
+      const slug = required(input.slug, 'slug', 'delete');
+      return { deleted: (await deleteKnowledgeEntry(input.projectId, slug)) > 0 };
+    },
+    search: async ({ projectId, query, scope, topK, strategy }, reader) => {
+      const text = required(query, 'query', 'search');
+      return runUnifiedSearch({ projectId, reader, query: text, scope, topK, strategy });
+    },
+  };
 
 export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_knowledge',
@@ -109,6 +96,16 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
       search: 'knowledge:read',
     },
   },
+  // the door checks each on the project its projectId names, before the handler runs
+  permission: {
+    byAction: {
+      list: onArg('project.read'),
+      get: onArg('project.read'),
+      upsert: onArg('project.write'),
+      delete: onArg('project.write'),
+      search: onArg('project.read'),
+    },
+  },
   description:
     'Read/write curated knowledge entries for a project (stored in `knowledge_entries`). ' +
     'Actions: `list` — project entries (body-free index; use `get` for the full body). ' +
@@ -121,6 +118,6 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    return actions[input.action](ctx.principal.userId, input, projectReaderOf(ctx.principal));
+    return actions[input.action](input, projectReaderOf(ctx.principal));
   },
 });

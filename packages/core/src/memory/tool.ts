@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
 import { EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { type ContextScopedMcpToolFactory, projectReaderOf, zodToMcpSchema } from '../lib/tool.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { onArg } from '../permissions/index.js';
 import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
 import { getMemoryInputSchema, runMemoryGet, runMemoryGetOne } from './get-service.js';
 import { deleteMemory } from './indexer.js';
@@ -65,6 +65,16 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
       feedback: 'knowledge:write',
     },
   },
+  // the door checks each on the project its projectId names, before the handler runs
+  permission: {
+    byAction: {
+      search: onArg('project.read'),
+      get: onArg('project.read'),
+      write: onArg('project.write'),
+      delete: onArg('project.write'),
+      feedback: onArg('project.write'),
+    },
+  },
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(listedSchema),
   handler: async (args) => {
@@ -73,11 +83,6 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'search') {
       const input = searchInputSchema.parse(rest);
-      await requireCan(
-        actorFor(principal.userId),
-        'project.read',
-        projectResource(input.projectId),
-      );
       return orUnavailable(() =>
         runMemorySearch({ ...input, surface: 'agent', reader: projectReaderOf(principal) }),
       );
@@ -87,44 +92,23 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
       if ('memoryId' in rest) {
         // One entry by id: the id is the whole question, so a filter beside it is refused.
         const one = z.object({ projectId: z.uuid(), memoryId: z.uuid() }).strict().parse(rest);
-        await requireCan(
-          actorFor(principal.userId),
-          'project.read',
-          projectResource(one.projectId),
-        );
         return runMemoryGetOne(one.projectId, one.memoryId);
       }
       const input = getMemoryInputSchema.parse(rest);
-      await requireCan(
-        actorFor(principal.userId),
-        'project.read',
-        projectResource(input.projectId),
-      );
       return runMemoryGet(input);
     }
 
     if (action === 'delete') {
       const input = deleteMemoryInputSchema.parse(rest);
-      await requireCan(
-        actorFor(principal.userId),
-        'project.write',
-        projectResource(input.projectId),
-      );
       return { deleted: await deleteMemory(input.projectId, input.source, input.sourceRef) };
     }
 
     if (action === 'feedback') {
       const input = memoryFeedbackInputSchema.parse(rest);
-      await requireCan(
-        actorFor(principal.userId),
-        'project.write',
-        projectResource(input.projectId),
-      );
       return await runMemoryFeedback(input);
     }
 
     const input = writeMemoryInputSchema.parse(rest);
-    await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
     return runMemoryWrite(input, { writtenBy: principal.userId });
   },
 });

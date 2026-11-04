@@ -20,6 +20,7 @@ import { db } from '../db/client.js';
 import { principalAgency } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { byRule } from '../permissions/index.js';
 import { recordingsOfFeedback } from '../previews/index.js';
 import { feedbackTriageRecord } from './checklist-record.js';
 import { detailAs } from './read.js';
@@ -59,6 +60,10 @@ export const forgeRecordingTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
+  permission: byRule(
+    'previews/recordings.ts:recordingsOfFeedback',
+    'project.read on the project projectId names, refused by name (RECORDING_FORBIDDEN) before anything of the item is read',
+  ),
   description: [
     'What a reproduce of a feedback item recorded: for each recording (newest first) its build (the',
     'sha and the release, which forge_release reads for what changed in it), its state, and its',

@@ -10,6 +10,7 @@
 import { z } from 'zod';
 import { answerStyles } from '../../db/schema.js';
 import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
+import { permissionless } from '../../permissions/index.js';
 import { writeAssistantPreferences } from '../../preferences/index.js';
 
 const ASSISTANT_INSTRUCTIONS_MAX = 2000;
@@ -47,6 +48,10 @@ export const forgePreferencesTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: { account: "setting the speaking person's own reply preferences" },
   route: '/api/auth/preferences',
   grant: 'account:write',
+  permission: permissionless(
+    'self',
+    'it writes only the reply preferences of the person who spoke, whom the turn runs as',
+  ),
   description: DESCRIPTION,
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,
   handler: async (raw: Record<string, unknown>) => {

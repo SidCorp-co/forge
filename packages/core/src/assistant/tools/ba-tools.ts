@@ -23,7 +23,7 @@ import { readRequirementAs, similarRequirements } from '../../requirements/index
 import { createSuggestion, listSuggestions, suggestionBaseOf } from '../../suggestions/index.js';
 import { askClarification, clarificationOf, sendQuestionnaire } from './ba-ask-tools.js';
 import { mockupsForBa, proposeMockupTool } from './ba-mockup-tool.js';
-import { actorOf, type BaRoom, schema } from './ba-room.js';
+import { actorOf, type BaRoom, inRoom, requireInRoom, schema } from './ba-room.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 
 /**
@@ -44,6 +44,8 @@ const readRequirement =
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:read',
+    // readRequirementAs checks it
+    permission: inRoom('project.read'),
     description:
       'Read the requirement this room is about: its revisions (newest first) with criteria and spec (open questions and assumptions included), the head (currentRevision), the questions standing on it (`questions`, open first, with who answers and whether each blocks the agree; `unclear` counts the open ones), the suggestions waiting on it, its mockups (each with status and round, and the comments on one still discussed), the latest clarification question and its answer, and whether its head is embedded for dedup.',
     inputSchema: schema(z.strictObject({})),
@@ -129,6 +131,8 @@ const readIssue =
     reach: 'project',
     route: '/api/issues',
     grant: 'issues:read',
+    // resolveIssueRouteRef checks it on the issue's project
+    permission: inRoom('project.read'),
     description:
       'Read one issue of this project by key (ISS-12) or id: title, status, description, acceptance criteria.',
     inputSchema: schema(z.strictObject({ issue: z.string().min(1).max(200) })),
@@ -159,16 +163,18 @@ const readIssue =
 
 const findSimilar =
   (room: BaRoom): ContextScopedMcpToolFactory =>
-  () => ({
+  (ctx) => ({
     name: 'ba_find_similar',
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:read',
+    permission: inRoom('project.read'),
     description:
       "Find this project's requirements most similar to a text (dedup). Answers status provider_not_configured when no embedding provider is set, or withheld_by_policy when the text, which comes from a conversation with a person, may not leave on a no_egress project — then say so; it does not mean none are similar.",
     inputSchema: schema(z.strictObject({ text: z.string().trim().min(3).max(8_000) })),
     handler: async (args) => {
       const { text } = z.strictObject({ text: z.string().trim().min(3).max(8_000) }).parse(args);
+      await requireInRoom(ctx, room.projectId);
       return similarRequirements(room.projectId, text, 'conversation');
     },
   });
@@ -218,6 +224,8 @@ const suggest =
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
+    // createSuggestion checks it
+    permission: inRoom('project.write'),
     description:
       'Propose a change for a person to accept or reject; its base is the requirement as you read it this turn. Each kind takes its own payload. revision_diff: { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] }, the WHOLE criteria list: a kept or reworded criterion names its live code, a new one carries no code (Forge numbers it), an unknown code is refused (CRITERION_CODE_UNKNOWN), a live one left out is retired; spec.openQuestions [{ question, whoAnswers, blocking }] and spec.assumptions [{ text, owner, confirmBy }] hold what is unsettled or unproven. On a requirement with an open draft or proposed revision it rewrites that revision. duplicate: { duplicateOf, similarity?, note? }. breakdown needs suggestions.write. revision_diff and requirement_draft take kind and picture { kind, content }, a rough sketch of it. requirement_draft and triage target an issue: pass `issue`.',
     inputSchema: schema(suggestShown),
