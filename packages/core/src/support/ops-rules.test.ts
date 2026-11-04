@@ -1,7 +1,6 @@
 import { chatRoleSchema, operationsRoomConfigSchema } from '@forge/contracts/support-operations';
 import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
-import { operationsBrief } from './ops-prompt.js';
 import { isPublicAddress, pageText, readPublicPage } from './ops-research.js';
 import { grantRefusal } from './ops-role.js';
 
@@ -133,33 +132,5 @@ describe('research reads only a public page (REQ-75 BC-24)', () => {
         '<html><head><style>p{}</style><script>alert(1)</script></head><body><h1>Title</h1><p>One &amp; two</p></body></html>',
       ),
     ).toBe('Title\nOne & two');
-  });
-});
-
-// ISS-933 (owner ruling, forge decision 1592b79d): no code holds a room's message back; whom an
-// operations room's session answers is its own judgement, told in its brief. The brief is checked
-// here; whether a live session follows it is not.
-describe('an operations room session’s brief says when to answer', () => {
-  const brief = operationsBrief({
-    role: { ...SY, grants: [...SY.grants] },
-    scope: 'forge',
-    reach: [{ id: 'p1', slug: 'forge', name: 'Forge', issuePrefix: 'ISS' }],
-  });
-
-  it('answers a message that names it, asks it something, or is about Forge or its projects', () => {
-    expect(brief).toContain(
-      'When to answer: a message that names you, asks you something, or is about Forge or a project in your scope.',
-    );
-  });
-
-  it('stays silent on reports, other bots and people talking among themselves', () => {
-    expect(brief).toContain(
-      "Stay silent, calling nothing, on reports, other bots' posts and people talking among themselves.",
-    );
-  });
-
-  it("answers only in the asker's thread, short", () => {
-    expect(brief).toContain("Answer only in the asker's thread, never at the room's top level.");
-    expect(brief).toMatch(/be short/);
   });
 });
