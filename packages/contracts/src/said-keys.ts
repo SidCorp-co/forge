@@ -1099,6 +1099,10 @@ export const SAID = {
 		en: "trace {codes} to an issue criterion",
 		vars: { codes: "key" },
 	},
+	"standing.act.fileOrRevise": {
+		en: "file an issue for {codes}, or revise the requirement",
+		vars: { codes: "key" },
+	},
 	"standing.act.triage": { en: "triage {what}", vars: { what: "name" } },
 	"standing.act.triageAgain": { en: "triage it again" },
 	"standing.act.triageIt": { en: "triage it" },

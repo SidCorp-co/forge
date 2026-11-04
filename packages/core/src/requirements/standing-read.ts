@@ -255,6 +255,7 @@ function standingIssueOf(
       currentRevision,
       changedTraced: f.changedTraced.get(i.id) ?? [],
     }),
+    plannedRevision: i.plannedRevision,
     parkedOn: PARK_STATUSES.includes(i.status as IssueStatus) ? (own?.waitingOn ?? null) : null,
     own: ownOf(own),
   };

@@ -91,6 +91,8 @@ export interface StandingIssue {
   startedAt?: Date | null;
   /** Its plan was written against another revision than the current one. */
   changedSincePlan: boolean;
+  /** The revision its plan was written against; null or absent where it records none. */
+  plannedRevision?: number | null;
   /** Where it is parked (`PARK_STATUSES`), what it waits on by its own standing; null otherwise. */
   parkedOn: ParkedWait | null;
 }
@@ -345,7 +347,7 @@ function turnOf(
     });
     return actWait(input, 'accept', act, rule, { dueAt: check.dueAt, holder: BA });
   }
-  const proof = proofTurn(input.judge, live, coverage, ...releaseAsksOf(input.liveBuild));
+  const proof = proofTurn(input.judge, live, coverage, ...releaseAsksOf(input.liveBuild), input);
   if (proof) return proof;
   if (input.openSuggestionKinds.includes('breakdown')) {
     return actWait(

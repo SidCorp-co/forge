@@ -117,23 +117,85 @@ export function releaseTurn(
   };
 }
 
+/** What a requirement's revisions say about its BCs: when each was live, and when each revision was accepted. */
+export interface RequirementRevisions {
+  readonly criteria: readonly {
+    code: string;
+    sinceRevision: number;
+    retiredRevision: number | null;
+  }[];
+  readonly revisions: readonly { revision: number; state: string; decidedAt: Date | null }[];
+  readonly currentRevision: number | null;
+}
+
+/** The revision that was the requirement's head at `at`: the newest accepted by then; null for none. */
+function headAt(
+  revisions: readonly { revision: number; state: string; decidedAt: Date | null }[],
+  at: Date,
+): number | null {
+  const accepted = revisions.filter(
+    (r) =>
+      (r.state === 'current' || r.state === 'superseded') &&
+      r.decidedAt !== null &&
+      r.decidedAt <= at,
+  );
+  return accepted.length > 0 ? Math.max(...accepted.map((r) => r.revision)) : null;
+}
+
+/**
+ * Whether a linked issue can still carry BC `code` (FB-209): one built against a revision at which
+ * that code was live, so the BC was among what it was built for and only its trace is missing. That
+ * revision is the one its plan was written against; for an issue recording none, the head when it
+ * closed, and while it is open (or nothing was accepted by then), the current one. Where a later
+ * revision added the BC after every linked issue was built, none was built for it, and tying one to
+ * it would claim work nobody did there: a criterion proves a BC of its own issue's requirement
+ * (`issues/criteria/own-requirement.ts`), so the BC is owed an issue of its own or a revision.
+ */
+export function carriedByLinked(
+  live: readonly { plannedRevision?: number | null; closedAt: Date | null }[],
+  { criteria, revisions, currentRevision: current }: RequirementRevisions,
+): (code: string) => boolean {
+  const builtAt = live.map(
+    (issue) =>
+      issue.plannedRevision ??
+      (issue.closedAt ? headAt(revisions, issue.closedAt) : null) ??
+      current,
+  );
+  return (code) =>
+    builtAt.some(
+      (built) =>
+        built === null ||
+        criteria.some(
+          (c) =>
+            c.code === code &&
+            c.sinceRevision <= built &&
+            (c.retiredRevision === null || c.retiredRevision > built),
+        ),
+    );
+}
+
 // Every live issue has shipped and a BC is still unproven: the turn is whoever owes that proof, by
 // what each unproven BC lacks. A traced criterion with no verdict waits on the project's judge to
 // judge it on the issues tracing its current wording; one traced only on an earlier wording, on the
 // judge to tie those issues to the current wording first (no verdict on the old one can count); a
 // failing one on the master to fix it, naming the issue whose fail is the newest; one no criterion
-// traces to on the master to trace it. The judge's acts go first, since they need no new work; the
+// traces to on the master to trace it where a linked issue can carry it (`carriedByLinked`), and
+// where none can, on the master to file an issue for it or revise the requirement, since no trace
+// can be made. The judge's acts go first, since they need no new work, then a trace; the
 // rule names every unproven BC. Where a verdict counts only on a release (`releaseAskOf`, ISS-900),
 // the judge judges on that release: on the issues tracing the current wording, which carry a release
 // verdict as the requirement does, and at the requirement only for what no such issue traces
 // (`releaseTurn`); with no release recorded, the master owes the record.
 export function proofTurn(
   judge: VerifiedJudge | null,
-  live: readonly { status: string }[],
+  live: readonly { status: string; plannedRevision?: number | null; closedAt: Date | null }[],
   coverage: readonly RequirementCoverage[],
   release: ReleaseAsk = null,
   /** Per issue, its own project's ask (ISS-900); absent, every issue is the requirement project's. */
   issueRelease: IssueReleaseAsk = () => release,
+  /** Its revisions, which say whether a linked issue can carry an untraced BC (`carriedByLinked`);
+   *  absent, every one can. */
+  requirement: RequirementRevisions | null = null,
 ): Turn | null {
   const unproven = coverage.filter((c) => c.verdict !== 'passing');
   if (live.length === 0 || !live.every((i) => i.status === 'closed') || unproven.length === 0) {
@@ -206,8 +268,16 @@ export function proofTurn(
       ),
     };
   }
+  const carries = requirement ? carriedByLinked(live, requirement) : () => true;
+  const traceable = gaps.filter((c) => carries(c.code));
   return {
     group: 'waiting',
-    waitingOn: wait(MASTER, say('standing.act.trace', { codes: codesOf(gaps) }), rule),
+    waitingOn: wait(
+      MASTER,
+      traceable.length > 0
+        ? say('standing.act.trace', { codes: codesOf(traceable) })
+        : say('standing.act.fileOrRevise', { codes: codesOf(gaps) }),
+      rule,
+    ),
   };
 }

@@ -43,6 +43,7 @@
     "standing.act.declareProbe": "khai báo một đầu dò nguồn trên production",
     "standing.act.declareTarget": "khai báo nơi release được đưa lên",
     "standing.act.deploying": "đang triển khai",
+    "standing.act.fileOrRevise": "tạo issue cho {codes} hoặc sửa yêu cầu",
     "standing.act.finishDraft": "hoàn tất bản nháp",
     "standing.act.fixFailing": "sửa {codes}, đang không đạt trên {keys}",
     "standing.act.fixSchedule": "sửa một lịch chạy đang lỗi",

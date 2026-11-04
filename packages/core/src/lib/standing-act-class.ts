@@ -34,6 +34,7 @@ const BY_KEY: Readonly<Record<string, StandingActClass>> = {
   'standing.act.replan': 'master_plan',
   'standing.act.reviseForDesign': 'master_plan',
   'standing.act.trace': 'master_plan',
+  'standing.act.fileOrRevise': 'master_plan',
   'standing.act.retie': 'master_plan',
   'standing.act.fixFailing': 'master_plan',
   'standing.act.proposeDesign': 'master_plan',
