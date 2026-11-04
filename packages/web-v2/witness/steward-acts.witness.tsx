@@ -154,9 +154,10 @@ const draftIssueQueries = (): [QueryKey, unknown][] =>
             step: null,
             stepStartedAt: null,
             moves: issueMovesFrom("draft", null, false),
-            tone: "you",
-            attentionGroup: "needs_you",
-            waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.takeOnOrDrop"), rule: say("issues.rule.draft") }),
+            tone: "ready",
+            attentionGroup: "queued",
+            // the master takes a draft on or drops it, never its reader (REQ-68 BC-6, ISS-687)
+            waitingOn: waitingOn("master", { who: say("standing.who.master"), act: say("issues.standing.act.takeOnOrDrop"), rule: say("issues.rule.draft") }),
             criteria: { total: ISSUE_CRITERIA.length, met: 0, failing: 0, skipped: 0 },
             blocks: [],
             lease: null,
@@ -204,7 +205,8 @@ const SURFACES: Surface[] = [
     open: () => document.querySelector<HTMLElement>("[data-testid=details-activity] > button:not([data-panel-open])")?.click(),
     check: () => [
       ...actsDrawn(),
-      ...has("the question", "Asked by Steward"),
+      // a question on the issue is answered in Needs you, on its item, never on the issue page (ISS-687)
+      ...lacks("the question, which Needs you asks on its item", "Asked by Steward"),
       ...has("the draft's standing", "take on or drop"),
       ...lacks("a question owed where none is open", "No questions"),
     ],

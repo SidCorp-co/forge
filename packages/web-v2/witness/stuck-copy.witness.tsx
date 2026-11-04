@@ -43,12 +43,12 @@ const stuck = {
 
 const NEEDED = "a staging database URL";
 const parked = {
-  attentionGroup: "needs_you",
+  attentionGroup: "queued",
   state: "needs_info",
   step: null,
   stepStartedAt: null,
-  tone: "you",
-  waitingOn: { kind: "you", who: "You", act: "", rule: null, ref: null, dueAt: null, says: { who: { key: "standing.who.you" }, act: { key: "issues.standing.act.supply" }, rule: null } },
+  tone: "ready",
+  waitingOn: { kind: "person", who: "Ana", act: "supply what it asks for", rule: null, ref: null, dueAt: null, says: { who: { key: "standing.who.named", vars: { name: "Ana" } }, act: { key: "issues.standing.act.supply" }, rule: null } },
 } as unknown as IssueStanding;
 const question = {
   id: "q1",
