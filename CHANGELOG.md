@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.498] - 2026-11-04
+
+A master posts its own results into every chat room its project binds
+
+### Fixed
+
+- **A project's master posts in every room its project binds, a support room included.** It answers in an asker's thread as the room's bot, held to that bot's rules toward users, or at a team room's top level.
+
 ## [0.4.0-dev.497] - 2026-11-04
 
 A business criterion no linked issue can carry asks for an issue, not a trace
