@@ -11,6 +11,7 @@
  *
  * @direct-test-of packages/core/src/project-config/secret-write.ts
  * @direct-test-of packages/core/src/project-config/actor-sign-in.ts
+ * @direct-test-of packages/core/src/integrations/deploy/sign-in-probe.ts
  * @direct-test-of packages/core/src/project-config/secret-routes.ts
  * @direct-test-of packages/core/src/project-config/routes.ts
  */
@@ -49,6 +50,11 @@ const secret = (password: string, extra: Record<string, unknown> = {}) =>
   });
 
 const w = { projectId: '', token: '' };
+// a spy on a writer whose overloads vitest cannot name: every call passes through, its first text kept
+const spy = vi.spyOn as unknown as (
+  target: object,
+  method: string,
+) => { mockImplementation(f: (...args: unknown[]) => unknown): void };
 let environment: 'up' | 'down' | 'busy' = 'up';
 let seen: { url: string; body: Record<string, unknown> }[] = [];
 
@@ -275,13 +281,13 @@ describe('an actor secret is tried at its environment when it is written (ISS-93
       [fs, 'write'],
     ] as const) {
       const original = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[method];
-      vi.spyOn(target as never, method as never).mockImplementation(((...args: unknown[]) => {
+      spy(target, method).mockImplementation((...args) => {
         keep(typeof args[0] === 'number' ? args[1] : args[0]);
         return original?.apply(target, args);
-      }) as never);
+      });
     }
-    for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const) {
-      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => keep(args.join(' ')));
+    for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+      spy(console, method).mockImplementation((...args) => keep(args.join(' ')));
     }
 
     const answers: ApiResponse[] = [];
