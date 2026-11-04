@@ -20,7 +20,13 @@ export interface ReleasedLine {
 	 */
 	shipped: ReadonlyMap<
 		string,
-		{ at: Date; carried: boolean; carries: readonly string[] }
+		{
+			at: Date;
+			carried: boolean;
+			carries: readonly string[];
+			/** The issues its own record names (ISS-957); absent where the reader did not list them. */
+			issueIds?: readonly string[];
+		}
 	>;
 }
 
@@ -75,6 +81,42 @@ export function readOnRelease(
 		notCounted: null,
 		countedAs: `release ${version}, carried by live release ${line.live.version}`,
 	};
+}
+
+/**
+ * Whether release `version` holds issue `issueId` by the record (ISS-957): its own record names the
+ * issue, or the record of an earlier release it carries does. A release recorded before an issue
+ * landed names none of it, so a verdict judged on it judged a build without the change. Null where
+ * the line lists no issues for its releases, so nothing places it.
+ */
+export function releaseHoldsIssue(
+	line: ReleasedLine | null | undefined,
+	version: string,
+	issueId: string,
+): boolean | null {
+	const shipped = line?.shipped.get(version);
+	if (!line || !shipped) return null;
+	if (!shipped.issueIds) return null;
+	const id = issueId.toLowerCase();
+	const names = (v: string) =>
+		line.shipped.get(v)?.issueIds?.some((i) => i.toLowerCase() === id) ??
+		false;
+	return names(version) || shipped.carries.some(names);
+}
+
+/**
+ * The release a judge judges issue `issueId` on, where its production names no commit it serves: the
+ * one the record says is live, once it holds the issue (`releaseHoldsIssue`). Null where no live
+ * release holds it yet, so no release can be named: the issue is judged at its landing, or after the
+ * release that carries it ships.
+ */
+export function liveReleaseHolding(
+	line: ReleasedLine | null | undefined,
+	issueId: string,
+): string | null {
+	const live = line?.live?.version;
+	if (!live) return null;
+	return releaseHoldsIssue(line, live, issueId) === true ? live : null;
 }
 
 /**

@@ -14,9 +14,18 @@
 // A requirement's coverage reads its issues on this same basis (`coverageLandingHolds`, ISS-849):
 // adminhub-api REQ-11 read no criterion passing while its shipped ISS-53 had earned every one at its
 // landing, because coverage weighed those passes against what production serves.
+//
+// Where production names no commit it serves (no source probe: its releases are its agent's record by
+// version, ISS-900), the same holds without a promotion (ISS-957, FB-493): the release its record says
+// is live cannot hold a change that landed after it, so weighing there asked agenfold's ISS-127, 128
+// and 142 for verdicts on 0.121.0 and held 0.123.0, the release that would ship them, for ever. There
+// too a criterion is earned at the landing, or on a shipped release whose record holds the issue
+// (`released-line.ts:releaseHoldsIssue`); and a criterion the issue's design classes `observable`,
+// which only the running product with real data can show, holds no release: it is owed on the
+// release that carries it once that ships (`landed-weighing.ts:weighLiveOnly`).
 
 import { readReleasePath } from '../project-config/index.js';
-import { landedBuildsOf, landedStandings } from './landed-build.js';
+import { type LandedCriterion, landedBuildsOf, landedStandings } from './landed-build.js';
 import {
   earlierCarriageOf,
   holdsOnBuilds,
@@ -25,21 +34,40 @@ import {
   landedBuildHolds,
   laterHoldersOf,
 } from './landed-build-holds.js';
+import { servedCommitUnnamed } from './released-line.js';
+
+/**
+ * Why a change cannot be in what production serves before its release: a promotion stands between
+ * the landing and production, or production names no commit it serves, so the release its record
+ * says is live predates the change (ISS-957).
+ */
+export type LandingReason = 'promotion' | 'release-record';
 
 export type CriteriaBasis =
   | { kind: 'serving' }
-  | { kind: 'landing'; landsOn: string; deploysFrom: string }
+  | { kind: 'landing'; why: LandingReason; landsOn: string; deploysFrom: string }
   | { kind: 'unread'; why: string };
 
 export async function criteriaBasisOf(projectId: string): Promise<CriteriaBasis> {
   const read = await readReleasePath(projectId);
   if (!read.ok) return { kind: 'unread', why: read.reason };
-  const crossing = read.path.crossing;
-  if (!crossing) return { kind: 'serving' };
+  const { crossing, production, defaultBranch } = read.path;
+  if (crossing) {
+    return {
+      kind: 'landing',
+      why: 'promotion',
+      landsOn: defaultBranch ?? crossing.from,
+      deploysFrom: crossing.to,
+    };
+  }
+  if (!production || servedCommitUnnamed(production) === null) return { kind: 'serving' };
+  // with no branch named, the environment itself is what the words can name
+  const deploysFrom = production.declaration.deploysFrom ?? defaultBranch ?? production.name;
   return {
     kind: 'landing',
-    landsOn: read.path.defaultBranch ?? crossing.from,
-    deploysFrom: crossing.to,
+    why: 'release-record',
+    landsOn: defaultBranch ?? deploysFrom,
+    deploysFrom,
   };
 }
 
@@ -70,6 +98,11 @@ export interface LandingCriteriaReport {
   /** The landing commit weighed at; null where the issue's merge names none. */
   landing: string | null;
   unearned: Array<{ criterion: number; why: string }>;
+  /**
+   * Live-only criteria owed on the release that carries the issue once it ships, which hold no release
+   * (`landed-weighing.ts:weighLiveOnly`, ISS-957): judged after that release. Empty on any other project.
+   */
+  afterRelease: Array<{ criterion: number; why: string }>;
   /** Every criterion that counts there, and the commit its verdict was judged at: the landing
    *  itself, a later build that holds it, or an earlier one it descends from, `carried` saying how
    *  (`landed-weighing.ts:weighOnLanded`, ISS-845), or `release ${version}` where it was judged on
@@ -109,12 +142,16 @@ export async function landingCriteriaReports(
       const why = build?.why ?? 'nothing says where it landed';
       const owed = standing?.owes ? criteria.map((c) => c.criterion) : [];
       const unearned = owed.map((criterion) => ({ criterion, why }));
-      return { issueId, landing: null, unearned, counted: [] };
+      return { issueId, landing: null, unearned, afterRelease: [], counted: [] };
     }
+    const short = (c: LandedCriterion) =>
+      c.counts ? [] : [{ criterion: c.criterion, why: c.why, after: c.afterRelease === true }];
+    const owing = criteria.flatMap(short);
     return {
       issueId,
       landing: build.sha,
-      unearned: criteria.flatMap((c) => (c.counts ? [] : [{ criterion: c.criterion, why: c.why }])),
+      unearned: owing.flatMap(({ after, ...c }) => (after ? [] : [c])),
+      afterRelease: owing.flatMap(({ after, ...c }) => (after ? [c] : [])),
       counted: criteria.flatMap((c) =>
         c.counts
           ? [

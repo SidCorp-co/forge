@@ -7,7 +7,6 @@
  * table's one writer.
  */
 
-import { releaseHint } from '@forge/contracts/released-line';
 import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -148,9 +147,8 @@ const clearer = (owes: CriteriaHoldOwer) =>
 
 export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer): ReleaseHold {
   const reasons = reasonsByWhy(report);
-  const byRecord = report.serving.kind !== 'serving' && report.released; // release record, ISS-900
-  const onRelease = byRecord ? releaseHint(report.released, 'issue') : null;
-  const judge = onRelease ?? judgeClause(report.serving, report.runtimes, report.weighedOn);
+  // a project weighed on its release record is weighed at each landing (`landingCriteriaHold`, ISS-957)
+  const judge = judgeClause(report.serving, report.runtimes, report.weighedOn);
   // only a person closes by hand; the master clears it by the verdicts or by moving the issue on
   const byHand =
     owes === 'human'
@@ -163,16 +161,17 @@ export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer
       `this one is not — ${reasons}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
       '`awaiting_release` if it is not to ship.',
     owes,
-    waitingFor: `${!onRelease ? 'a verdict on each criterion named at the running deployment' : report.released?.live ? 'a verdict on each criterion named on the live release' : 'the release production serves recorded, then a verdict on each criterion named on it'}${owes === 'human' ? ', or the issue closed by hand' : ''}`,
+    waitingFor: `a verdict on each criterion named at the running deployment${owes === 'human' ? ', or the issue closed by hand' : ''}`,
     criteria: report.unearned.map((c) => c.criterion),
   };
 }
 
 /**
- * A row weighed at its landing, where a promotion stands between the branch work lands on and the one
- * production deploys from (`criteria-basis.ts`): what production serves cannot hold the change before
- * the release that promotes it, so a verdict counts at the landing commit, or on the testing
- * environment `delivery.judgedOn` names.
+ * A row weighed at its landing (`criteria-basis.ts`): where a promotion stands between the branch
+ * work lands on and the one production deploys from, or where production names no commit it serves
+ * and the release its record says is live predates the change (ISS-957), what production serves
+ * cannot hold the change before its release, so a verdict counts at the landing commit, or on the
+ * testing environment `delivery.judgedOn` names. Never a release that predates the change.
  */
 export function landingCriteriaHold(
   report: LandingCriteriaReport,
@@ -182,16 +181,23 @@ export function landingCriteriaHold(
   const at = report.landing
     ? `judged at its landing commit \`${report.landing.slice(0, 12)}\` on \`${basis.landsOn}\``
     : `judged at the commit it landed at on \`${basis.landsOn}\`, once its merge names one`;
+  const where =
+    basis.why === 'promotion'
+      ? `This project's work lands on \`${basis.landsOn}\` and production deploys \`${basis.deploysFrom}\` through a promotion`
+      : `This project's production names no commit it serves, and the release its record says is live cannot hold a change that has not shipped`;
+  const after =
+    report.afterRelease.length > 0
+      ? ` Not held: ${criteriaNamed(report.afterRelease.map((c) => c.criterion))}, which only the running product shows, judged after the release that carries this issue ships.`
+      : '';
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
       'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
-      `this one is not — ${reasonsByWhy(report)}. This project's work lands on \`${basis.landsOn}\` ` +
-      `and production deploys \`${basis.deploysFrom}\` through a promotion, so a criterion is earned ` +
+      `this one is not — ${reasonsByWhy(report)}. ${where}, so a criterion is earned ` +
       `where the change has landed, not where production is. ${clearer(owes)}: record a verdict ` +
       `on each criterion named, ${at} (or, where \`delivery.judgedOn\` names a testing environment, ` +
       'one judged there at that commit); or move the issue out of `awaiting_release` if it is not ' +
-      'to ship.',
+      `to ship.${after}`,
     owes,
     waitingFor: 'a verdict on each criterion named at its landing commit',
     criteria: report.unearned.map((c) => c.criterion),

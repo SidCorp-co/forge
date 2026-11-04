@@ -25,7 +25,8 @@ export { atUtcMinute };
 type ReleaseWarningCode =
   | 'RELEASE_RUNNER_PREFERENCE_UNMET'
   | 'RELEASE_CRITERIA_HELD_BACK'
-  | 'RELEASE_CRITERIA_UNCORROBORATED';
+  | 'RELEASE_CRITERIA_UNCORROBORATED'
+  | 'RELEASE_CRITERIA_AFTER_RELEASE';
 
 /** Every reason this project answers with, whether or not it stops a release. */
 export type ReleaseReasonCode = ReleaseBlockerCode | ReleaseWarningCode;
@@ -170,6 +171,7 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
   RELEASE_CRITERIA_UNCORROBORATED: [],
+  RELEASE_CRITERIA_AFTER_RELEASE: [],
 };
 
 function remedyCostClause(cost: RemedyAct): string {
@@ -188,6 +190,8 @@ export interface HeldIssueRef {
   /** `ISS-nn` — what the issue list, the header and the url call it. */
   displayId: string;
   criteria: number[];
+  /** Where it is weighed at its landing, the commit each verdict is owed at (ISS-957). */
+  landing?: string;
 }
 
 const RUNNERS_TAB = 'Settings → Runners';
@@ -258,7 +262,7 @@ function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
   const each = held
     .map(
       (h) =>
-        `\`${h.displayId}\` owes ${agrees(h.criteria.length, 'criterion', 'criteria')} ${h.criteria.join(', ')}`,
+        `\`${h.displayId}\` owes ${agrees(h.criteria.length, 'criterion', 'criteria')} ${h.criteria.join(', ')}${h.landing ? ` at its landing commit \`${h.landing.slice(0, 12)}\`` : ''}`,
     )
     .join('; ');
   return `${remedy} ${each}.`;
@@ -305,8 +309,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
-    const r = typeof details?.release === 'string' ? `${remedy} ${details.release}.` : remedy;
-    return held.length === 0 ? r : heldIssuesSentence(r, held);
+    return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
   }
   if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
     return unroutedSentence(remedy, details.missing, details);
@@ -482,6 +485,23 @@ export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string)
   return withCosts(
     'RELEASE_CRITERIA_UNCORROBORATED',
     `${issues} ${agrees(held.length, 'carries', 'carry')} a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,
+  );
+}
+
+/**
+ * Live-only criteria the release carries unjudged (ISS-957): where production names no commit it
+ * serves, only the running product shows them, so they are judged on the release once it ships.
+ */
+export function afterReleaseWarningSentence(held: HeldIssueRef[]): string {
+  const each = held
+    .map(
+      (h) =>
+        `\`${h.displayId}\` ${agrees(h.criteria.length, 'criterion', 'criteria')} ${h.criteria.join(', ')}`,
+    )
+    .join('; ');
+  return withCosts(
+    'RELEASE_CRITERIA_AFTER_RELEASE',
+    `Judged after this release: only the running product shows these criteria, so they hold nothing now and are owed on this release once it ships, as a \`release\` verdict naming it; a fail there is a finding like any other. ${each}.`,
   );
 }
 

@@ -50,6 +50,7 @@ import {
   heldWhereNoneOwed,
   judgedCommit,
   type LandedCriterion,
+  weighLiveOnly,
   weighOnLanded,
 } from './landed-weighing.js';
 import { recordedHolding } from './recorded-holding.js';
@@ -365,16 +366,20 @@ export async function landedStandings(
     const build = buildOf(issueId);
     const key = issueId.toLowerCase();
     const weighed = s.criteria.map((c) =>
-      weighOnLanded(
-        build,
-        c,
-        viaOf(issueId),
-        headOf(issueId),
-        s.judgedOn,
-        holders.get(key),
-        descent.get(key),
-        s.released,
-      ),
+      // only the running product shows an observable criterion where production names no commit
+      s.released && c.class === 'observable'
+        ? weighLiveOnly(c, s.released, issueId)
+        : weighOnLanded(
+            build,
+            c,
+            viaOf(issueId),
+            headOf(issueId),
+            s.judgedOn,
+            holders.get(key),
+            descent.get(key),
+            s.released,
+            issueId,
+          ),
     );
     return [
       {

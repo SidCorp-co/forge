@@ -1,5 +1,4 @@
 import { gateSays, type ResolvedGate } from '@forge/contracts/gate-profiles';
-import { releaseHint } from '@forge/contracts/released-line';
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import {
   type IssueCriteriaReport,
@@ -12,13 +11,18 @@ import { gateOf } from '../project-config/index.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   advisedCriteriaWarningSentence,
+  afterReleaseWarningSentence,
   type HeldIssueRef,
   heldBackWarningSentence,
   type ReleaseBlocker,
   type ReleaseWarning,
   uncorroboratedWarningSentence,
 } from './blocker-sentences.js';
-import { criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
+import {
+  criteriaBasisOf,
+  type LandingCriteriaReport,
+  landingCriteriaReports,
+} from './criteria-basis.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import { type ServingReading, whyUncorroborated } from './serving-reading.js';
 
@@ -81,8 +85,9 @@ export async function criteriaHold(
     out,
   );
   if (auto !== true) return;
-  // Where a promotion stands between the landing and production, what production serves cannot
-  // hold the change before its release: criteria are weighed at each issue's landing (sidcorp-mail).
+  // Where a promotion stands between the landing and production (sidcorp-mail), or production names
+  // no commit it serves (ISS-957), what production serves cannot hold the change before its release:
+  // criteria are weighed at each issue's landing.
   const basis = await evaluate('criteria-basis', async () => await criteriaBasisOf(projectId), out);
   if (!basis) return;
   if (basis.kind === 'unread') {
@@ -96,7 +101,9 @@ export async function criteriaHold(
       async () => await landingCriteriaReports(projectId, waiting),
       out,
     );
-    if (reports) await heldOrWarned(waiting, reports, out, warnings, null, gate);
+    if (!reports) return;
+    await afterReleaseWarning(reports, warnings);
+    await heldOrWarned(waiting, reports, out, warnings, null, gate);
     return;
   }
   // This enumerator reaches no network, so the ONE reading for the roster is the caller's.
@@ -117,11 +124,32 @@ export async function criteriaHold(
   );
   if (!reports) return;
   await uncorroboratedWarning(reports, warnings);
-  // where production declares no source probe the reports weigh on the agent's release record
-  // (ISS-900): a verdict on the release clears them, so the project is no unrouted one
-  const record = reports[0]?.released ?? null;
-  const read = serving.kind === 'undeclared' && record ? null : serving;
-  await heldOrWarned(waiting, reports, out, warnings, read, gate, releaseHint(record, 'issue'));
+  await heldOrWarned(waiting, reports, out, warnings, serving, gate);
+}
+
+/**
+ * The live-only criteria the release carries unjudged, owed on it once it ships (ISS-957): named, so
+ * nobody reads them as waived, and holding nothing.
+ */
+async function afterReleaseWarning(
+  reports: readonly LandingCriteriaReport[],
+  warnings: ReleaseWarning[],
+): Promise<void> {
+  const after = reports.filter((r) => r.afterRelease.length > 0);
+  if (after.length === 0) return;
+  const shown = await attempt('issue-display-ids', async () =>
+    issueDisplayIds(after.map((r) => r.issueId)),
+  );
+  const held: HeldIssueRef[] = after.map((r) => ({
+    issueId: r.issueId,
+    displayId: shown.value?.get(r.issueId) ?? r.issueId,
+    criteria: r.afterRelease.map((c) => c.criterion),
+  }));
+  warnings.push({
+    code: 'RELEASE_CRITERIA_AFTER_RELEASE',
+    message: afterReleaseWarningSentence(held),
+    details: { held },
+  });
 }
 
 /**
@@ -130,13 +158,16 @@ export async function criteriaHold(
  */
 async function heldOrWarned(
   waiting: readonly string[],
-  reports: ReadonlyArray<{ issueId: string; unearned: ReadonlyArray<{ criterion: number }> }>,
+  reports: ReadonlyArray<{
+    issueId: string;
+    unearned: ReadonlyArray<{ criterion: number }>;
+    /** Where weighed at its landing, the commit a verdict is owed at (ISS-957). */
+    landing?: string | null;
+  }>,
   out: ReleaseBlocker[],
   warnings: ReleaseWarning[],
   serving: ServingReading | null,
   gate: ResolvedGate,
-  /** On a project weighed on its release record, the release to judge on or the record to make. */
-  release: string | null = null,
 ): Promise<void> {
   const owing = reports.filter((r) => r.unearned.length > 0);
   if (owing.length === 0) return;
@@ -149,6 +180,7 @@ async function heldOrWarned(
     issueId: r.issueId,
     displayId: shown.value?.get(r.issueId) ?? r.issueId,
     criteria: r.unearned.map((c) => c.criterion),
+    ...(r.landing ? { landing: r.landing } : {}),
   }));
   if (gate.mode === 'advise') {
     warnings.push({
@@ -165,9 +197,7 @@ async function heldOrWarned(
       out.push(blocker('RELEASE_RUNTIME_UNROUTED', { missing, route, held }, 'roster'));
       return;
     }
-    out.push(
-      blocker('RELEASE_CRITERIA_UNEARNED', { held, ...(release ? { release } : {}) }, 'roster'),
-    );
+    out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held }, 'roster'));
     return;
   }
   const route =

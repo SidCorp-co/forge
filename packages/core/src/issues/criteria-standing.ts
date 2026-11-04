@@ -3,6 +3,7 @@
 // (`release-batch/runtime-weighing.ts`). The verified rule picks it (`criteria-verdicts.ts:standingOn`).
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
+import type { CriterionClass } from '@forge/contracts/issue-design';
 import { projectGate } from '@forge/contracts/gate-profiles';
 import type { ReleasedLine } from '@forge/contracts/released-line';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -11,6 +12,7 @@ import { issues } from '../db/schema.js';
 import { recognisableIdentity } from '../messaging/verdict-identity.js';
 import { listCriteria } from './criteria/store.js';
 import { type CriterionVerdict, latestByNumber } from './criteria-verdicts.js';
+import { criterionRoutesOf } from './design-record.js';
 import { readJudge, readProjectDocument } from './ports.js';
 import { releasedLineOf } from './released-line-reads.js';
 import { declaresProduction, standingOn, standingsOn } from './standing-on.js';
@@ -20,6 +22,8 @@ import { issueIdentities } from './verdict-standing.js';
 export interface StandingCriterion {
   readonly criterion: number;
   readonly verdict: CriterionVerdict | null;
+  /** The class the issue's recorded design gives it (REQ-36 BC-2); null or absent where none is recorded. */
+  readonly class?: CriterionClass | null;
 }
 
 /** One issue's live criteria as a landed build weighs them (`standingCriteriaOf`). */
@@ -75,6 +79,9 @@ export async function standingCriteriaOf(
     (id) => projectOf(id)?.judge ?? null,
     (id) => projectOf(id)?.production ?? true,
   );
+  const routes = await criterionRoutesOf(
+    [...standings.values()].flatMap((s) => s.criteria.map((c) => c.id)),
+  );
   for (const row of rows) {
     const project = projects.get(row.projectId);
     const stands = standings.get(row.id) ?? { criteria: [], unverified: new Map() };
@@ -83,7 +90,11 @@ export async function standingCriteriaOf(
       owes: project?.owes ?? true,
       judgedOn: project?.judgedOn ?? null,
       released: project?.released ?? null,
-      criteria: stands.criteria.map((c) => ({ criterion: c.n, verdict: latest.get(c.n) ?? null })),
+      criteria: stands.criteria.map((c) => ({
+        criterion: c.n,
+        verdict: latest.get(c.n) ?? null,
+        class: routes.get(c.id)?.class ?? null,
+      })),
     });
   }
   return out;

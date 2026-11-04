@@ -254,6 +254,10 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
       });
     },
   },
+  RELEASE_CRITERIA_AFTER_RELEASE: {
+    title: 'standing.gate.title.afterRelease',
+    plain: (d) => say('standing.gate.afterRelease', { owes: owes(d, say('standing.gate.subject.some')) }),
+  },
   RELEASE_CRITERIA_UNCORROBORATED: {
     title: 'standing.gate.title.uncorroborated',
     plain: (d) => {
@@ -355,6 +359,7 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_RUNNER_PREFERENCE_UNMET: { by: 'admin', act: act('standing.act.labelRunner') },
   RELEASE_CRITERIA_HELD_BACK: { by: 'master', act: act('standing.act.judgeCriteria') },
   RELEASE_CRITERIA_UNCORROBORATED: { by: 'system', act: act('standing.act.verdictsNotReread') },
+  RELEASE_CRITERIA_AFTER_RELEASE: { by: 'master', act: act('standing.act.judgeAfterRelease') },
 };
 
 const OWNER_OF: Record<Exclude<Owing, 'admin'>, { kind: ReleaseGateOwner['kind']; who: Said }> = {

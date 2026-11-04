@@ -6,7 +6,12 @@
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
-import { type ReleasedLine, readOnRelease } from '@forge/contracts/released-line';
+import {
+  liveReleaseHolding,
+  type ReleasedLine,
+  readOnRelease,
+  releaseHoldsIssue,
+} from '@forge/contracts/released-line';
 import { landedCommitOf, landedIdentityWhy, verdictEarns } from '@forge/contracts/verdict-identity';
 import {
   type Carriage,
@@ -25,7 +30,14 @@ const short = (sha: string) => sha.slice(0, 12);
  *  a release names, counted on the project's release record (ISS-900), never at a commit. */
 export type LandedCriterion =
   | { criterion: number; counts: true; at: string; carried?: string; release?: string }
-  | { criterion: number; counts: false; why: string };
+  | {
+      criterion: number;
+      counts: false;
+      why: string;
+      /** Set on a live-only criterion no release holding the issue has shipped yet
+       *  (`weighLiveOnly`, ISS-957): it is owed on that release once it ships, and holds none. */
+      afterRelease?: true;
+    };
 
 /**
  * The whole commit a verdict was judged at, or why it names none, by the one reading coverage shares
@@ -94,9 +106,13 @@ export function weighOnLanded(
   descent?: ReadonlyMap<string, Carriage>,
   /** The project's release record (`issues/criteria-standing.ts`); absent, it keeps none. */
   released: ReleasedLine | null = null,
+  /** The issue weighed, which a release must hold for a pass on it to count (ISS-957); null, none is asked. */
+  issueId: string | null = null,
 ): LandedCriterion {
-  // on a project weighed on its release record, a pass on the release it says is live counts too
-  const onLive = released?.live ? `, or one judged on release ${released.live.version}` : '';
+  // on a project weighed on its release record, a pass on the live release counts too, once that
+  // release holds the issue: one that predates the change never does (ISS-957)
+  const live = issueId === null ? (released?.live?.version ?? null) : liveRelease(released, issueId);
+  const onLive = live ? `, or one judged on release ${live}` : '';
   const no = (why: string): LandedCriterion => ({
     criterion,
     counts: false,
@@ -105,7 +121,9 @@ export function weighOnLanded(
   if (!verdict) return no('no verdict was recorded for it');
   if (verdict.unverified) return no(verdict.unverified);
   if (!verdictEarns(verdict.verdict)) return no(`its verdict is \`${verdict.verdict}\``);
-  if (verdict.at?.kind === 'release') return onRelease(criterion, verdict.at.value, released, no);
+  if (verdict.at?.kind === 'release') {
+    return onRelease(criterion, verdict.at.value, released, no, issueId);
+  }
   const judged = judgedCommit(verdict, judgedOn);
   if ('why' in judged) return no(judged.why);
   if (judged.sha !== build.toLowerCase()) {
@@ -154,9 +172,16 @@ function onRelease(
   version: string,
   released: ReleasedLine | null,
   no: (why: string) => LandedCriterion,
+  issueId: string | null = null,
 ): LandedCriterion {
   const read = readOnRelease(version, released);
   if (read.notCounted !== null) return no(read.notCounted);
+  // a release recorded before the issue landed names none of it, so its pass judged another build
+  if (issueId !== null && releaseHoldsIssue(released, version, issueId) === false) {
+    return no(
+      `it was judged on release ${version}, whose record does not hold this issue: the change landed after it`,
+    );
+  }
   const at = `release ${version}`;
   return read.countedAs
     ? { criterion, counts: true, at, release: version, carried: read.countedAs }
@@ -208,4 +233,51 @@ export function heldWhereNoneOwed(
       },
     ];
   });
+}
+
+/** The live release, where its record holds `issueId`; the live one where the line lists no issues. */
+function liveRelease(released: ReleasedLine | null, issueId: string): string | null {
+  const live = released?.live?.version ?? null;
+  if (live === null || releaseHoldsIssue(released, live, issueId) === null) return live;
+  return liveReleaseHolding(released, issueId);
+}
+
+/**
+ * One criterion only the running product shows, on a project whose production names no commit it
+ * serves (ISS-957): one the issue's design classes `observable`. At its landing the only honest check
+ * is a local build on stub data, so a commit there does not earn it and it holds no release: it is
+ * owed on the release that carries the issue once that ships (`afterRelease`), as a `release` verdict
+ * on it, read by the one rule every door reads (`onRelease`). Once that release ships it is owed like
+ * any other criterion, naming the release to judge it on.
+ */
+export function weighLiveOnly(
+  { criterion, verdict }: StandingCriterion,
+  released: ReleasedLine,
+  issueId: string,
+): LandedCriterion {
+  const live = liveReleaseHolding(released, issueId);
+  // a recorded fail is everyone's evidence: it holds the release, and its finding routes as any other
+  const failed = verdict?.verdict === 'fail';
+  const owed = (why: string): LandedCriterion =>
+    live || failed
+      ? {
+          criterion,
+          counts: false,
+          why: live
+            ? `${why}; it is judged on the running product: judge it on release ${live}, naming \`{ kind: 'release', version: '${live}' }\``
+            : `${why}; it is judged on the running product, and a recorded fail holds the release that would carry it`,
+        }
+      : {
+          criterion,
+          counts: false,
+          why: `${why}; it is judged on the running product, after the release that carries this issue ships`,
+          afterRelease: true,
+        };
+  if (!verdict) return owed('no verdict was recorded for it');
+  if (verdict.unverified) return owed(verdict.unverified);
+  if (!verdictEarns(verdict.verdict)) return owed(`its verdict is \`${verdict.verdict}\``);
+  if (verdict.at?.kind !== 'release') {
+    return owed('it was judged at a build, not on a shipped release');
+  }
+  return onRelease(criterion, verdict.at.value, released, owed, issueId);
 }

@@ -6,10 +6,15 @@
 // on version V counts while V, or a later release the record carries, is what the record says is
 // live. Read from Forge's own rows alone: no probe, host or box is asked, and no commit is compared.
 
-import { productionOf, readProjectDocument } from '../project-config/index.js';
+import {
+  type NamedEnvironment,
+  productionOf,
+  readProjectDocument,
+} from '../project-config/index.js';
 import { releaseProbesOf } from './channel.js';
 import { compareReleaseVersions, parseReleaseVersion } from './version.js';
 import { givenReleaseVersion, readStampedReleases, servingRelease } from './version-store.js';
+import { issueIdsOf } from './versions.js';
 
 /** One shipped release as the line reads it (`requirements/standing-identity.ts:ReleasedLine`). */
 interface ShippedOnLine {
@@ -18,6 +23,8 @@ interface ShippedOnLine {
   carried: boolean;
   /** Every other shipped version it carries itself, by the same rule. */
   carries: readonly string[];
+  /** The issues its own record names (`versions.ts:issueIdsOf`), which it holds (ISS-957). */
+  issueIds: readonly string[];
 }
 
 /** What the requirement coverage reads of the line (`requirements/standing-identity.ts:ReleasedLine`). */
@@ -40,16 +47,25 @@ export interface ReleasedLineRead {
  * lower version (a backfill, or a hotfix on an older line) never displaces it, and nothing says the
  * live one carries it, so it is not read as carried.
  */
+/**
+ * Why `production` names no commit it serves, the reason its releases are its agent's record by
+ * version; null where a probe reads the commit it serves. The one reading `releasedLineOf` and the
+ * release's criteria basis (`criteria-basis.ts:criteriaBasisOf`, ISS-957) share.
+ */
+export function servedCommitUnnamed(production: NamedEnvironment): string | null {
+  const { verify, verifySource } = releaseProbesOf(production);
+  if (verify) return null;
+  return verifySource === 'declared-unusable'
+    ? `its production \`${production.name}\` declares runtime probes that each identify an artifact, never the source, so no commit is read for what it serves: its releases are its agent's record by version`
+    : `its production \`${production.name}\` declares no source probe, so no commit is read for what it serves: its releases are its agent's record by version`;
+}
+
 export async function releasedLineOf(projectId: string): Promise<ReleasedLineRead | null> {
   const held = await readProjectDocument(projectId);
   const production = held ? productionOf(held.document) : null;
   if (!production) return null;
-  const { verify, verifySource } = releaseProbesOf(production);
-  if (verify) return null;
-  const why =
-    verifySource === 'declared-unusable'
-      ? `its production \`${production.name}\` declares runtime probes that each identify an artifact, never the source, so no commit is read for what it serves: its releases are its agent's record by version`
-      : `its production \`${production.name}\` declares no source probe, so no commit is read for what it serves: its releases are its agent's record by version`;
+  const why = servedCommitUnnamed(production);
+  if (why === null) return null;
   const shipped = (await readStampedReleases(projectId)).map((r) => ({
     ...r,
     parsed: parseReleaseVersion(r.version),
@@ -72,7 +88,12 @@ export async function releasedLineOf(projectId: string): Promise<ReleasedLineRea
     shipped: new Map(
       shipped.map((v) => [
         v.version,
-        { at: v.at, carried: carries(v, live), carries: carriedBy(v) },
+        {
+          at: v.at,
+          carried: carries(v, live),
+          carries: carriedBy(v),
+          issueIds: issueIdsOf(v.metadata),
+        },
       ]),
     ),
   };

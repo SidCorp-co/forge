@@ -1,6 +1,7 @@
 // forge-core-61 — one issue's criteria weighed as the gate that will decide it weighs them, for the
 // criteria read (`issues/criteria-weighing.ts`). It calls the release's own weighings and no other:
-// a promotion project at the landing (`criteria-basis.ts:landingCriteriaReports`), any other at what
+// a promotion project, or one whose production names no commit it serves (ISS-957), at the landing
+// (`criteria-basis.ts:landingCriteriaReports`), any other at what
 // is served (`issues/criteria-verdicts.ts:unearnedCriteriaReports`, the judged-on environment until
 // the issue is released). Where no basis can be computed, every criterion says why.
 
@@ -24,13 +25,25 @@ async function atLanding(
   if (!report) return { kind: 'none', why: 'the landing weighing returned nothing for this issue' };
   const { landsOn, deploysFrom } = basis;
   const weighedOn = { basis: 'landing', landing: report.landing, landsOn, deploysFrom } as const;
-  const where = `this project's work lands on \`${landsOn}\` and production deploys \`${deploysFrom}\` through a promotion, so a criterion is earned at the landing`;
+  const where =
+    basis.why === 'promotion'
+      ? `this project's work lands on \`${landsOn}\` and production deploys \`${deploysFrom}\` through a promotion, so a criterion is earned at the landing`
+      : "this project's production names no commit it serves, and the release its record says is live cannot hold a change that has not shipped, so a criterion is earned at the landing or on a release that holds it";
   const criteria = new Map<number, CriterionWeighing>();
   for (const { criterion, why } of report.unearned) {
     criteria.set(criterion, {
       earned: false,
       standing: null,
       reason: `${why}; ${where}`,
+      weighedOn,
+    });
+  }
+  // live-only: it holds no release, and is owed on the one that carries the issue once it ships
+  for (const { criterion, why } of report.afterRelease) {
+    criteria.set(criterion, {
+      earned: false,
+      standing: null,
+      reason: `${why}; it holds no release`,
       weighedOn,
     });
   }

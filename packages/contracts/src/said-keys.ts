@@ -984,6 +984,9 @@ export const SAID = {
 		vars: { codes: "key", keys: "key" },
 	},
 	"standing.act.fixSchedule": { en: "fix a failing schedule" },
+	"standing.act.judgeAfterRelease": {
+		en: "judge them on the release once it ships",
+	},
 	"standing.act.judgeCriteria": { en: "judge the criteria still owed" },
 	"standing.act.judgeOn": {
 		en: "judge {codes} on {keys}",
@@ -1133,6 +1136,10 @@ export const SAID = {
 		en: "Follows {names} from now on; wording and criteria stay.",
 		vars: { names: "saidSeries" },
 	},
+	"standing.gate.afterRelease": {
+		en: "{owes}; judged after this release",
+		vars: { owes: "saidList" },
+	},
 	"standing.gate.claimed": {
 		en: "{subject} {verb} not at the gate, or another release holds {obj}.",
 		vars: { subject: "said", verb: "agreement", obj: "agreement" },
@@ -1204,6 +1211,7 @@ export const SAID = {
 		en: "Attempt {n} of {v} never said what carries {v}; say it first.",
 		vars: { v: "version", n: "count" },
 	},
+	"standing.gate.title.afterRelease": { en: "Judged after release" },
 	"standing.gate.title.claimed": { en: "Issues already claimed" },
 	"standing.gate.title.empty": { en: "Gate empty" },
 	"standing.gate.title.heldBack": { en: "Some issues held back" },
