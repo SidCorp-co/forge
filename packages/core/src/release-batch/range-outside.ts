@@ -127,20 +127,20 @@ export async function readOutsideLandings(
   return placeOutside(outside, base, head, ask);
 }
 
-/** The unchecked gate issues a range reading kept; null where it was kept before ISS-962 checked any. */
+/**
+ * The unchecked gate issues a range reading kept; null where it was kept before ISS-962 checked any,
+ * or holds an entry that is not one, which says the same: the list cannot be trusted whole.
+ */
 export function uncheckedOf(value: unknown): ReleaseRangeUnchecked[] | null {
   if (!Array.isArray(value)) return null;
-  return value.flatMap((u) =>
-    typeof u?.issueKey === 'string' && typeof u?.why === 'string'
-      ? [
-          {
-            issueKey: u.issueKey as string,
-            commit: typeof u.commit === 'string' ? (u.commit as string) : null,
-            why: u.why as string,
-          },
-        ]
-      : [],
-  );
+  const out: ReleaseRangeUnchecked[] = [];
+  for (const u of value) {
+    const { issueKey, commit, why } = (u ?? {}) as Record<string, unknown>;
+    if (typeof issueKey !== 'string' || typeof why !== 'string') return null;
+    if (commit !== null && typeof commit !== 'string') return null;
+    out.push({ issueKey, commit, why });
+  }
+  return out;
 }
 
 /** The refusal's sentence: the issues the head carries, and what the run does instead. */

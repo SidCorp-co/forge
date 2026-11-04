@@ -294,7 +294,8 @@ export async function shippedBetween(
       contracts,
       dependencies,
       settings,
-      unchecked: [],
+      // the files alone place no issue: `recordRange` weighs the gate outside the roster (ISS-962)
+      unchecked: null,
     };
   } catch (err) {
     return {

@@ -166,6 +166,7 @@ describe('what a release range ships, read from the repository (BC-7, BC-9)', ()
       contracts: [],
       dependencies: [],
       settings: [],
+      unchecked: null,
     });
   });
 
