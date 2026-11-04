@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.485] - 2026-11-04
+
+No issue asks a person to act on it; workspace Activity tab shows masters' work
+
+### Added
+
+- **A workspace Activity tab shows what each project's master works now and next, live.** Counts, master state and release progress per project, details on open; an in-progress issue's step now follows its plan, merge check and merge mark.
+
+### Changed
+
+- **No issue asks a person to act on it.** The Issues list has no Needs you group, and the issue page no run, pause, reopen or answer. The master admits and resumes issues; questions are answered on their item.
+
 ## [0.4.0-dev.484] - 2026-11-04
 
 Release runs see each roster issue's landing commit and cut a head holding it
