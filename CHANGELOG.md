@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.482] - 2026-11-04
+
+Bot rooms follow their binding and catch up once on what was missed
+
+### Fixed
+
+- **A released room reads as released, and misses no message.** A switched-off binding's room leaves its old project's rooms, turns and channels reads; a newly placed room is handed what people wrote in the last day, once.
+
 ## [0.4.0-dev.481] - 2026-11-04
 
 The in-app assistant's tools and the demo world work again

@@ -1,1 +1,0 @@
-**A released room reads as released, and misses no message.** A switched-off binding's room leaves its old project's rooms, turns and channels reads; a newly placed room is handed what people wrote in the last day, once.
