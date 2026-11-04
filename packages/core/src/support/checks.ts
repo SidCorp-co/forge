@@ -17,7 +17,7 @@ import { no, type Outcome } from './outcome.js';
 import { checkThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
-import { postTopLevel, scrubbedForRoom } from './thread.js';
+import { postForTopLevel, scrubbedForRoom, topLevelThreadOf } from './thread.js';
 
 /** `YYYY-MM-DD` and `HH:MM` of `now` in UTC. */
 function utcParts(now: Date): { day: string; time: string } {
@@ -141,6 +141,10 @@ export async function checkResult(
       ? null
       : await screenForThread(room, null, input.check, finding, door, 'check_result');
   if (admitted && !admitted.ok) return admitted;
+  // where the finding lands, read before the firing's one result is claimed: a shared operations
+  // room recording no project thread refuses, and the check can still be answered (ISS-933)
+  const to = admitted ? await topLevelThreadOf(room) : null;
+  if (to && !to.ok) return to;
   const claimed = await insertAction({
     roomId: room.id,
     projectId: room.projectId,
@@ -158,11 +162,14 @@ export async function checkResult(
     );
   }
   if (!admitted) return { ok: true, value: { posted: null } };
-  const posted = await postTopLevel({
+  const out = await postForTopLevel({
     room,
     text: admitted.value.text,
     proof: admitted.value.proof,
+    to: to?.ok ? to.value : null,
   });
+  if (!out.ok) return out;
+  const posted = out.value;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,

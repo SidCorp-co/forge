@@ -8,6 +8,7 @@ import { appendMessages, type ConversationRow, openConversation } from '../conve
 import {
   FIXED_REPLY_CONSTANT,
   namespaceFromServerUrl,
+  projectThreadsOf,
   type ReplySendProof,
   type RocketChatButtonAttachment,
   type RocketChatRestAuth,
@@ -15,6 +16,8 @@ import {
   sendFixedReply,
 } from '../integrations/rocketchat/index.js';
 import { activeSupportApi, credentialValuesOf } from '../integrations/support-api/index.js';
+import { findProjectSlugs } from '../projects/index.js';
+import { no, type Outcome } from './outcome.js';
 import { supportVenueId } from './rules.js';
 import type { RoomRow } from './store.js';
 
@@ -124,10 +127,71 @@ export async function noteInThread(conversationId: string, line: string): Promis
 export const TOP_LEVEL = 'top';
 
 /**
- * Post one line at the channel's top level, outside any thread (REQ-75 r6 BC-39): only an
- * announcement does, screened by the caller. Recorded on the channel's top-level conversation.
+ * The project's own thread in an operations room (ISS-934), as the room's binding records it in
+ * `operations.threads[rid][slug]`; null for any other room, or where none is recorded.
  */
-export async function postTopLevel(input: {
+export async function projectThreadOfRoom(room: RoomRow): Promise<string | null> {
+  if (room.kind !== 'operations') return null;
+  const slug = (await findProjectSlugs([room.projectId])).get(room.projectId);
+  if (!slug) return null;
+  const recorded = await projectThreadsOf(room.projectId, slug);
+  return recorded.find((t) => t.bindingId === room.bindingId && t.rid === room.rid)?.thread ?? null;
+}
+
+/**
+ * Where a line bound for a room's top level lands (ISS-933, ISS-934): an operations room recording
+ * the project's own thread takes it there; one every project of the organization shares (`forge`
+ * scope) and recording none takes it nowhere, refused by name with the binding key that records it;
+ * any other room at its top level (null).
+ */
+export async function topLevelThreadOf(room: RoomRow): Promise<Outcome<string | null>> {
+  const thread = await projectThreadOfRoom(room);
+  if (thread) return { ok: true, value: thread };
+  if (room.kind !== 'operations' || room.scope !== 'forge') return { ok: true, value: null };
+  const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
+  return no(
+    'SUPPORT_PROJECT_THREAD_UNRECORDED',
+    '/thread',
+    `${room.rid} is an operations room every project of the organization shares, one thread per project, and its binding records no thread for ${slug}, so the post would land at its top level. A project admin records the project's thread as \`operations.threads["${room.rid}"]["${slug}"]\` on binding ${room.bindingId} (PUT /api/projects/${room.projectId}/bindings/${room.bindingId}). Nothing was posted.`,
+  );
+}
+
+/**
+ * Post one line for a room's top level (REQ-75 r6 BC-39), screened by the caller: where
+ * {@link topLevelThreadOf} says, so a shared operations room takes it only in the project's own
+ * thread. `thread` is that thread, or null for the top level itself. Resolve `to` first where the
+ * caller claims something before posting, so a refusal leaves nothing claimed.
+ */
+export async function postForTopLevel(input: {
+  room: RoomRow;
+  text: string;
+  proof: ReplySendProof;
+  to?: string | null;
+}): Promise<Outcome<{ messageId: string | null; conversationId: string; thread: string | null }>> {
+  let thread = input.to;
+  if (thread === undefined) {
+    const where = await topLevelThreadOf(input.room);
+    if (!where.ok) return where;
+    thread = where.value;
+  }
+  if (thread) {
+    const posted = await postInThread({
+      room: input.room,
+      thread,
+      text: input.text,
+      proof: input.proof,
+    });
+    return { ok: true, value: { ...posted, thread } };
+  }
+  const posted = await postTopLevel(input);
+  return { ok: true, value: { ...posted, thread: null } };
+}
+
+/**
+ * Post one line at the channel's top level, outside any thread (REQ-75 r6 BC-39), reached only
+ * through {@link postForTopLevel}. Recorded on the channel's top-level conversation.
+ */
+async function postTopLevel(input: {
   room: RoomRow;
   text: string;
   proof: ReplySendProof;

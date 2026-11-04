@@ -23,7 +23,7 @@ import type { Refusal } from './refusals.js';
 import { questionThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
 import { type ActionRow, insertAction, type RoomRow, roomsOfProject } from './store.js';
-import { postTopLevel, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
+import { postForTopLevel, roomAuth, scrubbedForRoom, TOP_LEVEL } from './thread.js';
 
 const ANSWER = 'answer_question';
 const ASK = 'ask_owner';
@@ -303,8 +303,17 @@ export async function dayThreadFor(
   const opener = await scrubbedForRoom(room, input.opener);
   const admitted = await screenForThread(room, null, TOP_LEVEL, opener, 'operations-reply', ASK);
   if (!admitted.ok) return admitted;
-  const root = await postTopLevel({ room, text: admitted.value.text, proof: admitted.value.proof });
-  if (!root.messageId) {
+  // a shared operations room opens the day inside the project's own thread, which is then the
+  // day's thread: a chat thread does not nest (ISS-933)
+  const out = await postForTopLevel({
+    room,
+    text: admitted.value.text,
+    proof: admitted.value.proof,
+  });
+  if (!out.ok) return out;
+  const root = out.value;
+  const dayThread = root.thread ?? root.messageId;
+  if (!dayThread) {
     throw new Error(
       `support: the line opening today's questions thread in ${room.rid} named no message id`,
     );
@@ -313,14 +322,14 @@ export async function dayThreadFor(
     roomId: room.id,
     projectId: room.projectId,
     conversationId: root.conversationId,
-    thread: root.messageId,
+    thread: dayThread,
     kind: 'operation',
     actorKind: 'session',
     tool: DAY_THREAD,
     input: { day, text: opener },
     externalId: `${DAY_THREAD}:${day}`,
   });
-  return { ok: true, value: { thread: root.messageId, forgeQuestion: handed.questionId } };
+  return { ok: true, value: { thread: dayThread, forgeQuestion: handed.questionId } };
 }
 
 /** The asks this room put to the owner for one Forge question, and whether each was answered. */

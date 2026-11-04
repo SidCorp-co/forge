@@ -8,9 +8,7 @@
 // binding records, never at its top level (ISS-934).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
-import { projectThreadsOf } from '../integrations/rocketchat/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { findProjectSlugs } from '../projects/index.js';
 import { readersOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { boundButUndeclared, declareSupportRooms, roomIsBound } from './rooms.js';
@@ -22,7 +20,14 @@ import {
   threadConversation,
   threadMembers,
 } from './store.js';
-import { postInThread, postTopLevel, scrubbedForRoom, TOP_LEVEL } from './thread.js';
+import {
+  postForTopLevel,
+  postInThread,
+  projectThreadOfRoom,
+  scrubbedForRoom,
+  TOP_LEVEL,
+  topLevelThreadOf,
+} from './thread.js';
 
 const TOOL = 'master_post';
 
@@ -175,73 +180,57 @@ async function postInAskersThread(
 }
 
 /**
- * The project's own thread in an operations room (ISS-934), as the room's binding records it in
- * `operations.threads`; null for any other room, or where none is recorded.
+ * The master's post where a room's top level would take it (`thread.ts:topLevelThreadOf`, `to`):
+ * its project's own thread of an operations room recording one, else the top level; screened as a
+ * top-level post is, since everyone in the room reads it, and recorded as the master's.
  */
-async function projectThreadIn(projectId: string, at: Postable): Promise<string | null> {
-  if (at.room.kind !== 'operations') return null;
-  const slug = (await findProjectSlugs([projectId])).get(projectId);
-  if (!slug) return null;
-  const recorded = await projectThreadsOf(projectId, slug);
-  return (
-    recorded.find((t) => t.bindingId === at.room.bindingId && t.rid === at.room.rid)?.thread ?? null
-  );
-}
-
-/**
- * Why a master posts nothing in an operations room every project of the organization shares, one
- * thread per project, while its binding records none for this project: never at its top level.
- */
-async function unrecordedRefusal(projectId: string, room: RoomRow): Promise<Outcome<never>> {
-  const slug = (await findProjectSlugs([projectId])).get(projectId) ?? projectId;
-  return no(
-    'SUPPORT_PROJECT_THREAD_UNRECORDED',
-    '/thread',
-    `${room.rid} is an operations room every project of the organization shares, one thread per project, and its binding records no thread for ${slug}, so the post would land at its top level. A project admin records the project's thread as \`operations.threads["${room.rid}"]["${slug}"]\` on binding ${room.bindingId} (PUT /api/projects/${room.projectId}/bindings/${room.bindingId}). Nothing was posted.`,
-  );
-}
-
-/** The master's post in its project's own thread of an operations room, screened as a top-level post is. */
-async function postInProjectThread(
+async function postAtTop(
   actor: { userId: string; projectId: string },
-  at: Postable,
-  thread: string,
+  room: RoomRow,
   given: string,
+  to: string | null,
 ): Promise<Posted> {
-  const room = at.room;
   const text = await scrubbedForRoom(room, given);
-  const admitted = await screenForThread(room, null, thread, text, 'operations-reply', TOOL);
+  const admitted = await screenForThread(room, null, TOP_LEVEL, text, 'operations-reply', TOOL);
   if (!admitted.ok) return admitted;
-  const posted = await postInThread({
+  const out = await postForTopLevel({
     room,
-    thread,
     text: admitted.value.text,
     proof: admitted.value.proof,
+    to,
   });
+  if (!out.ok) return out;
+  const posted = out.value;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
     conversationId: posted.conversationId,
-    thread,
+    thread: posted.thread ?? posted.messageId ?? TOP_LEVEL,
     kind: 'announced',
     actorKind: 'session',
     tool: TOOL,
     input: { text, by: actor.userId },
     externalId: posted.messageId,
   });
-  return { ok: true, value: { rid: room.rid, messageId: posted.messageId, thread } };
+  return {
+    ok: true,
+    value: {
+      rid: room.rid,
+      messageId: posted.messageId,
+      ...(posted.thread ? { thread: posted.thread } : {}),
+    },
+  };
 }
 
 /** The room of the named ones whose recorded project thread is `thread`, or null. */
 async function roomRecording(
-  projectId: string,
   rooms: readonly Postable[],
   rid: string | undefined,
   thread: string,
 ): Promise<Postable | null> {
   for (const at of rooms) {
     if (rid && at.room.rid !== rid) continue;
-    if ((await projectThreadIn(projectId, at)) === thread) return at;
+    if ((await projectThreadOfRoom(at.room)) === thread) return at;
   }
   return null;
 }
@@ -258,36 +247,13 @@ export async function postAsMaster(
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
   const rooms = await postableRoomsNaming(actor.projectId, input.rid);
   if (input.thread) {
-    const own = await roomRecording(actor.projectId, rooms, input.rid, input.thread);
-    if (own) return postInProjectThread(actor, own, input.thread, input.text);
+    const own = await roomRecording(rooms, input.rid, input.thread);
+    if (own) return postAtTop(actor, own.room, input.text, input.thread);
     return postInAskersThread(actor, rooms, { ...input, thread: input.thread });
   }
   const chosen = topLevelRoomOf(rooms, input.rid);
   if (!chosen.ok) return chosen;
-  const thread = await projectThreadIn(actor.projectId, chosen.value);
-  if (thread) return postInProjectThread(actor, chosen.value, thread, input.text);
-  if (chosen.value.room.kind === 'operations' && chosen.value.room.scope === 'forge') {
-    return unrecordedRefusal(actor.projectId, chosen.value.room);
-  }
-  const room = chosen.value.room;
-  const text = await scrubbedForRoom(room, input.text);
-  const admitted = await screenForThread(room, null, TOP_LEVEL, text, 'operations-reply', TOOL);
-  if (!admitted.ok) return admitted;
-  const posted = await postTopLevel({
-    room,
-    text: admitted.value.text,
-    proof: admitted.value.proof,
-  });
-  await insertAction({
-    roomId: room.id,
-    projectId: room.projectId,
-    conversationId: posted.conversationId,
-    thread: posted.messageId ?? TOP_LEVEL,
-    kind: 'announced',
-    actorKind: 'session',
-    tool: TOOL,
-    input: { text, by: actor.userId },
-    externalId: posted.messageId,
-  });
-  return { ok: true, value: { rid: room.rid, messageId: posted.messageId } };
+  const to = await topLevelThreadOf(chosen.value.room);
+  if (!to.ok) return to;
+  return postAtTop(actor, chosen.value.room, input.text, to.value);
 }

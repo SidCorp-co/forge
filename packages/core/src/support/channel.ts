@@ -35,7 +35,7 @@ import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { screenForThread } from './screen.js';
 import { insertAction, latestThreadWriter, type RoomRow } from './store.js';
-import { postInThread, postTopLevel, scrubbedForRoom, TOP_LEVEL } from './thread.js';
+import { postForTopLevel, postInThread, scrubbedForRoom, TOP_LEVEL } from './thread.js';
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/;
 const PHONE_RUN = /\+?\(?\d[\d\s().-]{7,}\d/g;
@@ -435,16 +435,19 @@ export async function announce(
   const text = await scrubbedForRoom(room, input.text);
   const admitted = await screenForThread(room, null, TOP_LEVEL, text, 'support-reply', 'announce');
   if (!admitted.ok) return admitted;
-  const posted = await postTopLevel({
+  // a shared operations room takes it only in the project's own thread (ISS-933)
+  const out = await postForTopLevel({
     room,
     text: admitted.value.text,
     proof: admitted.value.proof,
   });
+  if (!out.ok) return out;
+  const posted = out.value;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
     conversationId: posted.conversationId,
-    thread: posted.messageId ?? TOP_LEVEL,
+    thread: posted.thread ?? posted.messageId ?? TOP_LEVEL,
     kind: 'announced',
     actorKind: 'session',
     input: { text },

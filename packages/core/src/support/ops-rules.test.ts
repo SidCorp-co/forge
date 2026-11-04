@@ -1,6 +1,7 @@
 import { chatRoleSchema, operationsRoomConfigSchema } from '@forge/contracts/support-operations';
 import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
+import { answersOfConfig } from './grants.js';
 import { isPublicAddress, pageText, readPublicPage } from './ops-research.js';
 import { grantRefusal } from './ops-role.js';
 
@@ -132,5 +133,25 @@ describe('research reads only a public page (REQ-75 BC-24)', () => {
         '<html><head><style>p{}</style><script>alert(1)</script></head><body><h1>Title</h1><p>One &amp; two</p></body></html>',
       ),
     ).toBe('Title\nOne & two');
+  });
+});
+
+// ISS-933: an operations room is where people and other bots talk, so it answers only when addressed
+describe('which messages reach a room’s session', () => {
+  const ops = { rid: 'r1', kind: 'operations' as const };
+  it('answers an operations room’s mentions only, unless its binding says every message', () => {
+    expect(answersOfConfig(ops, null, { scope: 'forge' })).toBe('mentions');
+    expect(answersOfConfig(ops, null, null)).toBe('mentions');
+    expect(answersOfConfig(ops, null, { scope: 'forge', answers: 'every-message' })).toBe(
+      'every-message',
+    );
+  });
+
+  it('keeps every message for a support group and a channel agent that name nothing', () => {
+    expect(answersOfConfig({ rid: 'r1', kind: 'support' }, null)).toBe('every-message');
+    expect(answersOfConfig({ rid: 'r1', kind: 'agent' }, {})).toBe('every-message');
+    expect(answersOfConfig({ rid: 'r1', kind: 'support' }, { answers: 'mentions' })).toBe(
+      'mentions',
+    );
   });
 });

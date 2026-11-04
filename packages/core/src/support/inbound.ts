@@ -97,9 +97,10 @@ export async function handleSupportMessage(input: {
   });
 
   // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5);
-  // a channel agent's group may say so for itself (ISS-874)
+  // a channel agent's group may say so for itself (ISS-874); an operations room answers only when
+  // addressed unless its binding says otherwise (ISS-933)
   if (
-    answersOfConfig(m, config) === 'mentions' &&
+    answersOfConfig(room, config, route.operations) === 'mentions' &&
     !m.mentions.includes(input.ac.botUserId) &&
     !ownerAnswer
   ) {

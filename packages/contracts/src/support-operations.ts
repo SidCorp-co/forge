@@ -9,7 +9,11 @@
 import { z } from "zod";
 import { ISSUE_STATUSES } from "./issue-machine.js";
 import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
-import { SUPPORT_RECORD_KINDS, supportThreadIdSchema } from "./support.js";
+import {
+	SUPPORT_ANSWERS,
+	SUPPORT_RECORD_KINDS,
+	supportThreadIdSchema,
+} from "./support.js";
 
 /**
  * What a role may be granted. `read` the projects, issues, runners, masters and releases of the
@@ -65,6 +69,12 @@ export type OperationsScope = (typeof OPERATIONS_SCOPES)[number];
  */
 export const operationsRoomConfigSchema = z.strictObject({
 	scope: z.enum(OPERATIONS_SCOPES),
+	/**
+	 * Which messages reach the room's session (ISS-933): `mentions` when absent, so in a room people
+	 * and other bots talk in, only a message naming the bot, or the owner's answer to a question the
+	 * session asked, is handed on; every other one is kept as context.
+	 */
+	answers: z.enum(SUPPORT_ANSWERS).optional(),
 	/**
 	 * Each project's own thread in a room the binding names (ISS-934), by rid and then by project
 	 * slug: a room the projects of its scope share holds one thread per project, and a master's post
