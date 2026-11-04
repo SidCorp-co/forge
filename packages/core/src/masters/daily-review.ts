@@ -15,6 +15,12 @@ import { masterSilentSql } from '../devices/index.js';
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
 
+/** The project's own thread in an operations room, as the room's binding records it (ISS-934). */
+export interface ProjectThreadRef {
+  rid: string;
+  thread: string;
+}
+
 /** What one daily review fire came to. */
 export type DailyReviewDelivery =
   | { kind: 'delivered'; sessionId: string; published: boolean }
@@ -53,6 +59,7 @@ export function dailyReviewBrief(args: {
   slug: string;
   since: Date;
   until: Date;
+  threads: readonly ProjectThreadRef[];
 }): string {
   const at = (path: string) => `/api/projects/${args.projectId}${path}`;
   return [
@@ -62,8 +69,21 @@ export function dailyReviewBrief(args: {
     "Audit (owner, 2026-11-02, product-delivery-audit-loop): read the day's channel conversations and how each ended (who asked, what the agent answered, what was left open or answered wrong), turn what you find into product items (feedback, a requirement revision) folded into the next batch, and raise a decision only the owner can take in this project's Forge-Communicate thread, never in a room its users read.",
     `Facts: ${at('/releases')} · ${at('/runs/standing?scope=finished')} · ${at('/runs/standing?scope=live')} · ${at('/issues/standing?scope=open')} · ${at('/integrations/sentry/issues')} · ${at('/support/rooms')} · ${at('/support/turns')} · ${at('/support/rooms/<roomId>/actions')}.`,
     `Learning (ISS-867): say what the day taught, the lessons approved and the approved lessons whose mistake was made again, from ${at(`/lessons/learned?since=${args.since.toISOString()}&until=${args.until.toISOString()}`)}; read a lesson by its slug at ${at('/knowledge/<slug>')}. A repeat is a lesson an agent did not apply: find why (not read, unclear, wrongly scoped) and fix that, or report a confusion on it.`,
-    `Post: POST ${at('/support/master-posts')} { text, rid }, rid naming the Forge-Communicate room, never a room whose readers are users.`,
+    postLine(at('/support/master-posts'), args.slug, args.threads),
   ].join('\n');
+}
+
+/**
+ * Where the review is posted (ISS-934): the project's own thread in the Forge-Communicate room, as
+ * that room's binding records it in `operations.threads`. With none recorded, a post there is refused
+ * by name, so the line says where to record one first.
+ */
+function postLine(door: string, slug: string, threads: readonly ProjectThreadRef[]): string {
+  if (threads.length === 0) {
+    return `Post: no Forge-Communicate thread is recorded for ${slug}, so a post there is refused SUPPORT_PROJECT_THREAD_UNRECORDED and never lands at its top level: record it first as \`operations.threads["<rid>"]["${slug}"]\` on that room's binding, then POST ${door} { text, rid }. Never post in a room whose readers are users.`;
+  }
+  const where = threads.map((t) => `thread ${t.thread} of room ${t.rid}`).join(', or ');
+  return `Post: POST ${door} { text, rid }, rid naming the Forge-Communicate room: it lands in this project's own ${where}, never at the room's top level and never in a room whose readers are users.`;
 }
 
 /** Hand the project's master its review brief, or say by name why no master took it. */
@@ -72,6 +92,7 @@ export async function deliverDailyReview(args: {
   slug: string;
   fireId: string;
   at: Date;
+  threads: readonly ProjectThreadRef[];
 }): Promise<DailyReviewDelivery> {
   const masters = await liveMasters(args.projectId);
   const master = masters[0];
@@ -98,6 +119,7 @@ export async function deliverDailyReview(args: {
       slug: args.slug,
       since: new Date(args.at.getTime() - WINDOW_MS),
       until: args.at,
+      threads: args.threads,
     }),
   });
   return { kind: 'delivered', sessionId: master.id, published };

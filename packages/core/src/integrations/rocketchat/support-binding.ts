@@ -82,6 +82,8 @@ export async function settleSupportRoom(args: {
       ],
     };
   }
+  const threadsRefused = projectThreadRefusals(args.config, answered);
+  if (threadsRefused.length > 0) return { ok: false, refusals: threadsRefused };
   const roomsRefused = roomOverrideRefusals(args.config, { support, answered });
   if (roomsRefused.length > 0) return { ok: false, refusals: roomsRefused };
   const checksRefused = checkRefusals(args.config, { support, agent, answered });
@@ -104,6 +106,28 @@ export async function settleSupportRoom(args: {
     };
   }
   return { ok: true, config: args.config };
+}
+
+/**
+ * Each project's thread in an operations room (ISS-934) is kept per room the binding names: a thread
+ * of a room it does not name would take posts nowhere.
+ */
+function projectThreadRefusals(
+  config: Record<string, unknown>,
+  answered: readonly unknown[],
+): BindingTargetRefusal[] {
+  const threads = (config.operations as { threads?: Record<string, unknown> } | null)?.threads;
+  return Object.keys(threads ?? {}).flatMap((rid) =>
+    answered.includes(rid)
+      ? []
+      : [
+          {
+            code: 'SUPPORT_ROOM_OVERRIDE_UNKNOWN' as const,
+            path: `/operations/threads/${rid}`,
+            detail: `group ${rid} is no room this binding names, so a project's thread there would take no post; name one of ${answered.join(', ') || 'the rooms in `rids`'}`,
+          },
+        ],
+  );
 }
 
 /**

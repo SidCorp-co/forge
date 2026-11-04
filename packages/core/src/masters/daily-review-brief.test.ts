@@ -11,6 +11,14 @@ const brief = dailyReviewBrief({
   slug: 'adminhub-api',
   since: new Date('2026-11-01T01:00:00Z'),
   until: new Date('2026-11-02T01:00:00Z'),
+  threads: [{ rid: 'rid-communicate', thread: 'XQHEiGjSv8HTytmpY' }],
+});
+const unthreaded = dailyReviewBrief({
+  projectId: 'p-1',
+  slug: 'adminhub-api',
+  since: new Date('2026-11-01T01:00:00Z'),
+  until: new Date('2026-11-02T01:00:00Z'),
+  threads: [],
 });
 
 // owner ruling 2026-11-02 (product-delivery-audit-loop): the daily review audits the day's channel
@@ -31,10 +39,22 @@ describe('the daily review brief', () => {
     expect(brief).toMatch(
       /in this project's Forge-Communicate thread, never in a room its users read/,
     );
-    expect(brief).toMatch(
-      /rid naming the Forge-Communicate room, never a room whose readers are users/,
-    );
+    expect(brief).toMatch(/rid naming the Forge-Communicate room/);
+    expect(brief).toMatch(/never in a room whose readers are users/);
     expect(brief).not.toMatch(/rid\?/);
+  });
+
+  // ISS-934: Forge-Communicate is shared by every project, one thread each; the review names the
+  // project's own, and a project with none is told where to record it, never to post top level
+  it('names the project’s own Forge-Communicate thread, never the room’s top level', () => {
+    expect(brief).toContain('thread XQHEiGjSv8HTytmpY of room rid-communicate');
+    expect(brief).toMatch(/never at the room's top level/);
+  });
+
+  it('tells a project with no thread recorded where to record one, and that a post is refused', () => {
+    expect(unthreaded).toContain('SUPPORT_PROJECT_THREAD_UNRECORDED');
+    expect(unthreaded).toContain('operations.threads["<rid>"]["adminhub-api"]');
+    expect(unthreaded).not.toMatch(/thread \S+ of room/);
   });
 
   // ISS-867: the review says what the day taught, by pointing at where it is read, never the lessons

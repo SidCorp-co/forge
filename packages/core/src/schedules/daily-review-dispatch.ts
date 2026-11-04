@@ -5,6 +5,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { projectThreadsOf } from '../integrations/rocketchat/index.js';
 import { deliverDailyReview } from '../masters/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 
@@ -29,6 +30,8 @@ export async function routeScheduleDailyReviewFire(
     slug: project.slug,
     fireId,
     at: new Date(),
+    // the project's own Forge-Communicate thread the review is posted in (ISS-934)
+    threads: await projectThreadsOf(projectId, project.slug),
   });
   if (delivery.kind === 'missed') {
     const refusal = { code: delivery.code, path: '', detail: delivery.detail };

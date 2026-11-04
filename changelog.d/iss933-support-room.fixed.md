@@ -1,0 +1,1 @@
+**A master's post reaches its room and its thread.** A bound room nobody declared is declared by the post and the warm sweep; Forge-Communicate posts land in the project's recorded thread, or are refused saying where to record it.
