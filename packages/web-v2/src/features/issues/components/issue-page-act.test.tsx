@@ -1,6 +1,7 @@
 // The issue page shows on its face what a person acts on (REQ-11 BC-18, BC-19): its title heads it
 // with the key as the tooltip, and the rail names the requirement by its title, counts the criteria it
 // traces and the reports routed to it — the keys, codes and commit sit in tooltips.
+// @direct-test-of packages/web-v2/src/features/issues/components/requirement-property.tsx
 
 import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -44,7 +45,8 @@ describe("the issue page leads with names, never keys (REQ-11 BC-19)", () => {
 
   it("names the requirement by its title, counts the criteria it traces, and labels each report without its key", () => {
     page();
-    const req = within(screen.getByTestId("issue-requirement")).getByRole("link");
+    const req = screen.getByTestId("issue-requirement");
+    expect(req.tagName).toBe("A");
     expect(req.getAttribute("title")).toBe("REQ-1");
     expect(req.textContent).toBe("Dang nhap");
     const traces = screen.getByTestId("rail-traces");

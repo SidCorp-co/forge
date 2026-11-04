@@ -191,16 +191,19 @@ describe('an item whose carrier is parked at needs_info waits on the master (FB-
     await park(carrier.id);
   });
 
-  it('reads planned and names the master moving the issue on, never a person deciding', async () => {
+  // Round 4: a needs_info carrier waits on an answer the steward asks on its item in Needs you, so
+  // the act says what the move waits for, and names no role who must act on the issue.
+  it('reads planned and names the master moving the issue on once answered, never a person deciding', async () => {
     const got = await read(fb);
     expect(got.phase).toBe('planned');
     expect(got.waitingOn).toMatchObject({
       kind: 'agent',
       who: MASTER,
-      act: `move ${carrier.key} on`,
+      act: `move ${carrier.key} on once answered`,
       ref: carrier.key,
     });
     expect(got.waitingOn.act).not.toMatch(/make a decision/);
+    expect(JSON.stringify(got.waitingOn)).not.toMatch(/orchestrator|\bQA\b|owner/i);
   });
 
   it('is counted for no person anywhere', async () => {
