@@ -305,7 +305,9 @@ describe('an unreleased issue: the criteria read weighs on the environment it is
     expect(released.get(1)?.reason).toBe(`judged at ${SERVED}, which this project is serving`);
   });
 
-  it('keeps production where no judged-on environment is named, and says so', async () => {
+  // ISS-964: this expected production's serving, though a production deployed outside Forge, with no
+  // judged-on environment, cannot serve a waiting change before the release that records its deploy
+  it('weighs at the landing where no judged-on environment is named and production is deployed outside Forge', async () => {
     await externalProject(null);
     const id = await landedIssue('main', [['runtime', UNRELATED]]);
 
@@ -313,10 +315,11 @@ describe('an unreleased issue: the criteria read weighs on the environment it is
 
     expect(read.get(1)).toMatchObject({
       earned: false,
-      standing: 'superseded',
-      weighedOn: { basis: 'served', environment: null, runtime: null },
+      standing: null,
+      weighedOn: { basis: 'landing', landing: LANDING, landsOn: 'main', deploysFrom: 'main' },
     });
-    expect(read.get(1)?.reason).toContain('so it is weighed against production');
+    expect(read.get(1)?.reason).toContain('it is deployed outside Forge');
+    expect(read.get(1)?.reason).toContain('so a criterion is earned at the landing');
   });
 });
 

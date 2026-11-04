@@ -170,11 +170,14 @@ beforeEach(async () => {
 describe('an issue landed after the live release is weighed at its landing (ISS-957)', () => {
   it('reads the project as a landing basis, for the release record, not a promotion', async () => {
     await landedAfterLive();
+    // ISS-964: the reason is that production moves only by its releases; naming no commit is how it reads
     expect(await criteriaBasisOf(world.projectId)).toEqual({
       kind: 'landing',
-      why: 'release-record',
+      why: 'release-only',
       landsOn: BRANCH,
       deploysFrom: BRANCH,
+      byRecord: true,
+      deployment: 'on-land',
     });
   });
 

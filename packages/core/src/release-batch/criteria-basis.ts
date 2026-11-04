@@ -71,11 +71,11 @@ export type CriteriaBasis =
   | { kind: 'unread'; why: string };
 
 /**
- * What production's reading says of how it moves, for an `on-land` production that names its commit:
- * `releases` where every commit it serves is one a release of the project shipped (it moves only by
- * its releases), `lands` where it serves another, `unread` where the reading names none, and `none`
- * where the caller has no reading and reaches no network. Only `releases` moves an `on-land`
- * production to the landing: the others say nothing against the declaration, so it stands.
+ * What production's reading says of how an `on-land` production moves: `releases` where every commit
+ * it serves is one a release of the project shipped (it moves only by its releases), `lands` where it
+ * serves another, `unread` where the reading names none, and `none` where the caller has no reading
+ * and reaches no network. `releases` moves it to the landing, and so does `unread` where it declares
+ * no source probe (ISS-957); the others say nothing against the declaration, so it stands.
  */
 export type ProductionMoves = 'releases' | 'lands' | 'unread' | 'none';
 
@@ -92,9 +92,10 @@ export type ProductionMoves = 'releases' | 'lands' | 'unread' | 'none';
  * - `on-land`: the release sweep cuts a release when work lands, and the landing deploys production
  *   nowhere in Forge (`landing-deploy.ts`); what deploys it before then is outside Forge (forge-dev's CI
  *   on every push) or nothing (agenfold, whose release job deploys it). The declaration cannot say
- *   which, so production's reading does: where it names no commit (ISS-957), or every commit it serves
- *   is one a release shipped, it moves only by its releases and a waiting change is weighed at its
- *   landing; where it serves another commit, a landing reached it, and criteria are earned there.
+ *   which, so production's reading does: where nothing names a commit it serves (no source probe and
+ *   no deployment answering, ISS-957), or every commit it serves is one a release shipped, it moves
+ *   only by its releases and a waiting change is weighed at its landing; where it serves another
+ *   commit, a landing reached it, and criteria are earned there.
  */
 export function basisOfPath(path: ReleasePath, moves: ProductionMoves): CriteriaBasis {
   const { crossing, production, defaultBranch } = path;
@@ -114,8 +115,9 @@ export function basisOfPath(path: ReleasePath, moves: ProductionMoves): Criteria
   const declared = production.declaration.deployment;
   const deployment: ProductionDeployment = 'trigger' in declared ? declared.trigger : 'external';
   const byRecord = servedCommitUnnamed(production) !== null;
-  // a reading that names nothing keeps the declaration's word, as before ISS-964: the landing reaches it
-  if (deployment === 'on-land' && !byRecord && moves !== 'releases') {
+  // a commit no release shipped, or no reading at all, keeps the declaration's word: a landing reaches it
+  const movesByReleases = moves === 'releases' || (byRecord && moves === 'unread');
+  if (deployment === 'on-land' && !movesByReleases) {
     return { kind: 'serving', why: 'on-land', judgedOn: null };
   }
   // with no branch named, the environment itself is what the words can name
@@ -154,11 +156,7 @@ export async function criteriaBasisOf(
   if (!read.ok) return { kind: 'unread', why: read.reason };
   const { production } = read.path;
   const declared = production?.declaration.deployment;
-  const onLand =
-    declared !== undefined &&
-    'trigger' in declared &&
-    declared.trigger === 'on-land' &&
-    servedCommitUnnamed(production as NonNullable<typeof production>) === null;
+  const onLand = declared !== undefined && 'trigger' in declared && declared.trigger === 'on-land';
   if (!onLand || read.path.crossing || judgedOnOf(read.path.document.delivery) !== null) {
     return basisOfPath(read.path, 'none');
   }
@@ -180,11 +178,17 @@ export function landingWhere(basis: Extract<CriteriaBasis, { kind: 'landing' }>)
   if (basis.why === 'promotion') {
     return `this project's work lands on \`${basis.landsOn}\` and production deploys \`${basis.deploysFrom}\` through a promotion`;
   }
-  if (basis.byRecord) {
-    return "this project's production names no commit it serves, and the release its record says is live cannot hold a change that has not shipped";
-  }
-  const how = basis.deployment ? ` (${DEPLOYED[basis.deployment]})` : '';
-  return `this project's production is deployed only by a release${how}, and no environment it judges a change on (\`delivery.judgedOn\`) serves the change before that release, so what production serves cannot hold it`;
+  // a production naming no commit it serves is read on its agent's release record (ISS-957)
+  const how =
+    basis.byRecord && basis.deployment === 'on-land'
+      ? 'its `on-land` trigger is the release Forge cuts once work lands'
+      : basis.deployment
+        ? DEPLOYED[basis.deployment]
+        : null;
+  const record = basis.byRecord
+    ? '; it names no commit it serves, and the release its record says is live cannot hold a change that has not shipped'
+    : '';
+  return `this project's production is deployed only by a release${how ? ` (${how})` : ''}, and no environment it judges a change on (\`delivery.judgedOn\`) serves the change before that release, so what production serves cannot hold it${record}`;
 }
 
 /** Why a change is weighed at what is served, in the words a hold of it shares (ISS-964). */

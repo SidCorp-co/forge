@@ -12,11 +12,14 @@ import type { LandingCriteriaReport } from './criteria-basis.js';
 import { criteriaHold, landingCriteriaHold } from './hold.js';
 
 const LANDING = 'f4e5fb66700ba7b35c8c607c8f7309fc5980861a';
+// ISS-964: the reason is that production moves only by its releases; naming no commit is how it reads
 const BY_RECORD = {
   kind: 'landing',
-  why: 'release-record',
+  why: 'release-only',
   landsOn: 'main',
   deploysFrom: 'main',
+  byRecord: true,
+  deployment: 'on-land',
 } as const;
 
 const landed = (afterRelease: number[] = []): LandingCriteriaReport => ({
@@ -71,8 +74,11 @@ describe('the criteria hold where verdicts count on a release', () => {
     expect(held.criteria).toEqual([2]);
   });
 
-  it('names what is served where production reads the commit it serves', () => {
+  it('names what is served where production reads the commit it serves, and why it is weighed there', () => {
     const held = criteriaHold(report(null), 'human');
+    expect(held.reason).toContain(
+      "It is weighed at what this project's production serves, which deploys on land",
+    );
     expect(held.reason).toContain('declare one');
     expect(held.waitingFor).toBe(
       'a verdict on each criterion named at the running deployment, or the issue closed by hand',
