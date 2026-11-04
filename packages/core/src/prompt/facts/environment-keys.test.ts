@@ -26,6 +26,9 @@ describe('a judge is told to sign in through judge-login and handed only a sessi
       expect(text).toContain('curl -H @<file>');
       expect(text).toContain('Playwright storage state');
       expect(text).toMatch(/never open, print or measure either file/);
+      // a priced amnesty: the box runner on forge-dev predates ISS-959, so its judges are told how to
+      // use the old login file safely until the release that carries ISS-959 removes the sentence
+      expect(text).toContain('this sentence goes with the runner release that carries ISS-959');
       for (const old of ['0600', 'field names', 'writes the value', 'writes that one secret']) {
         expect(text, `${where} still says "${old}"`).not.toContain(old);
       }
