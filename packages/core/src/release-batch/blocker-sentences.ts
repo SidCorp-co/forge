@@ -195,6 +195,8 @@ export interface HeldIssueRef {
   criteria: number[];
   /** Where it is weighed at its landing, the commit each verdict is owed at (ISS-957). */
   landing?: string;
+  /** Of `criteria`, those only the running product shows, which no verdict at a commit earns (ISS-967). */
+  live?: number[];
 }
 
 const RUNNERS_TAB = 'Settings → Runners';
@@ -262,13 +264,22 @@ function runnersHeldSentence(holds: RunnerHold[]): string | null {
 }
 
 export function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
-  const each = held
-    .map(
-      (h) =>
-        `\`${h.displayId}\` owes ${agrees(h.criteria.length, 'criterion', 'criteria')} ${h.criteria.join(', ')}${h.landing ? ` at its landing commit \`${h.landing.slice(0, 12)}\`` : ''}`,
-    )
-    .join('; ');
+  const each = held.map((h) => `\`${h.displayId}\` owes ${owedCriteria(h)}`).join('; ');
   return `${remedy} ${each}.`;
+}
+
+/** What one held issue owes: at its landing where it is weighed there, never a criterion only the
+ *  running product shows, which no verdict at a commit earns (ISS-967). */
+function owedCriteria(h: HeldIssueRef): string {
+  const named = (ns: readonly number[]) =>
+    `${agrees(ns.length, 'criterion', 'criteria')} ${ns.join(', ')}`;
+  const live = h.criteria.filter((n) => h.live?.includes(n));
+  const landed = h.criteria.filter((n) => !h.live?.includes(n));
+  const at = h.landing ? ` at its landing commit \`${h.landing.slice(0, 12)}\`` : '';
+  return [
+    ...(landed.length === 0 ? [] : [`${named(landed)}${at}`]),
+    ...(live.length === 0 ? [] : [`${named(live)}, which only the running product shows`]),
+  ].join(' and ');
 }
 
 const NEAR_GATE_ACT =

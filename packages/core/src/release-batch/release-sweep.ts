@@ -19,18 +19,17 @@ import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index
 import { gateOf, readGateProfile } from '../project-config/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
 import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
+import { criteriaHold, landingCriteriaHold } from './criteria-hold-words.js';
 import { heldIssues, readEndedRunHolds } from './ended-claims.js';
 import { resolveReleaseGate } from './gate.js';
 import {
   clearProjectReleaseHolds,
   clearReleaseHolds,
   clearStaleReleaseHolds,
-  criteriaHold,
   criteriaUnreadableHold,
   cutFailedHold,
   gateUnreadableHold,
   heldFromUnattendedCut,
-  landingCriteriaHold,
   NO_ACTOR_HOLD,
   noReleaseGateHold,
   queuedBehindHold,

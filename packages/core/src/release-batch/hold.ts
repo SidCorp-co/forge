@@ -13,11 +13,8 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { type LandingCriteriaReport, landingWhere, servingWhere } from './criteria-basis.js';
-import { type ServingReading, servingClause } from './serving-reading.js';
 
 /** What holds a row back, as the sweep decided it. */
 export interface ReleaseHold {
@@ -56,146 +53,6 @@ function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean {
     a.owes === b.owes &&
     a.waitingFor === b.waitingFor
   );
-}
-
-function criteriaNamed(numbers: readonly number[]): string {
-  if (numbers.length === 1) return `criterion ${numbers[0]}`;
-  return `each of criteria ${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
-}
-
-/** One clause per distinct reason, carrying every criterion it holds, in first-criterion order. */
-function reasonsByWhy(report: {
-  unearned: ReadonlyArray<{ criterion: number; why: string }>;
-}): string {
-  const byWhy = new Map<string, number[]>();
-  for (const c of report.unearned) byWhy.set(c.why, [...(byWhy.get(c.why) ?? []), c.criterion]);
-  return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
-}
-
-/** What one declared runtime was read as running, for the judge clause (ISS-1368). */
-function runtimeClause(runtime: RuntimeReading): string {
-  const { serving } = runtime;
-  const read =
-    serving.kind === 'serving'
-      ? servingClause(serving)
-      : serving.kind === 'unreadable'
-        ? `nothing could be read, read at ${serving.readAt}: ${serving.why}`
-        : `nothing reports it: ${serving.missing}`;
-  return `the \`${runtime.name}\` runtime, under ${runtime.paths.map((p) => `\`${p}\``).join(', ')}: ${read}`;
-}
-
-/** Where a verdict has to be judged to count — the one place the reading is said (ISS-1346). */
-function judgeClause(
-  serving: ServingReading,
-  runtimes: readonly RuntimeReading[],
-  weighedOn: string | null,
-): string {
-  const deployment = deploymentClause(serving, runtimes, weighedOn);
-  if (serving.kind === 'serving' || runtimes.length === 0) return deployment;
-  // The allowance above is the deployment's: a declared runtime with nothing read still holds.
-  return (
-    `${deployment}. A criterion held in a declared runtime earns only at a build it is running — ` +
-    runtimes.map(runtimeClause).join('; ')
-  );
-}
-
-function deploymentClause(
-  serving: ServingReading,
-  runtimes: readonly RuntimeReading[],
-  weighedOn: string | null,
-): string {
-  // an unreleased issue's runtime verdicts are weighed where it is judged (`delivery.judgedOn`)
-  const project =
-    weighedOn === null
-      ? 'this project'
-      : `\`${weighedOn}\`, the environment this project judges a change on until it is released,`;
-  if (serving.kind === 'serving' && runtimes.length > 0) {
-    return (
-      'record a verdict on each criterion named, judged at a commit the runtime it is held in is ' +
-      `running — the deployment: ${servingClause(serving)}; ${runtimes.map(runtimeClause).join('; ')}`
-    );
-  }
-  if (serving.kind === 'serving') {
-    return (
-      `record a verdict on each criterion named, judged at a commit ${project} is serving — ` +
-      servingClause(serving)
-    );
-  }
-  if (serving.kind === 'unreadable') {
-    const asked = serving.hosts.length === 0 ? '' : ` (read from ${serving.hosts.join(', ')})`;
-    return (
-      `nothing could be read from what ${weighedOn === null ? 'this project' : `\`${weighedOn}\``} answers through${asked}, read at ` +
-      `${serving.readAt}: ${serving.why}. Record a verdict on each criterion named — a verdict ` +
-      'nothing could check still earns the criterion, and this sentence is why it reads as weaker'
-    );
-  }
-  return (
-    `nothing here can read what ${project} is serving: ${serving.missing}. To give it a way, ` +
-    `${serving.route}, then record a verdict on each criterion named`
-  );
-}
-
-/**
- * Who clears a criteria hold (REQ-79 r6 BC-17): the project's master outside strict, which records the
- * verdicts or moves the issue on; a person on a strict project, where nothing dispatched claims a row
- * at `awaiting_release` and every act that moves it from here is somebody's by hand.
- */
-export type CriteriaHoldOwer = ReleaseHoldOwer;
-
-const clearer = (owes: CriteriaHoldOwer) =>
-  owes === 'human' ? 'A person clears this' : "The project's master clears this";
-
-export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer): ReleaseHold {
-  const reasons = reasonsByWhy(report);
-  // a project weighed on its release record is weighed at each landing (`landingCriteriaHold`, ISS-957)
-  const judge = judgeClause(report.serving, report.runtimes, report.weighedOn);
-  // only a person closes by hand; the master clears it by the verdicts or by moving the issue on
-  const byHand =
-    owes === 'human'
-      ? 'or, having seen the change running in production, close the issue by hand; '
-      : '';
-  return {
-    code: 'RELEASE_CRITERIA_UNEARNED',
-    reason:
-      `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${reasons}. I${servingWhere(report.weighedOn).slice(1)}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
-      '`awaiting_release` if it is not to ship.',
-    owes,
-    waitingFor: `a verdict on each criterion named at the running deployment${owes === 'human' ? ', or the issue closed by hand' : ''}`,
-    criteria: report.unearned.map((c) => c.criterion),
-  };
-}
-
-/**
- * A row weighed at its landing (`criteria-basis.ts`): where a promotion stands between the branch
- * work lands on and the one production deploys from, or production is deployed only by a release and
- * nothing the project judges on serves the change first (ISS-957, ISS-964), what production serves
- * cannot hold the change before its release, so a verdict counts at the landing commit, or on the
- * testing environment `delivery.judgedOn` names. Never a release that predates the change.
- */
-export function landingCriteriaHold(
-  report: LandingCriteriaReport,
-  basis: Parameters<typeof landingWhere>[0],
-  owes: CriteriaHoldOwer,
-): ReleaseHold {
-  const at = report.landing
-    ? `judged at its landing commit \`${report.landing.slice(0, 12)}\` on \`${basis.landsOn}\``
-    : `judged at the commit it landed at on \`${basis.landsOn}\`, once its merge names one`;
-  const live = report.afterRelease.map((c) => c.criterion);
-  const after = live.length > 0 ? ` Not held: ${criteriaNamed(live)}, judged after release.` : '';
-  return {
-    code: 'RELEASE_CRITERIA_UNEARNED',
-    reason:
-      'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
-      `this one is not — ${reasonsByWhy(report)}. T${landingWhere(basis).slice(1)}, so a criterion is earned ` +
-      `where the change has landed, not where production is. ${clearer(owes)}: record a verdict ` +
-      `on each criterion named, ${at} (or, where \`delivery.judgedOn\` names a testing environment, ` +
-      'one judged there at that commit); or move the issue out of `awaiting_release` if it is not ' +
-      `to ship.${after}`,
-    owes,
-    waitingFor: 'a verdict on each criterion named at its landing commit',
-    criteria: report.unearned.map((c) => c.criterion),
-  };
 }
 
 /**

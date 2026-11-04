@@ -6,6 +6,8 @@
 // on version V counts while V, or a later release the record carries, is what the record says is
 // live. Read from Forge's own rows alone: no probe, host or box is asked, and no commit is compared.
 
+import { db } from '../db/client.js';
+import { closedAtOf, reopenedAtOf, reworkedSince } from '../issues/index.js';
 import {
   type NamedEnvironment,
   productionOf,
@@ -25,6 +27,9 @@ interface ShippedOnLine {
   carries: readonly string[];
   /** The issues its own record names (`versions.ts:issueIdsOf`), which it holds (ISS-957). */
   issueIds: readonly string[];
+  /** Of those, the ones reopened since it claimed them (`issues/release-evidence.ts:reworkedSince`):
+   *  it holds the round it carried, never the fix re-landed after (ISS-967). */
+  reworked: readonly string[];
 }
 
 /** What the requirement coverage reads of the line (`requirements/standing-identity.ts:ReleasedLine`). */
@@ -82,21 +87,46 @@ export async function releasedLineOf(projectId: string): Promise<ReleasedLineRea
       compareReleaseVersions(v.parsed, holder.parsed) <= 0);
   const carriedBy = (holder: Shipped) =>
     shipped.filter((v) => v !== holder && carries(v, holder)).map((v) => v.version);
+  const named = shipped.map((v) => ({ v, issueIds: issueIdsOf(v.metadata) }));
+  const reworkedIn = await reworkedOf(named);
   return {
     why,
     live: { version: live.version, at: live.at },
     shipped: new Map(
-      shipped.map((v) => [
+      named.map(({ v, issueIds }) => [
         v.version,
         {
           at: v.at,
           carried: carries(v, live),
           carries: carriedBy(v),
-          issueIds: issueIdsOf(v.metadata),
+          issueIds,
+          reworked: reworkedIn(v, issueIds),
         },
       ]),
     ),
   };
+}
+
+/**
+ * Per shipped release, the issues its record names that were reopened since it claimed them, by the
+ * one rule the release read names them reworked by (`issues/release-evidence.ts:reworkedSince`): it
+ * carried their earlier round, so it holds none of the fix re-landed after (ISS-967, FB-495: agenfold's
+ * ISS-160 failed live on 0.128.0, was reopened and re-landed, and its observable criterion was owed on
+ * 0.128.0 for ever). Read from the issues' move history alone, two statements for the whole line.
+ */
+async function reworkedOf(
+  named: ReadonlyArray<{ issueIds: readonly string[] }>,
+): Promise<(v: { openedAt: Date; at: Date }, issueIds: readonly string[]) => string[]> {
+  const ids = [...new Set(named.flatMap((n) => n.issueIds.map((id) => id.toLowerCase())))];
+  const reopened = await reopenedAtOf(db, ids);
+  const closed = await closedAtOf(db, [...reopened.keys()]);
+  return (v, issueIds) =>
+    issueIds.filter((id) => {
+      const reopenedAt = reopened.get(id.toLowerCase());
+      if (!reopenedAt) return false;
+      const closedAt = closed.get(id.toLowerCase()) ?? [];
+      return reworkedSince({ openedAt: v.openedAt, releasedAt: v.at }, { reopenedAt, closedAt });
+    });
 }
 
 /** What a requirement reads of its project's release line, handed in at boot (`requirements/dependents.ts`). */

@@ -18,6 +18,7 @@
  * @direct-test-of packages/core/src/release-batch/landed-build.ts
  * @direct-test-of packages/core/src/release-batch/released-line.ts
  * @direct-test-of packages/core/src/release-batch/hold.ts
+ * @direct-test-of packages/core/src/release-batch/criteria-hold-words.ts
  * @direct-test-of packages/core/src/release-batch/blocker-sentences.ts
  * @direct-test-of packages/core/src/release-batch/release-gates.ts
  * @direct-test-of packages/core/src/issues/criteria-standing.ts
@@ -27,18 +28,23 @@
  * @direct-test-of packages/contracts/src/released-line.ts
  */
 
-import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { db } from '../../src/db/client.js';
 import type { ReleaseBlocker, ReleaseWarning } from '../../src/release-batch/blocker-sentences.js';
 import { criteriaBasisOf, landingCriteriaReports } from '../../src/release-batch/criteria-basis.js';
 import { criteriaHold } from '../../src/release-batch/criteria-hold.js';
-import { landingCriteriaHold } from '../../src/release-batch/hold.js';
+import { landingCriteriaHold } from '../../src/release-batch/criteria-hold-words.js';
+import { designed, shipped, stored } from '../helpers/agenfold-world.js';
 import { api } from '../helpers/api.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
-import { C1, F4, landedIssue, ok, seedLandedWorld, world } from '../helpers/landed-world.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import {
+  BRANCH,
+  C1,
+  F4,
+  landedIssue,
+  ok,
+  seedLandedWorld,
+  world,
+} from '../helpers/landed-world.js';
 
 const reads = vi.hoisted(() => ({ n: 0 }));
 
@@ -51,7 +57,6 @@ vi.mock('../../src/release-batch/verify.js', async (importOriginal) => ({
   },
 }));
 
-const BRANCH = 'release/stg';
 const CLIP = 'https://agenfold.example.test/clips/iss-957.webm';
 const short = (sha: string) => sha.slice(0, 12);
 const SERVING = {
@@ -59,40 +64,6 @@ const SERVING = {
   missing: 'production declares no source probe',
   route: 'declare one',
 } as const;
-
-/**
- * agenfold's document: production on `release/stg` with no source probe. `external` is how its agent
- * records a release by hand (`release-records`); `onLand` is the automatic release that drafts the
- * next one, which is what holds work.
- */
-async function agenfold(deployment: 'external' | 'onLand'): Promise<void> {
-  await seedProjectDocument(world.projectId, world.ownerId, {
-    defaultBranch: BRANCH,
-    environments: {
-      production: {
-        tier: 'production',
-        deploysFrom: BRANCH,
-        deployment:
-          deployment === 'external'
-            ? { mode: 'external', target: 'agenfold-deploy' }
-            : { binding: randomUUID(), trigger: 'on-land' },
-      },
-    } as never,
-    extra: { delivery: { verdictsRequired: true } } as never,
-  });
-}
-
-/** Records `version` shipped carrying `issueIds`, as agenfold's agent does, and arms the sweep. */
-async function shipped(issueIds: string[], version: string): Promise<void> {
-  await agenfold('external');
-  const res = await api(world.token, 'POST', `/api/projects/${world.projectId}/release-records`, {
-    issueIds,
-    version,
-    account: `agenfold-deploy shipped ${version}; /healthz reports ${version}.`,
-  });
-  expect(res.status, JSON.stringify(res.body)).toBe(201);
-  await agenfold('onLand');
-}
 
 const judge = (issueId: string, criterion: number, identity: Record<string, unknown>) =>
   api(world.token, 'POST', `/api/issues/${issueId}/verdicts`, {
@@ -103,40 +74,6 @@ const judge = (issueId: string, criterion: number, identity: Record<string, unkn
     evidence: [CLIP],
     withoutClip: 'The planted run has no recorder; the clip cited is a placeholder.',
   });
-
-/**
- * QA's pass on criterion `n`, at a commit or on a release, written as the door stores it: an
- * observable pass through the door also owes a kept probe, which is not what these tests are about.
- */
-async function stored(issueId: string, n: number, at: { commit: string } | { release: string }) {
-  const [criterion] = (await db.execute(sql`
-    SELECT id FROM issue_criteria WHERE issue_id = ${issueId} AND n = ${n} AND retired_at IS NULL
-  `)) as unknown as Array<{ id: string }>;
-  const kind = 'commit' in at ? 'commit' : 'release';
-  await db.execute(sql`
-    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, reason, identity_kind, commit_sha,
-                                    release_version, author_user_id, author_agency, judge)
-    VALUES (${criterion?.id}, ${issueId}, 'pass', 'judged as the identity names', ${kind},
-            ${'commit' in at ? at.commit : null}, ${'release' in at ? at.release : null},
-            ${world.ownerId}, 'agent', 'qa')
-  `);
-}
-
-/** Gives criterion `n` of `issueId` its class, as a recorded design holds it. */
-async function designed(issueId: string, lines: Array<[number, string]>): Promise<void> {
-  await db.execute(sql`
-    INSERT INTO issue_designs (issue_id, project_id, revision, modules, contracts, recorded_by)
-    VALUES (${issueId}, ${world.projectId}, 1, '{}'::uuid[], '{}'::text[], ${world.ownerId})
-    ON CONFLICT (issue_id) DO NOTHING
-  `);
-  for (const [n, criterionClass] of lines) {
-    await db.execute(sql`
-      INSERT INTO issue_design_criteria (criterion_id, issue_id, criterion_class, pattern, proof)
-      SELECT id, issue_id, ${criterionClass}, NULL, 'the probe that proves it'
-        FROM issue_criteria WHERE issue_id = ${issueId} AND n = ${n} AND retired_at IS NULL
-    `);
-  }
-}
 
 /** The automatic release's hold over `waiting`, as the release read and the sweep's gate run it. */
 async function hold(waiting: string[]) {

@@ -26,6 +26,11 @@ export interface ReleasedLine {
 			carries: readonly string[];
 			/** The issues its own record names (ISS-957); absent where the reader did not list them. */
 			issueIds?: readonly string[];
+			/**
+			 * Of those, the ones reopened since it claimed them (ISS-967): it carried an earlier round of
+			 * each, never the fix re-landed after, so it holds none of them (`releaseHoldsIssue`).
+			 */
+			reworked?: readonly string[];
 		}
 	>;
 }
@@ -85,30 +90,63 @@ export function readOnRelease(
 
 /**
  * Whether release `version` holds issue `issueId` by the record (ISS-957): its own record names the
- * issue, or the record of an earlier release it carries does. A release recorded before an issue
- * landed names none of it, so a verdict judged on it judged a build without the change. Null where
- * the line lists no issues for its releases, so nothing places it.
+ * issue, or the record of an earlier release it carries does, for the round the issue stands in now.
+ * A release recorded before an issue landed names none of it, so a verdict judged on it judged a build
+ * without the change; one that shipped the issue before its last reopen carried the round the reopen
+ * rejected, never the fix re-landed since (ISS-967, `ShippedOnLine.reworked`). Null where the line
+ * lists no issues for its releases, so nothing places it.
  */
 export function releaseHoldsIssue(
 	line: ReleasedLine | null | undefined,
 	version: string,
 	issueId: string,
 ): boolean | null {
+	const read = roundsOn(line, version, issueId);
+	return read === null ? null : read.current;
+}
+
+/**
+ * Why release `version` does not hold issue `issueId` (`releaseHoldsIssue` false), in the words a
+ * verdict judged on it is refused with: it carried a round the issue was reopened from since, or its
+ * record names none of the issue because the change landed after it.
+ */
+export function releaseNotHoldingWhy(
+	line: ReleasedLine | null | undefined,
+	version: string,
+	issueId: string,
+): string {
+	return roundsOn(line, version, issueId)?.earlier
+		? `judged on release ${version}, which carried this issue before it was reopened, not the fix landed since`
+		: `judged on release ${version}, whose record does not hold this issue: the change landed after it`;
+}
+
+/** What release `version` and every one it carries hold of `issueId`: its current round, or only an earlier one. */
+function roundsOn(
+	line: ReleasedLine | null | undefined,
+	version: string,
+	issueId: string,
+): { current: boolean; earlier: boolean } | null {
 	const shipped = line?.shipped.get(version);
-	if (!line || !shipped) return null;
-	if (!shipped.issueIds) return null;
+	if (!line || !shipped?.issueIds) return null;
 	const id = issueId.toLowerCase();
-	const names = (v: string) =>
-		line.shipped.get(v)?.issueIds?.some((i) => i.toLowerCase() === id) ??
-		false;
-	return names(version) || shipped.carries.some(names);
+	const has = (list: readonly string[] | undefined) =>
+		list?.some((i) => i.toLowerCase() === id) ?? false;
+	let current = false;
+	let earlier = false;
+	for (const v of [version, ...shipped.carries]) {
+		const held = line.shipped.get(v);
+		if (!has(held?.issueIds)) continue;
+		if (has(held?.reworked)) earlier = true;
+		else current = true;
+	}
+	return { current, earlier };
 }
 
 /**
  * The release a judge judges issue `issueId` on, where its production names no commit it serves: the
- * one the record says is live, once it holds the issue (`releaseHoldsIssue`). Null where no live
- * release holds it yet, so no release can be named: the issue is judged at its landing, or after the
- * release that carries it ships.
+ * one the record says is live, once it holds the issue's current round (`releaseHoldsIssue`). Null
+ * where no live release holds it yet, a reopened issue's re-landed fix included, so no release can be
+ * named: the issue is judged at its landing, or after the release that carries it ships.
  */
 export function liveReleaseHolding(
 	line: ReleasedLine | null | undefined,

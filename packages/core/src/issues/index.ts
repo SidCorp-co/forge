@@ -223,6 +223,7 @@ export {
   arrivedAfterOf,
   closedAtOf,
   reopenedAtOf,
+  reworkedSince,
   shipsWithdrawnOf,
   voidedUpTo,
 } from './release-evidence.js';

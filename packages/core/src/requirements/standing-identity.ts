@@ -10,6 +10,7 @@ import {
   type ReleasedLine,
   readOnRelease,
   releaseHoldsIssue,
+  releaseNotHoldingWhy,
 } from '@forge/contracts/released-line';
 import {
   landedCommitOf,
@@ -465,7 +466,7 @@ export function resolveIssueVerdict(
     return {
       commit: null,
       inLiveBuild: false,
-      notCounted: `judged on release ${identity.version}, whose record does not hold this issue: the change landed after it`,
+      notCounted: releaseNotHoldingWhy(line, identity.version, issueId),
     };
   }
   if (line && liveOnly && identity) {

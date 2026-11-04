@@ -147,6 +147,8 @@ export interface StampedRelease {
   version: string;
   /** When its row was stamped shipped: for a recorded release, when the record was written. */
   at: Date;
+  /** When its run was cut (`pipeline_runs.started_at`), from which it claims what it carries. */
+  openedAt: Date;
   metadata: Record<string, unknown>;
 }
 
@@ -161,9 +163,10 @@ export function readStampedReleases(projectId: string): Promise<StampedRelease[]
       id: string;
       release_version: string;
       release_released_at: Date | string;
+      started_at: Date | string;
       metadata: Record<string, unknown> | null;
     }>(sql`
-      SELECT r.id, r.release_version, r.release_released_at, r.metadata
+      SELECT r.id, r.release_version, r.release_released_at, r.started_at, r.metadata
       FROM pipeline_runs r
       WHERE r.project_id = ${projectId}
         AND r.release_version IS NOT NULL
@@ -174,6 +177,7 @@ export function readStampedReleases(projectId: string): Promise<StampedRelease[]
       runId: r.id,
       version: r.release_version,
       at: new Date(r.release_released_at),
+      openedAt: new Date(r.started_at),
       metadata: r.metadata ?? {},
     }));
   });

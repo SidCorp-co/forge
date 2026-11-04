@@ -154,6 +154,12 @@ async function afterReleaseWarning(
   });
 }
 
+/** The held criteria only the running product shows, named apart where there are any (ISS-967). */
+function liveOf(unearned: ReadonlyArray<{ criterion: number; liveOnly?: true }>) {
+  const live = unearned.filter((c) => c.liveOnly).map((c) => c.criterion);
+  return live.length === 0 ? {} : { live };
+}
+
 /**
  * Every waiting issue owing a criterion blocks; some of them warns. `serving` is the reading they were
  * weighed against, or null where they were weighed at their landing.
@@ -162,7 +168,7 @@ async function heldOrWarned(
   waiting: readonly string[],
   reports: ReadonlyArray<{
     issueId: string;
-    unearned: ReadonlyArray<{ criterion: number }>;
+    unearned: ReadonlyArray<{ criterion: number; liveOnly?: true }>;
     /** Where weighed at its landing, the commit a verdict is owed at (ISS-957). */
     landing?: string | null;
   }>,
@@ -183,6 +189,7 @@ async function heldOrWarned(
     displayId: shown.value?.get(r.issueId) ?? r.issueId,
     criteria: r.unearned.map((c) => c.criterion),
     ...(r.landing ? { landing: r.landing } : {}),
+    ...liveOf(r.unearned),
   }));
   if (gate.mode === 'advise') {
     warnings.push({

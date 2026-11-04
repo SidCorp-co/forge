@@ -26,7 +26,12 @@
 // commit, on a shipped release whose record holds the issue (`released-line.ts:releaseHoldsIssue`); a
 // criterion the issue's design classes `observable`, which only the running product with real data can
 // show, holds no release: it is owed on the release that carries it once that ships
-// (`landed-weighing.ts:weighLiveOnly`). Where production serves a commit no release shipped, a landing
+// (`landed-weighing.ts:weighLiveOnly`). A release holds an issue only for the round it carried
+// (ISS-967, FB-495: agenfold's ISS-160, reopened after failing live on 0.128.0 and re-landed, was owed
+// on 0.128.0 for ever): one that shipped it before its last reopen holds none of the fix re-landed
+// since (`issues/release-evidence.ts:reworkedSince`, the rule the release read names a reworked issue
+// by), so no pass counts on it, no criterion is owed on it, and the fail that caused the reopen holds
+// nothing once the fix re-lands. Where production serves a commit no release shipped, a landing
 // reached it, and a criterion is earned at what it serves; so too on a `delivery.judgedOn` environment
 // (REQ-36 BC-18), which serves a change before its release.
 
@@ -243,7 +248,9 @@ export interface LandingCriteriaReport {
   issueId: string;
   /** The landing commit weighed at; null where the issue's merge names none. */
   landing: string | null;
-  unearned: Array<{ criterion: number; why: string }>;
+  /** Each criterion that holds it, and why; `liveOnly` where only the running product shows it, so a
+   *  verdict at the landing never earns it and its `why` names the act that does (ISS-967). */
+  unearned: Array<{ criterion: number; why: string; liveOnly?: true }>;
   /**
    * Live-only criteria owed on the release that carries the issue once it ships, which hold no release
    * (`landed-weighing.ts:weighLiveOnly`, ISS-957): judged after that release. Empty on any other project.
@@ -291,7 +298,16 @@ export async function landingCriteriaReports(
       return { issueId, landing: null, unearned, afterRelease: [], counted: [] };
     }
     const short = (c: LandedCriterion) =>
-      c.counts ? [] : [{ criterion: c.criterion, why: c.why, after: c.afterRelease === true }];
+      c.counts
+        ? []
+        : [
+            {
+              criterion: c.criterion,
+              why: c.why,
+              after: c.afterRelease === true,
+              ...(c.liveOnly ? { liveOnly: true as const } : {}),
+            },
+          ];
     const owing = criteria.flatMap(short);
     return {
       issueId,

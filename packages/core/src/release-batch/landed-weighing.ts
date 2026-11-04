@@ -11,6 +11,7 @@ import {
   type ReleasedLine,
   readOnRelease,
   releaseHoldsIssue,
+  releaseNotHoldingWhy,
 } from '@forge/contracts/released-line';
 import { landedCommitOf, landedIdentityWhy, verdictEarns } from '@forge/contracts/verdict-identity';
 import {
@@ -37,6 +38,9 @@ export type LandedCriterion =
       /** Set on a live-only criterion no release holding the issue has shipped yet
        *  (`weighLiveOnly`, ISS-957): it is owed on that release once it ships, and holds none. */
       afterRelease?: true;
+      /** Set on a live-only criterion that holds (`weighLiveOnly`): a verdict at a commit never earns
+       *  it, so the act that clears it is the one its `why` names, never one at the landing (ISS-967). */
+      liveOnly?: true;
     };
 
 /**
@@ -177,11 +181,10 @@ function onRelease(
 ): LandedCriterion {
   const read = readOnRelease(version, released);
   if (read.notCounted !== null) return no(read.notCounted);
-  // a release recorded before the issue landed names none of it, so its pass judged another build
+  // a release recorded before the issue landed names none of it, and one that shipped it before its
+  // last reopen carried the round it rejected (ISS-967): either way its pass judged another build
   if (issueId !== null && releaseHoldsIssue(released, version, issueId) === false) {
-    return no(
-      `it was judged on release ${version}, whose record does not hold this issue: the change landed after it`,
-    );
+    return no(`it was ${releaseNotHoldingWhy(released, version, issueId)}`);
   }
   const at = `release ${version}`;
   return read.countedAs
@@ -250,6 +253,12 @@ function liveRelease(released: ReleasedLine | null, issueId: string): string | n
  * owed on the release that carries the issue once that ships (`afterRelease`), as a `release` verdict
  * on it, read by the one rule every door reads (`onRelease`). Once that release ships it is owed like
  * any other criterion, naming the release to judge it on.
+ *
+ * A release holds the issue only for the round it carried (`releaseHoldsIssue`, ISS-967): after a
+ * reopen and a re-land, the release that shipped the round before is never named, and the criterion is
+ * owed after the release that carries the new round. A recorded fail holds the release as everyone's
+ * evidence, on the round it judged: one the reopen voided, or judged on a release that carried an
+ * earlier round (the finding that caused the reopen), holds nothing once the fix re-lands.
  */
 export function weighLiveOnly(
   { criterion, verdict }: StandingCriterion,
@@ -258,7 +267,7 @@ export function weighLiveOnly(
 ): LandedCriterion {
   const live = liveReleaseHolding(released, issueId);
   // a recorded fail is everyone's evidence: it holds the release, and its finding routes as any other
-  const failed = verdict?.verdict === 'fail';
+  const failed = verdict !== null && failsThisRound(verdict, released, issueId);
   const owed = (why: string): LandedCriterion =>
     live || failed
       ? {
@@ -267,6 +276,7 @@ export function weighLiveOnly(
           why: live
             ? `${why}; it is judged on the running product: judge it on release ${live}, naming \`{ kind: 'release', version: '${live}' }\``
             : `${why}; it is judged on the running product, and a recorded fail holds the release that would carry it`,
+          liveOnly: true,
         }
       : {
           criterion,
@@ -281,4 +291,19 @@ export function weighLiveOnly(
     return owed('it was judged at a build, not on a shipped release');
   }
   return onRelease(criterion, verdict.at.value, released, owed, issueId);
+}
+
+/**
+ * Whether `verdict` is a fail on the issue's current round: not voided by its last reopen (the only
+ * fail the verified rule leaves `unverified`, `issues/standing-on.ts`), and not judged on a release
+ * that carried another round of it (`releaseHoldsIssue`, ISS-967).
+ */
+function failsThisRound(
+  verdict: CriterionVerdict,
+  released: ReleasedLine,
+  issueId: string,
+): boolean {
+  if (verdict.verdict !== 'fail' || verdict.unverified) return false;
+  if (verdict.at?.kind !== 'release') return true;
+  return releaseHoldsIssue(released, verdict.at.value, issueId) !== false;
 }

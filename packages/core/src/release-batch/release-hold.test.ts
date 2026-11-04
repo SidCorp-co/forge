@@ -4,12 +4,13 @@
 // at, never that release nor a source probe the owner's rule rules out; any other project's hold
 // names what is served, as before.
 // @direct-test-of packages/core/src/release-batch/hold.ts
+// @direct-test-of packages/core/src/release-batch/criteria-hold-words.ts
 
 import type { ReleasedLine } from '@forge/contracts/released-line';
 import { describe, expect, it } from 'vitest';
 import type { IssueCriteriaReport } from '../issues/index.js';
 import type { LandingCriteriaReport } from './criteria-basis.js';
-import { criteriaHold, landingCriteriaHold } from './hold.js';
+import { criteriaHold, landingCriteriaHold } from './criteria-hold-words.js';
 
 const LANDING = 'f4e5fb66700ba7b35c8c607c8f7309fc5980861a';
 // ISS-964: the reason is that production moves only by its releases; naming no commit is how it reads
