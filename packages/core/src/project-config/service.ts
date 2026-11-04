@@ -3,7 +3,6 @@ import { parseVariableRef } from '@forge/contracts/variables';
 import type { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
-import { stableStringify } from '../lib/canonical-json.js';
 import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import {
   encryptSecret,
@@ -11,6 +10,7 @@ import {
   isVaultConfigured,
   providerCanDeploy,
 } from '../integrations/index.js';
+import { stableStringify } from '../lib/canonical-json.js';
 import {
   type ApiRefusal,
   isRecord,
