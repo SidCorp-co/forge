@@ -18,7 +18,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 10,
+  version: 11,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -108,9 +108,17 @@ restating its trace is refused \`CRITERIA_TRACE_DROPPED\`, naming each line and 
 with its tag, or send \`requirementCriterionId\` on it. To drop a trace on purpose, PUT every
 criterion with \`requirementCriterionId\` stated (\`null\` for none): each BC's id reads at
 \`GET /api/issues/:id/requirement\` (\`revision.criteria\`), and an id that is no BC of the issue's
-requirement is refused \`CRITERIA_TRACE_UNRESOLVED\`. The PUT answers \`verdicts\`:
+requirement is refused \`CRITERIA_TRACE_UNRESOLVED\`, as is a tag naming another requirement:
+a criterion proves a BC of its own issue's requirement. The PUT answers \`verdicts\`:
 \`kept\` names the verdicts on unchanged wordings, \`voided\` those on reworded or removed ones, which
 stop counting.
+
+To trace by code, \`POST /api/issues/:id/criteria/traces { codes: ['BC-n', …] }\` ADDS one
+criterion per code, worded as the BC and traced to its current wording; a criterion already tracing
+an earlier wording of it is re-added under its own number. It ties no criterion you wrote: open that
+line with its tag, or send \`requirementCriterionId\` on PUT. It takes only BCs of the issue's own
+requirement, the codes read on it alone, at any status but \`dropped\`, on an agent's token; a BC of
+another requirement is proven by an issue linked to that requirement.
 
 To correct one criterion's wording and keep its verdicts, at any status:
 \`PATCH /api/issues/:id/criteria/:n\` (or its id) \`{ statement, reason }\`. It keeps the criterion's id

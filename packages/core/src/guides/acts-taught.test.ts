@@ -198,3 +198,26 @@ describe('a judge records a clip of each observable criterion it judges (REQ-40 
     );
   });
 });
+
+describe('the trace route is taught where a trace is written (FB-209)', () => {
+  // a master asked to trace a BC read both guides, found no route, and read core's source to learn
+  // that the route appends a criterion and takes only its own requirement's BCs
+  const prose = (slug: string) => body(slug).split(/\s+/).join(' ');
+
+  it.each(['issue-flow', 'requirement-lifecycle'])(
+    '%s names the route, its body, that it adds criteria, and its own-requirement rule',
+    (slug) => {
+      const text = prose(slug);
+      expect(text).toContain('`POST /api/issues/:id/criteria/traces {');
+      expect(text).toMatch(/criteria\/traces \{ codes[^`]*\}` ADDS (one|a) criterion per code/);
+      expect(text).toContain("takes only BCs of the issue's own requirement");
+      expect(text).toContain("a criterion proves a BC of its own issue's requirement");
+    },
+  );
+
+  it('says the route ties no criterion already written, and how one is tied', () => {
+    const text = prose('issue-flow');
+    expect(text).toContain('It ties no criterion you wrote');
+    expect(text).toContain('send `requirementCriterionId` on PUT');
+  });
+});
