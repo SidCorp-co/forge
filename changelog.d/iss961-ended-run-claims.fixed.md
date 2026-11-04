@@ -1,1 +1,0 @@
-**A release that ended still claiming issues is named, never cut around.** Readiness, the draft, the cut, the sweep, the releases list and the master's owed read name its run, its issues and the abort that frees them.

@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.490] - 2026-11-04
+
+Failed releases name held issues; projects with raised gates save settings again
+
+### Fixed
+
+- **A release that ended still claiming issues is named, never cut around.** Readiness, the draft, the cut, the sweep, the releases list and the master's owed read name its run, its issues and the abort that frees them.
+- **A project whose gates Forge raised can save its settings again.** A settings save that leaves the gates as they stand is no longer refused as a gates change because their fields came back in a different order.
+
 ## [0.4.0-dev.489] - 2026-11-04
 
 Issues waiting on a question name no one; Activity rows read one master state
