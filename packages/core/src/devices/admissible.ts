@@ -97,29 +97,13 @@ export function admissionOf(
   };
 }
 
-/**
- * Every project this device is bound to, scoped through `runners` exactly as `readPool` is: the
- * device principal sees
- * its own bindings and nothing its owner's account could otherwise reach.
- */
-async function readAdmissions(args: {
-  deviceId: string;
-  projectId?: string | undefined;
-}): Promise<{ admissions: Admission[]; refused: AdmissionRefusal[] }> {
-  const projectFilter = args.projectId ? sql`AND p.id = ${args.projectId}` : sql``;
-  const rows = (await db.execute(sql`
-    SELECT DISTINCT p.id
-    FROM runners r
-    JOIN projects p ON p.id = r.project_id
-    WHERE r.device_id = ${args.deviceId}
-      AND p.archived_at IS NULL
-      ${projectFilter}
-  `)) as unknown as Array<Record<string, unknown>>;
-
+/** Each project's admission under its policy, and the refusals of the projects that admit nothing. */
+async function admissionsOf(
+  projectIds: readonly string[],
+): Promise<{ admissions: Admission[]; refused: AdmissionRefusal[] }> {
   const admissions: Admission[] = [];
   const refused: AdmissionRefusal[] = [];
-  for (const row of rows) {
-    const projectId = String(row.id);
+  for (const projectId of projectIds) {
     const held = await devicesPorts().readEffectivePolicy(projectId);
     if (held) {
       const { admission, refused: undeclared } = admissionOf(
@@ -138,6 +122,27 @@ async function readAdmissions(args: {
 }
 
 /**
+ * Every project this device is bound to, scoped through `runners` exactly as `readPool` is: the
+ * device principal sees
+ * its own bindings and nothing its owner's account could otherwise reach.
+ */
+async function readAdmissions(args: {
+  deviceId: string;
+  projectId?: string | undefined;
+}): Promise<{ admissions: Admission[]; refused: AdmissionRefusal[] }> {
+  const projectFilter = args.projectId ? sql`AND p.id = ${args.projectId}` : sql``;
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT p.id
+    FROM runners r
+    JOIN projects p ON p.id = r.project_id
+    WHERE r.device_id = ${args.deviceId}
+      AND p.archived_at IS NULL
+      ${projectFilter}
+  `)) as unknown as Array<Record<string, unknown>>;
+  return admissionsOf(rows.map((row) => String(row.id)));
+}
+
+/**
  * The admissible issues for one device, across every project it serves.
  *
  * `limit` is per project, so this is one query per admitting project rather than one windowed
@@ -152,7 +157,30 @@ export async function readAdmissibleIssues(args: {
   projectId?: string | undefined;
 }): Promise<{ items: AdmissibleIssue[]; refused: AdmissionRefusal[] }> {
   const { admissions, refused } = await readAdmissions(args);
+  const { items } = await admissibleIn(admissions);
+  return { items, refused };
+}
+
+/**
+ * The same admissible list, in the same order, for projects named rather than reached through a
+ * device's bindings (ISS-951: a workspace's Activity reads each project's next work as its master
+ * would take it). `limit` caps each project's rows; `totals` counts every admissible issue of each.
+ * The caller decides which projects its reader may see: this read asks no permission.
+ */
+export async function readAdmissibleForProjects(
+  projectIds: readonly string[],
+  limit: number,
+): Promise<{ items: AdmissibleIssue[]; totals: Map<string, number>; refused: AdmissionRefusal[] }> {
+  const { admissions, refused } = await admissionsOf(projectIds);
+  const { items, totals } = await admissibleIn(admissions.map((a) => ({ ...a, limit })));
+  return { items, totals, refused };
+}
+
+async function admissibleIn(
+  admissions: readonly Admission[],
+): Promise<{ items: AdmissibleIssue[]; totals: Map<string, number> }> {
   const out: AdmissibleIssue[] = [];
+  const totals = new Map<string, number>();
   for (const a of admissions) {
     const takeableList = sql.join(
       a.statuses.map((s) => sql`${s}`),
@@ -163,6 +191,7 @@ export async function readAdmissibleIssues(args: {
              i.category, i.status, i.merged_at,
              (SELECT w.branch FROM issue_work_state w WHERE w.issue_id = i.id) AS branch,
              EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
+             count(*) OVER () AS admissible_total,
              ip.issue_prefix,
              ${relationsFor(sql.raw('i.id'))}
       FROM issues i
@@ -195,6 +224,7 @@ export async function readAdmissibleIssues(args: {
       LIMIT ${a.limit}
     `)) as unknown as Array<Record<string, unknown>>;
 
+    totals.set(a.projectId, Number(rows[0]?.admissible_total ?? 0));
     const byIssue = await devicesPorts().readPullRequestsForIssues(rows.map((r) => String(r.id)));
 
     for (const row of rows) {
@@ -218,5 +248,5 @@ export async function readAdmissibleIssues(args: {
       });
     }
   }
-  return { items: out, refused };
+  return { items: out, totals };
 }

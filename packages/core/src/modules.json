@@ -56,6 +56,12 @@
       "context": "platform",
       "serves": ["core-components#door-rest"]
     },
+    "activity": {
+      "kind": "read-model",
+      "context": "operations",
+      "reads": ["issueWorkState", "issues", "projects"],
+      "serves": ["REQ-15"]
+    },
     "admin": {
       "kind": "read-model",
       "context": "operations",
@@ -1335,6 +1341,9 @@
     }
   },
   "web": {
+    "activity": {
+      "serves": ["REQ-15"]
+    },
     "agent-accounts": {
       "serves": ["REQ-27"]
     },

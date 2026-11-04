@@ -142,6 +142,7 @@ import { notificationVolumeRoutes } from './notifications/index.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
+import { orgActivityRoutes } from './activity/routes.js';
 import { outboxAdminRoutes } from './outbox/routes.js';
 import { requiresNoPermission } from './permissions/index.js';
 import {
@@ -354,6 +355,7 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/projects', projectRoutes);
   app.route('/api/projects', projectRunnerRoutes);
   app.route('/api/orgs', orgRoutes);
+  app.route('/api/orgs', orgActivityRoutes);
   app.route('/api/orgs', deviceOrgRoutes);
   app.route('/api/orgs', orgKnowledgeRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);

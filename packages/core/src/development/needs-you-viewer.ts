@@ -45,8 +45,11 @@ export async function readNeedsYouAcross(
   userId: string,
   agency: ActorAgency,
   now: Date = new Date(),
+  /** Narrows the visible projects to these (a workspace's, ISS-951); it never admits one more. */
+  within: readonly string[] | null = null,
 ): Promise<NeedsYouProjectDecisions[]> {
-  const ids = await loadVisibleProjectIds(userId);
+  const visible = await loadVisibleProjectIds(userId);
+  const ids = within ? visible.filter((id) => within.includes(id)) : visible;
   if (ids.length === 0) return [];
   const names = await db
     .select({ id: projects.id, slug: projects.slug, name: projects.name })

@@ -1,4 +1,4 @@
-export { readAdmissibleIssues } from './admissible.js';
+export { readAdmissibleForProjects, readAdmissibleIssues } from './admissible.js';
 export { readOwedComments } from './comment-inbox.js';
 export {
   type DeclaredRunElsewhere,

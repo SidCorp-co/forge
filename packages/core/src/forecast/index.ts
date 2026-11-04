@@ -5,6 +5,7 @@ export { readIssueForecast, readProjectForecast } from './read.js';
 export { type ForecastViewer, releaseLegFor } from './release.js';
 export { forecastRoutes } from './routes.js';
 export {
+  readComingNext,
   readDraftReleaseForecast,
   readForecastLine,
   readRequirementForecast,
