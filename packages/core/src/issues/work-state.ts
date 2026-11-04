@@ -6,6 +6,7 @@
  * contract -> packages/core/src/db/schema-issue-work-state.ts — the columns and their checks.
  */
 
+import type { ProjectNowFrame } from '@forge/contracts/project-now';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
@@ -17,13 +18,14 @@ import {
   type WorkStepEntry,
   workSteps,
 } from '../db/schema-issue-work-state.js';
+import { emitEvent } from '../outbox/index.js';
 import type { CallerBox } from './caller-box.js';
 import { issueWorkInFlightSql } from './issue-lease.js';
 import { declaredRunOf, holderSentence, runSessionHoldersOf } from './run-holder.js';
 
 export { type WorkStep, workSteps };
 
-type Executor = Pick<Tx, 'select' | 'insert' | 'update' | 'execute'>;
+type Executor = Tx;
 
 export async function readWorkState(
   executor: Pick<Tx, 'select'>,
@@ -71,6 +73,64 @@ export async function setWorkStep(
     .insert(issueWorkState)
     .values({ issueId, ...values })
     .onConflictDoUpdate({ target: issueWorkState.issueId, set: values });
+  // the project's Now and the workspace's Activity read the step: a move tells their rooms (ISS-951)
+  const [issue] = await executor
+    .select({ projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (issue) await tellStepMoved(executor, issue.projectId);
+}
+
+/** `agent-sessions/push.ts:pushProjectNow`'s frame, which this module (work) sits before. */
+async function tellStepMoved(executor: Executor, projectId: string): Promise<void> {
+  const data: ProjectNowFrame = { projectId, source: 'step' };
+  await emitEvent(executor, 'session.pushed', {
+    projectId,
+    deviceId: null,
+    userIds: [],
+    event: 'project.now.changed',
+    data: { ...data },
+  });
+}
+
+/**
+ * What core records that puts an in-progress issue's work at a step, whoever did the work: a plan
+ * written is planning, a passing merge check or a merge mark is a change built and landed, so what
+ * remains is its judgement. Evidence never reaches `build` on its own: moving into build is the
+ * design check's and the plan checkpoint's, asked on the step write that names it.
+ */
+export const STEP_EVIDENCE = {
+  plan_written: 'plan',
+  merge_checked: 'test',
+  merge_marked: 'test',
+} as const satisfies Record<string, WorkStep>;
+export type StepEvidence = keyof typeof STEP_EVIDENCE;
+
+/**
+ * Move an in-progress issue's step forward to where `evidence` puts it, and never back (ISS-951). A
+ * master's in-pane builder writes no step, so the step the claim wrote stood at `triage` while the
+ * work was planned, built, checked and landed; each of those records now moves it. Answers the step
+ * it moved to, or null where the issue is not in progress or already stands there or past it.
+ */
+export async function advanceStepOnEvidence(
+  executor: Executor,
+  issueId: string,
+  evidence: StepEvidence,
+  now: Date = new Date(),
+): Promise<WorkStep | null> {
+  const to = STEP_EVIDENCE[evidence];
+  const [issue] = await executor
+    .select({ status: issues.status })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (issue?.status !== 'in_progress') return null;
+  const held = await readWorkStateForUpdate(executor, issueId);
+  const at = held?.step ? workSteps.indexOf(held.step) : -1;
+  if (workSteps.indexOf(to) <= at) return null;
+  await setWorkStep(executor, issueId, to, now);
+  return to;
 }
 
 /**

@@ -28,6 +28,7 @@ import { leaseOriginFor } from './run-holder.js';
 import { leaseWriteTakes } from './session-claim.js';
 import type { SessionContextExpect } from './session-context.js';
 import {
+  advanceStepOnEvidence,
   readWorkState,
   splitSessionContext,
   type WorkStateWrite,
@@ -183,6 +184,10 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(eq(issues.id, issueId))
       .returning({ id: issues.id });
     if (!row) throw notFound('issue not found');
+    // a plan written is planning, whoever wrote it; a write naming its own step says where it is (ISS-951)
+    if (typeof updates.plan === 'string' && updates.plan.trim() !== '' && workState?.step === undefined) {
+      await advanceStepOnEvidence(tx, issueId, 'plan_written');
+    }
     // build waits for a plan written against the requirement it delivers (ISS-778), then, where plan
     // approval is enforced, for approved since the plan's last write (REQ-2 BC-4; issue-lifecycle
     // design-check -> in_progress); both asked once this write's own plan is in

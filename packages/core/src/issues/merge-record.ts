@@ -14,6 +14,7 @@ import {
 } from './merge-mark-kind.js';
 import { answerMergeQuestions } from './ports.js';
 import { endStalls } from './stalls.js';
+import { advanceStepOnEvidence } from './work-state.js';
 
 /** The pool or a caller's open transaction. A close stamps inside one; a mark does not. */
 export type MergeRecordExecutor = Pick<Db, 'update' | 'select'>;
@@ -253,6 +254,8 @@ export async function recordIssueMerge(
   if (wrote) {
     // the mark ends the defect a failed verdict's reopen started (REQ-67 BC-6)
     await endStalls(executor, { cause: 'defect', issueId }, 'merged');
+    // a landed change is past building, whoever built it: an unwritten step moves on (ISS-951)
+    await advanceStepOnEvidence(executor, issueId, 'merge_marked');
     await answerMergeQuestions(executor, {
       issueId,
       mark: {

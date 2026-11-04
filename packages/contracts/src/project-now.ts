@@ -6,8 +6,11 @@
 
 import type { SupportRoomKind } from "./support-operations.js";
 
-/** Which read a `project.now.changed` frame says moved: the runs and their master, or the rooms. */
-export const PROJECT_NOW_SOURCES = ["runs", "master", "rooms"] as const;
+/**
+ * Which read a `project.now.changed` frame says moved: the runs and their master, the rooms, or an
+ * in-progress issue's work step (ISS-951), which the runs read and the workspace's Activity show.
+ */
+export const PROJECT_NOW_SOURCES = ["runs", "master", "rooms", "step"] as const;
 export type ProjectNowSource = (typeof PROJECT_NOW_SOURCES)[number];
 
 export interface ProjectNowFrame {

@@ -48,6 +48,7 @@ import {
 import { catalogPageFields, hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
 import { fastLaneMergeRefusal, readProjectDocument, recordMergeCheckCleanup } from './ports.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';
+import { advanceStepOnEvidence } from './work-state.js';
 
 const refuse = refuser<MergeCheckRefusalCode>('MERGE_CHECK_REFUSED');
 
@@ -120,7 +121,7 @@ export async function recordMergeCheck(args: {
       report,
       actor: args.actor,
     });
-    return writeCoreRecord(tx, {
+    const recorded = await writeCoreRecord(tx, {
       issueId: issue.id,
       actor: args.actor,
       kind: 'verification',
@@ -131,6 +132,9 @@ export async function recordMergeCheck(args: {
         ...catalogPageFields(report.touched),
       ],
     });
+    // a passing check is a change built: the step a builder that wrote none left moves on (ISS-951)
+    await advanceStepOnEvidence(tx, issue.id, 'merge_checked');
+    return recorded;
   });
 }
 
