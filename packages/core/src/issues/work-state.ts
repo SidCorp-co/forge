@@ -8,7 +8,7 @@
 
 import type { ProjectNowFrame } from '@forge/contracts/project-now';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import {
   type IssueWorkStateRow,
@@ -134,6 +134,13 @@ export async function advanceStepOnEvidence(
   if (workSteps.indexOf(to) <= at) return null;
   await setWorkStep(executor, issueId, to, now);
   return to;
+}
+
+/** A change request is open for these issues: each in-progress one moves to build, in its own write. */
+export async function advanceStepsOnChangeRequest(issueIds: readonly string[]): Promise<void> {
+  for (const issueId of issueIds) {
+    await db.transaction((tx) => advanceStepOnEvidence(tx, issueId, 'change_request_opened'));
+  }
 }
 
 /**

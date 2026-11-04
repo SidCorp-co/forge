@@ -59,7 +59,17 @@
     "activity": {
       "kind": "read-model",
       "context": "operations",
-      "reads": ["issueWorkState", "issues", "projects"],
+      "reads": [
+        "agentQuestions",
+        "agentSessions",
+        "issueWorkState",
+        "issues",
+        "kernelTransitions",
+        "masterPasses",
+        "projects",
+        "repoPullRequestIssues",
+        "repoPullRequests"
+      ],
       "serves": ["REQ-15"]
     },
     "admin": {

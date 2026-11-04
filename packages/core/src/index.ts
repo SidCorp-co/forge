@@ -51,7 +51,7 @@ import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import {
   activeIssuePrefix,
-  advanceStepOnEvidence,
+  advanceStepsOnChangeRequest,
   allRelationDigests,
   archivedIssueIdsSql,
   citedIssues,
@@ -329,13 +329,7 @@ provideForgeReads({
   deviceProjects: deviceProjectIds,
 });
 // a change request opened for an issue moves its step to build, each issue in its own write (ISS-951)
-provideWorkEvidence({
-  changeRequestOpen: async (issueIds) => {
-    for (const issueId of issueIds) {
-      await db.transaction((tx) => advanceStepOnEvidence(tx, issueId, 'change_request_opened'));
-    }
-  },
-});
+provideWorkEvidence({ changeRequestOpen: advanceStepsOnChangeRequest });
 provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);
 provideRequirementDependents({

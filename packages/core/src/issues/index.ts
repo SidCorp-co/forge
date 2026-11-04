@@ -295,6 +295,7 @@ export {
 } from './weighing.js';
 export {
   advanceStepOnEvidence,
+  advanceStepsOnChangeRequest,
   readWorkState,
   restartStepsForNewRun,
   setWorkStep,

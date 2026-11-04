@@ -1,17 +1,15 @@
 // `GET /api/orgs/:orgId/activity`: what each project of the workspace works now and next, and
 // `GET /api/orgs/:orgId/activity/:projectId/recent`: what one of them recorded last (ISS-951).
 
-import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { readOrgActivity } from './read.js';
-import { readProjectRecent } from './recent.js';
+import { projectOfOrg, readProjectRecent } from './recent.js';
 
 const orgParam = z.object({ orgId: z.uuid() });
 const recentParam = z.object({ orgId: z.uuid(), projectId: z.uuid() });
@@ -57,11 +55,7 @@ orgActivityRoutes.get(
     const agency = c.get('agency');
     if (!agency)
       throw new Error('orgs/activity/recent: a request reached its handler without an auth gate');
-    const [inOrg] = [
-      ...((await db.execute(
-        sql`SELECT name FROM projects WHERE id = ${projectId} AND org_id = ${orgId} AND archived_at IS NULL`,
-      )) as Iterable<{ name: string }>),
-    ];
+    const inOrg = await projectOfOrg(orgId, projectId);
     const visible = inOrg && (await loadVisibleProjectIds(c.get('userId'))).includes(projectId);
     if (!inOrg || !visible) {
       return c.json(
@@ -74,7 +68,7 @@ orgActivityRoutes.get(
     }
     const recent = await readProjectRecent(projectId);
     return c.json(
-      await egressForRequest(agency, projectId, 'issue', recent, `${inOrg.name}'s recent activity`),
+      await egressForRequest(agency, projectId, 'issue', recent, `${inOrg}'s recent activity`),
     );
   },
 );

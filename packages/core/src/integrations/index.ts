@@ -181,4 +181,4 @@ export {
   fingerprintSecret,
   isVaultConfigured,
 } from './vault.js';
-export { provideWorkEvidence } from './work-evidence.js';
+export { provideWorkEvidence, workEvidence } from './work-evidence.js';

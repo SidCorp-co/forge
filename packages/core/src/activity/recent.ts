@@ -33,6 +33,16 @@ interface EventRow {
   ref: string | null;
 }
 
+/** The name of a live project of the org, or null where the org holds no such project. */
+export async function projectOfOrg(orgId: string, projectId: string): Promise<string | null> {
+  const [row] = rowsOf<{ name: string }>(
+    await db.execute(
+      sql`SELECT name FROM projects WHERE id = ${projectId} AND org_id = ${orgId} AND archived_at IS NULL`,
+    ),
+  );
+  return row?.name ?? null;
+}
+
 /** The project's newest events, newest first; `limit` per source, then `limit` in all. */
 export async function readProjectRecent(
   projectId: string,
