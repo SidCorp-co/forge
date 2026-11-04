@@ -51,6 +51,12 @@ const SY = {
   grants: ['read', 'draft', 'research'],
 };
 
+/**
+ * Each room's operations block. A member's command here names no bot, so these rooms hand every
+ * message on; an operations room answers only mentions when its binding says nothing (ISS-933).
+ */
+const OPS = (scope: 'forge' | 'project') => ({ scope, answers: 'every-message' });
+
 /** The acts that name the thread they are taken for. */
 const THREADED = new Set(['move', 'draft_requirement', 'draft_feedback', 'research', 'record']);
 
@@ -131,7 +137,7 @@ beforeAll(async () => {
       {
         projectId: home.forge,
         role: 'service',
-        target: { provider: 'rocketchat', rids: [chat.rooms.ops], operations: { scope: 'forge' } },
+        target: { provider: 'rocketchat', rids: [chat.rooms.ops], operations: OPS('forge') },
       },
       {
         projectId: home.catalog,
@@ -139,7 +145,7 @@ beforeAll(async () => {
         target: {
           provider: 'rocketchat',
           rids: [chat.rooms.group],
-          operations: { scope: 'project' },
+          operations: OPS('project'),
         },
       },
     ],
@@ -157,7 +163,7 @@ beforeAll(async () => {
         target: {
           provider: 'rocketchat',
           rids: [chat.rooms.social],
-          operations: { scope: 'forge' },
+          operations: OPS('forge'),
         },
       },
     ],
