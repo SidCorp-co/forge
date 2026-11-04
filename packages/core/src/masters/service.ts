@@ -12,10 +12,12 @@ import type {
   MasterVerb,
 } from '@forge/contracts/master-standing';
 import type { MasterFacts, MasterVerdictAnswer } from '@forge/contracts/master-verdict';
+import { ORG_ACTIVITY_LANE_MINUTES } from '@forge/contracts/org-activity';
 import { sayEn } from '@forge/contracts/said';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
 import { mergeSessionMetadata, pushProjectNow } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -244,6 +246,28 @@ export async function recordMasterPane(args: {
  * Record the dialog the runner read on its master's pane, or clear it with `null`. A fact the box saw,
  * kept on the master session so `masters/standing` reads waiting_person while it stands.
  */
+/** How many dialog spans a master session keeps, newest last: a lane's two hours, and a bound. */
+const DIALOG_SPANS_KEPT = 50;
+
+/**
+ * The dialogs a master's pane stopped on, as spans its timeline lane draws (ISS-951 round 3, MK-10 C):
+ * a dialog seen opens a span unless one is open, its clearing closes it. Spans ended before the lane's
+ * reach are dropped, and at most {@link DIALOG_SPANS_KEPT} are kept.
+ */
+export function dialogSpans(held: unknown, open: boolean, now: Date): MasterDialogSpan[] {
+  const parsed = z.array(dialogSpanSchema).safeParse(held);
+  const spans = parsed.success ? parsed.data : [];
+  const last = spans.at(-1);
+  const at = now.toISOString();
+  if (open && !(last && last.to === null)) spans.push({ from: at, to: null });
+  if (!open && last && last.to === null) last.to = at;
+  const reach = now.getTime() - ORG_ACTIVITY_LANE_MINUTES * 60_000;
+  return spans.filter((s) => s.to === null || Date.parse(s.to) >= reach).slice(-DIALOG_SPANS_KEPT);
+}
+
+const dialogSpanSchema = z.object({ from: z.string(), to: z.string().nullable() });
+export type MasterDialogSpan = z.infer<typeof dialogSpanSchema>;
+
 export async function recordMasterDialog(args: {
   deviceId: string;
   sessionId: string;
@@ -251,10 +275,17 @@ export async function recordMasterDialog(args: {
 }): Promise<void> {
   await db.transaction(async (tx) => {
     await ownedMaster(tx, args.deviceId, args.sessionId);
+    const now = new Date();
     const paneDialog = args.dialog
-      ? { ...scrubSecretsDeep(args.dialog), seenAt: new Date().toISOString() }
+      ? { ...scrubSecretsDeep(args.dialog), seenAt: now.toISOString() }
       : null;
-    await mergeSessionMetadata(args.sessionId, { paneDialog }, tx);
+    const [held] = await tx
+      .select({ spans: sql<unknown>`${agentSessions.metadata} -> 'paneDialogs'` })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, args.sessionId))
+      .for('update');
+    const paneDialogs = dialogSpans(held?.spans, args.dialog !== null, now);
+    await mergeSessionMetadata(args.sessionId, { paneDialog, paneDialogs }, tx);
   });
 }
 

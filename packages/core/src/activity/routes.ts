@@ -8,7 +8,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
-import { readOrgActivity } from './read.js';
+import { legsTiming, type OrgActivityLegs, readOrgActivity } from './read.js';
 import { projectOfOrg, readProjectRecent } from './recent.js';
 
 const orgParam = z.object({ orgId: z.uuid() });
@@ -29,12 +29,23 @@ orgActivityRoutes.get(
     const agency = c.get('agency');
     if (!agency)
       throw new Error('orgs/activity: a request reached its handler without an auth gate');
-    const read = await readOrgActivity(orgId, { userId: c.get('userId'), agency });
+    const legs: OrgActivityLegs = new Map();
+    const read = await readOrgActivity(orgId, { userId: c.get('userId'), agency }, new Date(), {
+      legs,
+    });
     // each row carries its project's issue text, so each passes that project's egress policy
+    const started = performance.now();
     const projects = await Promise.all(
       read.projects.map((row) =>
         egressForRequest(agency, row.projectId, 'issue', row, `${row.name}'s activity`),
       ),
+    );
+    // each leg's milliseconds, beside the whole request's `db`/`app`/`total` (middleware/server-timing.ts),
+    // so a reader whose token reads the route sees which leg a slow read waited on
+    c.header(
+      'Server-Timing',
+      `${legsTiming(legs)}, egress;dur=${(performance.now() - started).toFixed(1)}`,
+      { append: true },
     );
     return c.json({ ...read, projects });
   },

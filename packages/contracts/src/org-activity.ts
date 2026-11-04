@@ -113,6 +113,35 @@ export interface OrgActivityProject {
 	releasePending: boolean;
 	/** Issues landed and waiting for a release. */
 	awaitingRelease: number;
+	/**
+	 * What the project recorded over the last {@link ORG_ACTIVITY_LANE_MINUTES} minutes, drawn as its
+	 * timeline lane (MK-10 C); null where no master stands, which the lane says.
+	 */
+	lane: OrgActivityLane | null;
+}
+
+/** How far back a project's timeline lane reaches. */
+export const ORG_ACTIVITY_LANE_MINUTES = 120;
+
+/** A stretch of time on a lane; `to` null while it still runs. */
+export interface OrgActivitySpan {
+	from: string;
+	to: string | null;
+}
+
+/**
+ * One project's lane (MK-10 C), read from the same events its Recent list reads: its master's passes
+ * as ticks, its runs as bars, its issues' status moves as dots and the dialogs its master's pane
+ * stopped on as amber bars, each from `from` to the read's `generatedAt`.
+ */
+export interface OrgActivityLane {
+	from: string;
+	/** When each pass opened. */
+	passes: string[];
+	runs: OrgActivitySpan[];
+	/** When each status move was made. */
+	moves: string[];
+	dialogs: OrgActivitySpan[];
 }
 
 export interface OrgActivity {
@@ -165,6 +194,8 @@ export const ORG_ACTIVITY_EVENT_KINDS = [
 	"change_request",
 	"run_started",
 	"run_ended",
+	"dialog_started",
+	"dialog_ended",
 ] as const;
 export type OrgActivityEventKind = (typeof ORG_ACTIVITY_EVENT_KINDS)[number];
 

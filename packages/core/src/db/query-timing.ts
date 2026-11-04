@@ -30,6 +30,15 @@ export function withQueryTiming<T>(timing: QueryTiming, fn: () => T): T {
   return timings.run(timing, fn);
 }
 
+/**
+ * Runs `fn` outside any request's timing: work a request starts and does not wait for (a read kept
+ * off its path, `activity/glance-cache.ts`) is not that request's, and counting it there would put
+ * its statements on the request's `Server-Timing`.
+ */
+export function withoutQueryTiming<T>(fn: () => T): T {
+  return timings.exit(fn);
+}
+
 function open(t: QueryTiming): () => void {
   if (t.inFlight++ === 0) t.openedAt = performance.now();
   let closed = false;

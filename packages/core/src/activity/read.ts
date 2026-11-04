@@ -14,6 +14,7 @@ import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { NeedsYouDecision } from '@forge/contracts/needs-you-decisions';
 import {
   ORG_ACTIVITY_GROUPS,
+  ORG_ACTIVITY_LANE_MINUTES,
   ORG_ACTIVITY_LIST_LIMIT,
   type OrgActivity,
   type OrgActivityDoing,
@@ -32,11 +33,12 @@ import { readAdmissibleForProjects, SESSION_SILENCE_TIMEOUT_S } from '../devices
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MasterGlance, readMasterGlances } from '../masters/index.js';
+import { laneOf, readProjectEvents } from './events.js';
 import { glanceCache } from './glance-cache.js';
 import { releaseGlances } from './release-glance.js';
 
-/** How long a read waits for a project's leg it holds no answer for (`glance-cache.ts`). */
-export const GLANCE_BUDGET_MS = 250;
+/** How many of each source's events a lane reads per project over its two hours. */
+const LANE_EVENTS_LIMIT = 200;
 
 const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
 const iso = (v: unknown): string | null => (v == null ? null : new Date(String(v)).toISOString());
@@ -46,8 +48,12 @@ const uuids = (ids: readonly string[]) =>
     sql`, `,
   );
 
-/** How long the decisions a project owes a reader are served before they are read again behind the page. */
-const PEOPLE_FRESH_MS = 5_000;
+/**
+ * How long the decisions owed a reader are served before they are read again behind the page. Round 2
+ * read them again every 5 s, and the page reads once more while anything is read behind it, so an
+ * open page kept a Needs you read of every project running without end.
+ */
+const PEOPLE_FRESH_MS = 30_000;
 
 /** How long a question's words run on its one line. */
 const PERSON_LINE_MAX = 140;
@@ -153,21 +159,50 @@ interface PeopleGlance {
   items: OrgActivityPerson[];
 }
 
+/** The key the decisions owed one reader across one workspace's projects are held under. */
+const peopleKeyOf = (userId: string, agency: ActorAgency, projectIds: readonly string[]) =>
+  `${userId}|${agency}|${projectIds.join(',')}`;
+
 /**
- * The decisions one project owes one reader: the whole Needs you read of that project, which costs a
- * hundred statements and more, so it is kept off the page's path (`glance-cache.ts`).
+ * The decisions a workspace's projects owe one reader: one Needs you read across all of them
+ * (`readNeedsYouAcross`, which reads its projects two at a time and primes what they share once), kept
+ * off the page's path (`glance-cache.ts`). Round 2 held one key per project, so a workspace started
+ * thirteen of those reads at once, each with its own limiter, past the pool's ten connections.
  */
-async function readPeople(key: string): Promise<PeopleGlance> {
-  const [userId, agency, projectId] = key.split('|') as [string, ActorAgency, string];
-  const [owes] = await readNeedsYouAcross(userId, agency, new Date(), [projectId]);
-  const shown = (owes?.decisions ?? []).slice(0, ORG_ACTIVITY_LIST_LIMIT);
-  const issueOfQuestion = await questionIssueKeys(
-    shown.filter((d) => d.entity === 'question' && UUID.test(d.key)).map((d) => d.key),
+async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
+  const [userId, agency, ids] = key.split('|') as [string, ActorAgency, string];
+  const projectIds = ids ? ids.split(',') : [];
+  const out = new Map<string, PeopleGlance>(projectIds.map((id) => [id, { total: 0, items: [] }]));
+  if (projectIds.length === 0) return out;
+  const owed = await readNeedsYouAcross(userId, agency, new Date(), projectIds);
+  const idOf = new Map(
+    rowsOf<{ id: string; slug: string }>(
+      await db.execute(sql`SELECT id, slug FROM projects WHERE id IN (${uuids(projectIds)})`),
+    ).map((r) => [r.slug, String(r.id)]),
   );
-  return { total: owes?.total ?? 0, items: shown.map((d) => personOf(d, issueOfQuestion)) };
+  const shown = owed.map((o) => ({
+    projectId: idOf.get(o.projectSlug),
+    total: o.total,
+    decisions: o.decisions.slice(0, ORG_ACTIVITY_LIST_LIMIT),
+  }));
+  const issueOfQuestion = await questionIssueKeys(
+    shown.flatMap((s) =>
+      s.decisions.filter((d) => d.entity === 'question' && UUID.test(d.key)).map((d) => d.key),
+    ),
+  );
+  for (const s of shown) {
+    if (!s.projectId) continue;
+    out.set(s.projectId, {
+      total: s.total,
+      items: s.decisions.map((d) => personOf(d, issueOfQuestion)),
+    });
+  }
+  return out;
 }
 
-export const peopleGlances = glanceCache('the decisions owed', PEOPLE_FRESH_MS, readPeople);
+export const peopleGlances = glanceCache('the decisions owed', PEOPLE_FRESH_MS, readPeople, {
+  concurrency: 1,
+});
 
 const masterOf = (m: MasterGlance | undefined): OrgActivityMaster =>
   m
@@ -226,26 +261,62 @@ export function groupOf(
   return 'quiet';
 }
 
+/** What each leg of one workspace read took, in milliseconds, in the order they are named. */
+export type OrgActivityLegs = Map<OrgActivityLeg, number>;
+export const ORG_ACTIVITY_LEGS = [
+  'projects',
+  'inflight',
+  'awaiting',
+  'backlog',
+  'people',
+  'masters',
+  'releases',
+  'lanes',
+] as const;
+export type OrgActivityLeg = (typeof ORG_ACTIVITY_LEGS)[number];
+
+/** `a;dur=1.2, b;dur=3.4`: each leg's milliseconds for a `Server-Timing` header, and nothing of its data. */
+export const legsTiming = (legs: OrgActivityLegs): string =>
+  ORG_ACTIVITY_LEGS.filter((l) => legs.has(l))
+    .map((l) => `${l};dur=${(legs.get(l) ?? 0).toFixed(1)}`)
+    .join(', ');
+
 export async function readOrgActivity(
   orgId: string,
   viewer: { userId: string; agency: ActorAgency },
   now: Date = new Date(),
-  opts: { budgetMs?: number } = {},
+  opts: {
+    /** How long to wait for what is kept off the path where it was never read; the page waits none. */
+    waitMs?: number;
+    /** Filled with what each leg took. */
+    legs?: OrgActivityLegs;
+  } = {},
 ): Promise<OrgActivity> {
-  const projects = await readableProjects(orgId, viewer.userId);
+  const legs = opts.legs ?? new Map();
+  const timed = async <T>(leg: OrgActivityLeg, read: () => Promise<T>): Promise<T> => {
+    const started = performance.now();
+    try {
+      return await read();
+    } finally {
+      legs.set(leg, performance.now() - started);
+    }
+  };
+  const projects = await timed('projects', () => readableProjects(orgId, viewer.userId));
   const ids = projects.map((p) => p.id);
-  const budget = opts.budgetMs ?? GLANCE_BUDGET_MS;
-  const peopleKey = (projectId: string) => `${viewer.userId}|${viewer.agency}|${projectId}`;
-  const [inFlight, awaiting, admissible, people, masters, releases] = await Promise.all([
-    readInFlight(ids),
-    readAwaitingRelease(ids),
-    readAdmissibleForProjects(ids, ORG_ACTIVITY_LIST_LIMIT),
-    peopleGlances.read(ids.map(peopleKey), budget),
-    readMasterGlances(ids, now),
-    releaseGlances.read(ids, budget),
+  const waitMs = opts.waitMs ?? 0;
+  const peopleKey = peopleKeyOf(viewer.userId, viewer.agency, ids);
+  const laneFrom = new Date(now.getTime() - ORG_ACTIVITY_LANE_MINUTES * 60_000);
+  const [inFlight, awaiting, admissible, people, masters, releases, events] = await Promise.all([
+    timed('inflight', () => readInFlight(ids)),
+    timed('awaiting', () => readAwaitingRelease(ids)),
+    timed('backlog', () => readAdmissibleForProjects(ids, ORG_ACTIVITY_LIST_LIMIT)),
+    timed('people', () => peopleGlances.read([peopleKey], waitMs)),
+    timed('masters', () => readMasterGlances(ids, now)),
+    timed('releases', () => releaseGlances.read(ids, waitMs)),
+    timed('lanes', () => readProjectEvents(ids, { since: laneFrom, limit: LANE_EVENTS_LIMIT })),
   ]);
+  const owed = people.values.get(peopleKey);
   const rows = projects.map((p): OrgActivityProject => {
-    const owes = people.values.get(peopleKey(p.id));
     const glance = masters.get(p.id);
     const backlog = admissible.totals.get(p.id) ?? 0;
     const release = releases.values.get(p.id);
@@ -267,11 +338,18 @@ export async function readOrgActivity(
           })),
         skip: skipOf(glance, backlog),
       },
-      people: owes?.read ? owes.value : { total: 0, items: [] },
-      peoplePending: !owes?.read,
+      people: owed?.read
+        ? (owed.value.get(p.id) ?? { total: 0, items: [] })
+        : { total: 0, items: [] },
+      peoplePending: !owed?.read,
       release: release?.read ? release.value : null,
       releasePending: !release?.read,
       awaitingRelease: awaiting.get(p.id) ?? 0,
+      lane: glance
+        ? laneOf(events.get(p.id) ?? [], laneFrom, now, {
+            dialogSince: glance.state === 'waiting_person' ? glance.since : null,
+          })
+        : null,
     };
     return { ...base, group: groupOf(base) };
   });

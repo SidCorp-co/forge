@@ -26,12 +26,20 @@ import {
   issueWorkInFlightSql,
   patternReviewPendingSql,
 } from '../issues/index.js';
+import { createLimiter } from '../lib/bounded-concurrency.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/index.js';
 import { type PoolRelation, relationsFor } from './pool.js';
 import { devicesPorts } from './ports.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
+
+/**
+ * How many projects' admissible reads run at once, of the pool's ten connections: enough that a
+ * workspace's projects are not read one round trip after another, few enough to leave the rest of
+ * the pool to every other request.
+ */
+const ADMISSIBLE_READS = createLimiter(4);
 
 export type AdmissibleIssue = {
   issueId: string;
@@ -98,27 +106,44 @@ export function admissionOf(
 }
 
 /** Each project's admission under its policy, and the refusals of the projects that admit nothing. */
+/**
+ * Each project's admission, read for every project at once and answered in the order named: a
+ * workspace's thirteen projects read one after another sent their policy reads one round trip at a
+ * time (ISS-951 round 3).
+ */
 async function admissionsOf(
   projectIds: readonly string[],
 ): Promise<{ admissions: Admission[]; refused: AdmissionRefusal[] }> {
-  const admissions: Admission[] = [];
-  const refused: AdmissionRefusal[] = [];
-  for (const projectId of projectIds) {
-    const held = await devicesPorts().readEffectivePolicy(projectId);
-    if (held) {
-      const { admission, refused: undeclared } = admissionOf(
-        projectId,
-        held,
-        await devicesPorts().readGateModes(projectId),
-      );
-      if (admission.statuses.length > 0) admissions.push(admission);
-      refused.push(...undeclared);
-      continue;
-    }
-    const [refusal] = devicesPorts().policyRefusal('POLICY_UNDECLARED', projectId, null).refusals;
-    refused.push({ projectId, code: 'POLICY_UNDECLARED', message: refusal?.detail ?? '' });
-  }
-  return { admissions, refused };
+  const read = await Promise.all(
+    projectIds.map((projectId) =>
+      ADMISSIBLE_READS.run(async () => {
+        const held = await devicesPorts().readEffectivePolicy(projectId);
+        if (held) {
+          const { admission, refused } = admissionOf(
+            projectId,
+            held,
+            await devicesPorts().readGateModes(projectId),
+          );
+          return { admission: admission.statuses.length > 0 ? admission : null, refused };
+        }
+        const [refusal] = devicesPorts().policyRefusal(
+          'POLICY_UNDECLARED',
+          projectId,
+          null,
+        ).refusals;
+        const undeclared: AdmissionRefusal = {
+          projectId,
+          code: 'POLICY_UNDECLARED',
+          message: refusal?.detail ?? '',
+        };
+        return { admission: null, refused: [undeclared] };
+      }),
+    ),
+  );
+  return {
+    admissions: read.flatMap((r) => (r.admission ? [r.admission] : [])),
+    refused: read.flatMap((r) => r.refused),
+  };
 }
 
 /**
@@ -179,74 +204,81 @@ export async function readAdmissibleForProjects(
 async function admissibleIn(
   admissions: readonly Admission[],
 ): Promise<{ items: AdmissibleIssue[]; totals: Map<string, number> }> {
-  const out: AdmissibleIssue[] = [];
+  // each project's own read, at once, then one read of the change requests for every issue listed
+  const perProject = await Promise.all(
+    admissions.map((a) => ADMISSIBLE_READS.run(() => admissibleRows(a))),
+  );
   const totals = new Map<string, number>();
-  for (const a of admissions) {
-    const takeableList = sql.join(
-      a.statuses.map((s) => sql`${s}`),
-      sql`, `,
-    );
-    const rows = (await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
-             i.category, i.status, i.merged_at,
-             (SELECT w.branch FROM issue_work_state w WHERE w.issue_id = i.id) AS branch,
-             EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
-             count(*) OVER () AS admissible_total,
-             ip.issue_prefix,
-             ${relationsFor(sql.raw('i.id'))}
-      FROM issues i
-      JOIN projects ip ON ip.id = i.project_id
-      WHERE i.project_id = ${a.projectId}
-        AND i.status IN (${takeableList})
-        ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
-        -- each withholding below is a gate the project's profile may turn off (REQ-76): an issue a
-        -- door would take is never withheld from the list a master reads
-        ${enforced(a, 'take_blocked', sql`AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}`)}
-        -- an issue that builds a workflow whose design is not approved, waits on a contract
-        -- version no approved version settles, or names a new pattern no reviewer has decided, is withheld; Issues > Stuck names the refusal
-        -- (issues/standing.ts:withheldTurn).
-        ${enforced(a, 'design_approved_for_build', sql`AND NOT ${designUnapprovedSql(sql`i.id`)}`)}
-        ${enforced(a, 'contract_wait', sql`AND NOT ${contractWaitUnsettledSql(sql`i.id`)}`)}
-        ${enforced(a, 'patterns', sql`AND NOT ${patternReviewPendingSql(sql`i.id`)}`)}
-        -- a live run holds a module or contract its design names (issues/issue-scope.ts): the
-        -- run-session open would refuse it ISSUE_SCOPE_HELD, so no master is handed it
-        ${enforced(a, 'scope_hold', sql`AND NOT ${scopeHeldSql(sql`i.id`)}`)}
-        -- one predicate for "is this issue being worked", shared with the orphan sweep that
-        -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
-        -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).
-        AND NOT ${issueWorkInFlightSql({
-          issueId: sql`i.id`,
-          projectId: sql`i.project_id`,
-          issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
-        })}
-      -- priority first, then oldest (issues/dispatch-order.ts), the order a master takes it top-down
-      ORDER BY ${dispatchOrderSql('i')}
-      LIMIT ${a.limit}
-    `)) as unknown as Array<Record<string, unknown>>;
-
-    totals.set(a.projectId, Number(rows[0]?.admissible_total ?? 0));
-    const byIssue = await devicesPorts().readPullRequestsForIssues(rows.map((r) => String(r.id)));
-
-    for (const row of rows) {
-      out.push({
-        issueId: String(row.id),
-        issueKey:
-          row.iss_seq == null
-            ? null
-            : formatIssueRef(row.issue_prefix as string | null, Number(row.iss_seq)),
-        projectId: String(row.project_id),
-        title: (row.title as string | null) ?? null,
-        description: (row.description as string | null) ?? null,
-        priority: (row.priority as string | null) ?? null,
-        category: (row.category as string | null) ?? null,
-        status: String(row.status),
-        ageMinutes: Number(row.age_minutes ?? 0),
-        relations: (row.relations as PoolRelation[] | null) ?? [],
-        mergedAt: row.merged_at == null ? null : new Date(row.merged_at as string).toISOString(),
-        branch: (row.branch as string | null) || null,
-        pullRequests: byIssue.get(String(row.id)) ?? [],
-      });
-    }
-  }
+  admissions.forEach((a, i) => {
+    totals.set(a.projectId, Number(perProject[i]?.[0]?.admissible_total ?? 0));
+  });
+  const rows = perProject.flat();
+  const byIssue =
+    rows.length === 0
+      ? new Map()
+      : await devicesPorts().readPullRequestsForIssues(rows.map((r) => String(r.id)));
+  const out: AdmissibleIssue[] = rows.map((row) => ({
+    issueId: String(row.id),
+    issueKey:
+      row.iss_seq == null
+        ? null
+        : formatIssueRef(row.issue_prefix as string | null, Number(row.iss_seq)),
+    projectId: String(row.project_id),
+    title: (row.title as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    priority: (row.priority as string | null) ?? null,
+    category: (row.category as string | null) ?? null,
+    status: String(row.status),
+    ageMinutes: Number(row.age_minutes ?? 0),
+    relations: (row.relations as PoolRelation[] | null) ?? [],
+    mergedAt: row.merged_at == null ? null : new Date(row.merged_at as string).toISOString(),
+    branch: (row.branch as string | null) || null,
+    pullRequests: byIssue.get(String(row.id)) ?? [],
+  }));
   return { items: out, totals };
+}
+
+/** One project's admissible issues, in the order its master takes them, up to its limit. */
+async function admissibleRows(a: Admission): Promise<Array<Record<string, unknown>>> {
+  const takeableList = sql.join(
+    a.statuses.map((s) => sql`${s}`),
+    sql`, `,
+  );
+  return (await db.execute(sql`
+    SELECT i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
+           i.category, i.status, i.merged_at,
+           (SELECT w.branch FROM issue_work_state w WHERE w.issue_id = i.id) AS branch,
+           EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
+           count(*) OVER () AS admissible_total,
+           ip.issue_prefix,
+           ${relationsFor(sql.raw('i.id'))}
+    FROM issues i
+    JOIN projects ip ON ip.id = i.project_id
+    WHERE i.project_id = ${a.projectId}
+      AND i.status IN (${takeableList})
+      ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
+      -- each withholding below is a gate the project's profile may turn off (REQ-76): an issue a
+      -- door would take is never withheld from the list a master reads
+      ${enforced(a, 'take_blocked', sql`AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}`)}
+      -- an issue that builds a workflow whose design is not approved, waits on a contract
+      -- version no approved version settles, or names a new pattern no reviewer has decided, is withheld; Issues > Stuck names the refusal
+      -- (issues/standing.ts:withheldTurn).
+      ${enforced(a, 'design_approved_for_build', sql`AND NOT ${designUnapprovedSql(sql`i.id`)}`)}
+      ${enforced(a, 'contract_wait', sql`AND NOT ${contractWaitUnsettledSql(sql`i.id`)}`)}
+      ${enforced(a, 'patterns', sql`AND NOT ${patternReviewPendingSql(sql`i.id`)}`)}
+      -- a live run holds a module or contract its design names (issues/issue-scope.ts): the
+      -- run-session open would refuse it ISSUE_SCOPE_HELD, so no master is handed it
+      ${enforced(a, 'scope_hold', sql`AND NOT ${scopeHeldSql(sql`i.id`)}`)}
+      -- one predicate for "is this issue being worked", shared with the orphan sweep that
+      -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
+      -- the project's own prefix, or a run's issues silently stop being seen (ISS-992).
+      AND NOT ${issueWorkInFlightSql({
+        issueId: sql`i.id`,
+        projectId: sql`i.project_id`,
+        issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+      })}
+    -- priority first, then oldest (issues/dispatch-order.ts), the order a master takes it top-down
+    ORDER BY ${dispatchOrderSql('i')}
+    LIMIT ${a.limit}
+  `)) as unknown as Array<Record<string, unknown>>;
 }

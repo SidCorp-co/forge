@@ -34,13 +34,23 @@ export interface MasterStateRead {
 
 const ms = (iso: string) => new Date(iso).getTime();
 
-/** A pane report core heard within the silence window; an older one says nothing of now. */
+/**
+ * A pane report its box's beat sent within the silence window. An older one says nothing of now, and
+ * neither does one a pass's settle carried (`source: 'pass'`, a box older than the beat): that is
+ * what the pane did when the pass ended, so a state read from it would be a claim about now made from
+ * a fact about then (ISS-951 round 3: such a row read "Idle" beside a box heartbeat 55 s old while
+ * its master worked). Where no live report stands the state is the pass state alone.
+ */
 export function paneIsLive(
   pane: MasterPane | null,
   silentAfterSeconds: number,
   now: Date,
 ): boolean {
-  return pane !== null && now.getTime() - ms(pane.seenAt) <= silentAfterSeconds * 1000;
+  return (
+    pane !== null &&
+    pane.source === 'beat' &&
+    now.getTime() - ms(pane.seenAt) <= silentAfterSeconds * 1000
+  );
 }
 
 const WORKING = new Set<MasterPane['doing']>(['working', 'awaiting_children']);

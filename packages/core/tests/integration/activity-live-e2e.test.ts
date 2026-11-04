@@ -157,9 +157,9 @@ describe('ISS-951 (1) the workspace read is read per workspace, not per project'
       return t.queries;
     };
     // the first read of each holds what it keeps off the path; the counted read is the one after it
-    await readOrgActivity(smallOrg, viewer(), new Date(), { budgetMs: 60_000 });
-    await readOrgActivity(bigOrg, viewer(), new Date(), { budgetMs: 60_000 });
-    const read = (org: string) => () => readOrgActivity(org, viewer(), new Date(), { budgetMs: 0 });
+    await readOrgActivity(smallOrg, viewer(), new Date(), { waitMs: 60_000 });
+    await readOrgActivity(bigOrg, viewer(), new Date(), { waitMs: 60_000 });
+    const read = (org: string) => () => readOrgActivity(org, viewer(), new Date(), {});
     const admitted = (ids: string[]) => () => readAdmissibleForProjects(ids, 5);
     const small = await counted(read(smallOrg));
     const big = await counted(read(bigOrg));
@@ -177,7 +177,7 @@ describe('ISS-951 (1) the workspace read is read per workspace, not per project'
     peopleGlances.forget();
     releaseGlances.forget();
     const started = performance.now();
-    const cold = await readOrgActivity(bigOrg, viewer(), new Date(), { budgetMs: 0 });
+    const cold = await readOrgActivity(bigOrg, viewer(), new Date(), {});
     expect(
       performance.now() - started,
       'a cold read waited on what it keeps off the path',
@@ -186,7 +186,7 @@ describe('ISS-951 (1) the workspace read is read per workspace, not per project'
       if (row.releasePending) expect(row.release, 'a pending release read as none').toBeNull();
       if (row.peoplePending) expect(row.people.total).toBe(0);
     }
-    const later = await readOrgActivity(bigOrg, viewer(), new Date(), { budgetMs: 60_000 });
+    const later = await readOrgActivity(bigOrg, viewer(), new Date(), { waitMs: 60_000 });
     expect(later.projects.map((r) => [r.releasePending, r.peoplePending])).toEqual(
       later.projects.map(() => [false, false]),
     );
