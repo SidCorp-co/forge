@@ -29,6 +29,7 @@ import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
 import {
   BRANCH,
+  C1,
   F4,
   judgedAll,
   landedIssue,
@@ -127,8 +128,9 @@ async function shippedAt076(): Promise<string> {
   const req = await agreedRequirement(BCS);
   const issue = await landedIssue(1, F4);
   await traced(req, issue, 1, { 1: 'BC-1', 2: 'BC-2', 3: 'BC-3' });
-  // the issue's own passes, at the commit it landed as: agenfold's judge recorded these too
-  await judgedAll(issue, F4);
+  // the issue's own passes, at a commit that is not its landing: nothing on this project places
+  // them (a pass at the landing F4 counts there, ISS-957)
+  await judgedAll(issue, C1);
   await recordRelease([issue], 'v0.76.0');
   expect(await statusOf(issue)).toBe('closed');
   return req;

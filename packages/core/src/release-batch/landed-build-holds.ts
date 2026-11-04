@@ -56,6 +56,11 @@ export interface LandingHoldsRead {
    * issues' verdicts count at their landings, and the requirement's own on the live build.
    */
   promoted?: true;
+  /**
+   * Beside `promoted`, set where no promotion stands between and production names no commit it
+   * serves (ISS-957): what can count at the requirement is a judgement on a recorded release.
+   */
+  byRecord?: true;
 }
 
 /**

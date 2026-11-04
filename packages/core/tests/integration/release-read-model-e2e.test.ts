@@ -48,7 +48,8 @@ afterEach(async () => {
 
 beforeEach(async () => {
   // the requirement's coverage reads production serving BETA_SHA, so a verdict at it is checked
-  // (ISS-489 r3); this world's production declares no probe of its own
+  // (ISS-489 r3); this world's production declares a source probe, which the plant answers: with
+  // none, nothing reads the commit it serves and its issues are weighed at their landings (ISS-957)
   unplant = plantLiveBuild(BETA_SHA);
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
@@ -66,7 +67,7 @@ beforeEach(async () => {
     projectId,
     ownerId,
     bindingId,
-    probes: 'none',
+    probes: 'source',
     others: { beta: { tier: 'staging', deployment: { mode: 'external' } } },
   });
 });

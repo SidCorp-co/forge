@@ -186,12 +186,15 @@ describe('a row held before the route existed is carried by the next sweep', () 
   });
 });
 
-// ISS-900: a production that declares no source probe is weighed on its agent's release record, so a
-// verdict judged on a recorded release clears a row: such a project is no longer told nothing can earn
-// one, nor to declare a probe, but to record the release production serves, and how, then judge on it.
+// ISS-900, ISS-957: a production that declares no source probe and whose reading names no commit is
+// weighed at each issue's landing, not on the release its record says is live, which cannot hold a
+// change that has not shipped: a row judged at its landing is carried, and one judged elsewhere is held
+// naming that landing commit, never a release to record, a probe to declare, or one that predates it.
 const RECORD_ROUTE = 'record the release production serves (POST /api/projects/:id/release-records';
+const LANDING = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+const AT_LANDING = `at its landing commit \`${LANDING.slice(0, 12)}\``;
 
-describe('a project nothing can read for a commit, with no release recorded, is told to record one (ISS-900)', () => {
+describe('a project nothing can read for a commit is weighed at each landing (ISS-900, ISS-957)', () => {
   /** Production deploying through a provider whose adapter reads no deployment history. */
   async function bindUnreporting(): Promise<void> {
     await seedProduction({
@@ -204,18 +207,33 @@ describe('a project nothing can read for a commit, with no release recorded, is 
     });
   }
 
-  it('holds every owing row on its criteria, naming the release record to make, and a second sweep writes nothing', async () => {
+  /** A row judged at `commit`, which landed at LANDING: its passes judged another build. */
+  async function offLanding(commit: string, mergedAt: string): Promise<string> {
+    const id = await waitingRow(commit, mergedAt);
+    await db.execute(sql`UPDATE issues SET merged_commit_sha = ${LANDING} WHERE id = ${id}`);
+    return id;
+  }
+
+  it('carries a row judged at its landing, writing no hold', async () => {
     await bindUnreporting();
-    const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
-    const middle = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
-    const newest = await waitingRow(OLDER, '2026-09-29T09:00:00Z');
+    const id = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    await sweep();
+    expect(await holdOf(id)).toBeNull();
+  });
+
+  it('holds every row judged elsewhere on its criteria, naming its landing commit, and a second sweep writes nothing', async () => {
+    await bindUnreporting();
+    const oldest = await offLanding(SERVED, '2026-09-27T09:00:00Z');
+    const middle = await offLanding(SERVED, '2026-09-28T09:00:00Z');
+    const newest = await offLanding(OLDER, '2026-09-29T09:00:00Z');
 
     const first = await sweep();
 
     for (const id of [oldest, middle, newest]) {
       const hold = await holdOf(id);
       expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
-      expect(hold?.reason).toContain(RECORD_ROUTE);
+      expect(hold?.reason).toContain(AT_LANDING);
+      expect(hold?.reason).not.toContain(RECORD_ROUTE);
       expect(hold?.reason).not.toContain('declare a runtime probe');
     }
     expect(first.holdsWritten).toBe(3);
@@ -225,8 +243,8 @@ describe('a project nothing can read for a commit, with no release recorded, is 
 
   it('clears the hold of a row that left the gate, and keeps its neighbours held', async () => {
     await bindUnreporting();
-    const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
-    const next = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    const oldest = await offLanding(SERVED, '2026-09-27T09:00:00Z');
+    const next = await offLanding(SERVED, '2026-09-28T09:00:00Z');
     await sweep();
     await seedIssueStatus(oldest, 'reopen');
 
@@ -237,10 +255,10 @@ describe('a project nothing can read for a commit, with no release recorded, is 
     expect(await holdHistory(next)).toHaveLength(1);
   });
 
-  it('answers one roster blocker naming each owing issue and the release record, never an unrouted one', async () => {
+  it('answers one roster blocker naming each owing issue at its landing, never an unrouted one', async () => {
     await bindUnreporting();
-    const later = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
-    const earlier = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    const later = await offLanding(SERVED, '2026-09-28T09:00:00Z');
+    const earlier = await offLanding(SERVED, '2026-09-27T09:00:00Z');
 
     const readiness = await loadReleaseReadiness(projectId);
 
@@ -248,7 +266,8 @@ describe('a project nothing can read for a commit, with no release recorded, is 
     expect(codes).not.toContain('RELEASE_RUNTIME_UNROUTED');
     expect(codes.filter((c) => c === 'RELEASE_CRITERIA_UNEARNED')).toHaveLength(1);
     const held = readiness?.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
-    expect(held?.message).toContain(RECORD_ROUTE);
+    expect(held?.message).toContain(AT_LANDING);
+    expect(held?.message).not.toContain(RECORD_ROUTE);
     const [first, second] = await fx.displayIds([earlier, later]);
     expect(held?.message).toContain(String(first));
     expect(held?.message).toContain(String(second));
@@ -256,7 +275,7 @@ describe('a project nothing can read for a commit, with no release recorded, is 
 
   it('warns that a judging run still owes the held rows, never that none can earn one', async () => {
     await bindUnreporting();
-    const owing = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    const owing = await offLanding(SERVED, '2026-09-27T09:00:00Z');
     await fx.insertIssue();
 
     const readiness = await loadReleaseReadiness(projectId);
@@ -268,9 +287,9 @@ describe('a project nothing can read for a commit, with no release recorded, is 
     expect(said).not.toContain('declare a runtime probe');
   });
 
-  it('offers a project bound through a provider that reports nothing the release record, never a probe', async () => {
+  it('offers a project bound through a provider that reports nothing the landing commit, never a probe', async () => {
     await bindUnreporting();
-    const id = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    const id = await offLanding(SERVED, '2026-09-27T09:00:00Z');
 
     await sweep();
     const readiness = await loadReleaseReadiness(projectId);
@@ -278,7 +297,8 @@ describe('a project nothing can read for a commit, with no release recorded, is 
     const hold = String((await holdOf(id))?.reason);
     const card = readiness?.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED')?.message;
     for (const said of [hold, String(card)]) {
-      expect(said).toContain(RECORD_ROUTE);
+      expect(said).toContain(AT_LANDING);
+      expect(said).not.toContain(RECORD_ROUTE);
       expect(said).not.toContain('declare a runtime probe');
       expect(said).not.toMatch(/Coolify/);
     }

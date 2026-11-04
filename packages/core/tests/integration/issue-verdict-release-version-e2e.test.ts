@@ -220,8 +220,9 @@ describe('an issue criterion judged on a release counts where production names n
   it('sends the judge to the issue on the live release, never to the requirement, where the issue can carry it', async () => {
     await agenfold();
     const { req, issue } = await shippedAt076();
-    // what agenfold could send before: its passes at the commit it landed as, which nothing places
-    await judgedAll(issue, F4);
+    // passes at a commit that is not its landing, which nothing places (one at the landing F4
+    // counts there, ISS-957: `release-record-landing-basis-e2e.test.ts`)
+    await judgedAll(issue, C1);
 
     const read = await weighed(issue);
     expect(read.get(1)?.earned).not.toBe(true);

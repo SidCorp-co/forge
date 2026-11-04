@@ -24,6 +24,7 @@
 // which only the running product with real data can show, holds no release: it is owed on the
 // release that carries it once that ships (`landed-weighing.ts:weighLiveOnly`).
 
+import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import { readReleasePath } from '../project-config/index.js';
 import { type LandedCriterion, landedBuildsOf, landedStandings } from './landed-build.js';
 import {
@@ -52,7 +53,8 @@ export type CriteriaBasis =
 /**
  * Where this project's criteria are earned. A production with no source probe whose reading names no
  * commit it serves (ISS-957) is weighed at the landing; one whose deployment record names the commit
- * it serves keeps weighing there. `serving` is the caller's reading of production: absent, it is read
+ * it serves keeps weighing there, and so does a project naming the environment it judges a change on
+ * before release (`delivery.judgedOn`, REQ-36 BC-18), which can hold the change. `serving` is the caller's reading of production: absent, it is read
  * here; null, the caller has none and reaches no network, so nothing says production names no commit.
  */
 export async function criteriaBasisOf(
@@ -71,6 +73,8 @@ export async function criteriaBasisOf(
     };
   }
   if (!production || servedCommitUnnamed(production) === null) return { kind: 'serving' };
+  // an environment the project judges a change on before release can hold it: weighed there
+  if (judgedOnOf(read.path.document.delivery) !== null) return { kind: 'serving' };
   const reading = serving === undefined ? await readServingNow(projectId) : serving;
   if (reading === null || reading.kind === 'serving') return { kind: 'serving' };
   // with no branch named, the environment itself is what the words can name
@@ -99,9 +103,14 @@ export async function coverageLandingHolds(
 ): Promise<LandingHoldsRead | null> {
   const delivered = await landedBuildHolds(projectId, issueIds, judged);
   if (delivered) return delivered;
-  if ((await criteriaBasisOf(projectId)).kind !== 'landing') return null;
+  const basis = await criteriaBasisOf(projectId);
+  if (basis.kind !== 'landing') return null;
   const builds = await landedBuildsOf(issueIds);
-  return { ...(await holdsOnBuilds(projectId, builds, judged)), promoted: true };
+  return {
+    ...(await holdsOnBuilds(projectId, builds, judged)),
+    promoted: true,
+    ...(basis.why === 'release-record' ? { byRecord: true as const } : {}),
+  };
 }
 
 /** One waiting issue weighed at its landing: each criterion that does not count there, and why. */

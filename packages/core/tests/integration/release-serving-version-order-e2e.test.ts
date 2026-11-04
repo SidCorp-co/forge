@@ -26,6 +26,7 @@ import { api } from '../helpers/api.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
 import {
   BRANCH,
+  C1,
   F4,
   judgedAll,
   landedIssue,
@@ -107,8 +108,9 @@ describe('the serving release is the highest version shipped, not the record wri
     const req = await agreedRequirement(['A buyer pays for an order']);
     const issue = await landedIssue(++seq, F4);
     await traced(req, issue, seq, { 1: 'BC-1' });
-    // the issue's own passes at the commit it landed as: nothing on this project places a commit
-    await judgedAll(issue, F4);
+    // the issue's own passes at a commit that is not its landing: nothing on this project places
+    // them (a pass at the landing F4 counts there, ISS-957)
+    await judgedAll(issue, C1);
     await recordRelease('1.34.0', [issue]);
     await recordRelease('1.21.0');
 

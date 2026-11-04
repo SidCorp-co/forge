@@ -62,6 +62,11 @@ export interface LiveBuildHolds {
    */
   promoted?: boolean;
   /**
+   * Beside `promoted`, set where production names no commit it serves and no promotion stands
+   * between (ISS-957): the requirement's own verdicts count only on a recorded release.
+   */
+  byRecord?: boolean;
+  /**
    * Beside `landed`, the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18): a runtime
    * verdict at a whole commit is weighed at its landing as a commit verdict is. Null or absent, it
    * names no landed commit.
@@ -98,11 +103,12 @@ export function holdsFor(live: LiveBuildHolds | null, issueId: string): LiveBuil
  * where its production names no commit it serves, since a verdict on its live release counts there,
  * at a promotion's landing too (`release-batch/landed-weighing.ts`); on a promotion project with no
  * release recorded yet, null, since a commit judged at the landing counts there and a release cannot.
+ * Where the landing basis is the release record itself (`byRecord`, ISS-957), the record is asked for.
  */
 export function askedOnRelease(live: LiveBuildHolds | null | undefined): ReleasedLine | null {
   const line = live?.released;
   if (!line) return null;
-  return line.live || !live?.landed ? line : null;
+  return line.live || !live?.landed || live.byRecord ? line : null;
 }
 
 /** A landing Forge recorded: the issue whose merge mark names it, its commit, time and target branch. */
