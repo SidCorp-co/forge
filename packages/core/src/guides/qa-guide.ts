@@ -67,7 +67,7 @@ Read these before judging anything, while whoever sent you can still equip you.
   writes only a session, a header file for \`curl -H @<file>\` and a Playwright storage state, whose
   paths it prints. You never hold the password: never open, print or measure either file, and the
   run's close removes them. A secret it cannot sign in with, or a sign-in refused, is refused by name
-  and nothing is written: report it, never read the value instead. Where an older box runner's judge-login prints a login file rather than a session, read that file only inside one script that passes its values straight to the sign-in request, and never print, measure or echo them; this sentence goes with the runner release that carries ISS-959. It reads
+  and nothing is written: report it, never read the value instead. Where an older box runner's judge-login prints a login file rather than a session, read that file only inside one script that passes its values straight to the sign-in request, and never print, measure or echo them, until the box runs a runner that hands back a session. It reads
   \`GET /api/jobs/<run>/testing-profiles/<profile>/secrets?actor=<actor>\`, the one secret behind that
   actor (\`service=<service>\` for a service, \`ref=<ref>\` for one reference), which answers the value
   itself. Name the one actor the criterion needs: a read naming none is refused
