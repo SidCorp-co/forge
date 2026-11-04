@@ -69,7 +69,8 @@ export async function putLessonEntry(
     kind: 'lesson' as const,
     injection: input.injection,
     confidence: 'verified' as const,
-    authoredBy: 'human' as const,
+    // the steward decides a lesson, so its entry is the agent's (REQ-50 BC-2), and a rewrite says so too
+    authoredBy: 'agent' as const,
     orderIndex: input.meta.number,
     embedding: null,
     metadata: input.meta as unknown as Record<string, unknown>,
@@ -84,6 +85,7 @@ export async function putLessonEntry(
         body: row.body,
         kind: row.kind,
         injection: row.injection,
+        authoredBy: row.authoredBy,
         // a rewritten sentence is embedded again by the backfill; an unchanged one keeps its vector
         embedding: sql`CASE WHEN ${knowledgeEntries.body} = ${row.body} THEN ${knowledgeEntries.embedding} ELSE NULL END`,
         metadata: row.metadata,

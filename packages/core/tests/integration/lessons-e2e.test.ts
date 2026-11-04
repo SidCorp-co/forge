@@ -20,6 +20,8 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
+import { type LessonEntryMeta, putLessonEntry } from '../../src/knowledge/lesson-entries.js';
 import { type Doc, ok } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
 import {
@@ -130,6 +132,41 @@ describe('the steward proposes a lesson and settles it, and no person is asked (
       actor_id: w.stewardId,
     });
     expect((await lesson(await numberOf('Name the ward.'))).status).toBe('approved');
+  });
+
+  // REQ-50 BC-2, decision 4ca95ce9 on REQ-50: the steward decides a lesson, so its entry is the agent's,
+  // and a rewrite of one a person was once recorded on says so too (migration 0601 flips the rest).
+  // Planted red by writing `human` again in `putLessonEntry` and leaving its rewrite's author alone.
+  it("writes a decided lesson's entry as the agent's, and its rewrite says the agent too", async () => {
+    const n = await approved('Spell the ward in full.');
+    const slug = `lesson-${n}`;
+    const authorOf = async () =>
+      (
+        await rows<{ authored_by: string }>(
+          sql`SELECT authored_by FROM knowledge_entries WHERE project_id = ${w.projectId} AND slug = ${slug}`,
+        )
+      )[0]?.authored_by;
+    expect(await authorOf()).toBe('agent');
+    expect(ok(await say('member', 'GET', at(`/knowledge/${slug}`)))).toMatchObject({
+      kind: 'lesson',
+      authoredBy: 'agent',
+    });
+    await rows(
+      sql`UPDATE knowledge_entries SET authored_by = 'human' WHERE project_id = ${w.projectId} AND slug = ${slug}`,
+    );
+    const [held] = await rows<{ metadata: LessonEntryMeta }>(
+      sql`SELECT metadata FROM knowledge_entries WHERE project_id = ${w.projectId} AND slug = ${slug}`,
+    );
+    if (!held) throw new Error(`no entry ${slug}`);
+    await db.transaction((tx) =>
+      putLessonEntry(tx, {
+        projectId: w.projectId,
+        sentence: 'Spell the ward out in full.',
+        injection: 'on_demand',
+        meta: held.metadata,
+      }),
+    );
+    expect(await authorOf()).toBe('agent');
   });
 
   it('never approves by default: no usable answer, or a refused edit, leaves it proposed for the next pass', async () => {
