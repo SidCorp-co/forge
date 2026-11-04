@@ -277,14 +277,14 @@ describe('a live-only criterion holds no release, and is owed on it once it ship
   });
 
   it('reads them owed on the release that shipped the issue, and counts a pass there', async () => {
-    const req = await agreedRequirement(['A member opens the workspace']);
+    const req = await agreedRequirement(['A member opens the workspace', 'A workspace lists']);
     const { later } = await landedAfterLive();
     await designed(later, [
       [1, 'observable'],
       [2, 'observable'],
       [3, 'observable'],
     ]);
-    await traced(req, later, 2, { 1: 'BC-1' });
+    await traced(req, later, 2, { 1: 'BC-1', 2: 'BC-2' });
     // a pass at the landing on stub data is no live check of it
     await stored(later, 2, { commit: F4 });
     await shipped([later], '0.123.0');
@@ -302,11 +302,18 @@ describe('a live-only criterion holds no release, and is owed on it once it ship
       api(world.token, 'GET', `/api/projects/${world.projectId}/requirements/${req}`),
     );
     const standing = body.standing as {
+      delivery: { criteriaCoverage: Record<string, number> };
+      coverage: Array<{ code: string; issues: Array<{ notCounted: string | null }> }>;
       waitingOn: { says: { act: { key: string; vars?: Record<string, unknown> } } } | null;
     };
+    expect(standing.delivery.criteriaCoverage).toMatchObject({ passing: 0 });
+    // the landing pass on BC-2's criterion is no live check, and says what counts instead
+    const bc2 = standing.coverage.find((c) => c.code === 'BC-2');
+    expect(bc2?.issues[0]?.notCounted).toContain('only the running product shows this criterion');
+    expect(bc2?.issues[0]?.notCounted).toContain("{ kind: 'release', version: '0.123.0' }");
     expect(standing.waitingOn?.says.act).toEqual({
       key: 'standing.act.judgeOnReleaseOn',
-      vars: { codes: 'BC-1', keys: 'ISS-2', version: '0.123.0' },
+      vars: { codes: 'BC-1, BC-2', keys: 'ISS-2', version: '0.123.0' },
     });
 
     await stored(later, 1, { release: '0.123.0' });
