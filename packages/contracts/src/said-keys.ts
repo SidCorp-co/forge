@@ -3349,6 +3349,14 @@ export const SAID = {
 		en: "{key} carries it and is parked; the master moves it on",
 		vars: { key: "key" },
 	},
+	"standing.act.moveOnAnswered": {
+		en: "move {key} on once answered",
+		vars: { key: "key" },
+	},
+	"feedback.rule.carrierAsked": {
+		en: "{key} carries it and waits on an answer, asked in Needs you; the master moves it on once answered",
+		vars: { key: "key" },
+	},
 	"feedback.rule.carrierWaits": {
 		en: "{key} carries it and waits because {rule}",
 		vars: { key: "key", rule: "said" },

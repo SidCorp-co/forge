@@ -72,6 +72,7 @@
     "standing.act.releaseItByHand": "tự release và đóng lại",
     "standing.act.releaseRunning": "một release đang chạy",
     "standing.act.replan": "lập lại kế hoạch {keys}",
+    "standing.act.moveOnAnswered": "chuyển tiếp {key} khi có câu trả lời",
     "standing.act.reviewBreakdown": "Xem lại cách yêu cầu này được chia thành công việc",
     "standing.act.reviseReturned": "sửa lại r{r} đã bị trả",
     "standing.act.reviseThenProposeOrDrop": "sửa lại r{r} đã bị trả, rồi đề xuất hoặc bỏ",

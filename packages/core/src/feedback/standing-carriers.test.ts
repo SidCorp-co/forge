@@ -128,3 +128,52 @@ describe('a planned item waits on every carrier still owed, each named', () => {
     expect(w.rule).toContain('ISS-4 and ISS-7 wait at awaiting_release');
   });
 });
+
+// ISS-687 round 4 (judge run d47d6de0 at dev.489): FB-147's row on the Feedback list read "ISS-582 is
+// parked awaiting orchestrator and QA's answer", a steward note written while ISS-582 named the people
+// owing its answer, still drawn because FB-147's own standing read the same before and after round 2
+// turned that wait into kind `answer`. A carrier waiting on an answer is said in the item's own words,
+// naming nobody who owes it, on a basis of its own, so the old note reads stale and is drawn nowhere.
+// Planted red by saying the answer carrier with the person carrier's act and rule.
+describe('a feedback item whose carrier waits on an answer names no role (ISS-687 round 4)', () => {
+  const parkedOn = (kind: 'answer' | 'person', who: string): CarrierStanding => ({
+    key: 'ISS-582',
+    waitingOn: waitingOn(kind, {
+      who:
+        kind === 'answer'
+          ? say('issues.standing.who.answer')
+          : say('standing.who.named', { name: who }),
+      act: kind === 'answer' ? say('standing.act.none') : say('issues.standing.act.moveOn'),
+      rule: say('issues.rule.needsInfo'),
+    }),
+    since: AT.since,
+    stuck: null,
+  });
+  const standingOf = (carrier: CarrierStanding) =>
+    feedbackStandingOf(
+      'planned',
+      'issue',
+      ['ISS-582'],
+      'R',
+      reader,
+      null,
+      { ...NO_STANDING_FACTS, carrier },
+      AT,
+    );
+
+  it('says what waits, the answer asked in Needs you, naming nobody who owes it', () => {
+    const w = standingOf(parkedOn('answer', '')).waitingOn;
+    expect(w.act).toBe('move ISS-582 on once answered');
+    expect(w.rule).toBe(
+      'ISS-582 carries it and waits on an answer, asked in Needs you; the master moves it on once answered',
+    );
+    expect(`${w.who} ${w.act} ${w.rule}`).not.toMatch(/orchestrator|\bqa\b|owe/i);
+  });
+
+  it('stands on another basis than the same carrier parked on named people, so a note written then is stale', () => {
+    const answer = standingOf(parkedOn('answer', ''));
+    const person = standingOf(parkedOn('person', 'orchestrator, qa'));
+    expect(answer.times.basis).toBeTruthy();
+    expect(answer.times.basis).not.toBe(person.times.basis);
+  });
+});

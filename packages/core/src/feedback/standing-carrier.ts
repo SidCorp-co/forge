@@ -52,6 +52,23 @@ const KIND_OF: Record<IssueWaitingKind, FeedbackWaitingKind> = {
 /** The carrier waits on a person, or on an answer a person owes, which the item reads as its master's to move on. */
 const PERSON_KINDS: ReadonlySet<IssueWaitingKind> = new Set(['person', 'answer']);
 
+/**
+ * What the item says of a carrier parked on a person: on an answer, that it waits on the answer asked
+ * in Needs you, naming nobody who owes it (REQ-68 BC-4); its own act and rule, so a note the steward
+ * wrote while the carrier named the people owing it stands on another basis and is drawn nowhere
+ * (ISS-687 round 4: FB-147's row read "ISS-582 is parked awaiting orchestrator and QA's answer").
+ */
+const parkedSays = (kind: IssueWaitingKind, key: string) =>
+  kind === 'answer'
+    ? {
+        act: say('standing.act.moveOnAnswered', { key }),
+        rule: say('feedback.rule.carrierAsked', { key }),
+      }
+    : {
+        act: say('standing.act.moveOn', { key }),
+        rule: say('feedback.rule.carrierParked', { key }),
+      };
+
 const MASTER = say('standing.who.projectMaster');
 
 /** The carrier's own wait, said as the item's: who it names, its act on the carrier, its rule. */
@@ -71,14 +88,12 @@ export function carrierWait(c: CarrierStanding | null, carriers: readonly string
   }
   const w = c.waitingOn;
   if (PERSON_KINDS.has(w.kind)) {
+    const parked = parkedSays(w.kind, c.key);
     return {
-      wait: wait(
-        KIND_OF[w.kind],
-        MASTER,
-        say('standing.act.moveOn', { key: c.key }),
-        say('feedback.rule.carrierParked', { key: c.key }),
-        { ref: c.key, dueAt: w.dueAt },
-      ),
+      wait: wait(KIND_OF[w.kind], MASTER, parked.act, parked.rule, {
+        ref: c.key,
+        dueAt: w.dueAt,
+      }),
       yours: false,
     };
   }
