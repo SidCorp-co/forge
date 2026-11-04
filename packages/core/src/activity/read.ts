@@ -5,6 +5,11 @@
 // (`development/needs-you-viewer.ts:readNeedsYouAcross`), its next release's progress and the issues
 // landed and waiting for a release.
 //
+// A person reads no record key here (ISS-951 round 4): every title and question is read through
+// `record-keys.ts:withoutRecordKeys` with the projects' own issue prefixes, and what the master does
+// names its issue by title. A row's group and the text beside it are both read from its master's one
+// state (`group.ts`).
+//
 // The page reads this on every move of any project, so it is read per workspace, not per project:
 // each leg is a fixed number of statements, and the release forecast, the one leg that costs seconds
 // on a project with many requirements, is kept off the path (`release-glance.ts`).
@@ -17,15 +22,14 @@ import {
   ORG_ACTIVITY_LANE_MINUTES,
   ORG_ACTIVITY_LIST_LIMIT,
   type OrgActivity,
-  type OrgActivityDoing,
   type OrgActivityGroup,
   type OrgActivityMaster,
   type OrgActivityNow,
   type OrgActivityPerson,
   type OrgActivityProject,
-  type OrgActivitySkipReason,
 } from '@forge/contracts/org-activity';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { withoutRecordKeys } from '@forge/contracts/record-keys';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readNeedsYouAcross } from '../development/index.js';
@@ -35,6 +39,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MasterGlance, readMasterGlances } from '../masters/index.js';
 import { laneOf, readProjectEvents } from './events.js';
 import { glanceCache } from './glance-cache.js';
+import { doingOf, groupOf, skipOf } from './group.js';
 import { releaseGlances } from './release-glance.js';
 
 /** How many of each source's events a lane reads per project over its two hours. */
@@ -63,14 +68,19 @@ interface OrgProject {
   id: string;
   slug: string;
   name: string;
+  issue_prefix: string | null;
 }
+
+/** The projects' own issue prefixes, which a title is read without beside the shared ones. */
+const prefixesOf = (projects: readonly { issue_prefix: string | null }[]): string[] =>
+  projects.flatMap((p) => (p.issue_prefix ? [p.issue_prefix] : []));
 
 /** The org's live projects the caller can read, under the request's token fence. */
 async function readableProjects(orgId: string, userId: string): Promise<OrgProject[]> {
   const visible = new Set(await loadVisibleProjectIds(userId));
   const rows = rowsOf<OrgProject>(
     await db.execute(sql`
-      SELECT id, slug, name FROM projects
+      SELECT id, slug, name, issue_prefix FROM projects
        WHERE org_id = ${orgId} AND archived_at IS NULL
        ORDER BY name, id`),
   );
@@ -99,7 +109,7 @@ async function readInFlight(projectIds: readonly string[]): Promise<Map<string, 
     list.push({
       issueId: String(r.id),
       key: formatIssueRef(r.issue_prefix as string | null, Number(r.iss_seq)),
-      title: String(r.title),
+      title: withoutRecordKeys(String(r.title), prefixesOf([r as { issue_prefix: string | null }])),
       status: r.status as IssueStatus,
       step: (r.step as WorkStep | null) ?? null,
       stepSince: iso(r.step_started_at),
@@ -143,14 +153,20 @@ const oneLine = (text: string): string => {
 };
 
 /**
- * A decision as a row names it: a question by its own words and the issue it hangs on, anything else
- * by its title and key. Never an id as text: a question asked on nothing names no key.
+ * A decision as a row names it: a question by its own words, anything else by its title, with no
+ * record key in either; the key of the item it is asked on rides along for a tooltip. Never an id: a
+ * question asked on nothing names no key.
  */
-function personOf(d: NeedsYouDecision, issueOfQuestion: Map<string, string>): OrgActivityPerson {
+function personOf(
+  d: NeedsYouDecision,
+  issueOfQuestion: Map<string, string>,
+  prefixes: readonly string[],
+): OrgActivityPerson {
+  const read = (text: string) => oneLine(withoutRecordKeys(text, prefixes));
   if (d.entity === 'question') {
-    return { group: d.group, key: issueOfQuestion.get(d.key) ?? null, title: oneLine(d.question) };
+    return { group: d.group, key: issueOfQuestion.get(d.key) ?? null, title: read(d.question) };
   }
-  const title = d.group === 'answer' ? oneLine(d.question) : oneLine(d.title || d.question);
+  const title = d.group === 'answer' ? read(d.question) : read(d.title || d.question);
   return { group: d.group, key: UUID.test(d.key) ? null : d.key, title };
 }
 
@@ -175,11 +191,13 @@ async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
   const out = new Map<string, PeopleGlance>(projectIds.map((id) => [id, { total: 0, items: [] }]));
   if (projectIds.length === 0) return out;
   const owed = await readNeedsYouAcross(userId, agency, new Date(), projectIds);
-  const idOf = new Map(
-    rowsOf<{ id: string; slug: string }>(
-      await db.execute(sql`SELECT id, slug FROM projects WHERE id IN (${uuids(projectIds)})`),
-    ).map((r) => [r.slug, String(r.id)]),
+  const projects = rowsOf<{ id: string; slug: string; issue_prefix: string | null }>(
+    await db.execute(
+      sql`SELECT id, slug, issue_prefix FROM projects WHERE id IN (${uuids(projectIds)})`,
+    ),
   );
+  const idOf = new Map(projects.map((r) => [r.slug, String(r.id)]));
+  const prefixes = prefixesOf(projects);
   const shown = owed.map((o) => ({
     projectId: idOf.get(o.projectSlug),
     total: o.total,
@@ -194,7 +212,7 @@ async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
     if (!s.projectId) continue;
     out.set(s.projectId, {
       total: s.total,
-      items: s.decisions.map((d) => personOf(d, issueOfQuestion)),
+      items: s.decisions.map((d) => personOf(d, issueOfQuestion, prefixes)),
     });
   }
   return out;
@@ -204,7 +222,52 @@ export const peopleGlances = glanceCache('the decisions owed', PEOPLE_FRESH_MS, 
   concurrency: 1,
 });
 
-const masterOf = (m: MasterGlance | undefined): OrgActivityMaster =>
+const KEY_SHAPE = /^([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,9})$/;
+
+/**
+ * The title of each issue a master's open pass or newest run names, by `projectId|key`, read without
+ * record keys: one statement however many projects, sent even where none names one, so the read's
+ * statements do not depend on what its masters do. A key in neither the shared nor the project's own
+ * prefix, or one no issue of the project answers, has no title.
+ */
+async function readDoingTitles(
+  projects: readonly OrgProject[],
+  masters: ReadonlyMap<string, MasterGlance>,
+): Promise<Map<string, string>> {
+  const asked: { projectId: string; key: string; seq: number }[] = [];
+  for (const p of projects) {
+    const m = masters.get(p.id);
+    for (const key of new Set([m?.pass?.issueKey, m?.newestRunIssue])) {
+      const shape = key ? KEY_SHAPE.exec(key) : null;
+      const prefix = shape?.[1]?.toUpperCase();
+      if (!key || !shape || (prefix !== 'ISS' && prefix !== p.issue_prefix)) continue;
+      asked.push({ projectId: p.id, key, seq: Number(shape[2]) });
+    }
+  }
+  const pairs = asked.length
+    ? sql`(i.project_id, i.iss_seq) IN (${sql.join(
+        asked.map((a) => sql`(${a.projectId}::uuid, ${a.seq}::int)`),
+        sql`, `,
+      )})`
+    : sql`false`;
+  const rows = rowsOf<{ project_id: string; iss_seq: number; title: string }>(
+    await db.execute(sql`SELECT i.project_id, i.iss_seq, i.title FROM issues i WHERE ${pairs}`),
+  );
+  const prefixes = prefixesOf(projects);
+  const out = new Map<string, string>();
+  for (const a of asked) {
+    const row = rows.find(
+      (r) => String(r.project_id) === a.projectId && Number(r.iss_seq) === a.seq,
+    );
+    if (row) out.set(`${a.projectId}|${a.key}`, withoutRecordKeys(String(row.title), prefixes));
+  }
+  return out;
+}
+
+const masterOf = (
+  m: MasterGlance | undefined,
+  titleOf: (key: string) => string | null,
+): OrgActivityMaster =>
   m
     ? {
         state: m.state,
@@ -213,7 +276,7 @@ const masterOf = (m: MasterGlance | undefined): OrgActivityMaster =>
         lastBeatAt: m.lastBeatAt,
         silentAfterSeconds: SESSION_SILENCE_TIMEOUT_S,
         pane: m.pane,
-        doing: doingOf(m),
+        doing: doingOf(m, titleOf),
         dialog: m.state === 'waiting_person' ? m.dialog : null,
       }
     : {
@@ -226,40 +289,6 @@ const masterOf = (m: MasterGlance | undefined): OrgActivityMaster =>
         doing: null,
         dialog: null,
       };
-
-/** The open pass's verb and issue; else, while runs are out, the issue of the newest. */
-function doingOf(m: MasterGlance): OrgActivityDoing | null {
-  if (m.pass) return { kind: 'pass', verb: m.pass.verb, issueKey: m.pass.issueKey };
-  if (m.newestRunIssue) return { kind: 'run', verb: null, issueKey: m.newestRunIssue };
-  return null;
-}
-
-/**
- * Why the last pass took nothing while a backlog stood, from what core holds: a turn somebody began
- * at the pane, or a pane working by hand now; its box taking no new run; its runs out or slots full.
- * Null where it took something, where no backlog stands, or where core holds no reason.
- */
-export function skipOf(m: MasterGlance | undefined, backlog: number): OrgActivitySkipReason | null {
-  if (!m || backlog === 0 || !m.lastPass || m.lastPass.dispatched.length > 0) return null;
-  if (m.state === 'busy' || m.lastPass.trigger === 'unprompted') return 'busy_by_hand';
-  if (m.poolClosed) return 'pool_closed';
-  if (m.runsOut > 0 || m.slotsFull) return 'one_at_a_time';
-  return null;
-}
-
-const RUNNING = new Set(['in_pass', 'busy', 'runs_out']);
-
-/** Where a row stands, by its master and what is owed, never by an in-progress issue (MK-9). */
-export function groupOf(
-  p: Pick<OrgActivityProject, 'master' | 'next' | 'people' | 'awaitingRelease'>,
-): OrgActivityGroup {
-  const state = p.master.state;
-  if (RUNNING.has(state)) return 'running';
-  if (state === 'waiting_person') return 'waiting';
-  if (state !== 'none' && p.next.total > 0) return 'idle';
-  if (p.people.total > 0 || p.awaitingRelease > 0 || p.next.total > 0) return 'waiting';
-  return 'quiet';
-}
 
 /** What each leg of one workspace read took, in milliseconds, in the order they are named. */
 export type OrgActivityLegs = Map<OrgActivityLeg, number>;
@@ -311,20 +340,23 @@ export async function readOrgActivity(
     timed('awaiting', () => readAwaitingRelease(ids)),
     timed('backlog', () => readAdmissibleForProjects(ids, ORG_ACTIVITY_LIST_LIMIT)),
     timed('people', () => peopleGlances.read([peopleKey], waitMs)),
-    timed('masters', () => readMasterGlances(ids, now)),
+    timed('masters', async () => {
+      const glances = await readMasterGlances(ids, now);
+      return { glances, titles: await readDoingTitles(projects, glances) };
+    }),
     timed('releases', () => releaseGlances.read(ids, waitMs)),
     timed('lanes', () => readProjectEvents(ids, { since: laneFrom, limit: LANE_EVENTS_LIMIT })),
   ]);
   const owed = people.values.get(peopleKey);
   const rows = projects.map((p): OrgActivityProject => {
-    const glance = masters.get(p.id);
+    const glance = masters.glances.get(p.id);
     const backlog = admissible.totals.get(p.id) ?? 0;
     const release = releases.values.get(p.id);
     const base = {
       projectId: p.id,
       slug: p.slug,
       name: p.name,
-      master: masterOf(glance),
+      master: masterOf(glance, (key) => masters.titles.get(`${p.id}|${key}`) ?? null),
       now: inFlight.get(p.id) ?? [],
       next: {
         total: backlog,
@@ -333,7 +365,7 @@ export async function readOrgActivity(
           .map((a) => ({
             issueId: a.issueId,
             key: a.issueKey ?? a.issueId,
-            title: a.title ?? '',
+            title: withoutRecordKeys(a.title ?? '', prefixesOf([p])),
             priority: a.priority,
           })),
         skip: skipOf(glance, backlog),

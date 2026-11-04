@@ -2,6 +2,10 @@
 // /api/orgs/:orgId/activity` answers one row per project the caller can read, and the `org:<id>` room
 // tells an open page when any of them moved (`org.activity.changed`), so it reads again without
 // polling. Core groups each row; the screen draws the groups it is given and derives none.
+//
+// No key is text a person reads (ISS-951 round 4, the owner's UI rule): every title and question
+// here is read through `record-keys.ts:withoutRecordKeys`, and a `key` or `issueKey` field is for a
+// link target, an aria label or a tooltip only.
 
 import type { IssueStatus } from "./issue-machine.js";
 import type { WorkStep } from "./issue-vocabulary.js";
@@ -45,9 +49,9 @@ export interface OrgActivityNext {
 /** A decision the project waits on the caller for, as Needs you lists it. */
 export interface OrgActivityPerson {
 	group: NeedsYouDecisionGroup;
-	/** The issue, requirement or feedback key it is asked on; null for a question asked on nothing. */
+	/** The issue, requirement or feedback key it is asked on, for a tooltip; null for a question asked on nothing. */
 	key: string | null;
-	/** A question's own words, or the item's title, on one line. */
+	/** A question's own words, or the item's title, on one line, with no record key in it. */
 	title: string;
 }
 
@@ -64,7 +68,10 @@ export interface OrgActivityDoing {
 	kind: "pass" | "run";
 	/** The pass's verb; null on a run. */
 	verb: MasterVerb | null;
+	/** The issue's key, for a tooltip. */
 	issueKey: string | null;
+	/** The issue's title, as a person reads it; null where no issue of the project answers the key. */
+	issueTitle: string | null;
 }
 
 /** The scope the project's next release carries: the soonest requirement still landing, or the draft release. */
@@ -203,7 +210,10 @@ export type OrgActivityEventKind = (typeof ORG_ACTIVITY_EVENT_KINDS)[number];
 export interface OrgActivityEvent {
 	at: string;
 	kind: OrgActivityEventKind;
+	/** The issue it was on, by key, for a tooltip. */
 	issueKey: string | null;
+	/** That issue's title, as a person reads it; null where it names none or no issue answers the key. */
+	issueTitle: string | null;
 	/** A pass's verb. */
 	verb?: MasterVerb;
 	/** A settled pass: how many issues it dispatched. */

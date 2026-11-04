@@ -222,6 +222,14 @@ describe('ISS-951 (2)(3) the master reads what its pane does', () => {
   });
 
   it('an open pass reads in a pass since it opened; once the pane says its turn ended, it does not', async () => {
+    // the pass names its issue by title, read without the key an agent wrote into it (ISS-951 round 4)
+    const named = await createTestIssue(projectId, ownerId, 1, {
+      status: 'draft',
+      createdAt: new Date(),
+    });
+    await db.execute(
+      sql`UPDATE issues SET title = 'FB-7: the pass names its issue' WHERE id = ${named.id}`,
+    );
     await beat('idle', 0, null);
     const opened = await pass({ op: 'open', sessionId, verb: 'dispatch', issueKey: 'ISS-1' });
     expect(opened.status, JSON.stringify(opened.body)).toBe(201);
@@ -232,6 +240,7 @@ describe('ISS-951 (2)(3) the master reads what its pane does', () => {
       kind: 'pass',
       verb: 'dispatch',
       issueKey: 'ISS-1',
+      issueTitle: 'The pass names its issue',
     });
 
     await new Promise((r) => setTimeout(r, 20));
@@ -355,7 +364,8 @@ describe('ISS-951 (6) a question waiting on the reader reads as itself', () => {
       projectId,
       issueId: issue.id,
       askedBy: ownerId,
-      prompt: `Should the stg vhost change today, or only in the Friday window? ${'Detail that runs past one line. '.repeat(6)}`,
+      // the asking run led with keys, as ISS-582's did on dev.486 (ISS-951 round 4)
+      prompt: `ISS-61 (from hop FB-147): Should the stg vhost change today, or only in the Friday window? ${'Detail that runs past one line. '.repeat(6)}`,
       blockerKind: 'human',
       answer: { shape: 'free_text', needed: 'a day' },
     } as never);
@@ -369,6 +379,7 @@ describe('ISS-951 (6) a question waiting on the reader reads as itself', () => {
     ).toBe(true);
     expect(title.endsWith('…'), 'a long question was not cut to its line').toBe(true);
     expect(title.length).toBeLessThanOrEqual(140);
+    expect(title, 'a key was left in the words a person reads').not.toMatch(/\b(ISS|FB)-\d/);
     expect(JSON.stringify(row.people), 'a question id was shown as text').not.toContain(id);
     expect(JSON.stringify(row.people)).not.toContain('A question a run asked');
   });

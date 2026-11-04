@@ -5,8 +5,12 @@
 // where no live facts stand. It filters by the strip, opens one project's peek (Now, Backlog, People,
 // a dialog's text, both release counts, a Recent list read only when opened) that the arrow keys
 // switch and Esc closes, listens on the org's room, keeps its last answer on screen while it reads
-// again, and never shows a slug or an id.
+// again, and never shows a slug or an id. Round 4 (judge run e0121211 at dev.486): no record key is
+// text either — People read the question's own words, Recent and what a master does read the issue's
+// title, and the key sits only in a link target or a tooltip; the peek's key hint names the arrows it
+// draws.
 //
+// @direct-test-of packages/web-v2/src/design/patterns/peek-panel.tsx
 // @direct-test-of packages/web-v2/src/features/activity/components/lanes.tsx
 // @direct-test-of packages/web-v2/src/design/patterns/timeline.tsx
 // @direct-test-of packages/web-v2/src/features/activity/components/activity-peek.tsx
@@ -67,11 +71,18 @@ const FORGE = project({
     state: "busy",
     lastBeatAt: ago(12),
     pane: { doing: "working", lastEventAt: ago(12), turnBeganAt: ago(40), writtenAt: null, seenAt: ago(12), source: "beat" },
-    doing: { kind: "pass", verb: "dispatch", issueKey: "ISS-687" },
+    doing: { kind: "pass", verb: "dispatch", issueKey: "ISS-687", issueTitle: "No page asks a person to act on an issue" },
   }),
   now: [{ issueId: "i-948", key: "ISS-948", title: "The demo seed asks a steward decision", status: "in_progress", step: "build", stepSince: ago(17 * 60) }],
   next: { total: 10, items: [{ issueId: "i-935", key: "ISS-935", title: "The steward names the events door", priority: "medium" }], skip: null },
-  people: { total: 43, items: [{ group: "answer", key: "ISS-103", title: "Can the stg vhost be changed today, or only in the Friday window?" }] },
+  people: {
+    total: 43,
+    items: [
+      { group: "answer", key: "ISS-103", title: "Can the stg vhost be changed today, or only in the Friday window?" },
+      { group: "answer", key: "FB-147", title: "How should a product tour be drawn in a ux-flow design?" },
+      { group: "answer", key: "REQ-66", title: "Second fix round, or accept c1 as it stands?" },
+    ],
+  },
   release: { key: "REQ-40", title: "Every release is a readable page", shipped: 7, awaitingRelease: 0, total: 8 },
   lane: {
     from: ago(7200),
@@ -134,9 +145,10 @@ const read = (projects: OrgActivityProject[], refreshing = false): OrgActivity =
 const RECENT: OrgActivityRecent = {
   projectId: "p-forge",
   items: [
-    { at: ago(60), kind: "run_started", issueKey: "ISS-688" },
-    { at: ago(300), kind: "pass_settled", issueKey: null, verb: "dispatch", dispatched: 1 },
-    { at: ago(900), kind: "change_request", issueKey: "ISS-933", ref: "!135" },
+    { at: ago(60), kind: "run_started", issueKey: "ISS-688", issueTitle: "The ETA cell reads its paused reason" },
+    { at: ago(300), kind: "pass_settled", issueKey: null, issueTitle: null, verb: "dispatch", dispatched: 1 },
+    { at: ago(900), kind: "change_request", issueKey: "ISS-933", issueTitle: "A landing moves the step", ref: "!135" },
+    { at: ago(1200), kind: "status", issueKey: "ISS-959", issueTitle: "Recent names each issue", to: "open" },
   ],
 };
 
@@ -176,28 +188,40 @@ describe("the Activity tab", () => {
     expect(rooms).toContain(`org:${ORG}`);
   });
 
-  it("shows no slug or id as text; the issue keys it shows are the ones a person reads", async () => {
+  it("shows no slug, id or record key as text, in the lanes, the peek or its Recent list", async () => {
     serve(read([FORGE, ADMINHUB, CATALOG, QUIET]));
     const { container } = renderWithQuery(<ActivityScreen />);
     await screen.findByText("Forge");
     fireEvent.click(rowOf("Forge"));
-    await screen.findByTestId("activity-peek");
+    const recent = within(await screen.findByTestId("activity-peek")).getByTestId("activity-recent");
+    fireEvent.click(within(recent).getByText("Recent"));
+    await waitFor(() => expect(within(recent).getAllByTestId("row-item")).toHaveLength(4));
     const text = container.ownerDocument.body.textContent ?? "";
     for (const raw of ["forge-slug", "p-forge", "i-948", ORG, QUESTION_ID]) {
       expect(text, `${raw} is drawn as text`).not.toContain(raw);
     }
+    expect(text.match(/(ISS|FB|REQ)-\d+/g) ?? [], "a record key is drawn as text").toEqual([]);
   });
 
-  it("a question waiting on the reader reads as its own words with its issue key", async () => {
+  it("a question waiting on the reader reads as its own words, its key only on hover", async () => {
     serve(read([FORGE, ADMINHUB]));
     renderWithQuery(<ActivityScreen />);
     await screen.findByText("Forge");
     fireEvent.click(rowOf("Forge"));
     const people = within(await screen.findByTestId("activity-peek")).getByRole("region", { name: "People" });
-    const item = within(people).getByTestId("row-item");
-    expect(item.textContent).toContain("ISS-103");
-    expect(item.textContent).toContain("Can the stg vhost be changed today, or only in the Friday window?");
+    const [item] = within(people).getAllByTestId("row-item");
+    expect(item?.textContent).toContain("Can the stg vhost be changed today, or only in the Friday window?");
+    expect(people.textContent).not.toMatch(/(ISS|FB|REQ)-\d+/);
     expect(people.textContent).not.toContain("A question a run asked");
+  });
+
+  it("the peek's key hint names the arrows it draws", async () => {
+    serve(read([FORGE, ADMINHUB]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    fireEvent.click(rowOf("Forge"));
+    const keys = within(await screen.findByTestId("activity-peek")).getByTestId("peek-keys");
+    expect([...keys.querySelectorAll("kbd")].map((k) => k.textContent).slice(0, 2)).toEqual(["↑", "↓"]);
   });
 
   it("the strip keeps only the rows its filter names", async () => {
@@ -246,10 +270,11 @@ describe("the Activity tab", () => {
     expect(recent.hasAttribute("open")).toBe(false);
     expect(calls.some((c) => c.path.endsWith("/recent")), "a closed Recent was read").toBe(false);
     fireEvent.click(within(recent).getByText("Recent"));
-    await waitFor(() => expect(within(recent).getAllByTestId("row-item")).toHaveLength(3));
-    expect(recent.textContent).toContain("Run started · ISS-688");
+    await waitFor(() => expect(within(recent).getAllByTestId("row-item")).toHaveLength(4));
+    expect(recent.textContent).toContain("Run started · The ETA cell reads its paused reason");
     expect(recent.textContent).toContain("Pass settled · dispatched 1");
-    expect(recent.textContent).toContain("Change request !135 · ISS-933");
+    expect(recent.textContent).toContain("Change request !135 · A landing moves the step");
+    expect(recent.textContent).toContain("Recent names each issue → Open");
   });
 
   it("an org with no project the reader can read says so", async () => {
@@ -306,7 +331,8 @@ describe("the Activity tab's lanes", () => {
     expect(within(forge).getByTestId("activity-pane").getAttribute("data-pane")).toBe("busy");
     expect(within(forge).getByTestId("activity-ago").textContent).toMatch(/^\d+s ago$/);
     expect(within(forge).getByTestId("activity-ago").getAttribute("data-late")).toBeNull();
-    expect(within(forge).getByTestId("activity-doing").textContent).toBe("DispatchISS-687");
+    expect(within(forge).getByTestId("activity-doing").textContent).toBe("DispatchNo page asks a person to act on an issue");
+    expect(within(forge).getByTestId("activity-doing").getAttribute("title")).toBe("ISS-687");
     expect(within(rowOf("AdminHub API")).getByTestId("activity-pane").getAttribute("data-pane")).toBe("dialog");
     expect(within(rowOf("Catalog API")).getByTestId("activity-pane").getAttribute("data-pane")).toBe("none");
     const silent = within(rowOf("Orbit"));
@@ -422,7 +448,7 @@ describe("the peek's Recent list", () => {
       routeEvent({ event: "org.activity.changed", data: { orgId: ORG, projectId: "p-forge", source: "master" }, timestamp: new Date().toISOString() }, client);
     }, 150);
     try {
-      await waitFor(() => expect(within(recent).getAllByTestId("row-item")).toHaveLength(3), { timeout: 4_000 });
+      await waitFor(() => expect(within(recent).getAllByTestId("row-item")).toHaveLength(4), { timeout: 4_000 });
     } finally {
       clearInterval(frames);
     }

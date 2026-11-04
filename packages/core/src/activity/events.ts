@@ -4,6 +4,11 @@
 // of them (`recent.ts`), and each row's timeline lane reads the last two hours of them (`laneOf`,
 // MK-10 C): one statement for every project asked, and no second path for either.
 //
+// Each event names its issue by title as well as by key, read in the same statement from the
+// project's issues by sequence (`issues_project_iss_seq_uq`), and with no record key left in it
+// (`record-keys.ts:withoutRecordKeys`): a person reads the title, the key stays for a tooltip
+// (ISS-951 round 4).
+//
 // Every source is reached through its own index from the project: a status move through each of its
 // issues (`kernel_transitions (entity, entity_id)`), a run's end through each of its run sessions.
 // Round 2 ordered the whole transitions table by time and filtered it to the project, which reads
@@ -20,6 +25,7 @@ import type {
   OrgActivityLane,
   OrgActivitySpan,
 } from '@forge/contracts/org-activity';
+import { withoutRecordKeys } from '@forge/contracts/record-keys';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
@@ -51,6 +57,7 @@ interface EventRow {
   to_status: OrgActivityEvent['to'] | null;
   ref: string | null;
   span: string | null;
+  issue_title: string | null;
 }
 
 /**
@@ -74,7 +81,7 @@ export async function readProjectEvents(
   );
   const rows = rowsOf<EventRow>(
     await db.execute(sql`
-      SELECT p.id AS project_id, p.issue_prefix AS prefix, e.*
+      SELECT p.id AS project_id, p.issue_prefix AS prefix, e.*, it.title AS issue_title
         FROM (SELECT id, issue_prefix FROM projects WHERE id IN (${ids})) p
         CROSS JOIN LATERAL (
           (SELECT q.started_at AS at, 'pass_opened'::text AS kind, NULL::int AS seq,
@@ -147,6 +154,14 @@ export async function readProjectEvents(
               AND d ->> 'to' IS NOT NULL AND (d ->> 'to')::timestamptz >= ${since}
             ORDER BY 1 DESC LIMIT ${limit})
         ) e
+        LEFT JOIN LATERAL (
+          SELECT i.title FROM issues i
+           WHERE i.project_id = p.id
+             AND i.iss_seq = COALESCE(
+                   e.seq,
+                   CASE WHEN e.key ~ ('^(ISS|' || COALESCE(p.issue_prefix, 'ISS') || ')-[0-9]{1,9}$')
+                        THEN substring(e.key FROM '([0-9]+)$')::int END)
+        ) it ON true
        WHERE e.at IS NOT NULL
        ORDER BY e.at DESC`),
   );
@@ -157,6 +172,9 @@ export async function readProjectEvents(
       at: new Date(r.at as string).toISOString(),
       kind: r.kind,
       issueKey: issueKey ?? null,
+      issueTitle: r.issue_title
+        ? withoutRecordKeys(r.issue_title, r.prefix ? [r.prefix] : [])
+        : null,
       ...(r.verb ? { verb: r.verb } : {}),
       ...(r.dispatched !== null && r.dispatched !== undefined
         ? { dispatched: Number(r.dispatched) }

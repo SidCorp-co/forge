@@ -153,7 +153,8 @@ export function PeekPanel({ peek, listLabel, noun, full, children, foot, testId 
         ) : null}
       </FullPageContext>
       <div className="flex-none border-t border-line-region px-[18px] pb-3 pt-2 text-12 text-subtle max-lg:hidden" data-testid="peek-keys">
-        <Kbd>j</Kbd> <Kbd>k</Kbd> {t("common.peekMove")} · <Kbd>{t("common.key.enter")}</Kbd> {t("common.peekFullPage")} · <Kbd>{t("common.key.escape")}</Kbd> {t("common.peekCloseWord")}
+        {/* the keys drawn as its own controls at the top; j and k move it too (ISS-951 round 4) */}
+        <Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("common.peekMove")} · <Kbd>{t("common.key.enter")}</Kbd> {t("common.peekFullPage")} · <Kbd>{t("common.key.escape")}</Kbd> {t("common.peekCloseWord")}
       </div>
     </aside>
   );

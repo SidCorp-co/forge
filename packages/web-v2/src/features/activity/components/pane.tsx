@@ -80,16 +80,20 @@ export function PaneMark({ master, now }: { master: OrgActivityMaster; now: numb
   );
 }
 
-/** The open pass's verb and issue, or the issue of its newest run, quieter; a dash where neither stands. */
+/**
+ * The open pass's verb and the title of its issue, or the title of its newest run's issue, quieter; a
+ * dash where neither stands. The issue's key is never text (ISS-951 round 4): it is the tooltip.
+ */
 export function Doing({ master }: { master: OrgActivityMaster }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const d = master.doing;
   if (!d) return <span className="text-subtle">—</span>;
+  const tip = [d.kind === "run" ? t("activity.doing.run") : null, d.issueKey].filter(Boolean).join(" · ");
   return (
-    <span className="inline-flex min-w-0 items-baseline gap-1.5 truncate text-13" data-testid="activity-doing" title={d.kind === "run" ? t("activity.doing.run") : undefined}>
+    <span className="inline-flex min-w-0 items-baseline gap-1.5 truncate text-13" data-testid="activity-doing" title={tip || undefined}>
       {d.verb ? <span className="font-medium text-fg">{enumLabel("masterVerb", d.verb, language)}</span> : null}
-      {d.issueKey ? <span className={cn("font-mono text-12", d.kind === "run" ? "text-subtle" : "text-muted")}>{d.issueKey}</span> : null}
+      {d.issueTitle ? <span className={cn("min-w-0 truncate text-12", d.kind === "run" ? "text-subtle" : "text-muted")}>{d.issueTitle}</span> : null}
     </span>
   );
 }

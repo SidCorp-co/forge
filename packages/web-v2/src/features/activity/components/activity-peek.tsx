@@ -1,7 +1,8 @@
 // One project's activity beside the list (ISS-951, MK-8 and MK-9): what its master's pane does and
 // the dialog it is stopped on, what is in flight at its step, its backlog and why its last pass took
-// none of it, what waits on the reader (a question by its own words and issue key), its next release,
-// and a Recent list read only when opened. Titles and keys a person reads; never an id.
+// none of it, what waits on the reader (a question by its own words), its next release, and a Recent
+// list read only when opened. Titles and words a person reads; a record's key only in a link or a
+// tooltip, never as text (ISS-951 round 4, the owner's UI rule), and never an id.
 
 import type { OrgActivityEvent, OrgActivityProject, OrgActivityRelease } from "@forge/contracts/org-activity";
 import { type ReactNode, useState } from "react";
@@ -50,19 +51,19 @@ function Nothing() {
   return <p className="py-1.5 text-13 text-subtle">—</p>;
 }
 
-/** An event as one short line: what happened and the issue it was on. */
+/** An event as one short line: what happened and the title of the issue it was on. */
 function useEventLine() {
   const t = useCopy();
   const language = useInterfaceLanguage();
   return (e: OrgActivityEvent): string => {
-    const on = e.issueKey ? ` · ${e.issueKey}` : "";
+    const on = e.issueTitle ? ` · ${e.issueTitle}` : "";
     switch (e.kind) {
       case "pass_opened":
         return `${t("activity.event.passOpened")}${e.verb ? ` · ${enumLabel("masterVerb", e.verb, language)}` : ""}${on}`;
       case "pass_settled":
         return `${t("activity.event.passSettled")} · ${t("activity.event.dispatched", { n: e.dispatched ?? 0 })}`;
       case "status":
-        return `${e.issueKey ?? ""} → ${e.to ? statusReading("issue", e.to, language).label : ""}`.trim();
+        return `${e.issueTitle ?? ""} → ${e.to ? statusReading("issue", e.to, language).label : ""}`.trim();
       case "merged":
         return `${t("activity.event.merged")}${on}`;
       case "change_request":
@@ -103,6 +104,7 @@ function Recent({ orgId, projectId }: { orgId: string; projectId: string }) {
               key={`${e.at}:${e.kind}:${e.issueKey ?? e.ref ?? ""}`}
               rowKey={`${e.at}:${e.kind}`}
               title={line(e)}
+              tip={e.issueKey ?? undefined}
               lead={<span className="font-normal text-subtle">{new Date(e.at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</span>}
             />
           ))}
@@ -186,8 +188,7 @@ export function ActivityPeek({ row, orgId, peek, full, now }: { row: OrgActivity
                 key={`${d.group}:${d.key ?? ""}:${d.title}`}
                 rowKey={d.key ?? d.title}
                 title={d.title}
-                tip={d.title}
-                lead={d.key ?? undefined}
+                tip={d.key ? `${d.key} · ${d.title}` : d.title}
                 href={`${full.href}/approvals`}
                 trailing={<span className="text-12 font-medium" style={{ color: LEGEND.you.fg }}>{t(`activity.people.${d.group}`)}</span>}
               />

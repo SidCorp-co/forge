@@ -224,6 +224,10 @@ describe('ISS-951 round 3 (4) Recent answers what the project recorded today', (
       INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, source, created_at)
       SELECT 'issue', i.id, 'in_progress', 'awaiting_release', 'user', 'human', 'test', now() - interval '5 minutes'
         FROM issues i WHERE i.project_id = ${bigId} AND i.iss_seq IN (97, 194)`);
+    // a title an agent wrote with keys in it, as the judge read on dev.486 (ISS-951 round 4)
+    await db.execute(sql`
+      UPDATE issues SET title = 'ISS-97 (from hop FB-147): a move today'
+       WHERE project_id = ${bigId} AND iss_seq = 97`);
     const { readProjectRecent } = await import('../../src/activity/recent.js');
     const started = performance.now();
     const recent = await readProjectRecent(bigId);
@@ -238,6 +242,17 @@ describe('ISS-951 round 3 (4) Recent answers what the project recorded today', (
         .map((i) => i.issueKey)
         .sort(),
     ).toEqual(['ISS-194', 'ISS-97']);
+    // each names its issue by title, with no key in it; the key stays for a tooltip
+    expect(
+      recent.items
+        .filter((i) => i.kind === 'status')
+        .map((i) => i.issueTitle)
+        .sort(),
+    ).toEqual(['A move today', 'issue 194']);
+    for (const pass of recent.items.filter((i) => i.kind === 'pass_settled')) {
+      expect(pass.issueTitle, JSON.stringify(pass)).toBe(`issue ${pass.issueKey?.slice(4)}`);
+    }
+    expect(JSON.stringify(recent.items.map((i) => i.issueTitle))).not.toMatch(/\b(ISS|FB)-\d/);
     const times = recent.items.map((i) => Date.parse(i.at));
     expect(times).toEqual([...times].sort((a, b) => b - a));
 
@@ -257,7 +272,11 @@ describe('ISS-951 round 3 (4) Recent answers what the project recorded today', (
       VALUES ('session', ${run}, 'running', 'completed', 'runner', 'agent', 'test', now() - interval '1 minute')`);
     const { readProjectRecent } = await import('../../src/activity/recent.js');
     const recent = await readProjectRecent(bigId);
-    expect(recent.items[0]).toMatchObject({ kind: 'run_ended', issueKey: 'ISS-30' });
+    expect(recent.items[0]).toMatchObject({
+      kind: 'run_ended',
+      issueKey: 'ISS-30',
+      issueTitle: 'issue 30',
+    });
   });
 });
 
@@ -389,5 +408,37 @@ describe('ISS-951 round 3 (2) a pane known only as of its last pass claims nothi
       (p) => p.projectId === bigId,
     ) as Doc;
     expect(live.master.state, 'a live beat saying working was not read busy').toBe('busy');
+  });
+});
+
+// Judge run e0121211 at dev.486 read Agenfold in Idle with backlog beside "busy by hand": the group
+// came from its master's state, the left text from the last pass's trigger. Both read the one state
+// now (`activity/group.ts`), so a turn somebody began at the pane that has ended says nothing of now.
+describe("ISS-951 round 4 (3) a row's group and the text beside it read one state", () => {
+  it('a master idle since a turn begun by hand is not busy by hand; one working by hand now is, and runs', async () => {
+    await db.execute(sql`
+      UPDATE master_passes SET trigger = 'unprompted', dispatched = ARRAY[]::text[]
+       WHERE master_session_id = ${masterSession}`);
+    const { readOrgActivity } = await import('../../src/activity/read.js');
+    const rowOf = async () =>
+      (await readOrgActivity(orgId, viewer())).projects.find((p) => p.projectId === bigId) as Doc;
+    await db.execute(sql`
+      UPDATE agent_sessions SET metadata = jsonb_set(metadata, '{pane,doing}', '"idle"')
+       WHERE id = ${masterSession}`);
+    const idle = await rowOf();
+    expect([idle.master.state, idle.group]).toEqual(['idle', 'idle']);
+    expect(idle.next.total).toBeGreaterThan(0);
+    expect(idle.next.skip, 'an idle master read as busy by hand').not.toBe('busy_by_hand');
+    expect(idle.master.doing).toBeNull();
+
+    await db.execute(sql`
+      UPDATE agent_sessions SET metadata = jsonb_set(metadata, '{pane,doing}', '"working"')
+       WHERE id = ${masterSession}`);
+    const busy = await rowOf();
+    expect([busy.master.state, busy.group, busy.next.skip]).toEqual([
+      'busy',
+      'running',
+      'busy_by_hand',
+    ]);
   });
 });
