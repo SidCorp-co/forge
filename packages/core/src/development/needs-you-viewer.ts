@@ -9,7 +9,7 @@ import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { holds } from '../permissions/index.js';
-import { primeEndedRunClaims } from '../release-batch/ended-claims.js';
+import { primeEndedRunClaims } from '../release-batch/release-read.js';
 import { primeRequirementVerdicts } from '../requirements/verdicts-read.js';
 import type { NeedsYouViewer } from './needs-you.js';
 import { readNeedsYouDecisionsBare } from './needs-you-decisions-read.js';

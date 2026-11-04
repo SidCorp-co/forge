@@ -29,6 +29,10 @@ import {
 import { draftNotApprovableWhy, standingDraftApproval } from './draft-approval.js';
 import { draftVersionOf } from './draft-version.js';
 import { readEndedRunHolds } from './ended-claims.js';
+
+// the Needs you read lists each project's releases: it primes their claimed gate rows at once
+export { primeEndedRunClaims } from './ended-claims.js';
+
 import { readFinishRecord } from './finish-record.js';
 import { landingRecordsOf } from './landing-records.js';
 import { readLandingReadings } from './landing-surfaces.js';
