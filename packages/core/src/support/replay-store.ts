@@ -1,5 +1,6 @@
 // What a room's replay reads of the support tables (ISS-933): when Forge last recorded a member's
-// message on a group, which messages it recorded there, and whether the room was replayed already.
+// message on a group, which messages it recorded there, which posts the room itself already holds,
+// and whether the room was replayed already.
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -40,6 +41,16 @@ export async function recordedMessageIdsOn(
         inArray(supportActions.externalId, [...ids]),
       ),
     );
+  return new Set(rows.flatMap((r) => (r.id ? [r.id] : [])));
+}
+
+/** Which of the chat message ids this very room recorded, as anything it took in or posted (ISS-952). */
+export async function recordedInRoom(roomId: string, ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await db
+    .select({ id: supportActions.externalId })
+    .from(supportActions)
+    .where(and(eq(supportActions.roomId, roomId), inArray(supportActions.externalId, [...ids])));
   return new Set(rows.flatMap((r) => (r.id ? [r.id] : [])));
 }
 

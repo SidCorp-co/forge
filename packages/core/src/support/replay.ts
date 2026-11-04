@@ -4,21 +4,32 @@
 // recorded one there, within REPLAY_WINDOW_MS, are handed to it through the live inbound path, each
 // once, as ordinary messages. Whether the session answers is its own judgement, by its persona (owner
 // ruling, forge decision 1592b79d); core picks nothing out but its own bot, apps and system lines.
+// Those posts of the same window travel with the messages as context notes (ISS-952): a bot answer
+// written under the binding that held the group before is the session's only way to see a question
+// was already answered, since a session reads the group through nothing but what it is handed.
 
 import { db } from '../db/client.js';
 import {
   buildRoutes,
   decideSkip,
   fetchRoomMessagesSince,
+  type RocketChatIncomingMessage,
   resolveRoomShape,
 } from '../integrations/rocketchat/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../lib/logger.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { handleSupportMessage } from './inbound.js';
-import { hasOperation, lastMemberMessageOn, recordedMessageIdsOn } from './replay-store.js';
+import {
+  hasOperation,
+  lastMemberMessageOn,
+  recordedInRoom,
+  recordedMessageIdsOn,
+} from './replay-store.js';
 import { roomIsBound } from './rooms.js';
+import { threadOf } from './rules.js';
 import { insertAction, type RoomRow, roomsHoldingSessions } from './store.js';
-import { roomAuth } from './thread.js';
+import { roomAuth, threadConversationOf } from './thread.js';
 
 /**
  * How far back a placed room reads what it missed: one day. It is the project's own review cadence
@@ -39,7 +50,7 @@ const REPLAY_TOOL = 'replay_missed';
  */
 export async function replayMissed(room: RoomRow, now = new Date()): Promise<number> {
   if (await hasOperation(room.id, REPLAY_TOOL)) return 0;
-  const { auth } = await roomAuth(room);
+  const { auth, namespace } = await roomAuth(room);
   const windowStart = new Date(now.getTime() - REPLAY_WINDOW_MS);
   const last = await lastMemberMessageOn(room.rid);
   const since = last && last > windowStart ? last : windowStart;
@@ -69,9 +80,9 @@ export async function replayMissed(room: RoomRow, now = new Date()): Promise<num
     return true;
   });
   if (!claimed) return 0;
+  const inWindow = (m: RocketChatIncomingMessage) => !(m.ts && new Date(m.ts) <= since);
   const person = read.filter((m) => {
-    if (m.isBot) return false;
-    if (m.ts && new Date(m.ts) <= since) return false;
+    if (m.isBot || !inWindow(m)) return false;
     // an edit is still the person's message; their own bot, a system line or an empty one is not
     const skip = decideSkip(m, auth.userId);
     return skip === null || skip === 'edited';
@@ -88,6 +99,22 @@ export async function replayMissed(room: RoomRow, now = new Date()): Promise<num
     : undefined;
   const shape = await resolveRoomShape(auth, room.rid);
   if (!route || !shape) return 0;
+  // what the bot or an app posted in the window, and this room did not post itself, goes first as
+  // context, so the turn that carries the people's messages carries what was already said to them
+  const posted = read.filter(
+    (m) =>
+      inWindow(m) &&
+      (m.isBot || m.userId === auth.userId) &&
+      !m.isSystem &&
+      (m.text.trim().length > 0 || m.images.length > 0),
+  );
+  const own = await recordedInRoom(
+    room.id,
+    posted.map((m) => m.id),
+  );
+  for (const m of posted.filter((p) => !own.has(p.id))) {
+    await noteEarlierPost(room, namespace, m, m.userId === auth.userId);
+  }
   for (const m of missed) {
     await handleSupportMessage({
       connectionId: room.connectionId,
@@ -102,6 +129,37 @@ export async function replayMissed(room: RoomRow, now = new Date()): Promise<num
     'support: a placed room was handed the messages it missed',
   );
   return missed.length;
+}
+
+/**
+ * A bot's or an app's post of the replayed window, recorded as a note the session reads in the same
+ * turn as the people's messages, in its own thread: context it owes no answer to (ISS-952). A note
+ * is no member's message, so it counts toward no member's limit and is read for no correction.
+ */
+async function noteEarlierPost(
+  room: RoomRow,
+  namespace: string,
+  m: RocketChatIncomingMessage,
+  ourBot: boolean,
+): Promise<void> {
+  const thread = threadOf(m);
+  const conversation = await threadConversationOf(room, namespace, thread);
+  const who = `@${m.username ?? m.userId}`;
+  const what = ourBot
+    ? 'this bot, under the binding that held the group before this room'
+    : 'an app or another bot';
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: conversation.id,
+    thread,
+    kind: 'message_in',
+    actorKind: 'core',
+    input: {
+      note: `Already posted in this group${m.ts ? ` at ${m.ts}` : ''} by ${who} (${what}), while nothing here answered it. It is context for the messages handed with it: it owes no answer, and a question it already answered may need none.\n${markUntrusted(m.text, { source: 'support group, posted before this room was placed' })}`,
+    },
+    externalId: `replay-context:${m.id}`,
+  });
 }
 
 /** Every placed room not yet replayed reads what it missed (the sweep and a binding change). */
