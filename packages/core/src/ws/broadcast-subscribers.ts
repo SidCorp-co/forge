@@ -1,11 +1,14 @@
+import type { OrgActivitySource } from '@forge/contracts/org-activity';
 import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason } from '@forge/contracts/preview';
+import type { ProjectNowFrame } from '@forge/contracts/project-now';
 import type { WsFrameName, WsFramePayloads } from '@forge/contracts/ws-frames';
 import { refuser } from '../lib/refusal.js';
-import { deviceRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
+import { deviceRoom, orgRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
 import { runStatusView } from '../pipeline/index.js';
+import { findProjectOrgId } from '../projects/index.js';
 
 const pub = (room: string, event: string, data: unknown) =>
   roomManager.publish(room, { event, data });
@@ -21,9 +24,20 @@ const frame = <E extends WsFrameName>(room: string, event: E, data: WsFramePaylo
  */
 function on<T extends ConsumedBy<'ws-broadcast'>>(
   type: T,
-  publish: (p: OutboxEventPayload<T>) => void,
+  publish: (p: OutboxEventPayload<T>) => void | Promise<void>,
 ): void {
   consume(type, { name: 'ws-broadcast' as OutboxConsumerOf<T>, handle: publish });
+}
+
+/**
+ * Tells the workspace's Activity page that one of its projects moved (ISS-951), naming the project
+ * and what moved and nothing of it, so a member who cannot read the project learns no more than the
+ * org's own project list says; the page reads its activity again, scoped to what the reader reads.
+ */
+async function tellOrg(projectId: string | null, source: OrgActivitySource): Promise<void> {
+  if (!projectId) return;
+  const orgId = await findProjectOrgId(projectId);
+  if (orgId) frame(orgRoom(orgId), 'org.activity.changed', { orgId, projectId, source });
 }
 
 const refuseFrame = refuser('SESSION_FRAME_AUDIENCE_MISSING');
@@ -47,7 +61,7 @@ export function registerWsBroadcastSubscribers(): void {
     });
   });
 
-  on('issue.transitioned', (p) => {
+  on('issue.transitioned', async (p) => {
     frame(projectRoom(p.projectId), 'issue.statusChanged', {
       issueId: p.id,
       from: p.from,
@@ -56,24 +70,27 @@ export function registerWsBroadcastSubscribers(): void {
       reason: p.reason,
       at: p.at,
     });
+    await tellOrg(p.projectId, 'status');
   });
 
-  on('question.asked', (p) => {
+  on('question.asked', async (p) => {
     frame(projectRoom(p.projectId), 'question.changed', {
       questionId: p.questionId,
       projectId: p.projectId,
       issueId: p.issueId,
       change: 'asked',
     });
+    await tellOrg(p.projectId, 'question');
   });
 
-  on('question.transitioned', (p) => {
+  on('question.transitioned', async (p) => {
     frame(projectRoom(p.projectId), 'question.changed', {
       questionId: p.id,
       projectId: p.projectId,
       issueId: p.issueId,
       change: p.to,
     });
+    await tellOrg(p.projectId, 'question');
   });
 
   // the issue and chat showing a preview refetch it; a failure names its reason (REQ-39 BC-10)
@@ -92,12 +109,13 @@ export function registerWsBroadcastSubscribers(): void {
     });
   });
 
-  on('issue.created', (p) => {
+  on('issue.created', async (p) => {
     frame(projectRoom(p.projectId), 'issue.created', {
       issueId: p.issueId,
       projectId: p.projectId,
       actorId: p.actor.id,
     });
+    await tellOrg(p.projectId, 'status');
   });
 
   on('issue.updated', (p) => {
@@ -232,11 +250,15 @@ export function registerWsBroadcastSubscribers(): void {
     if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
   });
 
-  on('session.pushed', (p) => {
+  on('session.pushed', async (p) => {
     assertAudience(p.event, p.userIds);
     if (p.projectId) pub(projectRoom(p.projectId), p.event, p.data);
     if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
     for (const userId of p.userIds) pub(userRoom(userId), p.event, p.data);
+    // what runs on a project now moved: its runs, its master, its rooms or an issue's step
+    if (p.event === 'project.now.changed') {
+      await tellOrg(p.projectId, (p.data as unknown as ProjectNowFrame).source);
+    }
   });
 
   on('issue.pushed', (p) => {
@@ -252,7 +274,9 @@ export function registerWsBroadcastSubscribers(): void {
     name: 'run-status-broadcast',
     handle: async (p) => {
       const run = await runStatusView(p.id);
-      if (run) frame(projectRoom(run.projectId), 'pipeline_run.status_changed', run);
+      if (!run) return;
+      frame(projectRoom(run.projectId), 'pipeline_run.status_changed', run);
+      await tellOrg(run.projectId, 'run');
     },
   });
 

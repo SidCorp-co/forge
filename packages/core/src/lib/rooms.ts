@@ -12,6 +12,8 @@ export const projectRoom = (projectId: string): string => `project:${projectId}`
 export const deviceRoom = (deviceId: string): string => `device:${deviceId}`;
 export const userRoom = (userId: string): string => `user:${userId}`;
 export const runnerRoom = (runnerId: string): string => `runner:${runnerId}`;
+/** A workspace's Activity page (ISS-951): told when any of the org's projects moved. */
+export const orgRoom = (orgId: string): string => `org:${orgId}`;
 /** A widget visitor's conversation: the one session that opened it streams from here. */
 export const widgetConversationRoom = (conversationId: string): string =>
   `widget:${conversationId}`;

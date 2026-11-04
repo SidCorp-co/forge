@@ -11,6 +11,7 @@ import type {
 	RunnerChange,
 } from "./outbox-events.js";
 import type { PreviewChangedFrame } from "./preview.js";
+import type { OrgActivityFrame } from "./org-activity.js";
 import type { ProjectNowFrame } from "./project-now.js";
 import type { ReplyVerdict } from "./reply-check.js";
 
@@ -136,6 +137,8 @@ export interface WsFramePayloads extends JobFrames {
 	};
 	/** What runs on the project now moved where no other frame says so (REQ-15 BC-10). */
 	"project.now.changed": ProjectNowFrame;
+	/** One of a workspace's projects moved: its Activity page reads again (ISS-951). */
+	"org.activity.changed": OrgActivityFrame;
 	"device.statusChanged": { deviceId: string };
 	"device.login": Record<string, unknown>;
 	"device.paired": { deviceId: string };

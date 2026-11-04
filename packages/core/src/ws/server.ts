@@ -10,7 +10,7 @@ import { deviceOwnedBy, handleRunnerSessions } from '../devices/index.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { boxBeganListening, markWsListening } from '../lib/ws-listening.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
-import { actorFor, can, projectResource } from '../permissions/index.js';
+import { actorFor, can, orgResource, projectResource } from '../permissions/index.js';
 import {
   acceptTunnelUpgrade,
   closeAllTunnels,
@@ -157,6 +157,11 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
     const deviceId = room.slice('device:'.length);
     if (principal.type === 'device') return principal.deviceId === deviceId;
     return deviceOwnedBy(deviceId, principal.userId);
+  }
+  // a person in the org; a box's token is fenced to projects, never a workspace (ISS-951)
+  if (room.startsWith('org:')) {
+    if (principal.type !== 'user') return false;
+    return can(actorFor(principal.userId), 'org.read', orgResource(room.slice('org:'.length)));
   }
   if (room.startsWith('user:')) {
     return userOf(principal) === room.slice('user:'.length);
