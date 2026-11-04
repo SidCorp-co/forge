@@ -88,7 +88,11 @@ export async function criteriaHold(
   // Where a promotion stands between the landing and production (sidcorp-mail), or production names
   // no commit it serves (ISS-957), what production serves cannot hold the change before its release:
   // criteria are weighed at each issue's landing.
-  const basis = await evaluate('criteria-basis', async () => await criteriaBasisOf(projectId), out);
+  const basis = await evaluate(
+    'criteria-basis',
+    async () => await criteriaBasisOf(projectId, serving ?? null),
+    out,
+  );
   if (!basis) return;
   if (basis.kind === 'unread') {
     const detail = `where this project's criteria are earned could not be read: ${basis.why}`;

@@ -35,6 +35,7 @@ import {
   laterHoldersOf,
 } from './landed-build-holds.js';
 import { servedCommitUnnamed } from './released-line.js';
+import { readServingNow, type ServingReading } from './serving-reading.js';
 
 /**
  * Why a change cannot be in what production serves before its release: a promotion stands between
@@ -48,7 +49,16 @@ export type CriteriaBasis =
   | { kind: 'landing'; why: LandingReason; landsOn: string; deploysFrom: string }
   | { kind: 'unread'; why: string };
 
-export async function criteriaBasisOf(projectId: string): Promise<CriteriaBasis> {
+/**
+ * Where this project's criteria are earned. A production with no source probe whose reading names no
+ * commit it serves (ISS-957) is weighed at the landing; one whose deployment record names the commit
+ * it serves keeps weighing there. `serving` is the caller's reading of production: absent, it is read
+ * here; null, the caller has none and reaches no network, so nothing says production names no commit.
+ */
+export async function criteriaBasisOf(
+  projectId: string,
+  serving?: ServingReading | null,
+): Promise<CriteriaBasis> {
   const read = await readReleasePath(projectId);
   if (!read.ok) return { kind: 'unread', why: read.reason };
   const { crossing, production, defaultBranch } = read.path;
@@ -61,6 +71,8 @@ export async function criteriaBasisOf(projectId: string): Promise<CriteriaBasis>
     };
   }
   if (!production || servedCommitUnnamed(production) === null) return { kind: 'serving' };
+  const reading = serving === undefined ? await readServingNow(projectId) : serving;
+  if (reading === null || reading.kind === 'serving') return { kind: 'serving' };
   // with no branch named, the environment itself is what the words can name
   const deploysFrom = production.declaration.deploysFrom ?? defaultBranch ?? production.name;
   return {
