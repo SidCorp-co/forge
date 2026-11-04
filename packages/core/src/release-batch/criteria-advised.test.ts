@@ -1,6 +1,7 @@
 import { gateSays, resolveGate } from '@forge/contracts/gate-profiles';
 import { describe, expect, it } from 'vitest';
-import { advisedCriteriaWarningSentence, type HeldIssueRef } from './blocker-sentences.js';
+import type { HeldIssueRef } from './blocker-sentences.js';
+import { advisedCriteriaWarningSentence } from './criteria-warning-sentences.js';
 
 // Agenfold, 2026-10-30: under gate release_criteria `advise` the warning read "A release will still
 // be cut, without 5 issues the sweep is holding back … It is shipped anyway" — two claims that cannot

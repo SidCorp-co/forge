@@ -9,7 +9,12 @@ import type { CriterionWeighing, IssueCriteriaWeighing } from '../issues/index.j
 import { unearnedCriteriaReports } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { gateOf } from '../project-config/index.js';
-import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
+import {
+  type CriteriaBasis,
+  criteriaBasisOf,
+  landingCriteriaReports,
+  landingWhere,
+} from './criteria-basis.js';
 import { READ_PATH_HELD_ONLY, readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 
@@ -25,10 +30,7 @@ async function atLanding(
   if (!report) return { kind: 'none', why: 'the landing weighing returned nothing for this issue' };
   const { landsOn, deploysFrom } = basis;
   const weighedOn = { basis: 'landing', landing: report.landing, landsOn, deploysFrom } as const;
-  const where =
-    basis.why === 'promotion'
-      ? `this project's work lands on \`${landsOn}\` and production deploys \`${deploysFrom}\` through a promotion, so a criterion is earned at the landing`
-      : "this project's production names no commit it serves, and the release its record says is live cannot hold a change that has not shipped, so a criterion is earned at the landing or on a release that holds it";
+  const where = `${landingWhere(basis)}, so a criterion is earned at the landing${basis.why === 'promotion' ? '' : ' or on a release that holds it'}`;
   const criteria = new Map<number, CriterionWeighing>();
   for (const { criterion, why } of report.unearned) {
     criteria.set(criterion, {

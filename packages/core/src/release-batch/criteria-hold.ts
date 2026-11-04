@@ -9,20 +9,18 @@ import {
 } from '../issues/index.js';
 import { gateOf } from '../project-config/index.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
-import {
-  advisedCriteriaWarningSentence,
-  afterReleaseWarningSentence,
-  type HeldIssueRef,
-  heldBackWarningSentence,
-  type ReleaseBlocker,
-  type ReleaseWarning,
-  uncorroboratedWarningSentence,
-} from './blocker-sentences.js';
+import type { HeldIssueRef, ReleaseBlocker, ReleaseWarning } from './blocker-sentences.js';
 import {
   criteriaBasisOf,
   type LandingCriteriaReport,
   landingCriteriaReports,
 } from './criteria-basis.js';
+import {
+  advisedCriteriaWarningSentence,
+  afterReleaseWarningSentence,
+  heldBackWarningSentence,
+  uncorroboratedWarningSentence,
+} from './criteria-warning-sentences.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import { type ServingReading, whyUncorroborated } from './serving-reading.js';
 

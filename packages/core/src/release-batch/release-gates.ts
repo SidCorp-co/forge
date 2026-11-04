@@ -256,7 +256,8 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
   RELEASE_CRITERIA_AFTER_RELEASE: {
     title: 'standing.gate.title.afterRelease',
-    plain: (d) => say('standing.gate.afterRelease', { owes: owes(d, say('standing.gate.subject.some')) }),
+    plain: (d) =>
+      say('standing.gate.afterRelease', { owes: owes(d, say('standing.gate.subject.some')) }),
   },
   RELEASE_CRITERIA_UNCORROBORATED: {
     title: 'standing.gate.title.uncorroborated',

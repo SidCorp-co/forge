@@ -3,8 +3,8 @@
 // (`release-batch/runtime-weighing.ts`). The verified rule picks it (`criteria-verdicts.ts:standingOn`).
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
-import type { CriterionClass } from '@forge/contracts/issue-design';
 import { projectGate } from '@forge/contracts/gate-profiles';
+import type { CriterionClass } from '@forge/contracts/issue-design';
 import type { ReleasedLine } from '@forge/contracts/released-line';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

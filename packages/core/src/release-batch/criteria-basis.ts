@@ -87,6 +87,13 @@ export async function criteriaBasisOf(
   };
 }
 
+/** Why a change is weighed at its landing, in the words every hold and read of it shares. */
+export function landingWhere(basis: Extract<CriteriaBasis, { kind: 'landing' }>): string {
+  return basis.why === 'promotion'
+    ? `this project's work lands on \`${basis.landsOn}\` and production deploys \`${basis.deploysFrom}\` through a promotion`
+    : "this project's production names no commit it serves, and the release its record says is live cannot hold a change that has not shipped";
+}
+
 /**
  * The builds a requirement's coverage weighs its issues' verdicts on, by the basis the release weighs
  * their criteria on: on a project with no production environment, each issue's delivered build

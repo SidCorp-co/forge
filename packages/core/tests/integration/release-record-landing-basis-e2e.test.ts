@@ -293,7 +293,9 @@ describe('a live-only criterion holds no release, and is owed on it once it ship
     expect(report?.afterRelease).toEqual([]);
     expect(report?.unearned.map((c) => c.criterion)).toEqual([1, 2, 3]);
     for (const c of report?.unearned ?? []) {
-      expect(c.why).toContain("judge it on release 0.123.0, naming `{ kind: 'release', version: '0.123.0' }`");
+      expect(c.why).toContain(
+        "judge it on release 0.123.0, naming `{ kind: 'release', version: '0.123.0' }`",
+      );
     }
     expect((await weighed(later)).get(1)?.reason).toContain('judge it on release 0.123.0');
 
@@ -318,9 +320,7 @@ describe('a live-only criterion holds no release, and is owed on it once it ship
 
     await stored(later, 1, { release: '0.123.0' });
     const [after] = await landingCriteriaReports(world.projectId, [later]);
-    expect(after?.counted).toEqual([
-      expect.objectContaining({ criterion: 1, release: '0.123.0' }),
-    ]);
+    expect(after?.counted).toEqual([expect.objectContaining({ criterion: 1, release: '0.123.0' })]);
     expect(reads.n).toBe(0);
   });
 

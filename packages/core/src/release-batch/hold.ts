@@ -16,7 +16,7 @@ import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import type { CriteriaBasis, LandingCriteriaReport } from './criteria-basis.js';
+import { type CriteriaBasis, type LandingCriteriaReport, landingWhere } from './criteria-basis.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
 
 /** What holds a row back, as the sweep decided it. */
@@ -181,19 +181,13 @@ export function landingCriteriaHold(
   const at = report.landing
     ? `judged at its landing commit \`${report.landing.slice(0, 12)}\` on \`${basis.landsOn}\``
     : `judged at the commit it landed at on \`${basis.landsOn}\`, once its merge names one`;
-  const where =
-    basis.why === 'promotion'
-      ? `This project's work lands on \`${basis.landsOn}\` and production deploys \`${basis.deploysFrom}\` through a promotion`
-      : `This project's production names no commit it serves, and the release its record says is live cannot hold a change that has not shipped`;
-  const after =
-    report.afterRelease.length > 0
-      ? ` Not held: ${criteriaNamed(report.afterRelease.map((c) => c.criterion))}, which only the running product shows, judged after the release that carries this issue ships.`
-      : '';
+  const live = report.afterRelease.map((c) => c.criterion);
+  const after = live.length > 0 ? ` Not held: ${criteriaNamed(live)}, judged after release.` : '';
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
       'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
-      `this one is not — ${reasonsByWhy(report)}. ${where}, so a criterion is earned ` +
+      `this one is not — ${reasonsByWhy(report)}. T${landingWhere(basis).slice(1)}, so a criterion is earned ` +
       `where the change has landed, not where production is. ${clearer(owes)}: record a verdict ` +
       `on each criterion named, ${at} (or, where \`delivery.judgedOn\` names a testing environment, ` +
       'one judged there at that commit); or move the issue out of `awaiting_release` if it is not ' +

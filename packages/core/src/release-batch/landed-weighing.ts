@@ -111,7 +111,8 @@ export function weighOnLanded(
 ): LandedCriterion {
   // on a project weighed on its release record, a pass on the live release counts too, once that
   // release holds the issue: one that predates the change never does (ISS-957)
-  const live = issueId === null ? (released?.live?.version ?? null) : liveRelease(released, issueId);
+  const live =
+    issueId === null ? (released?.live?.version ?? null) : liveRelease(released, issueId);
   const onLive = live ? `, or one judged on release ${live}` : '';
   const no = (why: string): LandedCriterion => ({
     criterion,
