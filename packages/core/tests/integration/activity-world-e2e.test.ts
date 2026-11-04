@@ -416,9 +416,11 @@ describe('ISS-951 round 3 (2) a pane known only as of its last pass claims nothi
 // now (`activity/group.ts`), so a turn somebody began at the pane that has ended says nothing of now.
 describe("ISS-951 round 4 (3) a row's group and the text beside it read one state", () => {
   it('a master idle since a turn begun by hand is not busy by hand; one working by hand now is, and runs', async () => {
+    // its newest pass, a turn somebody began at the pane, settled a minute ago having taken nothing
     await db.execute(sql`
-      UPDATE master_passes SET trigger = 'unprompted', dispatched = ARRAY[]::text[]
-       WHERE master_session_id = ${masterSession}`);
+      INSERT INTO master_passes (project_id, master_session_id, verb, trigger, started_at, ended_at)
+      VALUES (${bigId}, ${masterSession}, 'dispatch', 'unprompted', now() - interval '2 minutes',
+              now() - interval '1 minute')`);
     const { readOrgActivity } = await import('../../src/activity/read.js');
     const rowOf = async () =>
       (await readOrgActivity(orgId, viewer())).projects.find((p) => p.projectId === bigId) as Doc;
