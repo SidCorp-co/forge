@@ -8,7 +8,6 @@ import type {
 import { RELEASE_ATTENTION_GROUPS, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { feedbackAnsweredBy } from '../feedback/index.js';
-import { reworkedSince } from '../issues/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { holderNames, namedHolders } from '../permissions/index.js';
 import type { ReleaseRunRow } from '../pipeline/index.js';
@@ -45,7 +44,7 @@ import { refuseRelease } from './refuse.js';
 import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
 import { loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
-import { detailOf, type Part, type Shared, summaryOf } from './release-read-views.js';
+import { detailOf, type Part, reworkedIn, type Shared, summaryOf } from './release-read-views.js';
 import { releaseTagOf } from './release-tag-record.js';
 import type { ViewerFacts } from './release-view.js';
 import { type CorrectionEntry, correctionsIn, correctionViews } from './shipped-in-correct.js';
@@ -370,10 +369,7 @@ export async function readRelease(
     readReleasePath(projectId),
   ]);
   await fillCuts(projectId, [part], placed.groupOf, shared.facts.cutters);
-  const reworked = part.issueIds.filter((id) => {
-    const i = shared.facts.issues.get(id);
-    return i !== undefined && reworkedSince(part, i);
-  });
+  const reworked = reworkedIn(part, shared.facts);
   const landings = await readLandingReadings(
     projectId,
     part.issueIds.flatMap((id) => {

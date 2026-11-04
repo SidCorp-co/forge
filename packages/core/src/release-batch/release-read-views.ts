@@ -109,6 +109,17 @@ export interface Shared {
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
+/** The issues `p` carries that were reopened since it claimed them (`issues/release-evidence.ts:reworkedSince`). */
+export function reworkedIn(
+  p: Pick<Part, 'issueIds' | 'openedAt' | 'releasedAt'>,
+  facts: ReleaseFacts,
+): string[] {
+  return p.issueIds.filter((id) => {
+    const i = facts.issues.get(id);
+    return i !== undefined && reworkedSince(p, i);
+  });
+}
+
 function inFlightStage(attempts: readonly ReleaseAttemptRow[]) {
   return [...attempts].reverse().find((a) => a.settledAt === null)?.stage ?? null;
 }
