@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.493] - 2026-11-04
+
+Stuck issues ask you on their requirement or feedback item
+
+### Fixed
+
+- **A stuck issue's question is asked on its item, and no page tells a person to act on an issue.** The steward places it on the requirement or feedback item; issue pages lose Tie; workflows say what is owed.
+
 ## [0.4.0-dev.492] - 2026-11-04
 
 A release refuses to tag a head carrying changes outside its list
