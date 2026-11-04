@@ -17,6 +17,7 @@ import { db } from '../db/client.js';
 import {
   findBindingWithConnectionById,
   listActiveBindingsForProjectProvider,
+  listActiveBindingsForProvider,
 } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -52,6 +53,30 @@ export async function boundButUndeclared(projectId: string, rid: string): Promis
     if (!(await roomOfBinding(binding.id, rid))) return true;
   }
   return false;
+}
+
+/**
+ * The projects whose active bindings name a room nobody declared (ISS-933): a room is declared on a
+ * binding's `integration.changed` and on its first message, so one bound before the code that
+ * declares its kind shipped, or whose declaration failed, would wait for a save that changes
+ * something. A support binding naming other than one group is refused, never declared, so it is not
+ * counted.
+ */
+export async function projectsWithUndeclaredRooms(): Promise<string[]> {
+  const projects = new Set<string>();
+  for (const { binding } of await listActiveBindingsForProvider('rocketchat')) {
+    if (projects.has(binding.projectId)) continue;
+    const config = binding.config as RocketChatBindingConfig | null;
+    const rids = config?.rids ?? [];
+    const declares = config?.agent || config?.operations || (config?.support && rids.length === 1);
+    if (!declares) continue;
+    for (const rid of rids) {
+      if (await roomOfBinding(binding.id, rid)) continue;
+      projects.add(binding.projectId);
+      break;
+    }
+  }
+  return [...projects];
 }
 
 /** Whether a rocketchat binding's config names the group `rid`. */

@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { ISSUE_STATUSES } from "./issue-machine.js";
 import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
-import { SUPPORT_RECORD_KINDS } from "./support.js";
+import { SUPPORT_RECORD_KINDS, supportThreadIdSchema } from "./support.js";
 
 /**
  * What a role may be granted. `read` the projects, issues, runners, masters and releases of the
@@ -65,6 +65,17 @@ export type OperationsScope = (typeof OPERATIONS_SCOPES)[number];
  */
 export const operationsRoomConfigSchema = z.strictObject({
 	scope: z.enum(OPERATIONS_SCOPES),
+	/**
+	 * Each project's own thread in a room the binding names (ISS-934), by rid and then by project
+	 * slug: a room the projects of its scope share holds one thread per project, and a master's post
+	 * with no thread of its own lands in its project's. A rid is one of the binding's `rids`.
+	 */
+	threads: z
+		.record(
+			z.string().min(1).max(200),
+			z.record(z.string().trim().min(1).max(100), supportThreadIdSchema),
+		)
+		.optional(),
 });
 export type OperationsRoomConfig = z.infer<typeof operationsRoomConfigSchema>;
 

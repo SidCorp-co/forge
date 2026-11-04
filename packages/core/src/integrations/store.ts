@@ -43,7 +43,7 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
 }
 
 async function listActivePairs(
-  projectId: string,
+  projectId: string | null,
   provider: IntegrationProvider,
   role?: BindingRole,
 ): Promise<BindingWithConnection[]> {
@@ -56,7 +56,7 @@ async function listActivePairs(
     )
     .where(
       and(
-        eq(integrationBindings.projectId, projectId),
+        projectId === null ? undefined : eq(integrationBindings.projectId, projectId),
         eq(integrationBindings.provider, provider),
         role ? eq(integrationBindings.role, role) : undefined,
         eq(integrationBindings.active, true),
@@ -158,6 +158,13 @@ export async function findBindingIdByConfigValue(
     )
     .limit(1);
   return row?.id ?? null;
+}
+
+/** Every project's active bindings (+ connections) of a provider, across roles, oldest first. */
+export async function listActiveBindingsForProvider(
+  provider: IntegrationProvider,
+): Promise<BindingWithConnection[]> {
+  return listActivePairs(null, provider);
 }
 
 /**

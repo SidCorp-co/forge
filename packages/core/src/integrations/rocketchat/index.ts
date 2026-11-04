@@ -2,6 +2,8 @@ export { rocketchatIntegration } from './adapter.js';
 export {
   activeRocketChatBinding,
   isRocketChatConnection,
+  type ProjectThread,
+  projectThreadsOf,
   rocketChatBindingOfProject,
 } from './binding.js';
 export {

@@ -14,6 +14,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/master-post.ts
 // @direct-test-of packages/core/src/support/routes.ts
 // @direct-test-of packages/core/src/support/rooms.ts
+// @direct-test-of packages/core/src/support/warm.ts
 //
 // ISS-862: the project's master posts its daily review, in its own words, at the top level of the
 // project's team room. Core writes none of the words: it picks the room, screens, posts and records
@@ -51,9 +52,10 @@ describe("the master's post in its project's room (ISS-862)", () => {
     expect([res.status, codeOf(res)]).toEqual([404, 'SUPPORT_ROOM_UNKNOWN']);
   });
 
-  // the forge daily review (2026-11-03) was refused "no bound room" on a room its binding names but
-  // nobody had declared: the refusal says what is true, and what declares it
-  it('refuses a room its binding names but nobody declared, saying so, and posts nothing', async () => {
+  // ISS-933: the forge daily review (2026-11-03) was refused on a room its binding names but nobody
+  // had declared, sent to an unchanged binding save that declares nothing. The door declares it
+  // itself and posts, and the room is listed from then on.
+  it('declares a room its binding names but nobody declared, posts there, and lists it', async () => {
     const UNDECLARED = 'room-bound-not-declared';
     const widen = (rid: string | null) =>
       rows(sql`
@@ -64,18 +66,62 @@ describe("the master's post in its project's room (ISS-862)", () => {
                : sql`(config->'rids') || to_jsonb(${rid}::text)`
            })
          WHERE project_id = ${w.projectId}::uuid AND provider = 'rocketchat'`);
+    const listed = async () => {
+      const got = await api(owner, 'GET', `/api/projects/${w.projectId}/support/rooms`);
+      expect(got.status, JSON.stringify(got.body)).toBe(200);
+      return (got.body as { rooms: { rid: string }[] }).rooms.map((r) => r.rid);
+    };
     await widen(UNDECLARED);
     try {
-      const before = (await chat.botLines()).length;
+      expect(await listed(), 'bound, never declared').not.toContain(UNDECLARED);
       const res = await post(owner, { text: REVIEW, rid: UNDECLARED });
-      expect([res.status, codeOf(res)]).toEqual([409, 'SUPPORT_ROOM_UNDECLARED']);
-      expect(JSON.stringify(res.body)).toContain('saves the binding again');
-      expect((await chat.botLines()).length, 'nothing was posted').toBe(before);
-      // a room no binding names stays unknown
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      expect((res.body as { rid: string }).rid).toBe(UNDECLARED);
+      expect(
+        chat
+          .linesIn(UNDECLARED)
+          .filter((l) => !l.tmid)
+          .map((l) => l.text),
+      ).toEqual([REVIEW]);
+      expect(await listed()).toContain(UNDECLARED);
+      // a room no binding names stays unknown, and nothing is declared for it
       const unknown = await post(owner, { text: REVIEW, rid: 'not-a-room' });
       expect(codeOf(unknown)).toBe('SUPPORT_ROOM_UNKNOWN');
+      expect(await listed()).not.toContain('not-a-room');
     } finally {
       await widen(null);
+      await rows(sql`
+        DELETE FROM support_actions WHERE project_id = ${w.projectId}::uuid AND tool = 'master_post'`);
+    }
+  });
+
+  // ISS-933's root: a room bound before the code that declares its kind shipped, or whose
+  // declaration failed, is declared by the warm sweep, with no save and no post to wait for
+  it('declares a room its binding names but nobody declared on the next warm sweep', async () => {
+    const SWEPT = 'room-bound-swept';
+    const widen = (add: boolean) =>
+      rows(sql`
+        UPDATE integration_bindings
+           SET config = jsonb_set(config, '{rids}', ${
+             add
+               ? sql`(config->'rids') || to_jsonb(${SWEPT}::text)`
+               : sql`(config->'rids') - ${SWEPT}`
+           })
+         WHERE project_id = ${w.projectId}::uuid AND provider = 'rocketchat'`);
+    const listed = async () =>
+      (
+        (await api(owner, 'GET', `/api/projects/${w.projectId}/support/rooms`)).body as {
+          rooms: { rid: string }[];
+        }
+      ).rooms.map((r) => r.rid);
+    await widen(true);
+    try {
+      expect(await listed()).not.toContain(SWEPT);
+      const { warmColdRooms } = await import('../../src/support/index.js');
+      await warmColdRooms();
+      expect(await listed()).toContain(SWEPT);
+    } finally {
+      await widen(false);
     }
   });
 

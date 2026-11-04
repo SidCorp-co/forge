@@ -28,7 +28,7 @@ import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { followedLine, grantsLine, roomsLine, toolsLine } from './prompt.js';
-import { declareSupportRooms, roomIsBound } from './rooms.js';
+import { declareSupportRooms, projectsWithUndeclaredRooms, roomIsBound } from './rooms.js';
 import { type RoomRow, roomById, roomsOfSession } from './store.js';
 
 /** What the warm-up turn says: no member is waiting, so the session answers nothing. */
@@ -165,11 +165,17 @@ export async function warmRoomsOfDevice(deviceId: string): Promise<void> {
 }
 
 /**
- * The sweep: a room whose session is not resident is warmed, at most once a minute, one whose
- * session is gone is given a new one and warmed, and one whose grant change arrived mid-turn is
- * told the new tools now.
+ * The sweep: a room its binding names but nobody declared is declared, a room whose session is not
+ * resident is warmed, at most once a minute, one whose session is gone is given a new one and
+ * warmed, and one whose grant change arrived mid-turn is told the new tools now.
  */
 export async function warmColdRooms(): Promise<void> {
+  // a room its binding names but nobody declared is declared first, then warmed below (ISS-933)
+  for (const projectId of await projectsWithUndeclaredRooms()) {
+    await declareSupportRooms(projectId).catch((err) =>
+      logger.error({ err, projectId }, 'support: declaring a bound room failed'),
+    );
+  }
   const now = Date.now();
   for (const { id: roomId, sessionId } of await roomsToWarm()) {
     const why: WarmReason = retellOwed.has(roomId) ? 'bindings' : 'sweep';

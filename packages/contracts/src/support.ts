@@ -985,7 +985,6 @@ export interface SupportRoomView {
 export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_REFUSED",
 	"SUPPORT_ROOM_UNKNOWN",
-	"SUPPORT_ROOM_UNDECLARED",
 	"SUPPORT_NOT_THE_ROOM_SESSION",
 	"SUPPORT_THREAD_UNKNOWN",
 	"SUPPORT_ASKER_NOT_IN_THREAD",
@@ -1079,6 +1078,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_INTERNAL_CODE",
 	/** A master's top-level post into a room the product's users read (ISS-872). */
 	"SUPPORT_MASTER_POST_USERS_ROOM",
+	/** A master's post into an operations room shared by projects, with no thread recorded for its project (ISS-934). */
+	"SUPPORT_PROJECT_THREAD_UNRECORDED",
 	/** A question for the owner outside the room the binding names as `ownerRoom` (ISS-872). */
 	"SUPPORT_NOT_THE_OWNER_ROOM",
 	/** A thread that names no parked question handed to this group (ISS-873). */
@@ -1111,8 +1112,6 @@ export interface SupportRefusal {
 
 export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_ROOM_UNKNOWN: 404,
-	// a binding names the room, but no message or binding save has declared it yet
-	SUPPORT_ROOM_UNDECLARED: 409,
 	SUPPORT_NOT_THE_ROOM_SESSION: 403,
 	SUPPORT_THREAD_UNKNOWN: 404,
 	SUPPORT_ASKER_NOT_IN_THREAD: 409,
@@ -1169,6 +1168,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_READ_FAILED: 503,
 	SUPPORT_INTERNAL_CODE: 400,
 	SUPPORT_MASTER_POST_USERS_ROOM: 409,
+	SUPPORT_PROJECT_THREAD_UNRECORDED: 409,
 	SUPPORT_NOT_THE_OWNER_ROOM: 409,
 	SUPPORT_QUESTION_UNKNOWN: 404,
 	SUPPORT_ANSWER_SOURCE: 400,
