@@ -1,7 +1,8 @@
-// The workspace's Activity tab (ISS-951, mockup MK-8): one row per project, grouped where core put it
-// (Working · Idle with work · Waiting · Quiet), with its master's standing, counts of what is in flight,
-// queued and waiting on people, its next release's progress and what waits for a release. Names,
-// counts and badges only; a row opens its peek for the rest. The org's room keeps it live.
+// The workspace's Activity tab (ISS-951, mockups MK-8 and MK-9): one row per project, grouped where
+// core put it (Running · Idle with backlog · Waiting on a person · Quiet), with what its master's pane
+// does and how long since its box last spoke, what it does by name, its backlog and the people it
+// waits on, and its release counts. Names, counts and badges only; a row opens its peek for the rest.
+// The org's room keeps it live, and the last answer stays on screen while it reads again.
 
 import { ORG_ACTIVITY_GROUPS, type OrgActivity, type OrgActivityGroup, type OrgActivityProject } from "@forge/contracts/org-activity";
 import type { ReactNode } from "react";
@@ -16,8 +17,8 @@ import {
   ListToolbar,
   PageTitle,
   rememberListOrigin,
-  StatusBadge,
   useGroupFold,
+  useNow,
   usePeek,
   usePeekKeys,
   useUrlParams,
@@ -30,20 +31,21 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import { useRouter } from "@/lib/navigation/router";
 import { cn } from "@/lib/utils/cn";
 import { useOrgActivity } from "../hooks";
-import { ActivityPeek, ReleaseBar } from "./activity-peek";
+import { ActivityPeek } from "./activity-peek";
+import { Doing, PaneMark, ReleaseCounts } from "./pane";
 
 export const ACTIVITY_LIST = "/activity";
 export const projectHref = (slug: string) => `/projects/${encodeURIComponent(slug)}`;
 
-const GROUP_TONE: Record<OrgActivityGroup, LegendTone> = { working: "run", idle: "ready", waiting: "you", quiet: "neutral" };
+const GROUP_TONE: Record<OrgActivityGroup, LegendTone> = { running: "run", idle: "ready", waiting: "you", quiet: "neutral" };
 
 /** The strip's filters: each names the rows it keeps and the total core counted for it. */
-const SHOWS = ["all", "inFlight", "queued", "people", "release", "noMaster"] as const;
+const SHOWS = ["all", "running", "queued", "people", "release", "noMaster"] as const;
 type Show = (typeof SHOWS)[number];
 
 const keeps: Record<Show, (p: OrgActivityProject) => boolean> = {
   all: () => true,
-  inFlight: (p) => p.now.length > 0,
+  running: (p) => p.group === "running",
   queued: (p) => p.next.total > 0,
   people: (p) => p.people.total > 0,
   release: (p) => p.awaitingRelease > 0,
@@ -51,41 +53,57 @@ const keeps: Record<Show, (p: OrgActivityProject) => boolean> = {
 };
 
 const countOf = (totals: OrgActivity["totals"], show: Show): number =>
-  ({ all: totals.projects, inFlight: totals.inFlight, queued: totals.queued, people: totals.people, release: totals.awaitingRelease, noMaster: totals.noMaster })[show];
+  ({ all: totals.projects, running: totals.running, queued: totals.queued, people: totals.people, release: totals.awaitingRelease, noMaster: totals.noMaster })[show];
 
-const SHOW_TONE: Partial<Record<Show, LegendTone>> = { inFlight: "run", people: "you", release: "ready" };
+const SHOW_TONE: Partial<Record<Show, LegendTone>> = { running: "run", people: "you", release: "ready" };
 
-function Count({ n, label, tone }: { n: number; label: string; tone?: LegendTone }) {
+function Count({ n, label, pending, mark }: { n: number; label: string; pending?: boolean; mark?: ReactNode }) {
   return (
-    <span className="inline-flex items-baseline gap-1" aria-label={`${label} ${n}`}>
+    <span className="inline-flex items-baseline gap-1" aria-label={`${label} ${pending ? "…" : n}`}>
       <span aria-hidden className="text-11-5 text-subtle md:hidden">{label}</span>
-      {n > 0 ? (
-        <span aria-hidden className={cn("font-mono text-12-5 font-semibold tabular-nums", tone === "run" ? "text-link" : "text-fg")}>
+      {pending ? (
+        <span aria-hidden className="text-subtle">…</span>
+      ) : n > 0 ? (
+        <span aria-hidden className="font-mono text-12-5 font-semibold tabular-nums text-fg">
           {n}
         </span>
       ) : (
         <span aria-hidden className="text-subtle">—</span>
       )}
+      {mark}
     </span>
   );
 }
 
-function rowOf(t: Copy) {
+function rowOf(t: Copy, now: number) {
   return (p: OrgActivityProject): ListRowView => ({
     key: p.slug,
     href: projectHref(p.slug),
     title: p.name,
     facts: [],
-    state: <StatusBadge family="masterState" value={p.master.state} />,
-    waitingOn: (
-      <span className="grid w-full max-w-52 grid-cols-3 gap-2" data-testid="activity-counts">
-        <Count n={p.now.length} label={t("activity.col.now")} tone="run" />
-        <Count n={p.next.total} label={t("activity.col.next")} />
-        <Count n={p.people.total} label={t("activity.col.people")} />
+    state: <PaneMark master={p.master} now={now} />,
+    waitingOn: <Doing master={p.master} />,
+    eta: (
+      <span className="grid w-full grid-cols-2 gap-2" data-testid="activity-counts">
+        <Count
+          n={p.next.total}
+          label={t("activity.col.backlog")}
+          mark={
+            p.next.skip ? (
+              <span
+                className="ml-1 inline-block size-2 rounded-full border-2 border-warn-9 align-middle"
+                title={t("activity.skip.title", { why: t(`activity.skip.${p.next.skip}`) })}
+                aria-label={t(`activity.skip.${p.next.skip}`)}
+                data-testid="activity-skip"
+              />
+            ) : undefined
+          }
+        />
+        <Count n={p.people.total} label={t("activity.col.people")} pending={p.peoplePending} />
       </span>
     ),
-    owner: p.release ? <ReleaseBar release={p.release} /> : <span className="text-subtle">—</span>,
-    age: p.awaitingRelease > 0 ? { text: String(p.awaitingRelease), title: t("activity.show.release") } : null,
+    owner: <ReleaseCounts row={p} />,
+    age: null,
   });
 }
 
@@ -105,7 +123,7 @@ function Strip({ totals, show, onShow, t }: { totals: OrgActivity["totals"]; sho
   );
 }
 
-function Live({ at }: { at: string }) {
+function Live({ at, updating }: { at: string; updating: boolean }) {
   const locale = useCopyLocale();
   const t = useCopy();
   const time = new Date(at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
@@ -114,13 +132,17 @@ function Live({ at }: { at: string }) {
       <span aria-hidden className="size-1.5 rounded-full bg-ok-9" />
       <span className="sr-only">{t("activity.live")}</span>
       {time}
+      <span aria-live="polite" className={cn("text-11-5 transition-opacity", updating ? "opacity-100" : "opacity-0")} data-testid="activity-updating">
+        {updating ? t("activity.updating") : ""}
+      </span>
     </span>
   );
 }
 
-function ActivityList({ data }: { data: OrgActivity }) {
+function ActivityList({ data, orgId }: { data: OrgActivity; orgId: string }) {
   const t = useCopy();
   const router = useRouter();
+  const now = useNowSeconds();
   const [params, setParams] = useUrlParams();
   const raw = params.get("show");
   const show: Show = (SHOWS as readonly string[]).includes(raw ?? "") ? (raw as Show) : "all";
@@ -137,7 +159,7 @@ function ActivityList({ data }: { data: OrgActivity }) {
   usePeekKeys(peek, openFull);
 
   return (
-    <ListLayout peek={open ? <ActivityPeek key={open.slug} row={open} peek={peek} full={{ href: projectHref(open.slug), origin: ACTIVITY_LIST }} /> : undefined}>
+    <ListLayout peek={open ? <ActivityPeek key={open.slug} row={open} orgId={orgId} peek={peek} now={now} full={{ href: projectHref(open.slug), origin: ACTIVITY_LIST }} /> : undefined}>
       <div className="min-w-0">
         <Strip totals={data.totals} show={show} onShow={(s) => setParams({ show: s === "all" ? null : s })} t={t} />
         {data.projects.length === 0 ? (
@@ -149,12 +171,13 @@ function ActivityList({ data }: { data: OrgActivity }) {
             ariaLabel={t("activity.title")}
             groups={groups}
             fold={fold}
-            row={rowOf(t)}
+            row={rowOf(t, now)}
             selected={peek.open}
             onPeek={(k) => peek.set(k === peek.open ? null : k)}
             empty={t("activity.noMatch")}
             keyColumn={false}
-            columns={{ title: t("activity.col.project"), state: t("activity.col.master"), waitingOn: t("activity.col.counts"), meta: t("activity.col.release") }}
+            eta={{ label: t("activity.col.counts") }}
+            columns={{ title: t("activity.col.project"), state: t("activity.col.pane"), waitingOn: t("activity.col.doing"), meta: t("activity.col.release") }}
           />
         )}
       </div>
@@ -162,11 +185,15 @@ function ActivityList({ data }: { data: OrgActivity }) {
   );
 }
 
+/** The time a page's "N s ago" reads against, moving each second so a silent box is seen to go silent. */
+const useNowSeconds = (): number => useNow(1_000);
+
 export function ActivityScreen(): ReactNode {
   const t = useCopy();
   const { activeOrgId } = useActiveOrg();
   const q = useOrgActivity(activeOrgId);
-  const title = (live?: string) => <PageTitle after={live ? <Live at={live} /> : undefined}>{t("activity.title")}</PageTitle>;
+  const updating = q.isFetching && !q.isLoading;
+  const title = (live?: string) => <PageTitle after={live ? <Live at={live} updating={updating} /> : undefined}>{t("activity.title")}</PageTitle>;
   if (!activeOrgId) {
     return (
       <div className="grid min-h-full content-start bg-app" data-testid="activity-screen">
@@ -182,7 +209,7 @@ export function ActivityScreen(): ReactNode {
       {(data) => (
         <div className="grid min-h-full content-start bg-app" data-testid="activity-screen">
           {title(data.generatedAt)}
-          <ActivityList data={data} />
+          <ActivityList data={data} orgId={activeOrgId} />
         </div>
       )}
     </QueryBoundary>

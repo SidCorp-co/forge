@@ -202,7 +202,7 @@ describe("the ETA column's language and order", () => {
         row={(r) => ({ key: r.key, href: `/i/${r.key}`, title: r.key, facts: [], state: null, waitingOn: null, owner: null, age: null, eta: <EtaCell eta={etaOfForecast(TODAY, vi)} clock={vi} /> })}
         selected={null}
         onPeek={() => {}}
-        eta={{ label: ETA_COPY.vi.header, sortLabel: ETA_COPY.vi.sortBy, sorted: false, onSort }}
+        eta={{ label: ETA_COPY.vi.header, sort: { label: ETA_COPY.vi.sortBy, sorted: false, onSort } }}
       />,
     );
     const header = screen.getByTestId("list-sort-eta");

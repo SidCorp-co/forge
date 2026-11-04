@@ -43,6 +43,7 @@ const master = (over: Partial<MasterStanding> = {}): MasterStanding => ({
     silentAfterSeconds: 600,
     waitingOn: null,
     dialogsAnswered: null,
+    pane: null,
   outdated: null,
   ...over,
 });

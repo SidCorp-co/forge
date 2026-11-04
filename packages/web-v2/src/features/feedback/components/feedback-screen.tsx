@@ -268,7 +268,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                 groups={list.groups}
                 fold={list.fold}
                 row={rowOf(slug, etaOf, clock, t, time, notes)}
-                eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
+                eta={{ label: ETA_COPY[clock.lang].header, sort: { label: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort } }}
                 selected={peek.open}
                 onPeek={list.togglePeek}
                 empty={t("feedback.noMatch")}

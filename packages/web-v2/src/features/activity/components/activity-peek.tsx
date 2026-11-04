@@ -1,13 +1,16 @@
-// One project's activity beside the list (ISS-951, MK-8): what is in flight at its step, what its
-// master takes next, what waits on the reader, and its next release. Titles only; each item's key is
-// its tooltip, and the project's page is the peek's full page.
+// One project's activity beside the list (ISS-951, MK-8 and MK-9): what its master's pane does and
+// the dialog it is stopped on, what is in flight at its step, its backlog and why its last pass took
+// none of it, what waits on the reader (a question by its own words and issue key), its next release,
+// and a Recent list read only when opened. Titles and keys a person reads; never an id.
 
-import type { OrgActivityProject, OrgActivityRelease } from "@forge/contracts/org-activity";
-import type { ReactNode } from "react";
-import { EnumBadge, type FullPage, LEGEND, PeekHead, PeekPanel, type PeekState, RowItem, RowList, StatusBadge, useNow } from "@/design";
-import { useCopy } from "@/lib/i18n/interface-language";
+import type { OrgActivityEvent, OrgActivityProject, OrgActivityRelease } from "@forge/contracts/org-activity";
+import { type ReactNode, useState } from "react";
+import { EnumBadge, enumLabel, type FullPage, LEGEND, PeekHead, PeekPanel, type PeekState, RowItem, RowList, StatusBadge, statusReading } from "@/design";
+import { useCopy, useCopyLocale, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import { formatAge } from "@/lib/utils/format";
+import { useProjectRecent } from "../hooks";
+import { Doing, PaneMark } from "./pane";
 
 /** Shipped (solid) over shipped-or-awaiting (lighter), and `shipped/total`; the scope's name on hover. */
 export function ReleaseBar({ release }: { release: OrgActivityRelease }) {
@@ -15,7 +18,7 @@ export function ReleaseBar({ release }: { release: OrgActivityRelease }) {
   const pct = (n: number) => (release.total > 0 ? Math.round((n / release.total) * 100) : 0);
   const name = release.title ?? t("activity.release.draft");
   return (
-    <span className="inline-flex items-center gap-2" title={name} data-testid="activity-release">
+    <span className="inline-flex items-center gap-2" title={name} data-testid="activity-release-bar">
       <span
         role="img"
         aria-label={t("activity.release.progress", { name, shipped: release.shipped, total: release.total })}
@@ -47,12 +50,79 @@ function Nothing() {
   return <p className="py-1.5 text-13 text-subtle">—</p>;
 }
 
-export function ActivityPeek({ row, peek, full }: { row: OrgActivityProject; peek: PeekState; full: FullPage }) {
+/** An event as one short line: what happened and the issue it was on. */
+function useEventLine() {
   const t = useCopy();
-  const now = useNow(30_000);
+  const language = useInterfaceLanguage();
+  return (e: OrgActivityEvent): string => {
+    const on = e.issueKey ? ` · ${e.issueKey}` : "";
+    switch (e.kind) {
+      case "pass_opened":
+        return `${t("activity.event.passOpened")}${e.verb ? ` · ${enumLabel("masterVerb", e.verb, language)}` : ""}${on}`;
+      case "pass_settled":
+        return `${t("activity.event.passSettled")} · ${t("activity.event.dispatched", { n: e.dispatched ?? 0 })}`;
+      case "status":
+        return `${e.issueKey ?? ""} → ${e.to ? statusReading("issue", e.to, language).label : ""}`.trim();
+      case "merged":
+        return `${t("activity.event.merged")}${on}`;
+      case "change_request":
+        return `${t("activity.event.changeRequest")} ${e.ref ?? ""}${on}`;
+      case "run_started":
+        return `${t("activity.event.runStarted")}${on}`;
+      case "run_ended":
+        return `${t("activity.event.runEnded")}${on}`;
+    }
+  };
+}
+
+function Recent({ orgId, projectId }: { orgId: string; projectId: string }) {
+  const t = useCopy();
+  const locale = useCopyLocale();
+  const [open, setOpen] = useState(false);
+  const q = useProjectRecent(orgId, projectId, open);
+  const line = useEventLine();
+  const items = q.data?.items ?? [];
+  return (
+    <details className="px-4.5 pt-4" open={open} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="activity-recent">
+      <summary className="flex cursor-pointer list-none items-baseline justify-between pb-1.5 text-11-5 font-semibold uppercase tracking-wide text-subtle">
+        {t("activity.recent")}
+        {open && items.length > 0 ? <span className="font-mono normal-case tracking-normal">{items.length}</span> : null}
+      </summary>
+      {!open ? null : q.isLoading ? (
+        <p className="py-1.5 text-13 text-subtle">…</p>
+      ) : items.length === 0 ? (
+        <Nothing />
+      ) : (
+        <RowList label={t("activity.recent")}>
+          {items.map((e) => (
+            <RowItem
+              key={`${e.at}:${e.kind}:${e.issueKey ?? e.ref ?? ""}`}
+              rowKey={`${e.at}:${e.kind}`}
+              title={line(e)}
+              lead={<span className="font-normal text-subtle">{new Date(e.at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</span>}
+            />
+          ))}
+        </RowList>
+      )}
+    </details>
+  );
+}
+
+export function ActivityPeek({ row, orgId, peek, full, now }: { row: OrgActivityProject; orgId: string; peek: PeekState; full: FullPage; now: number }) {
+  const t = useCopy();
+  const m = row.master;
   return (
     <PeekPanel peek={peek} listLabel={t("activity.title")} noun={t("activity.noun")} full={full} testId="activity-peek">
-      <PeekHead noun={t("activity.noun")} itemKey="" badge={<StatusBadge family="masterState" value={row.master.state} />} title={row.name} />
+      <PeekHead noun={t("activity.noun")} itemKey="" badge={<PaneMark master={m} now={now} />} title={row.name} />
+      <div className="flex flex-col gap-1 px-4.5 text-13 text-muted">
+        {m.doing ? <Doing master={m} /> : null}
+        {m.pane?.source === "pass" ? <span className="text-12 text-subtle" data-testid="activity-as-of-pass">{t("activity.asOfPass")}</span> : null}
+        {m.dialog ? (
+          <span className="truncate text-12" style={{ color: LEGEND.you.fg }} title={m.dialog} data-testid="activity-dialog">
+            {m.dialog}
+          </span>
+        ) : null}
+      </div>
       <Part label={t("activity.col.now")} count={row.now.length}>
         {row.now.length === 0 ? (
           <Nothing />
@@ -80,11 +150,16 @@ export function ActivityPeek({ row, peek, full }: { row: OrgActivityProject; pee
           </RowList>
         )}
       </Part>
-      <Part label={t("activity.col.next")} count={row.next.total}>
+      <Part label={t("activity.col.backlog")} count={row.next.total}>
+        {row.next.skip ? (
+          <p className="pb-1 text-12" style={{ color: LEGEND.you.fg }} data-testid="activity-skip-line">
+            {t("activity.skip.title", { why: t(`activity.skip.${row.next.skip}`) })}
+          </p>
+        ) : null}
         {row.next.items.length === 0 ? (
           <Nothing />
         ) : (
-          <RowList label={t("activity.col.next")}>
+          <RowList label={t("activity.col.backlog")}>
             {row.next.items.map((n) => (
               <RowItem
                 key={n.issueId}
@@ -105,10 +180,11 @@ export function ActivityPeek({ row, peek, full }: { row: OrgActivityProject; pee
           <RowList label={t("activity.col.people")}>
             {row.people.items.map((d) => (
               <RowItem
-                key={`${d.group}:${d.key}`}
-                rowKey={d.key}
-                title={d.title || d.key}
-                tip={d.key}
+                key={`${d.group}:${d.key ?? ""}:${d.title}`}
+                rowKey={d.key ?? d.title}
+                title={d.title}
+                tip={d.title}
+                lead={d.key ?? undefined}
                 href={`${full.href}/approvals`}
                 trailing={<span className="text-12 font-medium" style={{ color: LEGEND.you.fg }}>{t(`activity.people.${d.group}`)}</span>}
               />
@@ -117,13 +193,15 @@ export function ActivityPeek({ row, peek, full }: { row: OrgActivityProject; pee
         )}
       </Part>
       {row.release ? (
-        <Part label={t("activity.col.release")} count={0}>
-          <div className="flex items-center justify-between gap-3 pb-4">
+        <Part label={t("activity.release.next")} count={0}>
+          <div className="flex items-center justify-between gap-3">
             <span className="min-w-0 truncate text-13">{row.release.title ?? t("activity.release.draft")}</span>
             <ReleaseBar release={row.release} />
           </div>
         </Part>
       ) : null}
+      <Recent orgId={orgId} projectId={row.projectId} />
+      <div className="pb-4" />
     </PeekPanel>
   );
 }

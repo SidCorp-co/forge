@@ -410,7 +410,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
                   groups={list.groups}
                   fold={list.fold}
                   row={row}
-                  eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
+                  eta={{ label: ETA_COPY[clock.lang].header, sort: { label: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort } }}
                   selected={peek.open}
                   onPeek={list.togglePeek}
                   empty={t("issues.board.noMatch")}

@@ -234,8 +234,11 @@ interface GroupedListProps<R> {
   empty?: ReactNode;
   /** The header's words where a list's columns are not the entity default: Key · Title · State · Waiting on · Owner · age. */
   columns?: Partial<ListColumnLabels>;
-  /** An ETA column: its header, and whether the rows are sorted by it, which its header toggles. */
-  eta?: { label: string; sortLabel: string; sorted: boolean; onSort: () => void };
+  /**
+   * A fourth column between Waiting on and Owner·age: its header, and, where the rows sort by it, its
+   * sort, which its header toggles. Without a sort its header is a label, never a button that does nothing.
+   */
+  eta?: { label: string; sort?: { label: string; sorted: boolean; onSort: () => void } };
   /** False: no key column; each row leads with its title and its key is the title's tooltip (REQ-11 BC-19). */
   keyColumn?: boolean;
 }
@@ -260,18 +263,20 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
         <span aria-hidden>{columns?.title ?? t("list.col.title")}</span>
         <span aria-hidden>{columns?.state ?? t("list.col.state")}</span>
         <span aria-hidden>{columns?.waitingOn ?? t("list.col.waitingOn")}</span>
-        {eta ? (
+        {eta?.sort ? (
           <button
             type="button"
-            onClick={eta.onSort}
-            aria-pressed={eta.sorted}
-            title={eta.sortLabel}
+            onClick={eta.sort.onSort}
+            aria-pressed={eta.sort.sorted}
+            title={eta.sort.label}
             data-testid="list-sort-eta"
-            className={cn("inline-flex items-center justify-end gap-1 justify-self-end text-right hover:text-fg", eta.sorted && "text-fg")}
+            className={cn("inline-flex items-center justify-end gap-1 justify-self-end text-right hover:text-fg", eta.sort.sorted && "text-fg")}
           >
             {eta.label}
-            <Icon name={eta.sorted ? "arrowUp" : "chevronUpDown"} size={11} />
+            <Icon name={eta.sort.sorted ? "arrowUp" : "chevronUpDown"} size={11} />
           </button>
+        ) : eta ? (
+          <span aria-hidden>{eta.label}</span>
         ) : null}
         <span aria-hidden className="text-right max-lg:hidden">{columns?.meta ?? t("list.col.meta")}</span>
       </div>

@@ -70,7 +70,7 @@ describe("ISS-956 lighter lines", () => {
 
   it("PeekPanel draws its edge and its bars as region lines", () => {
     render(
-      <PeekPanel peek={peek} listLabel="Things" noun="Thing" full={{ href: "/x/A-1" }} foot={<p>acts</p>}>
+      <PeekPanel peek={peek} listLabel="Things" noun="Thing" full={{ href: "/x/A-1", origin: "things" }} foot={<p>acts</p>}>
         <p>body</p>
       </PeekPanel>,
     );

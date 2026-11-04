@@ -34,6 +34,7 @@ const MASTER = {
   silentAfterSeconds: 60,
   waitingOn: null,
   dialogsAnswered: null,
+  pane: null,
   outdated: null,
 } as unknown as MasterStanding;
 
