@@ -1,7 +1,8 @@
-//! Where `forge-runner judge-login` leaves a run's test login, and the one removal of it when the
+//! Where `forge-runner judge-login` leaves a run's test session, and the one removal of it when the
 //! run ends (ISS-920).
 //!
-//! `judge-login` writes the testing profile's credential to `$TMPDIR/forge-judge-<run>/`. Deleting
+//! `judge-login` writes the session it signed in for (ISS-959; before it, the testing profile's
+//! credential itself) to `$TMPDIR/forge-judge-<run>/`. Deleting
 //! it was left to the judge's brief, and on 2026-11-03 two closed runs' logins were still on disk.
 //! Every place that names the directory — the write, `run close`, the daemon's close loop — names it
 //! through [`dir`], rooted at [`root`], so there is one rule for where it is and never two copies.
@@ -205,12 +206,12 @@ impl Removal {
         match self {
             Removal::Absent => None,
             Removal::Removed(p) => Some(format!(
-                "removed {}: the test login its judge was handed",
+                "removed {}: the test session its judge was handed",
                 p.display()
             )),
             Removal::Refused(why) => Some(format!("no judge login removed: {why}")),
             Removal::Failed { path, error } => Some(format!(
-                "could not remove {} ({error}): the run is closed, and the test login in it is \
+                "could not remove {} ({error}): the run is closed, and the test session in it is \
                  still on disk — delete that directory by hand",
                 path.display()
             )),

@@ -27,7 +27,8 @@ struct Cli {
 enum Command {
     /// Call any Forge REST endpoint with a personal access token (`gh api` shaped).
     Api(cmd::api::Args),
-    /// Read one actor's testing secret into a 0600 file; prints its path, never the value.
+    /// Sign in as one testing actor and write only the session (a curl header file and a Playwright
+    /// storage state); prints their paths, never a value.
     #[command(name = "judge-login")]
     JudgeLogin(cmd::judge_login::Args),
     /// Pair this device with Forge via browser approval (OAuth device flow).

@@ -26,6 +26,8 @@ tracing-subscriber = { workspace = true }
 which = { workspace = true }
 dirs-next = { workspace = true }
 webbrowser = { workspace = true }
+# ISS-959 — judge-login signs in at the judged deployment itself, following no redirect
+reqwest = { workspace = true }
 
 [dev-dependencies]
 # the owner-mode session as the runner spawns it, for the end-to-end test of its confinement

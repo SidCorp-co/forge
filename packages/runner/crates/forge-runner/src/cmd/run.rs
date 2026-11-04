@@ -484,7 +484,7 @@ mod tests {
         assert_eq!(
             said,
             format!(
-                "run {JUDGED} closed\nremoved {}: the test login its judge was handed",
+                "run {JUDGED} closed\nremoved {}: the test session its judge was handed",
                 mine.display()
             )
         );
@@ -565,7 +565,7 @@ mod tests {
         assert_eq!(
             said,
             format!(
-                "run {JUDGED} closed\nremoved {}: the test login its judge was handed",
+                "run {JUDGED} closed\nremoved {}: the test session its judge was handed",
                 recorded.display()
             )
         );

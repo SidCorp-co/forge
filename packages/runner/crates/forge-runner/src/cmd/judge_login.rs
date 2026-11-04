@@ -1,68 +1,56 @@
-//! `forge-runner judge-login <profile> <actor>`: the one testing secret a judge needs, written to a
-//! 0600 file, its value never on the terminal.
+//! `forge-runner judge-login <profile> <actor>`: sign in as one actor of the testing profile and
+//! hand the judge only the session (ISS-959).
 //!
 //! FB-464 (catalog-api qa runs 94ef974e and 575d3ace, 2026-11-01): judges read the testing-secrets
 //! route with `forge-runner api`, which prints the body, and twice the values reached their
-//! transcripts. Core now answers one named secret per read (ISS-868); this command reads it the same
-//! way `api` does — the pane's checkout credential, `self` named as the run declared over this
-//! checkout — and prints only where the file is and which fields it holds.
+//! transcripts. This command then wrote the one secret to a 0600 file, and the judge had to open it,
+//! learn its shape and send the password itself — the act every brief forbids, and on 2026-11-04 two
+//! judges printed fragments of it doing so (ISS-959). Now the secret is read the same way `api` reads
+//! it — the pane's checkout credential, `self` named as the run declared over this checkout — and is
+//! spent inside this process: [`session`] signs in at the deployment the run judges and writes only
+//! the session. No file holds the password, and the line printed names paths, never contents.
+//!
+//! A `--service` is refused by name: a service's credential (an API key, a database login) is the
+//! key itself, not a sign-in, and cannot be narrowed to a session; writing it to a file is the defect
+//! this command was rebuilt to remove.
 
-use std::io::Write;
+mod session;
+
 use std::path::{Path, PathBuf};
 
 use clap::Args as ClapArgs;
 use runner_core::judge_dir;
 use runner_core::ledger::Ledger;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use super::api::{get_json, rest_client, run_self};
 use super::Ctx;
+use session::{Session, SessionFiles};
 
-/// Read one actor's (or service's) testing secret into a 0600 file and print only its path and
-/// field names, never a value.
+/// Sign in as one actor of a testing profile and write only the session: a header line for
+/// `curl -H @<file>` and a Playwright storage state. Prints their paths, never a value.
 #[derive(ClapArgs)]
 pub struct Args {
     /// The testing profile the environment you judge names (`environments.<env>.testing`).
     pub profile: String,
-    /// The actor of that profile to log in as, as the profile declares it (`GET
+    /// The actor of that profile to sign in as, as the profile declares it (`GET
     /// /api/projects/<id>/testing-profiles/<profile>` lists them).
     pub actor: Option<String>,
-    /// Read this service of the profile instead of an actor.
+    /// Refused: a service's credential is the key itself, not a sign-in, and is never written to a
+    /// file.
     #[arg(long, conflicts_with = "actor")]
     pub service: Option<String>,
     /// The run to read as; default `self`, the run declared over this checkout.
     #[arg(long, default_value = "self")]
     pub run: String,
-    /// Directory to write the file into (created 0700); default a `forge-judge-<run>` directory
+    /// Directory to write the session into (created 0700); default a `forge-judge-<run>` directory
     /// under the system temp dir, outside every checkout. The directory is recorded on the run and
     /// its close removes it; an `--out-dir` is recorded only when it is named `forge-judge-<run>`.
     #[arg(long)]
     pub out_dir: Option<PathBuf>,
 }
 
-/// What the read names: an actor or a service of the profile.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Named {
-    Actor(String),
-    Service(String),
-}
-
-impl Named {
-    fn query(&self) -> String {
-        match self {
-            Named::Actor(a) => format!("actor={a}"),
-            Named::Service(s) => format!("service={s}"),
-        }
-    }
-    fn file_stem(&self) -> String {
-        match self {
-            Named::Actor(a) => format!("actor-{a}"),
-            Named::Service(s) => format!("service-{s}"),
-        }
-    }
-}
-
-/// A profile, actor or service name as core declares them: a letter, then letters, digits and `-`.
+/// A profile or actor name as core declares them: a letter, then letters, digits and `-`.
 fn valid_name(s: &str) -> bool {
     let mut chars = s.chars();
     chars.next().is_some_and(|c| c.is_ascii_alphabetic())
@@ -70,13 +58,14 @@ fn valid_name(s: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// What the arguments name, or the line refusing them.
+/// The actor the arguments name, or the line refusing them. A service is refused before anything is
+/// read, so no read of its key is made or audited.
 pub(crate) fn named(
     profile: &str,
     actor: Option<&str>,
     service: Option<&str>,
     run: &str,
-) -> Result<Named, String> {
+) -> Result<String, String> {
     if !valid_name(profile) {
         return Err(format!(
             "profile `{profile}` is no profile name: a letter, then letters, digits or `-`"
@@ -88,36 +77,37 @@ pub(crate) fn named(
             "--run `{run}` is neither `self` nor a run id (a uuid)"
         ));
     }
-    let chosen = match (actor, service) {
-        (Some(a), None) => Named::Actor(a.to_string()),
-        (None, Some(s)) => Named::Service(s.to_string()),
-        _ => {
-            return Err(
-                "name the one actor to log in as (`judge-login <profile> <actor>`), or `--service <name>`; \
-                 a read is never handed the whole profile"
+    let actor =
+        match (actor, service) {
+            (Some(a), None) => a,
+            (None, Some(s)) => {
+                return Err(format!(
+                    "--service `{s}` names a service's credential, which is the key itself and no \
+                 sign-in; judge-login hands a judge only a session and writes no key to a file. \
+                 Nothing was read or written"
+                ))
+            }
+            _ => return Err(
+                "name the one actor to sign in as (`judge-login <profile> <actor>`); a read is \
+                 never handed the whole profile"
                     .to_string(),
-            )
-        }
-    };
-    let (Named::Actor(n) | Named::Service(n)) = &chosen;
-    if !valid_name(n) {
+            ),
+        };
+    if !valid_name(actor) {
         return Err(format!(
-            "`{n}` is no actor or service name: a letter, then letters, digits or `-`"
+            "`{actor}` is no actor name: a letter, then letters, digits or `-`"
         ));
     }
-    Ok(chosen)
+    Ok(actor.to_string())
 }
 
 /// The read's path, before `self` is named as a run.
-pub(crate) fn secret_path(profile: &str, run: &str, what: &Named) -> String {
-    format!(
-        "/api/jobs/{run}/testing-profiles/{profile}/secrets?{}",
-        what.query()
-    )
+pub(crate) fn secret_path(profile: &str, run: &str, actor: &str) -> String {
+    format!("/api/jobs/{run}/testing-profiles/{profile}/secrets?actor={actor}")
 }
 
-/// The file's contents from core's answer: exactly one secret, or the line saying what came back.
-pub(crate) fn file_body(answer: &Value, profile: &str, what: &Named) -> Result<Value, String> {
+/// The one secret's value in core's answer, or the line saying what came back instead.
+pub(crate) fn secret_of(answer: &Value) -> Result<&str, String> {
     let secrets = answer
         .get("secrets")
         .and_then(Value::as_array)
@@ -128,66 +118,57 @@ pub(crate) fn file_body(answer: &Value, profile: &str, what: &Named) -> Result<V
             secrets.len()
         ));
     };
-    let (Some(r#ref), Some(value)) = (
-        secret.get("ref").and_then(Value::as_str),
-        secret.get("value").and_then(Value::as_str),
-    ) else {
-        return Err("core's secret carries no `ref` and `value`; nothing was written".to_string());
-    };
-    let mut body = json!({
-        "profile": profile,
-        "environment": answer.get("environment").cloned().unwrap_or(Value::Null),
-        "ref": r#ref,
-        "value": value,
-    });
-    match what {
-        Named::Actor(a) => body["actor"] = json!(a),
-        Named::Service(s) => body["service"] = json!(s),
-    }
-    Ok(body)
+    secret
+        .get("value")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "core's secret carries no `value`; nothing was written".to_string())
 }
 
-/// Write `body` to `<dir>/<profile>-<stem>.json`, the directory 0700 and the file 0600, replacing
-/// any earlier copy. Answers the file's path.
-pub(crate) fn write_private(
+/// Sign in with the secret core answered and write the session into `dir`. Every refusal comes
+/// before the first write, so a refused sign-in leaves nothing on disk.
+pub(crate) async fn login_into(
+    answer: &Value,
     dir: &Path,
     profile: &str,
-    what: &Named,
-    body: &Value,
-) -> std::io::Result<PathBuf> {
-    std::fs::create_dir_all(dir)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let path = dir.join(format!("{profile}-{}.json", what.file_stem()));
-    let _ = std::fs::remove_file(&path);
-    let mut open = std::fs::OpenOptions::new();
-    open.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        open.mode(0o600);
-    }
-    let mut file = open.open(&path)?;
-    file.write_all(serde_json::to_string_pretty(body)?.as_bytes())?;
-    file.write_all(b"\n")?;
-    Ok(path)
+    actor: &str,
+) -> Result<(SessionFiles, Session), String> {
+    let secret = session::parse_secret(secret_of(answer)?)?;
+    let deployment = session::deployment_of(answer);
+    let url = session::sign_in_url(secret.route(), deployment.as_ref())?;
+    let signed_in = session::sign_in(&secret, &url, deployment.as_ref()).await?;
+    drop(secret);
+    let files = session::write_session(dir, profile, actor, &signed_in).map_err(|e| {
+        format!(
+            "the session could not be written into {} ({e})",
+            dir.display()
+        )
+    })?;
+    Ok((files, signed_in))
 }
 
-/// The one line printed: where the file is, the names of its fields, never a value, and who
-/// removes it.
-pub(crate) fn said(path: &Path, body: &Value, removed: &str) -> String {
-    let mut fields: Vec<&str> = body
-        .as_object()
-        .map(|o| o.keys().map(String::as_str).collect())
-        .unwrap_or_default();
-    fields.sort_unstable();
+/// The lines printed: where the session is and how each file is used, never a value or a length,
+/// and who removes it.
+pub(crate) fn said(
+    profile: &str,
+    actor: &str,
+    files: &SessionFiles,
+    signed_in: &Session,
+    removed: &str,
+) -> String {
+    let at = &signed_in.at;
+    let origin = at.origin().ascii_serialization();
     format!(
-        "wrote {} (0600), fields: {}; read the value from the file, and keep it out of every comment, commit and transcript; {removed}",
-        path.display(),
-        fields.join(", ")
+        "signed in as actor `{actor}` of profile `{profile}` at {origin}{path}; the password stayed \
+         inside this process and no file holds it.\n\
+         - API: `curl -H @{header} {origin}/<path>` — the file is one request header line.\n\
+         - Browser: {state} is a Playwright storage state holding {holds}: \
+         `browser.newContext({{ storageState: '{state}' }})`, or `--load-storage={state}` on the \
+         Playwright CLI.\n\
+         Never open, print or measure either file; {removed}",
+        path = at.path(),
+        header = files.header.display(),
+        state = files.state.display(),
+        holds = session::state_says(signed_in),
     )
 }
 
@@ -221,20 +202,20 @@ fn record_on(run: &str, dir: &Path) -> Result<PathBuf, String> {
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
-    let what = match named(
+    let actor = match named(
         &args.profile,
         args.actor.as_deref(),
         args.service.as_deref(),
         &args.run,
     ) {
-        Ok(w) => w,
+        Ok(a) => a,
         Err(why) => return refuse(&why),
     };
     let client = match rest_client(&ctx)? {
         Ok(c) => c,
         Err(why) => return refuse(&why),
     };
-    let asked = secret_path(&args.profile, &args.run, &what);
+    let asked = secret_path(&args.profile, &args.run, &actor);
     let (path, run_label) = match std::env::current_dir() {
         Ok(here) => match run_self::name_self(&asked, &here, || {
             Ledger::default_path()
@@ -264,18 +245,20 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Ok(a) => a,
         Err(why) => return refuse(&why),
     };
-    let body = match file_body(&answer, &args.profile, &what) {
-        Ok(b) => b,
+    let (dir, run) = where_to_write(args.out_dir, &run_label, &answer);
+    let (files, signed_in) = match login_into(&answer, &dir, &args.profile, &actor).await {
+        Ok(done) => done,
         Err(why) => return refuse(&why),
     };
-    let (dir, run) = where_to_write(args.out_dir, &run_label, &answer);
-    let written = write_private(&dir, &args.profile, &what, &body)?;
     let removed = who_removes(&dir, run.as_deref().map_err(String::as_str), record_on);
-    println!("{}", said(&written, &body, &removed));
+    println!(
+        "{}",
+        said(&args.profile, &actor, &files, &signed_in, &removed)
+    );
     Ok(())
 }
 
-/// Where the file goes, and the run it is recorded on so that run's close removes it (ISS-920):
+/// Where the session goes, and the run it is recorded on so that run's close removes it (ISS-920):
 /// `forge-judge-<run>` under [`judge_dir::root`], named by [`judge_dir::dir`]. A `self` this
 /// checkout could not name is taken from the run core answered for. An `--out-dir` is recorded only
 /// where it is itself named `forge-judge-<run>`: a close removes nothing else, so a mistyped
@@ -324,166 +307,4 @@ fn refuse(why: &str) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const VALUE: &str = "stg-admin@adminhub.test:Corr3ct-H0rse-Battery";
-
-    struct Scratch(PathBuf);
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn answer() -> Value {
-        json!({
-            "jobId": null,
-            "environment": "stg",
-            "profileId": "stg",
-            "secrets": [{ "ref": "secret://test/stg-admin", "value": VALUE }],
-        })
-    }
-
-    #[test]
-    fn a_read_names_one_actor_or_service_and_never_the_whole_profile() {
-        assert_eq!(
-            named("stg", Some("admin"), None, "self"),
-            Ok(Named::Actor("admin".into()))
-        );
-        assert_eq!(
-            named("stg", None, Some("store"), "self"),
-            Ok(Named::Service("store".into()))
-        );
-        let none = named("stg", None, None, "self").unwrap_err();
-        assert!(none.contains("never handed the whole profile"), "{none}");
-        for (profile, actor, run) in [
-            ("stg", "admin&service=store", "self"),
-            ("stg/../x", "admin", "self"),
-            ("stg", "admin", "not-a-run"),
-        ] {
-            assert!(
-                named(profile, Some(actor), None, run).is_err(),
-                "{profile} {actor} {run}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_path_asks_for_the_one_name_as_self_or_the_run() {
-        assert_eq!(
-            secret_path("stg", "self", &Named::Actor("admin".into())),
-            "/api/jobs/self/testing-profiles/stg/secrets?actor=admin"
-        );
-        let run = "53077902-cb16-408f-904c-e0e4b762a1c9";
-        assert_eq!(
-            secret_path("stg", run, &Named::Service("store".into())),
-            format!("/api/jobs/{run}/testing-profiles/stg/secrets?service=store")
-        );
-    }
-
-    #[test]
-    fn the_file_holds_the_one_secret_and_more_than_one_is_refused() {
-        let body = file_body(&answer(), "stg", &Named::Actor("admin".into())).unwrap();
-        assert_eq!(body["value"], VALUE);
-        assert_eq!(body["actor"], "admin");
-        assert_eq!(body["ref"], "secret://test/stg-admin");
-        let mut two = answer();
-        two["secrets"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({ "ref": "secret://dev/epod-store", "value": "x".repeat(20) }));
-        let err = file_body(&two, "stg", &Named::Actor("admin".into())).unwrap_err();
-        assert!(err.contains("2 secrets for one name"), "{err}");
-        assert!(!err.contains(VALUE));
-    }
-
-    #[test]
-    fn the_file_is_written_0600_and_the_line_printed_holds_no_value() {
-        let root = Scratch(
-            std::env::temp_dir().join(format!("forge-judge-login-test-{}", std::process::id())),
-        );
-        let what = Named::Actor("admin".into());
-        let body = file_body(&answer(), "stg", &what).unwrap();
-        write_private(&root.0.join("run"), "stg", &what, &body).unwrap();
-        // written again, it replaces the earlier copy rather than failing
-        let path = write_private(&root.0.join("run"), "stg", &what, &body).unwrap();
-        assert_eq!(path, root.0.join("run/stg-actor-admin.json"));
-        let read: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(read["value"], VALUE);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let file = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-            let dir = std::fs::metadata(root.0.join("run"))
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777;
-            assert_eq!((file, dir), (0o600, 0o700));
-        }
-        let line = said(&path, &body, "");
-        assert!(!line.contains(VALUE), "{line}");
-        assert!(!line.contains("Corr3ct"), "{line}");
-        assert!(
-            line.contains("fields: actor, environment, profile, ref, value"),
-            "{line}"
-        );
-        assert!(line.contains(&path.display().to_string()), "{line}");
-    }
-    #[test]
-    fn the_login_is_written_where_its_runs_close_removes_it() {
-        let run = "53077902-cb16-408f-904c-e0e4b762a1c9";
-        let root = judge_dir::root();
-        let none = json!({ "jobId": null });
-        let ours = || Ok(run.to_string());
-        assert_eq!(
-            where_to_write(None, run, &none),
-            (judge_dir::dir(&root, run).unwrap(), ours())
-        );
-        // a `self` this checkout could not name is the run core answered for
-        let core = json!({ "jobId": run });
-        assert_eq!(
-            where_to_write(None, "self", &core),
-            (judge_dir::dir(&root, run).unwrap(), ours())
-        );
-        // a read naming no run is nobody's close to remove, and says why
-        let (unnamed, by) = where_to_write(None, "self", &none);
-        assert_eq!(unnamed, root.join("forge-judge-self"));
-        assert!(by.unwrap_err().contains("named no run"));
-        // an --out-dir named for the run is recorded on it; any other is not, and says why
-        let named = PathBuf::from(format!("/somewhere/forge-judge-{run}"));
-        assert_eq!(
-            where_to_write(Some(named.clone()), run, &core),
-            (named, ours())
-        );
-        let asked = PathBuf::from("/somewhere/else");
-        let (d, by) = where_to_write(Some(asked.clone()), run, &core);
-        assert_eq!(d, asked);
-        assert!(by.unwrap_err().contains("is not named forge-judge-"));
-    }
-
-    #[test]
-    fn the_line_says_where_the_login_is_recorded_or_why_it_is_not() {
-        let run = "53077902-cb16-408f-904c-e0e4b762a1c9";
-        let dir = PathBuf::from(format!("/t/forge-judge-{run}"));
-        let recorded = who_removes(&dir, Ok(run), |_, d| Ok(d.to_path_buf()));
-        assert_eq!(
-            recorded,
-            format!(
-                "recorded on run {run}, whose close removes {}",
-                dir.display()
-            )
-        );
-        let unrecorded = who_removes(&dir, Ok(run), |_, _| Err("no ledger".into()));
-        assert!(unrecorded.contains("not recorded on run") && unrecorded.contains("no ledger"));
-        let nobody = who_removes(&dir, Err("no run"), |_, _| unreachable!());
-        assert!(
-            nobody.contains("no run's close removes it (no run)"),
-            "{nobody}"
-        );
-        let body = file_body(&answer(), "stg", &Named::Actor("admin".into())).unwrap();
-        let line = said(&dir.join("stg-actor-admin.json"), &body, &recorded);
-        assert!(line.ends_with(&recorded), "{line}");
-    }
-}
+mod tests;
