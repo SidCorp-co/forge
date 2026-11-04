@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ContextScopedMcpToolFactory, McpContext } from '../../lib/tool.js';
 import { zodToMcpSchema } from '../../lib/tool.js';
 import { CHAT_READ_MODEL_TOOLS } from '../../mcp/chat-read-tools.js';
+import { onArg } from '../../permissions/index.js';
 import { buildToolset } from './mcp-adapter.js';
 
 // A chat turn is bound to one project: the adapter hides `projectId` from the model and pins the
@@ -77,6 +78,7 @@ describe('the chat adapter over a project-bound turn', () => {
       reach: 'project',
       route: '/api/projects',
       grant: 'projects:read',
+      permission: onArg('project.read'),
       description: 'probe',
       inputSchema: zodToMcpSchema(
         z.discriminatedUnion('action', [

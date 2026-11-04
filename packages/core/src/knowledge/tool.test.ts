@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const store = vi.hoisted(() => ({ read: vi.fn(), can: vi.fn() }));
+const store = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('./service.js', () => ({
   readKnowledgeEntry: store.read,
   deleteKnowledgeEntry: vi.fn(),
@@ -8,17 +8,13 @@ vi.mock('./service.js', () => ({
 }));
 vi.mock('./unified-search.js', () => ({ runUnifiedSearch: vi.fn() }));
 vi.mock('./upsert.js', () => ({ upsertKnowledgeEntry: vi.fn() }));
-vi.mock('../permissions/index.js', () => ({
-  actorFor: (id: string) => ({ id }),
-  projectResource: (id: string) => ({ id }),
-  requireCan: store.can,
-}));
 vi.mock('../lib/tool.js', async (load) => ({
   ...(await load<typeof import('../lib/tool.js')>()),
   projectReaderOf: () => ({ userId: 'u-1', fence: null }),
 }));
 
 const { forgeKnowledgeTool } = await import('./tool.js');
+const { toolPermissionFor } = await import('../permissions/index.js');
 
 const PROJECT = '0b6f1f5e-7a7e-4c43-9d56-0c5e9a3b2f11';
 const tool = forgeKnowledgeTool({ principal: { userId: 'u-1' } } as never);
@@ -28,7 +24,6 @@ const tool = forgeKnowledgeTool({ principal: { userId: 'u-1' } } as never);
 describe('forge_knowledge get', () => {
   beforeEach(() => {
     store.read.mockReset();
-    store.can.mockReset().mockResolvedValue(undefined);
   });
 
   it("answers the org's entry where the project holds none, labelled as the org's", async () => {
@@ -38,14 +33,25 @@ describe('forge_knowledge get', () => {
     expect(got).toMatchObject({ origin: 'org', body: 'Speak plainly.' });
   });
 
-  it('refuses by name an entry neither holds, and reads nothing without project read', async () => {
+  it('refuses by name an entry neither holds', async () => {
     store.read.mockResolvedValue(null);
     await expect(
       tool.handler({ action: 'get', projectId: PROJECT, slug: 'no-such' }),
     ).rejects.toThrow(/NOT_FOUND/);
-    store.can.mockRejectedValue(new Error('PERMISSION_FORBIDDEN'));
-    await expect(
-      tool.handler({ action: 'get', projectId: PROJECT, slug: 'org-voice' }),
-    ).rejects.toThrow(/PERMISSION_FORBIDDEN/);
+  });
+
+  // ISS-947: project read is checked at the door (`runDeclaredTool`) on the project projectId names,
+  // so the handler reads nothing a caller without it asked for
+  it('declares project read on the project its projectId names, and project write for a write', () => {
+    for (const action of ['list', 'get', 'search'])
+      expect(toolPermissionFor(tool.permission, action)).toEqual({
+        permission: 'project.read',
+        on: { arg: 'projectId' },
+      });
+    for (const action of ['upsert', 'delete'])
+      expect(toolPermissionFor(tool.permission, action)).toEqual({
+        permission: 'project.write',
+        on: { arg: 'projectId' },
+      });
   });
 });
