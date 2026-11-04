@@ -72,8 +72,9 @@ const issue = (n: number, kind: WaitingKind, attentionGroup: string): IssueStand
     },
   }) as unknown as IssueStandingRow;
 
-// ISS-4 waits on another person: it answers to none of the three, and its Paused group starts folded
-const ROWS = [issue(1, "you", "needs_you"), issue(2, "master", "queued"), issue(3, "run", "moving"), issue(4, "person", "paused")];
+// ISS-1 and ISS-4 wait on other people by name: no issue waits on its reader (REQ-68 BC-6, ISS-687), so
+// they answer to none of the three, and ISS-4's Paused group starts folded
+const ROWS = [issue(1, "person", "queued"), issue(2, "master", "queued"), issue(3, "run", "moving"), issue(4, "person", "paused")];
 
 function Dock({ progress }: { progress: ConversationProgressEntry | null }) {
   const ui = useUiActions({ slug: "demo", ready: true, messages: [], progress });
@@ -106,7 +107,7 @@ function page(path: string) {
   window.history.replaceState(null, "", path);
   fakeCore((c) =>
     c.path.startsWith("/projects/p1/issues/standing")
-      ? { body: { issues: ROWS, counts: { open: 4, closed: 0, all: 4, needsYou: 1, blocked: 0, blocking: 0 }, returned: 4, limit: 500, releaseApproval: false } }
+      ? { body: { issues: ROWS, counts: { open: 4, closed: 0, all: 4, blocked: 0, blocking: 0 }, returned: 4, limit: 500, releaseApproval: false } }
       : { body: {} },
   );
   const board = <IssuesBoard scope={{ projectId: "p1", slug: "demo" }} mode="attention" />;
@@ -133,7 +134,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("the Issues list filters by whom an issue waits on (BC-5)", () => {
   it("keeps only the issues waiting on an agent once the chat asks, marked as the assistant's", async () => {
     const send = page("/projects/demo/issues");
-    await waitFor(() => expect(shownRows()).toEqual(["ISS-1", "ISS-3", "ISS-2"]));
+    await waitFor(() => expect(shownRows()).toEqual(["ISS-3", "ISS-1", "ISS-2"]));
     send(turn("ui_issues_filter", { mode: "merge", set: [{ field: "waitingOn", value: "agent" }] }));
     await waitFor(() => expect(shownRows()).toEqual(["ISS-2"]));
     const agent = within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "An agent" });
@@ -141,15 +142,15 @@ describe("the Issues list filters by whom an issue waits on (BC-5)", () => {
     expect(JSON.parse(screen.getByTestId("snapshot").textContent ?? "{}")).toMatchObject({ route: "issues", filter: { waitingOn: "agent" }, shown: ["ISS-2"] });
   });
 
-  it("narrows by running and by you from the person's own pills", async () => {
+  it("narrows by running from the person's own pills, and You keeps no issue", async () => {
     page("/projects/demo/issues");
-    await waitFor(() => expect(shownRows()).toEqual(["ISS-1", "ISS-3", "ISS-2"]));
+    await waitFor(() => expect(shownRows()).toEqual(["ISS-3", "ISS-1", "ISS-2"]));
     fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "Running" }));
     await waitFor(() => expect(shownRows()).toEqual(["ISS-3"]));
     fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "You" }));
-    await waitFor(() => expect(shownRows()).toEqual(["ISS-1"]));
+    await waitFor(() => expect(shownRows()).toEqual([]));
     fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "All" }));
-    await waitFor(() => expect(shownRows()).toEqual(["ISS-1", "ISS-3", "ISS-2"]));
+    await waitFor(() => expect(shownRows()).toEqual(["ISS-3", "ISS-1", "ISS-2"]));
   });
 
   it("moves a waiting filter sent to the Table onto the grouped view that reads it", () => {
