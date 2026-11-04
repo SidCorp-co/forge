@@ -133,7 +133,7 @@ describe('a draft and a resume are the master\'s, never a person\'s (REQ-68)', (
   ])('a park answered with %s waits on the master to resume it once', (_, answered) => {
     const s = deriveIssueStanding({
       ...input('needs_info', ['Ana']),
-      answered: answered as IssueStandingInput['answered'],
+      answered: answered as NonNullable<IssueStandingInput['answered']>,
     });
     expect(s.attentionGroup).not.toBe('needs_you');
     expect(s.waitingOn.kind).toBe('master');

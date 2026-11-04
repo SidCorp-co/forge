@@ -68,6 +68,7 @@ function carrier(status: IssueStatus, master: MasterServing): StandingIssue {
 const requirement = (issues: StandingIssue[], master: MasterServing): StandingInput => ({
   status: 'agreed',
   owner: { id: 'u1', name: 'Ba', kind: 'human' },
+  viewer: null,
   revisions: [
     {
       revision: 2,
