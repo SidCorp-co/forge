@@ -39,9 +39,13 @@ const SHIPPED_IN_OWED = 'RELEASE_SHIPPED_IN_OWED';
 /**
  * ISS-888: a release hold names an act, and the one it names for the agent is the master's to take,
  * so every such hold is said here with its command; a hold written and never read is the defect.
+ * The ended runs still claiming gate issues are said first, each once with its own act (ISS-961).
  */
-export function releaseHoldsLine(holds: ReleaseHoldOwed[]): string {
-  if (holds.length === 0) return '';
+export function releaseHoldsLine(
+  holds: ReleaseHoldOwed[],
+  ended: ReleaseEndedRunHold[] = [],
+): string {
+  if (holds.length === 0) return endedRunHoldsLine(ended);
   const named = (list: ReleaseHoldOwed[]) =>
     list.map((h) => `${h.key} ${h.issueId}: ${h.code}, waiting for ${h.waitingFor}`).join('; ');
   const shippedIn = holds.filter((h) => h.code === SHIPPED_IN_OWED);
@@ -53,7 +57,7 @@ export function releaseHoldsLine(holds: ReleaseHoldOwed[]): string {
   if (other.length > 0) {
     line += ` ${other.length} issue${plural(other.length, ' waits', 's wait')} at the release gate on a hold whose act is yours (${named(other)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold.reason\` names the act and its door) and take that act, or move the issue out of \`awaiting_release\` if it is not to ship, saying why.`;
   }
-  return line;
+  return endedRunHoldsLine(ended) + line;
 }
 
 /**
@@ -61,7 +65,7 @@ export function releaseHoldsLine(holds: ReleaseHoldOwed[]): string {
  * cut is refused until no ended run does. The abort it owes is the master's act; a claim the sweep
  * lets go of within a minute is named too, so the master is not left reading a refusal it cannot place.
  */
-export function endedRunHoldsLine(holds: ReleaseEndedRunHold[]): string {
+function endedRunHoldsLine(holds: ReleaseEndedRunHold[]): string {
   if (holds.length === 0) return '';
   const owed = holds.filter((h) => h.act === 'abort');
   const passing = holds.filter((h) => h.act === 'sweep');
@@ -73,4 +77,11 @@ export function endedRunHoldsLine(holds: ReleaseEndedRunHold[]): string {
     line += ` ${passing.map((h) => h.sentence).join(' ')}`;
   }
   return line;
+}
+
+/** One digest line per held issue, so the master's work moves when a run's act or its issues do. */
+export function endedRunHoldsWork(holds: ReleaseEndedRunHold[]): string[] {
+  return holds.flatMap((h) =>
+    h.issues.map((i) => `ended-run-hold:${h.runId}|${h.act}|${i.issueId}`),
+  );
 }

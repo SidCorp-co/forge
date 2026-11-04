@@ -2,18 +2,18 @@ import { createHash } from 'node:crypto';
 import { contentLanguageName } from '@forge/contracts/content-language';
 import type { MasterMode } from '@forge/contracts/master-mode';
 import type { MasterWork } from '@forge/contracts/master-verdict';
-import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import type { AnswerResume } from '@forge/contracts/questions';
 import {
   RELEASE_NAME_WORDS_MAX,
   RELEASE_NOTE_TITLE_WORDS_MAX,
 } from '@forge/contracts/release-notes';
+import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
 import { confirmsLine } from './owed-confirms.js';
-import { endedRunHoldsLine, recordingsLine, releaseHoldsLine } from './owed-release-gate.js';
+import { endedRunHoldsWork, recordingsLine, releaseHoldsLine } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
 import {
   type AgentConfirmOwed,
@@ -258,8 +258,7 @@ export function owedLine(owed: Owed): string {
     landedWorkLine(owed.landedWork) +
     mergesLine(owed.marks, owed.filings) +
     recordingsLine(owed.recordings) +
-    endedRunHoldsLine(owed.endedRunHolds) +
-    releaseHoldsLine(owed.releaseHolds) +
+    releaseHoldsLine(owed.releaseHolds, owed.endedRunHolds) +
     confirmsLine(owed.confirms) +
     requestsLine(owed.requests) +
     carriersLine(owed.carriers) +
@@ -364,9 +363,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.carriers.map((c) => `carrier:${c.key}`),
     ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
     ...owed.releaseHolds.map((h) => `release-hold:${h.issueId}|${h.code}`),
-    ...owed.endedRunHolds.map(
-      (h) => `ended-run-hold:${h.runId}|${h.act}|${h.issues.map((i) => i.issueId).join(',')}`,
-    ),
+    ...endedRunHoldsWork(owed.endedRunHolds),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep

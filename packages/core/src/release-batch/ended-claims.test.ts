@@ -84,7 +84,13 @@ describe('the gate issues an ended release run still claims', () => {
       { runId: SHIPPED, version: '0.121.0', cutAt: new Date('2026-11-03T10:00:00Z') },
       { runId: 'run-0123', version: '0.123.0', cutAt: new Date('2026-11-04T13:03:00Z') },
     ];
-    const [hold] = endedRunHolds(PROJECT, agenfold, new Set(['i137']), new Map([run(FAILED)]), later);
+    const [hold] = endedRunHolds(
+      PROJECT,
+      agenfold,
+      new Set(['i137']),
+      new Map([run(FAILED)]),
+      later,
+    );
 
     expect(hold?.act).toBe('abort');
     expect(hold?.shippedIn).toBe('0.123.0');

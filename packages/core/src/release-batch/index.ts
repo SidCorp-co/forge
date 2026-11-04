@@ -1,5 +1,4 @@
 export { type AgentOwedHold, agentOwedHolds } from './agent-owed-holds.js';
-export { readEndedRunHolds } from './ended-claims.js';
 export { registerReleaseApprovalWake } from './approval-wake.js';
 export {
   approvalRequired,
@@ -33,6 +32,7 @@ export { createReleaseBatch } from './create.js';
 export { criteriaWeighingOf } from './criteria-weighing.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { nextDraftVersion } from './draft-version.js';
+export { readEndedRunHolds } from './ended-claims.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export { runningBuildObserved } from './gate.js';
 export { heldFromUnattendedCut, releaseHoldsOf } from './hold.js';

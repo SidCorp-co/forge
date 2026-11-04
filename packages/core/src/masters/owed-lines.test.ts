@@ -203,7 +203,7 @@ describe('the ended release runs still claiming gate issues (ISS-961)', () => {
   };
   const sweep = { ...abort, runId: 'run-0120', act: 'sweep' as const, sentence: 'swept soon.' };
 
-  it('names each run owing its abort, with its own sentence, as the master\'s act', () => {
+  it("names each run owing its abort, with its own sentence, as the master's act", () => {
     const line = owedLine({ ...none, endedRunHolds: [abort] });
     expect(line).toContain(
       '1 release run that ended still claims issues at the release gate and owes its abort, which you owe; no cut is taken until then: ISS-137, ISS-139 are waiting',
@@ -220,6 +220,8 @@ describe('the ended release runs still claiming gate issues (ISS-961)', () => {
     expect(dispatched({ ...none, endedRunHolds: [abort] }).owed).toBe(1);
     const digest = workDigest([], { ...none, endedRunHolds: [abort] });
     expect(digest).not.toBe(workDigest([], none));
-    expect(workDigest([], { ...none, endedRunHolds: [{ ...abort, act: 'sweep' }] })).not.toBe(digest);
+    expect(workDigest([], { ...none, endedRunHolds: [{ ...abort, act: 'sweep' }] })).not.toBe(
+      digest,
+    );
   });
 });

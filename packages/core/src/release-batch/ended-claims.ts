@@ -12,6 +12,8 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import { keptForItsAbort } from '../issues/index.js';
 import { agrees } from '../lib/plural.js';
+import { blocker, evaluate } from './blocker-kit.js';
+import type { ReleaseBlocker } from './blocker-sentences.js';
 import { readClaimConflicts } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { shippedReleaseRuns } from './shipped-releases.js';
@@ -38,7 +40,10 @@ export interface ShippedAfter {
 const keys = (list: { key: string }[]) => list.map((i) => i.key).join(', ');
 
 /** The run, its issues and the act that frees them, as every read words it. */
-export function endedRunSentence(projectId: string, hold: Omit<ReleaseEndedRunHold, 'sentence'>): string {
+export function endedRunSentence(
+  projectId: string,
+  hold: Omit<ReleaseEndedRunHold, 'sentence'>,
+): string {
   const n = hold.issues.length;
   const release = hold.version ? `release ${hold.version}` : 'an unversioned release';
   const subject = `${keys(hold.issues)} ${agrees(n, 'is', 'are')} waiting at the release gate still claimed by ${release} (run ${hold.runId}), which ended \`${hold.runStatus}\``;
@@ -137,7 +142,13 @@ export async function readEndedRunHolds(
   const runs = new Map(
     runRows.map((r) => [
       r.id,
-      { id: r.id, status: r.status, version: r.version, cutAt: r.cutAt, shipped: r.releasedAt !== null },
+      {
+        id: r.id,
+        status: r.status,
+        version: r.version,
+        cutAt: r.cutAt,
+        shipped: r.releasedAt !== null,
+      },
     ]),
   );
   const kept = new Set(claimed.filter((r) => r.kept).map((r) => r.id));
@@ -145,6 +156,27 @@ export async function readEndedRunHolds(
 }
 
 /** Each held issue's id and key, across every hold, in the order the holds name them. */
-export function heldIssues(holds: readonly ReleaseEndedRunHold[]): { issueId: string; key: string }[] {
+export function heldIssues(
+  holds: readonly ReleaseEndedRunHold[],
+): { issueId: string; key: string }[] {
   return holds.flatMap((h) => h.issues);
+}
+
+/**
+ * The batch doors' refusal while an ended run claims gate issues (`blockers.ts`): no roster carries
+ * them, and a cut now would deploy their code with no record of them, so it names each run, its
+ * issues and the act that frees them. Read whichever issues a cut names, since the code it deploys is
+ * the branch's, not the roster's.
+ */
+export async function endedRunBlocker(projectId: string, out: ReleaseBlocker[]): Promise<void> {
+  const holds = await evaluate('ended-run-claims', () => readEndedRunHolds(projectId), out);
+  if (!holds || holds.length === 0) return;
+  const held = heldIssues(holds);
+  out.push(
+    blocker('RELEASE_HELD_BY_ENDED_RUN', {
+      issueIds: held.map((i) => i.issueId),
+      displayIds: held.map((i) => i.key),
+      holds,
+    }),
+  );
 }

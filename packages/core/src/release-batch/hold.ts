@@ -292,10 +292,11 @@ export const NO_ACTOR_HOLD: ReleaseHold = {
   waitingFor: 'an owner on the project',
 };
 
-// A refusal that clears itself (a release already running, a claim another writer won) is owed by
-// the release path; every other one names a declaration or a fleet a person has to change.
-const SELF_CLEARING: Readonly<Record<string, string>> = {
+// Owed by the release path where it clears itself, or the agent where an ended run owes its abort
+// (ISS-961); every other refusal names a declaration or a fleet a person has to change.
+const AGENT_OWED: Readonly<Record<string, string>> = {
   BATCH_IN_FLIGHT: 'the release already in flight to finish',
+  RELEASE_HELD_BY_ENDED_RUN: 'the abort of the ended release run named here',
   CLAIM_CONFLICT: 'the next sweep, after the claim another writer took is settled',
   RELEASE_GATE_CHECK_PENDING:
     "the project's declared gate check to finish; the next sweep reads it again",
@@ -312,14 +313,8 @@ function withoutAges(text: string): string {
     .replace(/ (?:It last reported|Last seen) \d+s ago\./g, '');
 }
 
-/** Refusals whose clearing act is the project's agent's, and what it is. */
-const AGENT_ACT: Readonly<Record<string, string>> = {
-  RELEASE_HELD_BY_ENDED_RUN:
-    'the abort of the ended release run named here, which frees the issues it still claims',
-};
-
 export function refusalHold(code: string, reasons: readonly string[]): ReleaseHold {
-  const waitingFor = SELF_CLEARING[code] ?? AGENT_ACT[code];
+  const waitingFor = AGENT_OWED[code];
   return {
     code,
     reason: withoutAges(`The automatic release was refused: ${reasons.join(' ')}`),
