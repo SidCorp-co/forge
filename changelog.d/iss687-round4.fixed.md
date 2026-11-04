@@ -1,0 +1,1 @@
+**A stuck issue's question is asked on its item, and no page tells a person to act on an issue.** The steward places it on the requirement or feedback item; issue pages lose Tie; workflows say what is owed.
