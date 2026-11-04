@@ -441,6 +441,12 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/mcp-relay.ts Headers.get(name) in relayToUpstream
     integration-door/mcp-relay-routes.ts HonoRequest.arrayBuffer in module code
     integration-door/mcp-relay-routes.ts HonoRequest.header(name) in module code`,
+  'a testing profile’s actor secret tried when written (ISS-937): the sign-in URL core builds and checks for its shape, and the cookies the answer sets, read only to say a session came back': lines`
+    integrations/deploy/sign-in-probe.ts Headers.getSetCookie in trySignIn
+    integrations/deploy/sign-in-probe.ts URL handed to @types/node:fetch in trySignIn
+    project-config/actor-sign-in.ts URL.password in sendable
+    project-config/actor-sign-in.ts URL.username in sendable
+    project-config/secret-write.ts URL.href in checksOf`,
   'a source host’s answer to a call core made: the rate-limit headers it logs, read by name': lines`
     integrations/source-host/rate-headers.ts Headers.get(name) in rateLimitHeadersOf`,
   'the git relay, once its relay ticket verified: the smart-HTTP headers it passes by name and git’s pack relayed as sent, with only the headers core builds': lines`
