@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.499] - 2026-11-04
+
+A testing login's password is checked when it is saved
+
+### Fixed
+
+- **A testing profile's actor secret is tried when written.** A value its environment refuses is refused by name; one written while the environment is down is kept and flagged unusable on the profile until one signs in.
+
 ## [0.4.0-dev.498] - 2026-11-04
 
 A master posts its own results into every chat room its project binds

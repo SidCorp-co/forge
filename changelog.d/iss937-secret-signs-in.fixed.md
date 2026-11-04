@@ -1,1 +1,0 @@
-**A testing profile's actor secret is tried when written.** A value its environment refuses is refused by name; one written while the environment is down is kept and flagged unusable on the profile until one signs in.
