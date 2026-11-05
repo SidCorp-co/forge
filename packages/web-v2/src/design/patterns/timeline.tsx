@@ -205,8 +205,14 @@ export function TimelineMark({
  */
 export const MARK_GAP = 3.8;
 
-/** How far each mark of a crowded run steps aside from the one before it, in px: a mark's width and a gap. */
+/** How far apart two marks stand once spread, in px: a mark's width and a gap. */
 export const MARK_STEP = 24;
+
+/** The narrowest a lane's track gets: the lanes' floor width leaves it about this many px, and narrower screens scroll it. */
+export const TRACK_FLOOR_PX = 590;
+
+/** {@link MARK_STEP} in percent of the narrowest track: two marks this far apart never touch at any width. */
+const STEP_PCT = (MARK_STEP / TRACK_FLOOR_PX) * 100;
 
 /** Where a mark stands once spread: hung below the line under a pin, and stepped aside in px. */
 export interface MarkSpot {
@@ -215,11 +221,13 @@ export interface MarkSpot {
 }
 
 /**
- * Where each mark stands so none covers another. Pins stand above the line and never move; a centred
- * mark within `gap` of a pin hangs just below the line, clear of the pin. Centred marks within `gap`
- * of each other form a run, taken in time order: the first keeps its place, and each after it steps
- * `MARK_STEP` px aside, to the right, or to the left where the run starts near the now edge, so every
- * mark keeps its own spot whatever the track's width. Keyed by the marks' keys.
+ * Where each mark stands so none covers another. Pins stand above the line and never move. Every
+ * other mark of the lane is packed in time order: each stands at least {@link MARK_STEP} px past the
+ * one before it on the narrowest track, and marks that would pass the now edge are packed back
+ * leftwards from it. A mark's `shift` is that move in px on the narrowest track; on a wider one the
+ * distance between neighbours only grows, so no two marks touch at any width, and a crowd never steps
+ * onto a neighbour outside it. A mark that ends within `gap` of a pin hangs just below the line.
+ * Keyed by the marks' keys.
  */
 export function spreadMarks(
   marks: readonly { key: string; at: number; pin: boolean }[],
@@ -227,15 +235,19 @@ export function spreadMarks(
 ): Map<string, MarkSpot> {
   const pins = marks.filter((m) => m.pin).map((m) => m.at);
   const spots = new Map<string, MarkSpot>(marks.filter((m) => m.pin).map((m) => [m.key, { lowered: false, shift: 0 }]));
-  type Run = { last: number; first: number; n: number };
-  let run: Run | undefined;
-  for (const m of [...marks].filter((m) => !m.pin).sort((a, b) => a.at - b.at)) {
-    const prev: Run | undefined = run;
-    run = prev !== undefined && m.at - prev.last < gap ? { first: prev.first, last: m.at, n: prev.n + 1 } : { last: m.at, first: m.at, n: 0 };
-    const towards = run.first > 100 - 2 * gap ? -1 : 1;
-    // a run's first mark stays where core put it; `|| 0` keeps a leftward run's first at 0, never -0
-    spots.set(m.key, { lowered: pins.some((p) => Math.abs(p - m.at) < gap), shift: run.n * MARK_STEP * towards || 0 });
+  const line = [...marks].filter((m) => !m.pin).sort((a, b) => a.at - b.at);
+  const placed = line.map((m) => m.at);
+  for (let i = 1; i < placed.length; i++) placed[i] = Math.max(placed[i], placed[i - 1] + STEP_PCT);
+  for (let i = placed.length - 1; i >= 0; i--) {
+    const room = i === placed.length - 1 ? 100 : placed[i + 1] - STEP_PCT;
+    placed[i] = Math.min(placed[i], room);
   }
+  line.forEach((m, i) => {
+    const at = placed[i];
+    // whole px, and `|| 0` so a mark that stays put reads 0, never -0
+    const shift = Math.round(((at - m.at) * TRACK_FLOOR_PX) / 100) || 0;
+    spots.set(m.key, { lowered: pins.some((p) => Math.abs(p - at) < gap), shift });
+  });
   return spots;
 }
 

@@ -35,6 +35,11 @@ export function useMarkWords() {
   const locale = useCopyLocale();
   const language = useInterfaceLanguage();
   const clock = (at: string) => new Date(at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  /** A time today as its clock; an earlier day with its date, so a wait from last month never reads as this morning. */
+  const when = (at: string) => {
+    const d = new Date(at);
+    return d.toDateString() === new Date().toDateString() ? clock(at) : `${d.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${clock(at)}`;
+  };
   const status = (s: string) => statusReading("issue", s, language).label;
   const kind = (p: OrgActivityPerson) => t(`activity.wait.kind.${p.group}`);
   const moved = (b: OrgActivityBatch) => tally(b.moves.map((m) => status(m.to))).map(([s, n]) => `${n} → ${s}`);
@@ -43,6 +48,7 @@ export function useMarkWords() {
   return {
     t,
     clock,
+    when,
     status,
     kind,
     moved,
@@ -172,7 +178,9 @@ function headOf(mark: OpenMark, w: ReturnType<typeof useMarkWords>): { title: st
     const r = mark.release;
     return { title: `${name} ${r.version}`, sub: `${t(`activity.release.state.${r.state}`)} · ${w.clock(r.at)} · ${issuesText(t, r.total)}` };
   }
-  return { title: `${name} · ${t("activity.wait.count", { n: mark.items.length + mark.more })}`, sub: t("activity.wait.since", { time: w.clock(mark.since) }) };
+  // the pin sits at the lane's edge for a wait older than the lane; its words say when the oldest wait began
+  const began = mark.items.map((p) => p.since).filter((s): s is string => s !== null).sort()[0] ?? mark.since;
+  return { title: `${name} · ${t("activity.wait.count", { n: mark.items.length + mark.more })}`, sub: t("activity.wait.since", { time: w.when(began) }) };
 }
 
 /** The open mark's popover, anchored on the mark (or the You count) that opened it; Escape, a click away or × closes it. */

@@ -13,8 +13,8 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ADMINHUB, AHAPI, ago, CATALOG, FORGE, ORG, project, QUESTION_ID, read, SILENT, serve } from "@/test/activity.fixture";
-import { MARK_STEP, spreadMarks } from "@/design";
+import { ADMINHUB, AHAPI, ago, CATALOG, FORGE, ORG, person, project, QUESTION_ID, read, SILENT, serve } from "@/test/activity.fixture";
+import { MARK_STEP, spreadMarks, TRACK_FLOOR_PX } from "@/design";
 import { renderWithQuery } from "@/test/render";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
@@ -124,6 +124,25 @@ describe("the Activity tab's marks", () => {
     expect(p.getByTestId("mark-pop-act").getAttribute("href")).toBe("/projects/forge-slug/releases/0.4.0-dev.499");
   });
 
+  it("a pin at the lane's edge for a wait older than the lane says the day the wait began, not the edge (fix round 3)", async () => {
+    const old = person({ decisionId: "question:old", key: "ISS-7", title: "An old question", since: "2026-10-08T03:00:00.000Z" });
+    serve(read([project({ projectId: "p-old", slug: "old-slug", name: "Old", standing: "idle", people: { total: 1, items: [old] }, lane: { from: ago(7200), runs: [], batches: [], releases: [], waits: [{ at: ago(7200), items: [old], more: 0 }] } })]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Old");
+    const [pin] = within(rowOf("Old")).getAllByTestId("mark-wait");
+    if (!pin) throw new Error("no pin");
+    fireEvent.click(pin);
+    const sub = (await pop()).textContent ?? "";
+    expect(sub).toMatch(/Since (8 Oct|Oct 8)/);
+  });
+
+  it("You reads pending, never a dash, while core still reads what waits and the page holds nothing earlier (fix round 3)", async () => {
+    serve(read([project({ projectId: "p-cold", slug: "cold-slug", name: "Cold", standing: "idle", peoplePending: true, people: { total: 0, items: [] } })]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Cold");
+    expect(within(rowOf("Cold")).getByTestId("you-pending").textContent).toBe("…");
+  });
+
   it("a pin waits where the wait began; on click it lists each item, Answer first and Open all", async () => {
     serve(read([FORGE]));
     renderWithQuery(<ActivityScreen />);
@@ -218,8 +237,11 @@ describe("the Activity tab's marks never cover each other (ISS-979 fix round)", 
     expect(lane.getByTestId("mark-batch").hasAttribute("data-shift")).toBe(false);
     const [late, alone] = lane.getAllByTestId("mark-release");
     expect(late?.getAttribute("aria-label")).toContain("1.0.1");
-    expect(late?.getAttribute("data-shift")).toBe(String(MARK_STEP));
-    expect(late?.style.left).toContain(`+ ${MARK_STEP}px`);
+    // ten seconds after the batch: it stands a whole mark past it on the narrowest track
+    const shift = Number(late?.getAttribute("data-shift"));
+    expect(shift).toBeGreaterThanOrEqual(MARK_STEP - 1);
+    expect(shift).toBeLessThanOrEqual(MARK_STEP);
+    expect(late?.style.left).toContain(`+ ${shift}px`);
     expect(alone?.hasAttribute("data-shift")).toBe(false);
   });
 
@@ -235,25 +257,46 @@ describe("the Activity tab's marks never cover each other (ISS-979 fix round)", 
     expect(within(await pop()).getByText("+7 more")).toBeTruthy();
   });
 
-  it("spreads marks: under a pin a mark hangs below, a crowded run steps aside, leftwards near now, and a pin never moves", () => {
-    const spots = spreadMarks([
+  /** Where each mark stands in px on a track `width` px wide, once spread. */
+  const standing = (marks: { key: string; at: number; pin: boolean }[], width: number) => {
+    const spots = spreadMarks(marks);
+    return marks.map((m) => ({ ...m, px: (m.at * width) / 100 + (spots.get(m.key)?.shift ?? 0), lowered: spots.get(m.key)?.lowered ?? false }));
+  };
+
+  it("spreads marks so no two stand closer than a mark, at the narrowest track and wider, a crowd never stepping onto a neighbour", () => {
+    // the live case at 420 (fix round 3): a crowd of four, then batch "4" just past it, where stepping
+    // each crowded mark a fixed 24px put the last of the crowd 18px onto batch "4"
+    const crowd = [
       { key: "pin", at: 10, pin: true },
       { key: "near-pin", at: 11, pin: false },
-      { key: "first", at: 50, pin: false },
-      { key: "second", at: 51.5, pin: false },
-      { key: "third", at: 53, pin: false },
+      { key: "c1", at: 50, pin: false },
+      { key: "c2", at: 50.5, pin: false },
+      { key: "c3", at: 51, pin: false },
+      { key: "c4", at: 51.5, pin: false },
+      { key: "four", at: 60, pin: false },
       { key: "late", at: 97, pin: false },
       { key: "later", at: 98, pin: false },
-    ]);
-    expect(Object.fromEntries([...spots].map(([k, v]) => [k, [v.lowered, v.shift]]))).toEqual({
-      pin: [false, 0],
-      "near-pin": [true, 0],
-      first: [false, 0],
-      second: [false, MARK_STEP],
-      third: [false, 2 * MARK_STEP],
-      late: [false, 0],
-      later: [false, -MARK_STEP],
-    });
+      { key: "latest", at: 99.5, pin: false },
+    ];
+    for (const width of [TRACK_FLOOR_PX, 900, 1400]) {
+      const line = standing(crowd, width).filter((m) => !m.pin).sort((x, y) => x.px - y.px);
+      for (let i = 1; i < line.length; i++) {
+        expect(line[i].px - line[i - 1].px, `${line[i - 1].key} → ${line[i].key} at ${width}px`).toBeGreaterThanOrEqual(MARK_STEP - 1);
+      }
+      for (const m of line) {
+        expect(m.px, `${m.key} at ${width}px`).toBeGreaterThanOrEqual(0);
+        expect(m.px, `${m.key} at ${width}px`).toBeLessThanOrEqual(width + 0.5);
+      }
+    }
+    const spots = spreadMarks(crowd);
+    // a pin never moves; a mark under it hangs below; the first of a crowd keeps its spot; near now the
+    // crowd packs leftwards, and a mark standing alone stays put
+    expect(spots.get("pin")).toEqual({ lowered: false, shift: 0 });
+    expect(spots.get("near-pin")?.lowered).toBe(true);
+    expect(spots.get("c1")?.shift).toBe(0);
+    expect(spots.get("later")?.shift).toBeLessThan(0);
+    expect(spots.get("late")?.shift).toBeLessThan(0);
+    expect(spreadMarks([{ key: "alone", at: 40, pin: false }]).get("alone")).toEqual({ lowered: false, shift: 0 });
   });
 
 });

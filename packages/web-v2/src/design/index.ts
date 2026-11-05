@@ -119,6 +119,7 @@ export {
   TimelineLegend,
   MARK_GAP,
   MARK_STEP,
+  TRACK_FLOOR_PX,
   type MarkSpot,
   spreadMarks,
   TimelineMark,

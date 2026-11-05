@@ -1,5 +1,5 @@
-import { orgRoom } from "@forge/contracts/org-activity";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { type OrgActivity, orgRoom } from "@forge/contracts/org-activity";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoom } from "@/lib/ws/use-room";
 import { activityApi } from "./api";
 
@@ -17,13 +17,33 @@ const REFRESHING_AGAIN_MS = 3_000;
  */
 export function useOrgActivity(orgId: string | null) {
   useRoom(orgId ? orgRoom(orgId) : null);
+  const client = useQueryClient();
   return useQuery({
     queryKey: [ORG_ACTIVITY_ROOT, orgId ?? ""],
-    queryFn: () => activityApi.read(orgId as string),
+    queryFn: async ({ queryKey }) => keepReadWaits(await activityApi.read(orgId as string), client.getQueryData<OrgActivity>(queryKey)),
     enabled: Boolean(orgId),
     placeholderData: keepPreviousData,
     refetchInterval: (q) => (q.state.data?.refreshing ? REFRESHING_AGAIN_MS : false),
   });
+}
+
+/**
+ * A fresh answer, with each project's decisions kept from the last answer that had read them, where
+ * this one is still reading them (`peoplePending`). Core says such a project waits on no one only
+ * because it has not read yet, never because nothing waits (VISION: state-never-lies), so the page
+ * keeps what it last knew rather than emptying Waiting on you, its pins and its counts (ISS-979).
+ */
+export function keepReadWaits(fresh: OrgActivity, held: OrgActivity | undefined): OrgActivity {
+  if (!held || !fresh.projects.some((p) => p.peoplePending)) return fresh;
+  const known = new Map(held.projects.filter((p) => !p.peoplePending).map((p) => [p.projectId, p]));
+  return {
+    ...fresh,
+    projects: fresh.projects.map((p) => {
+      const last = p.peoplePending ? known.get(p.projectId) : undefined;
+      if (!last) return p;
+      return { ...p, group: last.group, people: last.people, peoplePending: false, lane: { ...p.lane, waits: last.lane.waits } };
+    }),
+  };
 }
 
 /**

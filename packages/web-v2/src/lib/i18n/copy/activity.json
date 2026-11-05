@@ -100,7 +100,8 @@
     "activity.wait.one.approve": "1 approval",
     "activity.wait.one.verify": "1 check",
     "activity.wait.openAll": "Open all",
-    "activity.wait.since": "Since {time}"
+    "activity.wait.since": "Since {time}",
+    "activity.you.reading": "Still reading what waits on you"
   },
   "vi": {
     "activity.ago.h": "{n} giờ trước",
@@ -150,6 +151,7 @@
     "activity.skip.title": "Không nhận việc: {why}",
     "activity.stepSince": "Thời gian ở bước này",
     "activity.title": "Hoạt động",
-    "activity.updating": "đang cập nhật"
+    "activity.updating": "đang cập nhật",
+    "activity.you.reading": "Đang đọc việc chờ bạn"
   }
 }

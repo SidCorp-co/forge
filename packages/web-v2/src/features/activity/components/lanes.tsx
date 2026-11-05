@@ -174,6 +174,8 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
 /** The reader's count to answer, amber, opening every item it holds; a dash where nothing waits. */
 function YouCount({ p, onOpen }: { p: OrgActivityProject; onOpen: (m: OpenMark, el: HTMLElement) => void }) {
   const t = useCopy();
+  // still being read and nothing held from an earlier read: a pending mark, never a dash that says none waits
+  if (p.peoplePending) return <span className="text-subtle" title={t("activity.you.reading")} aria-label={t("activity.you.reading")} data-testid="you-pending">…</span>;
   if (p.people.total === 0) return <span className="text-subtle">–</span>;
   const since = p.lane.waits[0]?.at ?? p.lane.from;
   return (

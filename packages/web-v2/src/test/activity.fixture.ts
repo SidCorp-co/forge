@@ -31,7 +31,7 @@ export const master = (over: Partial<OrgActivityMaster> = {}): OrgActivityMaster
   ...over,
 });
 
-const person = (over: Partial<OrgActivityPerson> & Pick<OrgActivityPerson, "decisionId" | "title">): OrgActivityPerson => ({
+export const person = (over: Partial<OrgActivityPerson> & Pick<OrgActivityPerson, "decisionId" | "title">): OrgActivityPerson => ({
   group: "answer",
   key: null,
   since: null,
