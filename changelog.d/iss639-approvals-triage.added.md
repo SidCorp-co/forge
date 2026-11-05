@@ -1,0 +1,1 @@
+**A project can let its writers triage feedback.** The new Person approves triage switch is on unless turned off; off, any project writer, agents included, routes an item, while declining still takes a triager.
