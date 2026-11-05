@@ -9,6 +9,7 @@ import {
   capDecisions,
   type NeedsYouDecision,
 } from '@forge/contracts/needs-you-decisions';
+import { decisionLineOf } from '@forge/contracts/plain-decision';
 import {
   PROJECT_STATUS_ROWS,
   type StatusNeedsYou,
@@ -68,7 +69,8 @@ export function needsYouOf(
       group: d.group,
       key: d.opens?.key ?? d.key,
       title: d.title,
-      question: d.question,
+      // the asker's plain text, else the question's own line: the one line every list reads (ISS-1006)
+      question: decisionLineOf(d).line,
       recommended: d.answers.find((a) => a.recommended)?.label ?? null,
       stuck: d.stuck,
       dueAt: d.dueAt,

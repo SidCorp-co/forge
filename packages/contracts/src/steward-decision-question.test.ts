@@ -15,7 +15,7 @@ describe("a steward decision's question (REQ-48 r3 BC-14)", () => {
 			DRAFT,
 		);
 		expect(q).toBe(
-			"Open it, merge it into ISS-607, keep it as a draft, or drop it?",
+			"Open it, merge it into another issue, keep it as a draft, or drop it?",
 		);
 		expect(q).not.toMatch(/Recommended|stuck|"/);
 		expect(q.match(/[.?!]/g)).toEqual(["?"]);
@@ -33,7 +33,9 @@ describe("a steward decision's question (REQ-48 r3 BC-14)", () => {
 				["steward.link:REQ-48:BC-5", "steward.requirement", "steward.drop"],
 				DRAFT,
 			),
-		).toBe("Link it to REQ-48 BC-5, start a requirement from it, or drop it?");
+		).toBe(
+			"Link it to an agreed requirement, start a requirement from it, or drop it?",
+		);
 	});
 });
 

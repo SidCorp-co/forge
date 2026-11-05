@@ -20,6 +20,7 @@ import {
   stewardDecisionOf,
   stewardDecisionQuestion,
   stewardMergeOf,
+  stewardOptionLabel,
 } from '@forge/contracts/steward';
 import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import type { OpenPersonQuestion } from '../questions/index.js';
@@ -203,7 +204,8 @@ function stewardDecision(
           : null;
         return answer({
           id: o.id,
-          label: clip(o.label, 120),
+          // a round stored with a keyed link or merge label reads as one asked now (ISS-1006 round 2)
+          label: clip(stewardOptionLabel(o.id, o.label, kind), 120),
           act: 'question.answer',
           path,
           body: { round: step.round, optionId: o.id },
@@ -392,7 +394,7 @@ export function questionDecision(
         answers: shown.map((o) =>
           answer({
             id: o.id,
-            label: clip(o.label, 120),
+            label: clip(stewardOptionLabel(o.id, o.label, kind), 120),
             act: 'question.answer',
             path,
             body: { round: step.round, optionId: o.id },

@@ -213,7 +213,7 @@ async function linkOption(
   if (!hit) return `${requirement} has no current ${bc}`;
   return {
     id: stewardLinkOptionId(requirement, bc),
-    label: stewardLinkLabel(requirement, bc, hit.body),
+    label: stewardLinkLabel(hit.body),
     decision: 'link',
   };
 }
@@ -238,7 +238,7 @@ function sameSubject(
   if (!shares) return `merging into ${target} names what the two are both about in \`shares\``;
   return {
     id: stewardMergeOptionId(target),
-    label: stewardMergeLabel(target, title),
+    label: stewardMergeLabel(title),
     decision: 'merge',
     shares,
   };

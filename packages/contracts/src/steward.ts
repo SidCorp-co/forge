@@ -657,15 +657,22 @@ export function stewardDecisionLabel(
 	}
 }
 
-/** What one decision asks, as the clause the question joins: "open it", "merge it into ISS-607". */
+/** How a merge clause names the item of the same kind it folds into. */
+const SUBJECT_NOUN: Record<StewardDecisionSubject, string> = {
+	issue: "issue",
+	requirement: "requirement",
+	feedback: "feedback item",
+};
+
+/** What one decision asks, as the clause the question joins: "open it", "merge it into another issue". */
 function stewardDecisionClause(
 	optionId: string,
 	item: Pick<StewardDecisionItem, "kind" | "draft">,
 ): string | null {
-	const link = stewardLinkOf(optionId);
-	if (link) return `link it to ${link.requirement} ${link.bc}`;
-	const merge = stewardMergeOf(optionId);
-	if (merge) return `merge it into ${merge.into}`;
+	// the target is named on its button by its own words, never by its key (ISS-1006 round 2)
+	if (stewardLinkOf(optionId)) return "link it to an agreed requirement";
+	if (stewardMergeOf(optionId))
+		return `merge it into another ${SUBJECT_NOUN[item.kind]}`;
 	switch (stewardDecisionOf(optionId)) {
 		case "open":
 			return "open it";
@@ -694,7 +701,7 @@ function stewardDecisionClause(
 
 /**
  * The question a steward decision asks, as one plain sentence built from its options alone (REQ-48
- * r3 BC-14): "Open it, merge it into ISS-607, keep it as a draft, or drop it?". Neither the item's
+ * r3 BC-14): "Open it, merge it into another issue, keep it as a draft, or drop it?". Neither the item's
  * title, which its page already heads, nor the recommendation, which is the decision's own field, is
  * in it, so the question asked and the question drawn from a stored round read the same.
  */
@@ -754,16 +761,47 @@ export function stewardSharedTerms(a: string, b: string): string[] {
 	return stewardSubjectTerms(a).filter((t) => theirs.has(t));
 }
 
-/** A link option's button: the requirement and BC, and the BC's own words. */
-export const stewardLinkLabel = (
-	requirement: string,
-	bc: string,
-	text: string,
-) => `Link it to ${requirement} ${bc}: ${text}`.slice(0, 200);
+/**
+ * A link option's button: the criterion it links to, by the criterion's own words. The requirement
+ * and BC keys are its effect line's, behind the decision's Technical fold (ISS-1006 round 2: no key
+ * carries the meaning of a label core builds).
+ */
+export const stewardLinkLabel = (text: string) =>
+	`Link it to the criterion: ${text}`.slice(0, 200);
 
-/** A merge option's button: the item it folds into, and that item's title. */
-export const stewardMergeLabel = (into: string, title: string) =>
-	`Merge it into ${into}: ${title}`.slice(0, 200);
+/** A merge option's button: the item it folds into, by that item's title; its key is the effect line's. */
+export const stewardMergeLabel = (title: string) =>
+	`Merge it into: ${title}`.slice(0, 200);
+
+/**
+ * A stored link or merge option's button as a person reads it now: a round asked before the labels
+ * dropped their key ("Merge it into ISS-98: …", "Link it to REQ-9 BC-2: …") reads as one asked
+ * after, the title or the criterion's words kept and the key left to the effect line. Any other
+ * option's label is its own and is returned as stored.
+ */
+export function stewardOptionLabel(
+	optionId: string,
+	stored: string,
+	kind: StewardDecisionSubject,
+): string {
+	const merge = stewardMergeOf(optionId);
+	if (merge) {
+		const keyed = `Merge it into ${merge.into}`;
+		if (stored === keyed) return `Merge it into another ${SUBJECT_NOUN[kind]}`;
+		return stored.startsWith(`${keyed}: `)
+			? stewardMergeLabel(stored.slice(keyed.length + 2))
+			: stored;
+	}
+	const link = stewardLinkOf(optionId);
+	if (link) {
+		const keyed = `Link it to ${link.requirement} ${link.bc}`;
+		if (stored === keyed) return "Link it to an agreed requirement";
+		return stored.startsWith(`${keyed}: `)
+			? stewardLinkLabel(stored.slice(keyed.length + 2))
+			: stored;
+	}
+	return stored;
+}
 
 /**
  * What answering a steward decision does to the item, said on its button in Approvals (REQ-48

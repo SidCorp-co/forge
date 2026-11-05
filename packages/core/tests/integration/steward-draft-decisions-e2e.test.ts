@@ -75,9 +75,7 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
     );
     const q = await questionOn(req);
     expect(optionIds(q)).toEqual([stewardMergeOptionId(target.key), IDS.drop, IDS.keep]);
-    expect(((q?.last.options as Doc[]) ?? [])[0]?.label).toBe(
-      `Merge it into ${target.key}: Call list export`,
-    );
+    expect(((q?.last.options as Doc[]) ?? [])[0]?.label).toBe('Merge it into: Call list export');
     const standing = (ok(await as('GET', `/requirements/${req.key}`)).standing as Doc)
       .waitingOn as Doc;
     expect(standing).toMatchObject({ kind: 'you', act: "answer the steward's question" });

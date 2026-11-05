@@ -86,6 +86,35 @@ describe("the steward's question as drawn (REQ-48 r3 BC-14)", () => {
   });
 });
 
+describe('a stored round whose link or merge label carries a key (ISS-1006 round 2)', () => {
+  it('reads its button by the target title, the key left to the effect line', () => {
+    const d = drawn(
+      asked({
+        options: [
+          option('steward.open', 'Open it: admit it for work'),
+          option(
+            'steward.merge:ISS-607',
+            'Merge it into ISS-607: Steward re-asks a master for release approvals it cannot give',
+            'release approvals the steward asks for.',
+          ),
+          option(
+            'steward.link:REQ-48:BC-5',
+            'Link it to REQ-48 BC-5: a stuck item reaches a person',
+          ),
+        ],
+      }),
+    );
+    expect(d.answers.map((a) => a.label)).toEqual([
+      'Open it: admit it for work',
+      'Merge it into: Steward re-asks a master for release approvals it cannot give',
+      'Link it to the criterion: a stuck item reaches a person',
+    ]);
+    for (const a of d.answers) expect(a.label).not.toMatch(/\b(ISS|REQ|BC|FB)-\d+/);
+    expect(d.question).not.toMatch(/\b(ISS|REQ|BC|FB)-\d+/);
+    expect(d.answers[1]?.effect).toContain('ISS-607');
+  });
+});
+
 describe('a merge offered only where the round names what the two share (REQ-48 r3 BC-16)', () => {
   it('shows a merge that names it, saying so on its effect', () => {
     const d = drawn(
@@ -100,7 +129,9 @@ describe('a merge offered only where the round names what the two share (REQ-48 
         ],
       }),
     );
-    expect(d.question).toBe('Open it or merge it into ISS-630?');
+    expect(d.question).toBe('Open it or merge it into another issue?');
+    // the button names no key, the effect line does (ISS-1006 round 2)
+    expect(d.answers[1]?.label).toBe('Merge it into another issue');
     expect(d.answers[1]?.effect).toBe(
       "Copies ISS-625's text to ISS-630 as a comment, then drops ISS-625, as you. Both are about the BC trace syntax of criteria.",
     );

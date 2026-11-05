@@ -314,12 +314,15 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     const { id, step } = await openQuestion(issue.id);
     const link = stewardLinkOptionId(req, 'BC-1');
     expect((step.options as Doc[]).map((o) => [o.id, o.label])).toEqual([
-      [link, `Link it to ${req} BC-1: it holds`],
+      // the button names the criterion by its words, never its key (ISS-1006 round 2)
+      [link, 'Link it to the criterion: it holds'],
       [IDS.requirement, 'Start a requirement from it'],
       [IDS.drop, 'Drop it: it is not work'],
     ]);
     expect(step.recommendedOptionId).toBe(link);
-    expect(step.prompt).toBe(`Link it to ${req} BC-1, start a requirement from it, or drop it?`);
+    expect(step.prompt).toBe(
+      'Link it to an agreed requirement, start a requirement from it, or drop it?',
+    );
     expect(JSON.stringify(step)).not.toMatch(/write the (details|plan)/i);
     const [owed] = await rows<{ blocker_kind: string }>(
       sql`SELECT blocker_kind FROM agent_questions WHERE id = ${id}`,

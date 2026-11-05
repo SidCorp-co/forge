@@ -41,6 +41,23 @@ const decision = (key: string, over: Partial<NeedsYouDecision> = {}): NeedsYouDe
   ...over,
 });
 
+describe('Needs you lists each decision by one line (ISS-1006 round 2)', () => {
+  it("reads the asker's plain text where it wrote one, else the question's own line", () => {
+    const read = needsYouOf(
+      [
+        decision('REQ-1', { plain: 'Customers get the export now.\nSales waits on it.' }),
+        decision('REQ-2', { plain: null }),
+      ],
+      'forge-dev',
+      '2026-10-21T09:00:00.000Z',
+    );
+    expect(read.decisions.map((d) => d.question)).toEqual([
+      'Customers get the export now.',
+      'Agree REQ-2?',
+    ]);
+  });
+});
+
 describe('Needs you, capped', () => {
   const five = [
     decision('REQ-1'),
