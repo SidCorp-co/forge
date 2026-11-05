@@ -2,7 +2,9 @@
  * ISS-1368 — the weighing (`issues/weighing.ts`), read by the caller before any enumerator runs,
  * since `collectReleaseBlockers` reaches no network: the release runtimes the project document
  * declares under `release.runtimes` and what each serves now, which paths each waiting issue's
- * landing changed, and what every served commit holds of every commit a verdict was judged at.
+ * landing changed, and what every served commit holds of every commit a verdict was judged at, and
+ * of each waiting issue's landing (ISS-997), so a hold never asks for verdicts at a commit that cannot
+ * hold the change.
  *
  * Every read that fails is kept as the reason it failed, never as an answer: a pair whose carriage
  * was not read is weighed by equality alone, and an issue whose paths were not read owes every
@@ -270,11 +272,15 @@ async function readLandings(
   const landings = [...new Set(rows.flatMap((r) => (r.landing ? [lower(r.landing)] : [])))];
   const pairs = landings.flatMap((commit) => served.map((s) => ({ commit, release: lower(s) })));
   const answers = await recordedHeld(projectId, pairs);
-  const owed = pairs.filter((p) => {
+  const owed: AncestryPair[] = [];
+  for (const p of pairs) {
+    const answer = answers.get(pairKey(p));
+    if (answer && !('unread' in answer)) continue;
+    // an answer this process already read stands where no record does
     const kept = heldAnswers.get(`${projectId}\u0000${pairKey(p)}`);
-    if (kept && 'unread' in (answers.get(pairKey(p)) ?? {})) answers.set(pairKey(p), kept);
-    return 'unread' in (answers.get(pairKey(p)) ?? { unread: '' });
-  });
+    if (kept) answers.set(pairKey(p), kept);
+    else owed.push(p);
+  }
   if (heldOnly !== undefined) {
     for (const p of owed) answers.set(pairKey(p), { unread: heldOnly });
   } else {
