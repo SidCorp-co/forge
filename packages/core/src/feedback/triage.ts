@@ -4,7 +4,9 @@
  * the answers and the route against the target, moves the item to triaged (or declined, the decline
  * act) and writes what carries the route, all in one transaction. The kernel judges the checklist on
  * the edge into triaged, alike at every door; an agent's `feedback_triage` suggestion reaches
- * `triageIn` from its accept, held to feedback.approve like a person's triage.
+ * `triageIn` from its accept, held to the same permission as a direct triage. Who routes is the
+ * project's `approvals.triage` (REQ-34 BC-25, ISS-639): on, as it is wherever nothing sets it, a holder
+ * of feedback.approve; off, any project writer. A decline is feedback.approve's either way.
  */
 
 import {
@@ -31,7 +33,8 @@ import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { isRefusal, type Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
-import { requireDeclaredOn } from '../permissions/index.js';
+import { type PermissionFacts, permissionRefusal, requireDeclaredOn } from '../permissions/index.js';
+import { personGateOf } from '../project-config/index.js';
 import { readRecording } from '../previews/index.js';
 import { feedbackTriageRecord } from './checklist-record.js';
 import { keepTriageAsCorrection } from './correction.js';
@@ -80,6 +83,19 @@ import {
   shortFormRouteRefusal,
 } from './triage-checklist.js';
 import { unchangedTriageRefusal } from './triage-unchanged.js';
+
+/**
+ * Who may take the triage `t` sends on `projectId`: a decline asks feedback.approve, and a route what
+ * the project's `approvals.triage` asks, the refusal naming that gate and what relaxes it (ISS-639).
+ */
+async function triageActRefusal(
+  projectId: string,
+  t: Pick<FeedbackTriage, 'route'>,
+): Promise<(facts: PermissionFacts) => Refusal | null> {
+  if (t.route === 'decline') return (facts) => decideActRefusal(facts, 'declining feedback');
+  const gate = await personGateOf(projectId, 'triage');
+  return (facts) => permissionRefusal(facts, gate.permission, gate.act);
+}
 
 /** What a triage or a route write did, which its caller announces once the transaction committed. */
 interface TriageWritten {
@@ -325,7 +341,8 @@ export async function triageIn(
 ): Promise<TriageWritten> {
   const { projectId, triage: t, actor } = input;
   const fromSuggestionId = input.fromSuggestionId ?? null;
-  const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'picking a feedback route');
+  const refusalOf = await triageActRefusal(projectId, t);
+  const forbidden = refusalOf(await roleFacts(actor, projectId));
   if (forbidden) return { refusals: [forbidden] };
   await lockFeedback(tx, projectId);
   const kind = t.kind ?? input.row.kind;
@@ -462,14 +479,23 @@ async function tellDuplicateReporters(tx: Tx, row: Row, original: string) {
 }
 
 /** A holder of feedback.approve acts on one item under the feedback lock, then reads it back. */
-export async function approvedActOn(
+export function approvedActOn(
   input: { projectId: string; ref: string; actor: FeedbackActor },
   act: string,
   body: (tx: Tx, row: Row) => Promise<TriageWritten>,
 ): Promise<FeedbackOutcome> {
+  return actOn(input, (facts) => decideActRefusal(facts, act), body);
+}
+
+/** Whoever `refusalOf` lets through acts on one item under the feedback lock, then reads it back. */
+async function actOn(
+  input: { projectId: string; ref: string; actor: FeedbackActor },
+  refusalOf: (facts: PermissionFacts) => Refusal | null,
+  body: (tx: Tx, row: Row) => Promise<TriageWritten>,
+): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await requireDeclaredOn(projectId, actor.userId, 'project.read');
-  const forbidden = decideActRefusal(await roleFacts(actor, projectId), act);
+  const forbidden = refusalOf(await roleFacts(actor, projectId));
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);
   let written: TriageWritten = { refusals: null };
@@ -482,15 +508,15 @@ export async function approvedActOn(
   return answer(projectId, first.id, actor, written.effect ? { effect: written.effect } : {});
 }
 
-/** A holder of feedback.approve picks the route, an agent included (ADR 0007). */
-export function triageFeedback(input: {
+/** Whoever the project's `approvals.triage` asks picks the route, an agent included (ADR 0007). */
+export async function triageFeedback(input: {
   projectId: string;
   ref: string;
   actor: FeedbackActor;
   triage: FeedbackTriage;
   channel: FeedbackChannel;
 }): Promise<FeedbackOutcome> {
-  return approvedActOn(input, 'picking a feedback route', (tx, row) =>
+  return actOn(input, await triageActRefusal(input.projectId, input.triage), (tx, row) =>
     triageIn(tx, { ...input, row }),
   );
 }

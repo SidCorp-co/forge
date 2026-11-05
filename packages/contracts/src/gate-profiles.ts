@@ -279,6 +279,18 @@ export const GATE_CATALOG = defineGates([
 		relaxed: "off: a holder of workflow-designs.write approves",
 	},
 	{
+		// ISS-639: on wherever a project sets nothing, yolo included, since triage asked feedback.approve
+		// before it had a switch; yolo reads the switch so a project turns it off without an override
+		id: "approval_triage",
+		title: "A person approves triage",
+		refuses: "routing a feedback item's triage without feedback.approve",
+		codes: ["PERMISSION_FORBIDDEN"],
+		at: "feedback triage",
+		modes: ENFORCE_OFF,
+		defaults: { strict: "enforce", standard: KEYED("approvals.triage"), yolo: KEYED("approvals.triage") },
+		relaxed: "off: any project writer, an agent included, routes it; declining stays feedback.approve's",
+	},
+	{
 		id: "requirement_ready",
 		title: "Requirement-ready checklist",
 		refuses: "agreeing a requirement, or accepting its revision, with a blocking question unanswered",
@@ -538,6 +550,9 @@ function switchMode(doc: GateSwitches | null | undefined, policy: PolicySwitches
 		case "approval_accept":
 		case "approval_designs":
 			return on(doc?.approvals?.[id.slice("approval_".length)] === true);
+		case "approval_triage":
+			// on until the project turns it off (`person-gates.ts:PERSON_GATE_STEPS` triage's `unset`)
+			return on(doc?.approvals?.triage !== false);
 		case "plan_approval":
 			return on(doc?.plan?.approval?.required === true);
 		case "merge_check":
