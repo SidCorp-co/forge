@@ -1,13 +1,15 @@
 /**
- * ISS-923 (owner ruling 2026-11-03, `beta-issues-are-worked-on-dev`): a `beta_port` schedule's fire
- * ports each forge-beta issue filed or reopened after the ruling and not yet ported to the same-slug
- * project here, open, with the beta key and id on its first line and the dev key commented back on
- * beta; an older one is counted and never ported; it never ports one twice; it mirrors a dev status
- * move onto beta once, and comments a move beta refuses once; a close beta refuses for want of a
- * shipped record is finished the nearest legal way; it names a beta project with no twin, a missing
- * secret and a missing ruling, creating nothing for them; `/run` answers 202 before the beta reads,
- * and the fire settles after; and the token never leaves. forge-beta is a stub HTTP server this file
- * starts and stops. Against real Postgres.
+ * ISS-923 (owner ruling 2026-11-03, `beta-issues-are-worked-on-dev`) and ISS-982 (owner 2026-11-05: a
+ * beta issue enters dev at the product layer): a `beta_port` schedule's fire files each forge-beta
+ * issue filed or reopened after the ruling, not yet ported and still waiting on beta, as one Feedback
+ * item of the same-slug project, with the beta key, link and body as its provenance and the FB key
+ * commented back on beta, and creates no issue; an older one is counted and never ported; it never
+ * ports one twice; an issue twin made before ISS-982 still mirrors a dev status move onto beta once,
+ * and comments a move beta refuses once; a close beta refuses for want of a shipped record is finished
+ * the nearest legal way; it names a beta project with no twin, a missing secret and a missing ruling,
+ * creating nothing for them; `/run` answers 202 before the beta reads, and the fire settles after;
+ * and the token never leaves. forge-beta is a stub HTTP server this file starts and stops. Against
+ * real Postgres.
  *
  * @direct-test-of packages/core/src/beta-port/run.ts
  * @direct-test-of packages/core/src/beta-port/mirror.ts
@@ -17,6 +19,9 @@
  * @direct-test-of packages/core/src/schedules/beta-port-dispatch.ts
  * @direct-test-of packages/core/src/integrations/peer-forge/client.ts
  * @direct-test-of packages/core/src/project-config/secret-read.ts
+ * @direct-test-of packages/core/src/beta-port/ports.ts
+ * @direct-test-of packages/core/src/beta-port/report.ts
+ * @direct-test-of packages/core/src/feedback/service.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,10 +29,12 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   betaPortScheduleOn,
+  devFeedbackOf,
   devIssuesOf,
   fireOnce,
   putBetaSecret,
   type Say,
+  seedTwin,
 } from '../helpers/beta-port-harness.js';
 import {
   afterRuling,
@@ -91,6 +98,7 @@ const setSecret = (name: string, value: string) =>
   putBetaSecret(say, scheduleProjectId, name, value);
 const fire = (id: string) => fireOnce(say, id);
 const devIssues = () => devIssuesOf(twin.id);
+const devFeedback = () => devFeedbackOf(twin.id);
 
 let scheduleId = '';
 
@@ -107,6 +115,7 @@ describe('a beta port fire (ISS-923)', () => {
     });
     expect(settled.output).toContain('secret://integration/forge-beta-url');
     expect(await devIssues()).toHaveLength(0);
+    expect(await devFeedback()).toHaveLength(0);
     expect(beta.comments.size).toBe(0);
   });
 
@@ -125,7 +134,7 @@ describe('a beta port fire (ISS-923)', () => {
     expect(await devIssues()).toHaveLength(0);
   });
 
-  it('(a) a new beta issue is ported open to the same-slug project, first line set, and beta is told the dev key', async () => {
+  it('(ISS-982 1) a new beta issue is filed as one Feedback item of the same-slug project, beta told its key, and no issue is created; a second fire ports nothing', async () => {
     await writeRuling(scheduleProjectId, RULING_AT);
     const settled = await fire(scheduleId);
     expect(settled.http).toBe(202);
@@ -133,24 +142,37 @@ describe('a beta port fire (ISS-923)', () => {
     expect(settled.output).toContain(
       `cutoff: the owner's ruling beta-issues-are-worked-on-dev, ${RULING_AT.toISOString()}`,
     );
-    const [dev, ...more] = await devIssues();
+    expect(await devIssues()).toHaveLength(0);
+    const [item, ...more] = await devFeedback();
     expect(more).toHaveLength(0);
     const source = (beta.issues.get(betaProjectId) as StubIssue[])[0] as StubIssue;
-    expect(dev).toMatchObject({
-      status: 'open',
+    expect(item).toMatchObject({
+      kind: 'bug',
+      severity: 'high',
       title: source.title,
-      priority: 'high',
-      category: 'bug',
-      created_via: 'schedule',
-      created_by_id: ownerId,
+      status: 'new',
+      reported_by: ownerId,
+      reporter_agency: 'agent',
+      where_seen: 'forge-beta ISS-1',
+      dedup_key: `forge-beta:${source.id}`,
     });
-    expect(dev?.schedule_run_id).not.toBeNull();
-    const lines = (dev?.description ?? '').split('\n');
+    const lines = (item?.body ?? '').split('\n');
     expect(lines[0]).toBe(`Ported from forge-beta ISS-1 (${source.id}).`);
-    expect(dev?.description).toContain('What beta issue 1 asks for.');
-    const devKey = `ISS-${dev?.iss_seq}`;
-    expect(beta.comments.get(source.id)).toEqual([`Ported to forge-dev: ${devKey}`]);
-    expect(settled.output).toContain(`${twin.slug}: beta ISS-1 → ${devKey}`);
+    expect(lines[1]).toBe(`Beta: ${baseUrl}/projects/${twin.slug}/issues/${source.id}`);
+    expect(item?.body).toContain('What beta issue 1 asks for.');
+    const fbKey = `FB-${item?.fb_seq}`;
+    expect(beta.comments.get(source.id)).toEqual([`Ported to forge-dev: ${fbKey}`]);
+    expect(settled.output).toContain(`${twin.slug}: beta ISS-1 → ${fbKey}`);
+    const [pair] = await rows<{ dev_issue_id: string | null; dev_feedback_id: string | null }>(
+      sql`SELECT dev_issue_id, dev_feedback_id FROM beta_port_pairs WHERE beta_issue_id = ${source.id}`,
+    );
+    expect(pair).toEqual({ dev_issue_id: null, dev_feedback_id: item?.id });
+
+    const again = await fire(scheduleId);
+    expect(again.output).toContain('ported: none');
+    expect(await devFeedback()).toHaveLength(1);
+    expect(await devIssues()).toHaveLength(0);
+    expect(beta.comments.get(source.id)).toHaveLength(1);
   });
 
   it('(d) a beta project with no dev twin is named in the report, and nothing is created for it', async () => {
@@ -159,7 +181,7 @@ describe('a beta port fire (ISS-923)', () => {
     expect(settled.output).toContain('beta projects with no dev twin (1):');
     expect(settled.output).toContain(lonely);
     const elsewhere = await rows<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM issues WHERE description LIKE 'Ported from forge-beta%' AND project_id <> ${twin.id}`,
+      sql`SELECT count(*)::int AS n FROM feedback WHERE body LIKE 'Ported from forge-beta%' AND project_id <> ${twin.id}`,
     );
     expect(elsewhere[0]?.n).toBe(0);
   });
@@ -177,9 +199,11 @@ describe('a beta port fire (ISS-923)', () => {
       status: 'draft',
     });
     const before = (await devIssues()).length;
+    const items = (await devFeedback()).length;
     const first = await fire(scheduleId);
     const second = await fire(scheduleId);
     expect(await devIssues()).toHaveLength(before);
+    expect(await devFeedback()).toHaveLength(items);
     for (const settled of [first, second]) {
       expect(settled.output).toContain('ISS-2 (marked ported to ISS-999');
       expect(settled.output).not.toMatch(/ISS-[23] → /);
@@ -193,16 +217,10 @@ describe('a beta port fire (ISS-923)', () => {
     expect(pairs[0]?.n).toBe(2);
   });
 
-  it('(c) a dev move is mirrored once, and a move beta refuses is commented once', async () => {
-    const source = (beta.issues.get(betaProjectId) as StubIssue[])[0] as StubIssue;
-    const [pair] = await rows<{ dev_issue_id: string }>(
-      sql`SELECT dev_issue_id FROM beta_port_pairs WHERE beta_issue_id = ${source.id}`,
-    );
-    const devId = pair?.dev_issue_id as string;
-    const [dev] = await rows<{ iss_seq: number }>(
-      sql`SELECT iss_seq FROM issues WHERE id = ${devId}`,
-    );
-    const devKey = `ISS-${dev?.iss_seq}`;
+  it('(c) a twin made before ISS-982 still mirrors a dev move once, and a move beta refuses is commented once', async () => {
+    const source = betaIssue(4);
+    beta.issues.get(betaProjectId)?.push(source);
+    const { id: devId, key: devKey } = await seedTwin(say, twin, source);
 
     ok(
       await say('owner', 'POST', `/api/issues/${devId}/transition`, {
@@ -272,12 +290,12 @@ describe('a beta port fire after the ruling (ISS-923)', () => {
       },
     ]);
     beta.issues.get(betaProjectId)?.push(old, reopened, reopenedEarly, uncounted, bare);
-    const before = (await devIssues()).length;
+    const before = (await devFeedback()).length;
 
     const settled = await fire(scheduleId);
-    const ported = (await devIssues()).slice(before);
+    const ported = (await devFeedback()).slice(before);
     expect(ported.map((d) => d.title).sort()).toEqual([reopened.title, bare.title]);
-    expect(ported.find((d) => d.title === bare.title)?.description).toContain(
+    expect(ported.find((d) => d.title === bare.title)?.body).toContain(
       'The body a list row leaves out.',
     );
     expect(settled.output).toContain(`${twin.slug}: beta ISS-11 → `);
@@ -291,7 +309,7 @@ describe('a beta port fire after the ruling (ISS-923)', () => {
     }
 
     const again = await fire(scheduleId);
-    expect(await devIssues()).toHaveLength(before + 2);
+    expect(await devFeedback()).toHaveLength(before + 2);
     expect(again.output).toContain(`${twin.slug}: 3 (not ported;`);
   });
 
@@ -340,7 +358,7 @@ describe('a beta port close (ISS-923)', () => {
     const releases = betaIssue(21);
     const legacy = betaIssue(22);
     beta.issues.get(betaProjectId)?.push(closes, releases, legacy);
-    await fire(scheduleId);
+    for (const b of [closes, releases, legacy]) await seedTwin(say, twin, b);
     const pairOf = async (betaId: string) =>
       (
         await rows<{
@@ -441,16 +459,16 @@ describe('a beta port bound and its token (ISS-923)', () => {
 
     const settled = await fire(scheduleId);
     const [n] = await rows<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM issues WHERE project_id = ${cap.id}`,
+      sql`SELECT count(*)::int AS n FROM feedback WHERE project_id = ${cap.id}`,
     );
     expect(n?.n).toBe(25);
     expect(settled.output).toContain('left for the next fire: 2');
     expect(settled.output).toContain(`${cap.slug}: 4 (not ported)`);
-    expect(settled.output).toMatch(new RegExp(`${cap.slug}: beta ISS-1\\d\\d → ISS-\\d+`));
+    expect(settled.output).toMatch(new RegExp(`${cap.slug}: beta ISS-1\\d\\d → FB-\\d+`));
 
     const next = await fire(scheduleId);
     const [m] = await rows<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM issues WHERE project_id = ${cap.id}`,
+      sql`SELECT count(*)::int AS n FROM feedback WHERE project_id = ${cap.id}`,
     );
     expect(m?.n).toBe(27);
     expect(next.output).not.toContain('left for the next fire');
@@ -463,7 +481,19 @@ describe('a beta port bound and its token (ISS-923)', () => {
     expect(outputs.length).toBeGreaterThan(3);
     const comments = [...beta.comments.values()].flat();
     const issues = (await devIssues()).map((i) => `${i.title}\n${i.description}`);
-    for (const text of [...outputs.map((o) => o.text), ...comments, ...issues, ...logged]) {
+    const items = (
+      await rows<{ text: string }>(
+        sql`SELECT title || coalesce(body, '') || coalesce(where_seen, '') AS text FROM feedback`,
+      )
+    ).map((r) => r.text);
+    expect(items.length).toBeGreaterThan(3);
+    for (const text of [
+      ...outputs.map((o) => o.text),
+      ...comments,
+      ...issues,
+      ...items,
+      ...logged,
+    ]) {
       expect(text).not.toContain(TOKEN);
     }
     expect(beta.unauthorised).toBe(0);

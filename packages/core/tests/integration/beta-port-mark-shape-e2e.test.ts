@@ -26,6 +26,7 @@ import {
   fireOnce,
   putBetaSecret,
   type Say,
+  seedTwin,
 } from '../helpers/beta-port-harness.js';
 import {
   beta,
@@ -124,7 +125,10 @@ describe('a beta port mark in the twin project landing shape (ISS-923 fix forwar
     beta.issues.set(git.betaId, [plain, noCommit, held, releaseOnly]);
     beta.issues.set(promoted.betaId, [promotes]);
     beta.issues.set(undeclared.betaId, [unreadable]);
-    await fire(scheduleId);
+    // twins as a port made them before ISS-982, which files a new beta issue as Feedback instead
+    for (const b of [plain, noCommit, held, releaseOnly]) await seedTwin(say, git.dev, b);
+    await seedTwin(say, promoted.dev, promotes);
+    await seedTwin(say, undeclared.dev, unreadable);
     for (const b of [plain, noCommit, held, releaseOnly, promotes, unreadable]) {
       expect(await pairOf(b.id), b.displayId).toBeDefined();
     }

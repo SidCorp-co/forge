@@ -8,14 +8,18 @@ import { describe, expect, it } from 'vitest';
 import { peerLandingOf } from '../integrations/peer-forge/landing.js';
 import { validateCron } from '../schedules/cron.js';
 import {
+  BETA_PORT_PROGRESS,
   DEV_TO_BETA_STATUS,
   devLanding,
+  feedbackSeqOf,
   firstLineNamesBetaIssue,
   firstLineOf,
   isPortedMarker,
   landingMark,
+  leftOnBeta,
   markerDevKey,
   mirrorTarget,
+  movesBackward,
   owesTry,
   portedComment,
   portedFirstLine,
@@ -78,6 +82,52 @@ describe('the status map', () => {
   });
 });
 
+describe('the one order of progress (ISS-982)', () => {
+  it('never moves a landed beta issue back to a status before landing', () => {
+    for (const landed of ['developed', 'testing', 'tested', 'releasing', 'awaiting_release']) {
+      for (const back of ['open', 'reopen', 'needs_info', 'on_hold', 'in_progress', 'dropped']) {
+        expect(movesBackward(landed, back), `${landed} → ${back}`).toBe(true);
+      }
+    }
+    expect(movesBackward('closed', 'awaiting_release')).toBe(true);
+    expect(movesBackward('in_progress', 'open')).toBe(true);
+  });
+
+  it('moves forward, and between statuses of one step, as before', () => {
+    expect(movesBackward('developed', 'awaiting_release')).toBe(false);
+    expect(movesBackward('awaiting_release', 'closed')).toBe(false);
+    expect(movesBackward('developed', 'developed')).toBe(false);
+    // a park or a drop while work is in flight is no step back
+    expect(movesBackward('in_progress', 'needs_info')).toBe(false);
+    expect(movesBackward('on_hold', 'dropped')).toBe(false);
+    expect(movesBackward('open', 'on_hold')).toBe(false);
+  });
+
+  it('places every dev status and holds no move it cannot place', () => {
+    for (const status of ISSUE_STATUSES) {
+      expect(Number.isInteger(BETA_PORT_PROGRESS[status] ?? 0), status).toBe(true);
+    }
+    expect(movesBackward('a-status-beta-made-up', 'open')).toBe(false);
+  });
+
+  it('leaves an issue in flight or landed on beta, and ports one still waiting', () => {
+    expect(leftOnBeta({ status: 'in_progress', marked: false })).toBe('in_progress');
+    expect(leftOnBeta({ status: 'developed', marked: null })).toBe('developed');
+    expect(leftOnBeta({ status: 'closed', marked: false })).toBe('closed');
+    expect(leftOnBeta({ status: 'open', marked: true })).toBe('open, merge-marked');
+    for (const waiting of ['open', 'reopen', 'needs_info', 'on_hold', 'confirmed', 'approved']) {
+      expect(leftOnBeta({ status: waiting, marked: false }), waiting).toBeNull();
+    }
+  });
+
+  it('tells a feedback key in a marker from an issue key', () => {
+    expect(feedbackSeqOf('FB-12')).toBe(12);
+    expect(feedbackSeqOf('fb-3')).toBe(3);
+    expect(feedbackSeqOf('ISS-12')).toBeNull();
+    expect(markerDevKey(portedComment('FB-7'))).toBe('FB-7');
+  });
+});
+
 describe('the fire report', () => {
   it('caps each list and counts the rest', () => {
     const report = emptyReport(CUTOFF);
@@ -98,6 +148,15 @@ describe('the fire report', () => {
     expect(reportSaysSomething(report)).toBe(false);
     report.beforeRuling.push('sid-desk: 1490 (not ported)');
     expect(reportSaysSomething(report)).toBe(false);
+    // an issue left on beta is named every fire and changes nothing
+    report.leftOnBeta.push('sidpeak: beta ISS-621 (developed)');
+    expect(reportSaysSomething(report)).toBe(false);
+    expect(renderReport(report)).toContain(
+      'left on beta, in flight or landed there (1):\n  sidpeak: beta ISS-621 (developed)',
+    );
+    report.held.push('sidpeak: ISS-1 at needs_info: beta ISS-621 keeps developed');
+    expect(reportSaysSomething(report)).toBe(true);
+    report.held.length = 0;
     report.noTwin.push('lonely');
     expect(reportSaysSomething(report)).toBe(true);
   });
