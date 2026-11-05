@@ -65,6 +65,7 @@ function facts(n: number): ReleaseFacts {
     judgedOn: null,
     released: null,
     judgedOnRelease: [],
+    landing: null,
   };
 }
 

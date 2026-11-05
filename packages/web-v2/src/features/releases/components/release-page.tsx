@@ -104,7 +104,7 @@ function TechnicalFold({ projectId, r, slug }: { projectId: string; r: ReleaseDe
   ];
   return (
     <details className="border-t border-line-subtle" data-testid="release-technical-fold" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="cursor-pointer py-3 text-13 text-muted hover:text-fg" data-testid="release-technical-summary">
+      <summary className="cursor-pointer py-3 text-13 text-muted hover:text-fg" data-testid="release-technical-summary" data-tour="rel-technical">
         {said.join(" · ")}
       </summary>
       {open ? (

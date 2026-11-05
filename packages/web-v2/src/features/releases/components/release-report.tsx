@@ -19,7 +19,7 @@ export function WhatUsersSee({ page }: { page: ReleasePage }) {
   const unseen = unseenCount(page);
   if (screens.length === 0 && unseen === 0) return null;
   return (
-    <section aria-label={t("releases.users.title")} data-testid="page-users">
+    <section aria-label={t("releases.users.title")} data-testid="page-users" data-tour="rel-users">
       <h2 className={HEAD}>{t("releases.users.title")}</h2>
       <PropertyList testId="page-screens">
         {screens.map((s) => (

@@ -95,7 +95,7 @@ const PAGES: Record<TourId, { route: string; draw: () => ReactElement; renders: 
       serveCore();
       return renderWithQuery(ui);
     },
-    ready: () => screen.findByTestId("release-reader"),
+    ready: () => screen.findByTestId("page-users"),
   },
   integrations: {
     route: "/projects/:slug/settings?tab=connections",

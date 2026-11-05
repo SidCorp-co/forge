@@ -15,7 +15,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 function Page({ technical = true }: { technical?: boolean }) {
   return (
     <main>
-      <section data-tour="rel-users">What users get</section>
+      <section data-tour="rel-users">What users see</section>
       {technical && <div data-tour="rel-technical">Technical</div>}
       <TourLauncher />
     </main>
@@ -57,28 +57,28 @@ const events = () => calls.filter((c) => c.path === "/me/tour-events").map((c) =
 describe("a ?tour= deep link", () => {
   it("opens the tour on its page, takes the parameter off the address, and stores it completed at its revision", async () => {
     renderWithQuery(<Page />);
-    expect(await screen.findByText("What users get", { selector: ".driver-popover-title" })).toBeInTheDocument();
+    expect(await screen.findByText("What users see", { selector: ".driver-popover-title" })).toBeInTheDocument();
     expect(replace).toHaveBeenCalledWith("/projects/forge/releases/0.4.0-dev.87?tab=overview", { scroll: false });
     press(".driver-popover-next-btn");
-    await screen.findByText("Technical view", { selector: ".driver-popover-title" });
+    await screen.findByText("Technical", { selector: ".driver-popover-title" });
     press(".driver-popover-next-btn");
     await waitFor(() => expect(events().map((e) => e.kind)).toEqual(["started", "completed"]));
     const put = calls.find((c) => c.method === "PUT");
     expect(put?.path).toBe("/me/product-state/tour:release-what-changes");
-    expect(put?.body).toMatchObject({ value: { revision: 4, outcome: "completed" } });
+    expect(put?.body).toMatchObject({ value: { revision: 5, outcome: "completed" } });
   });
 
   it("skips a step whose anchor is missing, records it, and stores a dismissal at the step it was closed on", async () => {
     renderWithQuery(<Page technical={false} />);
-    expect(await screen.findByText("What users get", { selector: ".driver-popover-title" })).toBeInTheDocument();
+    expect(await screen.findByText("What users see", { selector: ".driver-popover-title" })).toBeInTheDocument();
     press(".driver-popover-close-btn");
     await waitFor(() =>
       expect(events()).toEqual([
-        { tourId: "release-what-changes", revision: 4, kind: "step_skipped", step: 2 },
-        { tourId: "release-what-changes", revision: 4, kind: "started" },
-        { tourId: "release-what-changes", revision: 4, kind: "dismissed", step: 1 },
+        { tourId: "release-what-changes", revision: 5, kind: "step_skipped", step: 2 },
+        { tourId: "release-what-changes", revision: 5, kind: "started" },
+        { tourId: "release-what-changes", revision: 5, kind: "dismissed", step: 1 },
       ]),
     );
-    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ value: { revision: 4, outcome: "dismissed", step: 1 } });
+    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ value: { revision: 5, outcome: "dismissed", step: 1 } });
   });
 });

@@ -1,6 +1,9 @@
 // The release page in the approved report shape (ISS-1001): its one proof number, what users see by
 // screen with no key, commit, branch or change request on its face, what needs attention (absent when
 // nothing does), everything technical behind one collapsed section, and the one act once, at the top.
+// @direct-test-of packages/web-v2/src/features/releases/proof.ts
+// @direct-test-of packages/web-v2/src/features/releases/release-report.ts
+// @direct-test-of packages/web-v2/src/features/releases/components/release-proof.tsx
 
 import type { ReleasePage as Page } from "@forge/contracts/release-page";
 import { fireEvent, screen, within } from "@testing-library/react";
