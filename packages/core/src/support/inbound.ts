@@ -21,6 +21,7 @@ import { logger } from '../lib/logger.js';
 import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
 import { answersOfConfig } from './grants.js';
+import { recordedImagesOf } from './images.js';
 import { tellLastResort } from './last-resort.js';
 import { settleOwnerAnswer } from './owner-ask.js';
 import { noteRoomMessage } from './room-replies.js';
@@ -196,6 +197,8 @@ async function recordInbound(
           text,
           ...(m.ts ? { ts: m.ts } : {}),
           ...(opts.addressed ? { addressed: opts.addressed } : {}),
+          // the pictures it carries, which the session reads through support.image (ISS-1010)
+          ...recordedImagesOf(m.images),
         },
         externalId: m.id,
         deliveredAt: opts.deliver ? null : new Date(),

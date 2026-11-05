@@ -15,6 +15,7 @@ import {
 export {
   extractMessageImages,
   extractMessageText,
+  ROCKETCHAT_IMAGE_CAPS,
   type RocketChatImageRef,
   type RocketChatRestMessage,
 } from './rest-message.js';
@@ -366,19 +367,46 @@ export interface RocketChatButtonAttachment {
 /** Uploads are big and slow next to a JSON read; give them their own budget. */
 const FILE_FETCH_TIMEOUT_MS = 20_000;
 
+/** Why an uploaded file could not be read, each a different thing to tell whoever asked. */
+export type AttachmentFetchFailure =
+  /** The ref is not on the connection's own server: the bot's credential is never sent elsewhere. */
+  | 'off_server'
+  /** Larger than the reader's cap, by its declared length or by what arrived. */
+  | 'too_large'
+  /** The server holds no such file any more (404, 410). */
+  | 'gone'
+  /** The server refused the bot's credential (401, 403). */
+  | 'refused'
+  /** The server answered no file: an empty body, another status, a timeout or no route. */
+  | 'unreachable';
+
+export type AttachmentFetch =
+  | { ok: true; bytes: Buffer }
+  | { ok: false; why: AttachmentFetchFailure; status?: number };
+
+/** Whether `ref` is on the server `auth` holds a credential for: same scheme, host and port. */
+function onServer(auth: RocketChatRestAuth, ref: string): boolean {
+  try {
+    return new URL(ref).origin === new URL(auth.serverUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Download an uploaded file's bytes with the bot credential.
+ * Download an uploaded file's bytes with the bot credential, or say why not.
  *
- * `maxBytes` is enforced against `content-length` BEFORE the body is read, so
- * an oversized upload costs a HEAD-shaped round-trip rather than a buffer the
- * process then throws away. Null on any failure — a picture the bot cannot
- * fetch degrades the answer, it never fails the turn.
+ * `maxBytes` is enforced against `content-length` BEFORE the body is read, so an oversized upload
+ * costs a HEAD-shaped round-trip rather than a buffer the process then throws away. A ref on any
+ * other host than the connection's server is never fetched: a message's attachment can name any URL,
+ * and the bot's token would go with it (ISS-1010).
  */
-export async function fetchAttachmentBytes(
+export async function fetchAttachment(
   auth: RocketChatRestAuth,
   ref: string,
   maxBytes: number,
-): Promise<Buffer | null> {
+): Promise<AttachmentFetch> {
+  if (!onServer(auth, ref)) return { ok: false, why: 'off_server' };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FILE_FETCH_TIMEOUT_MS);
   try {
@@ -387,16 +415,37 @@ export async function fetchAttachmentBytes(
       redirect: 'follow',
       signal: controller.signal,
     });
-    if (!res.ok) return null;
+    if (res.status === 404 || res.status === 410) {
+      return { ok: false, why: 'gone', status: res.status };
+    }
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, why: 'refused', status: res.status };
+    }
+    if (!res.ok) return { ok: false, why: 'unreachable', status: res.status };
     const declared = Number(res.headers.get('content-length') ?? Number.NaN);
-    if (Number.isFinite(declared) && declared > maxBytes) return null;
+    if (Number.isFinite(declared) && declared > maxBytes) return { ok: false, why: 'too_large' };
     const bytes = Buffer.from(await res.arrayBuffer());
-    return bytes.byteLength > 0 && bytes.byteLength <= maxBytes ? bytes : null;
+    if (bytes.byteLength > maxBytes) return { ok: false, why: 'too_large' };
+    if (bytes.byteLength === 0) return { ok: false, why: 'unreachable', status: res.status };
+    return { ok: true, bytes };
   } catch {
-    return null;
+    return { ok: false, why: 'unreachable' };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Download an uploaded file's bytes with the bot credential: null on any failure, where a picture
+ * the bot cannot fetch degrades the answer and never fails the turn (the chat-room Assistant).
+ */
+export async function fetchAttachmentBytes(
+  auth: RocketChatRestAuth,
+  ref: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const got = await fetchAttachment(auth, ref, maxBytes);
+  return got.ok ? got.bytes : null;
 }
 
 /** Whether the bot is a member of a room, as the chat server says it (REQ-75 r5 BC-26). */

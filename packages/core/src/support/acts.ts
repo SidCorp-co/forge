@@ -26,6 +26,7 @@ import { checkResult } from './checks.js';
 import { settleLatency } from './delivery.js';
 import { agreeTo } from './fixes.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
+import { readImage } from './images.js';
 import { endLastResortWait } from './last-resort.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { runRead } from './ops-read.js';
@@ -120,6 +121,7 @@ export type SupportActInput =
       decision?: 'agree' | 'decline' | undefined;
     }
   | { action: 'link'; thread: string; member: string }
+  | { action: 'image'; message: string; n?: number | undefined }
   | {
       action: 'read';
       name: string;
@@ -235,6 +237,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'route',
   'announce',
   'ask_owner',
+  // a member's picture reads the same in an operations room as in a support group (ISS-1010)
+  'image',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -332,5 +336,7 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
       const { action: _, ...request } = input;
       return runRead(room, request);
     }
+    case 'image':
+      return readImage(room, { message: input.message, n: input.n });
   }
 }

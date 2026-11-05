@@ -255,6 +255,59 @@ export async function addAttachment(input: {
 }
 
 /**
+ * Files core attaches to an item a channel filed for its reporter (ISS-1010: a support room's
+ * pictures on the Feedback filed from their thread), as the channel's own account: no person's
+ * permission is read, since the filing itself was the agreed act. Each file is checked and stored as
+ * every attachment is, and one refused names why while the others still go.
+ */
+export async function attachToFiled(input: {
+  projectId: string;
+  itemId: string;
+  uploadedBy: string;
+  files: readonly { name: string; mime: string; contentBase64: string }[];
+}): Promise<{
+  attached: { id: string; name: string }[];
+  refused: { file: number; refusal: Refusal }[];
+}> {
+  const attached: { id: string; name: string }[] = [];
+  const refused: { file: number; refusal: Refusal }[] = [];
+  if (input.files.length === 0) return { attached, refused };
+  const level = await dataPolicyOf(input.projectId);
+  for (const [i, file] of input.files.entries()) {
+    const checked = checkedAttachment(file, `/files/${i}`);
+    if (!checked.ok) {
+      refused.push({ file: i, refusal: checked.refusal });
+      continue;
+    }
+    const path = await storedAttachment(input.projectId, input.itemId, checked.file);
+    const made: { id?: string } = {};
+    const refusals = await inTx(async (tx) => {
+      await lockFeedback(tx, input.projectId);
+      const row = await rowIn(tx, input.projectId, input.itemId, true);
+      const gone = redactedRefusal(row.redactedAt);
+      if (gone) return [gone];
+      const put = await insertAttachmentIn(
+        tx,
+        row,
+        { ...checked.file, path, redacted: false },
+        input.uploadedBy,
+        level,
+      );
+      if (!put.ok) return [put.refusal];
+      made.id = put.id;
+      return null;
+    });
+    if (refusals || !made.id) {
+      await dropStored(path);
+      for (const refusal of refusals ?? []) refused.push({ file: i, refusal });
+      continue;
+    }
+    attached.push({ id: made.id, name: checked.file.name });
+  }
+  return { attached, refused };
+}
+
+/**
  * One attachment by its id alone, as a fetch reads it (ISS-879): its project, where its bytes are,
  * and the item route that serves them. Null when no feedback item holds that id.
  */

@@ -4,12 +4,12 @@
 // `{ url, rid, bot: { userId, authToken }, members: { alice: { userId, authToken, username }, bob: … } }`.
 
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { expect } from 'vitest';
 import type WebSocket from 'ws';
 import { WebSocketServer } from 'ws';
+import { RealRocketChat } from './support-real-chat-server.js';
 
 export interface Member {
   userId: string;
@@ -87,6 +87,15 @@ export class StandInRocketChat implements ChatServer {
     return id;
   }
 
+  /**
+   * The files members uploaded, served at `/file-upload/<id>/<name>` to the bot's credential alone,
+   * as Rocket.Chat serves them (ISS-1010). `status` makes the server answer that instead of the
+   * bytes.
+   */
+  readonly uploads = new Map<string, { bytes: Buffer; mime: string; status?: number }>();
+  /** Every upload the bot fetched, by id. */
+  readonly uploadReads: string[] = [];
+
   /** How many times a group's history was read. */
   historyReads = 0;
   private seq = 0;
@@ -117,6 +126,7 @@ export class StandInRocketChat implements ChatServer {
       res.end(JSON.stringify(payload));
     };
     if (req.headers['x-auth-token'] !== this.bot.authToken) return json(401, { success: false });
+    if (url.pathname.startsWith('/file-upload/')) return this.serveUpload(url.pathname, res);
     switch (url.pathname) {
       case '/api/v1/me':
         return json(200, { _id: this.bot.userId, username: 'supportbot', name: 'Support' });
@@ -211,6 +221,83 @@ export class StandInRocketChat implements ChatServer {
       default:
         return json(404, { success: false, error: `the stand-in serves no ${url.pathname}` });
     }
+  }
+
+  private serveUpload(path: string, res: ServerResponse): void {
+    const id = path.split('/')[2] ?? '';
+    this.uploadReads.push(id);
+    const file = this.uploads.get(id);
+    if (!file) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    if (file.status) {
+      res.writeHead(file.status);
+      res.end();
+      return;
+    }
+    res.writeHead(200, {
+      'content-type': file.mime,
+      'content-length': String(file.bytes.byteLength),
+    });
+    res.end(file.bytes);
+  }
+
+  /**
+   * `who` posts `text` with pictures in the group, as Rocket.Chat records an upload: the files on
+   * `file`/`files`, each also an attachment whose `image_url` is its `/file-upload` path (a picture
+   * named by `url` points wherever it says instead). Answers the message id and each upload's id.
+   */
+  async sayWithImages(
+    who: Member,
+    text: string,
+    images: readonly {
+      name: string;
+      mime: string;
+      bytes?: Buffer;
+      status?: number;
+      url?: string;
+    }[],
+    tmid?: string,
+  ): Promise<{ id: string; uploads: string[] }> {
+    await expect.poll(() => this.subs.size, { timeout: 15_000 }).toBeGreaterThan(0);
+    const id = this.nextId();
+    const uploads: string[] = [];
+    const files: { _id: string; name: string; type: string }[] = [];
+    const attachments: Record<string, unknown>[] = [];
+    for (const img of images) {
+      if (img.url) {
+        attachments.push({ title: img.name, image_url: img.url, image_type: img.mime });
+        continue;
+      }
+      const fileId = `F${randomUUID().slice(0, 12)}`;
+      uploads.push(fileId);
+      this.uploads.set(fileId, {
+        bytes: img.bytes ?? Buffer.alloc(0),
+        mime: img.mime,
+        ...(img.status ? { status: img.status } : {}),
+      });
+      files.push({ _id: fileId, name: img.name, type: img.mime });
+      const path = `/file-upload/${fileId}/${encodeURIComponent(img.name)}`;
+      attachments.push({
+        title: img.name,
+        title_link: path,
+        image_url: path,
+        image_type: img.mime,
+      });
+    }
+    this.push({
+      _id: id,
+      rid: this.rid,
+      msg: text,
+      ...(tmid ? { tmid } : {}),
+      ...(files[0] ? { file: files[0], files } : {}),
+      attachments,
+      mentions: this.mentionsIn(text),
+      u: { _id: who.userId, username: who.username },
+    });
+    return { id, uploads };
   }
 
   private ddp(ws: WebSocket): void {
@@ -339,81 +426,6 @@ export class StandInRocketChat implements ChatServer {
     this.server.closeAllConnections();
     await new Promise<void>((r) => this.server.close(() => r()));
   }
-}
-
-/** A real Rocket.Chat, read from the file SUPPORT_E2E_RC names. */
-export class RealRocketChat implements ChatServer {
-  readonly serverUrl: string;
-  readonly rid: string;
-  readonly bot: { userId: string; authToken: string };
-  readonly alice: Member;
-  readonly bob: Member;
-  private readonly since = new Date();
-
-  constructor(file: string) {
-    const c = JSON.parse(readFileSync(file, 'utf8')) as {
-      url: string;
-      rid: string;
-      bot: { userId: string; authToken: string };
-      members: { alice: Member; bob: Member };
-    };
-    this.serverUrl = c.url;
-    this.rid = c.rid;
-    this.bot = c.bot;
-    this.alice = c.members.alice;
-    this.bob = c.members.bob;
-  }
-
-  private async call(as: { userId: string; authToken?: string }, path: string, body?: unknown) {
-    const res = await fetch(`${this.serverUrl}/api/v1/${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        'X-User-Id': as.userId,
-        'X-Auth-Token': as.authToken ?? '',
-        'content-type': 'application/json',
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const json = (await res.json()) as Record<string, unknown>;
-    if (!res.ok || json.success === false) throw new Error(`${path} answered ${res.status}`);
-    return json;
-  }
-
-  async say(who: Member, text: string, tmid?: string): Promise<string> {
-    const out = await this.call(who, 'chat.postMessage', {
-      roomId: this.rid,
-      text,
-      ...(tmid ? { tmid } : {}),
-    });
-    return (out.message as { _id: string })._id;
-  }
-
-  async botLines(): Promise<BotLine[]> {
-    const q = new URLSearchParams({
-      roomId: this.rid,
-      count: '200',
-      oldest: this.since.toISOString(),
-    });
-    const out = await this.call(this.bot, `groups.history?${q}`);
-    const messages = out.messages as {
-      _id: string;
-      msg: string;
-      tmid?: string;
-      u: { _id: string };
-      attachments?: BotLine['attachments'];
-    }[];
-    return messages
-      .filter((m) => m.u._id === this.bot.userId)
-      .reverse()
-      .map((m) => ({
-        id: m._id,
-        text: m.msg,
-        tmid: m.tmid ?? null,
-        attachments: m.attachments ?? [],
-      }));
-  }
-
-  async close(): Promise<void> {}
 }
 
 /** The chat server the run names: the real one SUPPORT_E2E_RC points at, or a stand-in. */

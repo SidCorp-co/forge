@@ -5,8 +5,9 @@
 import { createHash } from 'node:crypto';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
 import type { SupportRecordKind } from '@forge/contracts/support';
-import { type ExternalReporter, fileExternalFeedback } from '../feedback/index.js';
+import { attachToFiled, type ExternalReporter, fileExternalFeedback } from '../feedback/index.js';
 import { buildMessagePermalink } from '../integrations/rocketchat/index.js';
+import { fetchRecordedImage, threadImages } from './images.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, type Outcome, threadUnknown } from './outcome.js';
 import { refusalOf } from './refusals.js';
@@ -42,7 +43,9 @@ export async function threadLink(room: RoomRow, thread: string): Promise<string>
 export async function fileRecord(
   room: RoomRow,
   input: RecordRequest & { reporter: { key: string; label: string | null } },
-): Promise<Outcome<{ feedbackKey: string; created: boolean; project: string }>> {
+): Promise<
+  Outcome<{ feedbackKey: string; created: boolean; project: string; pictures?: FiledPictures }>
+> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
   // the project it names is read again at filing: one dropped from the set since is refused, never
@@ -114,6 +117,8 @@ export async function fileRecord(
       ),
     };
   }
+  // the thread's pictures go with what was filed from it, readable with uploads.read (ISS-1010)
+  const pictures = filed.created ? await attachThreadPictures(room, input.thread, filed.id) : null;
   if (filed.created) {
     await insertAction({
       roomId: room.id,
@@ -123,12 +128,75 @@ export async function fileRecord(
       kind: 'feedback_recorded',
       actorKind: 'session',
       input: { kind: input.kind, title: input.title, project: target.value.slug },
-      output: { feedbackKey: filed.key },
+      output: { feedbackKey: filed.key, ...(pictures ? { pictures } : {}) },
       feedbackId: filed.id,
     });
   }
   return {
     ok: true,
-    value: { feedbackKey: filed.key, created: filed.created, project: target.value.slug },
+    value: {
+      feedbackKey: filed.key,
+      created: filed.created,
+      project: target.value.slug,
+      ...(pictures ? { pictures } : {}),
+    },
   };
+}
+
+/** What became of a thread's pictures on the item filed from it: how many went, and each that did not, with why. */
+export interface FiledPictures {
+  attached: number;
+  notAttached: { message: string; n: number; code: string; why: string }[];
+}
+
+/**
+ * Attach every picture the members' messages of the thread recorded to the item filed from it, up
+ * to the most one item keeps (ISS-1010): each fetched with the room's bot credential, as the session
+ * reads it, and stored as every feedback attachment is. One that cannot be fetched or kept is named
+ * with why; the filing stands either way. Null where the thread carried no picture.
+ */
+async function attachThreadPictures(
+  room: RoomRow,
+  thread: string,
+  itemId: string,
+): Promise<FiledPictures | null> {
+  const all = await threadImages(room.id, thread);
+  if (all.length === 0) return null;
+  const notAttached: FiledPictures['notAttached'] = [];
+  const kept = all.slice(0, FEEDBACK_LIMITS.attachmentsPerItem);
+  for (const p of all.slice(FEEDBACK_LIMITS.attachmentsPerItem)) {
+    notAttached.push({
+      message: p.message,
+      n: p.n,
+      code: 'FEEDBACK_ATTACHMENTS_FULL',
+      why: `an item keeps at most ${FEEDBACK_LIMITS.attachmentsPerItem} attachments`,
+    });
+  }
+  const files: { name: string; mime: string; contentBase64: string }[] = [];
+  const sources: { message: string; n: number }[] = [];
+  for (const p of kept) {
+    const got = await fetchRecordedImage(room, p.image);
+    if (!got.ok) {
+      notAttached.push({ message: p.message, n: p.n, code: got.code, why: got.why });
+      continue;
+    }
+    files.push({
+      name: p.image.name,
+      mime: p.image.mime,
+      contentBase64: got.bytes.toString('base64'),
+    });
+    sources.push({ message: p.message, n: p.n });
+  }
+  const put = await attachToFiled({
+    projectId: room.projectId,
+    itemId,
+    uploadedBy: room.principalUserId,
+    files,
+  });
+  for (const { file, refusal } of put.refused) {
+    // `files` and `sources` are built side by side, so each refused file has its source
+    const source = sources[file] as { message: string; n: number };
+    notAttached.push({ ...source, code: refusal.code, why: refusal.detail });
+  }
+  return { attached: put.attached.length, notAttached };
 }

@@ -49,6 +49,14 @@ export interface RocketChatImageRef {
   ref: string;
 }
 
+/**
+ * How much of a message's pictures core reads, wherever it reads them: the chat-room Assistant's
+ * turn and a support room's session (ISS-1010) alike. A room can attach a dozen files to one post;
+ * a reader gains nothing from the tail, and each one costs a download plus its share of the vision
+ * budget.
+ */
+export const ROCKETCHAT_IMAGE_CAPS = { perMessage: 4, bytes: 4_000_000 } as const;
+
 const IMAGE_MIME_RE = /^image\/(png|jpe?g|gif|webp)$/i;
 
 function normalizeMime(raw: string): string {

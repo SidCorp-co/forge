@@ -2,6 +2,7 @@ import type { TurnCredential } from '../../credentials/turn-credential.js';
 import {
   buildMessagePermalink,
   fetchAttachmentBytes,
+  ROCKETCHAT_IMAGE_CAPS,
   type RocketChatImageRef,
   type RocketChatRestAuth,
 } from '../../integrations/rocketchat/index.js';
@@ -16,14 +17,10 @@ import { withTurnImages } from '../tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../vision.js';
 import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 
-/**
- * Per-message ceiling. A room can attach a dozen files to one post; the model
- * gains nothing from the tail, and each one costs a download plus its share of
- * the vision budget.
- */
-const MAX_INBOUND_IMAGES = 4;
+/** Per-message ceilings, the ones a support room's session reads under too (ISS-1010). */
+const MAX_INBOUND_IMAGES = ROCKETCHAT_IMAGE_CAPS.perMessage;
 
-const MAX_IMAGE_BYTES = 4_000_000;
+const MAX_IMAGE_BYTES = ROCKETCHAT_IMAGE_CAPS.bytes;
 
 async function download(
   auth: RocketChatRestAuth,

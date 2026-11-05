@@ -1,0 +1,1 @@
+**A support room's screenshots now reach its session.** Forge records each picture a message carries, hands it to the session through support.image, attaches it to Feedback filed from the thread, and names why one cannot be read.

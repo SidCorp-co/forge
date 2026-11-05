@@ -39,6 +39,8 @@ export interface TurnMessage {
   to?: 'you' | 'others' | 'nobody';
   technicalAnswered?: boolean;
   answersYourQuestion?: string;
+  /** The pictures the message carries, as its head names them (ISS-1010). */
+  images?: { count: number; mimes: string[]; read: string; omitted?: number };
 }
 
 export interface Turn {
@@ -87,6 +89,7 @@ export function messagesOf(text: string): TurnMessage[] {
         ...(head.to ? { to: head.to } : {}),
         ...(head.technicalAnswered ? { technicalAnswered: true } : {}),
         ...(head.answersYourQuestion ? { answersYourQuestion: head.answersYourQuestion } : {}),
+        ...(head.images ? { images: head.images } : {}),
         text: '',
       };
       out.push(current);
@@ -247,7 +250,13 @@ export class SessionBox {
         isError: doc.result?.isError ?? false,
       };
     } catch {
-      return { text, isError: doc.result?.isError ?? false };
+      // an answer whose first block is no JSON (an image read, ISS-1010) comes back whole
+      return {
+        text,
+        isError: doc.result?.isError ?? false,
+        content: doc.result?.content ?? [],
+        structuredContent: doc.result?.structuredContent ?? null,
+      };
     }
   }
 

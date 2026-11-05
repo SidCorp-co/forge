@@ -1,5 +1,10 @@
 export { claimAnswersTold, type UntoldAnswer, untoldAnswersOf } from './answers-told.js';
-export { addAttachment, askClarification, feedbackAttachmentOf } from './attachments.js';
+export {
+  addAttachment,
+  askClarification,
+  attachToFiled,
+  feedbackAttachmentOf,
+} from './attachments.js';
 export { feedbackTriageRecord } from './checklist-record.js';
 export { meetRoomConfirmWaits, setConfirmWait } from './confirm-wait.js';
 export { confirmWaitsOf } from './confirm-wait-read.js';

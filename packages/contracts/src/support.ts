@@ -690,6 +690,7 @@ export const SUPPORT_ACTIONS = [
 	"agree",
 	"link",
 	"read",
+	"image",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -702,6 +703,30 @@ export const supportProjectRequestSchema = z.strictObject({
 	project: supportProjectSlugSchema.optional(),
 });
 export const supportThreadRequestSchema = z.strictObject({ thread: threadId });
+
+/**
+ * A picture a member's message carries, read through Forge (ISS-1010): core fetches it from the
+ * chat server with the bot's credential, which the session's box never holds.
+ */
+export const supportImageRequestSchema = z.strictObject({
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.describe(
+			"the message carrying the picture, as you were handed it (`message`)",
+		),
+	n: z
+		.number()
+		.int()
+		.min(1)
+		.max(16)
+		.optional()
+		.describe(
+			"which of its pictures, 1 to the `images.count` you were handed; 1 when omitted",
+		),
+});
 export const supportReplyRequestSchema = z.strictObject({
 	thread: threadId,
 	text: z.string().trim().min(1).max(4000),
@@ -1106,6 +1131,18 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_ALREADY_ASKED",
 	/** No thread for the day's questions is open yet, and the ask carries no line to open it (ISS-873). */
 	"SUPPORT_DAY_THREAD_OPENER",
+	/** The message carries no picture at that place (ISS-1010). */
+	"SUPPORT_IMAGE_UNKNOWN",
+	/** The picture is larger than a session reads (ISS-1010). */
+	"SUPPORT_IMAGE_TOO_LARGE",
+	/** The chat server holds the picture no longer (ISS-1010). */
+	"SUPPORT_IMAGE_GONE",
+	/** The chat server refused the bot's credential for the picture (ISS-1010). */
+	"SUPPORT_IMAGE_REFUSED",
+	/** The picture is named on another host than the room's chat server, which is never sent the bot's credential (ISS-1010). */
+	"SUPPORT_IMAGE_OFF_SERVER",
+	/** The chat server could not be read for the picture (ISS-1010). */
+	"SUPPORT_IMAGE_UNREACHABLE",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1191,4 +1228,10 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_ANSWER_NOT_THE_OWNER: 409,
 	SUPPORT_OWNER_ALREADY_ASKED: 409,
 	SUPPORT_DAY_THREAD_OPENER: 409,
+	SUPPORT_IMAGE_UNKNOWN: 404,
+	SUPPORT_IMAGE_TOO_LARGE: 409,
+	SUPPORT_IMAGE_GONE: 404,
+	SUPPORT_IMAGE_REFUSED: 503,
+	SUPPORT_IMAGE_OFF_SERVER: 409,
+	SUPPORT_IMAGE_UNREACHABLE: 503,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

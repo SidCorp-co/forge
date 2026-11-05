@@ -11,6 +11,7 @@ import {
   supportCommandRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
+  supportImageRequestSchema,
   supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
   supportProjectRequestSchema,
@@ -59,8 +60,10 @@ const channelRidSchema = z
 
 import type { Refusal } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import { permissionless } from '../permissions/index.js';
 import { type SupportActInput, supportAct } from './acts.js';
+import type { ImageRead } from './images.js';
 import { refusalOf } from './refusals.js';
 
 /** The actions that write nothing: the rest post in a thread, file an item, or act or record for a member. */
@@ -75,6 +78,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
   'channel',
   'deployment',
   'project',
+  'image',
 ];
 
 const ACTIONS = [...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS] as const;
@@ -114,6 +118,7 @@ const REQUESTS = {
   agree: supportAgreeRequestSchema,
   link: supportLinkRequestSchema,
   read: supportReadRequestSchema,
+  image: supportImageRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 // one flat strict input, every field but `action` optional, as the model is shown it: the action's
@@ -145,6 +150,8 @@ const inputSchema = z.strictObject({
   ...operationsResearchRequestSchema.partial().shape,
   ...supportDeployRequestSchema.partial().shape,
   ...supportCommandRequestSchema.partial().shape,
+  // a picture's place in its message; the message is the agreement's own field (ISS-1010)
+  n: supportImageRequestSchema.shape.n,
   // an issue move's status, or a route's destination: each action's own request judges which
   // one enum, so the published tool gains values rather than changing shape
   to: z.enum([...ISSUE_STATUSES, ...CHANNEL_ROUTES]).optional(),
@@ -186,6 +193,7 @@ const SHAPE = [
   'agree { thread, proposal, message, decision?: agree | decline }',
   'link { thread, member }',
   'read { name, args?, thread?, check? }',
+  'image { message, n? }',
   'any action may add rid: the group, where you answer several and the act names no thread',
   'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements; its home when omitted',
 ].join('; ');
@@ -198,6 +206,7 @@ const DESCRIPTION = [
   'run {thread, tool, args}: run a granted diagnose check; you get what came back, and the thread is shown nothing.',
   'propose_fix {thread, tool, args, asker}: propose a granted fix for the person who asked (`from.id`). Nothing is posted: you are handed `proposal`, whom it waits on and when it expires. Ask that person in your own words; nothing runs until you cite their answer with agree.',
   `record {thread, kind, title, summary, asker?}: propose recording what needs code or a decision as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}). Nothing is posted and nothing is filed yet: you are handed \`proposal\`. Ask the asker (the thread's first writer unless named) in your own words whether to record it; when they agree in plain words, call agree. You are handed the key then, and told again once it is live, shipped or declined: then post its result in its thread. Never post progress, and never promise a date.`,
+  "image {message, n?}: read picture n (1 when omitted) of a member's message, whose head names `images` with their count: Forge fetches it from the chat server, which your box cannot reach, and hands it back as a viewable image block, its name framed as data. Read the pictures before you answer; never ask the person to describe one. One Forge cannot fetch is refused by name with why: SUPPORT_IMAGE_TOO_LARGE, SUPPORT_IMAGE_GONE, SUPPORT_IMAGE_REFUSED, SUPPORT_IMAGE_OFF_SERVER or SUPPORT_IMAGE_UNREACHABLE; a place the message holds no picture at, SUPPORT_IMAGE_UNKNOWN. Nothing is posted.",
   'agree {thread, proposal, message, decision?}: the person answered your proposal. Cite the id of their message (`message` in what you were handed); decision "decline" when they said no. Forge checks the message is theirs (the asker, or for a build, a deploy, a host change or a channel fix a confirmer the room allows), in the proposal\'s thread, and written after the proposal (the owner\'s own request for it counts whenever he wrote it: cite it at once, never ask him), then runs or files it and hands you what came of it: tell the person in your own words. A refusal names why; nothing is posted either way.',
   'link {thread, member}: whether a member (`from.id`) is linked to a Forge account, so what they ask you to do as them can run; where not, you are handed the page to give them, which they open signed in to Forge. You are told when they have linked. Nothing is posted.',
   "The channel record (every bot of this group reads it): channel {} reads it. member {member, roles, askFor?, message} records the roles you inferred for a member from a message, and what to ask them for; a member a person confirmed is refused and stays as it is. rule {thread, message, text} keeps an instruction a confirmed team member, or the owner this binding names, gave as a channel rule linked to that message. common_issue {threads, question, answer, feedback?} keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key. route {thread, to, ...} sends a need where it belongs, never mixed: to forge {title, text} files a problem with Forge itself as Forge feedback and posts nothing; to technical or product {member, text} asks that one member, who holds the role, in the thread. announce {text} is the one top-level post, for news affecting everyone, at most one an hour. ask_owner {thread, question, record?} asks the owner this binding names, only in a thread of the owner's room (the binding's agent.ownerRoom), in plain words; anywhere else, or at top level, it is refused SUPPORT_NOT_THE_OWNER_ROOM: the owner's next message there is the answer, which you read as your next message and which is also written on the issue `record` names (ISS-n); asking for a master, name its open Forge question as `forgeQuestion` (its id) and the owner's answer is recorded on it as theirs, waking that master. Ask only what no record, log or code can answer, once per question. A parked question handed to you (its thread starts question-): answer it from the record with answer_question {thread, source, option | answer} and post nothing; only if the owner is truly needed, ask_owner from that thread, which posts in the owner's room's one thread for the day's questions (pass opener, one short line, where none is open yet); the owner's message there you record with answer_question {thread, message}. An open question the owner owes that you were shown (its id), he may answer in any thread: record his message with answer_question {thread, forgeQuestion, message, option?}, and file nothing for it. check_result {check, finding} answers a scheduled check you were handed (its thread is the check): your one finding, in your words, screened and posted at the channel's top level, or null and nothing is posted; one result per check. A reply mentions at most one person: the asker or a member listed with what to ask them for; never @all or @here. Nothing secret or personal (an email, a phone number) is kept in the record.",
@@ -276,9 +285,33 @@ export const forgeSupportTool: ContextScopedMcpToolFactory = (ctx) => ({
       { action, ...(judged.data as object) } as SupportActInput,
       { rid },
     );
-    return out.ok ? out.value : refusedAnswer(out.refusals, 'SUPPORT_REFUSED');
+    if (!out.ok) return refusedAnswer(out.refusals, 'SUPPORT_REFUSED');
+    return action === 'image' ? imageAnswer(out.value as ImageRead) : out.value;
   },
 });
+
+/**
+ * A picture as `uploads.read` hands one (ISS-532): its name and type framed as data, then the image
+ * block the model views; the structured answer names the block and repeats no bytes.
+ */
+function imageAnswer(read: ImageRead): Record<string, unknown> {
+  // the name is the writer's: it rides only inside the data frame
+  const { dataBase64, name: _name, ...meta } = read;
+  return {
+    _mcpContent: [
+      {
+        type: 'text',
+        text: markUntrusted(`Image name="${read.name}" mime="${read.mime}".`, {
+          source: 'support group member picture',
+        }),
+      },
+      { type: 'image', data: dataBase64, mimeType: read.mime },
+    ],
+    ...meta,
+    image: { contentIndex: 1, mimeType: read.mime },
+    note: 'The picture is content block 1, which this structured answer does not repeat.',
+  };
+}
 
 function withoutAction(input: Record<string, unknown>): Record<string, unknown> {
   const { action: _action, rid: _rid, ...rest } = input;

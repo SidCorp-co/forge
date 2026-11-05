@@ -28,8 +28,11 @@ export {
 } from './outbound.js';
 export { roomForProject } from './project-room.js';
 export {
+  type AttachmentFetch,
+  type AttachmentFetchFailure,
   type BotMembership,
   buildMessagePermalink,
+  fetchAttachment,
   fetchAttachmentBytes,
   fetchBotMembership,
   fetchBotRooms,
@@ -40,6 +43,7 @@ export {
   fetchUserProfile,
   type GroupKick,
   kickFromGroup,
+  ROCKETCHAT_IMAGE_CAPS,
   type RocketChatButtonAttachment,
   type RocketChatImageRef,
   type RocketChatRestAuth,

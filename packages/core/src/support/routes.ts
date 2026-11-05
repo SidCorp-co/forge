@@ -4,6 +4,7 @@ import {
   supportCommandRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
+  supportImageRequestSchema,
   supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
   supportProjectSlugSchema,
@@ -142,6 +143,7 @@ const SHAPES = {
   answerQuestion: '{ thread, forgeQuestion?, source | message, option? | answer? }',
   checkResult: '{ check, finding: string | null }',
   gitCredential: '{ host, path }',
+  image: '{ message, n? }',
 } as const;
 
 /** What every session act declares: its door admits the room's own session, never a permission. */
@@ -209,6 +211,16 @@ supportRoutes.post(
   SESSION_ONLY,
   strictBody(supportLinkRequestSchema, SHAPES.link),
   (c) => act(c, c.req.valid('param').id, { action: 'link', ...c.req.valid('json') }),
+);
+
+// a picture a member's message carries, fetched by core with the bot's credential (ISS-1010): its
+// bytes as base64 with their type, the way an image attachment's read hands them
+supportRoutes.post(
+  '/:id/support/session/images',
+  projectParam,
+  SESSION_ONLY,
+  strictBody(supportImageRequestSchema, SHAPES.image),
+  (c) => act(c, c.req.valid('param').id, { action: 'image', ...c.req.valid('json') }),
 );
 
 // what a room's grant opens (REQ-75 r5 BC-27): each refused by name where the room is not granted it

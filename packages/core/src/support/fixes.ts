@@ -26,7 +26,7 @@ import {
 import { grantsOf, isNamedOwner, isOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
-import { fileRecord, type RecordRequest } from './record.js';
+import { type FiledPictures, fileRecord, type RecordRequest } from './record.js';
 import { limitsOf } from './rules.js';
 import {
   decideFix,
@@ -56,6 +56,8 @@ export type Agreed =
       recorded: true;
       feedbackKey: string;
       created: boolean;
+      /** What became of the thread's pictures on the item (ISS-1010); absent where it carried none. */
+      pictures?: FiledPictures;
       what: string;
     }
   | { ran: boolean; what: string; result: unknown };
@@ -279,15 +281,24 @@ async function recordAgreed(
     return { ok: false, refusals: filed.refusals };
   }
   await settleFixResult(fix.id, 'ran', { feedbackKey: filed.value.feedbackKey });
+  const { pictures } = filed.value;
   return {
     ok: true,
     value: {
       recorded: true,
       feedbackKey: filed.value.feedbackKey,
       created: filed.value.created,
-      what: `${changeName(fix)} was recorded as ${filed.value.feedbackKey}. You are told again once its result is final; tell the person it is recorded, in your words, and post nothing more before then.`,
+      ...(pictures ? { pictures } : {}),
+      what: `${changeName(fix)} was recorded as ${filed.value.feedbackKey}${picturesLine(pictures)}. You are told again once its result is final; tell the person it is recorded, in your words, and post nothing more before then.`,
     },
   };
+}
+
+/** What the session is told of the thread's pictures on a filing (ISS-1010). */
+function picturesLine(pictures: FiledPictures | undefined): string {
+  if (!pictures) return '';
+  const missed = pictures.notAttached.map((p) => `picture ${p.n} of ${p.message}: ${p.why}`);
+  return `, with ${pictures.attached} of the thread's pictures attached${missed.length ? ` (not attached: ${missed.join('; ')})` : ''}`;
 }
 
 async function runFix(
