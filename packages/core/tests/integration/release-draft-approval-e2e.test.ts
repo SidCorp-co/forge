@@ -207,9 +207,9 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
     expect(page.status, JSON.stringify(page.body)).toBe(200);
     expect(page.body.header.recordedNotCut).toBe(true);
     expect(page.body.can.approve).toBe(true);
-    expect((await decide(world.token, d.version, { decision: 'approve', reason: 'ok' })).status).toBe(
-      201,
-    );
+    expect(
+      (await decide(world.token, d.version, { decision: 'approve', reason: 'ok' })).status,
+    ).toBe(201);
   });
 
   it('offers no draft decision on a project releasing through its change requests, and its door refuses one by name', async () => {
