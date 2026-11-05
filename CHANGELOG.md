@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.503] - 2026-11-05
+
+A steward job prepared twice now starts with a fresh working credential
+
+### Fixed
+
+- **A steward job prepared again now starts.** Its earlier token is revoked as the new one is minted, so a lost answer or restarted pane no longer fails every prepare; a steward that cannot act is refused POOL_STEWARD_CANNOT_ACT.
+
 ## [0.4.0-dev.502] - 2026-11-05
 
 A reopened issue with an unchanged landing stays carried by its release
