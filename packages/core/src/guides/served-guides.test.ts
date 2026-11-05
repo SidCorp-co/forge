@@ -6,6 +6,7 @@
 import { WORKFLOW_LIMITS, WORKFLOW_V2_SCHEMA_ID } from '@forge/contracts/workflows';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+import { supportBrief } from '../support/prompt.js';
 import { guideRoutes } from './routes.js';
 
 async function served(slug: string): Promise<string> {
@@ -167,8 +168,7 @@ describe('the chat-link guide a channel agent reads (ISS-878)', () => {
     }
   });
 
-  it('is named by the support brief by its slug, as one pointer', async () => {
-    const { supportBrief } = await import('../support/prompt.js');
+  it('is named by the support brief by its slug, as one pointer', () => {
     const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
     expect(brief).toContain('GET /api/guides/link-chat-account.md');
     expect(brief).not.toContain('Known gap');

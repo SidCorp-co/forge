@@ -338,6 +338,12 @@ ${BUILTIN_WORKFLOW_TEMPLATES.map(vocabulary).join('\n\n')}
   (${code('<name>.wireframe.json')} plus its SVG). Name it on the screen as
   ${code('node.wireframe: { attachment: <json attachment id>, svg: <svg attachment id> }')}; the canvas shows the
   SVG as the screen's thumbnail.
+- **Product tours.** A tour is drawn with these same types, never a type of its own. Its ${code('ENTRY')} names
+  when it starts (${code('Tour: first visit')}); each tour step is a ${code('SCREEN')} of the page it points at,
+  its ${code('route')} that page's route plus ${code('?tour=<n>')} so routes stay unique, its wireframe the hint
+  shown, its ${code('actions')} ${code('next')} and ${code('skip')}. A ${code('next')} USER_ACTION leads to the
+  following step, ${code('skip')} to an EXIT ${code('Tour skipped')}, the last step to an EXIT ${code('Tour done')}.
+  A tour that differs by role is one ENTRY per persona, each step naming that persona.
 
 ### Refusals and their fix
 | Refused | Means | Fix |
@@ -364,6 +370,6 @@ export const WORKFLOW_TEMPLATES_GUIDE: CoreGuide = {
   title: 'Pick a diagram template for a workflow design',
   summary:
     'Every workflow-v2 design names a diagram template — operational-flow, service-blueprint, ux-flow, state-machine, integration-sequence, decision-model, data-flow, system-context, a preset of one, or a project template — which fixes its node types, bands, edge kinds, required fields and cross-links. Which to pick, what each holds a design to, and how each refusal is fixed.',
-  version: 2,
+  version: 3,
   body: BODY,
 };
