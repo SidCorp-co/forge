@@ -20,6 +20,7 @@ import {
 } from './agent-sessions/index.js';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
 import { provideAutomationPorts } from './automation/index.js';
+import { betaKeysOf, provideBetaPortPorts } from './beta-port/index.js';
 import {
   cleanupLandingRefusal,
   cleanupOwesLandingCheck,
@@ -48,11 +49,20 @@ import {
   tokenIdOf,
 } from './ecosystem/index.js';
 import { fastLaneMergeRefusal } from './fast-lane/index.js';
-import { feedbackAttachmentOf, rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
+import {
+  createFeedback,
+  feedbackAttachmentOf,
+  feedbackIdOfSeq,
+  feedbackIdsRoutingTo,
+  rowIn as feedbackRowIn,
+  listFeedbackAs,
+  triageOutcomesOf,
+} from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
 import {
+  provideBetaProvenancePort,
   provideCleanupLandingPort,
   provideFailReturnPort,
   provideIssuePorts,
@@ -245,6 +255,16 @@ async function liveReachForIssue(issue: LiveReachIssue & { projectId: string }) 
   return (await liveReachOfIssues(issue.projectId, [issue], promoted)).get(issue.id) ?? null;
 }
 
+/** The issue kernel's one-purpose ports, and the beta port's reach into the design context (ISS-982). */
+function provideIssueSidePorts(): void {
+  provideCleanupLandingPort({ cleanupLandingRefusal, cleanupOwesLandingCheck });
+  provideFailReturnPort({ requirementFailReturn });
+  provideBetaProvenancePort({
+    betaKeysOfIssue: async (issueId) => betaKeysOf(issueId, await feedbackIdsRoutingTo(issueId)),
+  });
+  provideBetaPortPorts({ createFeedback, triageOutcomesOf, feedbackIdOfSeq });
+}
+
 export function provideWorkPorts(): void {
   provideWorkPipelinePorts();
 
@@ -325,8 +345,7 @@ export function provideWorkPorts(): void {
     fastLaneMergeRefusal,
     recordMergeCheckCleanup,
   });
-  provideCleanupLandingPort({ cleanupLandingRefusal, cleanupOwesLandingCheck });
-  provideFailReturnPort({ requirementFailReturn });
+  provideIssueSidePorts();
 
   provideAutomationPorts({
     lastFires,

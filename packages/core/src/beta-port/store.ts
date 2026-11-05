@@ -2,7 +2,7 @@
 // and the dev side it reads: the twin projects by slug, and the issues a pair or a first line names.
 // Nothing beta answers is stored here but the pair's own bookkeeping.
 
-import { and, asc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { betaPortPairs, issues, projects } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
@@ -32,7 +32,12 @@ export interface MirroredDevIssue extends DevIssue {
 export interface Pair {
   betaIssueId: string;
   betaKey: string;
-  devIssueId: string;
+  /** The dev issue of a twin; null on a pair ported as Feedback. */
+  devIssueId: string | null;
+  /** The Feedback item the beta issue was ported as (ISS-982); null on a twin. */
+  devFeedbackId: string | null;
+  /** The triage outcome of a Feedback pair already commented on beta. */
+  feedbackTold: string | null;
   /** The dev status whose move beta took; never one it refused. */
   lastMirroredStatus: string | null;
   /** The dev status last tried, taken or not; null on a pair tried under the old rule. */
@@ -118,6 +123,8 @@ export async function pairsOf(betaIssueIds: readonly string[]): Promise<Map<stri
       betaIssueId: betaPortPairs.betaIssueId,
       betaKey: betaPortPairs.betaKey,
       devIssueId: betaPortPairs.devIssueId,
+      devFeedbackId: betaPortPairs.devFeedbackId,
+      feedbackTold: betaPortPairs.feedbackTold,
       lastMirroredStatus: betaPortPairs.lastMirroredStatus,
       lastTriedStatus: betaPortPairs.lastTriedStatus,
       betaReached: betaPortPairs.betaReached,
@@ -164,6 +171,36 @@ export async function recordTry(args: {
     .where(eq(betaPortPairs.betaIssueId, args.betaIssueId));
 }
 
+/** Record that a Feedback pair's triage outcome was commented on beta, so it is commented once. */
+export async function recordTold(betaIssueId: string, told: string): Promise<void> {
+  await db
+    .update(betaPortPairs)
+    .set({ feedbackTold: told, at: new Date() })
+    .where(eq(betaPortPairs.betaIssueId, betaIssueId));
+}
+
+/**
+ * The beta keys a dev issue was ported from, read from the pairs: the twin's own pair, and the pair
+ * of every Feedback item (`feedbackIds`) whose triage routed to it. A key is never read from a title.
+ */
+export async function betaKeysOf(
+  issueId: string,
+  feedbackIds: readonly string[],
+): Promise<string[]> {
+  const rows = await db
+    .select({ betaKey: betaPortPairs.betaKey })
+    .from(betaPortPairs)
+    .where(
+      feedbackIds.length > 0
+        ? or(
+            eq(betaPortPairs.devIssueId, issueId),
+            inArray(betaPortPairs.devFeedbackId, [...feedbackIds]),
+          )
+        : eq(betaPortPairs.devIssueId, issueId),
+    );
+  return [...new Set(rows.map((r) => r.betaKey))];
+}
+
 /** A pair whose dev issue may hold only its provenance line, with what its backfill writes as. */
 export interface StubPair {
   betaIssueId: string;
@@ -190,7 +227,7 @@ export async function stubPairCandidates(): Promise<StubPair[]> {
       betaIssueId: betaPortPairs.betaIssueId,
       betaKey: betaPortPairs.betaKey,
       betaProjectSlug: betaPortPairs.betaProjectSlug,
-      devIssueId: betaPortPairs.devIssueId,
+      devIssueId: issues.id,
       issSeq: issues.issSeq,
       devProjectId: issues.projectId,
       devProjectOwner: projects.createdBy,

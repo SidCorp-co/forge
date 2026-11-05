@@ -16,6 +16,7 @@ export {
   transitionIssueStatus,
 } from './apply-transition.js';
 export { issueArchiveSide } from './archive.js';
+export { provideBetaProvenancePort } from './beta-provenance-port.js';
 export {
   blockedByUnsettledSql,
   heldTakeRefusal,

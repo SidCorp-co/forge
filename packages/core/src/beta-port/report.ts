@@ -1,13 +1,19 @@
-// What one beta port fire reports (ISS-923): each list capped, the rest counted, so a fire that met
+// What one beta port fire reports (ISS-923, ISS-982): each list capped, the rest counted, so a fire that met
 // a thousand rows still reads in one screen and still says how many it did not show.
 
 export interface BetaPortReport {
   /** The owner's ruling's time: no beta issue filed or reopened before it is ported. */
   cutoff: string;
-  /** `twin: beta BETA-KEY → DEV-KEY` */
+  /** `twin: beta BETA-KEY → FB-n`: a beta issue filed as a Feedback item. */
   ported: string[];
   /** `twin: DEV-KEY: from → to (beta BETA-KEY)` */
   mirrored: string[];
+  /** A mirror move held because it would move beta backward: `twin: DEV-KEY at s: beta BETA-KEY keeps t`. */
+  held: string[];
+  /** A ported item's triage outcome commented on beta with no status move: `twin: FB-n → beta BETA-KEY (outcome)`. */
+  told: string[];
+  /** Beta issues left on beta, in flight or landed there: `twin: beta BETA-KEY (status)`. Named every fire. */
+  leftOnBeta: string[];
   /** What was refused, with its code. */
   refused: string[];
   /** Beta issues already ported, and how that was known. */
@@ -33,6 +39,9 @@ export function emptyReport(cutoff: Date): BetaPortReport {
     cutoff: cutoff.toISOString(),
     ported: [],
     mirrored: [],
+    held: [],
+    told: [],
+    leftOnBeta: [],
     refused: [],
     skipped: [],
     noTwin: [],
@@ -70,6 +79,11 @@ export function renderReport(report: BetaPortReport, cap = REPORT_LIST_CAP): str
     ...backfillSections(report, cap),
     ...section('ported', report.ported, cap),
     ...section('mirrored', report.mirrored, cap),
+    ...(report.held.length > 0 ? section('held, never moved backward', report.held, cap) : []),
+    ...(report.told.length > 0 ? section('told on beta', report.told, cap) : []),
+    ...(report.leftOnBeta.length > 0
+      ? section('left on beta, in flight or landed there', report.leftOnBeta, cap)
+      : []),
     ...section('refused', report.refused, cap),
     ...section('skipped as already ported', report.skipped, cap),
     ...section('beta projects with no dev twin', report.noTwin, cap),
@@ -78,11 +92,16 @@ export function renderReport(report: BetaPortReport, cap = REPORT_LIST_CAP): str
   ].join('\n');
 }
 
-/** Whether the fire changed anything or has anything to say beyond "nothing to do". */
+/**
+ * Whether the fire changed anything or has anything to say beyond "nothing to do". The issues left
+ * on beta are named every fire and change nothing, so they alone do not count.
+ */
 export function reportSaysSomething(report: BetaPortReport): boolean {
   return (
     report.ported.length > 0 ||
     report.mirrored.length > 0 ||
+    report.held.length > 0 ||
+    report.told.length > 0 ||
     report.refused.length > 0 ||
     report.noTwin.length > 0 ||
     report.waiting > 0 ||

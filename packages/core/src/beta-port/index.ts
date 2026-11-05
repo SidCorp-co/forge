@@ -6,6 +6,7 @@ export {
   mirrorTarget,
   portedFirstLine,
 } from './markers.js';
+export { provideBetaPortPorts } from './ports.js';
 export { type BetaPortReport, renderReport } from './report.js';
 export {
   BETA_TOKEN_REF,
@@ -16,3 +17,4 @@ export {
   MAX_PORTS_PER_FIRE,
   startBetaPort,
 } from './run.js';
+export { betaKeysOf } from './store.js';

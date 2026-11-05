@@ -1,11 +1,58 @@
-// The pure half of the beta port (ISS-923): the line a ported issue opens with, the comment that
-// marks a beta issue ported, how either is recognised, and which beta status a dev status mirrors to.
+// The pure half of the beta port (ISS-923, ISS-982): the line a ported item opens with, the comment
+// that marks a beta issue ported, how either is recognised, which beta status a dev status mirrors
+// to, and the one order of progress both vocabularies are read in, which no mirror moves back along.
 
-import { ISSUE_TERMINAL_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { PeerLanding, PeerMergeMark } from '../integrations/peer-forge/index.js';
 
-/** The beta statuses that are never ported: the issue is finished there. */
-export const UNPORTED_BETA_STATUSES: ReadonlySet<string> = new Set<string>(ISSUE_TERMINAL_STATUSES);
+/**
+ * How far an issue's work has come, in both vocabularies: forge-dev's ten statuses and the
+ * seventeen-status model forge-beta still runs (`developed`, `testing`, `tested`, `releasing`, …).
+ * This is the one order the beta port reads (ISS-982): what it leaves on beta and what the mirror
+ * holds. 0 is not started; 1 is in flight, parked or dropped without landing; 2 is landed; 3 is
+ * landed and waiting on a release; 4 is closed. A status it does not name is 0, so it never holds a
+ * move it cannot place.
+ */
+export const BETA_PORT_PROGRESS: Readonly<Record<string, number>> = {
+  in_progress: 1,
+  needs_info: 1,
+  on_hold: 1,
+  dropped: 1,
+  developed: 2,
+  testing: 2,
+  tested: 2,
+  releasing: 3,
+  awaiting_release: 3,
+  closed: 4,
+};
+
+/** Where a status stands in `BETA_PORT_PROGRESS`. */
+export function progressOf(status: string): number {
+  return BETA_PORT_PROGRESS[status] ?? 0;
+}
+
+/** Whether a status says the work has landed: `developed` or later. */
+export function hasLanded(status: string): boolean {
+  return progressOf(status) >= progressOf('developed');
+}
+
+/** Whether moving beta from `betaStatus` to `target` would move it backward: the mirror never does. */
+export function movesBackward(betaStatus: string, target: string): boolean {
+  return progressOf(target) < progressOf(betaStatus);
+}
+
+/** The beta statuses that are never ported and never named: the issue was dropped there. */
+export const UNPORTED_BETA_STATUSES: ReadonlySet<string> = new Set<string>(['dropped']);
+
+/**
+ * Why a beta issue is left on beta rather than ported (ISS-982 criterion 2): its work is in flight
+ * there (`in_progress`) or has landed (a merge mark, or `developed` or later); null where it waits.
+ */
+export function leftOnBeta(beta: { status: string; marked: boolean | null }): string | null {
+  if (beta.marked === true) return `${beta.status}, merge-marked`;
+  if (beta.status === 'in_progress' || hasLanded(beta.status)) return beta.status;
+  return null;
+}
 
 /** The first line of a ported dev issue's description. */
 export function portedFirstLine(betaKey: string, betaIssueId: string): string {
@@ -24,6 +71,68 @@ export function portedDescription(
 ): string {
   const text = body?.trim();
   return [portedFirstLine(betaKey, betaIssueId), ...(text ? ['', text] : [])].join('\n');
+}
+
+/** Where a person opens the beta issue: its page on forge-beta. */
+export function betaIssueLink(baseUrl: string, betaSlug: string, betaIssueId: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/projects/${encodeURIComponent(betaSlug)}/issues/${betaIssueId}`;
+}
+
+/**
+ * A beta issue ported as Feedback (ISS-982): the provenance line first, as a ported issue opens, then
+ * the link to the beta issue, then a blank line and the beta body as its reporter wrote it.
+ */
+export function portedFeedbackBody(
+  beta: { key: string; id: string },
+  link: string,
+  body: string | null | undefined,
+): string {
+  const text = body?.trim();
+  return [portedFirstLine(beta.key, beta.id), `Beta: ${link}`, ...(text ? ['', text] : [])].join(
+    '\n',
+  );
+}
+
+/** The dedup key a ported Feedback item is filed under: one item per beta issue, whatever fails after. */
+export function portedFeedbackDedupKey(betaIssueId: string): string {
+  return `forge-beta:${betaIssueId}`;
+}
+
+/** The feedback key a marker or a key names, where it is one (`FB-12`); null for an issue key. */
+export function feedbackSeqOf(key: string): number | null {
+  const seq = /^FB-(\d{1,9})$/i.exec(key)?.[1];
+  return seq ? Number(seq) : null;
+}
+
+/** The log comment a beta issue gets when it follows the dev issue a ported Feedback led to. */
+export function feedbackMirroredComment(
+  devKeys: readonly string[],
+  feedbackKey: string,
+  devStatus: string,
+): string {
+  return `forge-dev ${devKeys.join(', ')} (from ${feedbackKey}) reached ${devStatus}; this issue follows it.`;
+}
+
+/** A ported Feedback item's triage outcome that moves no beta status, as beta is told it once. */
+export type FeedbackTold = 'requirement' | 'answer' | 'declined' | 'duplicate';
+
+/** The one comment a beta issue gets for a triage outcome that moves no status. */
+export function feedbackToldComment(
+  feedbackKey: string,
+  told: FeedbackTold,
+  answer: string | null,
+): string {
+  const said = answer?.trim();
+  switch (told) {
+    case 'requirement':
+      return `forge-dev ${feedbackKey} was routed to a requirement; its work is planned there. This issue's status is not moved.`;
+    case 'answer':
+      return `forge-dev ${feedbackKey} was answered${said ? `: ${said}` : '.'} This issue's status is not moved.`;
+    case 'declined':
+      return `forge-dev ${feedbackKey} was declined. This issue's status is not moved.`;
+    case 'duplicate':
+      return `forge-dev ${feedbackKey} duplicates another item; its work is followed there. This issue's status is not moved.`;
+  }
 }
 
 /**

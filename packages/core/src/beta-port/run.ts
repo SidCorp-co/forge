@@ -1,12 +1,18 @@
 // One `beta_port` fire (ISS-923, owner ruling 2026-11-03 `beta-issues-are-worked-on-dev`): every
-// forge-beta issue filed or reopened after that ruling and not yet ported becomes an open issue in the
-// same-slug project here, and every ported pair's dev status is mirrored back onto beta once. Core
-// runs it itself: no box, no session. Before it ports, a pair ported with only its provenance line
-// gets beta's body under that line, once (`backfill.ts`). It starts in two halves: what is read here (the secrets, the
-// ruling's time) is checked before the fire is answered, and the beta reads and writes run after.
-// forge-beta's address and token are read from the schedule project's secrets and nowhere else, and
-// the token is scrubbed out of everything the fire reports or logs.
+// forge-beta issue filed or reopened after that ruling, not yet ported and still waiting on beta, is
+// filed as one Feedback item in the same-slug project here (ISS-982, owner 2026-11-05: a beta issue
+// enters dev at the product layer, and triage decides what it becomes). A beta issue in flight or
+// landed on beta (`markers.ts:leftOnBeta`) stays there and is named in the report. Every pair is
+// mirrored back onto beta once per move and never backward (`mirror.ts`): an issue twin ported before
+// ISS-982 by its own status, a Feedback item by the issues its triage routed to once they land, or by
+// one comment for an outcome that moves no status. Core runs it itself: no box, no session. Before it
+// ports, a twin ported with only its provenance line gets beta's body under that line, once
+// (`backfill.ts`). It starts in two halves: what is read here (the secrets, the ruling's time) is
+// checked before the fire is answered, and the beta reads and writes run after. forge-beta's address
+// and token are read from the schedule project's secrets and nowhere else, and the token is scrubbed
+// out of everything the fire reports or logs.
 
+import { FEEDBACK_SEVERITIES, type FeedbackSeverity } from '@forge/contracts/feedback';
 import { secretRefOf } from '@forge/contracts/project-config';
 import {
   BETA_PORT_SECRET_NAMES,
@@ -14,7 +20,6 @@ import {
   type BetaPortFireRefusal,
 } from '@forge/contracts/schedules';
 import { scrubLogText } from '@forge/observability';
-import { issuePriorities } from '../db/schema.js';
 import {
   listPeerCommentBodies,
   listPeerIssues,
@@ -25,21 +30,24 @@ import {
   postPeerComment,
   readPeerIssueDescription,
 } from '../integrations/peer-forge/index.js';
-import { createIssue, issueIdOfKey } from '../issues/index.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
+import { issueIdOfKey } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { isRefusal } from '../lib/refusal.js';
 import { readProjectSecrets } from '../project-config/index.js';
 import { backfillBodies } from './backfill.js';
 import {
+  betaIssueLink,
+  feedbackSeqOf,
   firstLineNamesBetaIssue,
   isPortedMarker,
+  leftOnBeta,
   markerDevKey,
   portedComment,
-  portedDescription,
+  portedFeedbackBody,
+  portedFeedbackDedupKey,
   UNPORTED_BETA_STATUSES,
 } from './markers.js';
 import { mirrorProject } from './mirror.js';
+import { createFeedback, feedbackIdOfSeq } from './ports.js';
 import { type BetaPortReport, emptyReport, renderReport, reportSaysSomething } from './report.js';
 import {
   type DevIssue,
@@ -184,6 +192,9 @@ function scrubReport(report: BetaPortReport, scrub: (t: string) => string): Beta
     cutoff: report.cutoff,
     ported: report.ported.map(scrub),
     mirrored: report.mirrored.map(scrub),
+    held: report.held.map(scrub),
+    told: report.told.map(scrub),
+    leftOnBeta: report.leftOnBeta.map(scrub),
     refused: report.refused.map(scrub),
     skipped: report.skipped.map(scrub),
     noTwin: report.noTwin.map(scrub),
@@ -211,6 +222,14 @@ async function portProject(ctx: FireContext, betaProjectId: string, twin: DevTwi
   let noReopenCount = 0;
   for (const beta of betaIssues) {
     if (pairs.has(beta.id) || UNPORTED_BETA_STATUSES.has(beta.status)) continue;
+    const left = leftOnBeta(beta);
+    // in flight or landed on beta: never dev's work to do (ISS-982); named where the ruling reaches it
+    if (left !== null) {
+      if (beta.createdAt > ctx.cutoff) {
+        ctx.report.leftOnBeta.push(`${twin.slug}: beta ${beta.key} (${left})`);
+      }
+      continue;
+    }
     const after = await afterRuling(ctx, beta, twin);
     if (after === 'unknown') continue;
     if (after !== true) {
@@ -280,7 +299,7 @@ async function knownPort(
   const dev = named.find((d) => firstLineNamesBetaIssue(d.firstLine, beta));
   if (dev) {
     ctx.report.skipped.push(`${beta.key} (named on ${dev.key})`);
-    return adopt(beta, twin, dev.id);
+    return adopt(beta, twin, { devIssueId: dev.id });
   }
   const comments = await listPeerCommentBodies(ctx.peer, beta.id);
   if (!comments.ok) {
@@ -292,19 +311,30 @@ async function knownPort(
   const marker = comments.value.find(isPortedMarker);
   if (marker === undefined) return null;
   const devKey = markerDevKey(marker);
-  const devId = devKey ? await issueIdOfKey(devKey, twin.id) : null;
+  const fbSeq = devKey ? feedbackSeqOf(devKey) : null;
+  const devId = devKey && fbSeq === null ? await issueIdOfKey(devKey, twin.id) : null;
+  const feedbackId = fbSeq !== null ? await feedbackIdOfSeq(twin.id, fbSeq) : null;
+  const found = devId ?? feedbackId;
   ctx.report.skipped.push(
-    `${beta.key} (marked ported${devKey ? ` to ${devKey}` : ''}${devKey && !devId ? `, which names no issue in ${twin.slug}: not mirrored` : ''})`,
+    `${beta.key} (marked ported${devKey ? ` to ${devKey}` : ''}${devKey && !found ? `, which names no ${fbSeq !== null ? 'item' : 'issue'} in ${twin.slug}: not mirrored` : ''})`,
   );
-  return devId ? adopt(beta, twin, devId) : 'unknown';
+  if (devId) return adopt(beta, twin, { devIssueId: devId });
+  if (feedbackId) return adopt(beta, twin, { devFeedbackId: feedbackId });
+  return 'unknown';
 }
 
 /** A port made before this sweep, recorded with no mirror yet: its first mirror reads beta's status. */
-async function adopt(beta: PeerIssue, twin: DevTwin, devIssueId: string): Promise<Pair> {
+async function adopt(
+  beta: PeerIssue,
+  twin: DevTwin,
+  dev: { devIssueId: string } | { devFeedbackId: string },
+): Promise<Pair> {
   const pair: Pair = {
     betaIssueId: beta.id,
     betaKey: beta.key,
-    devIssueId,
+    devIssueId: 'devIssueId' in dev ? dev.devIssueId : null,
+    devFeedbackId: 'devFeedbackId' in dev ? dev.devFeedbackId : null,
+    feedbackTold: null,
     lastMirroredStatus: null,
     lastTriedStatus: null,
     betaReached: null,
@@ -314,10 +344,16 @@ async function adopt(beta: PeerIssue, twin: DevTwin, devIssueId: string): Promis
   return pair;
 }
 
-const DEV_PRIORITIES: ReadonlySet<string> = new Set(issuePriorities);
+const SEVERITIES: ReadonlySet<string> = new Set(FEEDBACK_SEVERITIES);
 
+/**
+ * One beta issue filed as a Feedback item of its twin project (ISS-982), through the feedback
+ * module's own creation path, as the twin's owner acting as an agent: its beta key, link and body as
+ * provenance, a bug where beta files it one and a change request otherwise, about the beta issue as
+ * the screen it was seen on. It is filed under a dedup key naming the beta issue, so a fire that
+ * fails after the filing finds the same item, and the pair records it so no fire ports it again.
+ */
 async function portOne(ctx: FireContext, beta: PeerIssue, twin: DevTwin): Promise<void> {
-  const priority = beta.priority && DEV_PRIORITIES.has(beta.priority) ? beta.priority : undefined;
   let description = beta.description;
   if (description === undefined) {
     // a list projection carries no description: the body is read from the issue itself
@@ -330,55 +366,45 @@ async function portOne(ctx: FireContext, beta: PeerIssue, twin: DevTwin): Promis
     }
     description = read.value;
   }
-  let created: Awaited<ReturnType<typeof createIssue>>;
-  try {
-    created = await createIssue(
-      {
-        projectId: twin.id,
-        title: beta.title,
-        description: portedDescription(beta.key, beta.id, description),
-        ...(priority ? { priority } : {}),
-        category: beta.category,
-        status: 'open',
-      },
-      {
-        // the twin's owner is whose project it is filed in; the writer is this schedule's fire,
-        // named on the row (`schedule_run_id`) and on the channel, never a person's hand
-        createdById: twin.createdBy,
-        createdByDeviceId: null,
-        createdVia: 'schedule',
-        actor: { type: 'user', id: twin.createdBy, agency: 'agent' },
-        scheduleRunId: ctx.fireId,
-      },
-    );
-  } catch (err) {
-    const code = isRefusal(err)
-      ? (err.refusals[0]?.code ?? err.fallbackCode)
-      : 'BETA_PORT_CREATE_FAILED';
-    ctx.report.refused.push(`${twin.slug}: beta ${beta.key} → ${code} (${errText(err)})`);
+  const link = betaIssueLink(ctx.peer.baseUrl, twin.slug, beta.id);
+  const filed = await createFeedback({
+    projectId: twin.id,
+    actor: { userId: twin.createdBy, agency: 'agent' },
+    request: {
+      kind: beta.category === 'bug' ? 'bug' : 'change_request',
+      ...(beta.priority && SEVERITIES.has(beta.priority)
+        ? { severity: beta.priority as FeedbackSeverity }
+        : {}),
+      title: beta.title,
+      body: portedFeedbackBody(beta, link, description),
+      screen: `forge-beta ${beta.key}`,
+    },
+    dedupKey: portedFeedbackDedupKey(beta.id),
+  });
+  if (!filed.ok) {
+    const codes = filed.refusals.map((r) => r.code).join(', ');
+    ctx.report.refused.push(`${twin.slug}: beta ${beta.key} → ${codes}; not ported this fire`);
     return;
   }
-  if (created.deduped) return;
-  const issue = created.issue;
-  const devKey = formatIssueRef(twin.prefix, issue.issSeq);
+  const fbKey = filed.feedback.key;
   await recordPair({
     betaIssueId: beta.id,
     betaKey: beta.key,
-    devIssueId: issue.id,
-    lastMirroredStatus: issue.status,
-    lastTriedStatus: issue.status,
+    devIssueId: null,
+    devFeedbackId: filed.feedback.id,
+    feedbackTold: null,
+    lastMirroredStatus: null,
+    lastTriedStatus: null,
     betaReached: beta.status,
     closeShapeTriedAt: null,
     betaProjectSlug: twin.slug,
   });
-  const held = issue.status === 'open' ? '' : ` (held at ${issue.status})`;
-  const unread =
-    beta.priority && !priority ? `; priority ${beta.priority} is not one here, filed medium` : '';
-  ctx.report.ported.push(`${twin.slug}: beta ${beta.key} → ${devKey}${held}${unread}`);
-  const commented = await postPeerComment(ctx.peer, beta.id, portedComment(devKey));
+  const again = filed.created === false ? ' (already filed under its dedup key)' : '';
+  ctx.report.ported.push(`${twin.slug}: beta ${beta.key} → ${fbKey}${again}`);
+  const commented = await postPeerComment(ctx.peer, beta.id, portedComment(fbKey));
   if (!commented.ok) {
     ctx.report.refused.push(
-      `${beta.key} comment "${portedComment(devKey)}": ${commented.refusal.code} (${commented.refusal.detail})`,
+      `${beta.key} comment "${portedComment(fbKey)}": ${commented.refusal.code} (${commented.refusal.detail})`,
     );
   }
 }

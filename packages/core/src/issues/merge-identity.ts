@@ -10,7 +10,8 @@
  * route reads a landing with (`commit-landing.ts:readCommitLanding`, `declaredIssueSeqs`), or it
  * names the change request it merged (`See merge request …!12`, `Merge pull request #12`, `(#12)`)
  * and that request links the issue (REQ-63 BC-4: one request delivers every issue it names). The
- * request Forge merged itself is named by the merge, not by its message. A mark naming the commit of
+ * request Forge merged itself is named by the merge, not by its message. An issue ported from
+ * forge-beta also takes a commit whose subject declares the beta key its pair names (ISS-982). A mark naming the commit of
  * a merge its project owes a filing for, declaring no issue, answers that filing (ISS-774). Anything else is refused by
  * name, with the commit and the reason, and recorded on the issue (`recordRefusedStamp`).
  */
@@ -23,6 +24,7 @@ import { issues } from '../db/schema.js';
 import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
 import { logger } from '../lib/logger.js';
 import { insertActivityRow } from './activity-log.js';
+import { betaKeysOfIssue } from './beta-provenance-port.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 import { observedMergesForIssue } from './observed-merges.js';
 import { owedFilingOfMark } from './owed-merges.js';
@@ -123,6 +125,27 @@ async function linkedThrough(
   return hit !== undefined;
 }
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Whether a commit's subject declares, by the rule a landing is read with (`declaredIssueSeqs`), the
+ * forge-beta key the issue was ported from: its twin's pair or the pair of the Feedback item it was
+ * routed from, read from the store (ISS-982, sidpeak FB-502). Work done on beta lands under beta's
+ * key; a subject naming some other beta key is no landing of this issue.
+ */
+async function declaresBetaKey(issueId: string, message: string, base: string): Promise<boolean> {
+  for (const key of await betaKeysOfIssue(issueId)) {
+    const parts = /^([A-Za-z][A-Za-z0-9]*)-(\d{1,10})$/.exec(key);
+    if (!parts) continue;
+    const exact = new RegExp(
+      `(?<![A-Za-z0-9])${escapeRe(parts[1] as string)}-(\\d{1,10})(?![A-Za-z0-9])`,
+      'gi',
+    );
+    if (declaredIssueSeqs(message, exact, base).includes(Number(parts[2]))) return true;
+  }
+  return false;
+}
+
 /**
  * The judge of one merge commit for each issue a change request would stamp from it, reading the
  * commit from the host at most once. `mergedRequestId` is the stored request Forge merged itself.
@@ -170,6 +193,9 @@ export function mergeIdentityOf(args: {
     const seq = row?.issSeq ?? null;
     const declared = declaredIssueSeqs(got.read.message, pattern, base);
     if (seq !== null && declared.includes(seq)) {
+      return { holds: true, by: 'subject' };
+    }
+    if (await declaresBetaKey(issueId, got.read.message, base)) {
       return { holds: true, by: 'subject' };
     }
     const named = changeRequestsNamed(got.read.message);

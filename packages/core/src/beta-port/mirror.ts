@@ -1,8 +1,10 @@
 // The mirror half of a beta port fire (ISS-923): each ported pair's dev status, tried onto its beta
-// issue once. A move beta takes is reported; a close beta refuses for want of a shipped record is
-// finished the nearest legal way (`finishClose`), its merge mark in the beta project's landing shape;
-// a move beta refuses outright is commented there once. Each try is recorded on the pair with the
-// status beta stood at after it, so nothing repeats and nothing claims a status beta never took.
+// issue once, and never backward (ISS-982: `markers.ts:BETA_PORT_PROGRESS` is the order). A pair
+// ported as Feedback follows the issues its triage routed to once they land, or is told its outcome.
+// A move beta takes is reported; a close beta refuses for want of a shipped record is finished the
+// nearest legal way (`finishClose`), its merge mark in the beta project's landing shape; a move beta
+// refuses outright is commented there once. Each try is recorded on the pair with the status beta
+// stood at after it, so nothing repeats and nothing claims a status beta never took.
 
 import {
   markPeerIssueLanded,
@@ -15,19 +17,27 @@ import {
   transitionPeerIssue,
 } from '../integrations/peer-forge/index.js';
 import {
+  type FeedbackTold,
+  feedbackMirroredComment,
+  feedbackToldComment,
+  hasLanded,
   landingMark,
   mirrorReason,
   mirrorRefusedComment,
   mirrorTarget,
+  movesBackward,
   nearestReason,
   owesTry,
+  progressOf,
 } from './markers.js';
+import { type PortedTriage, triageOutcomesOf } from './ports.js';
 import type { BetaPortReport } from './report.js';
 import {
   type DevTwin,
   devIssuesById,
   type MirroredDevIssue,
   type Pair,
+  recordTold,
   recordTry,
 } from './store.js';
 
@@ -67,41 +77,165 @@ export async function mirrorProject(
   };
   const betaById = new Map(betaIssues.map((i) => [i.id, i]));
   const live = [...pairs.values()].filter((p) => betaById.has(p.betaIssueId));
+  const twins = live.filter((p) => p.devIssueId !== null);
   const devs = await devIssuesById(
     twin,
-    live.map((p) => p.devIssueId),
+    twins.map((p) => p.devIssueId as string),
   );
-  for (const pair of live) {
+  for (const pair of twins) {
     const beta = betaById.get(pair.betaIssueId) as PeerIssue;
-    const dev = devs.get(pair.devIssueId);
-    if (!dev) continue;
-    const owed = owesTry(pair, dev.status, beta.status);
-    if (owed === null) continue;
-    const target = mirrorTarget(dev.status);
-    if (target === null || target === beta.status) {
-      await recordTry({
-        betaIssueId: beta.id,
-        tried: dev.status,
-        reached: beta.status,
-        taken: target !== null,
-      });
-      continue;
-    }
-    if (ctx.budget.mirrors <= 0) {
-      ctx.report.waiting += 1;
-      continue;
-    }
-    ctx.budget.mirrors -= 1;
-    const tried = await mirrorOne(ctx, project, beta, dev, target, owed !== 'try');
-    // recorded whatever beta answered, so the same try is never made or commented twice
+    const dev = devs.get(pair.devIssueId as string);
+    if (dev) await mirrorPair(ctx, project, pair, beta, dev);
+  }
+  await mirrorFeedbackPairs(
+    ctx,
+    project,
+    live.filter((p) => p.devFeedbackId !== null),
+    betaById,
+  );
+}
+
+/**
+ * One pair's dev status tried onto its beta issue, once per dev status. A move that would take beta
+ * backward (`markers.ts:movesBackward`) is never sent: beta keeps its status, the try is recorded,
+ * and the report names the held move. `followed` runs where beta moved.
+ */
+async function mirrorPair(
+  ctx: MirrorContext,
+  project: MirrorProject,
+  pair: Pair,
+  beta: PeerIssue,
+  dev: MirroredDevIssue,
+  followed?: (reached: string) => Promise<void>,
+): Promise<void> {
+  const owed = owesTry(pair, dev.status, beta.status);
+  if (owed === null) return;
+  const target = mirrorTarget(dev.status);
+  if (target === null || target === beta.status) {
     await recordTry({
       betaIssueId: beta.id,
       tried: dev.status,
-      reached: tried.reached,
-      taken: tried.reached === target,
-      shapeSettled: target === 'closed' && tried.shapeSettled,
+      reached: beta.status,
+      taken: target !== null,
+    });
+    return;
+  }
+  if (movesBackward(beta.status, target)) {
+    await recordTry({
+      betaIssueId: beta.id,
+      tried: dev.status,
+      reached: beta.status,
+      taken: false,
+    });
+    ctx.report.held.push(
+      `${project.twin.slug}: ${dev.key} at ${dev.status}: beta ${beta.key} keeps ${beta.status}, not moved back to ${target}`,
+    );
+    return;
+  }
+  if (ctx.budget.mirrors <= 0) {
+    ctx.report.waiting += 1;
+    return;
+  }
+  ctx.budget.mirrors -= 1;
+  const tried = await mirrorOne(ctx, project, beta, dev, target, owed !== 'try');
+  // recorded whatever beta answered, so the same try is never made or commented twice
+  await recordTry({
+    betaIssueId: beta.id,
+    tried: dev.status,
+    reached: tried.reached,
+    taken: tried.reached === target,
+    shapeSettled: target === 'closed' && tried.shapeSettled,
+  });
+  if (followed && tried.reached !== beta.status) await followed(tried.reached);
+}
+
+/** The triage outcome a ported item is commented on beta for, moving no status; null for none. */
+function toldOf(triage: PortedTriage): FeedbackTold | null {
+  if (triage.status === 'declined') return 'declined';
+  if (triage.route === 'revision' || triage.route === 'new_requirement') return 'requirement';
+  if (triage.route === 'answer') return 'answer';
+  if (triage.route === 'duplicate') return 'duplicate';
+  return null;
+}
+
+/**
+ * The pairs ported as Feedback (ISS-982), mirrored from what each item's triage made of it, read
+ * from the item's own record. An issue route mirrors once the issues it names have landed, from the
+ * least advanced of them, with one log comment naming them; a requirement route, an answer, a
+ * decline or a duplicate is commented on beta once, and moves no status.
+ */
+async function mirrorFeedbackPairs(
+  ctx: MirrorContext,
+  project: MirrorProject,
+  pairs: readonly Pair[],
+  betaById: ReadonlyMap<string, PeerIssue>,
+): Promise<void> {
+  if (pairs.length === 0) return;
+  const triages = await triageOutcomesOf(pairs.map((p) => p.devFeedbackId as string));
+  const devs = await devIssuesById(
+    project.twin,
+    [...triages.values()].flatMap((t) => t.issueIds),
+  );
+  for (const pair of pairs) {
+    const beta = betaById.get(pair.betaIssueId) as PeerIssue;
+    const triage = triages.get(pair.devFeedbackId as string);
+    if (!triage) continue;
+    const told = toldOf(triage);
+    if (told !== null) {
+      if (pair.feedbackTold !== told) await tellOnce(ctx, project, pair, beta, triage, told);
+      continue;
+    }
+    const routed = triage.issueIds
+      .map((id) => devs.get(id))
+      .filter((d): d is MirroredDevIssue => d !== undefined);
+    const lead = routed.reduce<MirroredDevIssue | null>(
+      (least, d) => (least === null || progressOf(d.status) < progressOf(least.status) ? d : least),
+      null,
+    );
+    if (lead === null || !hasLanded(lead.status)) continue;
+    const keys = routed.map((d) => d.key);
+    await mirrorPair(ctx, project, pair, beta, lead, async () => {
+      const said = await postPeerComment(
+        ctx.peer,
+        beta.id,
+        feedbackMirroredComment(keys, triage.key, lead.status),
+      );
+      if (!said.ok) {
+        ctx.report.refused.push(
+          `${project.twin.slug}: beta ${beta.key} log comment: ${said.refusal.code}`,
+        );
+      }
     });
   }
+}
+
+/** A triage outcome commented on beta once; recorded only once beta took the comment. */
+async function tellOnce(
+  ctx: MirrorContext,
+  project: MirrorProject,
+  pair: Pair,
+  beta: PeerIssue,
+  triage: PortedTriage,
+  told: FeedbackTold,
+): Promise<void> {
+  if (ctx.budget.mirrors <= 0) {
+    ctx.report.waiting += 1;
+    return;
+  }
+  ctx.budget.mirrors -= 1;
+  const said = await postPeerComment(
+    ctx.peer,
+    beta.id,
+    feedbackToldComment(triage.key, told, triage.answer),
+  );
+  if (!said.ok) {
+    ctx.report.refused.push(
+      `${project.twin.slug}: ${triage.key} → beta ${beta.key} ${told} comment: ${said.refusal.code}; tried again next fire`,
+    );
+    return;
+  }
+  await recordTold(pair.betaIssueId, told);
+  ctx.report.told.push(`${project.twin.slug}: ${triage.key} → beta ${beta.key} (${told})`);
 }
 
 /** One mirror move onto beta; the beta status beta stands at after it. */

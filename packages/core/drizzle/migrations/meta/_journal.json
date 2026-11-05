@@ -3830,6 +3830,13 @@
       "when": 1834876800000,
       "tag": "0601_a_lesson_entry_is_the_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 602,
+      "version": "7",
+      "when": 1834963200000,
+      "tag": "0602_a_beta_issue_is_ported_as_feedback",
+      "breakpoints": true
     }
   ]
 }

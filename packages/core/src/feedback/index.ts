@@ -44,6 +44,12 @@ export { confirmsOwedByShip, type OwedAgentConfirm, owedAgentConfirms } from './
 export { detailAs, rowIn } from './read.js';
 export { forgeRecordingTool } from './recording-tool.js';
 export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
+export {
+  feedbackIdOfSeq,
+  feedbackIdsRoutingTo,
+  type TriageOutcome,
+  triageOutcomesOf,
+} from './relations.js';
 export { feedbackAnsweredBy } from './release-feedback.js';
 export { replyOwnForgeFeedback } from './reply.js';
 export { reporterLanguagesOf } from './reporter-language.js';
