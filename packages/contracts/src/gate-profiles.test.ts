@@ -9,7 +9,7 @@ import {
 	projectGate,
 	projectGates,
 } from "./gate-profiles.js";
-import { effectiveApprovals } from "./person-gates.js";
+import { effectiveApprovals, personGateAct, personGatePermission } from "./person-gates.js";
 
 const modeOf = (
 	doc: Parameters<typeof projectGate>[0],
@@ -197,5 +197,49 @@ describe("REQ-76 BC-11: a refusal names the gate, the profile and the key", () =
 		expect(
 			gateSays(projectGate({ gates: { profile: "yolo", overrides: { scope_hold: "enforce" } } }, null, "scope_hold")),
 		).toContain("this project's override gates.overrides.scope_hold");
+	});
+});
+
+// ISS-639, REQ-34 BC-25: triage asked feedback.approve before it had a switch, so it is on wherever a
+// project sets nothing, under every profile, and a project turns it off with approvals.triage false
+describe("ISS-639: the triage gate is on until a project turns it off", () => {
+	const profiles = [null, { gates: { profile: "standard" as const } }, { gates: { profile: "yolo" as const } }];
+
+	it("enforces approval_triage on a project that sets nothing, whatever its profile", () => {
+		for (const doc of [...profiles, { gates: { profile: "strict" as const } }]) {
+			expect(modeOf(doc, "approval_triage"), JSON.stringify(doc)).toBe("enforce");
+		}
+		expect(effectiveApprovals(null).triage).toBe(true);
+		expect(personGatePermission(effectiveApprovals(null), "triage")).toBe("feedback.approve");
+		expect(modeOf({ approvals: { triage: true } }, "approval_triage")).toBe("enforce");
+	});
+
+	it("turns off where approvals.triage is false outside strict, so a project writer routes", () => {
+		for (const doc of profiles) {
+			const off = { ...doc, approvals: { triage: false } };
+			expect(modeOf(off, "approval_triage"), JSON.stringify(off)).toBe("off");
+			expect(personGatePermission(effectiveApprovals(off), "triage")).toBe("project.write");
+		}
+		expect(modeOf({ gates: { profile: "strict" }, approvals: { triage: false } }, "approval_triage")).toBe("enforce");
+		expect(modeOf({ gates: { profile: "standard", overrides: { approval_triage: "off" } } }, "approval_triage")).toBe("off");
+	});
+
+	it("leaves every other person gate off where nothing is set", () => {
+		expect(effectiveApprovals(null)).toEqual({
+			agree: false,
+			revisions: false,
+			breakdown: false,
+			admit: false,
+			accept: false,
+			designs: false,
+			triage: true,
+		});
+	});
+
+	it("names the gate, its setting and what relaxes it in the act a refusal says", () => {
+		expect(personGateAct(null, "triage")).toBe(
+			"picking a feedback route, which this project asks a holder of feedback.approve to do (Gate approval_triage is enforced by this project's approvals.triage setting, which its gate profile standard defers to; changing approvals.triage, or gates.overrides.approval_triage, relaxes it),",
+		);
+		expect(personGateAct({ approvals: { triage: false } }, "triage")).toBe("picking a feedback route");
 	});
 });
