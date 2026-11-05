@@ -84,6 +84,11 @@ type StepCommon = {
   hold?: AnswerHold;
   /** What the answer did to the issue it stopped, written by the answer resume (ISS-258). */
   resume?: AnswerResume;
+  /**
+   * The asker's own plain text a person decides this round from (ISS-1006, `@forge/contracts/plain-decision`):
+   * absent where the asker wrote none, which the screens show as such.
+   */
+  plain?: string;
 };
 
 export type ChoiceStep = StepCommon & {

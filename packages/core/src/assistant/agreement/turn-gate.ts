@@ -16,6 +16,7 @@ import { type ChatToolset, thrownMessage, toolError } from '../tools/mcp-adapter
 import { withinPersistLimits } from '../tools/turn-images.js';
 import { filingTitle, titleKey } from '../turn-writes.js';
 import type { TurnImage } from '../vision.js';
+import { splitPlain, withPlainParam } from './plain-arg.js';
 import { refusedTwice, targetOf } from './refused-twice.js';
 import { requireRoleFor } from './roles.js';
 import { type ChatProposalRow, recordProposal, restateProposal } from './store.js';
@@ -68,10 +69,15 @@ const KIND_WORDS: Record<ChatProposalKind, string> = {
   project_change: 'change to the project',
 };
 
-function heldText(row: ChatProposalRow, tool: string): string {
+function heldText(row: ChatProposalRow, tool: string, plain: string | null): string {
   return [
     `CHAT_WRITE_AWAITS_AGREEMENT: nothing was written yet. Core holds this ${KIND_WORDS[row.kind]} as proposal ${row.id} (kind ${row.kind}) until the person agrees to it in this conversation; no tool of yours agrees for them.`,
     `To change what it proposes, call ${tool} again with the change.`,
+    ...(plain
+      ? []
+      : [
+          `Its card shows that you wrote no \`plain\` line, the line the person decides it from: call ${tool} again with \`plain\`.`,
+        ]),
   ].join(' ');
 }
 
@@ -104,6 +110,7 @@ export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGat
     name: string,
     argsJson: string,
     kind: ChatProposalKind,
+    plain: string | null,
   ): Promise<CallToolResult> => {
     const refused = await roleRefusal(turn, kind);
     if (refused) return refused;
@@ -127,7 +134,10 @@ export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGat
     const images = imagesOf(turn);
     const shown = summaryOfToolCall(kind, name, argsJson);
     const attaching = imagesLine(kind, name, argsJson, attachedOnPress(turn, kind));
-    const summary = attaching ? { ...shown, lines: [...shown.lines, attaching] } : shown;
+    const summary = {
+      ...(attaching ? { ...shown, lines: [...shown.lines, attaching] } : shown),
+      plain,
+    };
     const title = filingTitle(name, argsJson);
     const key = `${name}\u0000${title ? titleKey(title) : argsJson}`;
     const call = { name, arguments: argsJson, ...(images.length > 0 ? { images } : {}) };
@@ -135,7 +145,7 @@ export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGat
     if (earlier) {
       const row = await earlier;
       await restateProposal(row.id, call, summary);
-      return toolError(heldText(row, name));
+      return toolError(heldText(row, name, plain));
     }
     const recording = recordProposal({
       projectId: turn.projectId,
@@ -150,20 +160,25 @@ export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGat
       summary,
     });
     heldNow.set(key, recording);
-    return toolError(heldText(await recording, name));
+    return toolError(heldText(await recording, name, plain));
   };
   const tools: ChatToolset = {
-    tools: inner.tools,
-    async execute(name, argsJson) {
+    tools: withPlainParam(inner.tools),
+    async execute(name, sent) {
+      // the card's plain line is never part of the write: the rule, the card and the tool read the call without it
+      const { argsJson, plain } = splitPlain(name, sent);
       const verdict = decideToolCall(name, argsJson, inner.grantOf?.(name, argsJson) ?? null);
-      if (verdict.verdict === 'hold') return hold(name, argsJson, verdict.kind);
+      if (verdict.verdict === 'hold') return hold(name, argsJson, verdict.kind, plain);
       if (verdict.verdict === 'refuse') {
         return toolError(`CHAT_WRITE_REFUSED: ${refusedWriteText(verdict, name)}`);
       }
       return inner.execute(name, argsJson);
     },
     ranAs: (name) => inner.ranAs(name),
-    grantOf: (name, argsJson) => inner.grantOf?.(name, argsJson) ?? null,
+    grantOf: (name, sent) => {
+      const { argsJson } = splitPlain(name, sent);
+      return inner.grantOf?.(name, argsJson) ?? null;
+    },
   };
   return { tools, heldThisTurn: () => heldNow.size };
 }

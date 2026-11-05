@@ -348,6 +348,8 @@ export function questionDecision(
     changes: `What the run that asked ${opens ? `on ${opens.key} ` : ''}goes on with`,
     impact: impactOf(row, 'it goes on once it has your answer', opens?.key ?? 'The run that asked'),
     touchedAt: q.at,
+    // the asker's own words the person decides from, or null where it wrote none (ISS-1006)
+    plain: step.plain ?? null,
     // what the question is about, so the person answering never asks which requirement (ISS-583)
     ...(q.subject ? { subject: q.subject } : {}),
   };

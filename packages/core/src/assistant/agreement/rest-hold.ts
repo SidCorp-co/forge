@@ -25,6 +25,7 @@ import {
   type ChatProposalKind,
   type ChatProposalRefusalCode,
 } from '@forge/contracts/chat-proposals';
+import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import type { Context } from 'hono';
 import { chatDoorOfToken } from '../../agent-sessions/index.js';
 import { agentTurnOfSession } from '../../conversations/index.js';
@@ -127,20 +128,23 @@ async function holdSessionWrite(c: Context, kind: ChatProposalKind, sessionId: s
     form: 'rest',
     call: { method: c.req.method, path, contentType, headers: keptHeaders(c) },
     body: bytes.length > 0 ? bytes : null,
-    summary: await namedRefs(
-      turn.projectId,
-      summaryOfRest({
-        kind,
-        method: c.req.method,
-        path,
-        body: await jsonOf(bytes, contentType),
-        attachmentName: await fileNameOf(bytes, contentType),
-      }),
-    ),
+    summary: {
+      ...(await namedRefs(
+        turn.projectId,
+        summaryOfRest({
+          kind,
+          method: c.req.method,
+          path,
+          body: await jsonOf(bytes, contentType),
+          attachmentName: await fileNameOf(bytes, contentType),
+        }),
+      )),
+      plain: null,
+    },
   });
   throw refuse(
     'CHAT_WRITE_AWAITS_AGREEMENT',
-    `nothing was written yet. Core holds this ${kind} as proposal ${row.id} until the person agrees to it in this conversation; nothing you send agrees for them. Send this request again only to change what it proposes.`,
+    `nothing was written yet. Core holds this ${kind} as proposal ${row.id} until the person agrees to it in this conversation; nothing you send agrees for them. Send this request again only to change what it proposes. Now write the line the person decides it from (${PLAIN_DECISION_RULE}): \`forge-runner api conversations/${turn.conversationId}/proposals/${row.id}/plain -X PUT -f plain=@- <<'FORGE_TEXT'\`, the line, then FORGE_TEXT; until you do, its card says you wrote none.`,
   );
 }
 

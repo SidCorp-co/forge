@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { plainOf } from '@forge/contracts/plain-decision';
 import type {
   QuestionAbout,
   QuestionAboutRequest,
@@ -96,6 +97,8 @@ export type AskInput = {
   askedByRun?: true;
   /** The account asking through its own door, recorded as the question's asker (REQ-48 BC-12). */
   askedBy?: string;
+  /** The asker's plain text the person decides from (ISS-1006); a round without one is still asked. */
+  plain?: string | undefined;
 };
 
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
@@ -157,8 +160,14 @@ function checkAnswer(answer: AskAnswer, owesRecommendation = false): void {
   }
 }
 
-function step(round: number, prompt: string, answer: AskAnswer, sensitive?: boolean): QuestionStep {
-  const built = buildStep(round, prompt, answer, sensitive);
+function step(
+  round: number,
+  prompt: string,
+  answer: AskAnswer,
+  sensitive?: boolean,
+  plain?: string,
+): QuestionStep {
+  const built = buildStep(round, prompt, answer, sensitive, plain);
   screenRound(built, (message, code) => {
     throw refuseQuestion(code, message);
   });
@@ -170,9 +179,17 @@ function buildStep(
   prompt: string,
   answer: AskAnswer,
   sensitive?: boolean,
+  plain?: string,
 ): QuestionStep {
   const askedAt = new Date().toISOString();
-  const common = { round, prompt, askedAt, ...(sensitive ? { sensitive: true } : {}) };
+  const written = plainOf(plain);
+  const common = {
+    round,
+    prompt,
+    askedAt,
+    ...(sensitive ? { sensitive: true } : {}),
+    ...(written ? { plain: written } : {}),
+  };
   return answer.shape === 'choice'
     ? {
         ...common,
@@ -382,7 +399,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
       blockerKind: input.blockerKind,
       serious: input.serious === true,
       rule: input.rule ?? null,
-      steps: [step(1, input.prompt, input.answer, input.sensitive)],
+      steps: [step(1, input.prompt, input.answer, input.sensitive, input.plain)],
       assumed: scrubSecretsDeep(input.assumed),
       origin,
       maxRounds: input.maxRounds ?? 3,

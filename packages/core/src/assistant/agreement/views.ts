@@ -32,7 +32,10 @@ export function viewOf(
     conversationId: row.conversationId,
     kind: row.kind,
     status: row.status,
-    summary: row.summary as ChatProposalSummary,
+    summary: {
+      ...(row.summary as ChatProposalSummary),
+      plain: (row.summary as ChatProposalSummary).plain ?? null,
+    },
     proposedTo: { userId: row.proposedTo, label: named.get(row.proposedTo) ?? null },
     canDecide: row.status === 'pending' && row.proposedTo === viewerId,
     agreedVia: row.agreedVia ?? null,

@@ -2,6 +2,7 @@
 // and when it asks instead of acting. A gateway act reads it as its system prompt; a runner act's
 // brief carries it whole, so the runner never branches on the job type.
 
+import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import { type ItemStanding, STEWARD_ACT_RUNTIME, type StewardAct } from '@forge/contracts/steward';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { RunRow } from './runs-store.js';
@@ -57,6 +58,7 @@ const METHODS: Record<StewardAct, string> = {
     'Act: stuck diagnosis (BC-5). The item reads stuck; its standing says the code and why. Read it, the master standing and the carrier issue, then get the next act taken: take it yourself where it is yours, otherwise wake or ask whoever owes it.',
     "What is yours: wake the master, or the holders of a permission the master lacks (steward_wake_master), naming what waits; prepare a draft issue that has no agreed requirement or traced criteria (steward_prepare_draft) — its requirement is the one the carried feedback's triage names (`criterion: REQ-n BC-m`), else the best agreed requirement by area and title (steward_list_requirements, steward_read_requirement), and its criteria are checkable statements of what holds, never 'verify X'; open a ready draft (steward_move_issue to `open`) where the project admits drafts without a person, saying why; name a requirement's author as its owner where it has none (steward_set_requirement_owner).",
     "What is a person's, asked with steward_decide recommending one option and why in one line: keep or drop a waiting draft; link a draft to a requirement (candidates as REQ-n BC-m, the best first); merge a draft issue `into` the live issue it repeats (`shares` saying what both are about — sharing a requirement is not the same subject); merge, drop or keep a draft requirement or revision nobody finishes, by what the feedback near it still asks; decline or keep an untriaged feedback item, or verify, reopen or keep a shipped fix its reporter does not verify.",
+    `Every steward_decide carries \`plain\`, what the person decides from: ${PLAIN_DECISION_RULE}. Cite keys in \`why\`, never in \`plain\`.`,
     "Where the wait is an act somebody already owes (a release approval, an open question, a design decision, a blocker, an overdue master or judge act), wake whoever owes it rather than asking (steward_wake_master). An issue waiting on a person's answer has its question asked on the requirement or feedback item it serves; where it serves neither, name the requirement it serves in `item` when its description or plan tells you which, else it stays the project's question. Where you neither act nor ask, Forge asks whoever owes the act for you.",
     "Never dispatch a run, hold a release approval, or drop, decline, merge or verify anything yourself: a person answers those. Never ask anyone to write a plan: the plan is the run's, written once the issue is open.",
   ].join('\n'),

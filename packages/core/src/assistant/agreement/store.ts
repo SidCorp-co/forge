@@ -13,7 +13,7 @@ import {
   type ChatProposalRecord,
   type ChatProposalSummary,
 } from '@forge/contracts/chat-proposals';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import {
   chatProposals,
@@ -107,6 +107,22 @@ export async function restateProposal(
     .update(chatProposals)
     .set({ call, summary })
     .where(and(eq(chatProposals.id, id), eq(chatProposals.status, 'pending')));
+}
+
+/**
+ * Write the plain line a waiting proposal is decided from (ISS-1006), or clear it with null: the row
+ * it changed, or null where the proposal no longer waits.
+ */
+export async function setProposalPlain(
+  id: string,
+  plain: string | null,
+): Promise<ChatProposalRow | null> {
+  const [row] = await db
+    .update(chatProposals)
+    .set({ summary: sql`${chatProposals.summary} || jsonb_build_object('plain', ${plain}::text)` })
+    .where(and(eq(chatProposals.id, id), eq(chatProposals.status, 'pending')))
+    .returning();
+  return row ? live(row) : null;
 }
 
 /** One card, or null where none is stored or it is of a settled-only kind no read serves. */

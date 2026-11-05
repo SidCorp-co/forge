@@ -8,6 +8,7 @@
 // against another core's statuses and records sends a run to verbs this one refuses (ISS-275).
 
 import { WORK_STEPS } from '@forge/contracts/issue-vocabulary';
+import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
@@ -207,6 +208,14 @@ is recorded there as a decision. An \`about\` naming nothing is \`QUESTION_ABOUT
 it is listed on that requirement and on Needs you, and its answer is recorded there as a decision.
 On no issue, \`{ requirement: null }\` names nothing (\`QUESTION_ABOUT_NO_REQUIREMENT\`), and a
 missing \`about\` or \`projectId\` is \`QUESTION_SUBJECT_REQUIRED\` or \`QUESTION_PROJECT_REQUIRED\`.
+
+Every question a person decides carries \`plain\`: what they decide from, ${PLAIN_DECISION_RULE}.
+For example, in the project's content language: "Customers get an Export CSV button on the orders
+page. Sales is waiting on it to send the weekly report. I recommend turning it on now; Later keeps it
+hidden until the next release." The prompt, options
+and \`about\` stay for the record; the person reads \`plain\` and the options' labels, and the rest
+sits behind a closed section. A question without \`plain\` is still asked, and the screen says you
+wrote none.
 
 Waiting on another issue's landing is not a park: ordering between issues is a \`blocks\` edge,
 \`POST /api/issues/:id/dependencies\` \`{ dependsOnId, kind: 'blocks' }\`, with this issue left

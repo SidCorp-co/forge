@@ -11,6 +11,7 @@
 // of the run.
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { PLAIN_DECISION_RULE, plainDecisionSchema } from '@forge/contracts/plain-decision';
 import { isAgreedStatus } from '@forge/contracts/requirements';
 import {
   STEWARD_DECISION_OPTION_IDS,
@@ -150,6 +151,12 @@ const decideParams = z.strictObject({
     .min(10)
     .max(300)
     .describe('one line: why you recommend it, from the records you read'),
+  plain: plainDecisionSchema
+    .min(1)
+    .optional()
+    .describe(
+      `what the person decides from, ${PLAIN_DECISION_RULE}; written for whoever owns the product, never for the master`,
+    ),
   serious: z
     .boolean()
     .optional()
@@ -483,6 +490,7 @@ export const DECIDE: DoorSpec<DecideArgs> = {
           })),
           recommendedOptionId: recommended.id,
           why: args.why,
+          ...(args.plain ? { plain: args.plain } : {}),
           basis,
           ...(args.serious ? { serious: true } : {}),
         },

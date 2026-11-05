@@ -4,6 +4,7 @@
 
 import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { plainDecisionSchema } from '@forge/contracts/plain-decision';
 import {
   QUESTION_ABOUT_SHAPE_SENTENCE,
   questionAboutRequestSchema,
@@ -95,6 +96,7 @@ const askSchema = z
     parkDeadlineAt: z.iso.datetime().optional(),
     sensitive: z.boolean().optional(),
     about: questionAboutRequestSchema.optional(),
+    plain: plainDecisionSchema.optional(),
   })
   .strict();
 

@@ -32,6 +32,11 @@ export const PROPOSAL_AGREE = requiresByRule(
   'the person the proposal waits on, from their own sign-in (CHAT_AGREEMENT_DOOR, CHAT_PROPOSAL_NOT_YOURS), and a reader of the room',
 );
 
+export const PROPOSAL_PLAIN = requiresByRule(
+  'assistant/agreement/plain-door.ts:plainWriterOf',
+  'the Agent session whose request the proposal holds, on its own credential, while it waits (CHAT_PROPOSAL_NOT_YOURS, CHAT_PROPOSAL_SETTLED)',
+);
+
 export const PROPOSAL_DECLINE = requiresByRule(
   'assistant/agreement/agreement-door.ts:declinerOf',
   'the person the proposal waits on, from their own sign-in (CHAT_AGREEMENT_DOOR, CHAT_PROPOSAL_NOT_YOURS), and a reader of the room',

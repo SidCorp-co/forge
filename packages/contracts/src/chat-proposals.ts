@@ -5,6 +5,7 @@
 // only then does core make that exact call, as that person.
 
 import { z } from "zod";
+import { PLAIN_DECISION_MAX, plainDecisionSchema } from "./plain-decision.js";
 import type { RefusalStatuses } from "./refusal.js";
 
 /** What a proposal would write, as the card names it. */
@@ -75,11 +76,17 @@ export const CHAT_PROPOSAL_REFUSAL_STATUSES = {
 /** The most a held REST body may carry: an attachment's own cap, with room for its envelope. */
 export const CHAT_PROPOSAL_BODY_MAX_BYTES = 11 * 1024 * 1024;
 
-/** What the card shows: what would be written, its lines, and the records it links to. */
+/**
+ * What the card shows: the plain line the person decides from, written by the agent that proposed it
+ * (ISS-1006, `plain-decision.ts`; null where it wrote none, absent on a card held before it was
+ * taken), then, behind the card's closed technical section, what would be written, its lines and the
+ * records it links to.
+ */
 export const chatProposalSummarySchema = z.strictObject({
 	title: z.string(),
 	lines: z.array(z.string()),
 	relates: z.array(z.string()),
+	plain: z.string().max(PLAIN_DECISION_MAX).nullable().optional(),
 });
 export type ChatProposalSummary = z.infer<typeof chatProposalSummarySchema>;
 
@@ -121,5 +128,19 @@ export const agreeChatProposalRequestSchema = z.strictObject({});
 export type AgreeChatProposalRequest = z.infer<
 	typeof agreeChatProposalRequestSchema
 >;
+/**
+ * The plain line an Agent session writes on the proposal its own request was held as, while it waits
+ * (ISS-1006): its REST body cannot carry it, since the route the request is replayed to takes no such
+ * field. Sent again, it replaces the line; sent empty, it clears it.
+ */
+export const chatProposalPlainRequestSchema = z.strictObject({
+	plain: plainDecisionSchema,
+});
+export type ChatProposalPlainRequest = z.infer<
+	typeof chatProposalPlainRequestSchema
+>;
+export const CHAT_PROPOSAL_PLAIN_SHAPE =
+	"{ plain }: what the person decides this proposal from, sent by the session whose request it holds, while it waits";
+
 export const AGREE_CHAT_PROPOSAL_SHAPE =
 	"{} — the person it waits on agrees by pressing Record it, from their own sign-in; nothing else is sent, and a typed reply is never an agreement";

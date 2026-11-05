@@ -2,6 +2,7 @@
 // holder of project.write asks for and the steward account executes.
 
 import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
+import { plainDecisionSchema } from '@forge/contracts/plain-decision';
 import { STEWARD_MERGE_SHARES_MAX } from '@forge/contracts/steward';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -77,9 +78,10 @@ const decisionBody = zValidator(
     why: z.string().trim().min(1).max(REASON_SENTENCE_MAX),
     basis: z.string().trim().min(1).max(400),
     serious: z.boolean().optional(),
+    plain: plainDecisionSchema.optional(),
   }),
   invalid(
-    'invalid body: { about: "ISS-n" | "REQ-n" | "FB-n", prompt, options: [{ id, label, shares? }, ...], recommendedOptionId, why, basis, serious? }',
+    'invalid body: { about: "ISS-n" | "REQ-n" | "FB-n", prompt, options: [{ id, label, shares? }, ...], recommendedOptionId, why, basis, serious?, plain? }',
   ),
 );
 

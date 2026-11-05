@@ -39,6 +39,8 @@ type AskAsInput = {
   parkDeadlineAt?: Date | undefined;
   sensitive?: boolean | undefined;
   about?: QuestionAboutRequest | undefined;
+  /** The asker's plain text a person decides from (ISS-1006); none is still asked. */
+  plain?: string | undefined;
 };
 
 /**
@@ -100,6 +102,7 @@ export async function askAs(args: AskAsInput) {
     ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
     ...(args.sensitive ? { sensitive: true } : {}),
     ...(args.about ? { about: args.about } : {}),
+    ...(args.plain ? { plain: args.plain } : {}),
   };
   return askQuestion(ask);
 }

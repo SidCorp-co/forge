@@ -8,6 +8,7 @@
 
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { masterLimitRecordSchema } from '@forge/contracts/master-verdict';
+import { plainDecisionSchema } from '@forge/contracts/plain-decision';
 import {
   QUESTION_ABOUT_SHAPE_SENTENCE,
   questionAboutRequestSchema,
@@ -73,6 +74,7 @@ const askBodySchema = z.object({
     .optional(),
   sensitive: z.boolean().optional(),
   about: questionAboutRequestSchema.optional(),
+  plain: plainDecisionSchema.optional(),
 });
 
 type AskBody = z.infer<typeof askBodySchema>;

@@ -21,6 +21,7 @@ import {
 	NEEDS_YOU_TOPICS,
 	type NeedsYouTopic,
 } from "./needs-you-proposal.js";
+import { PLAIN_DECISION_MAX } from "./plain-decision.js";
 import { questionSubjectSchema } from "./questions.js";
 import { CHANGE_REQUEST_STATES, RELEASE_ROSTER_LIMIT } from "./releases.js";
 
@@ -328,6 +329,12 @@ export const needsYouDecisionSchema = z
 				consequence: z.enum(MOCKUP_ACCEPT_CONSEQUENCES),
 			})
 			.optional(),
+		/**
+		 * The plain text the person decides from, written by the agent that asked (ISS-1006,
+		 * `plain-decision.ts`): on a decision a question asks, null where its asker wrote none, which the
+		 * screens show as such; absent on a decision no agent writes.
+		 */
+		plain: z.string().max(PLAIN_DECISION_MAX).nullable().optional(),
 		/** What the question it answers is about (`questionSubjectSchema`); absent where it names nothing. */
 		subject: questionSubjectSchema.optional(),
 		/** What it rests on (`decisionEvidenceSchema`); absent on a decision about no issue or requirement. */

@@ -6,9 +6,12 @@
 import {
   AGREE_CHAT_PROPOSAL_SHAPE,
   agreeChatProposalRequestSchema,
+  CHAT_PROPOSAL_PLAIN_SHAPE,
   type ChatProposalRefusalCode,
   type ChatProposalSummary,
+  chatProposalPlainRequestSchema,
 } from '@forge/contracts/chat-proposals';
+import { plainOf } from '@forge/contracts/plain-decision';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { readableConversation } from '../../conversations/index.js';
@@ -16,12 +19,18 @@ import { refuser } from '../../lib/refusal.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { noQuery, strictBody, zValidator } from '../../middleware/zod-validator.js';
 import { postServiceAnswer } from '../conversation-adapter.js';
-import { PROPOSAL_AGREE, PROPOSAL_DECLINE, ROOM_READ } from '../conversation-declarations.js';
+import {
+  PROPOSAL_AGREE,
+  PROPOSAL_DECLINE,
+  PROPOSAL_PLAIN,
+  ROOM_READ,
+} from '../conversation-declarations.js';
 import { agreeProposal, declineAs } from './agree.js';
 import { agreementOf, declinerOf } from './agreement-door.js';
 import type { WriteOutcome } from './execute.js';
 import { failureSentence } from './failure.js';
-import { type ChatProposalRow, listProposals, readProposal } from './store.js';
+import { plainWriterOf } from './plain-door.js';
+import { type ChatProposalRow, listProposals, readProposal, setProposalPlain } from './store.js';
 import { labels, viewOf } from './views.js';
 
 const refuse = refuser<ChatProposalRefusalCode>('CHAT_PROPOSAL_UNKNOWN');
@@ -75,6 +84,34 @@ conversationProposalRoutes.post(
       proposal: viewOf(row, as.userId, named),
       ...(outcome.ok ? { answered: outcome.answered } : {}),
     });
+  },
+);
+
+// the line the person decides a held REST request from, written by the session that sent it (ISS-1006)
+conversationProposalRoutes.put(
+  '/:id/proposals/:pid/plain',
+  proposalParam,
+  PROPOSAL_PLAIN,
+  strictBody(chatProposalPlainRequestSchema, CHAT_PROPOSAL_PLAIN_SHAPE),
+  async (c) => {
+    const { id, pid } = c.req.valid('param');
+    const proposal = await readProposal(pid);
+    if (!proposal || proposal.conversationId !== id) {
+      throw refuse(
+        'CHAT_PROPOSAL_UNKNOWN',
+        `proposal ${pid} is not one made in conversation ${id}`,
+      );
+    }
+    await plainWriterOf(proposal);
+    const row = await setProposalPlain(pid, plainOf(c.req.valid('json').plain));
+    if (!row) {
+      throw refuse(
+        'CHAT_PROPOSAL_SETTLED',
+        `proposal ${pid} was decided before its plain line arrived; nothing was written`,
+      );
+    }
+    const named = await labels([row.proposedTo]);
+    return c.json({ proposal: viewOf(row, c.get('userId'), named) });
   },
 );
 
