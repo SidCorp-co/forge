@@ -40,7 +40,7 @@ export async function resolveRecordedCommit(issueId: string): Promise<string | n
 /**
  * A merge a check is owed for is marked only at a commit a passing merge check is recorded at
  * (Issue to release r20 `rule-merge`; `merge-check.ts`). The commit is the one the mark names, else
- * the one the row or the issue's work evidence already records. Before that, where gate `patterns`
+ * the one the row or the newest implementation handoff already records. Before that, where gate `patterns`
  * is enforced, each approved new pattern's catalog page must be in the change at that commit
  * (`pattern-entry.ts`): a check that ran while the pattern waited on its reviewer did not ask for it. After it, a project that declares the
  * merge check asks a passing review at that commit by another than the building run (`review.ts`).

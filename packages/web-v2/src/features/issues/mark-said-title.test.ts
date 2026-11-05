@@ -24,9 +24,9 @@ describe("the mark's hover says who marked it and what the repository read (ISS-
 
   it("adds the repository's reading of a named commit", () => {
     const found = said({ commitReading: { commit: "a".repeat(40), outcome: "found", branch: "main" } });
-    expect(markSaidTitle(t, found)).toBe("Marked by Chuong\nRepository: found on main");
+    expect(markSaidTitle(t, found)).toBe("Marked by Chuong\nCommit found on main");
     const unread = said({ commitReading: { commit: "a".repeat(40), outcome: "unread" } });
-    expect(markSaidTitle(t, unread)).toBe("Marked by Chuong\nRepository: not read");
+    expect(markSaidTitle(t, unread)).toBe("Marked by Chuong\nCommit not read");
   });
 
   it("says nothing for a mark made before the record existed", () => {

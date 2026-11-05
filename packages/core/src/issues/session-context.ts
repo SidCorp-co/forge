@@ -4,8 +4,8 @@
  *
  * It lives here rather than at a call site because every write of the field goes
  * through it: REST `PATCH /api/issues/:id` is how an agent on the CLI records
- * the branch that `issues/work-evidence.ts` later reads as proof that work
- * exists.
+ * the branch that `issues/work-evidence.ts:codeEvidenceOf` later reads as the
+ * code an issue carries.
  */
 
 import { z } from 'zod';
