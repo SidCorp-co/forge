@@ -65,17 +65,18 @@ function RowLine({ d }: { d: NeedsYouDecision }) {
   const { line, fromPlain } = decisionLineOf(d);
   return (
     <>
-      <span className={d.plain === undefined ? undefined : "text-fg"} data-testid={fromPlain ? "approval-row-plain" : "approval-row-question"}>
+      <span className={cn("min-w-0 truncate", d.plain !== undefined && "text-fg")} data-testid={fromPlain ? "approval-row-plain" : "approval-row-question"}>
         {line}
       </span>
-      {/* only a decision an agent writes plain text for says it wrote none: a sign-off has no asker */}
+      {/* only a decision an agent writes plain text for says it wrote none: a sign-off has no asker; a
+          long line is cut before the marker, never the marker itself */}
       {fromPlain || d.plain === undefined ? null : (
-        <>
-          {" · "}
+        <span className="flex-none whitespace-nowrap">
+          {"· "}
           <span className="italic" data-testid="approval-row-no-plain">
             {t("approvals.peek.noPlain")}
           </span>
-        </>
+        </span>
       )}
     </>
   );
@@ -151,7 +152,7 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
         <span className="block w-full min-w-0 truncate text-14 font-medium text-fg" title={d.key} data-testid="approval-title">
           {d.title || d.key}
         </span>
-        <span className="block w-full min-w-0 truncate text-13 text-muted" data-testid="approval-proposal" title={d.proposal ? undefined : decisionLineOf(d).text}>
+        <span className={cn("w-full min-w-0 text-13 text-muted", d.proposal ? "block truncate" : "flex gap-1")} data-testid="approval-proposal" title={d.proposal ? undefined : decisionLineOf(d).text}>
           {d.proposal ? (
             <>
               <span className="font-semibold text-fg">{d.proposal.verb}</span> {d.proposal.what}

@@ -1,0 +1,592 @@
+{
+ "generatedAt": "2026-11-05T10:57:26.253Z",
+ "total": 7,
+ "decisions": [
+  {
+   "id": "question:b3a88a53-b64a-4f8d-b372-2dfab8ce8810",
+   "group": "answer",
+   "area": "requirements",
+   "entity": "requirement",
+   "key": "REQ-77",
+   "title": "A Forge channel agent answers each bound channel with full session power, replacing the outside bots one channel at a time",
+   "opens": {
+    "kind": "requirement",
+    "key": "REQ-77"
+   },
+   "question": "Orbit Babo runs with no permission prompts and lets the owner merge to main, which ships production. Does the Forge agent carry an owner mode like that? Recommended: yes, as an ability the binding grants and only for the owner's server user id.\n\nWhat answers it: The answer, from owner",
+   "changes": "What the run that asked on REQ-77 goes on with",
+   "impact": "REQ-77 is stuck until this is decided; it goes on once it has your answer.",
+   "recommended": null,
+   "noRecommendation": "The run that asked gave no recommended answer, and the assistant drafted none (QUESTION_SUGGESTION_DECLINED): The record does not define an owner mode or an owner server user id binding; it only defines binding-granted ops tools and role-confirmed deploy, release, and system changes.",
+   "answers": [
+    {
+     "id": "write",
+     "label": "Write the answer",
+     "act": "question.answer",
+     "path": "/api/questions/b3a88a53-b64a-4f8d-b372-2dfab8ce8810/answer",
+     "body": {
+      "round": 1
+     },
+     "needsReason": true,
+     "declines": false,
+     "effect": "Sends what you write to the run that asked.",
+     "recommended": false
+    }
+   ],
+   "touchedAt": "2026-10-29T12:06:07.192Z",
+   "stuck": true,
+   "dueAt": "2026-11-02T12:10:23.122Z",
+   "topic": "question",
+   "proposal": null,
+   "plain": null,
+   "evidence": {
+    "requirement": {
+     "key": "REQ-77",
+     "title": "A Forge channel agent answers each bound channel with full session power, replacing the outside bots one channel at a time",
+     "revision": 3
+    },
+    "criteria": {
+     "count": 22,
+     "codes": [
+      "BC-1",
+      "BC-2",
+      "BC-3",
+      "BC-4",
+      "BC-5",
+      "BC-6",
+      "BC-7",
+      "BC-8",
+      "BC-9",
+      "BC-10",
+      "BC-11",
+      "BC-12",
+      "BC-13",
+      "BC-14",
+      "BC-15",
+      "BC-16",
+      "BC-17",
+      "BC-18",
+      "BC-19",
+      "BC-20",
+      "BC-21",
+      "BC-22"
+     ]
+    }
+   }
+  },
+  {
+   "id": "question:8f6162f9-a725-479c-89ea-6e8476248b03",
+   "group": "answer",
+   "area": "questions",
+   "entity": "question",
+   "key": "8f6162f9-a725-479c-89ea-6e8476248b03",
+   "title": "A question a run asked",
+   "opens": {
+    "kind": "requirement",
+    "key": "REQ-74"
+   },
+   "question": "c1 failed again after its one fix round (owner ruling 2026-10-10 allows one); orchestrator build.\n\nWhat answers it: Owner: a second fix round on c1 (who builds it), or accept c1 as is. Cause: issues/criteria/match.ts droppedTraces names the old line number, so a moved reworded line gets its trace advice on the wrong line; repro in K76 evidence iss673-k76-same-bc.log / negatives.log.",
+   "changes": "What the run that asked on REQ-74 goes on with",
+   "impact": "REQ-74 waits on this; it goes on once it has your answer.",
+   "recommended": null,
+   "noRecommendation": "The run that asked gave no recommended answer, and the assistant drafted none (QUESTION_SUGGESTION_DECLINED): The record does not state whether c1 should receive a second fix round or be accepted after the allowed one fix round.",
+   "answers": [
+    {
+     "id": "write",
+     "label": "Write the answer",
+     "act": "question.answer",
+     "path": "/api/questions/8f6162f9-a725-479c-89ea-6e8476248b03/answer",
+     "body": {
+      "round": 1
+     },
+     "needsReason": true,
+     "declines": false,
+     "effect": "Sends what you write to the run that asked.",
+     "recommended": false
+    }
+   ],
+   "touchedAt": "2026-10-24T20:42:55.045Z",
+   "stuck": false,
+   "dueAt": null,
+   "topic": "question",
+   "proposal": null,
+   "plain": null,
+   "subject": {
+    "kind": "requirement",
+    "key": "REQ-74",
+    "title": "Delivery moves on by itself and shows where each item stands"
+   },
+   "evidence": {
+    "requirement": {
+     "key": "REQ-74",
+     "title": "Delivery moves on by itself and shows where each item stands",
+     "revision": 2
+    },
+    "criteria": {
+     "count": 10,
+     "codes": [
+      "BC-1",
+      "BC-2",
+      "BC-3",
+      "BC-4",
+      "BC-5",
+      "BC-6",
+      "BC-7",
+      "BC-8",
+      "BC-9",
+      "BC-10"
+     ]
+    }
+   }
+  },
+  {
+   "id": "question:8cbdfb30-f4b3-4d61-9051-617f1e60d6cd",
+   "group": "answer",
+   "area": "questions",
+   "entity": "question",
+   "key": "8cbdfb30-f4b3-4d61-9051-617f1e60d6cd",
+   "title": "A question a run asked",
+   "opens": {
+    "kind": "requirement",
+    "key": "REQ-74"
+   },
+   "question": "ISS-673 c1 failed again after its one fix round (2026-10-24). Second fix round, or accept c1 as it stands?",
+   "changes": "What the run that asked on REQ-74 goes on with",
+   "impact": "REQ-74 waits on this; it goes on once it has your answer.",
+   "recommended": {
+    "answerId": "second-round",
+    "why": "Whoever asked recommends \"Orchestrator builds a second c1 fix round; master judges it live\".",
+    "by": "asker"
+   },
+   "noRecommendation": null,
+   "answers": [
+    {
+     "id": "second-round",
+     "label": "Orchestrator builds a second c1 fix round; master judges it live",
+     "act": "question.answer",
+     "path": "/api/questions/8cbdfb30-f4b3-4d61-9051-617f1e60d6cd/answer",
+     "body": {
+      "round": 1,
+      "optionId": "second-round"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": true
+    },
+    {
+     "id": "accept-as-is",
+     "label": "Accept c1 as is: revise the requirement criterion, then close",
+     "act": "question.answer",
+     "path": "/api/questions/8cbdfb30-f4b3-4d61-9051-617f1e60d6cd/answer",
+     "body": {
+      "round": 1,
+      "optionId": "accept-as-is"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    },
+    {
+     "id": "drop",
+     "label": "Drop ISS-673: the shipped change stays, c1 is not delivered",
+     "act": "question.answer",
+     "path": "/api/questions/8cbdfb30-f4b3-4d61-9051-617f1e60d6cd/answer",
+     "body": {
+      "round": 1,
+      "optionId": "drop"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    }
+   ],
+   "touchedAt": "2026-10-27T20:49:01.327Z",
+   "stuck": false,
+   "dueAt": null,
+   "topic": "question",
+   "proposal": null,
+   "plain": null,
+   "subject": {
+    "kind": "requirement",
+    "key": "REQ-74",
+    "title": "Delivery moves on by itself and shows where each item stands"
+   },
+   "evidence": {
+    "requirement": {
+     "key": "REQ-74",
+     "title": "Delivery moves on by itself and shows where each item stands",
+     "revision": 2
+    },
+    "criteria": {
+     "count": 10,
+     "codes": [
+      "BC-1",
+      "BC-2",
+      "BC-3",
+      "BC-4",
+      "BC-5",
+      "BC-6",
+      "BC-7",
+      "BC-8",
+      "BC-9",
+      "BC-10"
+     ]
+    }
+   }
+  },
+  {
+   "id": "question:1152a5c3-0abf-4685-854f-d0cee04f7447",
+   "group": "answer",
+   "area": "questions",
+   "entity": "question",
+   "key": "1152a5c3-0abf-4685-854f-d0cee04f7447",
+   "title": "A question a run asked",
+   "opens": {
+    "kind": "feedback",
+    "key": "FB-147"
+   },
+   "question": "ISS-582 (from hop FB-147): how should a product tour be drawn in a ux-flow design? Triage T1B found no TOUR node type in ux-flow@1 and no guide that mentions tours.",
+   "changes": "What the run that asked on FB-147 goes on with",
+   "impact": "FB-147 waits on this; it goes on once it has your answer.",
+   "recommended": {
+    "answerId": "convention",
+    "why": "Whoever asked recommends \"Draw tours with ENTRY/SCREEN under a templates-guide convention (xs, guide only)\".",
+    "by": "asker"
+   },
+   "noRecommendation": null,
+   "answers": [
+    {
+     "id": "convention",
+     "label": "Draw tours with ENTRY/SCREEN under a templates-guide convention (xs, guide only)",
+     "act": "question.answer",
+     "path": "/api/questions/1152a5c3-0abf-4685-854f-d0cee04f7447/answer",
+     "body": {
+      "round": 1,
+      "optionId": "convention"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": true
+    },
+    {
+     "id": "node-type",
+     "label": "Add a TOUR node type in a new ux-flow@2 template (s to m)",
+     "act": "question.answer",
+     "path": "/api/questions/1152a5c3-0abf-4685-854f-d0cee04f7447/answer",
+     "body": {
+      "round": 1,
+      "optionId": "node-type"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    },
+    {
+     "id": "out",
+     "label": "Keep product tours out of Forge's templates; drop ISS-582",
+     "act": "question.answer",
+     "path": "/api/questions/1152a5c3-0abf-4685-854f-d0cee04f7447/answer",
+     "body": {
+      "round": 1,
+      "optionId": "out"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    }
+   ],
+   "touchedAt": "2026-10-28T18:03:00.765Z",
+   "stuck": false,
+   "dueAt": null,
+   "topic": "question",
+   "proposal": null,
+   "plain": null,
+   "subject": {
+    "kind": "feedback",
+    "key": "FB-147",
+    "title": "ux-flow template has no node type or convention for product tours"
+   }
+  },
+  {
+   "id": "question:84c648a6-e185-4f47-8ffe-29a6c296ba26",
+   "group": "answer",
+   "area": "questions",
+   "entity": "question",
+   "key": "84c648a6-e185-4f47-8ffe-29a6c296ba26",
+   "title": "A question a run asked",
+   "opens": null,
+   "question": "ISS-707: should Forge hold a per-project SSH CA key in core and mint short-lived per-run certificates for the servers a project operates? Triage T1D: the gap is real, but no requirement covers it; the build is xl (migration, core CA and grant ledger, a runner release) and must be split.",
+   "changes": "What the run that asked goes on with",
+   "impact": "The run that asked waits on this; it goes on once it has your answer.",
+   "recommended": {
+    "answerId": "ca-readonly",
+    "why": "Whoever asked recommends \"Yes, read-only grants first: a requirement scoped to read-only access\".",
+    "by": "asker"
+   },
+   "noRecommendation": null,
+   "answers": [
+    {
+     "id": "ca-readonly",
+     "label": "Yes, read-only grants first: a requirement scoped to read-only access",
+     "act": "question.answer",
+     "path": "/api/questions/84c648a6-e185-4f47-8ffe-29a6c296ba26/answer",
+     "body": {
+      "round": 1,
+      "optionId": "ca-readonly"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": true
+    },
+    {
+     "id": "ca-full",
+     "label": "Yes: a requirement first, then core CA plus per-run certificates, production changes gated like a release",
+     "act": "question.answer",
+     "path": "/api/questions/84c648a6-e185-4f47-8ffe-29a6c296ba26/answer",
+     "body": {
+      "round": 1,
+      "optionId": "ca-full"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    },
+    {
+     "id": "operator",
+     "label": "No: server access stays operator-managed outside Forge; drop ISS-707",
+     "act": "question.answer",
+     "path": "/api/questions/84c648a6-e185-4f47-8ffe-29a6c296ba26/answer",
+     "body": {
+      "round": 1,
+      "optionId": "operator"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    }
+   ],
+   "touchedAt": "2026-10-28T18:03:01.252Z",
+   "stuck": false,
+   "dueAt": null,
+   "topic": "question",
+   "proposal": null,
+   "plain": null
+  },
+  {
+   "id": "question:5e5b4e26-401b-41cf-b1ed-ba7cf1f0d26a",
+   "group": "answer",
+   "area": "questions",
+   "entity": "question",
+   "key": "5e5b4e26-401b-41cf-b1ed-ba7cf1f0d26a",
+   "title": "A question a run asked",
+   "opens": {
+    "kind": "requirement",
+    "key": "REQ-66"
+   },
+   "question": "ISS-639: should feedback triage get an approvals.triage switch? Today triage always takes feedback.approve; REQ-7 says feedback is triaged by people, while REQ-34 BC-25 asks for a person only where the project setting asks.",
+   "changes": "What the run that asked on REQ-66 goes on with",
+   "impact": "REQ-66 waits on this; it goes on once it has your answer.",
+   "recommended": {
+    "answerId": "default-on",
+    "why": "Whoever asked recommends \"Add approvals.triage, default on: keep feedback.approve; a project may turn it off\".",
+    "by": "asker"
+   },
+   "noRecommendation": null,
+   "answers": [
+    {
+     "id": "default-on",
+     "label": "Add approvals.triage, default on: keep feedback.approve; a project may turn it off",
+     "act": "question.answer",
+     "path": "/api/questions/5e5b4e26-401b-41cf-b1ed-ba7cf1f0d26a/answer",
+     "body": {
+      "round": 1,
+      "optionId": "default-on"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": true
+    },
+    {
+     "id": "default-off",
+     "label": "Add approvals.triage, default off: any feedback.write holder, agents included, may triage",
+     "act": "question.answer",
+     "path": "/api/questions/5e5b4e26-401b-41cf-b1ed-ba7cf1f0d26a/answer",
+     "body": {
+      "round": 1,
+      "optionId": "default-off"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    },
+    {
+     "id": "none",
+     "label": "No switch: triage stays a person's act (REQ-7); drop ISS-639",
+     "act": "question.answer",
+     "path": "/api/questions/5e5b4e26-401b-41cf-b1ed-ba7cf1f0d26a/answer",
+     "body": {
+      "round": 1,
+      "optionId": "none"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    }
+   ],
+   "touchedAt": "2026-10-28T18:03:49.616Z",
+   "stuck": false,
+   "dueAt": null,
+   "topic": "question",
+   "proposal": null,
+   "plain": null,
+   "subject": {
+    "kind": "requirement",
+    "key": "REQ-66",
+    "title": "Feedback is clarified and filtered before it reaches a person"
+   },
+   "evidence": {
+    "requirement": {
+     "key": "REQ-66",
+     "title": "Feedback is clarified and filtered before it reaches a person",
+     "revision": 3
+    },
+    "criteria": {
+     "count": 9,
+     "codes": [
+      "BC-1",
+      "BC-2",
+      "BC-3",
+      "BC-4",
+      "BC-5",
+      "BC-6",
+      "BC-7",
+      "BC-8",
+      "BC-9"
+     ]
+    }
+   }
+  },
+  {
+   "id": "question:6364b178-9eb0-407f-8f5c-aad4c61a5d58",
+   "group": "answer",
+   "area": "questions",
+   "entity": "question",
+   "key": "6364b178-9eb0-407f-8f5c-aad4c61a5d58",
+   "title": "A question a run asked",
+   "opens": {
+    "kind": "requirement",
+    "key": "REQ-36"
+   },
+   "question": "ISS-643: what should carry a red whole-suite verdict into core so the breaking merge's issue reopens? CI's suite-bisect job is read-only and calls nothing; forge-dev has no source-host binding.",
+   "changes": "What the run that asked on REQ-36 goes on with",
+   "impact": "REQ-36 waits on this; it goes on once it has your answer.",
+   "recommended": {
+    "answerId": "ci-token",
+    "why": "Whoever asked recommends \"A repo secret holding a scoped token: CI posts a whole_suite.finished event to core\".",
+    "by": "asker"
+   },
+   "noRecommendation": null,
+   "answers": [
+    {
+     "id": "ci-token",
+     "label": "A repo secret holding a scoped token: CI posts a whole_suite.finished event to core",
+     "act": "question.answer",
+     "path": "/api/questions/6364b178-9eb0-407f-8f5c-aad4c61a5d58/answer",
+     "body": {
+      "round": 1,
+      "optionId": "ci-token"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": true
+    },
+    {
+     "id": "host-binding",
+     "label": "A source-host binding on forge-dev: core reads the check itself",
+     "act": "question.answer",
+     "path": "/api/questions/6364b178-9eb0-407f-8f5c-aad4c61a5d58/answer",
+     "body": {
+      "round": 1,
+      "optionId": "host-binding"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    },
+    {
+     "id": "by-hand",
+     "label": "Neither: revise the design so the release-cut master reopens the named issue by hand",
+     "act": "question.answer",
+     "path": "/api/questions/6364b178-9eb0-407f-8f5c-aad4c61a5d58/answer",
+     "body": {
+      "round": 1,
+      "optionId": "by-hand"
+     },
+     "needsReason": false,
+     "declines": false,
+     "effect": null,
+     "recommended": false
+    }
+   ],
+   "touchedAt": "2026-10-28T18:03:50.082Z",
+   "stuck": false,
+   "dueAt": null,
+   "topic": "question",
+   "proposal": null,
+   "plain": null,
+   "subject": {
+    "kind": "requirement",
+    "key": "REQ-36",
+    "title": "Delivery: each role designs and tests only its own scope"
+   },
+   "evidence": {
+    "requirement": {
+     "key": "REQ-36",
+     "title": "Delivery: each role designs and tests only its own scope",
+     "revision": 8
+    },
+    "criteria": {
+     "count": 21,
+     "codes": [
+      "BC-1",
+      "BC-2",
+      "BC-3",
+      "BC-4",
+      "BC-5",
+      "BC-6",
+      "BC-7",
+      "BC-8",
+      "BC-9",
+      "BC-10",
+      "BC-11",
+      "BC-12",
+      "BC-13",
+      "BC-14",
+      "BC-15",
+      "BC-16",
+      "BC-17",
+      "BC-18",
+      "BC-19",
+      "BC-20",
+      "BC-21"
+     ]
+    }
+   }
+  }
+ ],
+ "notDecisions": []
+}

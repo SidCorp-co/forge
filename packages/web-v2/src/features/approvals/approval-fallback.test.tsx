@@ -156,3 +156,28 @@ describe("the Approvals search finds a decision by the plain text its row shows"
     expect(found.map((d) => d.plain)).toEqual([PLAIN]);
   });
 });
+
+describe("the peek with no plain text reads less than before plain text existed, and more than round 1", () => {
+  /** Words as `witness/estimate-words.mjs` counts them. */
+  const WORD = /[\p{L}\p{N}]+(?:['’.\-/:][\p{L}\p{N}]+)*/gu;
+  const words = (text: string) => (text.match(WORD) ?? []).length;
+  const ROUND_1 = 46;
+  const ofPeek = (d: NeedsYouDecision) => {
+    const n = words(drawPeek(d).textContent ?? "");
+    document.body.innerHTML = "";
+    return n;
+  };
+
+  it("measures the owner's adminhub-api peek", () => {
+    // `plain` absent draws the peek as it read before ISS-1006: the question, stakes, why and evidence
+    const { plain: _, ...unplain } = adminhub(null);
+    const before = ofPeek(unplain);
+    const fallback = ofPeek(adminhub(null));
+    const plain = ofPeek(adminhub(PLAIN));
+    process.stdout.write(`WORDS peek before=${before} fallback=${fallback} plain=${plain}\n`);
+    expect(fallback).toBeLessThan(before);
+    // the question's own line is on the face, beside the marker round 1 drew alone (46 words on this
+    // render, measured by planting round 1's marker-only face here)
+    expect(fallback).toBeGreaterThanOrEqual(ROUND_1 + words(QUESTION));
+  });
+});
