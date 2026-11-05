@@ -21,11 +21,7 @@ import {
   releaseBuildOf,
   releaseEnded,
 } from '@forge/contracts/release-page';
-import {
-  type ReleaseDetail,
-  type ReleaseNoteSection,
-  releaseVerifiedLevel,
-} from '@forge/contracts/releases';
+import type { ReleaseDetail, ReleaseNoteSection } from '@forge/contracts/releases';
 import {
   WHATS_NEW_KIND_OF_SECTION,
   WHATS_NEW_SECTIONS,
@@ -59,14 +55,11 @@ export function buildOf(detail: ReleaseDetail): string | null {
 }
 
 /**
- * The page's header. Its proven count is the page's own (`claims.ts:readClaims`, the rule a
- * requirement counts by), so the header, the list and the totals read one number; the release
- * record's deploy check is kept as it stands.
+ * The page's header. Its proof is the release record's one count (`release-read-views.ts:summaryOf`),
+ * the number the Releases list draws for the same release, so the list and the page never say two
+ * numbers for one release (ISS-1001: "All 22 checks met" beside "0 of its 4 criteria proven").
  */
-export function headerOf(
-  detail: ReleaseDetail,
-  counted: { proven: number; total: number },
-): ReleasePageHeader {
+export function headerOf(detail: ReleaseDetail): ReleasePageHeader {
   return {
     version: detail.version,
     name: detail.name,
@@ -75,11 +68,7 @@ export function headerOf(
     releasedAt: detail.releasedAt,
     environment: detail.production,
     build: buildOf(detail),
-    verified: {
-      ...detail.verified,
-      ...counted,
-      level: releaseVerifiedLevel(counted, detail.verified.check),
-    },
+    verified: detail.verified,
     approval: approvalOf(detail),
     shippedFailing: detail.shippedFailing,
   };

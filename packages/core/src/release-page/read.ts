@@ -16,7 +16,7 @@ import {
 import { versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
-import { stallsOfRoster } from '../issues/index.js';
+import { listModulesForIssues, stallsOfRoster } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
 import { readVerifiedJudge } from '../project-config/index.js';
 import {
@@ -136,6 +136,31 @@ export function userKnownIssues(
   return issues.map((k) => ({ ...k, reason: null, elsewhere: null }));
 }
 
+/**
+ * The screen each carried issue's change is met on, by issue key: its module, primary first
+ * (ISS-1001). No record says which screen a change is on, and an issue's module is the smallest one
+ * that does; an issue with none is left out, and its change reads with no screen.
+ */
+async function screensOf(detail: ReleaseDetail): Promise<Map<string, string>> {
+  const modules = await listModulesForIssues(detail.issues.map((i) => i.id));
+  return new Map(
+    detail.issues.flatMap((i) => {
+      const first = modules.get(i.id)?.[0];
+      return first ? [[i.key, first.name] as const] : [];
+    }),
+  );
+}
+
+function withScreens<
+  T extends { improvements: ReleasePage['improvements']; fixes: ReleasePage['fixes'] },
+>(changes: T, screens: ReadonlyMap<string, string>): T {
+  const on = (c: ReleasePage['improvements'][number]) => ({
+    ...c,
+    screen: screens.get(c.issueKey) ?? null,
+  });
+  return { ...changes, improvements: changes.improvements.map(on), fixes: changes.fixes.map(on) };
+}
+
 export function isPageView(view: string): view is ReleasePageViewKind {
   return (RELEASE_PAGE_VIEWS as readonly string[]).includes(view);
 }
@@ -180,7 +205,7 @@ export async function readReleasePage(args: {
   const namer = named ? null : await releaseNamer(projectId);
   if (!named && (drafting === null || namingDraftStale(drafting)))
     args.onNamingOwed?.({ projectId, version: detail.version });
-  const changes = changesOf(detail, view);
+  const changes = withScreens(changesOf(detail, view), await screensOf(detail));
   const range = await readRange(projectId, detail.version, page.build, detail.runId);
   const { shipped } = range;
   const map = view === 'developer' && range.changed ? await readSurfaceMap(projectId) : null;
@@ -188,10 +213,7 @@ export async function readReleasePage(args: {
     view,
     projectId,
     header: {
-      ...headerOf(detail, {
-        proven: page.claims.filter((c) => c.proven).length,
-        total: page.claims.length,
-      }),
+      ...headerOf(detail),
       naming,
       ...(namer ? { namer } : {}),
     },

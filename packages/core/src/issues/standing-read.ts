@@ -90,6 +90,7 @@ interface IssueRowRaw {
   complexity: string | null;
   assignee_id: string | null;
   created_by_id: string | null;
+  by_agent: boolean;
   requirement_id: string | null;
   planned_revision: number | null;
   plan: string | null;
@@ -143,6 +144,8 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              (i.release_notes IS NOT NULL AND i.release_notes <> 'null'::jsonb) AS release_noted,
              i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
+             (i.created_by_device_id IS NOT NULL OR EXISTS (
+               SELECT 1 FROM users u WHERE u.id = i.created_by_id AND u.kind = 'agent')) AS by_agent,
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
@@ -406,6 +409,7 @@ async function standingRows(
     complexity: r.complexity,
     assigneeId: r.assignee_id,
     createdById: r.created_by_id,
+    byAgent: r.by_agent,
     createdAt: new Date(r.created_at).toISOString(),
     updatedAt: new Date(r.updated_at).toISOString(),
     standing: deriveIssueStanding(input, groups, waves.get(r.id) ?? null),

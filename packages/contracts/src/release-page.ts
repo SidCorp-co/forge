@@ -672,6 +672,12 @@ export interface ReleasePageChange {
 	detail: string | null;
 	/** The requirement the change's issue traces, for the row's link; null where it traces none. */
 	requirementKey: string | null;
+	/**
+	 * The screen a user meets the change on: its issue's module (the primary module label, else its
+	 * first), the smallest record that names one (ISS-1001). Null where the issue has no module, and
+	 * on a share frozen before screens were read.
+	 */
+	screen?: string | null;
 }
 
 /**
@@ -884,6 +890,7 @@ const ChangeSchema = z.strictObject({
 	line: z.string().min(1),
 	detail: z.string().min(1).nullable().default(null),
 	requirementKey: z.string().min(1).nullable().default(null),
+	screen: z.string().min(1).nullable().default(null),
 });
 
 /**

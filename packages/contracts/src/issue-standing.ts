@@ -223,6 +223,8 @@ export interface IssueStandingRow {
 	complexity: string | null;
 	assigneeId: string | null;
 	createdById: string | null;
+	/** An agent filed it: a paired box's credential or an agent account (`issues/creator.ts`'s rule). */
+	byAgent: boolean;
 	createdAt: string;
 	updatedAt: string;
 	standing: IssueStanding;

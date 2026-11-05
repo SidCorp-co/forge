@@ -272,6 +272,14 @@ describe('the page reads off the release record', () => {
 
   it('reads improvements and fixes in user terms, and what an admin must do, naming each artifact', async () => {
     const w = await releaseWorldOfFour();
+    // ISS-1001: a change is met on its issue's module, the primary one before another
+    const [visits, other] = (await db.execute(sql`
+      INSERT INTO labels (project_id, name, color, kind, slug)
+      VALUES (${projectId}, 'Visits', '#000000', 'module', 'visits'), (${projectId}, 'Reports', '#000000', 'module', 'reports')
+      RETURNING id`)) as unknown as Array<{ id: string }>;
+    await db.execute(sql`
+      INSERT INTO issue_labels (issue_id, label_id, is_primary)
+      VALUES (${w.a}, ${other?.id}, false), (${w.a}, ${visits?.id}, true)`);
     const p = await page('member');
     expect(p.improvements).toEqual([
       {
@@ -281,6 +289,7 @@ describe('the page reads off the release record', () => {
         line: 'Visit reminders',
         detail: 'Nurses see a reminder before each visit.',
         requirementKey: 'REQ-1',
+        screen: 'Visits',
       },
     ]);
     expect(p.fixes).toEqual([
@@ -291,6 +300,7 @@ describe('the page reads off the release record', () => {
         line: 'Report filter kept',
         detail: 'A visit report keeps its filter after a reload.',
         requirementKey: 'REQ-1',
+        screen: null,
       },
     ]);
     expect(p.actionRequired.map((x) => [x.kind, x.ref])).toEqual([
