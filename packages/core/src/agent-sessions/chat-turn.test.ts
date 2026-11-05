@@ -236,16 +236,23 @@ describe('dispatchChatTurn: a follow-up on the same box resumes', () => {
     expect(state.calls).not.toContain('bindingCheckout');
   });
 
-  it('a session already running is not moved again, and the client claudeSessionId wins', async () => {
-    await dispatchChatTurn({
-      session: sessionOf({ status: 'running' }),
+  it('the client claudeSessionId wins over the row', async () => {
+    const turn = { project, client: { deviceId: 'd-1' }, message: 'again' };
+    await dispatchChatTurn({ ...turn, session: sessionOf({}), claudeSessionId: 'claude-client' });
+    expect(frame()?.data.claudeSessionId).toBe('claude-client');
+  });
+
+  // ISS-977: two turns 22 ms apart each wrote a seed row; one already running refuses the next
+  it.each(['running', 'queued'])('a session %s refuses a second turn', async (status) => {
+    const turn = {
       project,
       client: { deviceId: 'd-1' },
       message: 'again',
-      claudeSessionId: 'claude-client',
-    });
-    expect(state.transitions).toEqual([]);
-    expect(frame()?.data.claudeSessionId).toBe('claude-client');
+      session: sessionOf({ status }),
+    };
+    const refused = { refusals: [{ code: 'SESSION_RUNNING' }] };
+    await expect(dispatchChatTurn(turn)).rejects.toMatchObject(refused);
+    expect([state.transitions, state.seeded, frame()]).toEqual([[], [], undefined]);
   });
 });
 
