@@ -12,6 +12,9 @@
  * 2. a pane known only as of its last pass makes no claim about now.
  *
  * @direct-test-of packages/core/src/activity/events.ts
+ * @direct-test-of packages/core/src/activity/lane.ts
+ * @direct-test-of packages/core/src/activity/lane-releases.ts
+ * @direct-test-of packages/core/src/activity/group.ts
  * @direct-test-of packages/core/src/activity/glance-cache.ts
  * @direct-test-of packages/core/src/activity/read.ts
  * @direct-test-of packages/core/src/activity/recent.ts
@@ -280,43 +283,101 @@ describe('ISS-951 round 3 (4) Recent answers what the project recorded today', (
   });
 });
 
-describe('ISS-951 round 3 (6) each project draws a lane of its last two hours', () => {
-  it('draws passes as ticks, runs and dialogs as bars, status moves as dots, from the one event read', async () => {
+describe('ISS-979 each project draws a lane of its last two hours: runs, batches, releases', () => {
+  /** A release run of the big project, as a release batch records one. */
+  const releaseRun = async (
+    version: string,
+    over: { status: string; started: string; released?: string; finished?: string; meta?: Doc },
+  ) => {
+    const [issue] = await rows<{ id: string }>(
+      sql`SELECT id FROM issues WHERE project_id = ${bigId} AND iss_seq = 97`,
+    );
+    await db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, created_at, started_at, finished_at,
+                                 release_version, release_released_at, metadata)
+      VALUES (gen_random_uuid(), ${bigId}, 'system', ${over.status}, now() - ${over.started}::interval,
+              now() - ${over.started}::interval,
+              ${over.finished ? sql`now() - ${over.finished}::interval` : sql`NULL`},
+              ${version}, ${over.released ? sql`now() - ${over.released}::interval` : sql`NULL`},
+              ${JSON.stringify({ source: 'release-batch', issueIds: [issue?.id], ...(over.meta ?? {}) })}::jsonb)`);
+  };
+
+  it('draws runs as bars, the moves of one window as one batch, each release by its state, and no pass', async () => {
     const { recordMasterDialog } = await import('../../src/masters/service.js');
-    await recordMasterDialog({
-      deviceId,
-      sessionId: masterSession,
-      dialog: { text: 'Allow Bash(git push)?', source: 'pane' },
-    });
-    await recordMasterDialog({ deviceId, sessionId: masterSession, dialog: null });
     await recordMasterDialog({
       deviceId,
       sessionId: masterSession,
       dialog: { text: 'Allow Bash(rm)?', source: 'pane' },
     });
+    await releaseRun('1.4.0', {
+      status: 'completed',
+      started: '40 minutes',
+      released: '30 minutes',
+      finished: '30 minutes',
+    });
+    // shipped three hours ago: before the lane, not drawn
+    await releaseRun('1.3.0', {
+      status: 'completed',
+      started: '200 minutes',
+      released: '190 minutes',
+      finished: '190 minutes',
+    });
+    await releaseRun('1.5.0', { status: 'running', started: '5 hours' });
+    await releaseRun('1.4.1', { status: 'failed', started: '20 minutes', finished: '15 minutes' });
+    await releaseRun('1.4.2', {
+      status: 'cancelled',
+      started: '12 minutes',
+      finished: '10 minutes',
+      meta: { abort: { reason: 'refused' } },
+    });
     const { readOrgActivity } = await import('../../src/activity/read.js');
     const read = await readOrgActivity(orgId, viewer());
-    const lane = (read.projects.find((p) => p.projectId === bigId) as Doc).lane as Doc;
-    expect(lane, 'a project with a master drew no lane').not.toBeNull();
+    const big = read.projects.find((p) => p.projectId === bigId) as Doc;
+    const lane = big.lane as Doc;
     const from = Date.parse(lane.from);
     expect(Date.parse(read.generatedAt) - from).toBe(120 * 60_000);
-    // twelve passes every 14 minutes: the eight inside two hours, and none before
-    expect(lane.passes).toHaveLength(8);
-    for (const at of lane.passes as string[]) expect(Date.parse(at)).toBeGreaterThanOrEqual(from);
-    expect(lane.moves, 'the two moves made today drew no dots').toHaveLength(2);
+    // twelve passes every 14 minutes, eight inside two hours: a pass is not drawn
+    expect(Object.keys(lane)).toEqual(['from', 'runs', 'batches', 'releases', 'waits']);
     expect(lane.runs).toHaveLength(1);
     expect(lane.runs[0].to, 'an ended run drew as still running').not.toBeNull();
-    expect(lane.dialogs, JSON.stringify(lane.dialogs)).toHaveLength(2);
-    expect(lane.dialogs[0].to).not.toBeNull();
-    expect(lane.dialogs[1].to, 'the dialog it stands on drew as ended').toBeNull();
+    // the two moves made five minutes ago are one batch, each issue from → to, by title
+    expect(lane.batches, JSON.stringify(lane.batches)).toHaveLength(1);
+    expect((lane.batches[0].moves as Doc[]).map((m) => [m.title, m.from, m.to]).sort()).toEqual([
+      ['A move today', 'in_progress', 'awaiting_release'],
+      ['issue 194', 'in_progress', 'awaiting_release'],
+    ]);
+    expect(
+      (lane.releases as Doc[]).map((r) => [
+        r.version,
+        r.state,
+        r.total,
+        r.issues.map((i: Doc) => i.title),
+      ]),
+    ).toEqual([
+      ['1.5.0', 'releasing', 1, ['A move today']],
+      ['1.4.0', 'released', 1, ['A move today']],
+      ['1.4.1', 'failed', 1, ['A move today']],
+      ['1.4.2', 'stopped', 1, ['A move today']],
+    ]);
+    // a release still running that began before the lane stands at its edge
+    expect(lane.releases[0].at).toBe(lane.from);
+    // its master stands on a dialog: it takes no new work, and says why only in its reason
+    expect([big.standing, big.pause]).toEqual(['paused', 'dialog']);
+    expect(Date.parse(big.lastActivityAt)).toBeGreaterThan(
+      Date.parse(read.generatedAt) - 10 * 60_000,
+    );
 
     // Recent reads the same events: the dialog it stands on is its newest
     const { readProjectRecent } = await import('../../src/activity/recent.js');
     expect((await readProjectRecent(bigId)).items[0]?.kind).toBe('dialog_started');
 
-    // a project with no master draws no lane, which the page says as "no master"
+    // a project with no master still draws its lane, empty here, and reads No master
     const quiet = read.projects.filter((p) => p.projectId !== bigId);
-    expect(quiet.map((p) => [p.master.state, p.lane])).toEqual(quiet.map(() => ['none', null]));
+    expect(quiet.map((p) => [p.standing, p.lane.runs.length, p.lane.batches.length])).toEqual(
+      quiet.map(() => ['none', 0, 0]),
+    );
+    expect(read.totals.projects).toBe(PROJECTS);
+    expect(read.totals.none + read.totals.paused + read.totals.you).toBe(PROJECTS);
     await recordMasterDialog({ deviceId, sessionId: masterSession, dialog: null });
   });
 });
@@ -439,7 +500,7 @@ describe("ISS-951 round 4 (3) a row's group and the text beside it read one stat
     const busy = await rowOf();
     expect([busy.master.state, busy.group, busy.next.skip]).toEqual([
       'busy',
-      'running',
+      'working',
       'busy_by_hand',
     ]);
   });

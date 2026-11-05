@@ -211,7 +211,8 @@ describe('ISS-951 (2)(3) the master reads what its pane does', () => {
     const row = await orgRow();
     expect(row.master.state).toBe('busy');
     expect(row.master.pane.doing).toBe('working');
-    expect(row.group, 'a busy master is not running on the page').toBe('running');
+    expect(row.group, 'a busy master is not working on the page').toBe('working');
+    expect([row.standing, row.pause]).toEqual(['working', null]);
     expect(await masterFrames(), 'a moved doing told no page').toBe(framesBefore + 1);
 
     const again = await beat('working', 500, 20_000);
@@ -380,7 +381,18 @@ describe('ISS-951 (6) a question waiting on the reader reads as itself', () => {
     expect(title.endsWith('…'), 'a long question was not cut to its line').toBe(true);
     expect(title.length).toBeLessThanOrEqual(140);
     expect(title, 'a key was left in the words a person reads').not.toMatch(/\b(ISS|FB)-\d/);
-    expect(JSON.stringify(row.people), 'a question id was shown as text').not.toContain(id);
+    // the question's id rides only as the decision a link opens to answer it, never in its words
+    expect(item?.decisionId).toBe(`question:${id}`);
+    const { decisionId: _link, ...said } = item as Doc;
+    expect(JSON.stringify(said), 'a question id was shown as text').not.toContain(id);
     expect(JSON.stringify(row.people)).not.toContain('A question a run asked');
+    // it waits on the reader from when it was asked: a pin on the lane there, and the row is first
+    expect(row.group).toBe('you');
+    expect(Date.now() - Date.parse(String(item?.since))).toBeLessThan(120_000);
+    const pin = (row.lane.waits as Doc[]).find((w) =>
+      (w.items as Doc[]).some((i) => i.decisionId === `question:${id}`),
+    );
+    expect(pin, JSON.stringify(row.lane.waits)).toBeDefined();
+    expect(Date.parse(String(pin?.at))).toBeLessThanOrEqual(Date.parse(String(item?.since)));
   });
 });

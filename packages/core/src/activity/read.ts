@@ -8,7 +8,10 @@
 // A person reads no record key here (ISS-951 round 4): every title and question is read through
 // `record-keys.ts:withoutRecordKeys` with the projects' own issue prefixes, and what the master does
 // names its issue by title. A row's group and the text beside it are both read from its master's one
-// state (`group.ts`).
+// state (`group.ts`), and every project something waits on the reader for is grouped first.
+//
+// Each row's lane (ISS-979, `lane.ts`) is built here from what the row already read: its runs, its
+// status moves as batches, its releases (`lane-releases.ts`) and the decisions owed the reader as pins.
 //
 // The page reads this on every move of any project, so it is read per workspace, not per project:
 // each leg is a fixed number of statements, and the release forecast, the one leg that costs seconds
@@ -21,6 +24,7 @@ import {
   ORG_ACTIVITY_GROUPS,
   ORG_ACTIVITY_LANE_MINUTES,
   ORG_ACTIVITY_LIST_LIMIT,
+  ORG_ACTIVITY_WAIT_LIMIT,
   type OrgActivity,
   type OrgActivityGroup,
   type OrgActivityMaster,
@@ -37,9 +41,11 @@ import { readAdmissibleForProjects, SESSION_SILENCE_TIMEOUT_S } from '../devices
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MasterGlance, readMasterGlances } from '../masters/index.js';
-import { laneOf, readProjectEvents } from './events.js';
+import { readProjectEvents } from './events.js';
 import { glanceCache } from './glance-cache.js';
-import { doingOf, groupOf, skipOf } from './group.js';
+import { doingOf, groupOf, pauseOf, skipOf, standingOf } from './group.js';
+import { laneOf, lastActivityOf } from './lane.js';
+import { readLaneReleases } from './lane-releases.js';
 import { releaseGlances } from './release-glance.js';
 
 /** How many of each source's events a lane reads per project over its two hours. */
@@ -163,11 +169,12 @@ function personOf(
   prefixes: readonly string[],
 ): OrgActivityPerson {
   const read = (text: string) => oneLine(withoutRecordKeys(text, prefixes));
+  const shared = { decisionId: d.id, group: d.group, since: d.touchedAt, opens: d.opens };
   if (d.entity === 'question') {
-    return { group: d.group, key: issueOfQuestion.get(d.key) ?? null, title: read(d.question) };
+    return { ...shared, key: issueOfQuestion.get(d.key) ?? null, title: read(d.question) };
   }
   const title = d.group === 'answer' ? read(d.question) : read(d.title || d.question);
-  return { group: d.group, key: UUID.test(d.key) ? null : d.key, title };
+  return { ...shared, key: UUID.test(d.key) ? null : d.key, title };
 }
 
 interface PeopleGlance {
@@ -201,7 +208,7 @@ async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
   const shown = owed.map((o) => ({
     projectId: idOf.get(o.projectSlug),
     total: o.total,
-    decisions: o.decisions.slice(0, ORG_ACTIVITY_LIST_LIMIT),
+    decisions: o.decisions.slice(0, ORG_ACTIVITY_WAIT_LIMIT),
   }));
   const issueOfQuestion = await questionIssueKeys(
     shown.flatMap((s) =>
@@ -301,6 +308,7 @@ export const ORG_ACTIVITY_LEGS = [
   'masters',
   'releases',
   'lanes',
+  'shipped',
 ] as const;
 export type OrgActivityLeg = (typeof ORG_ACTIVITY_LEGS)[number];
 
@@ -335,28 +343,39 @@ export async function readOrgActivity(
   const waitMs = opts.waitMs ?? 0;
   const peopleKey = peopleKeyOf(viewer.userId, viewer.agency, ids);
   const laneFrom = new Date(now.getTime() - ORG_ACTIVITY_LANE_MINUTES * 60_000);
-  const [inFlight, awaiting, admissible, people, masters, releases, events] = await Promise.all([
-    timed('inflight', () => readInFlight(ids)),
-    timed('awaiting', () => readAwaitingRelease(ids)),
-    timed('backlog', () => readAdmissibleForProjects(ids, ORG_ACTIVITY_LIST_LIMIT)),
-    timed('people', () => peopleGlances.read([peopleKey], waitMs)),
-    timed('masters', async () => {
-      const glances = await readMasterGlances(ids, now);
-      return { glances, titles: await readDoingTitles(projects, glances) };
-    }),
-    timed('releases', () => releaseGlances.read(ids, waitMs)),
-    timed('lanes', () => readProjectEvents(ids, { since: laneFrom, limit: LANE_EVENTS_LIMIT })),
-  ]);
+  const [inFlight, awaiting, admissible, people, masters, releases, events, shipped] =
+    await Promise.all([
+      timed('inflight', () => readInFlight(ids)),
+      timed('awaiting', () => readAwaitingRelease(ids)),
+      timed('backlog', () => readAdmissibleForProjects(ids, ORG_ACTIVITY_LIST_LIMIT)),
+      timed('people', () => peopleGlances.read([peopleKey], waitMs)),
+      timed('masters', async () => {
+        const glances = await readMasterGlances(ids, now);
+        return { glances, titles: await readDoingTitles(projects, glances) };
+      }),
+      timed('releases', () => releaseGlances.read(ids, waitMs)),
+      timed('lanes', () => readProjectEvents(ids, { since: laneFrom, limit: LANE_EVENTS_LIMIT })),
+      timed('shipped', () => readLaneReleases(ids, laneFrom, now)),
+    ]);
   const owed = people.values.get(peopleKey);
   const rows = projects.map((p): OrgActivityProject => {
     const glance = masters.glances.get(p.id);
     const backlog = admissible.totals.get(p.id) ?? 0;
     const release = releases.values.get(p.id);
-    const base = {
+    const owedHere = owed?.read
+      ? (owed.value.get(p.id) ?? { total: 0, items: [] })
+      : { total: 0, items: [] };
+    const master = masterOf(glance, (key) => masters.titles.get(`${p.id}|${key}`) ?? null);
+    const projectEvents = events.get(p.id) ?? [];
+    const standing = standingOf(glance);
+    return {
       projectId: p.id,
       slug: p.slug,
       name: p.name,
-      master: masterOf(glance, (key) => masters.titles.get(`${p.id}|${key}`) ?? null),
+      group: groupOf(standing, owedHere.total),
+      standing,
+      pause: pauseOf(glance),
+      master,
       now: inFlight.get(p.id) ?? [],
       next: {
         total: backlog,
@@ -370,24 +389,17 @@ export async function readOrgActivity(
           })),
         skip: skipOf(glance, backlog),
       },
-      people: owed?.read
-        ? (owed.value.get(p.id) ?? { total: 0, items: [] })
-        : { total: 0, items: [] },
+      people: owedHere,
       peoplePending: !owed?.read,
       release: release?.read ? release.value : null,
       releasePending: !release?.read,
       awaitingRelease: awaiting.get(p.id) ?? 0,
-      lane: glance
-        ? laneOf(events.get(p.id) ?? [], laneFrom, now, {
-            dialogSince: glance.state === 'waiting_person' ? glance.since : null,
-          })
-        : null,
+      lane: laneOf(projectEvents, laneFrom, now, shipped.get(p.id) ?? [], owedHere.items),
+      lastActivityAt: lastActivityOf(projectEvents, master.lastPassEndedAt),
     };
-    return { ...base, group: groupOf(base) };
   });
   const order = (g: OrgActivityGroup) => ORG_ACTIVITY_GROUPS.indexOf(g);
   rows.sort((a, b) => order(a.group) - order(b.group) || a.name.localeCompare(b.name));
-  const sum = (f: (r: OrgActivityProject) => number) => rows.reduce((n, r) => n + f(r), 0);
   return {
     generatedAt: now.toISOString(),
     orgId,
@@ -395,12 +407,9 @@ export async function readOrgActivity(
     refreshing: people.refreshing || releases.refreshing,
     totals: {
       projects: rows.length,
-      running: rows.filter((r) => r.group === 'running').length,
-      inFlight: sum((r) => r.now.length),
-      queued: sum((r) => r.next.total),
-      people: sum((r) => r.people.total),
-      awaitingRelease: sum((r) => r.awaitingRelease),
-      noMaster: rows.filter((r) => r.master.state === 'none').length,
+      ...(Object.fromEntries(
+        ORG_ACTIVITY_GROUPS.map((g) => [g, rows.filter((r) => r.group === g).length]),
+      ) as Record<OrgActivityGroup, number>),
     },
   };
 }

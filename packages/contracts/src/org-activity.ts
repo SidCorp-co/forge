@@ -10,21 +10,41 @@
 import type { IssueStatus } from "./issue-machine.js";
 import type { WorkStep } from "./issue-vocabulary.js";
 import type { MasterPane, MasterState, MasterVerb } from "./master-standing.js";
-import type { NeedsYouDecisionGroup } from "./needs-you-decisions.js";
+import type { DecisionOpens, NeedsYouDecisionGroup } from "./needs-you-decisions.js";
 import type { ProjectNowSource } from "./project-now.js";
 
 /**
- * Where a project stands, in the order the page lists them, by its master's state alone and never by
- * an in-progress issue (MK-9): `running` while its master is in a pass, busy by hand or has runs
- * out; `idle` while its master is idle with a backlog; `waiting` while its master is stopped on a
- * person's dialog, people owe it a decision or a release, or a backlog stands and no master takes it;
- * `quiet` otherwise.
+ * Where a project's master stands (ISS-979, the owner's mockup v3), by its one state
+ * (`masters/state.ts:masterStateOf`) and never by an in-progress issue (MK-9): `working` while it is in
+ * a pass, busy by hand or has runs out; `paused` while it takes no new work (its box is silent, its pane
+ * is stopped on a dialog, or its box takes no new run); `idle` otherwise; `none` where no master stands.
  */
-export const ORG_ACTIVITY_GROUPS = ["running", "idle", "waiting", "quiet"] as const;
+export const ORG_ACTIVITY_STANDINGS = ["working", "idle", "paused", "none"] as const;
+export type OrgActivityStanding = (typeof ORG_ACTIVITY_STANDINGS)[number];
+
+/** Why a master reads `paused`, for the tooltip on its state: never drawn as text on the row. */
+export const ORG_ACTIVITY_PAUSE_REASONS = ["silent", "dialog", "no_new_work"] as const;
+export type OrgActivityPauseReason = (typeof ORG_ACTIVITY_PAUSE_REASONS)[number];
+
+/**
+ * The groups the page lists, in its order: `you` first, holding every project with something waiting
+ * on the reader whatever its master does, then each master standing. The filter chips count projects
+ * in the same groups, so a chip and a group never disagree.
+ */
+export const ORG_ACTIVITY_GROUPS = ["you", ...ORG_ACTIVITY_STANDINGS] as const;
 export type OrgActivityGroup = (typeof ORG_ACTIVITY_GROUPS)[number];
 
-/** How many of a project's next issues, and of the decisions it waits on, a row carries by name. */
+/** Moves on one project closer than this to the first move of a batch fall in that batch (the mockup's 15 min). */
+export const ORG_ACTIVITY_BATCH_MINUTES = 15;
+
+/** How many of a project's next issues a row carries by name. */
 export const ORG_ACTIVITY_LIST_LIMIT = 5;
+
+/** How many of the decisions a project waits on the reader for a row carries by name, each placed on its lane. */
+export const ORG_ACTIVITY_WAIT_LIMIT = 20;
+
+/** How many of a release's issues its marker lists by name; `total` counts every one. */
+export const ORG_ACTIVITY_RELEASE_ISSUES = 8;
 
 /** An issue the project works now: in progress, or carried by a release at its release step. */
 export interface OrgActivityNow {
@@ -48,11 +68,17 @@ export interface OrgActivityNext {
 
 /** A decision the project waits on the caller for, as Needs you lists it. */
 export interface OrgActivityPerson {
+	/** The decision's own id, which the project's Approvals page opens it by to answer it. */
+	decisionId: string;
 	group: NeedsYouDecisionGroup;
 	/** The issue, requirement or feedback key it is asked on, for a tooltip; null for a question asked on nothing. */
 	key: string | null;
 	/** A question's own words, or the item's title, on one line, with no record key in it. */
 	title: string;
+	/** When the wait began, as the decision records it (`NeedsYouDecision.touchedAt`); null where it records none. */
+	since: string | null;
+	/** The record that opens to read it, as Needs you names it; null where no record holds it. */
+	opens: DecisionOpens | null;
 }
 
 /**
@@ -103,7 +129,12 @@ export interface OrgActivityProject {
 	projectId: string;
 	slug: string;
 	name: string;
+	/** `you` where anything waits on the reader, else its master's standing. */
 	group: OrgActivityGroup;
+	/** Its master's standing, which the row's state reads whatever group it sits in. */
+	standing: OrgActivityStanding;
+	/** Why it reads `paused`; null on any other standing. */
+	pause: OrgActivityPauseReason | null;
 	master: OrgActivityMaster;
 	now: OrgActivityNow[];
 	/**
@@ -120,11 +151,10 @@ export interface OrgActivityProject {
 	releasePending: boolean;
 	/** Issues landed and waiting for a release. */
 	awaitingRelease: number;
-	/**
-	 * What the project recorded over the last {@link ORG_ACTIVITY_LANE_MINUTES} minutes, drawn as its
-	 * timeline lane (MK-10 C); null where no master stands, which the lane says.
-	 */
-	lane: OrgActivityLane | null;
+	/** What the project recorded over the last {@link ORG_ACTIVITY_LANE_MINUTES} minutes, drawn as its timeline lane. */
+	lane: OrgActivityLane;
+	/** When core last recorded anything on the project (a move, a run, a pass, a release); null where nothing is recorded. */
+	lastActivityAt: string | null;
 }
 
 /** How far back a project's timeline lane reaches. */
@@ -136,19 +166,59 @@ export interface OrgActivitySpan {
 	to: string | null;
 }
 
+/** One issue of a batch: its first status in the batch and its last, by title, its key for a link and a tooltip. */
+export interface OrgActivityBatchMove {
+	issueKey: string;
+	title: string | null;
+	from: IssueStatus | null;
+	to: IssueStatus;
+}
+
 /**
- * One project's lane (MK-10 C), read from the same events its Recent list reads: its master's passes
- * as ticks, its runs as bars, its issues' status moves as dots and the dialogs its master's pane
- * stopped on as amber bars, each from `from` to the read's `generatedAt`.
+ * Status moves made close in time on one project (within {@link ORG_ACTIVITY_BATCH_MINUTES} of its
+ * first), drawn as one numbered marker at `at`, its first move: one entry per issue moved.
+ */
+export interface OrgActivityBatch {
+	at: string;
+	moves: OrgActivityBatchMove[];
+}
+
+/** A release marker's state: `released` shipped or landed, `releasing` still running, `failed`, or `stopped` (aborted). */
+export const ORG_ACTIVITY_RELEASE_STATES = ["released", "releasing", "failed", "stopped"] as const;
+export type OrgActivityReleaseState = (typeof ORG_ACTIVITY_RELEASE_STATES)[number];
+
+/** A release cut, shipped or ended on the lane: at its ship, else its start while it runs, else its end. */
+export interface OrgActivityLaneRelease {
+	at: string;
+	version: string;
+	state: OrgActivityReleaseState;
+	/** Every issue it carries. */
+	total: number;
+	/** The first {@link ORG_ACTIVITY_RELEASE_ISSUES} of them, by title, the key for a link and a tooltip. */
+	issues: { key: string; title: string }[];
+}
+
+/**
+ * Decisions waiting on the reader that began close in time, drawn as one amber pin at `at`, where the
+ * first of them began (the lane's start where it began before it, or where core holds no start).
+ */
+export interface OrgActivityWait {
+	at: string;
+	items: OrgActivityPerson[];
+}
+
+/**
+ * One project's lane, read by core (ISS-979, the owner's mockup v3): its runs as bars, its issues'
+ * status moves grouped into batches, its releases and the decisions waiting on the reader, from `from`
+ * to the read's `generatedAt`. A master pass is not drawn: a pass that took something shows as the run
+ * it started, and one that took nothing says nothing.
  */
 export interface OrgActivityLane {
 	from: string;
-	/** When each pass opened. */
-	passes: string[];
 	runs: OrgActivitySpan[];
-	/** When each status move was made. */
-	moves: string[];
-	dialogs: OrgActivitySpan[];
+	batches: OrgActivityBatch[];
+	releases: OrgActivityLaneRelease[];
+	waits: OrgActivityWait[];
 }
 
 export interface OrgActivity {
@@ -161,16 +231,8 @@ export interface OrgActivity {
 	 * reads once more shortly, and stops when this is false. Never set in a steady state.
 	 */
 	refreshing: boolean;
-	totals: {
-		projects: number;
-		/** Projects in the `running` group. */
-		running: number;
-		inFlight: number;
-		queued: number;
-		people: number;
-		awaitingRelease: number;
-		noMaster: number;
-	};
+	/** How many projects each group holds, and all of them: the filter chips' counts, in projects. */
+	totals: { projects: number } & Record<OrgActivityGroup, number>;
 }
 
 /**

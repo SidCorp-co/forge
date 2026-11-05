@@ -1,29 +1,39 @@
-// Where a project's row stands on Activity and what its left text says, both from the one master state
+// Where a project's row stands on Activity and what its state says, both from the one master state
 // `masters/state.ts:masterStateOf` derived (ISS-951 round 4). Round 3 read the group from that state
 // and "busy by hand" from the last pass's trigger, so a master idle since a turn somebody started at
 // its pane sat in Idle with backlog beside "busy by hand" (judge run e0121211, Agenfold at dev.486).
-// Each reading here says what is true now, and none contradicts the group.
+// Each reading here says what is true now, and none contradicts the group. ISS-979 (the owner's
+// mockup v3) groups by that standing, with every project something waits on the reader for first.
 
 import type {
   OrgActivityDoing,
   OrgActivityGroup,
-  OrgActivityProject,
+  OrgActivityPauseReason,
   OrgActivitySkipReason,
+  OrgActivityStanding,
 } from '@forge/contracts/org-activity';
 import type { MasterGlance } from '../masters/index.js';
 
-const RUNNING = new Set(['in_pass', 'busy', 'runs_out']);
+const WORKING = new Set(['in_pass', 'busy', 'runs_out']);
 
-/** Where a row stands, by its master and what is owed, never by an in-progress issue (MK-9). */
-export function groupOf(
-  p: Pick<OrgActivityProject, 'master' | 'next' | 'people' | 'awaitingRelease'>,
-): OrgActivityGroup {
-  const state = p.master.state;
-  if (RUNNING.has(state)) return 'running';
-  if (state === 'waiting_person') return 'waiting';
-  if (state !== 'none' && p.next.total > 0) return 'idle';
-  if (p.people.total > 0 || p.awaitingRelease > 0 || p.next.total > 0) return 'waiting';
-  return 'quiet';
+/** Why a master takes no new work, or null where it takes it (or no master stands). */
+export function pauseOf(m: MasterGlance | undefined): OrgActivityPauseReason | null {
+  if (!m || m.state === 'none' || WORKING.has(m.state)) return null;
+  if (m.state === 'silent') return 'silent';
+  if (m.state === 'waiting_person') return 'dialog';
+  return m.poolClosed ? 'no_new_work' : null;
+}
+
+/** Where a master stands, by its state alone, never by an in-progress issue (MK-9). */
+export function standingOf(m: MasterGlance | undefined): OrgActivityStanding {
+  if (!m || m.state === 'none') return 'none';
+  if (WORKING.has(m.state)) return 'working';
+  return pauseOf(m) ? 'paused' : 'idle';
+}
+
+/** The row's group: Waiting on you wherever something waits on the reader, else its master's standing. */
+export function groupOf(standing: OrgActivityStanding, waitingOnReader: number): OrgActivityGroup {
+  return waitingOnReader > 0 ? 'you' : standing;
 }
 
 /**

@@ -86,3 +86,4 @@ export { stewardReleaseFacts } from './steward-release-facts.js';
 export { releaseToolView } from './tool-view.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
 export { deploymentConfirms } from './verify.js';
+export { issueIdsOf } from './versions.js';

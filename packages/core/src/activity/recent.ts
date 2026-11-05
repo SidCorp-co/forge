@@ -29,6 +29,6 @@ export async function readProjectRecent(
     (await readProjectEvents([projectId], { since: null, limit })).get(projectId) ?? [];
   return {
     projectId,
-    items: events.slice(0, limit).map(({ span: _span, ...event }) => event),
+    items: events.slice(0, limit).map(({ span: _span, from: _from, ...event }) => event),
   };
 }
