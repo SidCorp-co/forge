@@ -17,6 +17,7 @@ import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import type { CoolifyConfig } from '../integrations/deploy/index.js';
 import {
+  bindingHealth,
   effectiveConfig,
   findLastOutboundForTarget,
   listActiveDeployBindingsForProvider,
@@ -42,7 +43,7 @@ export const refuseCoolify = refuser<CoolifyRefusalCode>('COOLIFY_REFUSED');
  * Active Coolify bindings for a project, flattened to the shape the commands
  * consume. `id` is the BINDING id (== old project_integration id for
  * backfilled rows, so the runner-facing `integrationId` values are stable).
- * Health/breaker come from the owning connection; config is the effective
+ * Health is the binding's as it reads it (`bindingHealth`), the breaker the owning connection's; config is the effective
  * connection⊕binding overlay. `pair` is retained for the log commands.
  */
 export async function activeCoolifyIntegrations(projectId: string) {
@@ -55,7 +56,7 @@ export async function activeCoolifyIntegrations(projectId: string) {
     /** The project-document environment this binding deploys; null where none names it. */
     environment: map.environments.get(pair.binding.id)?.name ?? null,
     config: effectiveConfig<CoolifyConfig>(pair),
-    lastHealthStatus: pair.connection.lastHealthStatus,
+    lastHealthStatus: bindingHealth(pair).status,
     breakerOpenedAt: pair.connection.breakerOpenedAt,
     pair,
   }));

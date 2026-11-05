@@ -2,6 +2,7 @@ import { sayEn } from '@forge/contracts/said';
 import { scrubLogText } from '@forge/observability';
 import {
   type BindingWithConnection,
+  bindingHealth,
   describeInboundDoor,
   effectiveConfig,
   forgeReads,
@@ -47,7 +48,7 @@ interface GitHubAgentBindingReport {
   connectionActive: boolean;
   /** Whether an agent on this project may use it — the binding's own `agent_access`. */
   agentGranted: boolean;
-  /** BOTH directions; until ISS-1140 the outbound probe alone, so a binding addressed at the wrong host read `ok`. `connectionProbeStatus` is what the probe STORED: repository fetch and App webhook read together, since a failed hook read demotes that too. */
+  /** BOTH directions; until ISS-1140 the outbound probe alone, so a binding addressed at the wrong host read `ok`. `connectionProbeStatus` is what the probe STORED as this binding reads it (`bindingHealth`, ISS-983): the credential's fault, else the repository fetch and App webhook read together, since a failed hook read demotes that too. */
   lastHealthStatus: string | null;
   connectionProbeStatus: string | null;
   /** The sentence the last probe produced, or null where it recorded none. */
@@ -144,7 +145,8 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
           : projectDoor;
       const state = inboundDoorState({ inboundUnprompted, expectedUrl, observed, traffic });
       const standing = standings.get(pair.binding.id) ?? null;
-      const stored = standing ? 'degraded' : (pair.connection.lastHealthStatus ?? null);
+      const health = bindingHealth(pair);
+      const stored = standing ? 'degraded' : health.status;
       return {
         bindingId: pair.binding.id,
         repository: config.owner && config.repo ? `${config.owner}/${config.repo}` : null,
@@ -154,7 +156,7 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
         agentGranted: grantHolds(decl, pair.binding),
         lastHealthStatus: healthWithInboundDoor(stored, state),
         connectionProbeStatus: stored,
-        healthDetail: standing ? sayEn(standing) : (pair.connection.lastHealthDetail ?? null),
+        healthDetail: standing ? sayEn(standing) : health.detail,
         inboundDoor: state,
         inboundReading: describeInboundDoor({
           state,

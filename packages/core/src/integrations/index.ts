@@ -9,6 +9,14 @@ export {
 export { listAgentGrantedBindings } from './agent-access-store.js';
 export { agentIntegration } from './agent-declaration.js';
 export {
+  bindingHealth,
+  type HealthPart,
+  type HealthReading,
+  healthReadsBinding,
+  recordHealth,
+  updateBindingHealth,
+} from './binding-health.js';
+export {
   bindingNames,
   type NameableBinding,
   type ReportableBinding,

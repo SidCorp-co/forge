@@ -1,6 +1,7 @@
 import type { BindingRole } from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/index.js';
 import {
+  bindingHealth,
   effectiveConfig,
   getIntegration,
   grantHolds,
@@ -41,7 +42,7 @@ export async function loadActiveIntegrationRows(
     provider: p.binding.provider,
     role: p.binding.role,
     environment: deployMap.environments.get(p.binding.id)?.name ?? null,
-    lastHealthStatus: p.connection.lastHealthStatus,
+    lastHealthStatus: bindingHealth(p).status,
     instructions: p.binding.instructions ?? null,
     hasOrgGuide: orgGuides.has(p.binding.provider),
     extraLine: getIntegration(p.binding.provider)?.usage?.renderExtra?.(effectiveConfig(p)) ?? null,

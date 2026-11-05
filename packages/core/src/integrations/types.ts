@@ -575,6 +575,13 @@ export interface IntegrationAdapterMethods<
     { ok: true; config: Record<string, unknown> } | { ok: false; refusals: BindingTargetRefusal[] }
   >;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
+  /**
+   * The health check reads the binding's own target — a repository, its hooks, deploy targets, a
+   * site — besides the credential, and records that half on the binding (`binding-health.ts`). The
+   * hourly sweep then probes every binding rather than one per connection, and a binding no check
+   * has reached reads unverified rather than its connection's `ok` (ISS-983).
+   */
+  healthReadsBinding?: true;
   deploymentRecords?(
     ctx: AdapterContext<TConfig, TSecrets>,
     timeoutMs: number,

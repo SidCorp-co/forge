@@ -1,6 +1,7 @@
 import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
 import {
+  type AdapterContext,
   declareIntegration,
   findConnectionById,
   type HealthCheckResult,
@@ -8,8 +9,8 @@ import {
   healthOf,
   type IntegrationAdapterMethods,
   isPreviousCredentialValid,
+  recordHealth,
   thrownSaid,
-  updateConnection,
 } from '../index.js';
 import { type AutoflowGqlResult, autoflowGql } from './client.js';
 import { autoflowStorefrontDrafts } from './draft.js';
@@ -49,35 +50,37 @@ function signIn(config: AutoflowConfig): Said {
     : say('integrations.health.autoflow.signIn', at);
 }
 
+/**
+ * The token's own standing — present, fresh, refused, the one site it was minted for — is the
+ * connection's, read alike by every binding of it. Whether that site is this binding's `shop` is the
+ * binding's alone (ISS-983): `ok` is both, the token held and the shop is its site.
+ */
 async function settle(
-  connectionId: string,
+  ctx: Pick<AdapterContext, 'connectionId' | 'bindingId'>,
   status: HealthStatus,
   result: HealthCheckResult,
   config?: Record<string, unknown>,
 ): Promise<HealthCheckResult> {
-  await updateConnection(connectionId, {
-    ...(config ? { config } : {}),
-    lastHealthStatus: status,
-    lastHealthDetail: status === 'ok' ? null : (result.says?.message ?? null),
-    lastHealthAt: new Date(),
+  await recordHealth(ctx, {
+    connection: { status, detail: status === 'ok' ? null : (result.says?.message ?? null) },
+    ...(status === 'ok' ? { binding: { status: 'ok' as const, detail: null } } : {}),
+    ...(config ? { connectionConfig: config } : {}),
   });
   return result;
 }
 
 const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, AutoflowSecrets> = {
+  healthReadsBinding: true,
+
   async healthcheck(ctx): Promise<HealthCheckResult> {
     let token = ctx.secrets?.accessToken;
     if (!token) {
-      return settle(
-        ctx.connectionId,
-        'error',
-        healthOf('error', say('integrations.health.autoflow.noToken')),
-      );
+      return settle(ctx, 'error', healthOf('error', say('integrations.health.autoflow.noToken')));
     }
     const url = autoflowGraphqlUrl(ctx.config);
     const refused = (fresh: Extract<AutoflowFreshToken, { kind: 'needs_reauth' }>) =>
       settle(
-        ctx.connectionId,
+        ctx,
         'needs_reauth',
         healthOf(
           'needs_reauth',
@@ -131,7 +134,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
       }
       if (probe.kind === 'unauthorized') {
         return settle(
-          ctx.connectionId,
+          ctx,
           'needs_reauth',
           healthOf(
             'needs_reauth',
@@ -145,7 +148,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
       }
       if (probe.kind === 'http-error') {
         return settle(
-          ctx.connectionId,
+          ctx,
           'error',
           healthOf(
             'error',
@@ -156,7 +159,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
       }
       if (probe.kind === 'graphql-error') {
         return settle(
-          ctx.connectionId,
+          ctx,
           'error',
           healthOf(
             'error',
@@ -170,7 +173,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
       // An OAuth access token is pinned to ONE site; anything else is not guessed at.
       if (stores.length !== 1 || !stores[0]) {
         return settle(
-          ctx.connectionId,
+          ctx,
           'needs_reauth',
           healthOf(
             'needs_reauth',
@@ -183,19 +186,20 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
       }
       const store = stores[0];
       if (ctx.config.shop && store.slug !== ctx.config.shop) {
-        return settle(
-          ctx.connectionId,
-          'needs_reauth',
-          healthOf(
-            'needs_reauth',
-            say('integrations.health.autoflow.otherSite', {
-              site: store.slug ? verbatim(store.slug) : say('integrations.health.autoflow.noSlug'),
-              shop: ctx.config.shop,
-              hint: signIn(ctx.config),
-            }),
-            { tokenSite: store.slug ?? null, bindingShop: ctx.config.shop },
-          ),
-        );
+        // the token holds, for its own site; that it is not this binding's shop is this binding's
+        const otherSite = say('integrations.health.autoflow.otherSite', {
+          site: store.slug ? verbatim(store.slug) : say('integrations.health.autoflow.noSlug'),
+          shop: ctx.config.shop,
+          hint: signIn(ctx.config),
+        });
+        await recordHealth(ctx, {
+          connection: { status: 'ok', detail: null },
+          binding: { status: 'needs_reauth', detail: otherSite },
+        });
+        return healthOf('needs_reauth', otherSite, {
+          tokenSite: store.slug ?? null,
+          bindingShop: ctx.config.shop,
+        });
       }
 
       const connection = await findConnectionById(ctx.connectionId);
@@ -209,7 +213,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
       if (store.active_theme_id != null) resolved.themeId = String(store.active_theme_id);
       if (store.commerce_enabled != null) resolved.commerceEnabled = store.commerce_enabled;
       return settle(
-        ctx.connectionId,
+        ctx,
         'ok',
         healthOf(
           'ok',
@@ -232,7 +236,7 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: sayEn(said) },
         'autoflow: healthcheck failed',
       );
-      return settle(ctx.connectionId, 'error', healthOf('error', said));
+      return settle(ctx, 'error', healthOf('error', said));
     }
   },
 

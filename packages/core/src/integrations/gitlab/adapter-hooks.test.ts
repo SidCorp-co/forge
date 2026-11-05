@@ -4,12 +4,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const updateConnection = vi.fn(async (_id: string, _patch: Record<string, unknown>) => {});
+const updateBindingHealth = vi.fn(async (_id: string, _patch: Record<string, unknown>) => {});
+const recordHealth = vi.fn(async (_ctx: unknown, _reading: Record<string, unknown>) => {});
 let apiBase: string | null = 'https://forge-dev-api.sidcorp.co';
 
 vi.mock('../index.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  updateConnection,
+  updateBindingHealth,
+  recordHealth,
   resolveApiBaseUrl: () => apiBase,
   forgeReads: () => ({ projectSlug: async () => 'adminhub-fe' }),
 }));
@@ -43,17 +45,20 @@ function gitlab(hooks: unknown[]) {
   });
 }
 
-/** What the check stored as its observation of the hooks. */
+/** What the check stored as its observation of the hooks: on the binding, never the connection. */
 const observed = () =>
-  updateConnection.mock.calls.map(([, p]) => p.inboundEndpointObserved).find(Boolean) as
-    | { url: string | null; active: boolean | null }
-    | undefined;
+  updateBindingHealth.mock.calls
+    .filter(([id]) => id === 'b1')
+    .map(([, p]) => p.inboundEndpointObserved)
+    .find(Boolean) as { url: string | null; active: boolean | null } | undefined;
 
 /** Everything the check let out: its answer and every write it made. */
-const said = (result: unknown) => JSON.stringify([result, updateConnection.mock.calls]);
+const said = (result: unknown) =>
+  JSON.stringify([result, updateBindingHealth.mock.calls, recordHealth.mock.calls]);
 
 beforeEach(() => {
-  updateConnection.mockClear();
+  updateBindingHealth.mockClear();
+  recordHealth.mockClear();
   apiBase = 'https://forge-dev-api.sidcorp.co';
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -127,5 +132,43 @@ describe('a stored observation of another hook, from before this check', () => {
     expect(ownObservation({ url: `${OURS}/`, active: true, ...at }, OURS)?.url).toBe(`${OURS}/`);
     expect(ownObservation({ url: null, active: null, ...at }, OURS)).toMatchObject({ url: null });
     expect(ownObservation(null, OURS)).toBeNull();
+  });
+});
+
+describe('what the check learned, split by whose it is (ISS-983)', () => {
+  it("PLANT: a missing hook is the binding's: recorded on it, the credential read ok on the connection", async () => {
+    gitlab([]);
+    await adapter.healthcheck(ctx);
+    const [scope, reading] = recordHealth.mock.calls.at(-1) as [
+      { bindingId: string },
+      { connection?: { status: string }; binding?: { status: string } },
+    ];
+    expect(scope.bindingId).toBe('b1');
+    expect(reading.connection?.status).toBe('ok');
+    expect(reading.binding?.status).toBe('degraded');
+    expect(JSON.stringify(reading.connection)).not.toContain('webhook');
+  });
+
+  it('a token GitLab refuses is the connection’s alone, leaving the binding’s last reading standing', async () => {
+    vi.stubGlobal('fetch', async () => Response.json({ message: '401' }, { status: 401 }));
+    const result = await adapter.healthcheck(ctx);
+    expect(result.status).toBe('needs_reauth');
+    const [, reading] = recordHealth.mock.calls.at(-1) as [
+      unknown,
+      { connection?: { status: string }; binding?: unknown },
+    ];
+    expect(reading.connection?.status).toBe('needs_reauth');
+    expect(reading.binding).toBeUndefined();
+  });
+
+  it("a project the token cannot see is the binding's, not the connection's", async () => {
+    vi.stubGlobal('fetch', async () => Response.json({ message: '404' }, { status: 404 }));
+    await adapter.healthcheck(ctx);
+    const [, reading] = recordHealth.mock.calls.at(-1) as [
+      unknown,
+      { connection?: { status: string }; binding?: { status: string } },
+    ];
+    expect(reading.connection?.status).toBe('ok');
+    expect(reading.binding?.status).toBe('error');
   });
 });

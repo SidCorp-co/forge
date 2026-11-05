@@ -5,6 +5,7 @@ import { projects } from '../db/schema.js';
 import { installationStandings } from '../integrations/github/index.js';
 import {
   type BindingWithConnection,
+  bindingHealth,
   bindingNames,
   connectionHealthStatus,
   effectiveConfig,
@@ -239,23 +240,24 @@ function repositoryCard(
   const { binding, connection } = reached.pair;
   const active = binding.active && connection.active;
   const standing = standings.get(binding.id) ?? null;
+  const health = bindingHealth(reached.pair);
   return {
     key: `${binding.provider}:repository`,
     label: `${reached.label} repository`,
-    status: healthToStatus(standing ? 'degraded' : connection.lastHealthStatus, active),
+    status: healthToStatus(standing ? 'degraded' : health.status, active),
     ...detailOf(
       !active
         ? say('integrations.detail.switchedOff', { provider: reached.label })
         : standing
           ? standing
-          : connection.lastHealthStatus
+          : health.status
             ? say('integrations.detail.readThrough', {
                 provider: reached.label,
-                status: connection.lastHealthStatus,
+                status: health.status,
               })
             : say('integrations.detail.readThroughNever', { provider: reached.label }),
     ),
-    lastSyncAt: toIso(connection.lastHealthAt),
+    lastSyncAt: toIso(health.at),
     configured: true,
     meta,
   };
@@ -284,14 +286,15 @@ async function providerCards(
   const names = bindingNames(named, reported);
   const rows: ProviderRow[] = pairs.map((pair, i) => {
     const standing = standings.get(pair.binding.id) ?? null;
+    const health = bindingHealth(pair);
     return {
       ...(named[i] as (typeof named)[number]),
       name: names.get(pair.binding.id) ?? '',
       active: pair.binding.active && pair.connection.active,
-      lastHealthStatus: standing ? 'degraded' : pair.connection.lastHealthStatus,
-      lastHealthDetail: standing ? sayEn(standing) : pair.connection.lastHealthDetail,
-      lastHealthSays: standing ?? pair.connection.lastHealthSays,
-      lastHealthAt: pair.connection.lastHealthAt,
+      lastHealthStatus: standing ? 'degraded' : health.status,
+      lastHealthDetail: standing ? sayEn(standing) : health.detail,
+      lastHealthSays: standing ?? health.says,
+      lastHealthAt: health.at,
       breakerOpenedAt: pair.connection.breakerOpenedAt,
     };
   });

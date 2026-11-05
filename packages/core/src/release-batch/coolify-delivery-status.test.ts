@@ -16,6 +16,7 @@ vi.mock('../integrations/index.js', async (orig) => ({
     },
   ],
   effectiveConfig: () => config,
+  bindingHealth: () => ({ status: 'ok', detail: null, says: null, at: null }),
   findLastOutboundForTarget: async () => null,
 }));
 

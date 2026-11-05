@@ -2,6 +2,7 @@ import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import type { BindingRole } from '../db/schema.js';
 import {
   type BindingWithConnection,
+  bindingHealth,
   directMcpIntegrations,
   effectiveConfig,
   grantHolds,
@@ -18,6 +19,12 @@ import { resolveSessionMcpServers } from '../jobs/index.js';
 import { refuser } from '../lib/refusal.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
+
+/** The binding's own health as a row reads it (`bindingHealth`, ISS-983). */
+function healthOfRow(pair: BindingWithConnection) {
+  const health = bindingHealth(pair);
+  return { lastHealthStatus: health.status, lastHealthAt: toIso(health.at) };
+}
 
 type McpServerPreviewReason =
   | 'ok'
@@ -160,8 +167,7 @@ async function integrationRows(
         headers: willInject
           ? { Authorization: httpUpstreamOf(entry) ? 'Bearer [relay ticket]' : 'Bearer [redacted]' }
           : null,
-        lastHealthStatus: pair.connection.lastHealthStatus,
-        lastHealthAt: toIso(pair.connection.lastHealthAt),
+        ...healthOfRow(pair),
       });
     }
   }

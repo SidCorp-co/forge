@@ -13,12 +13,13 @@ import {
   type IntegrationAdapterMethods,
   inboundWebhookUrl,
   isPreviousCredentialValid,
+  recordHealth,
   recordRefusedInbound,
   refusedInbound,
   resolveApiBaseUrl,
   sameEndpoint,
   thrownSaid,
-  updateConnection,
+  updateBindingHealth,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
 import { heldUntil, holdAfter429 } from './cooldown.js';
@@ -84,9 +85,9 @@ async function expectedHookUrl(projectId: string): Promise<string | null> {
 }
 
 /**
- * Whether the project's GitLab hooks hold Forge's own, stored as the answer and judged per binding at
- * read time. The observation is the connection's column; a project access token reaches one project,
- * which is the connection shape this integration is built for.
+ * Whether the project's GitLab hooks hold Forge's own, stored as the answer on the binding: the hooks
+ * are the bound project's, and one token may reach several projects bound from several Forge
+ * projects, so the observation of one is never another's (ISS-983).
  *
  * Only the hook calling this project's own inbound URL is Forge's. Any other hook on the list belongs
  * to someone else (a deploy hook with its secret in the query, a chat notifier) and is never judged,
@@ -104,7 +105,7 @@ async function observeHooks(
     const readError = say('integrations.health.gitlab.hooksUnread', {
       status: String(hooks.status),
     });
-    await updateConnection(ctx.connectionId, {
+    await updateBindingHealth(ctx.bindingId, {
       inboundEndpointObserved: { url: null, active: null, observedAt, readError: sayEn(readError) },
     });
     return readError;
@@ -115,7 +116,7 @@ async function observeHooks(
     expected === null
       ? null
       : (list.find((h) => typeof h.url === 'string' && sameEndpoint(h.url, expected)) ?? null);
-  await updateConnection(ctx.connectionId, {
+  await updateBindingHealth(ctx.bindingId, {
     inboundEndpointObserved: {
       url: hook ? expected : null,
       active: hook ? true : null,
@@ -142,22 +143,33 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       host: gitlabHostOf({ ...((connection.config ?? {}) as Record<string, unknown>), ...config }),
     }),
 
+  healthReadsBinding: true,
+
+  /**
+   * What the token is (recognised, its scope, the host answering) is the connection's; whether the
+   * bound project is seen and holds Forge's hook is this binding's alone (ISS-983).
+   */
   async healthcheck(ctx): Promise<HealthCheckResult> {
-    const finish = async (
+    /** The credential failed, or the host did not answer: every binding of the connection reads it. */
+    const credential = async (status: HealthCheckResult['status'], says: Said) => {
+      await recordHealth(ctx, { connection: { status, detail: says } });
+      return healthOf(status, says);
+    };
+    /** The credential held; what the check found of this binding's own project is its own. */
+    const target = async (
       status: HealthCheckResult['status'],
       says?: Said,
       diagnostics?: Record<string, unknown>,
     ) => {
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: status,
-        lastHealthDetail: says ?? null,
-        lastHealthAt: new Date(),
+      await recordHealth(ctx, {
+        connection: { status: 'ok', detail: null },
+        binding: { status, detail: says ?? null },
       });
       return healthOf(status, says, diagnostics);
     };
     const base = (ctx.config?.baseUrl ?? GITLAB_DEFAULT_BASE_URL).replace(/\/+$/, '');
     const primary = ctx.secrets?.token;
-    if (!primary) return finish('error', say('integrations.health.gitlab.noToken'));
+    if (!primary) return credential('error', say('integrations.health.gitlab.noToken'));
     const { projectPath, projectId } = ctx.config ?? {};
     const path = projectPath
       ? `/projects/${encodeURIComponent(projectPath)}`
@@ -175,15 +187,18 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       }
       if (!read.ok) {
         if (read.status === 401)
-          return finish('needs_reauth', say('integrations.health.gitlab.unrecognised', { path }));
+          return credential(
+            'needs_reauth',
+            say('integrations.health.gitlab.unrecognised', { path }),
+          );
         if (read.status === 403) {
-          return finish(
+          return credential(
             'needs_scope',
             say('integrations.health.gitlab.needsScope', { path, scope: 'api' }),
           );
         }
         if (read.status === 404) {
-          return finish(
+          return target(
             'error',
             say('integrations.health.gitlab.notVisible', {
               project: String(projectPath ?? projectId),
@@ -191,14 +206,14 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
             }),
           );
         }
-        return finish(
+        return credential(
           'error',
           say('integrations.health.gitlab.http', { status: String(read.status), path }),
         );
       }
       if (path === '/user') {
         const user = read.body as { username?: string };
-        return finish(
+        return target(
           'error',
           say('integrations.health.gitlab.noProject', {
             user: user.username
@@ -213,10 +228,10 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
         repository: project.path_with_namespace,
         defaultBranch: project.default_branch,
       };
-      if (fault) return finish('degraded', fault, diagnostics);
-      return finish('ok', undefined, diagnostics);
+      if (fault) return target('degraded', fault, diagnostics);
+      return target('ok', undefined, diagnostics);
     } catch (err) {
-      return finish('error', thrownSaid(err));
+      return credential('error', thrownSaid(err));
     }
   },
 

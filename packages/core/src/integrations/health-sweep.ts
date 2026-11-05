@@ -3,6 +3,7 @@ import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
+import { healthReadsBinding } from './binding-health.js';
 import { thrownSaid } from './health-said.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
@@ -42,24 +43,39 @@ export async function runIntegrationsHealthSweep(): Promise<{
   const t0 = Date.now();
   const pairs = await listActivePairs();
 
-  // One representative pair per connection — oldest binding first (same
-  // ordering the resolver pick uses), so the probed context is stable.
-  const byConnection = new Map<string, BindingWithConnection>();
-  for (const pair of pairs) {
-    if (!byConnection.has(pair.connection.id)) byConnection.set(pair.connection.id, pair);
-  }
-
-  let probed = 0;
-  let skippedFresh = 0;
-  let failed = 0;
+  // A provider whose check reads only the credential is probed once per connection, through its
+  // oldest binding (the resolver's ordering), so the probed context is stable. One whose check reads
+  // a binding's own target is probed per binding: probing one would leave every other binding's
+  // repository, hooks or targets unread (ISS-983).
   const cutoff = Date.now() - MIN_PROBE_AGE_MS;
-
-  for (const pair of byConnection.values()) {
-    const lastAt = pair.connection.lastHealthAt?.getTime() ?? 0;
-    if (lastAt > cutoff) {
+  const fresh = (at: Date | null) => (at?.getTime() ?? 0) > cutoff;
+  const toProbe: BindingWithConnection[] = [];
+  let skippedFresh = 0;
+  const seen = new Set<string>();
+  for (const pair of pairs) {
+    const perBinding = healthReadsBinding(pair.binding.provider);
+    const key = perBinding ? pair.binding.id : pair.connection.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // a credential that failed recently is failing for every binding of it: one probe an hour asks
+    // again, not one per binding
+    const credentialFailed =
+      pair.connection.lastHealthStatus != null && pair.connection.lastHealthStatus !== 'ok';
+    const recent = perBinding
+      ? fresh(pair.binding.lastHealthAt) ||
+        (credentialFailed && fresh(pair.connection.lastHealthAt))
+      : fresh(pair.connection.lastHealthAt);
+    if (recent) {
       skippedFresh++;
       continue;
     }
+    toProbe.push(pair);
+  }
+
+  let probed = 0;
+  let failed = 0;
+
+  for (const pair of toProbe) {
     const adapter = getAdapter(pair.binding.provider);
     if (!adapter) continue;
     // A probe that hangs or crashes records why, so the card never keeps a stale `ok`.

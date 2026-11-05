@@ -3837,6 +3837,13 @@
       "when": 1834963200000,
       "tag": "0602_a_beta_issue_is_ported_as_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 603,
+      "version": "7",
+      "when": 1835049600000,
+      "tag": "0603_a_binding_holds_its_own_health",
+      "breakpoints": true
     }
   ]
 }

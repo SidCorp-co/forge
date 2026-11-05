@@ -13,6 +13,7 @@ import {
   type OutboundDispatchInput,
   type OutboundDispatchResult,
   recordDelivery,
+  recordHealth,
   thrownSaid,
   updateConnection,
   updateDelivery,
@@ -226,16 +227,22 @@ function namedTargets(
 
 const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
   verifyBindingTarget: verifyCoolifyBindingTarget,
+  healthReadsBinding: true,
+
+  /**
+   * The token Coolify recognises, and its abilities, are the connection's; whether this binding's
+   * own applications exist is this binding's alone, since one Coolify token deploys many projects'
+   * applications (ISS-983).
+   */
   async healthcheck(ctx) {
     const started = Date.now();
     const client = buildClient(ctx);
     const targets = ctx.config.targets ?? [];
     if (targets.length === 0) {
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'error',
-        lastHealthAt: new Date(),
-      });
-      return healthOf('error', say('integrations.health.coolify.noTargets'), { httpStatus: null });
+      // nothing to ask Coolify about: the token was not tried
+      const said = say('integrations.health.coolify.noTargets');
+      await recordHealth(ctx, { binding: { status: 'error', detail: said } });
+      return healthOf('error', said, { httpStatus: null });
     }
     try {
       const names: string[] = [];
@@ -244,9 +251,9 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         names.push(res.name ? `${t.label} → "${res.name}"` : `${t.label} → ${t.resourceUuid}`);
       }
       const durationMs = Date.now() - started;
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'ok',
-        lastHealthAt: new Date(),
+      await recordHealth(ctx, {
+        connection: { status: 'ok', detail: null },
+        binding: { status: 'ok', detail: null },
       });
       // A successful Test-connection is an explicit operator signal that the
       // connection is healthy again — clear an open breaker so dispatch (and the
@@ -267,10 +274,17 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       const verdict = classifyCoolifyFailure(err);
       const said = coolifyFailureSaid(verdict, err);
       const message = sayEn(said);
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: verdict.health,
-        lastHealthAt: new Date(),
-      });
+      // a token Coolify answered for and an application it does not hold is this binding's own;
+      // a token refused, an ability missing or Coolify unreachable is the credential's
+      await recordHealth(
+        ctx,
+        status === 404
+          ? {
+              connection: { status: 'ok', detail: null },
+              binding: { status: verdict.health, detail: said },
+            }
+          : { connection: { status: verdict.health, detail: said } },
+      );
       logger.warn(
         {
           connectionId: ctx.connectionId,
@@ -346,8 +360,9 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
 
     await maybeResetBreaker(ctx.connectionId);
     // A deploy Coolify accepted is a health signal too, so the card cannot stay on a stale `error`
-    // from a one-off healthcheck while deploys succeed (ISS-429).
-    await updateConnection(ctx.connectionId, { lastHealthStatus: 'ok', lastHealthAt: new Date() });
+    // from a one-off healthcheck while deploys succeed (ISS-429): the token held, and this binding's
+    // targets are there.
+    await recordHealth(ctx, { connection: { status: 'ok' }, binding: { status: 'ok' } });
     const first = outcomes.find((o) => o.confirmation.deploymentUuid)?.confirmation.deploymentUuid;
     return {
       deliveryId: outcomes[0]?.confirmation.deliveryId ?? '',

@@ -63,6 +63,10 @@ function pair(opts: {
       label: '',
       config: opts.config ?? {},
       active: opts.active ?? true,
+      // what the last check found of this binding's own target (ISS-983)
+      lastHealthStatus: opts.lastHealthStatus ?? 'ok',
+      lastHealthDetail: null,
+      lastHealthAt: new Date('2026-10-07T00:00:00Z'),
       createdAt: new Date('2026-10-01T00:00:00Z'),
     },
     connection: {

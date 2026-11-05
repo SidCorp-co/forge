@@ -7,6 +7,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import type { AgentAccess } from './agent-access.js';
+import { bindingHealth } from './binding-health.js';
 import { bindingNames } from './binding-name.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
@@ -61,12 +62,14 @@ export function notifyConnectionChanged(provider: string, connectionId: string):
 }
 
 /**
- * A binding as a project reads it. `standing` is why it cannot work though its connection reads
- * healthy — the instance App's installation behind it was removed, suspended, or lost the
- * repository — and makes it read degraded naming that, never a connection-wide verdict.
+ * A binding as a project reads it, its health its own (`bindingHealth`). `standing` is why it
+ * cannot work though its connection reads healthy — the instance App's installation behind it was
+ * removed, suspended, or lost the repository — and makes it read degraded naming that, never a
+ * connection-wide verdict.
  */
 export function summarizeBinding(pair: BindingWithConnection, standing: Said | null = null) {
   const { binding, connection } = pair;
+  const health = bindingHealth(pair);
   return {
     id: binding.id,
     connectionId: connection.id,
@@ -79,10 +82,10 @@ export function summarizeBinding(pair: BindingWithConnection, standing: Said | n
     active: binding.active && connection.active,
     bindingActive: binding.active,
     connectionActive: connection.active,
-    lastHealthStatus: standing ? 'degraded' : connection.lastHealthStatus,
-    lastHealthDetail: standing ? sayEn(standing) : connection.lastHealthDetail,
-    lastHealthSays: standing ?? connection.lastHealthSays,
-    lastHealthAt: connection.lastHealthAt,
+    lastHealthStatus: standing ? 'degraded' : health.status,
+    lastHealthDetail: standing ? sayEn(standing) : health.detail,
+    lastHealthSays: standing ?? health.says,
+    lastHealthAt: health.at,
     breakerOpenedAt: connection.breakerOpenedAt,
     hasSecrets: connection.secretsEnc !== null,
     integrationSecretSet: binding.integrationSecretEnc !== null,

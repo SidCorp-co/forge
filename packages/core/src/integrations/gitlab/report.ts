@@ -1,4 +1,5 @@
 import {
+  bindingHealth,
   describeInboundDoor,
   effectiveConfig,
   forgeReads,
@@ -49,14 +50,16 @@ export async function gitlabBindingReports(
     pairs.map(async (pair) => {
       const config = effectiveConfig<GitLabConfig>(pair);
       const traffic = await readInboundDoorTraffic(pair.binding.id);
-      const observed = ownObservation(pair.connection.inboundEndpointObserved ?? null, expectedUrl);
+      // the hooks are the bound project's: its own observation, never the connection's (ISS-983)
+      const observed = ownObservation(pair.binding.inboundEndpointObserved ?? null, expectedUrl);
       const state = inboundDoorState({
         inboundUnprompted: decl?.capabilities.inboundUnprompted ?? false,
         expectedUrl,
         observed,
         traffic,
       });
-      const stored = pair.connection.lastHealthStatus ?? null;
+      const health = bindingHealth(pair);
+      const stored = health.status;
       return {
         provider: 'gitlab',
         bindingId: pair.binding.id,
@@ -70,7 +73,7 @@ export async function gitlabBindingReports(
         agentGranted: grantHolds(decl, pair.binding),
         lastHealthStatus: healthWithInboundDoor(stored, state),
         connectionProbeStatus: stored,
-        healthDetail: pair.connection.lastHealthDetail ?? null,
+        healthDetail: health.detail,
         inboundDoor: state,
         inboundReading: describeInboundDoor({
           state,

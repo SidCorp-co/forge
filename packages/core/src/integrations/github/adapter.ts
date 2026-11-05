@@ -11,6 +11,7 @@ import {
   type InboundDispatchResult,
   type InboundFact,
   type IntegrationAdapterMethods,
+  recordHealth,
   recordRefusedInbound,
   refusedInbound,
   thrownSaid,
@@ -43,11 +44,11 @@ const PROBE_TIMEOUT_MS = 8000;
 /**
  * Where GitHub is addressed for this App, stored as the ANSWER rather than as a verdict on it.
  *
- * ISS-1140: the App can be called OUT to and still be calling nothing IN. What this may decide is
- * limited on purpose — it rules only on what is true of the whole App, no address, an address
- * switched off, or a read that failed, because `last_health_status` is the CONNECTION's column and
- * one connection may serve bindings in several projects. Whether that one address is the one a
- * given BINDING needs is a per-binding question made at read time against this stored observation.
+ * ISS-1140: the App can be called OUT to and still be calling nothing IN. The observation is the
+ * App's, so it stays on the connection; the fault it yields names the binding's repository and is
+ * recorded on the binding with the rest of what the check found of it (ISS-983). Whether that one
+ * address is the one a given BINDING needs is a per-binding question made at read time against
+ * this stored observation.
  */
 async function observeInboundEndpoint(
   connectionId: string,
@@ -154,23 +155,39 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     }),
   }),
 
+  healthReadsBinding: true,
+
+  /**
+   * The App's credential is the connection's: every binding of it reads a key GitHub refuses alike.
+   * The installation, the repository, the App's hook as this repository needs it and what the
+   * installation is granted are what the check found of this binding, recorded on it alone
+   * (ISS-983): one App serves many projects' repositories.
+   */
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
     const { owner, repo, installationId } = ctx.config ?? {};
     const { appId, privateKey } = ctx.secrets ?? {};
-    // The sentence goes to the connection beside the status (ISS-1140): a verdict with no why
-    // leaves the operator reading `error` an hour later with nothing to act on.
-    const finish = async (status: HealthCheckResult['status'], says?: Said) => {
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: status,
-        lastHealthDetail: says ?? null,
-        lastHealthAt: new Date(),
+    // The sentence goes beside the status (ISS-1140): a verdict with no why leaves the operator
+    // reading `error` an hour later with nothing to act on.
+    const credential = async (status: HealthCheckResult['status'], says: Said) => {
+      await recordHealth(ctx, { connection: { status, detail: says } });
+      return healthOf(status, says);
+    };
+    const target = async (status: HealthCheckResult['status'], says?: Said) => {
+      await recordHealth(ctx, {
+        connection: { status: 'ok', detail: null },
+        binding: { status, detail: says ?? null },
       });
       return healthOf(status, says);
     };
+    /** The binding names nothing to ask GitHub about: the credential was not tried. */
+    const unnamed = async (says: Said) => {
+      await recordHealth(ctx, { binding: { status: 'error', detail: says } });
+      return healthOf('error', says);
+    };
     if (!appId || !privateKey)
-      return finish('error', say('integrations.health.github.noCredential'));
-    if (!installationId) return finish('error', say('integrations.health.github.notInstalled'));
-    if (!owner || !repo) return finish('error', say('integrations.health.github.noRepo'));
+      return credential('error', say('integrations.health.github.noCredential'));
+    if (!installationId) return unnamed(say('integrations.health.github.notInstalled'));
+    if (!owner || !repo) return unnamed(say('integrations.health.github.noRepo'));
 
     const apiBase = ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {};
     const repository = `${owner}/${repo}`;
@@ -178,7 +195,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       const cred = { appId, privateKey, installationId, ...apiBase };
       await mintInstallationToken(cred);
       const read = await readRepository(cred, owner, repo);
-      if ('refused' in read) return finish('error', read.refused);
+      if ('refused' in read) return target('error', read.refused);
       const inbound = await observeInboundEndpoint(ctx.connectionId, {
         appId,
         privateKey,
@@ -190,12 +207,12 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       );
       const [first, second] = faults;
       if (first) {
-        return finish(
+        return target(
           'degraded',
           second ? say('integrations.health.both', { first, second }) : first,
         );
       }
-      await finish('ok');
+      await target('ok');
       return {
         status: 'ok',
         diagnostics: {
@@ -207,9 +224,13 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       };
     } catch (err) {
       if (err instanceof GitHubAuthError) {
-        return finish(err.status === 401 ? 'needs_reauth' : 'error', verbatim(err.message));
+        // GitHub refusing the App's own key is the credential's; refusing a token for this
+        // installation (gone, suspended) is this binding's installation
+        return err.status === 401
+          ? credential('needs_reauth', verbatim(err.message))
+          : target('error', verbatim(err.message));
       }
-      return finish('error', thrownSaid(err));
+      return credential('error', thrownSaid(err));
     }
   },
 
