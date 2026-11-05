@@ -213,7 +213,68 @@ async fn a_tree_cut_by_the_declaration_is_recorded_created() {
         git(&tree, &["rev-parse", "HEAD"]),
         git(&b.repo, &["rev-parse", "main"])
     );
-    assert_eq!(origin_of(&ctl, &reply.job_id.unwrap()), TreeOrigin::Created);
+    let run_id = reply.job_id.unwrap();
+    assert_eq!(origin_of(&ctl, &run_id), TreeOrigin::Created);
+    let held = ctl.ledger.lock().unwrap();
+    let run = held.as_ref().unwrap().run(&run_id).unwrap().unwrap();
+    assert_eq!(
+        run.worktree_base.as_deref(),
+        Some("main"),
+        "the base the release reads landed work against was not recorded"
+    );
+}
+
+/// With no `--from`, the base is the remote's default branch; a checkout whose `origin` names none
+/// is refused naming `--from`, and nothing is cut — never a tree cut from wherever `HEAD` is, which
+/// no release could read landed work against.
+#[tokio::test]
+async fn a_cut_with_no_base_to_name_is_refused_naming_from() {
+    let b = Box_::new();
+    let ctl = b.master_ctl();
+    let tree = b.repo.join(".claude/worktrees/iss-80");
+    let cut = Cut {
+        branch: "iss-80",
+        from: None,
+    };
+    let reply = declare(&ctl, "ISS-80", &tree, Some(cut), Some(PEER)).await;
+    assert!(!reply.ok, "{reply:?}");
+    let why = reply.reason.unwrap_or_default();
+    assert!(
+        why.contains("--from <ref>") && why.contains("origin/HEAD"),
+        "{why}"
+    );
+    assert!(!tree.exists());
+    assert_eq!(runs(&ctl), 0);
+}
+
+/// With no `--from` and an `origin` that names its default branch, the tree is cut from it and
+/// that branch is the recorded base.
+#[tokio::test]
+async fn a_cut_with_no_from_takes_the_remotes_default_branch_as_its_base() {
+    let b = Box_::new();
+    let bare = b.dir.join("origin.git");
+    git(
+        &b.dir,
+        &["init", "-q", "--bare", "-b", "main", bare.to_str().unwrap()],
+    );
+    git(
+        &b.repo,
+        &["remote", "add", "origin", bare.to_str().unwrap()],
+    );
+    git(&b.repo, &["push", "-q", "origin", "main"]);
+    git(&b.repo, &["remote", "set-head", "origin", "main"]);
+    let ctl = b.master_ctl();
+    let tree = b.repo.join(".claude/worktrees/iss-81");
+    let cut = Cut {
+        branch: "iss-81",
+        from: None,
+    };
+    let reply = declare(&ctl, "ISS-81", &tree, Some(cut), Some(PEER)).await;
+    assert!(reply.ok, "{reply:?}");
+    let run_id = reply.job_id.unwrap();
+    let held = ctl.ledger.lock().unwrap();
+    let run = held.as_ref().unwrap().run(&run_id).unwrap().unwrap();
+    assert_eq!(run.worktree_base.as_deref(), Some("origin/main"));
 }
 
 /// A cut over a path that stands is refused by name, cuts nothing and records nothing: the tree is
@@ -273,7 +334,7 @@ async fn a_cut_the_ledger_refuses_is_taken_back() {
     let tree = b.repo.join(".claude/worktrees/iss-79");
     let cut = Cut {
         branch: "iss-79",
-        from: None,
+        from: Some("main"),
     };
     let reply = declare(&ctl, "ISS-79", &tree, Some(cut), Some(PEER)).await;
     assert!(!reply.ok, "{reply:?}");

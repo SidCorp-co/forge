@@ -59,8 +59,8 @@ impl Ledger {
             )));
         }
         tx.execute(
-            "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at, role, requirement, worktree_origin)
-             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, pid, boot_id, incarnation, work, created_at, role, requirement, worktree_origin, worktree_base)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 new.run_id,
                 new.project_id,
@@ -72,7 +72,8 @@ impl Ledger {
                 now(),
                 new.role,
                 new.requirement,
-                new.worktree_origin.wire()
+                new.worktree_origin.wire(),
+                new.worktree_base
             ],
         )
         .map_err(sql_err)?;
@@ -798,6 +799,7 @@ mod role_tests {
             role: role.map(str::to_string),
             requirement: None,
             worktree_origin: TreeOrigin::Created,
+            worktree_base: None,
         })
         .unwrap();
     }
@@ -862,6 +864,7 @@ mod role_tests {
             role: Some("qa".into()),
             requirement: requirement.map(str::to_string),
             worktree_origin: TreeOrigin::Created,
+            worktree_base: None,
         };
         let run = led
             .create_run_group(req(Vec::new(), Some("REQ-76")))

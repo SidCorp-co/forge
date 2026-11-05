@@ -68,6 +68,7 @@ fn a_closed_run(
         role: None,
         requirement: None,
         worktree_origin: origin,
+        worktree_base: None,
     })
     .unwrap();
     led.end_run(run_id, "master", "the master said so").unwrap();

@@ -120,6 +120,7 @@ fn ledger_with_one_run() -> (Ledger, PathBuf) {
             role: None,
             requirement: None,
             worktree_origin: runner_core::ledger::TreeOrigin::Created,
+            worktree_base: None,
         })
         .unwrap();
     ledger.attach_session("run-1", "session-1").unwrap();

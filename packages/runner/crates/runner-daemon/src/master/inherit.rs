@@ -735,6 +735,7 @@ mod resumed_brief_tests {
                 role: None,
                 requirement: None,
                 worktree_origin: runner_core::ledger::TreeOrigin::Created,
+                worktree_base: None,
             })
             .unwrap();
             led.bind_agent(run, &format!("agent-{n}")).unwrap();

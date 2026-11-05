@@ -16,13 +16,48 @@ use runner_platform::git::git;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Cut<'a> {
     pub branch: &'a str,
-    /// `HEAD` of the declaring master's checkout where none is named.
+    /// The remote's default branch (`origin/HEAD`) where none is named.
     pub from: Option<&'a str>,
 }
 
-/// The ref a cut starts from.
-fn start(cut: Cut<'_>) -> &str {
-    cut.from.unwrap_or("HEAD")
+/// The ref a cut starts from, which is also the base its release reads the run's work against:
+/// the one named, or the remote's default branch as `origin/HEAD` names it. A checkout with no
+/// such ref is refused rather than cut from wherever its `HEAD` is: a base nobody named is one the
+/// release could not read landed work against, and every tree cut from it would be kept.
+async fn start(checkout: &Path, cut: Cut<'_>) -> Result<String, String> {
+    if let Some(from) = cut.from {
+        return Ok(from.to_string());
+    }
+    match git(
+        checkout,
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+    )
+    .await
+    {
+        Some(out) if out.status.success() => {
+            let base = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if base.is_empty() {
+                Err(no_default(checkout))
+            } else {
+                Ok(base)
+            }
+        }
+        _ => Err(no_default(checkout)),
+    }
+}
+
+fn no_default(checkout: &Path) -> String {
+    format!(
+        "{} names no default branch for `origin` (`refs/remotes/origin/HEAD`), so there is no \
+         base to cut from and to read the run's landed work against. Name it with `--from <ref>`, \
+         the branch this run's work lands on. Nothing was recorded",
+        checkout.display()
+    )
 }
 
 /// Why `worktree` cannot be cut from `checkout` for a run, or `None`.
@@ -52,17 +87,22 @@ pub(crate) fn cut_refusal(worktree: &str, checkout: Option<&Path>) -> Option<Str
     None
 }
 
-/// Cut `worktree` on a new branch from `checkout`, or say why git would not.
-pub(crate) async fn cut_tree(checkout: &Path, worktree: &str, cut: Cut<'_>) -> Result<(), String> {
-    let from = start(cut);
+/// Cut `worktree` on a new branch from `checkout`, and answer the base it was cut from; or say why
+/// it was not cut.
+pub(crate) async fn cut_tree(
+    checkout: &Path,
+    worktree: &str,
+    cut: Cut<'_>,
+) -> Result<String, String> {
+    let from = start(checkout, cut).await?;
     let typed = format!("git worktree add -b {} {worktree} {from}", cut.branch);
     match git(
         checkout,
-        &["worktree", "add", "-b", cut.branch, worktree, from],
+        &["worktree", "add", "-b", cut.branch, worktree, &from],
     )
     .await
     {
-        Some(out) if out.status.success() => Ok(()),
+        Some(out) if out.status.success() => Ok(from),
         Some(out) => Err(format!(
             "`{typed}` in {} failed: {}. Nothing was recorded",
             checkout.display(),

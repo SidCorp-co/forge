@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS runs (
   role                TEXT,
   requirement         TEXT,
   claim_holder        TEXT,
-  worktree_origin     TEXT
+  worktree_origin     TEXT,
+  worktree_base       TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -139,6 +140,7 @@ pub(crate) const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "requirement", "TEXT"),
     ("runs", "claim_holder", "TEXT"),
     ("runs", "worktree_origin", "TEXT"),
+    ("runs", "worktree_base", "TEXT"),
     ("masters", "session_id", "TEXT"),
     ("masters", "placed_at", "INTEGER"),
     ("masters", "unattributed", "TEXT"),
@@ -488,6 +490,7 @@ mod tests {
                 role: None,
                 requirement: None,
                 worktree_origin: TreeOrigin::Created,
+                worktree_base: None,
             })
             .unwrap();
         assert_eq!(

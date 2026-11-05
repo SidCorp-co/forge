@@ -69,7 +69,8 @@ pub enum TreeOrigin {
     /// The path was already a worktree when the run was declared over it. No release removes it:
     /// the run's claim on it ends and the directory, its branch and its files stay as they were.
     Adopted,
-    /// The tree was cut for this run by `run declare --cut`, so it is the run's to give back.
+    /// The tree was cut for this run by `run declare --cut`, so it is the run's to give back once
+    /// everything in it has landed on the branch it was cut from.
     Created,
 }
 
@@ -91,8 +92,8 @@ impl TreeOrigin {
             }
             TreeOrigin::Created => {
                 "it was cut for this run, so the release after the run ends removes it — unless it \
-                 holds uncommitted files or commits on no remote, which keep it, named in the \
-                 daemon's journal"
+                 holds uncommitted files or commits whose change the branch it was cut from does \
+                 not hold, which keep it, named in the daemon's journal"
             }
         }
     }
@@ -254,6 +255,9 @@ pub struct Run {
     /// Whether the checkout was standing before the run was declared over it, or cut for it
     /// (ISS-1016). Only a created one is the release's to remove.
     pub worktree_origin: TreeOrigin,
+    /// The ref a created tree was cut from, which its release reads to tell work that landed from
+    /// work that did not. `None` for an adopted tree, which no release reads.
+    pub worktree_base: Option<String>,
 }
 
 /// A run's host ended because this box started a new master pane for its
@@ -554,6 +558,8 @@ pub struct NewRun {
     pub requirement: Option<String>,
     /// Whether the checkout already stood when the run was declared, or was cut for it.
     pub worktree_origin: TreeOrigin,
+    /// The ref a cut tree was cut from (`--from`, or the remote's default branch).
+    pub worktree_base: Option<String>,
 }
 
 /// The ledger, open on one box.
@@ -584,7 +590,7 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
         host_ended_by, host_pid, host_start, close_refused_at, close_refusal,
         session_refused_at, session_refusal, session_retry_at, role, requirement, claim_holder,
-        worktree_origin
+        worktree_origin, worktree_base
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -706,6 +712,7 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         requirement: row.get(39)?,
         claim_holder: row.get(40)?,
         worktree_origin: TreeOrigin::from_wire(row.get::<_, Option<String>>(41)?.as_deref()),
+        worktree_base: row.get(42)?,
     })
 }
 
@@ -732,8 +739,9 @@ pub enum CheckoutReturn {
     /// gives back only its claim: nothing was preserved, committed or removed, and
     /// `worktree_gone_at` is NOT stamped (ISS-1016).
     AdoptedKept,
-    /// A tree cut for the run still holds work no ref outside it carries — uncommitted files, or
-    /// commits on no remote — so the release left it standing and named it rather than take it.
+    /// A tree cut for the run still holds work that has not landed — uncommitted files, or commits
+    /// whose change its base does not hold — or its base cannot be read, so the release left it
+    /// standing and named it rather than take it.
     /// `worktree_gone_at` is NOT stamped (ISS-1016).
     KeptWithWork,
 }

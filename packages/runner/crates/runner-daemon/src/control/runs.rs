@@ -289,9 +289,11 @@ pub(crate) async fn run_declare_as(
     // Cut last, once every refusal that needs no tree has been taken, so a refused declaration
     // leaves nothing behind; one the ledger then refuses has its tree taken back below.
     let cut_from = cut.zip(checkout.as_deref());
+    let mut base = None;
     if let Some((c, from)) = cut_from {
-        if let Err(why) = super::cut::cut_tree(from, worktree_path, c).await {
-            return ClaimReply::refused(why);
+        match super::cut::cut_tree(from, worktree_path, c).await {
+            Ok(cut_on) => base = Some(cut_on),
+            Err(why) => return ClaimReply::refused(why),
         }
     }
     let template = runner_core::ledger::NewRun {
@@ -307,6 +309,7 @@ pub(crate) async fn run_declare_as(
             Some(_) => TreeOrigin::Created,
             None => TreeOrigin::Adopted,
         },
+        worktree_base: base,
     };
     let reply = record_declaration(ctl, holder, template, session_id, peer);
     if let (false, Some((c, from))) = (reply.ok, cut_from) {

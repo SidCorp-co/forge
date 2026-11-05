@@ -592,6 +592,7 @@ mod orientation_tests {
             role: None,
             requirement: None,
             worktree_origin: runner_core::ledger::TreeOrigin::Created,
+            worktree_base: None,
         })
         .unwrap();
         let why = format!(

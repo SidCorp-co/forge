@@ -826,6 +826,7 @@ mod tests {
                 role: None,
                 requirement: None,
                 worktree_origin: runner_core::ledger::TreeOrigin::Created,
+                worktree_base: None,
             })
             .unwrap();
         let (path, project, keys, ..) = declared(&led, &run.run_id).unwrap();

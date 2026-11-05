@@ -347,6 +347,7 @@ mod rearm_tests {
             role: None,
             requirement: None,
             worktree_origin: TreeOrigin::Created,
+            worktree_base: None,
         })
         .unwrap();
         led.note_release_refusal(run_id, why, 100).unwrap();

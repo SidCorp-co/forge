@@ -67,10 +67,13 @@ pub struct DeclareArgs {
     /// Have the box cut the worktree for this run, on a new branch of this name: the path must not
     /// exist yet. A run declared without it adopts a tree that already stands, and no close,
     /// release or reaper ever removes an adopted tree; a tree cut for the run is removed when the
-    /// run ends, unless it holds uncommitted work or commits on no remote.
+    /// run ends, unless it holds uncommitted files or commits whose change the branch it was cut
+    /// from does not hold.
     #[arg(long, value_name = "BRANCH")]
     pub cut: Option<String>,
-    /// The ref `--cut` starts the branch from, in the master's checkout. `HEAD` where not given.
+    /// The branch `--cut` starts from, in the master's checkout, and the base the run's release
+    /// reads landed work against: the branch the work lands on. `origin`'s default branch
+    /// (`origin/HEAD`) where not given; a checkout naming none is refused.
     #[arg(long, value_name = "REF", requires = "cut")]
     pub from: Option<String>,
     /// The role the subagent for this run is dispatched as (e.g. qa). A qa or reviewer run may be declared over closed issues to judge them; any other role is refused a closed issue.
@@ -429,6 +432,7 @@ mod tests {
                 role: None,
                 requirement: None,
                 worktree_origin: runner_core::ledger::TreeOrigin::Adopted,
+                worktree_base: None,
             })
             .unwrap();
         }

@@ -664,6 +664,7 @@ mod close_refusal_tests {
             role: None,
             requirement: None,
             worktree_origin: runner_core::ledger::TreeOrigin::Created,
+            worktree_base: None,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -720,6 +721,7 @@ mod close_refusal_tests {
                 role: None,
                 requirement: None,
                 worktree_origin: runner_core::ledger::TreeOrigin::Created,
+                worktree_base: None,
             })
             .unwrap();
             std::fs::write(
@@ -758,6 +760,7 @@ mod close_refusal_tests {
             role: None,
             requirement: None,
             worktree_origin: runner_core::ledger::TreeOrigin::Created,
+            worktree_base: None,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -864,6 +867,7 @@ mod session_hold_tests {
             role: None,
             requirement: None,
             worktree_origin: runner_core::ledger::TreeOrigin::Created,
+            worktree_base: None,
         })
         .unwrap();
         (Some(led), dir)
@@ -1099,6 +1103,7 @@ mod settle_tests {
             role: None,
             requirement: None,
             worktree_origin: runner_core::ledger::TreeOrigin::Created,
+            worktree_base: None,
         }
     }
 
