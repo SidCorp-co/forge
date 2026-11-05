@@ -9,6 +9,7 @@
 // it before the press, since it is recorded under the person's name (REQ-4 BC-16, ISS-645 r2).
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
+import { decisionLineOf } from "@forge/contracts/plain-decision";
 import { Button, Checkbox, IconButton, StatusChip } from "@/design";
 import { wordsAsItStands } from "@/features/needs-you";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -53,11 +54,31 @@ function DecisionChip({ d }: { d: NeedsYouDecision }) {
   return <StatusChip tone={d.proposal.recommends ? "ready" : "you"} label={recommends} reason={tags.join(" · ") || null} testId="approval-tags" />;
 }
 
-/** A question's row reads its asker's plain text, first line; or says the asker wrote none (ISS-1006). */
-function RowPlain({ plain }: { plain: string | null }) {
+/**
+ * A question's row reads its asker's plain text, first line; where the asker wrote none, the
+ * question's own line, as the row read before plain text existed, with the plain word that no
+ * summary was written beside it (ISS-1006 round 2: never less than before). The ✓ under it names
+ * the recommended answer. A decision no agent writes plain text for reads its question alone.
+ */
+function RowLine({ d }: { d: NeedsYouDecision }) {
   const t = useCopy();
-  const first = plain?.split("\n").find((line) => line.trim())?.trim();
-  return first ? <span className="text-fg" data-testid="approval-row-plain">{first}</span> : <span className="italic" data-testid="approval-row-no-plain">{t("approvals.peek.noPlain")}</span>;
+  const { line, fromPlain } = decisionLineOf(d);
+  return (
+    <>
+      <span className={d.plain === undefined ? undefined : "text-fg"} data-testid={fromPlain ? "approval-row-plain" : "approval-row-question"}>
+        {line}
+      </span>
+      {/* only a decision an agent writes plain text for says it wrote none: a sign-off has no asker */}
+      {fromPlain || d.plain === undefined ? null : (
+        <>
+          {" · "}
+          <span className="italic" data-testid="approval-row-no-plain">
+            {t("approvals.peek.noPlain")}
+          </span>
+        </>
+      )}
+    </>
+  );
 }
 
 interface RowProps {
@@ -130,15 +151,13 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
         <span className="block w-full min-w-0 truncate text-14 font-medium text-fg" title={d.key} data-testid="approval-title">
           {d.title || d.key}
         </span>
-        <span className="block w-full min-w-0 truncate text-13 text-muted" data-testid="approval-proposal" title={d.plain ?? undefined}>
+        <span className="block w-full min-w-0 truncate text-13 text-muted" data-testid="approval-proposal" title={d.proposal ? undefined : decisionLineOf(d).text}>
           {d.proposal ? (
             <>
               <span className="font-semibold text-fg">{d.proposal.verb}</span> {d.proposal.what}
             </>
-          ) : d.plain !== undefined ? (
-            <RowPlain plain={d.plain} />
           ) : (
-            d.question
+            <RowLine d={d} />
           )}
         </span>
         <SentReason d={d} open={open} />

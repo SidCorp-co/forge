@@ -37,13 +37,19 @@ const firstLineOf = (text: string | null | undefined): string | null =>
  * The one line a pending decision is listed by, wherever it is listed (ISS-1006 round 2): the
  * asker's plain text, its first line, else the question's own first line, as every list read it
  * before plain text existed. A decision raised before its asker was taught, or by one that has not
- * learned yet, so reads no less than it did; `fromPlain` says which it is, for the screen's marker.
+ * learned yet, so reads no less than it did. `text` is the whole of whichever it is, for a list that
+ * draws more than one line; `fromPlain` says which it is, for the screen's marker.
  */
 export function decisionLineOf(d: {
 	plain?: string | null | undefined;
 	question: string;
-}): { line: string; fromPlain: boolean } {
-	const plain = firstLineOf(d.plain);
-	if (plain) return { line: plain, fromPlain: true };
-	return { line: firstLineOf(d.question) ?? d.question, fromPlain: false };
+}): { line: string; text: string; fromPlain: boolean } {
+	const plain = plainOf(d.plain);
+	const line = firstLineOf(plain);
+	if (plain && line) return { line, text: plain, fromPlain: true };
+	return {
+		line: firstLineOf(d.question) ?? d.question,
+		text: d.question,
+		fromPlain: false,
+	};
 }

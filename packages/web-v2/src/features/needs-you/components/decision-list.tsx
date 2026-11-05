@@ -16,6 +16,7 @@ import {
   type NeedsYouDecision,
   type NeedsYouDecisions,
 } from "@forge/contracts/needs-you-decisions";
+import { decisionLineOf } from "@forge/contracts/plain-decision";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
@@ -92,7 +93,8 @@ function ItemTitle({ d, href }: { d: NeedsYouDecision; href: string | null }) {
 }
 
 /**
- * A dense decision is its question, opening its item (REQ-41 BC-13): the item's title and key are the
+ * A dense decision is its line, opening its item (REQ-41 BC-13): the asker's plain text, else the
+ * question's own line, read as every list reads it (`decisionLineOf`, ISS-1006). The item's title and key are the
  * question's tooltip, on hover or keyboard focus, and what a screen reader hears after the question
  * (ISS-903); what it changes, its impact and the why stay the question's own hover.
  */
@@ -102,7 +104,7 @@ function DenseQuestion({ d, href }: { d: NeedsYouDecision; href: string | null }
   const name = d.title ? `${d.title} · ${key}` : key;
   const said = (
     <>
-      {d.question}
+      {decisionLineOf(d).line}
       <span className="sr-only"> · {name}</span>
     </>
   );
@@ -156,7 +158,7 @@ function OwedDecision({
         <>
           <ItemTitle d={d} href={href} />
           <p className="fg-body-sm whitespace-pre-wrap text-fg" data-testid="needs-you-decision-question">
-            {d.question}
+            {decisionLineOf(d).text}
           </p>
         </>
       )}

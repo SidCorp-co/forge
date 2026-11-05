@@ -19,9 +19,9 @@ export interface Narrowing {
 /** Whether the agent recommends approving it as proposed; a decision with no proposal never reads so. */
 export const recommends = (d: NeedsYouDecision): boolean => d.proposal?.recommends === true;
 
-/** The words a search reads: key, title, and the proposal or the question. */
+/** The words a search reads: key, title, and the proposal or the question, and the asker's plain text the row shows. */
 const searchText = (d: NeedsYouDecision) =>
-  [d.key, d.title, d.proposal ? `${d.proposal.verb} ${d.proposal.what}` : d.question].join(" ").toLowerCase();
+  [d.key, d.title, d.proposal ? `${d.proposal.verb} ${d.proposal.what}` : d.question, d.plain ?? ""].join(" ").toLowerCase();
 
 export function narrowed(all: readonly NeedsYouDecision[], n: Narrowing): NeedsYouDecision[] {
   const q = n.query.trim().toLowerCase();

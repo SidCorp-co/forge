@@ -8,9 +8,12 @@
 // alone: that text, then the answers as buttons naming their outcome. What is asked, why, what it
 // rests on and what each answer does sit behind one closed "Technical" fold that is never needed to
 // decide. Where the asker wrote no plain text, the peek says so in its place, so whether the teaching
-// took is seen where the person decides, and the decision is still made from the buttons.
+// took is seen where the person decides, and the decision is still made from the buttons. That
+// place reads no less than the peek did before plain text existed (ISS-1006 round 2): the
+// question's own line, the "No summary" marker, and the answer recommended, the rest behind the fold.
 
 import type { DecisionAnswer, DecisionEvidence, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
+import { decisionLineOf } from "@forge/contracts/plain-decision";
 import { Disclosure, type FullPage, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { QuestionSubjectLine } from "@/features/questions";
 import { ChangeRequestList } from "@/features/releases";
@@ -192,17 +195,39 @@ function Reasons({ d }: { d: NeedsYouDecision }) {
 }
 
 
-/** The asker's plain text the person decides from, or the plain word that it wrote none (ISS-1006). */
-function PlainText({ plain }: { plain: string | null }) {
+/**
+ * The asker's plain text the person decides from; where it wrote none, the question's own line as
+ * the peek read it before, the plain word that no summary was written, and the answer recommended
+ * (ISS-1006 round 2), so a decision raised before the asker was taught reads no less than it did.
+ */
+function PlainText({ d }: { d: NeedsYouDecision }) {
   const t = useCopy();
-  return plain ? (
-    <p className="whitespace-pre-line text-15 leading-relaxed text-fg" data-testid="approval-peek-plain">
-      {plain}
-    </p>
-  ) : (
-    <p className="text-13 italic text-muted" data-testid="approval-peek-no-plain">
-      {t("approvals.peek.noPlain")}
-    </p>
+  const said = decisionLineOf(d);
+  if (said.fromPlain) {
+    return (
+      <p className="whitespace-pre-line text-15 leading-relaxed text-fg" data-testid="approval-peek-plain">
+        {said.text}
+      </p>
+    );
+  }
+  const recommended = d.answers.find((a) => a.recommended);
+  return (
+    <section className="flex flex-col gap-1.5" data-testid="approval-peek-fallback">
+      <p className="whitespace-pre-line text-15 font-semibold leading-snug text-fg" data-testid="approval-peek-question">
+        {said.text}
+      </p>
+      <p className="text-13 text-muted">
+        <span className="italic" data-testid="approval-peek-no-plain">
+          {t("approvals.peek.noPlain")}
+        </span>
+        {recommended ? (
+          <span data-testid="approval-peek-recommended">
+            {" · "}
+            {t("approvals.peek.recommendedAnswer", { label: recommended.label })}
+          </span>
+        ) : null}
+      </p>
+    </section>
   );
 }
 
@@ -225,13 +250,17 @@ function AnswerEffects({ d }: { d: NeedsYouDecision }) {
   );
 }
 
-/** Everything behind a plain decision's one fold: what is asked, its stakes, why, and what it rests on. */
+/**
+ * Everything behind a plain decision's one fold: what is asked, its stakes, why, and what it rests
+ * on. Where the face already says the question (no plain text), the fold keeps only its subject.
+ */
 function Technical({ d, slug }: { d: NeedsYouDecision; slug: string }) {
   const t = useCopy();
+  const subject = subjectOf(d);
   return (
     <Disclosure title={t("approvals.peek.technical")} testId="approval-peek-technical">
       <div className="flex flex-col gap-5 pt-1">
-        <Asked d={d} slug={slug} />
+        {decisionLineOf(d).fromPlain ? <Asked d={d} slug={slug} /> : subject ? <QuestionSubjectLine subject={subject} slug={slug} /> : null}
         <Stakes d={d} />
         <DecisionTags d={d} />
         <Reasons d={d} />
@@ -289,7 +318,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
       />
       {decidedFromPlain(d) ? (
         <div className="flex flex-col gap-4 px-4.5 pb-5" data-testid="approval-peek-decide">
-          <PlainText plain={d.plain} />
+          <PlainText d={d} />
           <Technical d={d} slug={slug} />
         </div>
       ) : (

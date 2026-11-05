@@ -4,6 +4,7 @@
 // The screen renders these and counts nothing of its own.
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
+import { decisionLineOf } from "@forge/contracts/plain-decision";
 import type { useAttention } from "@/features/attention";
 import { decisionHref } from "@/features/needs-you";
 import { approvalsHref, questionDecisionHref } from "@/lib/routes/approvals";
@@ -90,7 +91,7 @@ export function waitingRows(view: AttentionView): WaitingRow[] {
     part.decisions.map(
       (d): WaitingRow => ({
         id: `${part.projectSlug}:${d.id}`,
-        title: d.title || d.question,
+        title: d.title || decisionLineOf(d).line,
         tip: d.entity === "question" ? null : d.key,
         projectName: part.projectName,
         kind: DECISION_KIND[d.group],

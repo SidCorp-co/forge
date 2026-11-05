@@ -20,24 +20,20 @@ describe("the line a pending decision is listed by", () => {
 				plain: "\n  Customers get an Export CSV button.\nSales waits on it.",
 				question: "Turn the CSV export on now?",
 			}),
-		).toEqual({ line: "Customers get an Export CSV button.", fromPlain: true });
+		).toEqual({
+			line: "Customers get an Export CSV button.",
+			text: "Customers get an Export CSV button.\nSales waits on it.",
+			fromPlain: true,
+		});
 	});
 
 	it("is the question's own first line where the asker wrote none: the owner's adminhub-api shape", () => {
 		const question =
 			"Open it, merge it into another issue, keep it as a draft, or drop it?";
-		expect(decisionLineOf({ plain: null, question })).toEqual({
-			line: question,
-			fromPlain: false,
-		});
-		expect(decisionLineOf({ question })).toEqual({
-			line: question,
-			fromPlain: false,
-		});
-		expect(decisionLineOf({ plain: "  \n ", question })).toEqual({
-			line: question,
-			fromPlain: false,
-		});
+		const read = { line: question, text: question, fromPlain: false };
+		expect(decisionLineOf({ plain: null, question })).toEqual(read);
+		expect(decisionLineOf({ question })).toEqual(read);
+		expect(decisionLineOf({ plain: "  \n ", question })).toEqual(read);
 	});
 
 	it("takes a long question's first line", () => {
@@ -46,7 +42,11 @@ describe("the line a pending decision is listed by", () => {
 				plain: null,
 				question: "Second fix round?\nThe criterion failed twice.",
 			}),
-		).toEqual({ line: "Second fix round?", fromPlain: false });
+		).toEqual({
+			line: "Second fix round?",
+			text: "Second fix round?\nThe criterion failed twice.",
+			fromPlain: false,
+		});
 	});
 });
 
