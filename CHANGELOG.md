@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.516] - 2026-11-05
+
+Decisions without a summary show their question; Ask Agent opens faster
+
+### Fixed
+
+- **A decision without a summary still shows its question.** Approvals and the dashboard show its question and recommended answer beside "No summary", buttons name titles not keys, a summary can be added later, and Ask Agent opens faster.
+
 ## [0.4.0-dev.515] - 2026-11-05
 
 Release holds ask for checks only on a running build that holds the change
