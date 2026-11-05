@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.512] - 2026-11-05
+
+Activity shows each project's work on one line; beta issues arrive as Feedback
+
+### Fixed
+
+- **Activity no longer drops what waits on you while it is still loading,** an older wait says the day it began, crowded marks never land on a neighbour, and on a phone group headers stay in view.
+- **A beta issue ported to dev now links to the beta page a person can open,** at beta's own web address; without one set, the item names its beta key and the port says which setting is missing.
+
 ## [0.4.0-dev.511] - 2026-11-05
 
 Activity lanes per project, and source health scoped to each project's own repository
