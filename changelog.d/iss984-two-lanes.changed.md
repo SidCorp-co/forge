@@ -1,1 +1,0 @@
-**Agents now learn two lanes for what they find.** A product finding goes to Feedback; a technical one goes to its module's backlog as a draft carrying its kind and where it was found, and core still refuses neither.

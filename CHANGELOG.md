@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.510] - 2026-11-05
+
+Agents send what users notice to Feedback and file technical findings per module
+
+### Changed
+
+- **Agents now learn two lanes for what they find.** A product finding goes to Feedback; a technical one goes to its module's backlog as a draft carrying its kind and where it was found, and core still refuses neither.
+
 ## [0.4.0-dev.509] - 2026-11-05
 
 Activity marker collisions stay reachable and pins count every waiting decision
