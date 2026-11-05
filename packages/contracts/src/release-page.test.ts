@@ -16,8 +16,6 @@ import {
 	ReleaseRangeReportSchema,
 	ReleaseSeenSchema,
 	ReleaseShownHighlightSchema,
-	type ReleaseVerdictReading,
-	releaseClaimOf,
 	releaseEnded,
 	releaseMediaKindOf,
 	releasePagePath,
@@ -29,75 +27,6 @@ import { landedIdentityWhy } from "./verdict-identity.js";
 
 const BUILD = "a".repeat(40);
 const MERGED = "b".repeat(40);
-const v = (
-	verdict: ReleaseVerdictReading["verdict"],
-	commitSha: string | null,
-	at: string,
-	identityKind: string | null = "commit",
-): ReleaseVerdictReading => ({
-	verdict,
-	identityKind,
-	commitSha,
-	runtimeRef: null,
-	at,
-});
-
-describe("the truth rule: a page claims a criterion only with a pass on its build (BC-13)", () => {
-	it("claims a pass on the build", () => {
-		expect(
-			releaseClaimOf([v("pass", BUILD, "2026-10-09T10:00:00Z")], BUILD),
-		).toEqual({
-			claimed: true,
-			at: "2026-10-09T10:00:00Z",
-		});
-	});
-	it("does not claim a pass on the merged commit, and says where it was judged", () => {
-		expect(
-			releaseClaimOf([v("pass", MERGED, "2026-10-09T10:00:00Z")], BUILD),
-		).toEqual({
-			claimed: false,
-			standing: "not_judged",
-			elsewhere: { verdict: "pass", commitSha: MERGED },
-		});
-	});
-	it("reads a short on the build as a known issue, never a claim", () => {
-		expect(
-			releaseClaimOf([v("short", BUILD, "2026-10-09T10:00:00Z")], BUILD),
-		).toMatchObject({
-			claimed: false,
-			standing: "short",
-		});
-	});
-	it("takes the newest verdict on the build: a later fail outranks an earlier pass", () => {
-		const claim = releaseClaimOf(
-			[
-				v("pass", BUILD, "2026-10-09T10:00:00Z"),
-				v("fail", BUILD, "2026-10-09T11:00:00Z"),
-			],
-			BUILD,
-		);
-		expect(claim).toMatchObject({ claimed: false, standing: "fail" });
-	});
-	it("ignores a pass whose identity is not a commit, even naming the same sha", () => {
-		expect(
-			releaseClaimOf(
-				[v("pass", BUILD, "2026-10-09T10:00:00Z", "runtime")],
-				BUILD,
-			).claimed,
-		).toBe(false);
-	});
-	it("claims nothing before the release is verified, and reads no verdict as not judged", () => {
-		expect(
-			releaseClaimOf([v("pass", BUILD, "2026-10-09T10:00:00Z")], null).claimed,
-		).toBe(false);
-		expect(releaseClaimOf([], BUILD)).toEqual({
-			claimed: false,
-			standing: "not_judged",
-			elsewhere: null,
-		});
-	});
-});
-
 const media = (over: Partial<ReleaseMediaRef> = {}): ReleaseMediaRef => ({
 	kind: "clip",
 	attachmentId: "00000000-0000-4000-8000-000000000001",
@@ -480,20 +409,6 @@ describe("the verdicts a release reads on its build", () => {
 			judgedOnReleaseBuild(runtime(BUILD.toUpperCase()), BUILD, "dev"),
 		).toBe(true);
 		expect(judgedOnReleaseBuild(runtime(MERGED), BUILD, "dev")).toBe(false);
-	});
-
-	it("claims a runtime pass on the build, and not a commit pass, on a project judged on dev", () => {
-		const at = "2026-10-27T10:00:00Z";
-		expect(
-			releaseClaimOf(
-				[{ verdict: "pass", ...runtime(BUILD), at }],
-				BUILD,
-				"dev",
-			),
-		).toEqual({ claimed: true, at });
-		expect(
-			releaseClaimOf([{ verdict: "pass", ...commit, at }], BUILD, "dev"),
-		).toMatchObject({ claimed: false, standing: "not_judged" });
 	});
 
 	it("weighs a whole-commit runtime at a landing only where a testing environment is named", () => {

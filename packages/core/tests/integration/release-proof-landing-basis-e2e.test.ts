@@ -6,8 +6,14 @@
  * release now reads each issue's proof through that same weighing, so the two never disagree.
  * Against real Postgres.
  *
+ * Round 2 (dev.515): the header read 110/111 while the page's Technical "Still open" listed ISS-25
+ * "9 open" and its `knownIssues` carried 62 `not_judged`, the page weighing every criterion a second
+ * time at the exact build. The page now lists what the release record weighed, once.
+ *
  * @direct-test-of packages/core/src/release-batch/release-facts.ts
  * @direct-test-of packages/core/src/release-batch/release-read-views.ts
+ * @direct-test-of packages/core/src/release-page/read.ts
+ * @direct-test-of packages/core/src/release-page/claims.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -99,5 +105,36 @@ describe('a release reads each issue proven where the issue weighs it earned (FB
     expect(release.contents.flatMap((g) => g.issues.map((i) => [i.key, i.proof]))).toEqual([
       ['ISS-1', 'proven'],
     ]);
+  });
+
+  // adminhub-api 0.10.0 on dev.515: 110/111 at the top, ISS-25 "9 open" under Technical
+  it('lists nothing open on the page that the header counts proven, in either view', async () => {
+    const issue = await earnedAtItsLanding();
+    await promotionRequest(5053, HEAD);
+    const cut = await call('POST', '/release-batches', {
+      issueIds: [issue],
+      promotion: { request: 5053 },
+    });
+    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+    for (const view of ['user', 'developer']) {
+      const read = await call('GET', `/releases/${String(cut.body.version)}/page?view=${view}`);
+      expect(read.status, JSON.stringify(read.body)).toBe(200);
+      const page = read.body as {
+        header: { verified: { proven: number; total: number } };
+        knownIssues: Array<{ issueKey: string; standing: string }>;
+        requirements: Array<{ proven: unknown[]; unproven: number }>;
+        untraced: { proven: unknown[]; unproven: number } | null;
+      };
+      expect(page.header.verified, view).toMatchObject({ proven: 2, total: 2 });
+      expect(
+        page.knownIssues.map((k) => [k.issueKey, k.standing]),
+        `${view}: an issue its own record reads earned is never open on the page`,
+      ).toEqual([]);
+      const groups = [...page.requirements, ...(page.untraced ? [page.untraced] : [])];
+      expect(
+        groups.map((g) => [g.proven.length, g.unproven]),
+        `${view}: the page's lists sum to the header's count`,
+      ).toEqual([[2, 0]]);
+    }
   });
 });

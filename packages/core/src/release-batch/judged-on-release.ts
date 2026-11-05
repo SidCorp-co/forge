@@ -3,21 +3,21 @@
 // agent's record says carries it, whichever release shipped its issue.
 
 import { versionsCountedOn } from '@forge/contracts/released-line';
-import type { ReleaseCriterionView } from '@forge/contracts/releases';
+import { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
 import { voidedStillRead } from './judged-before-reopen.js';
-import { criteriaAt, type ReleaseFacts } from './release-facts.js';
+import type { IssueFact, ReleaseFacts } from './release-facts.js';
 
 /**
  * The criteria a release counts beyond the issues it carries (ISS-900): a criterion judged on release
  * 0.76.0 belongs to 0.76.0, and to every later release its record says carries 0.76.0, whichever
  * release shipped its issue. Each issue off `roster` holding such a verdict, with only its criteria
- * judged on a release this one counts (`versionsCountedOn`), read as `criteriaAt` reads them.
+ * judged on a release this one counts (`versionsCountedOn`), read as `criterionReadingsAt` reads them.
  */
 export function judgedOnReleaseAt(
   facts: ReleaseFacts,
   roster: readonly string[],
   version: string,
-): Array<{ key: string; title: string; criteria: ReleaseCriterionView[] }> {
+): Array<{ issue: IssueFact; readings: CriterionReading[] }> {
   const versions = versionsCountedOn(facts.released, version);
   return facts.judgedOnRelease.flatMap((id) => {
     const issue = facts.issues.get(id);
@@ -40,8 +40,6 @@ export function judgedOnReleaseAt(
     );
     if (judged.length === 0) return [];
     const read = { ...issue, criteria: judged, verdicts };
-    return [
-      { key: issue.key, title: issue.title, criteria: criteriaAt(read, null, facts, version) },
-    ];
+    return [{ issue, readings: criterionReadingsAt(read, null, facts, version) }];
   });
 }

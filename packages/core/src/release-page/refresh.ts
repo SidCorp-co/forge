@@ -19,7 +19,7 @@ import {
   settleDraft,
   storeNone,
 } from './highlights.js';
-import { pageFacts, releaseDetailOf } from './read.js';
+import { pageFacts, releaseRecordOf } from './read.js';
 
 export type RefreshOutcome =
   | 'not_a_release'
@@ -50,17 +50,18 @@ export async function refreshReleaseHighlights(
 ): Promise<RefreshOutcome> {
   const run = await releaseRunOf(runId);
   if (!run || run.projectId !== projectId) return 'not_a_release';
-  let detail: Awaited<ReturnType<typeof releaseDetailOf>>;
+  let record: Awaited<ReturnType<typeof releaseRecordOf>>;
   try {
-    detail = await releaseDetailOf(projectId, run.version, null);
+    record = await releaseRecordOf(projectId, run.version, null);
   } catch (err) {
     // a version whose roster went on under another one has no page of its own
     if (isRefusal(err, 'RELEASE_PAGE_NOT_FOUND')) return 'superseded';
     throw err;
   }
+  const { detail } = record;
   if (detail.runId !== runId) return 'superseded';
   if (releaseEnded(detail.state)) return 'ended';
-  const page = await pageFacts(projectId, detail);
+  const page = await pageFacts(projectId, record);
   const ref = { projectId, runId, version: run.version };
   const row = await highlightsRow(runId);
   const same = row?.sourceDigest === page.digest;

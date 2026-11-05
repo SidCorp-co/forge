@@ -1,16 +1,14 @@
 // What a release page may claim, under its one truth rule (REQ-40 BC-13): every criterion the
-// release carries, read at the build the page describes by the rule a requirement's coverage counts
-// by (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca), as the release record counts them: the
-// verdict it stands on is the judge's, and only a pass that rule counts as verified proves it, so
-// a short, or the builder's own pass, is never listed or counted as
-// proven. A claimed criterion proves its requirement criterion live (BC-5) and lends its kept clip or
-// picture to a highlight (BC-3); every other one is a known issue as its verdict on the build reads
-// (BC-8). Pure: the loaders in facts.ts hand it rows.
+// release carries, as its release record weighed it (`release-batch/release-facts.ts:criterionReadingsAt`,
+// read once by `release-read-views.ts:weighedOf`), the weighing its header counts. The page never
+// weighs a criterion again (ISS-1001: adminhub-api 0.10.0 read 110/111 in its header while the page,
+// re-reading every verdict at the exact build, listed 62 of them not judged). Only a pass on the build
+// is claimed: a claimed criterion proves its requirement criterion live (BC-5) and lends its kept
+// clip or picture to a highlight (BC-3); every criterion the record does not count proven is a known
+// issue as its verdict on the build reads (BC-8). Pure: the loaders hand it rows.
 
-import type { CriterionClass } from '@forge/contracts/issue-design';
 import {
   citesAttachment,
-  countedForClass,
   RELEASE_CLIP_MAX_BYTES,
   type ReleaseClaim,
   type ReleaseKnownIssue,
@@ -18,27 +16,13 @@ import {
   type ReleasePageCriteria,
   type ReleasePageProven,
   type ReleasePageRequirement,
-  type ReleaseVerdictReading,
-  releaseClaimOf,
   releaseMediaKindOf,
-  unjudgedOnReleaseWhy,
 } from '@forge/contracts/release-page';
-import type { VerifiedJudge } from '@forge/contracts/verified-rule';
-import { countedUnderCutover, verifiedOf } from '@forge/contracts/verified-rule';
+import type { CarriedVerdict, CriterionReading, WeighedIssue } from '../release-batch/index.js';
 
-export interface CarriedVerdict extends ReleaseVerdictReading {
-  id: string;
-  reason: string | null;
-  evidence: readonly string[];
-  /** Recorded by the issue's builder; the verified rule reads it. */
-  byBuilder: boolean;
-  /** Names who recorded it. */
-  authored: boolean;
-  /** When it was recorded, as the verified rule reads it. */
-  recordedAt: string;
-}
+export type { CarriedVerdict };
 
-/** One live criterion of an issue the release carries, with every verdict it earned since its last reopen. */
+/** One criterion of an issue the release counts, as a reader names it. */
 export interface CarriedCriterion {
   issueId: string;
   issueKey: string;
@@ -46,11 +30,6 @@ export interface CarriedCriterion {
   n: number;
   statement: string;
   bc: string | null;
-  /** Its class in the issue's design; null where none is recorded (`countedForClass`, ISS-914). */
-  class: CriterionClass | null;
-  /** The issue's last reopen, ISO; null where it was never reopened. */
-  reopenedAt: string | null;
-  verdicts: readonly CarriedVerdict[];
 }
 
 /** A file kept on an issue, as `issue_attachments` holds it. */
@@ -65,12 +44,9 @@ export interface IssueFile {
 export interface ClaimReading {
   criterion: CarriedCriterion;
   claim: ReleaseClaim;
-  /**
-   * Whether it counts as proven on the build: the verdict it stands on there is a pass the verified
-   * rule counts (contracts `verified-rule.ts:verifiedOf`); on a draft, which has no build, its newest verdict.
-   */
+  /** Whether the release record counts it proven: the one count its header and list read. */
   proven: boolean;
-  /** Where its verdict on the build is a pass the verified rule does not count, why; else null. */
+  /** Where the record does not count it proven though it was passed or not judged there, why; else null. */
   unverified: string | null;
   /** The verdict on the build the claim reads: the pass it claims, or the short, fail, skip or uncounted pass it is held by. */
   onBuild: CarriedVerdict | null;
@@ -79,68 +55,46 @@ export interface ClaimReading {
 }
 
 /**
- * The verdicts a release reads a criterion by, newest first: those judged on `build`
- * (`judgedOnReleaseBuild`, on its testing environment where the project names one), or every one on
- * a draft, and on a code property its review's commit verdicts since the reopen (`countedForClass`).
+ * Whether the page may claim a criterion, off its reading: a pass on the build the record counts
+ * proven is claimed; a short, a fail or a skip there is a known issue as itself; an uncounted pass
+ * there, or no verdict on it, is `not_judged`, naming its newest verdict elsewhere.
  */
-function readAt(
-  criterion: CarriedCriterion,
-  build: string | null,
-  judgedOn: string | null,
-  versions: ReadonlySet<string>,
-): CarriedVerdict[] {
-  const newestFirst = [...criterion.verdicts].sort((a, b) => b.at.localeCompare(a.at));
-  return newestFirst.filter((v) =>
-    countedForClass(v, criterion.class, build, judgedOn, versions, criterion.reopenedAt),
+function claimOf({ view, onBuild, newest }: CriterionReading): ReleaseClaim {
+  if (onBuild?.verdict === 'pass' && view.proven) return { claimed: true, at: onBuild.at };
+  if (onBuild && onBuild.verdict !== 'pass')
+    return { claimed: false, standing: onBuild.verdict, elsewhere: null };
+  const elsewhere =
+    onBuild === null && newest ? { verdict: newest.verdict, commitSha: newest.commitSha } : null;
+  return { claimed: false, standing: 'not_judged', elsewhere };
+}
+
+/** Every criterion the release counts, as its record weighed it, in the order it counts them. */
+export function claimsOf(weighed: readonly WeighedIssue[]): ClaimReading[] {
+  return weighed.flatMap(({ issue, requirementKey, readings }) =>
+    readings.map((reading) => ({
+      criterion: {
+        issueId: issue.id,
+        issueKey: issue.key,
+        requirementKey,
+        n: reading.view.n,
+        statement: reading.view.statement,
+        bc: reading.view.bc,
+      },
+      claim: claimOf(reading),
+      proven: reading.view.proven,
+      unverified: reading.view.unverified,
+      onBuild: reading.onBuild,
+      underCutover: reading.underCutover,
+    })),
   );
 }
 
 /**
- * `judgedOn` is the project's testing environment (`delivery.judgedOn`, REQ-36 BC-18), or null;
- * `versions` the release versions a verdict judged on a release counts on here: this release and
- * those its record says it carries (`versionsCountedOn`, ISS-900).
- */
-export function readClaims(
-  criteria: readonly CarriedCriterion[],
-  build: string | null,
-  judge: VerifiedJudge | null,
-  judgedOn: string | null,
-  versions: ReadonlySet<string> = new Set(),
-): ClaimReading[] {
-  return criteria.map((criterion) => {
-    const read = verifiedOf(readAt(criterion, build, judgedOn, versions), judge);
-    const { stands, why } = read;
-    const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
-    // a release with no build still stands on a verdict judged on its own version
-    const onBuild = build === null && stands?.identityKind !== 'release' ? null : stands;
-    let claim: ReleaseClaim;
-    if (onBuild === null) claim = releaseClaimOf(criterion.verdicts, build, judgedOn, versions);
-    else if (proven) claim = { claimed: true, at: onBuild.at };
-    else if (onBuild.verdict === 'pass')
-      claim = { claimed: false, standing: 'not_judged', elsewhere: null };
-    else claim = { claimed: false, standing: onBuild.verdict, elsewhere: null };
-    return {
-      criterion,
-      claim,
-      proven,
-      unverified:
-        stands?.verdict === 'pass'
-          ? why
-          : build !== null && judgedOn !== null && !stands
-            ? unjudgedOnReleaseWhy(criterion.class, judgedOn, build)
-            : null,
-      onBuild,
-      underCutover: proven && stands !== null && countedUnderCutover(stands, judge),
-    };
-  });
-}
-
-/**
  * Every carried criterion the page does not claim, with its standing on the build and where it was
- * judged instead. One the page lists as proven (`proven`, the standing the header counts by) is never
- * also a known issue: on a draft, which has no build to claim on, a criterion whose newest verdict is
- * a counted pass reads as proven once, not as proven and "not yet judged" both. A pass on the build
- * the verified rule does not count reads as not judged, saying why.
+ * judged instead. One the record counts proven (`proven`, the standing the header counts by) is never
+ * also a known issue: on a draft, which has no build to claim on, or where its issue earned it at its
+ * landing (FB-515), it reads as proven once, not as proven and "not yet judged" both. A pass on the
+ * build the verified rule does not count reads as not judged, saying why.
  */
 export function knownIssuesOf(claims: readonly ClaimReading[]): ReleaseKnownIssue[] {
   return claims.flatMap(({ criterion, claim, onBuild, proven, unverified }) =>

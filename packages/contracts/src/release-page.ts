@@ -262,6 +262,7 @@ export const unjudgedOnReleaseWhy = (
 		? reviewPassOwedWhy
 		: notJudgedOnWhy(judgedOn, build);
 
+/** Whether a release page claims a criterion, as its release record weighed it (core `release-page/claims.ts:claimsOf`). */
 export type ReleaseClaim =
 	| { claimed: true; at: string }
 	| {
@@ -273,36 +274,6 @@ export type ReleaseClaim =
 				commitSha: string | null;
 			} | null;
 	  };
-
-/**
- * Whether a release page may claim a criterion: only the newest verdict judged on `build`
- * (`judgedOnReleaseBuild`) counts, and only a pass is claimed. A short, a fail or a skip on the build is a known issue
- * as itself; a pass on any other commit, or no verdict on it, is `not_judged`. With no cut
- * build (`null`) only a verdict judged on the release's own version is claimed (ISS-900).
- */
-export function releaseClaimOf(
-	verdicts: readonly ReleaseVerdictReading[],
-	build: string | null,
-	judgedOn: string | null = null,
-	/** The versions a verdict judged on a release counts on here (ISS-900, `judgedOnReleaseBuild`). */
-	versions: ReadonlySet<string> = NO_VERSIONS,
-): ReleaseClaim {
-	const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
-	const onBuild = newestFirst.find((v) =>
-		judgedOnReleaseBuild(v, build, judgedOn, versions),
-	);
-	if (onBuild?.verdict === "pass") return { claimed: true, at: onBuild.at };
-	if (onBuild)
-		return { claimed: false, standing: onBuild.verdict, elsewhere: null };
-	const other = newestFirst[0];
-	return {
-		claimed: false,
-		standing: "not_judged",
-		elsewhere: other
-			? { verdict: other.verdict, commitSha: other.commitSha }
-			: null,
-	};
-}
 
 /**
  * The build a release describes and counts its criteria on: the commit it was cut at and deploys;

@@ -13,28 +13,26 @@ import {
   type ReleasePageViewKind,
   releaseEnded,
 } from '@forge/contracts/release-page';
-import { versionsCountedOn } from '@forge/contracts/released-line';
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
 import { listModulesForIssues, stallsOfRoster } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
-import { readVerifiedJudge } from '../project-config/index.js';
 import {
+  type ReleaseRecord,
   readRange,
-  readRelease,
+  readReleaseRecord,
   readSurfaceMap,
-  releasedLineReads,
   type ViewerFacts,
 } from '../release-batch/index.js';
 import {
   type ClaimReading,
+  claimsOf,
   knownIssuesOf,
   mediaOf,
-  readClaims,
   requirementsOf,
   untracedOf,
 } from './claims.js';
-import { carriedCriteria, carriedRequirements, issueFiles, type RequirementText } from './facts.js';
+import { carriedRequirements, issueFiles, type RequirementText } from './facts.js';
 import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './highlights.js';
 import { namingDraftStale, namingRow, namingStanding } from './naming-store.js';
 import { releaseNamer } from './ports.js';
@@ -46,13 +44,13 @@ export const refusePage = refuser<ReleasePageRefusalCode>(RELEASE_PAGE_REFUSAL_C
 export type PageViewer = (ViewerFacts & { mayShare: boolean }) | null;
 
 /** The release record of `version`, or the page's own refusal where the project cut no such version. */
-export async function releaseDetailOf(
+export async function releaseRecordOf(
   projectId: string,
   version: string,
   viewer: ViewerFacts | null,
-): Promise<ReleaseDetail> {
+): Promise<ReleaseRecord> {
   try {
-    return await readRelease(projectId, version, viewer);
+    return await readReleaseRecord(projectId, version, viewer);
   } catch (err) {
     if (err instanceof HTTPException && err.status === 404) {
       throw refusePage(
@@ -73,25 +71,18 @@ export interface PageFacts {
   digest: string;
 }
 
-/** Everything the page and its highlights read beyond the release record, under the truth rule at the release's build. */
-export async function pageFacts(projectId: string, detail: ReleaseDetail): Promise<PageFacts> {
+/**
+ * Everything the page and its highlights read beyond the release record: its criteria as the record
+ * weighed them (`claimsOf`), the count its header carries, and the files and requirement words.
+ */
+export async function pageFacts(projectId: string, record: ReleaseRecord): Promise<PageFacts> {
+  const { detail } = record;
   const build = buildOf(detail);
-  const [criteria, requirements, files, judge, line] = await Promise.all([
-    carriedCriteria(detail),
+  const claims = claimsOf(record.weighed);
+  const [requirements, files] = await Promise.all([
     carriedRequirements(projectId, detail),
-    issueFiles(detail.issues.map((i) => i.id)),
-    readVerifiedJudge(projectId),
-    releasedLineReads.releasedLine(projectId),
+    issueFiles([...new Set(claims.map((c) => c.criterion.issueId))]),
   ]);
-  // the judge a requirement's coverage counts by, so the page proves what the requirement does
-  // and the testing environment the release record proves it on (REQ-36 BC-18)
-  const claims = readClaims(
-    criteria,
-    build,
-    judge,
-    detail.verified.judgedOn ?? null,
-    versionsCountedOn(line, detail.version),
-  );
   const facts = highlightFacts(detail.version, requirements, claims, mediaOf(claims, files, build));
   return { build, claims, requirements, facts, digest: digestOf(facts) };
 }
@@ -186,8 +177,9 @@ export async function readReleasePage(args: {
       '/view',
     );
   }
-  const detail = await releaseDetailOf(projectId, version, viewer);
-  const page = await pageFacts(projectId, detail);
+  const record = await releaseRecordOf(projectId, version, viewer);
+  const { detail } = record;
+  const page = await pageFacts(projectId, record);
   const row = detail.runId ? await highlightsRow(detail.runId) : null;
   const shown = shownHighlights(
     row,

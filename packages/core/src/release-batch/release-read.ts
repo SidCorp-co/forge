@@ -44,7 +44,15 @@ import { refuseRelease } from './refuse.js';
 import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
 import { loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
-import { detailOf, type Part, reworkedIn, type Shared, summaryOf } from './release-read-views.js';
+import {
+  detailOf,
+  type Part,
+  reworkedIn,
+  type Shared,
+  summaryOf,
+  type WeighedIssue,
+  weighedOf,
+} from './release-read-views.js';
 import { releaseTagOf } from './release-tag-record.js';
 import type { ViewerFacts } from './release-view.js';
 import { type CorrectionEntry, correctionsIn, correctionViews } from './shipped-in-correct.js';
@@ -333,6 +341,21 @@ export async function readRelease(
   version: string,
   viewer: ViewerFacts | null,
 ): Promise<ReleaseDetail> {
+  return (await readReleaseRecord(projectId, version, viewer)).detail;
+}
+
+/** One release's record, and every criterion it counts as it weighed them (`weighedOf`): what its
+ *  page lists, so the page never weighs a criterion a second time (ISS-1001). */
+export interface ReleaseRecord {
+  detail: ReleaseDetail;
+  weighed: WeighedIssue[];
+}
+
+export async function readReleaseRecord(
+  projectId: string,
+  version: string,
+  viewer: ViewerFacts | null,
+): Promise<ReleaseRecord> {
   if (!parseReleaseVersion(version)) {
     throw refuseRelease(
       'RELEASE_VERSION_SHAPE',
@@ -405,7 +428,7 @@ export async function readRelease(
       : await promotionViewOf(part.runId, keyOf);
   // a draft keeps none; a cut release the corrections its own run keeps
   const corrections = await correctionViews(projectId, part === run ? run.corrections : []);
-  return {
+  const detail = {
     ...detailOf(
       part,
       shared,
@@ -417,4 +440,5 @@ export async function readRelease(
     ),
     corrections,
   };
+  return { detail, weighed: weighedOf(part, shared) };
 }

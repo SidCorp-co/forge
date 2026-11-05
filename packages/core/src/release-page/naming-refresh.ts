@@ -6,6 +6,7 @@
 // so a release never reads as silently unnamed.
 
 import { namingHasFacts } from '@forge/contracts/release-naming';
+import type { ReleaseDetail } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -17,7 +18,7 @@ import { draftNaming, nameUnnamedRelease } from '../release-batch/index.js';
 import { unnotedCriteria } from './facts.js';
 import { draftReleaseNaming, type NamingOutcome, namingFacts } from './naming-draft.js';
 import { claim, clearRow, namingDraftStale, namingRow, settleFailed } from './naming-store.js';
-import { releaseDetailOf } from './read.js';
+import { releaseRecordOf } from './read.js';
 
 export type NamingRefreshOutcome =
   | 'already_named'
@@ -47,9 +48,9 @@ export async function nameReleaseIfOwed(
   }
   const kept = await namingRow(projectId, version);
   if (kept && !namingDraftStale(kept)) return kept.state === 'failed' ? 'held' : 'in_flight';
-  let detail: Awaited<ReturnType<typeof releaseDetailOf>>;
+  let detail: ReleaseDetail;
   try {
-    detail = await releaseDetailOf(projectId, version, null);
+    detail = (await releaseRecordOf(projectId, version, null)).detail;
   } catch (err) {
     if (isRefusal(err, 'RELEASE_PAGE_NOT_FOUND')) return 'not_a_release';
     throw err;

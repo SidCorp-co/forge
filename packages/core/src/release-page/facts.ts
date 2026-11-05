@@ -1,7 +1,7 @@
-// What a release page is read from beyond the release record itself: every verdict each carried
-// criterion earned (the truth rule reads them all, not the latest), the files kept on its issues
+// What a release page is read from beyond the release record itself: the files kept on its issues
 // (where a cited clip or picture is), and each carried requirement's own words (its tldr and live
-// criteria), which the highlights are drafted from and the requirements section quotes.
+// criteria), which the highlights are drafted from and the requirements section quotes. Its criteria
+// are the record's own (`release-batch/release-read.ts:readReleaseRecord`), never read again here.
 
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
@@ -12,66 +12,8 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { criterionRoutesOf, listCriteriaOf, reopenedAtOf, voidedUpTo } from '../issues/index.js';
-import { carriedVerdictsOf } from '../release-batch/index.js';
-import type { CarriedCriterion, CarriedRequirement, CarriedVerdict, IssueFile } from './claims.js';
-
-/**
- * Each live criterion of the issues the release carries, with every verdict it earned since the
- * issue's last reopen (a reopen voids what was judged before it on a criterion not passing then,
- * `voidedUpTo`, as the release record reads it),
- * and the requirement criterion it traces as the release record names it.
- */
-export async function carriedCriteria(detail: ReleaseDetail): Promise<CarriedCriterion[]> {
-  const issueIds = detail.issues.map((i) => i.id);
-  const [criteria, reopened] = await Promise.all([
-    listCriteriaOf(db, issueIds),
-    reopenedAtOf(db, issueIds),
-  ]);
-  const all = [...criteria.values()].flat();
-  // the rows the release record counts by (`release-batch/release-facts.ts:criteriaAt`)
-  const [verdicts, routes] = await Promise.all([
-    carriedVerdictsOf(all.map((c) => c.id)),
-    criterionRoutesOf(all.map((c) => c.id)),
-  ]);
-  return detail.issues.flatMap((issue) => {
-    const traced = detail.issueCriteria.find((i) => i.key === issue.key)?.criteria ?? [];
-    return (criteria.get(issue.id) ?? []).map((c) => {
-      const own = verdicts.get(c.id) ?? [];
-      const voidedBy =
-        voidedUpTo([...own].reverse(), reopened.get(issue.id))?.getTime() ??
-        Number.NEGATIVE_INFINITY;
-      return {
-        issueId: issue.id,
-        issueKey: issue.key,
-        requirementKey: issue.requirement,
-        n: c.n,
-        statement: c.statement,
-        bc: traced.find((t) => t.n === c.n)?.bc ?? null,
-        class: routes.get(c.id)?.class ?? null,
-        reopenedAt: reopened.get(issue.id)?.toISOString() ?? null,
-        verdicts: own
-          .filter((v) => new Date(v.at).getTime() > voidedBy)
-          .map(
-            (v): CarriedVerdict => ({
-              id: v.id,
-              verdict: v.verdict,
-              identityKind: v.identityKind,
-              commitSha: v.commitSha,
-              runtimeRef: v.runtimeRef,
-              releaseVersion: v.releaseVersion ?? null,
-              at: v.at,
-              reason: v.reason,
-              evidence: v.evidence,
-              byBuilder: v.byBuilder,
-              authored: v.authored,
-              recordedAt: v.at,
-            }),
-          ),
-      };
-    });
-  });
-}
+import { listCriteriaOf } from '../issues/index.js';
+import type { CarriedRequirement, IssueFile } from './claims.js';
 
 /** The live criteria statements of each carried issue with no release note, by issue key. */
 export async function unnotedCriteria(detail: ReleaseDetail): Promise<Map<string, string[]>> {

@@ -2,22 +2,13 @@ import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { CriterionClass } from '@forge/contracts/issue-design';
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
-import {
-  countedForClass,
-  type ReleaseVerdictReading,
-  unjudgedOnReleaseWhy,
-} from '@forge/contracts/release-page';
-import { type ReleasedLine, versionsCountedOn } from '@forge/contracts/released-line';
+import type { ReleaseVerdictReading } from '@forge/contracts/release-page';
+import type { ReleasedLine } from '@forge/contracts/released-line';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
 import { requirementKey } from '@forge/contracts/requirements';
-import {
-  commitIdentityPhrase,
-  criterionStandingOf,
-  identityPhraseOf,
-} from '@forge/contracts/verdict-identity';
+import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
-import { verifiedOf } from '@forge/contracts/verified-rule';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
@@ -39,7 +30,6 @@ import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { issueNamingOf, namedIssue, standingsOf } from '../requirements/index.js';
 import { criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
-import { voidedStillRead } from './judged-before-reopen.js';
 import type { CompletionFacts } from './release-view.js';
 import { releasedLineOf } from './released-line.js';
 
@@ -143,11 +133,10 @@ export interface CarriedVerdict extends ReleaseVerdictReading {
 
 /**
  * Every verdict on `criterionIds`, by criterion, each oldest first: what a release reads a criterion
- * it carries by. The page reads the same rows (`release-page/facts.ts`), so the two cannot count
- * differently. Keyed so a reader takes one criterion's own verdicts, never a scan of all of them per
+ * it carries by, and what its page lists from the same reading (`criterionReadingsAt`). Keyed so a reader takes one criterion's own verdicts, never a scan of all of them per
  * criterion: across a project's releases that scan grew with the square of its release count.
  */
-export async function carriedVerdictsOf(
+async function carriedVerdictsOf(
   criterionIds: readonly string[],
 ): Promise<Map<string, CarriedVerdict[]>> {
   const out = new Map<string, CarriedVerdict[]>();
@@ -207,81 +196,6 @@ export async function carriedVerdictsOf(
     out.set(v.criterionId, held);
   }
   return out;
-}
-
-/**
- * An issue's criteria as the release whose build is `build` counts them, by the one rule every count
- * of proof reads (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): of the verdicts on that build,
- * the one the criterion stands on is the judge's, and only a pass the rule counts as verified proves
- * it. A short never does, nor the builder's own pass, whatever the project's `qa`; where neither
- * counts, `unverified` says why. A release with no cut build reads every verdict since the last
- * reopen, its newest shown; one with a build reads only the verdicts judged on that build
- * (`judgedOnReleaseBuild`: on a project naming a testing environment, a runtime verdict at it and
- * never a commit one, REQ-36 BC-18), so a verdict on an earlier build never counts, and none on it
- * reads not judged — "Not judged on <environment>" where the project names one (BC-19). A verdict
- * judged on a release counts on release `version` and on every release its record says carries
- * that one (`versionsCountedOn`, ISS-900). A code-property criterion, which only the review judges,
- * also counts its commit verdicts since the last reopen, at any build (`countedForClass`, ISS-914).
- */
-export function criteriaAt(
-  issue: IssueFact,
-  build: string | null,
-  { judge, judgedOn, released, landing }: ReleaseProof,
-  version: string | null = null,
-  /** When the release shipped; absent, as its record says (ISS-900), null where it has not. */
-  shippedAt: Date | null = version === null ? null : (released?.shipped.get(version)?.at ?? null),
-): ReleaseCriterionView[] {
-  const versions = versionsCountedOn(released, version);
-  const reader = { shippedAt, build, judgedOn, versions };
-  const reopenedAt = issue.reopenedAt?.toISOString() ?? null;
-  return issue.criteria.map((c) => {
-    const cls = issue.classes.get(c.n) ?? null;
-    const before = voidedStillRead(issue, c.n, reader);
-    const newestFirst = [...(issue.verdicts.get(c.n) ?? []), ...before].sort((a, b) =>
-      b.at.localeCompare(a.at),
-    );
-    const counted = newestFirst.filter((v) =>
-      countedForClass(v, cls, build, judgedOn, versions, reopenedAt),
-    );
-    const read = verifiedOf(counted, judge);
-    const stands = read.stands;
-    // on a landing basis a criterion its issue earned at its landing is proven on the release too
-    // (FB-515): the issue's own weighing (`criteria-basis.ts:landingCriteriaReports`) decides it
-    const proven =
-      (read.proven && stands?.identityKind !== 'commit_unresolved') ||
-      (landing?.get(issue.id)?.earned.has(c.n) ?? false);
-    const unjudgedThere = build !== null && judgedOn !== null && !stands;
-    const unverified = proven
-      ? null
-      : unjudgedThere
-        ? unjudgedOnReleaseWhy(cls, judgedOn, build)
-        : read.why;
-    // with no build, a verdict judged on a release still names what it stands on (ISS-900)
-    if (build === null && stands?.identityKind !== 'release') return { ...c, proven, unverified };
-    const at = build ?? '';
-    return {
-      ...c,
-      standing: !stands
-        ? 'unjudged'
-        : stands.identityKind === 'commit_unresolved'
-          ? 'unresolved'
-          : stands.verdict,
-      identity: stands
-        ? stands.identityKind === 'release'
-          ? `release ${stands.releaseVersion}`
-          : stands.identityKind === 'commit'
-            ? commitIdentityPhrase(stands.commitSha)
-            : judgedOn === null
-              ? commitIdentityPhrase(at)
-              : `runtime ${at.slice(0, 12)} on ${judgedOn}`
-        : null,
-      reason: stands?.reason ?? null,
-      judgedAt: stands?.at ?? null,
-      judgedBy: stands?.agency ?? null,
-      proven,
-      unverified,
-    };
-  });
 }
 
 function criterionView(c: CriterionWithVerdict, voidedBy: Date | undefined): ReleaseCriterionView {

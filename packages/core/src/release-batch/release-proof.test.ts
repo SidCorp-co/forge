@@ -9,7 +9,8 @@ import type { CriterionStanding } from '@forge/contracts/issue-vocabulary';
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import { describe, expect, it } from 'vitest';
 import { approvalAnswersOf } from './approval-checklist.js';
-import { type CarriedVerdict, criteriaAt, type IssueFact } from './release-facts.js';
+import { criteriaAt } from './criterion-reading.js';
+import type { CarriedVerdict, IssueFact } from './release-facts.js';
 import { proofOf, totalsOf } from './release-view.js';
 
 const BUILD = 'a'.repeat(40);

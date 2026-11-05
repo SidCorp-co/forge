@@ -1,7 +1,4 @@
-// A release's views, projected from what the loaders in release-read.ts read: pure, no I/O.
-
-import { releaseNoteAttention } from '@forge/contracts/content-language';
-import { type ReleaseNaming, releaseNotesSections } from '@forge/contracts/release-notes';
+import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import { releaseBuildOf } from '@forge/contracts/release-page';
 import {
   type IssueLandingReading,
@@ -16,8 +13,6 @@ import {
   type ReleaseFeedbackView,
   type ReleaseGateView,
   type ReleaseIssueView,
-  type ReleaseNoteEntry,
-  type ReleaseNoteSection,
   type ReleasePerson,
   type ReleaseShippedFailing,
   type ReleaseSplit,
@@ -37,9 +32,11 @@ import {
   type ReleaseMergeStep,
 } from './change-request-roster.js';
 import type { RecordedVerification } from './channel.js';
+import { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
 import { judgedOnReleaseAt } from './judged-on-release.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
-import { criteriaAt, type IssueFact, type ReleaseFacts } from './release-facts.js';
+import type { IssueFact, ReleaseFacts } from './release-facts.js';
+import { noteSections } from './release-notes-view.js';
 import {
   completionOf,
   proofOf,
@@ -50,7 +47,6 @@ import {
 } from './release-view.js';
 
 const NOBODY = nobodyWaits(say('releases.rule.issueShipped'));
-const CHANGELOG_SECTIONS = releaseNotesSections.filter((s) => s !== 'Skip');
 
 export interface Part {
   version: string;
@@ -194,13 +190,42 @@ function headOf(p: Part): string | null {
   );
 }
 
-/** Each issue's criteria as this release counts them: on its build (`criteriaAt`), which on a
- *  release that merges change requests is the head of the request delivering it. */
-function criteriaOf(p: Part, s: Shared, issue: IssueFact) {
+/** Each issue's criteria as this release counts them: on its build (`criterionReadingsAt`), which
+ *  on a release that merges change requests is the head of the request delivering it. */
+function readingsOf(p: Part, s: Shared, issue: IssueFact): CriterionReading[] {
   const head = p.mergeSteps?.find((step) => step.issueIds.includes(issue.id))?.headSha;
   const build = releaseBuildOf(p.state, head ?? headOf(p));
   // when it shipped: a reopen's void holds from the release that ships the fix (`judged-before-reopen.ts`)
-  return criteriaAt(issue, build, s.facts, p.version, p.releasedAt);
+  return criterionReadingsAt(issue, build, s.facts, p.version, p.releasedAt);
+}
+
+const criteriaOf = (p: Part, s: Shared, issue: IssueFact) =>
+  readingsOf(p, s, issue).map((r) => r.view);
+
+/** One issue's criteria as a release weighs them, with the verdicts each was read by. */
+export interface WeighedIssue {
+  issue: IssueFact;
+  /** The requirement it traces, by key; null where it traces none the record carries. */
+  requirementKey: string | null;
+  readings: CriterionReading[];
+}
+
+/**
+ * Every criterion a release counts, once: those of the issues it carries, then those judged on a
+ * release it counts (`judgedOnReleaseAt`, ISS-900). The header's proof sums these, and the release
+ * page lists these (`release-page/claims.ts:claimsOf`), so the two never weigh a criterion apart
+ * (ISS-1001: 110/111 at the top of adminhub-api 0.10.0, ISS-25 "9 open" under it).
+ */
+export function weighedOf(p: Part, s: Shared): WeighedIssue[] {
+  const keyOf = (issue: IssueFact) =>
+    issue.requirementId ? (s.facts.requirements.get(issue.requirementId)?.key ?? null) : null;
+  return [
+    ...p.issueIds.flatMap((id) => {
+      const issue = s.facts.issues.get(id);
+      return issue ? [{ issue, readings: readingsOf(p, s, issue) }] : [];
+    }),
+    ...judgedOnReleaseAt(s.facts, p.issueIds, p.version),
+  ].map((w) => ({ ...w, requirementKey: keyOf(w.issue) }));
 }
 
 /** The change request shown beside each issue this release carries. */
@@ -265,8 +290,7 @@ function splitOf(p: Part, s: Shared): ReleaseSplit | null {
 
 export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
-  const elsewhere = judgedOnReleaseAt(s.facts, p.issueIds, p.version).map((j) => j.criteria);
-  const judged = [...facts.map((i) => criteriaOf(p, s, i)), ...elsewhere];
+  const judged = weighedOf(p, s).map((w) => w.readings.map((r) => r.view));
   const criteria = sumTotals(judged.map(totalsOf));
   const turn = turnFor(p, s, criteria);
   const { owner, act } = ownerOf(p, s);
@@ -338,53 +362,6 @@ function attemptView(a: ReleaseAttemptRow): ReleaseAttemptView {
     account: a.account,
     startedAt: a.startedAt.toISOString(),
     settledAt: iso(a.settledAt),
-  };
-}
-
-const noteEntry = (i: IssueFact): ReleaseNoteEntry => ({
-  key: i.key,
-  title: i.title,
-  heading: i.releaseNotes?.title?.trim() || null,
-  userFacing: i.releaseNotes?.userFacing ?? '',
-  technical: i.releaseNotes?.technical ?? null,
-  adminSteps: i.releaseNotes?.adminSteps ?? [],
-});
-
-/** A landing that names the design surface and nothing else: an approved design, not a user change. */
-const designOnly = (reading: IssueLandingReading | undefined): boolean => {
-  if (!reading) return false;
-  const surfaces = surfacesOf(reading);
-  return surfaces.length > 0 && surfaces.every((x) => x === 'design') && gapOf(reading) === null;
-};
-
-// what users get leaves out an issue whose landing only touched a design: it lists under the
-// approved designs instead (JU-11), so a design review is never read as a change people use
-function noteSections(p: Part, s: Shared, landings: ReadonlyMap<string, IssueLandingReading>) {
-  const claimed = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
-  const reworked = claimed.filter((i) => reworkedSince(p, i));
-  const all = claimed.filter((i) => !reworked.includes(i));
-  const designs = all.filter((i) => designOnly(landings.get(i.id)));
-  const facts = all.filter((i) => !designs.includes(i));
-  const sections: ReleaseNoteSection[] = CHANGELOG_SECTIONS.map((section) => ({
-    section,
-    entries: facts.filter((i) => i.releaseNotes?.section === section).map(noteEntry),
-  })).filter((x) => x.entries.length > 0);
-  // a reader aid on the draft, not a gate: the release gate's own reasons are unchanged
-  const attention = facts.flatMap((i) => {
-    if (!i.releaseNotes || i.releaseNotes.section === 'Skip') return [];
-    const found = releaseNoteAttention(s.contentLanguage, i.releaseNotes.userFacing);
-    return found.notInLanguage || found.references.length > 0
-      ? [{ key: i.key, title: i.title, ...found }]
-      : [];
-  });
-  return {
-    sections,
-    designs: designs.map(noteEntry),
-    withoutNotes: facts.filter((i) => !i.releaseNotes).map((i) => ({ key: i.key, title: i.title })),
-    skipped: facts.filter((i) => i.releaseNotes?.section === 'Skip').map(noteEntry),
-    reworked: reworked.map((i) => ({ key: i.key, title: i.title })),
-    language: s.contentLanguage,
-    attention,
   };
 }
 
@@ -472,10 +449,12 @@ export function detailOf(
           Number(b.completes) - Number(a.completes) ||
           a.key.localeCompare(b.key, 'en', { numeric: true }),
       ),
-    issueCriteria: [
-      ...facts.map((i) => ({ key: i.key, title: i.title, criteria: criteriaOf(p, s, i) })),
-      ...judgedOnReleaseAt(s.facts, p.issueIds, p.version), // judged on a release it carries
-    ],
+    // judged on a release it carries too (ISS-900)
+    issueCriteria: weighedOf(p, s).map(({ issue, readings }) => ({
+      key: issue.key,
+      title: issue.title,
+      criteria: readings.map((r) => r.view),
+    })),
     notes: noteSections(p, s, landings),
     gates: p.gates,
     approval: latest ? strip(latest) : null,

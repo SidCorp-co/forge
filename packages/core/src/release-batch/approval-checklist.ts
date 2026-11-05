@@ -38,7 +38,8 @@ import { readProjectDocument } from '../project-config/index.js';
 import { type Carry, resolveCarry } from './approval-carry.js';
 import { type ChangeRequestBuild, changeRequestBuildsOf } from './change-request-build.js';
 import { mergeStepsOf } from './change-request-roster.js';
-import { criteriaAt, loadReleaseFacts } from './release-facts.js';
+import { criteriaAt } from './criterion-reading.js';
+import { loadReleaseFacts } from './release-facts.js';
 
 export interface ApprovalFacts {
   /** Each carried issue by its key, the requirement it serves at that requirement's revision. */
