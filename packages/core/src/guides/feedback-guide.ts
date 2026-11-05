@@ -6,7 +6,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Feedback: filing, triage, resolution and verification',
   summary:
-    'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, how an agent proposes a route a holder of feedback.approve accepts, the one clarification question, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
+    'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, who routes it (the approvals.triage setting), how an agent without that permission proposes a route a holder accepts, the one clarification question, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
   version: 2,
   body: `## Feedback: filing, triage, resolution and verification
 
@@ -88,7 +88,7 @@ Two more phases are **read, never written**, from the work the item was routed t
 Nothing reads an item as \`verified\` and nothing verifies it by itself: a person verifies it, or the
 reporter's confirm in the fix's preview does as theirs (below).
 
-### Triage: a holder of feedback.approve answers the triage checklist and writes the route in the same act
+### Triage: whoever the project's approvals.triage asks answers the triage checklist and writes the route in the same act
 - An item reaches \`triaged\` only through the triage checklist (Feedback lifecycle r14 \`triage-check\`),
   the same at every door: the API, the web, a suggestion's accept and the assistant's diagnosis. Its
   questions are the kind and the requirement (the item's own: correct the kind with \`kind\`, the
@@ -134,10 +134,13 @@ reporter's confirm in the fix's preview does as theirs (below).
   (\`FEEDBACK_DECLINE_REASON_REQUIRED\`), it carries no \`answers\` (\`CHECKLIST_ANSWER_INVALID\`), and it
   moves the item to \`declined\`. 180 days after the
   decline the nightly retention pass removes its attachments and embedding; the row stays.
-- **Triage is an approval.** Triage takes \`feedback.approve\` on the project
-  (project admin, or an org owner or admin), person or agent alike, and outside a strict gate profile the
-  project's master holds it too: an agent's token, or a paired box's, that writes the project; without it the call is refused
-  \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`POST /api/projects/:id/suggestions\`
+- **Who routes is the project's setting.** \`approvals.triage\` in the project document (gate
+  \`approval_triage\`) is on wherever nothing sets it, under every gate profile: routing then takes \`feedback.approve\`
+  on the project (project admin, or an org owner or admin), person or agent alike, and outside a strict gate profile the
+  project's master holds it too: an agent's token, or a paired box's, that writes the project. Set it \`false\` and any
+  holder of \`project.write\` routes the item, agents included; strict enforces it whatever it says. A decline takes
+  \`feedback.approve\` either way. Without the permission the call is refused \`PERMISSION_FORBIDDEN\`, naming the
+  permission, the gate and what relaxes it. Without it, send \`POST /api/projects/:id/suggestions\`
   \`{ kind: 'feedback_triage', feedback, payload }\`, the payload a triage with its \`answers\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
   item (\`dedup\`, or why dedup did not run); a holder accepts it (\`POST /api/projects/:id/suggestions/:sid/accept\`), and the
   accept is the triage (${guideRef('suggestions')}).
@@ -152,7 +155,8 @@ reporter no triage is proposed at all. The reporter answers it at
 \`POST /api/projects/:id/intake-drafts/:ref/answers\` (\`:ref\` the FB-n). A holder of \`feedback.approve\` still decides.
 
 ### The verbs of a new item
-Each is a state transition by a holder of \`feedback.approve\`, refused by name where it does not apply.
+Each is a state transition, refused by name where it does not apply: a decline and a snooze by a holder of
+\`feedback.approve\`, a merge by whoever \`approvals.triage\` asks, as any route.
 No verb moves an item to \`triaged\` around the checklist.
 - \`triage\` with route \`decline\` and a \`note\` declines it; every reporter merged into the item with a bell gets one
   notice naming the reason (\`FEEDBACK_DECLINE_REASON_REQUIRED\` without one).
@@ -240,8 +244,8 @@ where its grant names it (\`PERMISSION_FORBIDDEN\` without it). It deletes the i
 another item is filed about one of them it is \`FEEDBACK_REDACT_MOCKUP_TARGETED\`, naming that item: retarget it first.
 
 ### Reading the list
-\`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on, read for the viewer: a holder of
-\`feedback.approve\` to triage a new or reopened item or a triaged one whose carrier died (the project's master, where one is
+\`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on, read for the viewer:
+whoever \`approvals.triage\` asks (\`feedback.approve\` unless the project turned it off) to triage a new or reopened item or a triaged one whose carrier died (the project's master, where one is
 live, for any item it owes a triage), the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
 makes the release (a release approver, a writer cutting it, or with no release model a writer releasing it by hand), and anyone
 to verify a resolved one, which is owed by nobody and so reads \`You\` for no one. It reads \`You\` only where the viewer holds that act.
