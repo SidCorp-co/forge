@@ -173,6 +173,12 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
       ls.some((l) => l.tmid === refund && l.text === 'Answered: Refund please'),
     );
     expect(seen[0]?.messages.map((m) => m.text).sort()).toEqual(['Any news?', 'Refund please']);
+    // that turn ends before the next message, so it goes as a turn of its own
+    await expect
+      .poll(async () => (await w.rooms())[0]?.sessionStatus === 'completed' && w.box.idle(), {
+        timeout: 15_000,
+      })
+      .toBe(true);
     // answered, the thread's wait is over: its next failure is told again, under the same rule
     await w.chat.say(w.chat.bob, 'Still there?', refund);
     await expect
@@ -181,7 +187,12 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
     expect(handed(seen, 'Still there?')).toBe(3);
     expect((await failedLines(refund)).every((l) => l.text === STILL_QUEUED_LINE)).toBe(true);
     expect(await recorded('turn_failed', refund)).toHaveLength(2);
-    w.box.turnEnd = 'completed';
+    // a turn that completes ends the slow back-off: the held message goes with it and is answered
+    play(seen, new Map());
+    await w.chat.say(w.chat.bob, 'Thanks', refund);
+    await w.untilLines((ls) =>
+      ls.some((l) => l.tmid === refund && l.text === 'Answered: Still there?'),
+    );
   }, 120_000);
 });
 

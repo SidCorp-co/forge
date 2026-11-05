@@ -32,6 +32,7 @@ import { buildBaseOf, buildKeyOf } from './build.js';
 import { briefChannel, channelNews } from './channel-read.js';
 import {
   claimUndelivered,
+  endBackOff,
   hasReady,
   roomsWithUndelivered,
   unansweredOfLastTurn,
@@ -454,6 +455,8 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
     : [marker.roomId];
   for (const roomId of served) {
     if (!COMPLETED.has(row.status)) await retryFailedTurn(roomId, row);
+    // a completed turn shows the fault cleared: what waited out a back-off goes with the next turn
+    else await endBackOff(roomId);
     // what the box refused to write into the turn now waits again, and goes with the rest
     await settleInjects(roomId);
     await deliverWaiting(roomId);
@@ -475,10 +478,7 @@ async function retryFailedTurn(roomId: string, row: SessionRow): Promise<void> {
   if (!room) return;
   // a message handed to the next turn after this one ended is that turn's, not this one's
   const taken = await unansweredOfLastTurn(room.id, lastTurn.get(room.id) ?? null, row.updatedAt);
-  const why = [row.failureReason, row.failureDetail].filter(Boolean).join(': ');
-  await retryOrTell(
-    room,
-    taken,
-    `the session's turn ended ${row.status} before it answered${why ? ` (${why})` : ''}`,
-  );
+  // the reason, never the detail: a detail can carry the turn's own prompt, members' words included
+  const why = row.failureReason ? ` (${row.failureReason})` : '';
+  await retryOrTell(room, taken, `the session's turn ended ${row.status} before it answered${why}`);
 }

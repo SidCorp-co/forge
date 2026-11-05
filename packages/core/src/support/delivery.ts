@@ -53,8 +53,8 @@ const HANDED = sql`COALESCE(${supportActions.output}, '{}'::jsonb) ? 'path'`;
 /**
  * The messages the room's last turn took that the session wrote nothing back to: each delivered at
  * or after `since`, when that turn was handed over (a message written into the running turn is
- * delivered later) and, given `until` (when the turn ended), before it, in a thread with no session
- * action since. With no `since` (core restarted while the turn ran) the turn is read as the newest
+ * delivered later) and, given `until` (when the turn ended), before it, with no session action in
+ * its thread since it was handed. With no `since` (core restarted while the turn ran) the turn is read as the newest
  * handed over, which an injected message never starts. A message kept only as context, never
  * handed to a turn, is never one of them.
  */
@@ -96,7 +96,10 @@ export async function unansweredOfLastTurn(
     )
     .orderBy(asc(supportActions.createdAt));
   const answered = await db
-    .selectDistinct({ thread: supportActions.thread })
+    .select({
+      thread: supportActions.thread,
+      at: sql<Date>`max(${supportActions.createdAt})`.mapWith((v) => new Date(v)),
+    })
     .from(supportActions)
     .where(
       and(
@@ -104,9 +107,15 @@ export async function unansweredOfLastTurn(
         eq(supportActions.actorKind, 'session'),
         gte(supportActions.createdAt, from),
       ),
-    );
-  const done = new Set(answered.map((a) => a.thread));
-  return taken.filter((m) => !done.has(m.thread));
+    )
+    .groupBy(supportActions.thread);
+  // a message is answered by the session acting in its thread once it was handed, not before: one
+  // written into the turn after its thread's reply is still owed one (ISS-977)
+  const lastAct = new Map(answered.map((a) => [a.thread, a.at] as const));
+  return taken.filter((m) => {
+    const at = lastAct.get(m.thread);
+    return !at || !m.deliveredAt || at < m.deliveredAt;
+  });
 }
 
 /** Of `ids`, the messages a failed turn was already reported for. */
@@ -219,6 +228,24 @@ export async function giveBackFailed(
 /** A waiting message no back-off holds: one never tried, or one whose `retryAt` has come. */
 const READY = sql`(NOT (COALESCE(${supportActions.output}, '{}'::jsonb) ? 'retryAt')
   OR (${supportActions.output}->>'retryAt')::timestamptz <= now())`;
+
+/**
+ * The room's session completed a turn: whatever was backing off from a failed try goes now, since
+ * the fault it waited out has cleared (ISS-977). Its count of tries stands.
+ */
+export async function endBackOff(roomId: string): Promise<void> {
+  await db
+    .update(supportActions)
+    .set({ output: sql`${supportActions.output} - 'retryAt'` })
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        isNull(supportActions.deliveredAt),
+        sql`COALESCE(${supportActions.output}, '{}'::jsonb) ? 'retryAt'`,
+      ),
+    );
+}
 
 /** Whether a room holds a waiting message that may go now (ISS-977: one backing off may not). */
 export async function hasReady(roomId: string): Promise<boolean> {
@@ -339,21 +366,6 @@ export async function undeliveredThreads(
   const seen = new Map<string, string | null>();
   for (const r of rows) if (!seen.has(r.thread)) seen.set(r.thread, r.conversationId);
   return [...seen].map(([thread, conversationId]) => ({ thread, conversationId }));
-}
-
-export async function hasUndelivered(roomId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: supportActions.id })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, roomId),
-        eq(supportActions.kind, 'message_in'),
-        isNull(supportActions.deliveredAt),
-      ),
-    )
-    .limit(1);
-  return Boolean(row);
 }
 
 /** Rooms holding an inbound message no turn has taken and no back-off holds (ISS-977). */

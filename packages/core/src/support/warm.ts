@@ -10,7 +10,7 @@ import { activeSupportApi } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceProjectIds } from '../runners/index.js';
-import { hasUndelivered, roomsOfProjects, roomsToWarm } from './delivery.js';
+import { hasReady, roomsOfProjects, roomsToWarm } from './delivery.js';
 import {
   deliverWaiting,
   followedCheckouts,
@@ -83,8 +83,9 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
   const session = room ? await sessionOf(room) : null;
   if (!room || !session) return 'none';
   if (session.status === 'running' || session.status === 'queued') return 'busy';
-  // a member's message beats a warm-up: it is the turn that warms the session
-  if (await hasUndelivered(room.id)) {
+  // a member's message beats a warm-up: it is the turn that warms the session; one backing off from
+  // a failed try does not hold the warm-up back, whose completing ends that back-off (ISS-977)
+  if (await hasReady(room.id)) {
     await deliverWaiting(room.id);
     return 'messages-waiting';
   }
