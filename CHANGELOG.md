@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.500] - 2026-11-05
+
+A reopened fix is judged on the release that carries it
+
+### Fixed
+
+- **A reopened issue's observable criterion is owed on the release carrying its fix.** The release that shipped its earlier round no longer counts as holding the re-landed fix, so the criterion stops holding every cut.
+
 ## [0.4.0-dev.499] - 2026-11-04
 
 A testing login's password is checked when it is saved

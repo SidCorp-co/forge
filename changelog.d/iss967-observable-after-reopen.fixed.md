@@ -1,1 +1,0 @@
-**A reopened issue's observable criterion is owed on the release carrying its fix.** The release that shipped its earlier round no longer counts as holding the re-landed fix, so the criterion stops holding every cut.
