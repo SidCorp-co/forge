@@ -64,6 +64,15 @@ pub struct DeclareArgs {
     /// The worktree the subagent will work in.
     #[arg(long)]
     pub worktree: String,
+    /// Have the box cut the worktree for this run, on a new branch of this name: the path must not
+    /// exist yet. A run declared without it adopts a tree that already stands, and no close,
+    /// release or reaper ever removes an adopted tree; a tree cut for the run is removed when the
+    /// run ends, unless it holds uncommitted work or commits on no remote.
+    #[arg(long, value_name = "BRANCH")]
+    pub cut: Option<String>,
+    /// The ref `--cut` starts the branch from, in the master's checkout. `HEAD` where not given.
+    #[arg(long, value_name = "REF", requires = "cut")]
+    pub from: Option<String>,
     /// The role the subagent for this run is dispatched as (e.g. qa). A qa or reviewer run may be declared over closed issues to judge them; any other role is refused a closed issue.
     #[arg(long)]
     pub role: Option<String>,
@@ -252,11 +261,15 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
             control::request_run_declare(
                 &sock,
                 &token,
-                &o.project,
-                &o.issue,
-                &o.worktree,
-                o.role.as_deref(),
-                o.requirement.as_deref(),
+                control::Declare {
+                    project_id: &o.project,
+                    issue_keys: &o.issue,
+                    worktree_path: &o.worktree,
+                    role: o.role.as_deref(),
+                    requirement: o.requirement.as_deref(),
+                    cut: o.cut.as_deref(),
+                    from: o.from.as_deref(),
+                },
             )
             .await?
         }

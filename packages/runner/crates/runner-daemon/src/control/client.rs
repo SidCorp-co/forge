@@ -1,25 +1,39 @@
 use super::*;
 
+/// What `run declare` asks the daemon to record, as the pane typed it.
+#[derive(Debug, Clone, Copy)]
+pub struct Declare<'a> {
+    pub project_id: &'a str,
+    pub issue_keys: &'a [String],
+    pub worktree_path: &'a str,
+    pub role: Option<&'a str>,
+    pub requirement: Option<&'a str>,
+    /// The branch the box is to cut the tree on (`--cut`); `None` adopts a tree that stands.
+    pub cut: Option<&'a str>,
+    /// The ref the cut starts from (`--from`).
+    pub from: Option<&'a str>,
+}
+
 /// Declare a run from a pane, over the control socket.
 #[cfg(unix)]
 pub async fn request_run_declare(
     path: &std::path::Path,
     token: &str,
-    project_id: &str,
-    issue_keys: &[String],
-    worktree_path: &str,
-    role: Option<&str>,
-    requirement: Option<&str>,
+    d: Declare<'_>,
 ) -> std::io::Result<ClaimReply> {
     let mut request = serde_json::json!({
-        "op": "run_declare", "token": token, "projectId": project_id,
-        "issueKeys": issue_keys, "worktreePath": worktree_path
+        "op": "run_declare", "token": token, "projectId": d.project_id,
+        "issueKeys": d.issue_keys, "worktreePath": d.worktree_path
     });
-    if let Some(role) = role {
-        request["role"] = serde_json::json!(role);
-    }
-    if let Some(requirement) = requirement {
-        request["requirement"] = serde_json::json!(requirement);
+    for (key, value) in [
+        ("role", d.role),
+        ("requirement", d.requirement),
+        ("cut", d.cut),
+        ("from", d.from),
+    ] {
+        if let Some(value) = value {
+            request[key] = serde_json::json!(value);
+        }
     }
     ask(path, request).await
 }
@@ -61,11 +75,7 @@ pub async fn request_run_close(
 pub async fn request_run_declare(
     _path: &std::path::Path,
     _token: &str,
-    _project_id: &str,
-    _issue_keys: &[String],
-    _worktree_path: &str,
-    _role: Option<&str>,
-    _requirement: Option<&str>,
+    _d: Declare<'_>,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }

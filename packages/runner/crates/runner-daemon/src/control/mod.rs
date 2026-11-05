@@ -24,6 +24,8 @@
 mod client;
 pub use client::*;
 #[cfg(unix)]
+mod cut;
+#[cfg(unix)]
 mod hooks;
 #[cfg(unix)]
 mod runs;
@@ -102,6 +104,13 @@ enum Request {
         /// The requirement a judge run judges at the requirement, with no issue (ISS-735).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         requirement: Option<String>,
+        /// The branch the box is to cut the run's tree on (`--cut`); absent adopts a tree that
+        /// already stands (ISS-1016).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cut: Option<String>,
+        /// The ref the cut starts from, where `cut` is given.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     RunChoice {
@@ -505,6 +514,8 @@ async fn serve_request(
             worktree_path,
             role,
             requirement,
+            cut,
+            from,
             ..
         } => {
             run_declare_as(
@@ -516,6 +527,10 @@ async fn serve_request(
                     worktree_path: &worktree_path,
                     role: role.as_deref(),
                     requirement: requirement.as_deref(),
+                    cut: cut.as_deref().map(|branch| cut::Cut {
+                        branch,
+                        from: from.as_deref(),
+                    }),
                 },
                 session_id,
                 peer,

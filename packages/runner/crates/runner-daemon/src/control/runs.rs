@@ -1,4 +1,5 @@
 use super::*;
+use runner_core::ledger::TreeOrigin;
 use runner_transport::run_sessions::Said;
 
 pub(crate) fn run_choice(
@@ -142,6 +143,9 @@ pub(crate) struct Declaration<'a> {
     pub role: Option<&'a str>,
     /// The requirement a judge run judges at the requirement, in place of any issue (ISS-735).
     pub requirement: Option<&'a str>,
+    /// The branch to cut the tree on, where the box is to cut it for the run (`--cut`). `None`
+    /// adopts a tree that already stands (ISS-1016).
+    pub cut: Option<super::cut::Cut<'a>>,
 }
 
 /// A graceful stop, as a CI agent drains for an upgrade: finish what is held,
@@ -230,6 +234,7 @@ pub(crate) async fn run_declare_as(
         worktree_path,
         role,
         requirement,
+        cut,
     } = declared;
     // First, before anything is read or written: a drain that admits a run is
     // waiting on a queue it keeps refilling (ISS-1223). The permit is held to
@@ -267,7 +272,12 @@ pub(crate) async fn run_declare_as(
     let checkout = peer
         .and_then(|p| ctl.hosts.above(p))
         .and_then(|host| ctl.hosts.cwd(host.pid));
-    if let Some(refused) = tree_refusal(worktree_path, checkout.as_deref()).await {
+    // A tree to be cut must not stand yet; any other must already be a tree of this checkout.
+    let refused = match cut {
+        Some(_) => super::cut::cut_refusal(worktree_path, checkout.as_deref()),
+        None => tree_refusal(worktree_path, checkout.as_deref()).await,
+    };
+    if let Some(refused) = refused {
         return ClaimReply::refused(refused);
     }
     let said = Said { role, requirement };
@@ -276,7 +286,44 @@ pub(crate) async fn run_declare_as(
     {
         return ClaimReply::refused(refused);
     }
-    let run_id = uuid::Uuid::new_v4().to_string();
+    // Cut last, once every refusal that needs no tree has been taken, so a refused declaration
+    // leaves nothing behind; one the ledger then refuses has its tree taken back below.
+    let cut_from = cut.zip(checkout.as_deref());
+    if let Some((c, from)) = cut_from {
+        if let Err(why) = super::cut::cut_tree(from, worktree_path, c).await {
+            return ClaimReply::refused(why);
+        }
+    }
+    let template = runner_core::ledger::NewRun {
+        run_id: uuid::Uuid::new_v4().to_string(),
+        project_id: project_id.to_string(),
+        master_session_id: session_id.to_string(),
+        worktree_path: std::path::PathBuf::from(worktree_path),
+        boot_id: ctl.boot_id.clone(),
+        issue_keys: issue_keys.to_vec(),
+        role: role.map(str::to_string),
+        requirement: requirement.map(str::to_string),
+        worktree_origin: match cut_from {
+            Some(_) => TreeOrigin::Created,
+            None => TreeOrigin::Adopted,
+        },
+    };
+    let reply = record_declaration(ctl, holder, template, session_id, peer);
+    if let (false, Some((c, from))) = (reply.ok, cut_from) {
+        super::cut::uncut_tree(from, worktree_path, c.branch).await;
+    }
+    reply
+}
+
+/// Write the declared run, under the master session the pane holds at the moment of writing, and
+/// answer the reply the pane is told.
+fn record_declaration(
+    ctl: &Arc<Control>,
+    holder: &Holder,
+    template: runner_core::ledger::NewRun,
+    session_id: &str,
+    peer: Option<u32>,
+) -> ClaimReply {
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else {
         return ClaimReply::refused("this daemon has no ledger open, so it can record nothing");
@@ -285,15 +332,8 @@ pub(crate) async fn run_declare_as(
         return refused;
     }
     let new_run = |session: &str| runner_core::ledger::NewRun {
-        run_id: run_id.clone(),
-        project_id: project_id.to_string(),
         master_session_id: session.to_string(),
-        worktree_path: std::path::PathBuf::from(worktree_path),
-        boot_id: ctl.boot_id.clone(),
-        issue_keys: issue_keys.to_vec(),
-        role: role.map(str::to_string),
-        requirement: requirement.map(str::to_string),
-        worktree_origin: runner_core::ledger::TreeOrigin::Created,
+        ..template.clone()
     };
     // A record's run is written while the registry is held, under the session
     // it names for the pane at that moment: an adoption between the bound
@@ -322,16 +362,19 @@ pub(crate) async fn run_declare_as(
     match written {
         Ok(run) => {
             tracing::info!(
-                "[control] {project_id}: run {} declared over {:?}",
+                "[control] {}: run {} declared over {:?}, its tree {} ({})",
+                template.project_id,
                 run.run_id,
-                issue_keys
+                template.issue_keys,
+                run.worktree_path.display(),
+                run.worktree_origin.wire()
             );
             note_host(ctl, led, &run.run_id, peer);
             ClaimReply {
                 ok: true,
                 job_id: Some(run.run_id),
                 agent_session_id: Some(recorded),
-                issue_key: issue_keys.first().cloned(),
+                issue_key: template.issue_keys.first().cloned(),
                 reason: None,
                 deny: false,
             }
@@ -356,8 +399,9 @@ pub(crate) async fn run_declare_as(
 pub(crate) async fn tree_refusal(worktree: &str, checkout: Option<&Path>) -> Option<String> {
     use runner_workspace::worktree::{kind_at, repository_of, Kind};
     let cut = format!(
-        "`git worktree add {worktree} <branch>` cuts one there, from this project's checkout; \
-         then declare again. Nothing was recorded"
+        "Declare again with `--cut <branch>` to have this box cut it there for the run, or cut it \
+         with `git worktree add {worktree} <branch>` from this project's checkout and declare \
+         again to adopt it. Nothing was recorded"
     );
     let path = Path::new(worktree);
     if !path.is_absolute() {
@@ -967,6 +1011,7 @@ mod tree_tests {
                 worktree_path: &tree.to_string_lossy(),
                 role: None,
                 requirement: None,
+                cut: None,
             },
             MASTER,
             None,
