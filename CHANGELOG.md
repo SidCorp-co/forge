@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.526] - 2026-11-05
+
+A no-production draft says its master records it, and Approve reads Approve record
+
+### Fixed
+
+- **A release with no production names who records it.** Its page says the master records it rather than cutting it, and offers Approve only where that approval is taken, worded as approving the record.
+
 ## [0.4.0-dev.525] - 2026-11-05
 
 Requirement coverage counts verdicts at builds carrying the issue's landing
