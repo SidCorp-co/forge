@@ -175,7 +175,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:caption field:json:changeSummary field:json:content field:json:description
     field:json:detail field:json:diagnosis field:json:greeting field:json:instructions
     field:json:intro field:json:message field:json:narrative field:json:note
-    field:json:observedSteps field:json:plan field:json:prompt field:json:reason
+    field:json:observedSteps field:json:plan field:json:plain field:json:prompt field:json:reason
     field:json:releaseNotes field:json:soul field:json:summary field:json:text
     field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen field:json:product
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
