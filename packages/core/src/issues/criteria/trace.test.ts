@@ -189,14 +189,16 @@ describe('a reworded line whose BC another line still traces', () => {
     expect(dropped(live, [{ n: 1, statement: 'New words.' }])).toEqual([]);
   });
 
-  it('names a kept line sent with another trace', () => {
-    expect(
-      named(iss3, [
-        { n: 1, statement: 'Lists products.' },
-        { n: 2, statement: 'Shows a price.', requirementCriterionId: BC2 },
-        { n: 3, statement: 'Shows the site currency.' },
-      ]),
-    ).toEqual(['2 REQ-25 BC-7']);
+  it('names a kept line sent with another trace, and the BC it carries instead', () => {
+    const sent = [
+      { n: 1, statement: 'Lists products.' },
+      { n: 2, statement: 'Shows a price.', requirementCriterionId: BC2 },
+      { n: 3, statement: 'Shows the site currency.' },
+    ];
+    expect(named(iss3, sent)).toEqual(['2 REQ-25 BC-7']);
+    expect(droppedTraceDetail(dropped(iss3, sent))).toContain(
+      'which proved REQ-25 BC-7, and carries REQ-25 BC-2 instead',
+    );
   });
 });
 
@@ -317,6 +319,7 @@ describe('the line a refusal names is the one the writer sent', () => {
     expect(detail).toContain(
       'which of criteria 1 ("Search narrows the list") or 2 ("Checkout takes a card") as sent carries it on cannot be told from their words',
     );
+    expect(detail).toContain('open whichever of criteria 1 and 2 carries it on with (REQ-25 BC-7)');
     expect(detail).not.toMatch(/open criterion \d/);
     // the writer says which: the BC lands on the line they tagged, and nowhere else
     const chosen = [

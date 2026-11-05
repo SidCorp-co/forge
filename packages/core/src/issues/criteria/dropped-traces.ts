@@ -37,6 +37,8 @@ export type DroppedTrace =
       readonly line: CriterionLine;
       readonly was: readonly CriterionLine[];
       readonly reworded: boolean;
+      /** The other BC the line carries in its place, where it carries one. */
+      readonly instead?: string;
     }
   | { readonly kind: 'removed'; readonly code: string; readonly was: CriterionLine }
   | {
@@ -184,10 +186,11 @@ export function droppedTraces(
   const paired = (pairs: Map<number, number>, reworded: boolean) => {
     for (const [j, i] of pairs) {
       const code = codeAt((live[j] as TracedRow).requirementCriterionId);
-      if (code && carries(i) !== code) {
-        const line = lineOf(sent[i] as SentLine);
-        dropped.push({ kind: 'line', code, line, was: [lineOf(live[j] as TracedRow)], reworded });
-      }
+      const now = carries(i);
+      if (!code || now === code) continue;
+      const was = [lineOf(live[j] as TracedRow)];
+      const line = lineOf(sent[i] as SentLine);
+      dropped.push({ kind: 'line', code, line, was, reworded, ...(now ? { instead: now } : {}) });
     }
   };
   paired(keptAt, false);
@@ -199,15 +202,13 @@ export function droppedTraces(
       .sort(([a], [b]) => a - b)
       .map(([, j], k) => [j, k] as const),
   );
-  const left = (all: Set<number>, taken: Iterable<number>) => {
-    const out = new Set(all);
-    for (const k of taken) out.delete(k);
-    return [...out].sort((a, b) => (rank.get(a) ?? a) - (rank.get(b) ?? b));
-  };
+  const pairedLines = new Set(byWords.values());
   const places = placesOf(
     [...keptAt, ...byWords],
-    left(rows, byWords.keys()),
-    [...lines].filter((i) => ![...byWords.values()].includes(i)).sort((a, b) => a - b),
+    [...rows]
+      .filter((j) => !byWords.has(j))
+      .sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0)),
+    [...lines].filter((i) => !pairedLines.has(i)).sort((a, b) => a - b),
     rank,
   );
   for (const place of places) dropped.push(...droppedAt(place, live, sent, codeAt, carries));
@@ -290,11 +291,10 @@ function said(d: DroppedTrace): { what: string; fix: string } {
         ? each(d.was, 'live criterion')
         : `one of ${each(d.was, 'live criterion')}`;
     return {
-      what: `${each([d.line], 'criterion')} as sent ${verb} ${was}, which proved ${d.code}, and does not carry it`,
-      fix: `open criterion ${d.line.n} with ${tag}`,
+      what: `${each([d.line], 'criterion')} as sent ${verb} ${was}, which proved ${d.code}, and ${d.instead ? `carries ${d.instead} instead` : 'does not carry it'}`,
+      fix: `open criterion ${d.line.n} with ${tag}${d.instead ? ` in place of (${d.instead})` : ''}`,
     };
   }
-  const lines = d.short === 1 ? 'line' : `${d.short} lines`;
   const where =
     d.candidates.length === 0
       ? 'and no untraced line is left in their place to carry it on'
@@ -302,7 +302,7 @@ function said(d: DroppedTrace): { what: string; fix: string } {
   const pick =
     d.candidates.length === 0
       ? `put a line back opening with ${tag}`
-      : `open the ${lines} of ${numbers(d.candidates, 'and')} that carry it on with ${tag}${d.short > d.candidates.length ? `, and put the rest back opening with ${tag}` : ''}`;
+      : `${d.short === 1 ? `open whichever of ${numbers(d.candidates, 'and')} carries it on` : `open the ${d.short} of ${numbers(d.candidates, 'and')} that carry it on`} with ${tag}${d.short > d.candidates.length ? `, and put the rest back opening with ${tag}` : ''}`;
   return {
     what: `${each(d.was, 'live criterion')} held ${d.code} on ${d.short} more ${d.short === 1 ? 'line' : 'lines'} than this write carries it on in their place, ${where}`,
     fix: pick,
