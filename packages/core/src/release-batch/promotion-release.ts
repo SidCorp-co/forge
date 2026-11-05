@@ -15,7 +15,12 @@ import { requestApproval } from './approvals.js';
 import { label, type ReleaseMergeStep } from './change-request-roster.js';
 import { assertDeclaredGate } from './declared-gate.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
-import { type Across, type PromotionDeclaration, requestsAcross } from './promotion-standing.js';
+import {
+  type Across,
+  type PromotionDeclaration,
+  requestFromOtherBranch,
+  requestsAcross,
+} from './promotion-standing.js';
 import {
   admissibleIssues,
   closeRecorded,
@@ -25,6 +30,14 @@ import {
 } from './recorded.js';
 import { refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
+
+/** Where the named request goes into production from a branch that is not the promotion, that sentence. */
+async function otherBranchOf(projectId: string, across: Across, number: number): Promise<string> {
+  const other = await requestFromOtherBranch(projectId, across, number);
+  return other
+    ? ` !${number} goes into \`${across.to}\` from \`${other}\`, which carries no head \`${across.from}\` is recorded holding: it is not this release's promotion.`
+    : '';
+}
 
 /** The cut's own run opener (`create.ts:openClaimedRun`), handed in so neither module imports the other. */
 type OpenRun = (args: {
@@ -74,7 +87,7 @@ export async function cutPromotionRelease(
     const open = held.map((r) => label(r)).join(', ');
     throw refuseRelease(
       'RELEASE_PROMOTION_REQUEST_UNKNOWN',
-      `!${args.promotion.request} is not a change request this project holds across its promotion ${across}, open or merged and not yet released${open ? `; those are ${open}` : ''}. Name one of them, or wait for the host's hook to bring the request in.`,
+      `!${args.promotion.request} is not a change request this project holds across its promotion ${across}: one from \`${decl.promotion.from}\`, or from a branch pinning a head \`${decl.promotion.from}\` is recorded holding, into \`${decl.promotion.to}\`, open or merged and not yet released${open ? `; those are ${open}` : ''}.${await otherBranchOf(projectId, decl.promotion, args.promotion.request)} Name one of them, or wait for the host's hook to bring the request in.`,
       '/promotion/request',
     );
   }

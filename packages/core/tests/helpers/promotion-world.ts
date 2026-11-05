@@ -110,3 +110,18 @@ export async function promotionRequest(number: number, head: string, from = STG,
     },
   );
 }
+
+/**
+ * `release/stg` recorded holding `sha`: a feature request merged into it at that commit, as GitLab's
+ * hook projects it. A branch cut from release/stg to pin that head carries release/stg (adminhub-fe
+ * !2055); a request from a branch holding no such head is not the promotion (ISS-1001, !5066).
+ */
+let held = 4000;
+export async function heldOnSource(sha: string) {
+  held += 1;
+  const number = held;
+  await promotionRequest(number, 'c9'.repeat(20), `feat/held-${number}`, STG);
+  await db.execute(sql`
+    UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${sha}, merged_at = now()
+     WHERE project_id = ${world.projectId} AND number = ${number}`);
+}

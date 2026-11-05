@@ -38,12 +38,34 @@ const shippedSince = (projectId: string, to: string) => sql`exists (
               and coalesce(${pipelineRuns.metadata} ->> 'branch', '') <> ${to}))`;
 
 /**
- * The requests into the branch production deploys from that a release may be: open ones, and merged
- * ones no release has taken and production has not shipped since, as the projection holds them, open
- * first then newest. A request's head may
- * be the promotion's source branch or one cut from it to pin a judged head (adminhub-fe !2055,
- * `promote/prod-2026-10-29`). Which roster issues it carries is the agent's statement at the cut, never
- * read here: nothing in this module asks the host (VISION: state-never-lies, owner ruling 2026-10-29).
+ * A request that carries the promotion's source into production: one from the source branch itself,
+ * or from a branch cut to pin a head the source is recorded holding (adminhub-fe !2055,
+ * `promote/prod-2026-10-29`) — the head of a request from the source, the merge of one into it, an
+ * issue's landing on it, or a commit an issue landed on it was judged at. A request from any other
+ * branch into production (adminhub-api !5066, `fix/shipresolve-webhook-auth`, open beside the
+ * promotion) carries something else there, and is never the release's promotion (ISS-1001).
+ */
+const carriesSource = (projectId: string, from: string) => sql`(
+  ${repoPullRequests.headRef} = ${from}
+  or lower(${repoPullRequests.headSha}) in (
+    select lower(s.head_sha) from repo_pull_requests s
+     where s.project_id = ${projectId} and s.head_ref = ${from}
+    union
+    select lower(s.merge_commit_sha) from repo_pull_requests s
+     where s.project_id = ${projectId} and s.base_ref = ${from} and s.merge_commit_sha is not null
+    union
+    select lower(i.merged_commit_sha) from issues i
+     where i.project_id = ${projectId} and i.merged_target = ${from} and i.merged_commit_sha is not null
+    union
+    select lower(v.commit_sha) from criterion_verdicts v join issues i on i.id = v.issue_id
+     where i.project_id = ${projectId} and i.merged_target = ${from} and v.commit_sha is not null))`;
+
+/**
+ * The requests into the branch production deploys from that a release may be: those carrying the
+ * promotion's source there (`carriesSource`), open ones, and merged ones no release has taken and
+ * production has not shipped since, as the projection holds them, open first then newest. Which
+ * roster issues it carries is the agent's statement at the cut, never read here: nothing in this
+ * module asks the host (VISION: state-never-lies, owner ruling 2026-10-29).
  */
 export async function requestsAcross(projectId: string, across: Across) {
   return db
@@ -53,6 +75,7 @@ export async function requestsAcross(projectId: string, across: Across) {
       and(
         eq(repoPullRequests.projectId, projectId),
         eq(repoPullRequests.baseRef, across.to),
+        carriesSource(projectId, across.from),
         or(
           eq(repoPullRequests.state, 'open'),
           and(
@@ -65,6 +88,30 @@ export async function requestsAcross(projectId: string, across: Across) {
     )
     .orderBy(sql`${repoPullRequests.state} = 'open' DESC`, desc(repoPullRequests.number))
     .limit(20);
+}
+
+/**
+ * The branch request `number` goes into the promotion's target from, where it is one into that
+ * target that does not carry the promotion's source (`carriesSource`); else null.
+ */
+export async function requestFromOtherBranch(
+  projectId: string,
+  across: Across,
+  number: number,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ headRef: repoPullRequests.headRef })
+    .from(repoPullRequests)
+    .where(
+      and(
+        eq(repoPullRequests.projectId, projectId),
+        eq(repoPullRequests.baseRef, across.to),
+        eq(repoPullRequests.number, number),
+        not(carriesSource(projectId, across.from)),
+      ),
+    )
+    .limit(1);
+  return row?.headRef ?? null;
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   DEPLOYED,
   EXTERNAL,
   HEAD,
+  heldOnSource,
   landedIssues,
   MERGE,
   PROD,
@@ -122,6 +123,7 @@ describe('BC-9: an external production with one declared promotion is a release 
   // adminhub-fe !2055: the promotion is cut from a branch pinning a judged head, not from release/stg itself
   it('takes a request into release/production from a branch cut to pin the head', async () => {
     const ids = await landedIssues();
+    await heldOnSource(HEAD);
     await promotionRequest(2055, HEAD, 'promote/prod-2026-10-29');
     const cut = await cutNaming(ids, 2055);
     expect(cut.status, JSON.stringify(cut.body)).toBe(201);
@@ -299,6 +301,7 @@ describe('the reads of a pending promotion compare nothing on the host', () => {
     const shas = Array.from({ length: 9 }, (_, n) => (n + 0x31).toString(16).repeat(20));
     await landedIssues(shas);
     const head = '73b2be31'.repeat(5);
+    await heldOnSource(head);
     await promotionRequest(2055, head, 'promote/prod-2026-10-29');
     const draft = await call('GET', '/releases/0.1.0');
     expect(draft.status, JSON.stringify(draft.body)).toBe(200);

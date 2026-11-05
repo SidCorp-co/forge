@@ -18,6 +18,7 @@ import {
   call,
   EXTERNAL,
   HEAD,
+  heldOnSource,
   landedIssues,
   MERGE,
   promotionRequest,
@@ -69,6 +70,7 @@ describe('ISS-1001: a draft shows no promotion request an earlier release alread
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 
   it('leaves !2070 off the draft once 0.55.0 shipped after it merged', async () => {
+    await heldOnSource(HEAD);
     await promotionRequest(2070, HEAD, 'promote/prod-2026-10-31');
     await mergedAt(2070, daysAgo(2));
     await createTestRelease(world.projectId, '0.55.0', [], daysAgo(1));
@@ -78,9 +80,11 @@ describe('ISS-1001: a draft shows no promotion request an earlier release alread
   });
 
   it('still pairs the draft with a request merged after production last shipped', async () => {
+    await heldOnSource(HEAD);
     await promotionRequest(2070, HEAD, 'promote/prod-2026-10-31');
     await mergedAt(2070, daysAgo(2));
     await createTestRelease(world.projectId, '0.55.0', [], daysAgo(1));
+    await heldOnSource('a2'.repeat(20));
     await promotionRequest(2071, 'a2'.repeat(20), 'promote/prod-2026-11-05');
     await mergedAt(2071, new Date());
     await landedIssues();
@@ -89,6 +93,7 @@ describe('ISS-1001: a draft shows no promotion request an earlier release alread
   });
 
   it('keeps !2070 when what landed since went to release/stg only, which production does not serve', async () => {
+    await heldOnSource(HEAD);
     await promotionRequest(2070, HEAD, 'promote/prod-2026-10-31');
     await mergedAt(2070, daysAgo(2));
     await db.execute(sql`
