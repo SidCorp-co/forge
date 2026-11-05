@@ -12,7 +12,7 @@ import {
   type LegendTone,
   TimelineFrame,
   TimelineHead,
-  lowerColliding,
+  spreadMarks,
   TimelineMark,
   TimelineRow,
   type TimelineRun,
@@ -68,10 +68,10 @@ function Lead({ p, href, onPeek }: { p: OrgActivityProject; href: string; onPeek
   const t = useCopy();
   const reason = reasonOf(p, t);
   const state = (
-    <span className="inline-flex min-w-0 items-center gap-1.5 truncate text-12 text-muted" data-testid="activity-state" data-standing={p.standing}>
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 text-12 text-muted" data-testid="activity-state" data-standing={p.standing}>
       <i aria-hidden className={`inline-block size-2 flex-none rounded-full ${STANDING_DOT[p.standing]}`} />
       {t(`activity.group.${p.standing}`)}
-      <span className="text-subtle">· {t("activity.queued", { n: p.next.total })}</span>
+      <span className="whitespace-nowrap text-subtle">· {t("activity.queued", { n: p.next.total })}</span>
     </span>
   );
   return (
@@ -118,7 +118,7 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
     live: r.to === null,
     title: r.to === null ? t("activity.run.live", { from: w.clock(r.from) }) : t("activity.run.past", { from: w.clock(r.from), to: w.clock(r.to) }),
   }));
-  const lowered = lowerColliding([
+  const spots = spreadMarks([
     ...(batches ? lane.batches.map((b) => ({ key: `b:${b.at}`, at: x(b.at), pin: false })) : []),
     ...lane.releases.map((r) => ({ key: `r:${r.version}`, at: x(r.at), pin: false })),
     ...lane.waits.map((wt) => ({ key: `w:${wt.at}`, at: x(wt.at), pin: true })),
@@ -131,7 +131,8 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
               key={`b:${b.at}`}
               at={x(b.at)}
               shape={{ kind: "count", n: b.moves.length }}
-              lowered={lowered.has(`b:${b.at}`)}
+              lowered={spots.get(`b:${b.at}`)?.lowered}
+              shift={spots.get(`b:${b.at}`)?.shift}
               label={w.batchTip(b)}
               open={isOpen("batch", b.at)}
               markRef={ref(`b:${b.at}`)}
@@ -145,7 +146,8 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
           key={`r:${r.version}`}
           at={x(r.at)}
           shape={{ kind: "diamond", tone: RELEASE_TONE[r.state] }}
-          lowered={lowered.has(`r:${r.version}`)}
+          lowered={spots.get(`r:${r.version}`)?.lowered}
+          shift={spots.get(`r:${r.version}`)?.shift}
           label={w.releaseTip(r)}
           open={isOpen("release", r.at)}
           markRef={ref(`r:${r.version}`)}

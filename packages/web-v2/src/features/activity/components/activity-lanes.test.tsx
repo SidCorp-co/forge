@@ -14,7 +14,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMINHUB, AHAPI, ago, CATALOG, FORGE, ORG, project, QUESTION_ID, read, SILENT, serve } from "@/test/activity.fixture";
-import { lowerColliding } from "@/design";
+import { MARK_STEP, spreadMarks } from "@/design";
 import { renderWithQuery } from "@/test/render";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
@@ -22,6 +22,12 @@ vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("@/features/orgs", () => ({ useActiveOrg: () => ({ activeOrgId: ORG }) }));
 
 import { ActivityScreen } from "./activity-screen";
+
+/** Where core placed a mark along the track, in percent: its `left` is `calc(<at>% + <shift>px)`. */
+function leftPct(el: HTMLElement | null | undefined): number {
+  const m = /(-?[\d.]+)%/.exec(el?.style.left ?? "");
+  return m ? Number(m[1]) : Number.NaN;
+}
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/activity");
@@ -70,7 +76,7 @@ describe("the Activity tab's lanes", () => {
     expect(Number.parseFloat(runs[0]?.style.right ?? "")).toBeCloseTo(58.3, 0);
     // a batch 75 minutes before now sits 37.5% of the way along two hours, its count its issues
     const batch = lane.getByTestId("mark-batch");
-    expect(Number.parseFloat(batch.style.left)).toBeCloseTo(37.5, 0);
+    expect(leftPct(batch)).toBeCloseTo(37.5, 0);
     expect(batch.textContent).toContain("3");
     expect(lane.getAllByTestId("mark-release")).toHaveLength(2);
     expect(lane.getAllByTestId("mark-wait").map((w) => w.firstElementChild?.textContent)).toEqual(["2", "1"]);
@@ -123,7 +129,7 @@ describe("the Activity tab's marks", () => {
     renderWithQuery(<ActivityScreen />);
     await screen.findByText("Forge");
     const [first] = within(rowOf("Forge")).getAllByTestId("mark-wait");
-    expect(Number.parseFloat(first?.style.left ?? "")).toBeCloseTo(75, 0);
+    expect(leftPct(first)).toBeCloseTo(75, 0);
     expect(first?.getAttribute("aria-label")).toBe("2 waiting on you · 1 question, 1 approval");
     if (!first) throw new Error("no pin");
     fireEvent.click(first);
@@ -204,16 +210,17 @@ describe("the Activity tab's marks never cover each other (ISS-979 fix round)", 
     },
   });
 
-  it("a release on a batch hangs below the line, the earlier keeps it, and one standing alone stays on it", async () => {
+  it("a release on a batch steps aside, the earlier keeps its spot, and one standing alone stays put", async () => {
     serve(read([CROWDED]));
     renderWithQuery(<ActivityScreen />);
     await screen.findByText("Crowded");
     const lane = within(within(rowOf("Crowded")).getByTestId("timeline-track"));
-    expect(lane.getByTestId("mark-batch").hasAttribute("data-lowered")).toBe(false);
+    expect(lane.getByTestId("mark-batch").hasAttribute("data-shift")).toBe(false);
     const [late, alone] = lane.getAllByTestId("mark-release");
     expect(late?.getAttribute("aria-label")).toContain("1.0.1");
-    expect(late?.hasAttribute("data-lowered")).toBe(true);
-    expect(alone?.hasAttribute("data-lowered")).toBe(false);
+    expect(late?.getAttribute("data-shift")).toBe(String(MARK_STEP));
+    expect(late?.style.left).toContain(`+ ${MARK_STEP}px`);
+    expect(alone?.hasAttribute("data-shift")).toBe(false);
   });
 
   it("a pin counts every decision waiting, those core carries no item for included, as the You count does", async () => {
@@ -228,16 +235,25 @@ describe("the Activity tab's marks never cover each other (ISS-979 fix round)", 
     expect(within(await pop()).getByText("+7 more")).toBeTruthy();
   });
 
-  it("lowers a centred mark near a pin or an earlier centred mark, never a pin", () => {
-    expect(
-      lowerColliding([
-        { key: "pin", at: 10, pin: true },
-        { key: "near-pin", at: 11, pin: false },
-        { key: "first", at: 50, pin: false },
-        { key: "second", at: 51.5, pin: false },
-        { key: "alone", at: 80, pin: false },
-      ]),
-    ).toEqual(new Set(["near-pin", "second"]));
-    expect(lowerColliding([{ key: "a", at: 10, pin: true }, { key: "b", at: 10, pin: true }])).toEqual(new Set());
+  it("spreads marks: under a pin a mark hangs below, a crowded run steps aside, leftwards near now, and a pin never moves", () => {
+    const spots = spreadMarks([
+      { key: "pin", at: 10, pin: true },
+      { key: "near-pin", at: 11, pin: false },
+      { key: "first", at: 50, pin: false },
+      { key: "second", at: 51.5, pin: false },
+      { key: "third", at: 53, pin: false },
+      { key: "late", at: 97, pin: false },
+      { key: "later", at: 98, pin: false },
+    ]);
+    expect(Object.fromEntries([...spots].map(([k, v]) => [k, [v.lowered, v.shift]]))).toEqual({
+      pin: [false, 0],
+      "near-pin": [true, 0],
+      first: [false, 0],
+      second: [false, MARK_STEP],
+      third: [false, 2 * MARK_STEP],
+      late: [false, 0],
+      later: [false, -MARK_STEP],
+    });
   });
+
 });
