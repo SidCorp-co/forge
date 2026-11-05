@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.530] - 2026-11-05
+
+Projects can let their writers triage feedback without a person approving it
+
+### Added
+
+- **A project can let its writers triage feedback.** The new Person approves triage switch is on unless turned off; off, any project writer, agents included, routes an item, while declining still takes a triager.
+
 ## [0.4.0-dev.529] - 2026-11-05
 
 Plugin-written verdicts naming their session are accepted again
