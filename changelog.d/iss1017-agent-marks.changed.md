@@ -1,0 +1,1 @@
+**Marking work done is the agent's call.** A merge mark takes whatever evidence you name, or none, records it with who said it, and reads a named commit without refusing; closing still needs a release.

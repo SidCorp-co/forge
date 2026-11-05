@@ -12,8 +12,8 @@ only reading of what the columns MEAN.
 | set | empty | text | `landed` |
 | set | a sha | — | `observed` |
 
-`landed` (ISS-1327) is a mark that names where work landed OUTSIDE git — a live URL, a CMS entry,
-a published storefront resource. Like `asserted` it is somebody's word, not a merge Forge
+`landed` (ISS-1327) is a mark that names where work landed — a live URL, a docs store, a CMS entry,
+a published storefront resource — on any shape since ISS-1017. Like `asserted` it is somebody's word, not a merge Forge
 witnessed; unlike `asserted` it names the thing that landed. The table's
 `issues_merged_landing_chk` refuses a landing with no `merged_at`, blank, or past 2000 characters.
 
@@ -57,14 +57,16 @@ merge of an owed filing the issue answers), and the base branch or the release c
 contains it. Then `merged_at` and `merged_commit_sha` are stamped with the full sha the repository
 resolved and its committer date, and the mark reads `observed`.
 
-Where the repository does not vouch for it, what follows depends on who marks. An agent's mark on
-an issue with no other work evidence has nothing else to stand on, so every such answer is a refusal
-by name and writes nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`,
-`COMMIT_NOT_LANDED`, and `COMMIT_UNVERIFIED` where the repository could not be read — a commit is
-never taken as evidence unchecked. That refusal names the asserted route instead: record the work's
-branch in `workState.branch`, then mark again with `target` and the whole sha in `commit`. Any other
-mark records the commit as its claim (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`),
-which a release places, and its answer names the refusal the repository gave. A commit named only in
+Where the repository does not vouch for it, the mark is recorded all the same, whoever marks: the
+commit is the caller's claim (`packages/core/src/issues/mark-trail.ts:currentMarkClaims`), which a
+release places, and what the repository answered is the mark's **reading**
+(`packages/core/src/issues/commit-landing.ts:commitReadingOf`): `found`, `not_found`
+(`COMMIT_NOT_IN_REPOSITORY`), `not_on_target` (`COMMIT_NOT_LANDED`), `not_this_issue`
+(`COMMIT_NOT_THIS_ISSUE`) or `unread` (`COMMIT_UNVERIFIED`, the repository could not be read), each
+with the words the read gave. A reading refuses nothing (owner, 2026-11-05, ISS-1017: whether work is
+done is the agent's call). Before that an agent's mark on an issue with no other work evidence was
+refused on every such answer, and a mark naming no commit, branch or handoff `NO_WORK_EVIDENCE` (epod
+ISS-74, a docs-store deliverable with no commit, could not be marked at all). A commit named only in
 `note` is no claim.
 
 Where no host or repository resolved the mark's `commit`, so the mark records it as the caller's
@@ -75,13 +77,24 @@ never places (ISS-575). A commit a host or the repository resolved is stamped as
 read.
 
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
-`merged_landing`. On every path but the one above, the caller's `commit` never reaches the
-column — it reaches the audit trail as the caller's claim.
+`merged_landing`, on any shape. On every path but the one above, the caller's `commit` never reaches
+the column — it reaches the audit trail as the caller's claim.
 
-A merged commit on the row is work evidence: `collectWorkEvidence`
-(`packages/core/src/issues/work-evidence.ts`) reads `merged_commit_sha` where `merged_at` is
-set, so a later mark on an issue the mark accepted is not refused `NO_WORK_EVIDENCE`. The mark is
-the only door that refuses on work evidence: `awaiting_release` asks for the recorded merge alone.
+## What a mark records of what it was told
+
+No mark is refused for the evidence it lacks — no commit, branch, handoff, `target`, or landing of
+the project's shape (ISS-1017). Whatever the call names is recorded as named on the mark's trail
+record (`issue.mergeMarked`, `packages/core/src/issues/mark-said.ts:saidOf`): `commit`, `target`,
+`landing`, `artifacts`, the count and commit of `changedPaths`, a `liveReading` (`{ url, status }`, the
+address the agent read the work live at and what it answered; core never fetches it), `note`,
+`mergedAt`, `contracts`, `adoptions`. Beside it the record keeps who said it — the actor, with its
+agency, and the run session holding the issue on the caller's box (`callerRunOf`) — and the reading of
+a named commit. A mark naming nothing records `{}` and its answer says it names no evidence. The answer
+carries the same three (`said`, `by`, `commitReading`), its `detail` says them, and the issue detail
+reads them back as `markSaid` (`markSaidOf`), which the web rail shows on the mark's date as who marked
+it and what the repository read. Input of the wrong shape is still refused by name at its path: a
+malformed sha, an unknown field, an artifact missing a key, a `liveReading` that is no URL or no
+status.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not
@@ -175,8 +188,8 @@ the pattern waited on its reviewer did not ask. Where a profile turns the gate o
 mark asks no page, as neither the merge check nor the move to `awaiting_release` asks one. A pattern approved after the mark is
 asked again against the change this mark names, at its approval and at the move to
 `awaiting_release` (`packages/core/src/issues/pattern-entry.ts`).
-Where one is owed, the commit the mark names — else the one the row or the issue's work evidence
-records — must be the head of a passing check recorded by `POST /api/issues/:id/merge-check`, read
+Where one is owed, the commit the mark names — else the one the row or the newest implementation
+handoff records — must be the head of a passing check recorded by `POST /api/issues/:id/merge-check`, read
 from core's own `verification` records, never a caller's post of the same kind. Otherwise the mark
 is refused `MERGE_CHECK_MISSING` naming what owed it and the heads that did pass, and writes nothing
 (Issue to release r20 `rule-merge`, ISS-472). A merge the source host's webhook records does not
@@ -191,7 +204,8 @@ artifact: `surface` is one of `LANDING_SURFACES` (`packages/contracts/src/landin
 stamp's own UPDATE and cleared with it by `unmark`; `issues_merged_artifacts_chk` refuses a list with
 no `merged_at`, or one that is empty or not an array. NULL is a landing naming nothing structured.
 
-- **Outside git** the mark takes `artifacts` beside `landing`. A landing naming a design revision —
+- **On any shape** the mark takes `artifacts` as the agent names them, beside a `landing` or alone
+  (ISS-1017). A landing naming a design revision —
   `forge-workflow:<flow>@rev<n>`, or the sentence a design approval writes — is surface `design`
   without being told (`designLandingRef`), and a non-design artifact beside it is refused
   `ARTIFACTS_NOT_DESIGN`: a revision deploys nothing. Artifacts sent over a standing mark that names
@@ -207,8 +221,8 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
   it (`artifactsCarriedFor`), so the carrier's own release verifies it
   (`packages/core/src/release-batch/provider-landings.ts:landingsOf`). The issue page says "Carried by" and "Carries";
   a release's What changes says "carried by ISS-N".
-- **On git** the mark refuses `artifacts` (`ARTIFACTS_NOT_THIS_SHAPE`): what a git landing changed is
-  its commit's changed paths against its first parent, sorted by the project document's `surfaces` —
+- **On git** a release also reads what a landing changed from its commit's changed paths against its
+  first parent, beside any artifacts the mark named, sorted by the project document's `surfaces` —
   ordered `rules` of globs per surface, first match wins, and `ignore` for paths that ship nothing.
   forge-core's own map is `packages/core/tests/fixtures/forge-core-surfaces.json`, which a project
   on that tree copies into its document; no repository name brings a map. A project declaring none
@@ -251,8 +265,7 @@ why, an amnesty that ends as each of those issues releases.
 ## What an adoption record writes
 
 A consumer issue whose whole deliverable is adopting a contract version — its links and interface
-moved to the version, no code changed — has no commit to mark, and was refused `NO_WORK_EVIDENCE`
-without one (catalog-fe ISS-36, 2026-10-28). It lands on its adoption record instead (REQ-5 BC-17):
+moved to the version, no code changed — has no commit to mark (catalog-fe ISS-36, 2026-10-28). It lands on its adoption record instead (REQ-5 BC-17):
 `POST /api/issues/:id/merge` carrying `adoptions`, each `<project>/<contract>@<version>`.
 
 - **What is read.** `packages/core/src/ecosystem/adoption-record.ts:readAdoptionRecord` reads each
@@ -332,16 +345,16 @@ word (ISS-262). Like every mark it moves no status.
 A design issue whose approval stamp was cleared (`DELETE /api/issues/:id/merge`), or that holds an
 approved revision and was never stamped, is marked again on it (ISS-570, REQ-45 BC-4): a mark naming
 no `commit`, `landing`, `artifacts` or `changedPaths`, on an issue with no code evidence
-(`packages/core/src/issues/work-evidence.ts:findMissingWorkEvidence`), stamps per workflow the newest
+(`packages/core/src/issues/work-evidence.ts:codeEvidenceOf`), stamps per workflow the newest
 approved revision the issue drew (`packages/core/src/issues/design-delivery.ts:approvedDesignsDrawn`)
 through the approval's own write, `recordDesignLanding`, whoever marks it
 (`packages/core/src/issues/design-mark.ts:stampDesigns`). The answer and the audit comment say the mark
 is that design (`packages/core/src/issues/design-mark.ts:designStampDetail`), and no merge check is
 asked, since no commit landed. It never stands in for code: an issue carrying a branch, a commit or a
 handoff is marked as before, a build issue draws no revision that counts, and a merge Forge observed
-for the issue is stamped as code. With no approved revision an agent's mark is refused
-`NO_WORK_EVIDENCE` as before, its detail naming each drawn revision still waiting on its approver
-(`packages/core/src/issues/design-mark.ts:designsWaiting`).
+for the issue is stamped as code. With no approved revision the mark is the marker's bare word, an
+`asserted` mark naming no design (ISS-1017), and the close still asks the approval
+(`DESIGN_NOT_DELIVERED`).
 
 Whatever the shape, an issue whose mark is the design's alone is design-only: it closes through
 `design_delivered`, and `awaiting_release` refuses it `MERGE_DESIGN_ONLY`
@@ -368,8 +381,9 @@ where it stands, and the issue records why (`issue.handBackKept`,
 landing (adminhub-fe ISS-50, 2026-10-26). `awaiting_release` → `closed` is written by a release that claimed the
 issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too (`CLOSE_REQUIRES_SHIPPED`). On a project with
 no production environment that release is the recorded landing
-(`packages/core/src/release-batch/recorded-landing.ts:recordLanding`), which also asks that the
-mark's commit be in the commit recorded.
+(`packages/core/src/release-batch/recorded-landing.ts:recordLanding`), which keeps the commit the
+agent names as evidence, never checked, and records an issue whose mark names no commit with its build
+said unread.
 
 A design-only issue — its mark names design artifacts and nothing else, no commit and no read paths
 (`packages/core/src/issues/design-delivery.ts:designOnlyMarkSql`) — ships nothing a release carries.
@@ -450,30 +464,34 @@ design-only draft closes along it on its approved design as before, and any othe
 the merge" while no shipped release was cut after it landed, then naming the oldest such release and
 the shipped-in call to make, read from Forge's rows and never the repository.
 
-## What counts as landed depends on the project's shape
+## What counts as landed: any mark, on every shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides
-whether a mark is enough calls it: the `merged` guard (`packages/core/src/issues/merged-at.ts:mergeNotRecorded`), the release-record
-door's `RELEASE_WORK_UNMERGED`, and the mark writer. The release
-batch's finish closes through the same transition, so it reads the same answer.
+whether an issue is marked calls it: the `merged` guard
+(`packages/core/src/issues/merged-at.ts:mergeNotRecorded`), the release-record door's
+`RELEASE_WORK_UNMERGED` and the mark writer. The release batch's finish closes through the same
+transition, so it reads the same answer. **Any mark counts** (`landingShortfall`: the row carries
+`merged_at`), whatever it names and whatever the project's shape: whether work is done is the agent's
+call (owner, 2026-11-05, ISS-1017). Before that the shape decided which kinds counted — on `git`
+`asserted` or `observed`, outside git `landed` or `observed` — and the mark writer refused a `landing`
+on git (`LANDING_NOT_THIS_SHAPE`), a missing `target` on git (`TARGET_REQUIRED`), artifacts on git
+(`ARTIFACTS_NOT_THIS_SHAPE`) and a missing landing outside git (`LANDING_REQUIRED`); all four are
+gone with the code that computed them. A close is still only a release's
+(`CLOSE_ONLY_BY_RELEASE`), and an issue carrying no mark at all is refused `MERGE_NOT_RECORDED`
+into `awaiting_release` and `CLOSE_REQUIRES_SHIPPED` into `closed`. Under release mode `none` the
+recorded landing records an issue whose mark names no commit, saying its build is unread, where it
+refused `RELEASE_LANDING_UNRECORDED`.
 
-`landingShapeOf` reads the project document's `source.type` (`project_config_documents`): `git`
-lands in `git`; `storefront` (the store is the source of truth) and `none` (no managed source) land
-`outside_git`; any other stored value is refused by name. A project with no project document has no
-shape (`null`): the close and the release-record door then accept only what every shape accepts —
-a merge Forge `observed` — and refuse anything else naming `SOURCE_UNDECLARED`, the mark writer
-refuses every mark `PROJECT_DOCUMENT_NOT_FOUND`, and the issue detail answers `landingShape: null`.
-Nothing defaults an undeclared project to `git`.
-The release chain is NOT the discriminator: a one-entry chain (`publish`) says how a release is
-deployed, and forge-dev is such a project and lands every change in git.
-
-| shape | `LANDINGS_ACCEPTED` | the mark writer refuses |
-|---|---|---|
-| `git` | `asserted`, `observed` | a `landing` (`LANDING_NOT_THIS_SHAPE`); no `target` |
-| `outside_git` | `landed`, `observed` | no `landing` where Forge observed no merged pull request (`LANDING_REQUIRED`) |
-
-`target` names the branch a mark merged through, so it is owed on `git` alone
-(`markTargetRequired`); each door answers a missing one in the words it always used.
+The shape still says how evidence is read. `landingShapeOf` reads the project document's
+`source.type` (`project_config_documents`): `git` lands in `git`; `storefront` (the store is the
+source of truth) and `none` (no managed source) land `outside_git`; any other stored value is refused
+by name. On `git` a named commit is read from the repository and a release reads a landing commit's
+changed paths; `changedPaths` describe a commit, so outside git they are refused
+`CHANGED_PATHS_NOT_THIS_SHAPE`. A project with no project document has no shape (`null`), and the mark
+writer refuses its marks `PROJECT_DOCUMENT_NOT_FOUND`, naming the document to declare; the issue
+detail answers `landingShape: null`. Nothing defaults an undeclared project to `git`. The release chain
+is NOT the discriminator: a one-entry chain (`publish`) says how a release is deployed, and forge-dev
+is such a project and lands every change in git.
 
 An observed stamp names its target with its commit, read where the commit was: the merged request's
 base branch, or the branch the repository holds the commit on. A mark's `target` fills
@@ -484,26 +502,18 @@ base branch, or the branch the repository holds the commit on. A mark's `target`
 commit's; a verdict judged at that head counts for the landing only where it did
 (`packages/core/src/release-batch/landed-build.ts:atMergedHead`).
 
-A close refusal names the route the shape has (`landingRoute`): `POST /api/issues/:id/merge` for
-`git`, and the same route carrying `landing` for `outside_git`, where no commit is asked for. The issue detail
-answer carries `landingShape`, so the web rail's Mark merged form asks for a landing only where the
-close will need one, without re-deriving the rule from the project document.
+A refusal of the `merged` guard names the mark route (`MARK_ROUTE`): `POST /api/issues/:id/merge`
+naming what the agent has, or nothing. The issue detail answer carries `landingShape`, so the web
+rail's Mark merged form asks for a landing outside git and a target on git.
 
-`trg_issues_closed_means_shipped` (0304) still requires `merged_at` alone: it is the floor raw SQL
-cannot route around, and `merged_at` is necessary on every shape. The per-shape sufficiency is not
-copied into plpgsql, because a second copy is a second decider.
-
-Rows closed before this rule on an `outside_git` project are not rewritten and are not false marks:
-on a project whose work never lands in git, no commit and no `merged_at` is its normal record, and
-the owner has ruled those rows correctly closed (ISS-1327). The rule governs the next close, not
-the ones already made. Outside git a mark is short of a *landing*, never of a commit, and every
-sentence the shortfall prints says so.
+`trg_issues_closed_means_shipped` (0304) requires `merged_at` alone: it is the floor raw SQL cannot
+route around, and it is now the whole rule.
 
 ## A project that releases through change requests
 
 Where the project document declares `release.changeRequests`, only the host's merge of a change
-request into the project's target branch (`source.git.defaultBranch`) lands, and the amnesty
-below does not reach it (REQ-71, ISS-672). The mark writer
+request into the project's target branch (`source.git.defaultBranch`) lands, so there a mark's word
+alone does not land the work (REQ-71, ISS-672). The mark writer
 (`packages/core/src/issues/host-mark.ts:hostMergeOfMark`) takes a mark only over a host merge into
 that branch: the merged request linking the issue whose commit is its landing (`identifiedMergeForIssue`), a `commit` that is the
 merge commit of a request the host reported merged into it (`packages/core/src/issues/host-landing.ts:hostMergeNamed`), or a `commit`
@@ -523,18 +533,3 @@ Every read of "landed" takes one predicate, `packages/core/src/issues/host-landi
 no earlier than it does not read as landed, so a stamp written before this rule (catalog-api ISS-12, 2026-10-22)
 asks nobody to judge a landing that never happened, and the `merged` guard refuses
 `awaiting_release` on it unless an open linked request carries the issue.
-
-## Why the git shape accepts a claim
-
-On the `git` shape the mark writer and the close accept `asserted`: `LANDINGS_ACCEPTED.git`.
-
-That is an amnesty and this is its price. `identifiedMergeForIssue` needs a
-`repo_pull_requests` row in state `merged`; until ISS-1123 (`9a78b0c93`) nothing but an
-inbound webhook could write one, and as of 2026-09-20 no inbound delivery had been recorded
-on this project's binding. Refusing asserted marks then would have failed the criterion on
-every issue the project has and stopped every run.
-
-**What ends it:** when observed marks are being written here — a pull request opened
-through Forge and merged through the kernel door leaves a row and stamps the commit —
-`LANDINGS_ACCEPTED.git` narrows to `['observed']`. Narrowing the constant is the whole change;
-every door is gated on membership of it, so nothing else moves.

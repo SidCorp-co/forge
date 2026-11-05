@@ -974,8 +974,6 @@ export const RELEASE_REFUSAL_CODES = [
 	"CONTRACT_PROVIDER_NOT_LIVE",
 	"RELEASE_VERDICT_NOT_YOURS",
 	"RELEASE_NOT_VERIFIED",
-	/** Under release mode `none`, an issue whose merge records no commit, so nothing says what landed. */
-	"RELEASE_LANDING_UNRECORDED",
 	/** Under release mode `none`, a project whose source names no branch for work to land on. */
 	"RELEASE_LANDING_NO_BRANCH",
 	/** A record naming a landing's `branch` on a project with production, whose record is its version. */

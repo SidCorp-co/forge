@@ -159,7 +159,7 @@ a decision clears it; "Absorbed by" names the issue whose rule covers it, else t
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
 | 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
-| 14 | An agency check older than the redesign: `packages/core/src/issues/merge-marker.ts:applyMergeMarker` asks an actor whose agency is `agent` for work evidence a person is not asked for | review (still standing after ISS-159) |
+| 14 | Closed: the merge mark asks no actor for work evidence; whether work is done is the agent's call (`packages/core/src/issues/merge-marker.ts:applyMergeMarker`, owner 2026-11-05) | ISS-1017 |
 | 15 | Body validation outside `strictBody`: criteria and record events use `zValidator` with no shape hint; agent-report triage bodies take `strictBody` since ISS-113 | review |
 | 16 | Closed: `forge_agent_report` and `/api/agent-reports` are retired (REQ-47); feedback about Forge is `forge_feedback` and `POST /api/forge/feedback` | ISS-168 |
 | 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`) | review |

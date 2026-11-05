@@ -6,13 +6,13 @@
 // A landing that happened is recorded as the fact it is (REQ-45 r7 BC-11; owner rulings 2026-10-27
 // and 2026-11-01, `release-is-the-agents-record`): the agent's own words, under the version it names
 // or one Forge cuts. A commit is optional evidence, kept and never required, compared or read for
-// ancestry. It refuses only what is not a fact: a malformed body, an issue with no recorded landing.
+// ancestry. It refuses only what is not a fact: a malformed body, an issue that carries no mark. A
+// mark naming no commit is the agent's word too (ISS-1017): it is recorded, its build said unread.
 // Verdicts are gates before a merge or a cut (BC-15), never after: each issue's coverage at its
 // landing is read beside the record (`landing-coverage.ts`, BC-14), refusing nothing.
 
 import { db } from '../db/client.js';
 import { issueDisplayIds, releaseRunClaims } from '../issues/index.js';
-import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { insertOneShotRun } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
@@ -38,16 +38,6 @@ const short = (sha: string) => sha.slice(0, 12);
 
 type LandingDeps = Pick<JudgedBuildDeps, 'ancestry'>;
 type LandedBuilds = Awaited<ReturnType<typeof landedBuildsOf>>;
-
-/** Each issue with no recorded landing, refused by name: a record closes only work that landed. */
-function unrecordedRefusals(ids: readonly string[], landed: LandedBuilds): Refusal[] {
-  return ids.flatMap((id): Refusal[] => {
-    const build = landed.get(id);
-    if (build && build.sha !== null) return [];
-    const why = build?.why ?? `${id} was not found on this project`;
-    return [{ code: 'RELEASE_LANDING_UNRECORDED', path: '/issueIds', detail: why }];
-  });
-}
 
 /**
  * Each issue's criteria coverage at its own landing (BC-14): the commit the agent named where it
@@ -117,9 +107,9 @@ export async function recordLanding(
   }
 
   const { issueIds } = await admitRoster(projectId, args.issueIds, 'record');
+  // every issue admitted carries a mark (`RELEASE_WORK_UNMERGED` otherwise): the mark is the agent's
+  // word that it landed (ISS-1017), so one naming no commit is recorded, its build said unread
   const [landed, shown] = await Promise.all([landedBuildsOf(issueIds), issueDisplayIds(issueIds)]);
-  const refusals = unrecordedRefusals(issueIds, landed);
-  if (refusals.length > 0) throw new RefusalError(refusals, 'RELEASE_REFUSED');
 
   const { readings: covered, coverage } = await coverageAtLandings(
     projectId,
@@ -137,7 +127,8 @@ export async function recordLanding(
     `landed on \`${branch}\`${said}, recorded by the agent`,
     ...issueIds.flatMap((id) => {
       const build = landed.get(id);
-      return build?.sha ? [build.basis] : [];
+      if (!build) return [];
+      return [build.sha === null ? build.why : build.basis];
     }),
     ...covered,
   ];

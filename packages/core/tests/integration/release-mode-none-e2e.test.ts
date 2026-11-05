@@ -198,17 +198,16 @@ describe('a landing is recorded as the release of a project with no production e
     ]);
   });
 
-  it('refuses an issue whose merge records no commit, as ISS-5 stood on 2026-10-22', async () => {
+  // ISS-1017: the mark is the agent's word, so a landing naming no commit is recorded, never refused
+  it('records an issue whose merge records no commit, as ISS-5 stood on 2026-10-22, saying its build is unread', async () => {
     const issue = await landedIssue(5, null);
     await judgedAll(issue, F4);
 
     const res = await record([issue], F4);
 
-    expect(res.status).toBe(422);
-    const refusals = refusalsOf(res.body);
-    expect(refusals.map((r) => r.code)).toEqual(['RELEASE_LANDING_UNRECORDED']);
-    expect(refusals[0]?.detail).toContain("ISS-5's merge records no commit");
-    expect(await statusOf(issue)).toBe('awaiting_release');
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(readingsOf(res.body).join('\n')).toContain("ISS-5's merge records no commit");
+    expect(await statusOf(issue)).toBe('closed');
   });
 
   it('names the record door where a release batch is refused NO_RELEASE_GATE', async () => {
