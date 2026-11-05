@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.521] - 2026-11-05
+
+An agent's merge mark is its word, wherever the work landed
+
+### Changed
+
+- **Marking work done is the agent's call.** A merge mark takes whatever evidence you name, or none, records it with who said it, and reads a named commit without refusing; closing still needs a release.
+
 ## [0.4.0-dev.520] - 2026-11-05
 
 Forge-beta issues now close when the forge-dev release that shipped them goes out
