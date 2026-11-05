@@ -13,14 +13,13 @@
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { emitEvent } from '../outbox/index.js';
 import { insertActivityRow } from './activity-log.js';
+import { replaceClosedLanding } from './merge-record.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -118,32 +117,16 @@ export async function correctClosedMerge(args: {
         '/commit',
       );
     }
-    const [wrote] = await tx
-      .update(issues)
-      .set({
-        mergedCommitSha: valid.commit,
-        // the head described the request whose merge was misread as this issue's, not its landing
-        mergedHead: null,
-        ...(valid.mergedAt ? { mergedAt: sqlTimestamp(valid.mergedAt) } : {}),
-        updatedAt: sql`now()`,
-      })
-      .where(eq(issues.id, args.issueId))
-      .returning({ mergedAt: issues.mergedAt });
-    const mergedAt = (wrote?.mergedAt ?? prior.mergedAt) as Date;
     const before = {
       mergedCommitSha: prior.mergedCommitSha,
       mergedAt: prior.mergedAt,
       mergedHead: prior.mergedHead,
     };
-    await emitEvent(tx, 'issue.updated', {
-      issueId: args.issueId,
-      projectId: prior.projectId,
-      actor: args.actor,
-      fields: ['mergedCommitSha', 'mergedAt', 'mergedHead'],
-      via: 'correction',
-      before,
-      after: { mergedCommitSha: valid.commit, mergedAt, mergedHead: null },
-    });
+    const mergedAt = await replaceClosedLanding(
+      tx,
+      { issueId: args.issueId, projectId: prior.projectId, actor: args.actor, before },
+      { commitSha: valid.commit, mergedAt: valid.mergedAt },
+    );
     await insertActivityRow(
       {
         issueId: args.issueId,

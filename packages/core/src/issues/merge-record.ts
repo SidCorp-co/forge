@@ -447,6 +447,30 @@ export async function clearIssueMerge(
 }
 
 /**
+ * A closed issue's landing commit replaced by its real one (ISS-1027, gated and recorded by
+ * `merge-correction.ts:correctClosedMerge`): the misread head cleared, the status never touched.
+ */
+export async function replaceClosedLanding(
+  executor: Tx,
+  args: { issueId: string; projectId: string; actor: OutboxActor; before: Record<string, unknown> },
+  to: { commitSha: string; mergedAt: Date | null },
+): Promise<Date> {
+  const time = to.mergedAt ? { mergedAt: sqlTimestamp(to.mergedAt) } : {};
+  const [wrote] = await executor
+    .update(issues)
+    .set({ mergedCommitSha: to.commitSha, mergedHead: null, ...time, updatedAt: sql`now()` })
+    .where(
+      and(eq(issues.id, args.issueId), eq(issues.status, 'closed'), isNotNull(issues.mergedAt)),
+    )
+    .returning({ mergedAt: issues.mergedAt });
+  if (!wrote?.mergedAt) throw new Error(`replaceClosedLanding: ${args.issueId} is no closed mark`);
+  const after = { mergedCommitSha: to.commitSha, mergedAt: wrote.mergedAt, mergedHead: null };
+  const fields = Object.keys(after);
+  await emitEvent(executor, 'issue.updated', { ...args, fields, via: 'correction', after });
+  return wrote.mergedAt;
+}
+
+/**
  * A reopened issue on a project that releases through change requests no longer stands on the merge
  * it had: the stamp is cleared in the reopen's transaction, its old values kept on `issue.updated`,
  * so the next merge of its change request records the host's commit (REQ-63 BC-3).
