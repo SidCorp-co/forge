@@ -25,6 +25,18 @@ export type MergeMarkKind = "unmarked" | "asserted" | "landed" | "observed";
 /** `git`: work lands as commits. `outside_git`: it lands as a live resource, and a mark names it. */
 export type LandingShape = "git" | "outside_git";
 
+/** ISS-1017 — what the repository said of the commit a mark names: a reading, never a refusal. */
+export type CommitReadingOutcome = "found" | "not_found" | "not_on_target" | "not_this_issue" | "unread";
+
+/** ISS-1017 — the current mark as its record holds it: who said it, what it named, what was read. */
+export interface MarkSaidRecord {
+  at: string;
+  by: { id: string; name: string | null; agency: "human" | "agent" };
+  run: string | null;
+  said: Record<string, unknown>;
+  commitReading: { commit: string; outcome: CommitReadingOutcome; branch?: string } | null;
+}
+
 export type { IssueStatus };
 
 export type IssuePriority = (typeof REGISTRY_ISSUE_PRIORITIES)[number];
@@ -143,6 +155,8 @@ export interface IssueRow {
   /** ISS-1327 — what this issue's project accepts as landed; core's answer, never re-derived.
    *  `null` where the project declares no project document, so no `source.type`. */
   landingShape?: LandingShape | null;
+  /** ISS-1017 — the current mark's record; core's reading, absent on a mark made before it. */
+  markSaid?: MarkSaidRecord | null;
   /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
   liveReach?: LiveReach | null;
   createdAt: string;

@@ -7,6 +7,9 @@
  * COMMIT_NOT_THIS_ISSUE and the ask could never clear. The mark now takes a merge its project owes a
  * filing for, naming no issue, as the landing of the one issue that answers it, and nothing else.
  *
+ * ISS-1017: a commit the rule does not give to the issue is no longer refused: the mark is recorded
+ * as the agent's claim, never observed, and the repository's answer is its reading.
+ *
  * @direct-test-of packages/core/src/issues/owed-merges.ts
  * @direct-test-of packages/core/src/issues/commit-landing.ts
  * @direct-test-of packages/core/src/issues/merge-identity.ts
@@ -86,6 +89,18 @@ const mark = (issueId: string, commit: string, token = box) =>
 
 const owedCommits = async () => (await owedFilings(world.projectId)).map((f) => f.commit);
 
+/** A mark the rule did not give the issue: recorded as the claim, its reading naming why. */
+function claimedNotThisIssue(res: { status: number; body: unknown }): string {
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  const body = res.body as { mark: string; commitReading: { outcome: string; code: string } };
+  expect(body.mark).toBe('asserted');
+  expect(body.commitReading).toMatchObject({
+    outcome: 'not_this_issue',
+    code: 'COMMIT_NOT_THIS_ISSUE',
+  });
+  return JSON.stringify(res.body);
+}
+
 describe('the issue filed for a merge naming no issue is marked at that merge', () => {
   it('takes the mark the nudge asks for, and the mark clears the ask', async () => {
     await world_(null, CODE_FIRST);
@@ -106,58 +121,49 @@ describe('the issue filed for a merge naming no issue is marked at that merge', 
     expect(again.status, JSON.stringify(again.body)).toBe(200);
     expect((again.body as { action: string }).action).toBe('already_merged');
 
-    // one merge, one filing: a second issue filed for it is refused, the first answers it
+    // one merge, one filing: a second issue filed for it is never stamped observed at it, the first
+    // answers it; its mark stands as its agent's claim, read as not this issue's (ISS-1017)
     const twice = await filed(785);
-    const second = await mark(twice, PR_1233);
-    expect(second.status).toBe(422);
-    expect(JSON.stringify(second.body)).toContain('COMMIT_NOT_THIS_ISSUE');
-    expect((await issueRow(twice))?.merged_at).toBeNull();
+    claimedNotThisIssue(await mark(twice, PR_1233));
+    expect((await issueRow(twice))?.merged_commit_sha).toBeNull();
   });
 
-  it('refuses a commit that declares another issue, though its merge links none', async () => {
+  it('records a commit that declares another issue as a claim, never observed, though its merge links none', async () => {
     await world_(null, CODE_FIRST);
     const sha = 'd5'.repeat(20);
     await unlinkedMerge(1240, sha, 'fix(core): the header keeps its height (ISS-55)');
     expect(await owedCommits()).toEqual([sha]);
     const iss784 = await filed(784);
 
-    const res = await mark(iss784, sha);
-    expect(res.status).toBe(422);
-    const body = JSON.stringify(res.body);
-    expect(body).toContain('COMMIT_NOT_THIS_ISSUE');
+    const body = claimedNotThisIssue(await mark(iss784, sha));
     expect(body).toContain('it declares ISS-55');
-    expect((await issueRow(iss784))?.merged_at).toBeNull();
-    expect(await owedCommits()).toEqual([sha]);
+    expect((await issueRow(iss784))?.merged_commit_sha).toBeNull();
   });
 
-  it('refuses a commit that is no merge this project owes a filing for', async () => {
+  it('records a commit that is no merge this project owes a filing for as a claim, never observed', async () => {
     await world_(null, CODE_FIRST);
     const plain = 'c4'.repeat(20);
     messages.set(plain, 'chore: tidy the lockfile');
     const iss784 = await filed(784);
 
-    const res = await mark(iss784, plain);
-    expect(res.status).toBe(422);
-    const body = JSON.stringify(res.body);
-    expect(body).toContain('COMMIT_NOT_THIS_ISSUE');
+    const body = claimedNotThisIssue(await mark(iss784, plain));
     expect(body).toContain(
       'it is not the merge of a change request this project owes a filing for',
     );
-    expect((await issueRow(iss784))?.merged_at).toBeNull();
+    expect((await issueRow(iss784))?.merged_commit_sha).toBeNull();
   });
 
-  it('refuses the merge where the profile owes no filing (issue_before_code enforced)', async () => {
+  it('never takes the merge as observed where the profile owes no filing (issue_before_code enforced)', async () => {
     await world_(null, {});
     await unlinkedMerge(1233, PR_1233, UNLINKED_MESSAGE);
     expect(await owedCommits()).toEqual([]);
     const iss784 = await filed(784);
 
-    const res = await mark(iss784, PR_1233);
-    expect(res.status).toBe(422);
-    expect(JSON.stringify(res.body)).toContain('COMMIT_NOT_THIS_ISSUE');
+    claimedNotThisIssue(await mark(iss784, PR_1233));
+    expect((await issueRow(iss784))?.merged_commit_sha).toBeNull();
   });
 
-  it('refuses an issue of another project marking this project’s owed merge', async () => {
+  it('never answers this project’s owed merge with an issue of another project', async () => {
     await world_(null, CODE_FIRST);
     await unlinkedMerge(1233, PR_1233, UNLINKED_MESSAGE);
     const other = (await createTestProject(world.ownerId)).id;
@@ -181,8 +187,11 @@ describe('the issue filed for a merge naming no issue is marked at that merge', 
     await seedIssueStatus(foreign, 'draft');
 
     const res = await mark(foreign, PR_1233);
-    expect(res.status).toBe(422);
-    expect(JSON.stringify(res.body)).toContain('COMMIT_NOT_THIS_ISSUE');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((res.body as { commitReading: { outcome: string } }).commitReading.outcome).not.toBe(
+      'found',
+    );
+    expect((await issueRow(foreign))?.merged_commit_sha).toBeNull();
     expect(await owedCommits()).toEqual([PR_1233]);
   });
 

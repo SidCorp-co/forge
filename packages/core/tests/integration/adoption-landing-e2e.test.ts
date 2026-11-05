@@ -150,12 +150,13 @@ afterAll(async () => {
 });
 
 describe('an issue that only adopted a contract version lands on its adoption record (REQ-5 BC-17)', () => {
-  it('is still refused NO_WORK_EVIDENCE when it names neither a commit nor an adoption, and the refusal names `adoptions`', async () => {
+  it("takes a mark naming neither a commit nor an adoption as the agent's word, never as an adoption record (ISS-1017)", async () => {
     const id = await issue(w.project.plugin);
-    const refused = refusalOf(await mark(id, { target: 'dev' }));
-    expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.detail).toContain('`adoptions`');
-    expect((await markOf(id)).at).toBeNull();
+    const marked = ok(await mark(id, { target: 'dev' }));
+    expect(marked.mark).toBe('asserted');
+    const held = await markOf(id);
+    expect(held.at).not.toBeNull();
+    expect(held.artifacts).toBeNull();
   });
 
   it('marks on the record Forge read, moves to awaiting_release and closes without a release', async () => {

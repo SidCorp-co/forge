@@ -61,7 +61,7 @@ vi.mock('./commit-landing.js', () => ({
     code: 'COMMIT_UNVERIFIED',
     detail: 'not read here',
   }),
-  vouchedCommit: async () => ({ fromRepository: null, unvouched: null }),
+  vouchedCommit: async () => ({ fromRepository: null, reading: null }),
 }));
 vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),

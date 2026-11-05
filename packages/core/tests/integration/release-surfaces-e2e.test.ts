@@ -181,7 +181,7 @@ describe('outside git, a landing names what it changed', () => {
   });
 });
 
-describe('on git, artifacts come from the commit, never by hand', () => {
+describe('on git, artifacts the mark names are recorded as named, beside what a commit changed', () => {
   beforeEach(() =>
     declare({
       type: 'git',
@@ -193,15 +193,18 @@ describe('on git, artifacts come from the commit, never by hand', () => {
     }),
   );
 
-  it('refuses artifacts sent with the mark, by name, and reads a claim with no observed commit as unclassified', async () => {
+  it('records artifacts sent with the mark as named, and the release reads them (ISS-1017)', async () => {
     const issue = await fx.insertIssue('awaiting_release', NOTE, false);
-    const refused = await mark(issue, {
-      target: 'main',
-      artifacts: [{ surface: 'ui', ref: 'packages/web-v2/x.tsx', change: 'changed' }],
-    });
-    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
-    expect(JSON.stringify(refused.body)).toContain('ARTIFACTS_NOT_THIS_SHAPE');
+    const ui = [{ surface: 'ui', ref: 'packages/web-v2/x.tsx', change: 'changed' }];
+    await markOk(issue, { target: 'main', artifacts: ui });
+    expect(await mergedArtifacts(issue)).toEqual(ui);
+    const release = await releaseOf('0.1.0');
+    expect(release.issues[0]?.surfaces).toEqual(['ui']);
+    expect(release.changes.surfaces.map((x) => x.surface)).toEqual(['ui']);
+  });
 
+  it('reads a claim naming no artifact and no observed commit as unclassified', async () => {
+    const issue = await fx.insertIssue('awaiting_release', NOTE, false);
     await markOk(issue, { target: 'main' });
     const release = await releaseOf('0.1.0');
     expect(release.issues[0]?.landing).toMatchObject({

@@ -48,15 +48,19 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
 }));
 const readCommitLanding = vi.fn();
 // any other mark naming a commit asks the repository whether it vouches (`vouchedCommit`)
-const vouchedCommit = vi.fn(async () => ({ fromRepository: null, unvouched: null }));
-vi.mock('./commit-landing.js', () => ({ readCommitLanding, vouchedCommit }));
+const vouchedCommit = vi.fn(async () => ({ fromRepository: null, reading: null }));
+vi.mock('./commit-landing.js', async (importOriginal) => ({
+  commitReadingOf: (await importOriginal<typeof import('./commit-landing.js')>()).commitReadingOf,
+  readCommitLanding,
+  vouchedCommit,
+}));
 // the project declares no merge check and the issue no approved new pattern, so none is owed
 vi.mock('./merge-check.js', () => ({ uncheckedMergeRefusal: async () => null }));
 vi.mock('./review.js', () => ({ unreviewedMergeRefusal: async () => null }));
 vi.mock('./pattern-entry.js', () => ({ markEntryRefusal: async () => null }));
 vi.mock('./work-evidence.js', () => ({
-  findMissingWorkEvidence: async () => null,
-  collectWorkEvidence: async () => ({ handoffCommitSha: null }),
+  codeEvidenceOf: async () => [],
+  latestHandoffCommit: async () => null,
 }));
 
 const { applyMergeMarker } = await import('./merge-marker.js');

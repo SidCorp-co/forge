@@ -8,6 +8,9 @@
  * whole sha in `commit`. A sha shorter or longer than the 40 characters the claim reader takes was
  * stamped `merged` and its claim silently dropped; it is refused COMMIT_NOT_WHOLE and marks nothing.
  *
+ * ISS-1017: a commit core cannot read is no longer refused at all: the mark records it as the claim,
+ * with the repository's answer as its reading, branch recorded or not.
+ *
  * ISS-592 (REQ-68): MARK_ALREADY_STANDS said to `unmark` first and named only the UI rail, so an
  * agent guessed a route that does not exist. Every such refusal names `DELETE /api/issues/:id/merge`.
  *
@@ -100,27 +103,25 @@ function refusalOf(r: Reply): { code: string; path: string; detail: string } {
 }
 
 describe('an asserted mark on a repository core cannot read (ISS-575)', () => {
-  it('is refused COMMIT_UNVERIFIED naming the branch and the whole sha in `commit`, never a note', async () => {
+  it('records the commit as the claim with the unread repository as its reading, never a refusal (ISS-1017)', async () => {
     const id = await issue(gitProject);
-    const r = await box('POST', `/api/issues/${id}/merge`, { target: 'dev', commit: WHOLE });
-    const refused = refusalOf(r);
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
-    expect(refused.path).toBe('/commit');
-    expect(refused.detail).toContain('workState.branch');
-    expect(refused.detail).toContain('`commit`');
-    expect(refused.detail).toContain('the whole 40-character sha');
-    expect(refused.detail).not.toMatch(/a note naming this commit/);
-    expect(await mergedAt(id)).toBeNull();
+    const marked = ok(
+      await box('POST', `/api/issues/${id}/merge`, { target: 'dev', commit: WHOLE }),
+    );
+    expect(marked.action).toBe('merged');
+    expect(marked.mark).toBe('asserted');
+    expect(marked.commitReading).toMatchObject({ outcome: 'unread', code: 'COMMIT_UNVERIFIED' });
+    expect(await mergedAt(id)).not.toBeNull();
+    expect((await currentMarkClaims([id])).get(id)).toBe(WHOLE);
   });
 
-  it('is refused NO_WORK_EVIDENCE naming the merge route and its `commit`, never an action core has not', async () => {
+  it('takes a landing with no other evidence on its word, never asking for a commit (ISS-1017)', async () => {
     const id = await issue(landingProject);
-    const refused = refusalOf(
+    const marked = ok(
       await box('POST', `/api/issues/${id}/merge`, { landing: 'https://shop.example.test/x' }),
     );
-    expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.detail).toContain('`POST /api/issues/:id/merge` carrying `commit`');
-    expect(refused.detail).not.toContain('mark_merged');
+    expect(marked.mark).toBe('landed');
+    expect(marked.said).toEqual({ landing: 'https://shop.example.test/x' });
   });
 
   it('records the whole commit as the claim once the branch is recorded, with its target', async () => {
@@ -162,17 +163,26 @@ describe('an asserted mark on a repository core cannot read (ISS-575)', () => {
   });
 });
 
-describe('the delivery guide teaches the asserted mark with its commit (ISS-575)', () => {
-  it('directs the whole sha in `commit` after the branch, never a commit only in the note', async () => {
+describe('the delivery guide teaches the asserted mark with its commit (ISS-575, ISS-1017)', () => {
+  it('directs the whole sha in `commit`, never a commit only in the note, and teaches no refusal for missing evidence', async () => {
     const r = await box('GET', '/api/guides/issue-flow.md');
     expect(r.status).toBe(200);
     const guide = String(r.json?.raw ?? '').replace(/\s+/g, ' ');
     const land = guide.slice(guide.indexOf('### 6. Land, mark, move'));
-    expect(land).toContain("record the work's branch in `workState.branch` first");
     expect(land).toContain('the commit in `commit`, never only in `note`');
     expect(land).toContain('`COMMIT_NOT_WHOLE`');
     expect(land).toContain('`DELETE /api/issues/:id/merge` clears it');
+    expect(land).toContain("is the mark's reading, never a refusal");
+    expect(land).toContain('`liveReading`');
     expect(land).not.toMatch(/a `note` naming the commit/);
+    for (const gone of [
+      'NO_WORK_EVIDENCE',
+      'COMMIT_UNVERIFIED',
+      'COMMIT_NOT_LANDED',
+      'TARGET_REQUIRED',
+    ]) {
+      expect(land).not.toContain(gone);
+    }
   });
 });
 

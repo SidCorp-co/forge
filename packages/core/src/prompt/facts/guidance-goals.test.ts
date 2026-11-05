@@ -43,10 +43,26 @@ describe('a step and a drive run are handed no output ritual', () => {
       'TRANSITION_REASON_REQUIRED',
       'CLOSE_ONLY_BY_RELEASE',
       'CLOSE_REQUIRES_SHIPPED',
-      'LANDING_REQUIRED',
       'ILLEGAL_TRANSITION',
     ]) {
       expect(PIPELINE_RULES).toContain(kernel);
+    }
+  });
+
+  // ISS-1017: whether work is done is the agent's call, so no refusal for missing evidence is taught
+  it("teaches the mark as the agent's word, naming what it has, and no refusal core no longer makes", () => {
+    for (const text of [PIPELINE_RULES, DRIVE_RULES_TEXT]) {
+      expect(text).toContain('`liveReading`');
+      expect(text).toContain('never a refusal');
+      for (const gone of [
+        'LANDING_REQUIRED',
+        'NO_WORK_EVIDENCE',
+        'LANDING_NOT_THIS_SHAPE',
+        'TARGET_REQUIRED',
+      ]) {
+        expect(text).not.toContain(gone);
+      }
+      expect(text).not.toContain('CALLER-ASSERTED — nothing server-side checks git');
     }
   });
 });

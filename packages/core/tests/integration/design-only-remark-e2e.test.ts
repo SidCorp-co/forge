@@ -7,6 +7,10 @@
  * the close refused DESIGN_NOT_DELIVERED (the close reads design-only off the mark). Here the same
  * shape: the approval stamps, the mark is cleared, the agent marks it again and closes it.
  *
+ * ISS-1017: a mark is never refused for the evidence it lacks, so a design issue with no approved
+ * revision, or none drawn, is marked as the agent's bare word; approved designs still never stand in
+ * for code, and the close still asks the approval.
+ *
  * @direct-test-of packages/core/src/issues/merge-marker.ts
  * @direct-test-of packages/core/src/issues/design-delivery.ts
  * @direct-test-of packages/core/src/issues/merge-mark-kind.ts
@@ -140,24 +144,27 @@ describe('criterion 1: an agent re-marks a design issue on its approved revision
   });
 });
 
-describe('criterion 2: no approved revision, no mark', () => {
-  it('refuses NO_WORK_EVIDENCE naming the drawn revision that waits on its approver', async () => {
+describe("criterion 2: no approved revision, no design landing (ISS-1017: the mark is the agent's word)", () => {
+  it('records a bare mark, never a revision that waits on its approver, and the close still asks the approval', async () => {
     const id = await unmarkedIssue();
     await drawRevision(id, 2, null);
 
-    const refused = refusal(await mark(agent, id));
-    expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.detail).toContain('issue-lifecycle rev 2 is not approved');
-    expect((await markOf(id))?.merged_at).toBeNull();
+    const marked = await mark(agent, id);
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+    expect(marked.body.mark).toBe('asserted');
+    expect(marked.body.artifacts).toBeNull();
+    const held = await markOf(id);
+    expect(held?.merged_at).not.toBeNull();
+    expect(held?.merged_artifacts).toBeNull();
     expect(refusal(await close(agent, id)).code).toBe('DESIGN_NOT_DELIVERED');
   });
 
-  it('refuses NO_WORK_EVIDENCE as before on an issue that drew no design', async () => {
+  it('records a bare mark on an issue that drew no design, which was NO_WORK_EVIDENCE', async () => {
     const id = await unmarkedIssue();
-    const refused = refusal(await mark(agent, id));
-    expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.detail).not.toContain('not approved');
-    expect((await markOf(id))?.merged_at).toBeNull();
+    const marked = await mark(agent, id);
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+    expect(marked.body.said).toEqual({ target: 'dev' });
+    expect((await markOf(id))?.merged_artifacts).toBeNull();
   });
 });
 
@@ -176,7 +183,7 @@ describe('criterion 3: approved designs never stand in for code', () => {
     expect(refusal(await close(agent, id)).code).toBe('DESIGN_NOT_DELIVERED');
   });
 
-  it('refuses an issue linked as a workflow build: the approval is evidence there, not its landing', async () => {
+  it("marks an issue linked as a workflow build on the agent's word, never on the approval: it is evidence there, not its landing", async () => {
     const id = await unmarkedIssue();
     await drawRevision(id, 2, 'approve');
     await db.execute(sql`
@@ -184,15 +191,19 @@ describe('criterion 3: approved designs never stand in for code', () => {
       VALUES (${id}, ${workflowId}, ${projectId}, ${ownerId})
     `);
 
-    expect(refusal(await mark(agent, id)).code).toBe('NO_WORK_EVIDENCE');
-    expect((await markOf(id))?.merged_at).toBeNull();
+    const marked = await mark(agent, id);
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+    const held = await markOf(id);
+    expect(held?.merged_at).not.toBeNull();
+    expect(held?.merged_artifacts).toBeNull();
   });
 
-  it('keeps a landing sent beside it on its own route rather than taking the design for it', async () => {
+  it('keeps a commit sent beside it on its own route rather than taking the design for it', async () => {
     const id = await unmarkedIssue();
     await drawRevision(id, 2, 'approve');
-    const refused = refusal(await mark(agent, id, { target: 'dev', commit: 'c'.repeat(40) }));
-    expect(refused.code).not.toBe('NO_WORK_EVIDENCE');
+    const marked = await mark(agent, id, { target: 'dev', commit: 'c'.repeat(40) });
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+    expect(marked.body.commitReading).toMatchObject({ outcome: 'unread' });
     expect((await markOf(id))?.merged_artifacts).toBeNull();
   });
 });

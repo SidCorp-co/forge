@@ -6,6 +6,7 @@ import { Link } from "@/lib/navigation/router";
 import { Button, MonoTag, Stat, StatusBadge } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
+import { markSaidTitle } from "../mark-said-title";
 import type { IssueCostSummary, IssueDetail, LandingShape, MergeMarkKind } from "../types";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
@@ -158,7 +159,12 @@ export function DeveloperProperties({
       {issue.mergedAt ? (
         <Row label={t("issues.rail.merged")}>
           <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-            <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{day(issue.mergedAt)}</span>
+            <span
+              className="fg-body-sm whitespace-nowrap font-mono text-muted"
+              title={markSaidTitle(t, issue.markSaid)}
+            >
+              {day(issue.mergedAt)}
+            </span>
             <MergeMarkBadge
               mark={issue.mergeMark}
               commitSha={issue.mergedCommitSha}

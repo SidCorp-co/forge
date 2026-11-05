@@ -19,7 +19,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 12,
+  version: 13,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -375,16 +375,18 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    granted to agents. Never with a host token of your own. Core merges it at
    \`POST /api/issues/:id/merge-pull-request\`.
 2. \`POST /api/issues/:id/merge\` \`{ commit, target, note }\`, the commit as it stands on the target,
-   whole: an abbreviated sha is refused \`COMMIT_NOT_WHOLE\`. It is refused \`COMMIT_NOT_LANDED\`
-   until it is there, and \`COMMIT_UNVERIFIED\` where core cannot read the project's repository;
-   there record the work's branch in \`workState.branch\` first and send the same mark, the commit
-   in \`commit\`, never only in \`note\`: it reads as asserted rather than observed, and the release
-   places the issue by that commit. A commit named only in the note is no claim. To correct a mark,
+   whole: an abbreviated sha is refused \`COMMIT_NOT_WHOLE\`. Whether the work is done is your call:
+   the mark refuses nothing for the evidence it lacks, and records what you name as given, with you
+   and your run as who said it. Name what you have — the commit in \`commit\`, never only in
+   \`note\`, which is no claim; where the deliverable lives outside a commit (a docs store, a live
+   page, a CMS entry), \`landing\`, \`artifacts\` and a \`liveReading\` \`{ url, status }\` of where you
+   read it live, on any project. Core reads a commit you name from the repository: it is this
+   issue's when its subject declares the key or it merged a change request linking the issue, and is
+   then stamped observed, whoever marks. Otherwise the mark records it as your claim, which the
+   release places by that commit, and what the repository found — not found, not on the target, not
+   this issue's, unread — is the mark's reading, never a refusal. To correct a mark,
    \`DELETE /api/issues/:id/merge\` clears it first. A merge mark moves no status.
-   Core reads every commit a mark names from the repository: it is this issue's when its subject
-   declares the key or it merged a change request linking the issue, and is then stamped observed,
-   whoever marks. Otherwise it is \`COMMIT_NOT_THIS_ISSUE\` — a refusal where the issue has no other
-   work evidence, else the mark records it as your claim and its answer says why; a merge the master's pass lists as owed a filing names no issue, so
+   A merge the master's pass lists as owed a filing names no issue, so
    the issue filed for it is marked at that merge's commit, one issue answering each. It stays at
    \`draft\` and closes on the shipped release whose commit contains that merge:
    \`POST /api/projects/:projectId/shipped-in-records\` \`{ issueId, version, evidence }\`
