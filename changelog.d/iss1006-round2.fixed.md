@@ -1,0 +1,1 @@
+**A decision without a summary still shows its question.** Approvals and the dashboard show its question and recommended answer beside "No summary", buttons name titles not keys, a summary can be added later, and Ask Agent opens faster.
