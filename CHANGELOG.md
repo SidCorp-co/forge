@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.511] - 2026-11-05
+
+Activity lanes per project, and source health scoped to each project's own repository
+
+### Fixed
+
+- **On the Activity tab, crowded marks now step aside so none covers another, and on a phone each lane keeps its project name in view while the timeline scrolls.**
+- **Each project's source health now names only its own repository.** One project's missing GitLab webhook no longer shows on another project sharing the connection; a refused credential still shows on every project using it.
+
 ## [0.4.0-dev.510] - 2026-11-05
 
 Agents send what users notice to Feedback and file technical findings per module

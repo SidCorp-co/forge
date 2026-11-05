@@ -1,1 +1,0 @@
-**Each project's source health now names only its own repository.** One project's missing GitLab webhook no longer shows on another project sharing the connection; a refused credential still shows on every project using it.
