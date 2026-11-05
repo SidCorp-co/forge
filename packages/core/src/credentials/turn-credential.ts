@@ -149,7 +149,7 @@ export async function mintTurnCredential(args: {
   ttlMs: number;
   deviceId?: string | null;
   /** The transaction the token is inserted in, where the caller supersedes an earlier one of its name. */
-  tx?: Tx;
+  tx?: Tx | undefined;
 }): Promise<TurnCredential> {
   const { authority } = args;
   const routes = args.menu.filter((p) => patGrantCovers(authority.grant, p));
