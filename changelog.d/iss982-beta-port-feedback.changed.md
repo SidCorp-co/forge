@@ -1,1 +1,0 @@
-**A forge-beta issue now arrives on dev as Feedback, not an open issue.** Work already in flight or landed on beta stays there, the mirror never moves beta backward, and a twin's mark accepts a commit declaring its beta key.
