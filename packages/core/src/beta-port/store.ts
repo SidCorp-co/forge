@@ -2,13 +2,13 @@
 // and the dev side it reads: the twin projects by slug, and the issues a pair or a first line names.
 // Nothing beta answers is stored here but the pair's own bookkeeping.
 
-import { and, asc, desc, eq, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { betaPortPairs, issues, pipelineRuns, projects } from '../db/schema.js';
+import { betaPortPairs, issues, projects } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { orgKnowledgeCreatedAt } from '../knowledge/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { issueIdsOf } from '../release-batch/index.js';
+import { runWearingVersion, shippedReleasesOf } from '../pipeline/index.js';
 
 export interface DevTwin {
   id: string;
@@ -38,11 +38,10 @@ export interface MirroredDevIssue extends DevIssue {
   releaseNotes: DevReleaseNote | null;
 }
 
-/** A release the twin shipped: the version it shipped as, its commit where it names one, what it carried. */
+/** The release that shipped a dev issue: the version it shipped as, and its commit where it names one. */
 export interface DevRelease {
   version: string;
   commit: string | null;
-  issueIds: readonly string[];
 }
 
 export interface Pair {
@@ -199,30 +198,15 @@ function releaseCommitOf(meta: Record<string, unknown>): string | null {
 }
 
 /**
- * The releases a dev twin shipped, newest first: every run of it stamped shipped with a version
- * (a finished batch or a record), with the issues it carries (`release-batch:issueIdsOf`). Only a
- * release closes a dev issue, so the newest one carrying a closed twin is the release that closed it.
+ * The release that shipped a closed dev issue, as every reader of it names one
+ * (`pipeline/release-runs.ts:shippedReleasesOf`: the latest shipped release carrying it, none where a
+ * reopen withdrew it), with the commit its run names; null where no shipped release carries it.
  */
-export async function devReleasesOf(twin: DevTwin): Promise<DevRelease[]> {
-  const rows = await db
-    .select({ version: pipelineRuns.releaseVersion, metadata: pipelineRuns.metadata })
-    .from(pipelineRuns)
-    .where(
-      and(
-        eq(pipelineRuns.projectId, twin.id),
-        isNotNull(pipelineRuns.releaseVersion),
-        isNotNull(pipelineRuns.releaseReleasedAt),
-      ),
-    )
-    .orderBy(desc(pipelineRuns.releaseReleasedAt), desc(pipelineRuns.id));
-  return rows.map((r) => {
-    const meta = (r.metadata ?? {}) as Record<string, unknown>;
-    return {
-      version: r.version as string,
-      commit: releaseCommitOf(meta),
-      issueIds: issueIdsOf(meta),
-    };
-  });
+export async function devReleaseOf(twin: DevTwin, issueId: string): Promise<DevRelease | null> {
+  const shipped = (await shippedReleasesOf(twin.id, [issueId])).get(issueId);
+  if (!shipped) return null;
+  const run = await runWearingVersion(twin.id, shipped.version);
+  return { version: shipped.version, commit: run ? releaseCommitOf(run.metadata) : null };
 }
 
 /** Record that a Feedback pair's triage outcome was commented on beta, so it is commented once. */

@@ -46,7 +46,7 @@ import {
   type DevRelease,
   type DevTwin,
   devIssuesById,
-  devReleasesOf,
+  devReleaseOf,
   type MirroredDevIssue,
   type Pair,
   recordTold,
@@ -60,15 +60,11 @@ export interface MirrorContext {
   budget: { mirrors: number };
 }
 
-/**
- * One beta project and its dev twin, with its landing shape and the twin's releases each read at
- * most once per fire, and only where a close needs them.
- */
+/** One beta project and its dev twin, with its landing shape read at most once per fire. */
 interface MirrorProject {
   twin: DevTwin;
   betaProjectId: string;
   landing: () => Promise<PeerAnswer<PeerLanding>>;
-  releases: () => Promise<DevRelease[]>;
 }
 
 /** One try's outcome: the beta status after it, and the close refusal it commented on beta. */
@@ -85,17 +81,12 @@ export async function mirrorProject(
 ): Promise<void> {
   const { twin } = where;
   let landing: Promise<PeerAnswer<PeerLanding>> | null = null;
-  let releases: Promise<DevRelease[]> | null = null;
   const project: MirrorProject = {
     twin,
     betaProjectId: where.betaProjectId,
     landing: () => {
       landing ??= readPeerLanding(ctx.peer, where.betaProjectId);
       return landing;
-    },
-    releases: () => {
-      releases ??= devReleasesOf(twin);
-      return releases;
     },
   };
   const betaById = new Map(betaIssues.map((i) => [i.id, i]));
@@ -407,7 +398,7 @@ async function closeByRelease(
 ): Promise<{ closed: boolean; at: string; release: DevRelease | null }> {
   const { twin } = project;
   const { beta, dev } = move;
-  const release = (await project.releases()).find((r) => r.issueIds.includes(dev.id)) ?? null;
+  const release = await devReleaseOf(twin, dev.id);
   if (!release) {
     refused.push(
       `BETA_PORT_NO_DEV_RELEASE: no forge-dev release of ${twin.slug} carries ${dev.key}, so none was recorded on beta`,
