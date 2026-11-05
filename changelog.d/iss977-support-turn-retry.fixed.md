@@ -1,0 +1,1 @@
+**A support turn that fails on Forge's side is retried before anyone is told.** Three tries with a short back-off; only then is the thread told the assistant answers when it can, the message kept queued. One session runs one turn at a time.
