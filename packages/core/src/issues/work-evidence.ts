@@ -1,8 +1,6 @@
-import { WORK_EVIDENCE_WAIVER_KIND } from '@forge/contracts/issue-machine';
-import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
-import { logger } from '../lib/logger.js';
+import { issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { readLandingBranches } from './ports.js';
 
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
@@ -120,19 +118,12 @@ export async function latestHandoffCommit(
   return rows[0]?.commit ?? null;
 }
 
-function hasCodeEvidence(evidence: WorkEvidence): boolean {
-  return (
-    Boolean(evidence.handoffCommitSha) ||
-    evidence.handoffFilesModified > 0 ||
-    Boolean(evidence.branch) ||
-    Boolean(evidence.mergedCommitSha)
-  );
-}
-
 /**
  * Each piece of code evidence the issue carries, named: what an adoption record may never stand in
- * for (REQ-5 BC-18). Strict — a reader that refuses on this answer cannot take a raised query for
- * "no code", so its failure is let out rather than read as none.
+ * for (REQ-5 BC-18), and what keeps a mark naming nothing from standing on approved designs
+ * (`design-mark.ts`). It is never asked whether a mark may be written: a mark takes the agent's word
+ * (ISS-1017). Strict — a reader that refuses on this answer cannot take a raised query for "no
+ * code", so its failure is let out rather than read as none.
  */
 export async function codeEvidenceOf(
   issueId: string,
@@ -147,67 +138,4 @@ export async function codeEvidenceOf(
     e.branch ? `branch ${e.branch}` : null,
     e.mergedCommitSha ? `merged commit ${e.mergedCommitSha}` : null,
   ].filter((x): x is string => x !== null);
-}
-
-async function hasChildIssues(issueId: string, executor: EvidenceExecutor = db): Promise<boolean> {
-  const [row] = await executor
-    .select({ id: issueDependencies.id })
-    .from(issueDependencies)
-    .where(
-      and(
-        eq(issueDependencies.fromIssueId, issueId),
-        eq(issueDependencies.kind, WORK_EVIDENCE_WAIVER_KIND),
-        or(isNull(issueDependencies.validUntil), gt(issueDependencies.validUntil, sql`now()`)),
-      ),
-    )
-    .limit(1);
-  return row != null;
-}
-
-const NO_WORK_EVIDENCE_DETAIL =
-  'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
-  '`workState.branch` (a `sessionContext` naming `branch` or `worklog.branch` records it ' +
-  'there too), write the implementation step ' +
-  'handoff with commitSha/filesModified, or, where the work landed on the base branch itself, ' +
-  'mark it merged with `POST /api/issues/:id/merge` carrying `commit`, the whole sha it landed at, which ' +
-  "Forge checks against the project's repository, before advancing. Where the issue changed no " +
-  'code and its whole deliverable is adopting a contract version, mark it with `adoptions` naming ' +
-  "each `<project>/<contract>@<version>` it adopted, which Forge reads off the project's interface " +
-  'and links. A branch equal to the ' +
-  'project base ' +
-  'branch is not evidence, and neither is the last branch of a project whose release chain has ' +
-  'two or more entries: both name where work lands, not that any happened. Where the chain is ' +
-  'empty or names one branch there is no live branch to exclude, so a branch of that name ' +
-  'counts like any other';
-
-/**
- * The same check, letting its own failure out.
- *
- * ISS-1072: a reader that PUBLISHES this answer cannot use the fail-open one
- * below. "The query raised" and "the evidence is there" are the same value to
- * that caller, and a check run saying a criterion is met because a SELECT threw
- * is the silent substitution this repo forbids — worse here than in the gate,
- * because the gate's answer is seen by the one agent it refused and this one is
- * published on a pull request. Enforcement keeps the fail-open wrapper; nothing
- * that gates a transition may reach this.
- */
-async function missingWorkEvidenceStrict(
-  issueId: string,
-  executor: EvidenceExecutor = db,
-): Promise<string | null> {
-  if (await hasChildIssues(issueId, executor)) return null;
-  const evidence = await collectWorkEvidence(issueId, executor);
-  return hasCodeEvidence(evidence) ? null : NO_WORK_EVIDENCE_DETAIL;
-}
-
-export async function findMissingWorkEvidence(
-  issueId: string,
-  executor: EvidenceExecutor = db,
-): Promise<string | null> {
-  try {
-    return await missingWorkEvidenceStrict(issueId, executor);
-  } catch (err) {
-    logger.warn({ err, issueId }, 'work-evidence: check failed, allowing (fail open)');
-    return null;
-  }
 }

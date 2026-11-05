@@ -1,6 +1,6 @@
 import type { AdoptionHeld } from '@forge/contracts/ecosystem';
 import type { MergeRefusalCode } from '@forge/contracts/issues';
-import type { FileChange, LandingArtifact } from '@forge/contracts/landing-artifacts';
+import type { FileChange, LandingArtifact, LiveReading } from '@forge/contracts/landing-artifacts';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
@@ -9,15 +9,19 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
 import { adoptionPreflight, stampAdoption } from './adoption-mark.js';
-import { type CommitLanding, readCommitLanding, vouchedCommit } from './commit-landing.js';
+import {
+  type CommitLanding,
+  type CommitReading,
+  commitReadingOf,
+  readCommitLanding,
+  vouchedCommit,
+} from './commit-landing.js';
 import * as designMark from './design-mark.js';
 import { type HostMerge, hostMergeOfMark } from './host-mark.js';
 import {
   CLEAR_THE_MARK,
-  landingMarkRefusal,
   markArtifacts,
   markReadPaths,
-  markTargetRequired,
   readLandingShape,
   SOURCE_UNDECLARED,
   standingArtifactsRefusal,
@@ -25,6 +29,7 @@ import {
   wholeCommitRefusal,
 } from './landing-evidence.js';
 import { refuseUncheckedMerge, resolveRecordedCommit, withCarriers } from './mark-preconditions.js';
+import { callerRunOf, type MarkSaid, type MarkSaidBy, saidOf, saidSentence } from './mark-said.js';
 import { markTrailLabel, NOT_STAMPED, recordMarkTrail } from './mark-trail.js';
 import { clearMark, recordStampPaths } from './mark-writes.js';
 import { identifiedMergeForIssue } from './merge-identity.js';
@@ -38,7 +43,7 @@ import {
 import { type MergeRecord, recordIssueMerge, recordMergeTarget } from './merge-record.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
-import { findMissingWorkEvidence } from './work-evidence.js';
+import { codeEvidenceOf } from './work-evidence.js';
 
 type AuditComment = { id: string; body: string; parentId: string | null };
 
@@ -79,6 +84,8 @@ type MergeMarkerActor = {
   /** Who the audit comment is attributed to. */
   commentAuthorId: string;
   hookActor: Actor;
+  /** The box the call came from, which names the run that holds the issue there; null for a person. */
+  box?: string | null;
 };
 
 type MergeMarkArgs = {
@@ -90,10 +97,12 @@ type MergeMarkArgs = {
   /** The commit the CALLER says this mark was made at. Recorded in the audit trail; the column
    *  takes only a commit Forge observed. Absent falls back to the recorded handoff sha. */
   commit?: string | undefined;
-  /** Where the work landed outside git; whether this project takes one is `landing-evidence.ts`'s. */
+  /** Where the work landed, on any shape: a live URL, a docs store, a CMS entry. Recorded as given. */
   landing?: string | undefined;
-  /** What the landing changed, by surface; whether this shape takes a list is `landing-evidence.ts`'s. */
+  /** What the landing changed, by surface, on any shape. Recorded as given. */
   artifacts?: readonly LandingArtifact[] | undefined;
+  /** Where the agent read the work live, and what it answered. Recorded as given (ISS-1017). */
+  liveReading?: LiveReading | undefined;
   /** The paths the named commit changed, as the box read them from its checkout (`forge-runner api`). */
   changedPaths?: { commit: string; changes: FileChange[] } | undefined;
   mergedAt?: Date | null;
@@ -118,8 +127,8 @@ type Stamp = {
   claimedTarget?: string | null;
   /** The adoption record this mark was read from, where it is one. */
   adopted?: AdoptionHeld[] | null;
-  /** Why the repository did not vouch for the commit a claim names (`vouched`). */
-  unvouched?: string | null;
+  /** What the repository said of the commit the mark names, where it was asked. */
+  reading?: CommitReading | null;
 };
 
 type Preflight = {
@@ -130,13 +139,17 @@ type Preflight = {
   adoptionDrift?: string | null;
   /** The approved design revisions a mark naming nothing stands on, where the issue carries no code. */
   designs?: designMark.DesignMark | null;
-  /** Why the repository did not vouch for the commit a claim names, where it was asked and refused. */
-  unvouched?: string | null;
+  /** What the repository said of the commit the mark names, where it was asked: a reading, never a
+   *  refusal (ISS-1017). */
+  reading?: CommitReading | null;
 };
 
-/** The refusals a mark meets before its transaction: the landing shape, the target, contract
- *  drift, and an agent's work evidence, which a commit the repository attributes or a host's merge
- *  may stand in for. */
+/**
+ * What a mark asks before its transaction: the project's shape, contract drift, and what the
+ * repository says of a commit it names. It refuses no mark for the evidence it lacks — no commit,
+ * branch, handoff, target or landing shape — since whether the work is done is the agent's call
+ * (owner, 2026-11-05, ISS-1017); what the repository says is recorded as the mark's reading.
+ */
 async function preflightMark(
   args: MergeMarkArgs,
   prior: IssueRow,
@@ -147,36 +160,17 @@ async function preflightMark(
   if (shape === null) throw refuse('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
   if (args.adoptions)
     return { shape, fromRepository: null, ...(await adoptionPreflight(args, prior)) };
-  // A landing on a git project is refused below whatever the target, and that refusal names the
-  // real fault, so the missing target is not reported ahead of it.
-  if (markTargetRequired(shape) && !args.target && !args.landing) {
-    throw refuse(
-      'TARGET_REQUIRED',
-      'target is required: this project lands through git, so name the branch the work merged into',
-      '/target',
-    );
-  }
   const drift = await contractDrift(prior, args.contracts ?? []);
   if (drift) throw refuse(drift.code, drift.detail, '/contracts');
   if (hostMerge) return { shape, fromRepository: null };
   const design = shape === 'git' && args.commit ? designOnlyStamp(prior) : null;
-  if (design && args.commit) {
-    return { shape, fromRepository: await overDesign(args, args.commit, design) };
-  }
-  const bare = designMark.namesNothing(args);
-  if (args.actor.agency !== 'agent' && !bare)
-    return { shape, ...(await vouchedCommit({ ...args, issueId, shape })) };
-  const missing = await findMissingWorkEvidence(issueId);
-  const designs = missing && bare ? await designMark.designsOfMark(prior) : null;
-  if (!missing || designs || args.actor.agency !== 'agent') {
-    return { shape, designs, ...(await vouchedCommit({ ...args, issueId, shape })) };
-  }
-  if (!args.commit || shape !== 'git') {
-    throw refuse('NO_WORK_EVIDENCE', `${missing}${await designMark.designsWaiting(issueId)}`);
-  }
-  const read = await readCommitLanding({ issueId, commit: args.commit });
-  if (!read.ok) throw refuse(read.code, read.detail, '/commit');
-  return { shape, fromRepository: read };
+  if (design && args.commit) return { shape, ...(await overDesign(args, args.commit, design)) };
+  // a mark naming nothing on an issue that carries no code stands on the approved designs it drew
+  const designs =
+    designMark.namesNothing(args) && (await codeEvidenceOf(issueId)).length === 0
+      ? await designMark.designsOfMark(prior)
+      : null;
+  return { shape, designs, ...(await vouchedCommit({ ...args, issueId, shape })) };
 }
 
 /**
@@ -189,10 +183,11 @@ async function overDesign(
   args: MergeMarkArgs,
   commit: string,
   design: string[],
-): Promise<RepositoryLanding | null> {
+): Promise<{ fromRepository: RepositoryLanding | null; reading: CommitReading }> {
   const read = await readCommitLanding({ issueId: args.issue.id, commit });
-  if (read.ok) return read;
-  if (args.changedPaths) return null;
+  const reading = commitReadingOf(commit, read);
+  if (read.ok) return { fromRepository: read, reading };
+  if (args.changedPaths) return { fromRepository: null, reading };
   throw refuse(
     'MARK_ALREADY_STANDS',
     `this issue's mark is the approval of design ${design.join(', ')}, which records no commit, and commit ${commit} was not recorded over it because the repository could not vouch for it (${read.code}: ${read.detail}). Nothing changed. Mark again naming the commit that landed this issue's code, or send the paths the box read at it as \`changedPaths\`.`,
@@ -200,8 +195,9 @@ async function overDesign(
   );
 }
 
-/** The merge record a mark writes: an observed merge, the repository's commit, a landing, or a
- *  bare assertion, in that order of what Forge itself can vouch for. */
+/** The merge record a mark writes: an observed merge, the repository's commit, a landing, or the
+ *  agent's assertion, in that order of what Forge itself can vouch for; each keeps the landing and
+ *  artifacts the agent named, on any shape. */
 async function stampMark(
   tx: Tx,
   args: MergeMarkArgs,
@@ -228,10 +224,8 @@ async function stampMark(
     return { result, claimedCommit: null, readFrom: null, claimedTarget: args.target ?? null };
   }
   const landing = args.landing ?? null;
-  const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
-  if (refused) throw refuse(refused.code, refused.detail, '/landing');
   const sent = args.artifacts ?? null;
-  const named = markArtifacts({ shape, landing, sent });
+  const named = markArtifacts({ landing, sent });
   if (!named.ok) throw refuse(named.code, named.detail, '/artifacts');
   const artifacts = named.artifacts;
   const read = markReadPaths({
@@ -272,6 +266,8 @@ async function stampMark(
           commitSha: fromRepository.sha,
           mergedAt: fromRepository.committedAt,
           target: fromRepository.branch,
+          landing,
+          artifacts,
         },
       }),
       claimedCommit: null,
@@ -294,11 +290,10 @@ async function stampMark(
         issueId,
         via: 'mark',
         actor: args.actor.hookActor,
-        evidence: { kind: 'asserted', at: args.mergedAt ?? null },
+        evidence: { kind: 'asserted', at: args.mergedAt ?? null, artifacts },
       }),
       claimedCommit: args.commit ?? (await resolveRecordedCommit(issueId)),
       readFrom: null,
-      unvouched: preflight.unvouched ?? null,
     };
   }
   const standing = standingMarkRefusal({
@@ -321,7 +316,7 @@ async function stampMark(
   }
   if (read.paths) await recordStampPaths(tx, issueId, read.paths, args.actor.hookActor);
   if (args.target) await recordMergeTarget(tx, issueId, args.target);
-  return { ...stamp, claimedTarget: args.target ?? null };
+  return { ...stamp, claimedTarget: args.target ?? null, reading: preflight.reading ?? null };
 }
 
 /** The audit comment a mark or unmark leaves, and an unmark's issue.updated, in the caller's transaction. */
@@ -330,7 +325,7 @@ async function writeMarkTrail(
   args: MergeMarkArgs,
   prior: IssueRow,
   stamp: Stamp,
-): Promise<{ mark: MergeMarkKind; markDetail: string }> {
+): Promise<{ mark: MergeMarkKind; markDetail: string; said: MarkSaid; by: MarkSaidBy }> {
   const { id: issueId, projectId } = args.issue;
   const { result, claimedCommit, readFrom } = stamp;
   const marking = args.op === 'mark';
@@ -348,7 +343,12 @@ async function writeMarkTrail(
         mergedLanding: result.landing,
       })
     : 'unmarked';
-  const markDetail =
+  // what the call named, as named, and who named it (ISS-1017)
+  const said = saidOf(args);
+  const reading = stamp.reading ?? null;
+  const run = marking ? await callerRunOf(tx, issueId, args.actor.box ?? null) : null;
+  const by: MarkSaidBy = { ...args.actor.hookActor, run };
+  const kindDetail =
     stamp.adopted && result.wrote
       ? describeAdoptionMark(stamp.adopted)
       : (designMark.designStampDetail(result) ??
@@ -360,8 +360,8 @@ async function writeMarkTrail(
           ...(readFrom && result.wrote ? { readFrom } : {}),
           target: result.target,
           claimedTarget: stamp.claimedTarget ?? null,
-          unvouched: stamp.unvouched ?? null,
         }));
+  const markDetail = marking ? `${kindDetail}. ${saidSentence(said, reading)}` : kindDetail;
   const audit = await writeAuditComment(
     issueId,
     args.actor.commentAuthorId,
@@ -375,7 +375,16 @@ async function writeMarkTrail(
   await recordMarkTrail(
     tx,
     marking
-      ? { ...trail, op: 'mark', target: args.target ?? null, commit, stamped: result.wrote }
+      ? {
+          ...trail,
+          op: 'mark',
+          target: args.target ?? null,
+          commit,
+          stamped: result.wrote,
+          said,
+          run,
+          commitReading: reading,
+        }
       : { ...trail, op: 'unmark' },
   );
   await emitEvents(tx, [
@@ -416,7 +425,7 @@ async function writeMarkTrail(
           },
         ]),
   ]);
-  return { mark, markDetail };
+  return { mark, markDetail, said, by };
 }
 
 export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
@@ -434,6 +443,11 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   markDetail: string;
   /** What the row's landing names it changed after this call; null where it names nothing structured. */
   artifacts: LandingArtifact[] | null;
+  /** What this call named, as named, and who named it (ISS-1017); `{}` where it names nothing. */
+  said: MarkSaid;
+  by: MarkSaidBy;
+  /** What the repository said of the commit this call named, where it was asked; never a refusal. */
+  commitReading: CommitReading | null;
 }> {
   const prior = await findIssueById(input.issue.id);
   if (!prior) throw notFound('issue not found');
@@ -461,7 +475,7 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   if (preflight?.designs && observed) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   // The stamp, its audit comment and their events commit together or not at all.
-  const { stamp, mark, markDetail } = await db.transaction(async (tx) => {
+  const { stamp, mark, markDetail, said, by } = await db.transaction(async (tx) => {
     let stamp: Stamp = {
       result: {
         wrote: true,
@@ -481,12 +495,27 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
 
   const issue = await findIssueById(args.issue.id);
   if (!issue) throw notFound('issue not found');
-  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail, artifacts: null };
+  const commitReading = stamp.reading ?? null;
+  if (args.op !== 'mark') {
+    return {
+      issue,
+      action: 'unmarked',
+      mark,
+      markDetail,
+      artifacts: null,
+      said,
+      by,
+      commitReading,
+    };
+  }
   return {
     issue,
     action: stamp.result.wrote ? 'merged' : 'already_merged',
     mark,
     markDetail,
     artifacts: stamp.result.artifacts,
+    said,
+    by,
+    commitReading,
   };
 }

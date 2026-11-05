@@ -278,3 +278,17 @@ export function storefrontLandingClauses(
 		.filter((c) => c.length > 0)
 		.map((ref) => ({ ref, artifact: storefrontArtifactOf(ref) }));
 }
+
+/**
+ * A live reading a mark names (ISS-1017): where the work is live, and the HTTP status that address
+ * answered when the agent read it. The agent's word, recorded as given; core never fetches it.
+ */
+export const liveReadingSchema = z.strictObject({
+	url: z.url("liveReading.url is the address the work was read live at"),
+	status: z
+		.number()
+		.int()
+		.min(100, "liveReading.status is the HTTP status the address answered")
+		.max(599, "liveReading.status is the HTTP status the address answered"),
+});
+export type LiveReading = z.infer<typeof liveReadingSchema>;

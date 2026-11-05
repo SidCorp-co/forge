@@ -3,13 +3,13 @@
  * drew are its landing, so a mark naming nothing — after its approval stamp was cleared, or where none
  * was ever written — is written again as each approval wrote it (`design-landing.ts:markApprovedDesign`),
  * and the issue closes through `design_delivered`. The mark writer (`merge-marker.ts`) calls these;
- * approved designs never stand in for code (`work-evidence.ts:findMissingWorkEvidence` is asked first).
+ * approved designs never stand in for code (`work-evidence.ts:codeEvidenceOf` is asked first).
  */
 
 import { designArtifact } from '@forge/contracts/landing-artifacts';
 import { db, type Tx } from '../db/client.js';
 import type { Actor } from './activity.js';
-import { approvedDesignsDrawn, designHoldPhrase, designHoldsOf } from './design-delivery.js';
+import { approvedDesignsDrawn } from './design-delivery.js';
 import { designsLandingOf } from './design-landing.js';
 import type { LandingShape } from './landing-evidence.js';
 import { designOnlyStamp } from './merge-mark-kind.js';
@@ -54,14 +54,6 @@ export async function designsOfMark(prior: IssueRow): Promise<DesignMark | null>
       target: prior.mergedTarget,
     },
   };
-}
-
-/** The drawn revisions still waiting on their approver, said beside NO_WORK_EVIDENCE: a design
- *  issue is marked on its approved revisions alone, so these are what it waits for. */
-export async function designsWaiting(issueId: string): Promise<string> {
-  const holds = (await designHoldsOf(db, [issueId])).get(issueId) ?? [];
-  if (holds.length === 0) return '';
-  return `. This issue drew a design, and ${designHoldPhrase(holds)}: a design issue is marked on its approved revisions alone, so it is marked once that approval lands`;
 }
 
 /**

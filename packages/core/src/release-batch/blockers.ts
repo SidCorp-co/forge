@@ -10,14 +10,11 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
-import { projectConfigDocuments } from '../db/schema-project-config.js';
 import {
   draftMissingReleaseNotes,
   issueDisplayIds,
-  landingShapeOf,
   landingShortfall,
   releaseRecordGaps,
-  requireLandingShape,
 } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { readGateProfile } from '../project-config/index.js';
@@ -185,8 +182,8 @@ async function rosterBlockers(
   const owed = gaps && (await releaseRecordBlocker(gaps.gaps, namedAs, gaps.profile));
   if (owed) out.push(owed);
   if (door !== 'record') return;
-  // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.
-  // Judged inside the read, so a source the reader cannot place is this check unevaluated, by name.
+  // Unmerged means what the close would refuse: no mark at all (`landing-evidence.ts`, ISS-1017).
+  // Judged inside the read, so a query that fails is this check unevaluated, by name.
   const unmerged = await evaluate(
     'merged',
     async () => {
@@ -196,28 +193,18 @@ async function rosterBlockers(
           mergedAt: issues.mergedAt,
           mergedCommitSha: issues.mergedCommitSha,
           mergedLanding: issues.mergedLanding,
-          sourceType: sql<string | null>`${projectConfigDocuments.document} -> 'source' ->> 'type'`,
         })
         .from(issues)
-        .leftJoin(projectConfigDocuments, eq(projectConfigDocuments.projectId, issues.projectId))
         .where(inArray(issues.id, issueIds));
-      return rows
-        .map((r) => ({
-          id: r.id,
-          shape: requireLandingShape(landingShapeOf(r.sourceType)),
-          row: r,
-        }))
-        .filter((r) => landingShortfall(r.row, r.shape) !== null);
+      return rows.filter((r) => landingShortfall(r) !== null);
     },
     out,
   );
   if (!unmerged) return;
   if (unmerged.length > 0) {
-    // One roster is one project, so one shape; it chooses which sentence the reader is owed.
-    const shape = unmerged[0]?.shape;
     const ids = unmerged.map((r) => r.id);
     const displayIds = await namedAs(ids);
-    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds }));
+    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, displayIds }));
   }
 }
 

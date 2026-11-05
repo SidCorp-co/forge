@@ -145,7 +145,7 @@ export {
 } from './issue-route-ref.js';
 export { listModulesForIssues } from './label-service.js';
 export { carriedToLanding, filesNamed, type LandedCarriage } from './landed-carriage.js';
-export { landingShapeOf, landingShortfall, requireLandingShape } from './landing-evidence.js';
+export { landingShortfall } from './landing-evidence.js';
 export { holderFanout, readClaim } from './lease-fanout.js';
 export { listIssues } from './list-service.js';
 export {

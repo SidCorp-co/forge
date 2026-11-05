@@ -5,14 +5,7 @@ import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-proje
 import { readAdoptionDelivery } from './adoption-delivery.js';
 import { designOnlyMarkSql } from './design-delivery.js';
 import { landedSql } from './host-landing.js';
-import {
-  CLEAR_THE_MARK,
-  type LandingShape,
-  landingRoute,
-  landingShortfall,
-  readLandingEvidence,
-} from './landing-evidence.js';
-import { type MergeMarkKind, mergeMarkKindOf } from './merge-mark-kind.js';
+import { CLEAR_THE_MARK, landingShortfall, MARK_ROUTE } from './landing-evidence.js';
 import type { MergeRecordExecutor } from './merge-record.js';
 
 /** What a refusal under the shipped-work rule says, or `null` where the call may proceed. */
@@ -22,20 +15,18 @@ interface ShippedRuleRefusal {
 }
 
 /** What every refusal under the merge rule ends with: `dropped` for what was not work, and the
- *  route this project's shape has for recording where the work landed. */
-function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): string {
-  return (
-    '`closed` means the work shipped, and `awaiting_release` that it is merged and waits for its ' +
-    'release. Use `dropped` for work that turned out not to be work — a note, a question, a ' +
-    'duplicate, something already done — which is terminal without the claim and releases every ' +
-    `\`blocks\` dependent the same way. ${landingRoute(shape, held)}`
-  );
-}
+ *  mark that records work which did land. */
+const CLOSED_MEANS_SHIPPED =
+  '`closed` means the work shipped, and `awaiting_release` that it is merged and waits for its ' +
+  'release. Use `dropped` for work that turned out not to be work — a note, a question, a ' +
+  'duplicate, something already done — which is terminal without the claim and releases every ' +
+  `\`blocks\` dependent the same way. ${MARK_ROUTE}`;
 
 /**
  * The `merged` guard (`@forge/contracts/issue-machine:ISSUE_MACHINE`): `awaiting_release` and
- * `closed` are entered only by an issue whose merge is recorded, as this project's shape records
- * one. Recording it moves no status. Null where the merge stands.
+ * `closed` are entered only by an issue that carries a mark, whatever the mark names and whatever the
+ * project's shape: the mark is the agent's word that the work landed (owner, 2026-11-05, ISS-1017).
+ * Recording it moves no status. Null where the mark stands.
  *
  * Whatever the project's shape, a mark that is a design approval's stamp alone — design artifacts and
  * nothing else: no commit, no paths, no landing of code (`merge-mark-kind.ts:designOnlyStamp`,
@@ -85,43 +76,25 @@ export async function mergeNotRecorded(
       details: { to: args.to, requires: 'changeRequest', held: 'local', useInstead: 'dropped' },
     };
   }
-  const evidence = await readLandingEvidence(executor, args.issueId);
-  if (evidence && !landingShortfall(evidence.columns, evidence.shape)) {
+  const [columns] = await executor
+    .select({
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+    })
+    .from(issues)
+    .where(eq(issues.id, args.issueId))
+    .limit(1);
+  if (columns && !landingShortfall(columns)) {
     return args.to === 'awaiting_release' ? await designStampOnly(executor, args.issueId) : null;
   }
-  if (!evidence || evidence.shape === 'git') {
-    if (args.to === 'awaiting_release' && (await changeRequestWaits(executor, args.issueId))) {
-      return null;
-    }
-    return {
-      code,
-      detail: `\`${args.to}\` needs a recorded merge, and this issue carries no \`merged_at\`. ${closedMeansShipped('git')}`,
-      details: { to: args.to, requires: 'mergedAt', useInstead: 'dropped' },
-    };
-  }
-  const { columns, shape } = evidence;
-  if (shape === null) {
-    return {
-      code,
-      detail: `${landingShortfall(columns, shape)}. ${closedMeansShipped(shape)}`,
-      details: {
-        to: args.to,
-        requires: 'sourceType',
-        held: mergeMarkKindOf(columns),
-        useInstead: 'dropped',
-      },
-    };
+  if (args.to === 'awaiting_release' && (await changeRequestWaits(executor, args.issueId))) {
+    return null;
   }
   return {
     code,
-    detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape, mergeMarkKindOf(columns))}`,
-    details: {
-      to: args.to,
-      requires: 'mergedLanding',
-      shape,
-      held: mergeMarkKindOf(columns),
-      useInstead: 'dropped',
-    },
+    detail: `\`${args.to}\` needs a recorded merge, and this issue carries no \`merged_at\`. ${CLOSED_MEANS_SHIPPED}`,
+    details: { to: args.to, requires: 'mergedAt', useInstead: 'dropped' },
   };
 }
 

@@ -23,6 +23,7 @@ import { readLandingShape } from './landing-evidence.js';
 import { serializeRestListRow } from './list-projection.js';
 import { listIssues } from './list-service.js';
 import { liveReachForIssue } from './live-reach-read.js';
+import { markSaidOf } from './mark-said.js';
 import { markedCommitsOf } from './mark-trail.js';
 import { issuePatternsOf } from './patterns.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -65,6 +66,8 @@ export async function issueDetailOf(issue: IssueRow) {
     shippedIn: await shippedReleaseOf(issue.projectId, issue.id),
     // the commit its mark names, observed or as the marker stated it (ISS-774)
     markedCommit: (await markedCommitsOf([issue.id])).get(issue.id) ?? null,
+    // what the current mark named, as named, who named it, and the repository's reading (ISS-1017)
+    markSaid: (await markSaidOf([issue.id])).get(issue.id) ?? null,
     // why the automatic release is not taking it, while it waits unclaimed at the gate (ISS-577)
     releaseHold: (await releaseHoldsOf([issue.id])).get(issue.id) ?? null,
     landedIn: await landedRecordOf(issue.id),

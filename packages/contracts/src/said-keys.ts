@@ -1268,7 +1268,7 @@ export const SAID = {
 		vars: { check: "code" },
 	},
 	"standing.gate.unmerged": {
-		en: "{subject} {verb} no merge Forge saw; {their} work may be missing.",
+		en: "{subject} {verb} no merge mark; nothing says {their} work landed.",
 		vars: { subject: "said", verb: "agreement", their: "agreement" },
 	},
 	"standing.gate.unprovable": {

@@ -24,6 +24,8 @@
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type Actor, recordActivityTx } from './activity.js';
+import type { CommitReading } from './commit-landing.js';
+import type { MarkSaid } from './mark-said.js';
 
 /** The first line of the audit comment a mark (`commit` claimed or observed) or an unmark leaves. */
 export function markTrailLabel(
@@ -53,7 +55,17 @@ export async function recordMarkTrail(
     actor: Actor;
     commentId: string;
   } & (
-    | { op: 'mark'; target: string | null; commit: string | null; stamped: boolean }
+    | {
+        op: 'mark';
+        target: string | null;
+        commit: string | null;
+        stamped: boolean;
+        /** What the call named, as named, the run holding the issue, and the repository's reading
+         *  of a named commit (`mark-said.ts`, ISS-1017). */
+        said: MarkSaid;
+        run: string | null;
+        commitReading: CommitReading | null;
+      }
     | { op: 'unmark' }
   ),
 ): Promise<void> {
@@ -64,7 +76,15 @@ export async function recordMarkTrail(
     action: trail.op === 'mark' ? MARK_RECORD : UNMARK_RECORD,
     payload:
       trail.op === 'mark'
-        ? { commentId, target: trail.target, commit: trail.commit, stamped: trail.stamped }
+        ? {
+            commentId,
+            target: trail.target,
+            commit: trail.commit,
+            stamped: trail.stamped,
+            said: trail.said,
+            run: trail.run,
+            commitReading: trail.commitReading,
+          }
         : { commentId },
   });
 }

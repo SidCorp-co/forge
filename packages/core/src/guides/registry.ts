@@ -12,7 +12,6 @@
 // Search already supplies those) and do not restate the status ladder /
 // enums (`prompt/facts/registry.ts` owns those).
 
-import { WORK_EVIDENCE_WAIVER_NOTE } from '@forge/contracts/issue-machine';
 import {
   ALWAYS_INJECT_ENFORCEMENT_NOTE,
   ALWAYS_INJECT_GUARANTEE_NOTE,
@@ -77,14 +76,14 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     title: 'Issue dependencies',
     summary:
       'How blocks edges gate dispatch, which blocker statuses release a dependent, how to set an edge without racing the first dispatch, and why splitting an oversized issue is plain work rather than a lifecycle.',
-    version: 9,
+    version: 10,
     body: `## Issue dependencies
 
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
 - \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B is held out of the set a master reads until A reaches \`awaiting_release\` — its work merged — or \`closed\`; every other status on A, \`in_progress\` at any step, \`approved\`, \`on_hold\` and \`needs_info\` included, keeps holding it: a built-but-unjudged A does not release B. A reopened A blocks again. **It is A's STATUS and not A's \`merged_at\`**: a blocker whose code has landed but whose criteria have not passed still holds B, and no gate anywhere in Forge reads \`merged_at\` to release a dependent. Retracting the edge — re-send it with \`validUntil\` in the past — and dropping A, which expires its edges for the same reason, both take B out of the held set, and the \`forge\` plugin reads the edge's own expiry the same way.
 - \`relates\`, \`duplicates\`, \`parent\` — grouping labels, no dispatch effect.
-- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} Ordering between the two is still a \`blocks\` edge.
+- \`decomposes\` — epic → child, a grouping label with no dispatch effect: it waives nothing, since a mark takes the agent's word whatever the issue carries. Ordering between the two is still a \`blocks\` edge.
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`POST /api/projects/:id/issues\` with \`relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.

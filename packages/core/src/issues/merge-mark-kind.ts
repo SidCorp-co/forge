@@ -85,8 +85,6 @@ export function describeMergeMark(args: {
     by?: 'subject' | 'change-request' | 'filing';
     filing?: number | null;
   } | null;
-  /** Why the repository did not vouch for the commit a claim names, where it was asked. */
-  unvouched?: string | null;
   /** The branch an `observed` row holds as its target, and the one this call named. */
   target?: string | null;
   claimedTarget?: string | null;
@@ -95,7 +93,7 @@ export function describeMergeMark(args: {
     return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
   }
   if (args.kind === 'landed') {
-    return `this mark names where the work landed outside git: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
+    return `this mark names where the work landed: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
   }
   if (args.kind === 'observed') {
     // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
@@ -117,10 +115,7 @@ export function describeMergeMark(args: {
   const claim = args.claimedCommit
     ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``
     : 'no commit is recorded in `merged_commit_sha`';
-  const why = args.unvouched
-    ? `. The repository was asked and did not vouch for it as this issue's landing: ${args.unvouched}`
-    : '';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${why}`;
+  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue`;
 }
 
 /** The flow a design artifact's `<flow>@rev<n>` ref names. */

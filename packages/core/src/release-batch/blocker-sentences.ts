@@ -86,7 +86,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     '{named} {have} no release note, and closing {them} would claim a ship ' +
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
-    '{named} {have} no merge Forge watched land, so nothing says {their} work is on the branch this release deployed. Mark the merge on {each} first — a release records what shipped, and an issue nobody merged did not.',
+    "{named} {have} no merge mark, so nothing says {their} work landed. Mark {each} merged first, naming what you have (a commit, where it landed, its artifacts, a live reading) or nothing: a release records what shipped, and the mark is the agent's word that it did.",
   RELEASE_PROBES_UNREADABLE:
     'Every runtime probe the production environment declares identifies an artifact, so no reading can say which commit production serves and the release could never be proved. Declare a probe that identifies the source on the production environment.',
   RELEASE_POOL_EMPTY:
@@ -327,11 +327,6 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
     return unroutedSentence(remedy, details.missing, details);
-  }
-  if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
-    return fillNamed('{named} {have} no mark saying where {their} work landed.', details).concat(
-      ` This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`,
-    );
   }
   if (code === 'RELEASE_VERSION_UNDECIDED' && typeof details?.version === 'string') {
     return undecidedSentence(details);

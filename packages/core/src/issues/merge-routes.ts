@@ -8,6 +8,9 @@
  * ISS-959 — the mark also records the commit it was made at, so the claim is
  * checkable rather than a judgement call read out of the note's prose.
  *
+ * ISS-1017 — whether work is done is the agent's call: the mark refuses no evidence it lacks, and
+ * records what it names, as named, with who named it (`mark-said.ts`).
+ *
  * ISS-1073 added the OTHER door, which merges through the source host and so is
  * the integration door's (`integration-door/issue-merge-routes.ts`); the two read
  * as a pair on purpose: `POST /:id/merge` is a claim that work shipped, and
@@ -22,7 +25,11 @@
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
 import { RECORD_REVIEW_SHAPE, recordReviewRequestSchema } from '@forge/contracts/issue-review';
-import { changedPathsSchema, landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
+import {
+  changedPathsSchema,
+  landingArtifactsSchema,
+  liveReadingSchema,
+} from '@forge/contracts/landing-artifacts';
 import { MERGE_CHECK_SHAPE, mergeCheckReportSchema } from '@forge/contracts/merge-check';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -50,6 +57,7 @@ const mergeMarkerBodySchema = z
     landing: mergedLandingSchema.optional(),
     artifacts: landingArtifactsSchema.optional(),
     changedPaths: changedPathsSchema.optional(),
+    liveReading: liveReadingSchema.optional(),
     mergedAt: z.iso.datetime().optional(),
     contracts: z
       .array(
@@ -79,7 +87,7 @@ async function runMergeMarker(
   const issue = { id: scope.id, projectId: scope.projectId, mergedAt: scope.mergedAt };
 
   const actor = restActor(c);
-  const { action, mark, markDetail, artifacts } = await applyMergeMarker({
+  const { action, mark, markDetail, artifacts, said, by, commitReading } = await applyMergeMarker({
     issue,
     op,
     ...(body.target ? { target: body.target } : {}),
@@ -88,6 +96,7 @@ async function runMergeMarker(
     ...(body.landing ? { landing: body.landing } : {}),
     ...(body.artifacts ? { artifacts: body.artifacts } : {}),
     ...(body.changedPaths ? { changedPaths: body.changedPaths } : {}),
+    ...(body.liveReading ? { liveReading: body.liveReading } : {}),
     ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
     ...(body.contracts ? { contracts: body.contracts } : {}),
     ...(body.adoptions ? { adoptions: body.adoptions } : {}),
@@ -95,6 +104,7 @@ async function runMergeMarker(
       agency: actor.agency,
       commentAuthorId: userId,
       hookActor: { type: actor.type, id: actor.id, agency: actor.agency },
+      box: c.get('patDeviceId') ?? c.get('deviceId') ?? null,
     },
   });
   // ISS-774: the agent's mark is one of the two writes that may close a change-request release whose
@@ -106,7 +116,16 @@ async function runMergeMarker(
   // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
   // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
   // and never reached the one party that could act on it.
-  return c.json({ id: issueId, action, mark, detail: markDetail, artifacts });
+  // ISS-1017 — what the call named, as named, who named it, and what the repository said of a commit
+  // it named: the mark takes the agent's word, so the answer shows the word it took.
+  return c.json({
+    id: issueId,
+    action,
+    mark,
+    detail: markDetail,
+    artifacts,
+    ...(op === 'mark' ? { said, by, commitReading } : {}),
+  });
 }
 
 const mergeMarkerValidators = [

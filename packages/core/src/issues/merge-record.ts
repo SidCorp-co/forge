@@ -40,7 +40,7 @@ type MergeEvidence =
       artifacts?: LandingArtifact[] | null;
     }
   | { kind: 'landed'; landing: string; at?: Date | null; artifacts?: LandingArtifact[] | null }
-  | { kind: 'asserted'; at?: Date | null }
+  | { kind: 'asserted'; at?: Date | null; artifacts?: LandingArtifact[] | null }
   /** An adoption record Forge read (REQ-5 BC-17): the `adoption` artifacts it names and, outside
    *  git, the landing sentence naming them. No commit: the issue changed no code. */
   | { kind: 'adopted'; artifacts: LandingArtifact[]; landing: string | null };
@@ -203,7 +203,7 @@ export async function recordIssueMerge(
           )
         : isNull(issues.mergedCommitSha);
   const landing = evidence.kind === 'asserted' ? null : (evidence.landing ?? null);
-  const artifacts = evidence.kind === 'asserted' ? null : (evidence.artifacts ?? null);
+  const artifacts = evidence.artifacts ?? null;
 
   const [wrote] = await executor
     .update(issues)

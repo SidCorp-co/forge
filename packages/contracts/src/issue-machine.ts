@@ -565,14 +565,3 @@ export function issueMovesFrom(
 	}
 	return out;
 }
-
-/** The dependency kind whose live edge out of an issue waives that issue's work-evidence gate. */
-export const WORK_EVIDENCE_WAIVER_KIND = "decomposes" as const;
-
-export const WORK_EVIDENCE_WAIVER_NOTE =
-	`It does not gate dispatch, but it is NOT inert: one live \`${WORK_EVIDENCE_WAIVER_KIND}\` edge ` +
-	"OUT of an issue waives that issue's work-evidence gate, so it can be marked merged and moved " +
-	"to a test step with no branch, no commit and no code handoff of its own. That " +
-	"exemption exists for grouping parents whose children carry the code; wiring one onto an issue " +
-	"that is meant to prove its own work removes the check that would have caught a fabricated " +
-	"merge.";

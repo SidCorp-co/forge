@@ -1,11 +1,7 @@
-import {
-  ISSUE_RESOLVED_STATUSES,
-  WORK_EVIDENCE_WAIVER_KIND,
-  WORK_EVIDENCE_WAIVER_NOTE,
-} from '@forge/contracts/issue-machine';
+import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueDependencyKind, IssueStatus } from '../db/schema.js';
 
-const NO_EFFECT_NOTE = 'Metadata only — it gates no dispatch and waives no evidence check.';
+const NO_EFFECT_NOTE = 'Metadata only — it gates no dispatch.';
 
 export const DISPATCH_GATING_KIND: IssueDependencyKind = 'blocks';
 
@@ -31,17 +27,13 @@ const GATES_DISPATCH_NOTE =
 
 export type DependencyKindEffect = {
   gatesDispatch: boolean;
-  waivesWorkEvidence: boolean;
   note: string;
 };
 
 /** What wiring an edge of this kind will actually do, for the caller that just wired it. */
 export function describeDependencyKind(kind: IssueDependencyKind): DependencyKindEffect {
   if (kind === DISPATCH_GATING_KIND) {
-    return { gatesDispatch: true, waivesWorkEvidence: false, note: GATES_DISPATCH_NOTE };
+    return { gatesDispatch: true, note: GATES_DISPATCH_NOTE };
   }
-  if (kind === WORK_EVIDENCE_WAIVER_KIND) {
-    return { gatesDispatch: false, waivesWorkEvidence: true, note: WORK_EVIDENCE_WAIVER_NOTE };
-  }
-  return { gatesDispatch: false, waivesWorkEvidence: false, note: NO_EFFECT_NOTE };
+  return { gatesDispatch: false, note: NO_EFFECT_NOTE };
 }
