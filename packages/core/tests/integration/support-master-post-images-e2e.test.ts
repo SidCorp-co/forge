@@ -16,6 +16,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/master-post.ts
 // @direct-test-of packages/core/src/support/master-post-images.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/room-media.ts
+// @direct-test-of packages/core/src/uploads/index.ts
 // @direct-test-of packages/contracts/src/support-channel.ts
 //
 // ISS-1024 (FB-526): the agenfold owner asked for his agent's release checks to reach his thread with

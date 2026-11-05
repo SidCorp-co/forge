@@ -153,7 +153,8 @@ screens the words for the room's readers and records the post as the master's.
   result. With none the post goes at the top level of a room the team reads, or, in an operations
   room every project shares, in the project's own thread its binding records.
 - **Images.** \`attachments\` names up to four Forge uploads as \`{ target: issue | comment | session,
-  attachmentId }\`: attach a screenshot to the issue first (\`forge attach\`), then name its id. Each
+  attachmentId }\`: attach a screenshot to the issue first
+  (\`POST /api/issues/:id/attachments\`), then name the id it answers. Each
   is a png, jpeg, gif or webp of at most 4000000 bytes, of a project you read, and follows the text
   into the same room and thread under a neutral name.
 - **A room its users read** takes a master's words only in an asker's thread (one a member wrote
