@@ -182,9 +182,12 @@ export interface DispatchChatTurnArgs {
   /**
    * The token this turn acts under in place of the box's own, minted for the person it answers
    * (`session-credential.ts`). A follow-up carries one too: the previous turn's was revoked when
-   * that turn stopped, so the runner respawns the session under this one.
+   * that turn stopped, so the runner respawns the session under this one. Given as the mint
+   * itself, it is minted only once this turn holds the session (ISS-977): a mint revokes the
+   * session's live token, so a second turn refused beside a running one never revokes the token
+   * that turn runs under.
    */
-  credential?: string | undefined;
+  credential?: string | (() => Promise<string>) | undefined;
   /** Who sent the turn, as the kernel records the session's move to `running`; absent, core. */
   actor?: KernelActor | undefined;
   /**
@@ -513,15 +516,34 @@ async function boxFrame(
 
 /** The box's socket dropped between the check and the frame: the turn is failed, never left running. */
 async function failUndelivered(sessionId: string): Promise<never> {
+  await failUnsent(sessionId, 'no_client_ack');
+  throw noClaudeClient('session');
+}
+
+/** A turn that holds the session but was never sent to its box ends failed, never left running. */
+async function failUnsent(
+  sessionId: string,
+  reason: 'no_client_ack' | 'credential_mint_failed',
+): Promise<void> {
   await transitionSessions(db, {
     to: 'failed',
-    set: { failureReason: 'no_client_ack', updatedAt: new Date() },
+    set: { failureReason: reason, updatedAt: new Date() },
     where: eq(agentSessions.id, sessionId),
-    reason: 'no_client_ack',
+    reason,
     actor: { type: 'system' },
     source: 'chat-turn',
   });
-  throw noClaudeClient('session');
+}
+
+/** The turn's token: as handed, or minted now that the turn holds the session. */
+async function credentialOf(args: DispatchChatTurnArgs, sessionId: string) {
+  if (typeof args.credential !== 'function') return args.credential;
+  try {
+    return await args.credential();
+  } catch (err) {
+    await failUnsent(sessionId, 'credential_mint_failed');
+    throw err;
+  }
 }
 
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
@@ -541,7 +563,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     void applyAutoTitleAsync({ sessionId: updated.id, userMessage: args.message, fallbackTitle });
   }
 
-  const frame = await boxFrame(args, plan, updated.id, eventSeqBase);
+  const credential = await credentialOf(args, updated.id);
+  const frame = await boxFrame({ ...args, credential }, plan, updated.id, eventSeqBase);
   if (agentSessionsPorts().sendToBoxNow(plan.deviceId, frame) === 0) {
     await failUndelivered(updated.id);
   }

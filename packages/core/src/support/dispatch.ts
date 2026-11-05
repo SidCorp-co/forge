@@ -311,13 +311,16 @@ export async function handTurn(
     if (news) parts.push(news, 'New messages:');
   }
   parts.push('messages' in body ? body.messages : body.warmUp);
-  const credential = await mintFencedSessionCredential({
-    sessionId: session.id,
-    deviceId: client.deviceId,
-    userId: room.principalUserId,
-    projectId: room.projectId,
-    permissions: SUPPORT_SESSION_GRANT,
-  });
+  // minted once the turn holds the session: a hand-over refused beside a running turn revokes
+  // nothing that turn runs under (ISS-977)
+  const credential = () =>
+    mintFencedSessionCredential({
+      sessionId: session.id,
+      deviceId: client.deviceId,
+      userId: room.principalUserId,
+      projectId: room.projectId,
+      permissions: SUPPORT_SESSION_GRANT,
+    });
   const checkout = await checkoutViewOf(room, followed);
   await dispatchChatTurn({
     session,
