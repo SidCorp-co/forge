@@ -62,8 +62,12 @@ type Quick = (typeof QUICK)[number];
 
 const TECHNICAL_KINDS: ReadonlySet<string> = new Set(TECHNICAL_ISSUE_KINDS);
 
-/** A technical backlog item: an agent's own finding, filed under one of the technical kinds (guide `what-is-an-issue`, *Two lanes*). */
-export const isTechnicalItem = (r: Pick<IssueStandingRow, "byAgent" | "category">): boolean => r.byAgent && TECHNICAL_KINDS.has(r.category ?? "");
+/**
+ * A technical backlog item: an agent's own finding, filed at draft under one of the technical kinds
+ * (guide `what-is-an-issue`, *Two lanes*). Once admitted it is delivery work, no longer the backlog.
+ */
+export const isTechnicalItem = (r: Pick<IssueStandingRow, "byAgent" | "category" | "status">): boolean =>
+  r.byAgent && r.status === "draft" && TECHNICAL_KINDS.has(r.category ?? "");
 
 const scopeOf = (raw: string | null): IssueStandingScope =>
   (ISSUE_STANDING_SCOPES as readonly string[]).includes(raw ?? "") ? (raw as IssueStandingScope) : "open";

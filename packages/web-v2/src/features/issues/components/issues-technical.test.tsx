@@ -1,5 +1,5 @@
 // The technical backlog is a filter on the Issues list, never a screen of its own (ISS-1001, owner
-// ruling 2026-11-05): its chip keeps the issues an agent filed under a technical kind, groups them by
+// ruling 2026-11-05): its chip keeps the drafts an agent filed under a technical kind, groups them by
 // module with "No module" as its own group, and counts each module's items by kind.
 
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
@@ -23,13 +23,13 @@ vi.mock("@/lib/i18n/eta-clock", () => ({ useEtaClock: () => ({ lang: "en", now: 
 vi.mock("@/features/forecast/hooks", () => ({ useEtaSort: () => [false, () => {}], useProjectForecast: () => ({ data: undefined }) }));
 
 const AT = "2026-11-01T10:00:00.000Z";
-function issue(n: number, category: string | null, byAgent: boolean, module: string | null): IssueStandingRow {
+function issue(n: number, category: string | null, byAgent: boolean, module: string | null, status = "draft"): IssueStandingRow {
   const r = {
     id: `i${n}`,
     key: `ISS-${n}`,
     title: `Issue ${n}`,
     writtenLang: null,
-    status: "draft",
+    status,
     priority: "medium",
     category,
     complexity: "s",
@@ -70,17 +70,18 @@ const ROWS = [
   issue(2, "bug", true, "Paygate"),
   issue(3, "security", true, "Paygate"),
   issue(4, "debt", true, null),
-  // a person's bug and an agent's feature are not technical items
+  // a person's bug, an agent's feature and an admitted bug are not the technical backlog
   issue(5, "bug", false, "Paygate"),
   issue(6, "feature", true, "Paygate"),
   issue(7, "performance", true, "Orders"),
+  issue(8, "bug", true, "Orders", "open"),
 ];
 
 function board() {
   window.history.replaceState(null, "", "/projects/demo/issues");
   fakeCore((c) =>
     c.path.startsWith("/projects/p1/issues/standing")
-      ? { body: { issues: ROWS, counts: { open: 7, closed: 0, all: 7, blocked: 0, blocking: 0 }, returned: 7, limit: 500, releaseApproval: false } }
+      ? { body: { issues: ROWS, counts: { open: 8, closed: 0, all: 8, blocked: 0, blocking: 0 }, returned: 8, limit: 500, releaseApproval: false } }
       : { body: {} },
   );
   return renderWithQuery(<IssuesBoard scope={{ projectId: "p1", slug: "demo" }} mode="attention" />);
@@ -93,7 +94,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("the Issues list's Technical chip (ISS-1001)", () => {
   it("counts the agent-filed technical items on its chip, and keeps only them once on", async () => {
     board();
-    await waitFor(() => expect(rows()).toHaveLength(7));
+    await waitFor(() => expect(rows()).toHaveLength(8));
     const chip = screen.getByTestId("quick-technical");
     expect(chip).toHaveTextContent("Technical");
     expect(chip).toHaveTextContent("5");
@@ -104,7 +105,7 @@ describe("the Issues list's Technical chip (ISS-1001)", () => {
 
   it("groups them by module, No module its own group last, each counted by kind", async () => {
     board();
-    await waitFor(() => expect(rows()).toHaveLength(7));
+    await waitFor(() => expect(rows()).toHaveLength(8));
     fireEvent.click(screen.getByTestId("quick-technical"));
     await waitFor(() => expect(rows()).toHaveLength(5));
     const groups = screen.getAllByTestId("list-group").map((g) => within(g).getByTestId("group-label").textContent);

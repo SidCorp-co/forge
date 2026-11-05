@@ -141,7 +141,6 @@ describe("a fact in its group", () => {
 // Each page on DetailLayout, and the file that marks where its lead ends (where the lead is drawn by
 // a component of its own). A new page on the layout fails here until its lead is marked.
 const LEAD_END_IN: Record<string, string> = {
-  "src/features/releases/components/release-page.tsx": "src/features/releases/components/release-reader.tsx",
   "src/features/issues/components/issue-detail-screen.tsx": "src/features/issues/components/detail/issue-page-main.tsx",
 };
 const WEB = join(import.meta.dirname, "../../..");
@@ -158,8 +157,9 @@ describe("every page on the detail layout", () => {
   const pages = sources(join(WEB, "src")).filter((f) => f !== "src/design/patterns/detail-tabs.tsx" && readFileSync(join(WEB, f), "utf8").includes("<DetailLayout"));
 
   it("is found", () => {
-    // ten stand on it since ISS-903 moved the requirement, master and feedback pages' facts into a drawer
-    expect(pages.length).toBeGreaterThanOrEqual(10);
+    // nine stand on it: ISS-903 moved the requirement, master and feedback pages' facts into a drawer,
+    // and ISS-1001 drew the release page as one column, its facts behind its Technical section
+    expect(pages.length).toBeGreaterThanOrEqual(9);
   });
 
   // a page whose rail only lists its contents folds nothing: it owes the menu that stands in for the rail instead

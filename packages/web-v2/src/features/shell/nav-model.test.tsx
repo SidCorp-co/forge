@@ -43,6 +43,8 @@ describe("the nav model", () => {
     const product = groups[0]?.items.map((it) => it.label) ?? [];
     // REQ-33 BC-8, BC-9: a question is read in Approvals and on its item, a lesson is internal to Forge; neither has a page
     expect([...product].sort()).toEqual(["Channels", "Feedback", "Releases", "Requirements", "Workflows"]);
+    // a person works in Feedback, Requirements and Releases, so Product leads with those three (ISS-1001)
+    expect(product.slice(0, 3)).toEqual(["Feedback", "Requirements", "Releases"]);
     expect(PROJECT_ITEMS.map((it) => it.sub)).not.toEqual(expect.arrayContaining(["/questions"]));
     expect(PROJECT_ITEMS.map((it) => it.sub)).not.toEqual(expect.arrayContaining(["/lessons"]));
     expect(groups[1]?.items.map((it) => it.label)).toEqual(["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"]);

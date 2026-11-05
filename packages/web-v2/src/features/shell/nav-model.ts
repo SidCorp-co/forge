@@ -50,6 +50,8 @@ const DELIVERY_GROUP_KEY = "delivery";
 // what a project is for comes first, under Product, open as its rows were before they were grouped;
 // the machinery that builds it sits under Delivery (REQ-34 BC-23, after ISS-65 and FB-6). Decisions,
 // the roadmap and memory have no row of their own (REQ-33): each is read on the item it is about.
+// A person works in Feedback, Requirements and Releases, so Product leads with those three; Delivery
+// stays one fold away for agents and masters, every route still reachable (ISS-1001).
 const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: en("nav.proj-overview"), icon: "grid", sub: "" },
   // what waits on the person's approve-type decision, from every area, in one list
@@ -60,10 +62,10 @@ const PROJECT_MENU: ProjEntry[] = [
     icon: "folder",
     defaultOpen: true,
     items: [
-      { key: "proj-requirements", label: en("nav.proj-requirements"), icon: "book", sub: "/requirements" },
-      { key: "proj-workflows", label: en("nav.proj-workflows"), icon: "flow", sub: "/workflows" },
-      { key: "proj-releases", label: en("nav.proj-releases"), icon: "rocket", sub: "/releases" },
       { key: "proj-feedback", label: en("nav.proj-feedback"), icon: "chat", sub: "/feedback" },
+      { key: "proj-requirements", label: en("nav.proj-requirements"), icon: "book", sub: "/requirements" },
+      { key: "proj-releases", label: en("nav.proj-releases"), icon: "rocket", sub: "/releases" },
+      { key: "proj-workflows", label: en("nav.proj-workflows"), icon: "flow", sub: "/workflows" },
       // each bound chat group's members, rules, common issues and routes (REQ-75 r6 BC-30)
       { key: "proj-channels", label: en("nav.proj-channels"), icon: "mail", sub: "/channels" },
     ],
