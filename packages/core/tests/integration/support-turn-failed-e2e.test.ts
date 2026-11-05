@@ -1,4 +1,9 @@
 // @direct-test-of packages/core/src/support/last-resort.ts
+// @direct-test-of packages/core/src/support/turn-retry.ts
+// @direct-test-of packages/core/src/support/dispatch.ts
+// @direct-test-of packages/core/src/support/delivery.ts
+// @direct-test-of packages/core/src/agent-sessions/chat-turn.ts
+// @direct-test-of packages/core/src/agent-sessions/events-routes.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -8,15 +13,19 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { LAST_RESORT_LINES } from '../../src/conversations/last-resort.js';
+import { dispatchChatTurn, sessionRowById } from '../../src/agent-sessions/index.js';
+import { LAST_RESORT_LINES, STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
+import { RETRY_DELAYS_MS } from '../../src/support/turn-retry.js';
 import { rows } from '../helpers/factories.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
 
-// REQ-75 r2, BC-11 and BC-18: a support session's turn that ends failed tells each thread it left
-// with no answer so, once, in core's plain Vietnamese last-resort line (ISS-875), records it, and never hands those messages to a turn again; that holds
-// for the messages written into the turn while it ran as for the one that started it. The world is
-// support-room-e2e's: the real Rocket.Chat connection manager against a chat server and a box
-// playing the session's Claude Code.
+// REQ-75 r2, BC-11 and BC-18, as ISS-977 revised them: a support session's turn that fails on
+// Forge's side is tried again by Forge with a short back-off, each try on the room's history, and
+// only once the tries ran out is the thread told, in a plain Vietnamese line that says the assistant
+// answers when it can; the message stays queued. A thread answered since is told again on a later
+// failure. One session runs one turn at a time, and a transcript batch numbered from a stale base
+// is told core's next seq. The world is support-room-e2e's: the real Rocket.Chat connection
+// manager against a chat server and a box playing the session's Claude Code.
 
 const w = new SupportWorld();
 let roomId = '';
@@ -66,59 +75,179 @@ describe('ISS-875: a member past the hourly limit', () => {
   });
 });
 
-describe('REQ-75: a turn that fails', () => {
-  it('tells a thread a failed turn left unanswered, written into it or not, once, and never hands it that turn again', async () => {
+/** The lines of `thread` that are core's failed-turn lines, the old one asking to resend included. */
+const failedLines = async (thread: string) =>
+  (await w.chat.botLines()).filter(
+    (l) =>
+      l.tmid === thread &&
+      (l.text === STILL_QUEUED_LINE || l.text === LAST_RESORT_LINES.turn_failed),
+  );
+
+/** The room's core records of `tool` in `thread`. */
+const recorded = async (tool: string, thread: string) =>
+  (await w.actions(roomId)).filter(
+    (a) => a.kind === 'refused' && a.tool === tool && a.thread === thread,
+  ) as { output: Record<string, unknown> }[];
+
+/** The turns the session was handed `text` in. */
+const handed = (seen: Turn[], text: string) =>
+  seen.filter((t) => t.messages.some((m) => m.text === text)).length;
+
+/**
+ * The session's model for this block: a turn holding a message `failing` still owes a failure ends
+ * failed, as a crash or a refused transcript does; any other turn answers every member message.
+ */
+function play(seen: Turn[], failing: Map<string, number>) {
+  w.box.finishTurns = true;
+  w.box.model = async (turn, act) => {
+    seen.push(turn);
+    const owed = turn.messages.find((m) => (failing.get(m.text) ?? 0) > 0);
+    if (owed) {
+      failing.set(owed.text, (failing.get(owed.text) ?? 0) - 1);
+      w.box.turnEnd = 'failed';
+      return;
+    }
+    w.box.turnEnd = 'completed';
+    for (const m of turn.messages) {
+      if (m.from === 'forge') continue;
+      await act({ action: 'reply', thread: m.thread, text: `Answered: ${m.text}` });
+    }
+  };
+}
+
+describe("ISS-977: a turn that fails on Forge's side", () => {
+  it('is tried again after a short back-off and answered, with no line posted and the try on the history', async () => {
     await w.untilWarm();
     const seen: Turn[] = [];
-    w.box.model = async (turn, act) => {
-      seen.push(turn);
-      // the turn answers one thread, then its process dies before the other
-      const answered = turn.messages.find((m) => m.text === 'Where is my parcel?');
-      if (answered) await act({ action: 'reply', thread: answered.thread, text: 'On its way.' });
-    };
-    w.box.finishTurns = false;
-    const hold = await w.chat.say(w.chat.alice, 'Hold on');
-    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(1);
+    play(seen, new Map([['Where is my parcel?', 1]]));
     const parcel = await w.chat.say(w.chat.alice, 'Where is my parcel?');
-    const refund = await w.chat.say(w.chat.bob, 'Refund please');
-    // both are written into the running turn, and the turn answers one of them
-    await expect.poll(() => seen.flatMap((t) => t.messages).length, { timeout: 15_000 }).toBe(3);
-    expect(seen.slice(1).every((t) => t.event === 'session.send')).toBe(true);
-    await w.untilLines((ls) => ls.some((l) => l.tmid === parcel && l.text === 'On its way.'));
-    const [waiting] = await rows<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM support_actions WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND delivered_at IS NULL`,
+    await w.untilLines((ls) =>
+      ls.some((l) => l.tmid === parcel && l.text === 'Answered: Where is my parcel?'),
     );
-    expect(waiting?.n).toBe(0);
-    w.box.finishTurns = true;
-    w.box.turnEnd = 'failed';
-    await w.box.finish(sessionId, 'unused');
+    expect(handed(seen, 'Where is my parcel?')).toBe(2);
+    expect(await failedLines(parcel)).toEqual([]);
+    const tries = await recorded('turn_retry', parcel);
+    expect(tries).toHaveLength(1);
+    expect(tries[0]?.output).toMatchObject({ try: 1, of: 3 });
+    expect(String(tries[0]?.output.cause)).toMatch(/ended failed/);
+    expect(await recorded('turn_failed', parcel)).toEqual([]);
+  }, 60_000);
+
+  it('tells the thread once its tries ran out, never asking to resend, and keeps the message queued', async () => {
+    const seen: Turn[] = [];
+    play(seen, new Map([['Refund please', 99]]));
+    const refund = await w.chat.say(w.chat.bob, 'Refund please');
+    await w.untilLines(
+      (ls) => ls.some((l) => l.tmid === refund && l.text === STILL_QUEUED_LINE),
+      60_000,
+    );
+    expect(handed(seen, 'Refund please')).toBe(3);
+    expect((await failedLines(refund)).map((l) => l.text)).toEqual([STILL_QUEUED_LINE]);
+    expect((await recorded('turn_retry', refund)).map((a) => a.output.try)).toEqual([1, 2, 3]);
+    const told = await recorded('turn_failed', refund);
+    expect(told).toHaveLength(1);
+    expect(told[0]?.output).toMatchObject({ posted: true });
+    // still queued: waiting for a turn, on the slow back-off, its three tries counted
+    const [held] = await rows<{ delivered: boolean; tries: number; wait_s: number }>(sql`
+      SELECT delivered_at IS NOT NULL AS delivered, (output->>'tries')::int AS tries,
+             EXTRACT(EPOCH FROM ((output->>'retryAt')::timestamptz - now()))::int AS wait_s
+        FROM support_actions
+       WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = 'Refund please'`);
+    expect(held).toMatchObject({ delivered: false, tries: 3 });
+    expect(held?.wait_s).toBeGreaterThan(Number(RETRY_DELAYS_MS[1]) / 1000);
+    // the slow back-off holds it: nothing hands it on meanwhile, and nothing more is posted
+    await new Promise((r) => setTimeout(r, 3_000));
+    expect(handed(seen, 'Refund please')).toBe(3);
+    expect(await failedLines(refund)).toHaveLength(1);
+  }, 90_000);
+
+  it('a held message goes with the next turn, and a thread answered since is told again when it fails again', async () => {
+    const seen: Turn[] = [];
+    const [{ id: refund } = { id: '' }] = await rows<{ id: string }>(sql`
+      SELECT thread AS id FROM support_actions
+       WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = 'Refund please'`);
+    play(seen, new Map([['Still there?', 99]]));
+    // a new message in the thread is ready at once, and takes the held one along
+    await w.chat.say(w.chat.bob, 'Any news?', refund);
+    await w.untilLines((ls) =>
+      ls.some((l) => l.tmid === refund && l.text === 'Answered: Refund please'),
+    );
+    expect(seen[0]?.messages.map((m) => m.text).sort()).toEqual(['Any news?', 'Refund please']);
+    // answered, the thread's wait is over: its next failure is told again, under the same rule
+    await w.chat.say(w.chat.bob, 'Still there?', refund);
     await expect
-      .poll(async () => (await w.rooms())[0]?.sessionStatus, { timeout: 15_000 })
-      .toBe('failed');
-    const failedLine = (l: { text: string }) => l.text === LAST_RESORT_LINES.turn_failed;
-    await w.untilLines((ls) => ls.some((l) => l.tmid === refund && failedLine(l)));
-    await w.untilLines((ls) => ls.some((l) => l.tmid === hold && failedLine(l)));
-    const lines = await w.chat.botLines();
-    // the failed turn left hold and refund unanswered, not parcel, which it answered
-    expect(lines.filter((l) => l.tmid === hold && failedLine(l))).toHaveLength(1);
-    expect(lines.filter((l) => l.tmid === refund && failedLine(l))).toHaveLength(1);
-    expect(lines.some((l) => l.tmid === parcel && failedLine(l))).toBe(false);
-    // each thread's record is written after its line is posted, so a line can be read before it
-    const told = async () =>
-      (await w.actions(roomId)).filter(
-        (a) => a.kind === 'refused' && (a as { tool?: string }).tool === 'turn_failed',
-      ).length;
-    await expect.poll(told, { timeout: 15_000 }).toBe(2);
-    // nothing failed is handed to a turn again: the next message goes alone, and its turn failing
-    // as well is recorded, but the thread was told its one line already (ISS-875)
-    const before = seen.length;
-    const next = await w.chat.say(w.chat.bob, 'Any news?', refund);
-    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(before + 1);
-    expect(seen[before]?.messages.map((m) => m.text)).toEqual(['Any news?']);
-    expect(next).toBeTruthy();
-    await expect.poll(told, { timeout: 15_000 }).toBe(3);
-    const after = await w.chat.botLines();
-    expect(after.filter((l) => l.tmid === refund && failedLine(l))).toHaveLength(1);
+      .poll(() => failedLines(refund), { timeout: 60_000, interval: 250 })
+      .toHaveLength(2);
+    expect(handed(seen, 'Still there?')).toBe(3);
+    expect((await failedLines(refund)).every((l) => l.text === STILL_QUEUED_LINE)).toBe(true);
+    expect(await recorded('turn_failed', refund)).toHaveLength(2);
     w.box.turnEnd = 'completed';
-  });
+  }, 120_000);
+});
+
+describe('ISS-977: one session, one turn', () => {
+  it('two turns handed to one session at once start one, and refuse the other before it writes a seed row', async () => {
+    await w.settleWarm();
+    w.box.model = async () => {};
+    w.box.turnEnd = 'completed';
+    const session = await sessionRowById(sessionId);
+    if (!session) throw new Error('no session');
+    const seeds = async () =>
+      (
+        await rows<{ n: number }>(
+          sql`SELECT count(*)::int AS n FROM agent_session_events WHERE agent_session_id = ${sessionId}::uuid AND kind = 'seed'`,
+        )
+      )[0]?.n ?? 0;
+    const before = await seeds();
+    const turn = (message: string) =>
+      dispatchChatTurn({
+        session,
+        project: { id: w.projectId, slug: 'p' },
+        client: { deviceId: w.box.deviceId, migrated: false },
+        message,
+        preBuilt: true,
+        actor: { type: 'system' },
+      });
+    const both = await Promise.allSettled([turn('first'), turn('second')]);
+    const refused = both.filter((r) => r.status === 'rejected');
+    expect(both.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(String((refused[0] as PromiseRejectedResult).reason)).toMatch(/SESSION_RUNNING/);
+    expect(await seeds()).toBe(before + 1);
+    await w.settleWarm();
+  }, 60_000);
+
+  it("a batch numbered into a seed row core wrote is refused naming core's next seq, which then lands", async () => {
+    w.box.finishTurns = false;
+    const seen: Turn[] = [];
+    w.box.model = async (turn) => {
+      seen.push(turn);
+    };
+    await w.chat.say(w.chat.alice, 'Hello again');
+    await expect.poll(() => seen.length, { timeout: 15_000 }).toBe(1);
+    const [top] = await rows<{ max: number }>(
+      sql`SELECT max(seq)::int AS max FROM agent_session_events WHERE agent_session_id = ${sessionId}::uuid`,
+    );
+    const seed = Number(top?.max);
+    // a box that numbered this turn from the base before core's last seed row, as one restarted
+    // beside a second turn did
+    const post = (seq: number) =>
+      fetch(`${w.core.base}/api/agent-sessions/${sessionId}/events`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${w.box.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          events: [{ seq, kind: 'stdout', data: { line: { type: 'assistant' } } }],
+        }),
+      });
+    const clash = await post(seed);
+    expect(clash.status).toBe(409);
+    const body = (await clash.json()) as { code: string; details: Record<string, unknown> };
+    expect(body.code).toBe('SEQ_TAKEN_BY_CORE');
+    expect(body.details).toMatchObject({ seq: seed, kind: 'seed', nextSeq: seed + 1 });
+    const landed = await post(seed + 1);
+    expect(landed.status).toBe(200);
+    expect(await landed.json()).toMatchObject({ accepted: 1 });
+    w.box.finishTurns = true;
+    await w.box.finish(sessionId, 'claude-retry');
+  }, 60_000);
 });

@@ -8,6 +8,7 @@
 import { turnCredentialChatDevice } from '../agent-sessions/index.js';
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
+import { RefusalError } from '../lib/refusal.js';
 import { deviceProjectIds } from '../runners/index.js';
 import { hasUndelivered, roomsOfProjects, roomsToWarm } from './delivery.js';
 import {
@@ -99,14 +100,32 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
     const retell = await retellOf(room, box.deviceId);
     if (!retell) return 'resident';
     noteTurn(room.id, new Date());
-    await handTurn(room, session, box, { warmUp: `${retell}\n\n${WARM_UP_LINE}` });
+    if (
+      await startedBeside(handTurn(room, session, box, { warmUp: `${retell}\n\n${WARM_UP_LINE}` }))
+    )
+      return 'busy';
     return 'retold';
   }
   lastTried.set(room.id, Date.now());
   // noted before it is handed over: a warm-up can end before the hand-over returns
   noteTurn(room.id, new Date());
-  await handTurn(room, session, box, { warmUp: WARM_UP_LINE });
+  if (await startedBeside(handTurn(room, session, box, { warmUp: WARM_UP_LINE }))) return 'busy';
   return 'warmed';
+}
+
+/**
+ * Whether the hand-over was refused because a turn of the session started since it was read: core
+ * runs one turn of a session at a time (ISS-977), so the warm-up waits for that turn's end.
+ */
+async function startedBeside(handOver: Promise<void>): Promise<boolean> {
+  try {
+    await handOver;
+    return false;
+  } catch (err) {
+    if (err instanceof RefusalError && err.refusals.some((r) => r.code === 'SESSION_RUNNING'))
+      return true;
+    throw err;
+  }
 }
 
 /**

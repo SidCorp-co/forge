@@ -1,3 +1,6 @@
+// @direct-test-of packages/core/src/support/lost-turns.ts
+// @direct-test-of packages/core/src/support/turn-retry.ts
+
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -6,7 +9,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { LAST_RESORT_LINES } from '../../src/conversations/last-resort.js';
+import { STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
 import { coreTimers } from '../../src/timer-registry.js';
 import { rows } from '../helpers/factories.js';
@@ -14,8 +17,9 @@ import { SupportWorld, type Turn } from '../helpers/support-world.js';
 
 // ISS-850: a member's message handed to a turn that core's restart cut off is read delivered, and
 // no turn end is ever reported for it, so neither the drain nor the failed-turn notice reaches it.
-// When core starts and when a box reconnects, such a message is handed to the session once more,
-// and where that is spent the thread is told it went unanswered. The world is support-room-e2e's.
+// When core starts and when a box reconnects, such a message is tried again as any failed turn's is
+// (ISS-977): handed to the session after a short back-off, and only once its tries ran out is the
+// thread told, the message still queued. The world is support-room-e2e's.
 
 const w = new SupportWorld();
 let roomId = '';
@@ -84,14 +88,14 @@ async function boxReconnects(): Promise<void> {
   await w.box.connect();
 }
 
-const failedLine = (l: { text: string }) => l.text === LAST_RESORT_LINES.turn_failed;
+const failedLine = (l: { text: string }) => l.text === STILL_QUEUED_LINE;
 
 async function toldFailed(thread: string): Promise<number> {
   return (await w.chat.botLines()).filter((l) => l.tmid === thread && failedLine(l)).length;
 }
 
 describe('ISS-850: a turn core lost to its restart', () => {
-  it('hands the message to the session once more when core starts, and only once', async () => {
+  it('hands the message to the session again when core starts, and not once it was answered', async () => {
     await w.untilWarm();
     const text = 'Is the CSV export broken?';
     const thread = await lostMidTurn(text);
@@ -103,10 +107,10 @@ describe('ISS-850: a turn core lost to its restart', () => {
     // message first; its socket dropped mid hand-on refuses NO_CLAUDE_CLIENT and backs the room off.
     await expect.poll(() => handed(text), { timeout: 15_000 }).toBe(2);
     await w.untilLines((ls) => ls.some((l) => l.tmid === thread && l.text === `Answered: ${text}`));
-    const [row] = await rows<{ redelivered: string | null }>(sql`
-      SELECT output->>'redelivered' AS redelivered FROM support_actions
+    const [row] = await rows<{ tries: number | null }>(sql`
+      SELECT (output->>'tries')::int AS tries FROM support_actions
        WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = ${text}`);
-    expect(row?.redelivered).toBeTruthy();
+    expect(row?.tries).toBe(1);
     // the box coming back, core starting again, and the box coming back again hand it on no more
     await boxReconnects();
     await coreStarts();
@@ -116,24 +120,32 @@ describe('ISS-850: a turn core lost to its restart', () => {
     expect(await toldFailed(thread)).toBe(0);
   }, 90_000);
 
-  it('a message lost a second time is not handed on again: its thread is told it went unanswered', async () => {
+  it('a message lost on every try is told once its tries ran out, and stays queued', async () => {
     const text = 'Where did my invoice go?';
     const thread = await lostMidTurn(text);
     await coreStarts();
-    // re-delivered once, into a turn the next restart loses as well
+    // tried again after the short back-off, into a turn the next restart loses as well, twice
     await expect.poll(() => handed(text), { timeout: 15_000 }).toBe(2);
+    await loseTheTurn();
+    await boxReconnects();
+    await expect.poll(() => handed(text), { timeout: 30_000 }).toBe(3);
+    expect(await toldFailed(thread)).toBe(0);
     await loseTheTurn();
     await boxReconnects();
     await expect.poll(() => toldFailed(thread), { timeout: 15_000 }).toBe(1);
     await coreStarts();
     await new Promise((r) => setTimeout(r, 500));
-    expect(handed(text)).toBe(2);
+    expect(handed(text)).toBe(3);
     expect(await toldFailed(thread)).toBe(1);
     const told = (await w.actions(roomId)).filter(
       (a) => a.kind === 'refused' && a.tool === 'turn_failed' && a.thread === thread,
     );
     expect(told).toHaveLength(1);
-  }, 90_000);
+    const [row] = await rows<{ waiting: boolean }>(sql`
+      SELECT delivered_at IS NULL AS waiting FROM support_actions
+       WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = ${text}`);
+    expect(row?.waiting).toBe(true);
+  }, 120_000);
 
   it('a message whose thread got the session’s reply before the turn was lost is not handed on', async () => {
     const text = 'Thanks, what about stock?';
