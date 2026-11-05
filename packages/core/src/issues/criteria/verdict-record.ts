@@ -45,7 +45,7 @@ import {
   verdictDraftFault,
 } from './verdict-input.js';
 import { repeatedVerdict } from './verdict-repeat.js';
-import { judgeRoleFault } from './verdict-role.js';
+import { declaredRunOf, judgeDoors, judgeRoleFault } from './verdict-role.js';
 
 type VerdictColumns = Partial<typeof criterionVerdicts.$inferInsert>;
 
@@ -281,12 +281,12 @@ function misrouted(criterion: number, routed: CriterionJudge): VerdictRefusal {
     ? {
         code: 'VERDICT_JUDGED_BY_REVIEW',
         criterion,
-        detail: `criterion ${criterion} is a code property in the issue's design, so the review judges it against the diff, not QA on the running build. A run declared \`--role reviewer\` records it (over an issue that is closed too, carried untaken): through its review (\`POST /api/issues/:id/review\`) while the issue is open, or here with \`judge: "review"\` and its \`run\`. Or reclass it in the design (PUT /api/issues/:id/design)`,
+        detail: `criterion ${criterion} is a code property in the issue's design, so the review judges it against the diff, not QA on the running build. A run declared \`--role reviewer\` records it (over an issue that is closed too, carried untaken): through its review (\`POST /api/issues/:id/review\`) while the issue is open, or with ${judgeDoors('review')} and its \`run\`. Or reclass it in the design (PUT /api/issues/:id/design)`,
       }
     : {
         code: 'VERDICT_JUDGED_BY_QA',
         criterion,
-        detail: `criterion ${criterion} is observable on the running build in the issue's design, so QA judges it there, not the review. Record it as QA's (omit \`judge\`), or reclass it in the design (PUT /api/issues/:id/design)`,
+        detail: `criterion ${criterion} is observable on the running build in the issue's design, so QA judges it there, not the review. A run declared \`--role qa\` records it as QA's, with ${judgeDoors('qa')} (or no judge at all), or reclass it in the design (PUT /api/issues/:id/design)`,
       };
 }
 
@@ -297,16 +297,6 @@ function probeField(
 ): RecordEventField[] {
   const note = probeNote(verdict, criterionClass, probeId);
   return note ? [{ key: 'probe', value: note }] : [];
-}
-
-/** The run session recording a verdict, or the refusal naming why none may (`recording-session.ts`). */
-async function recordingSession(
-  tx: Tx,
-  args: Parameters<typeof recordingSessionOf>[1],
-): Promise<string | null> {
-  const found = await recordingSessionOf(tx, args);
-  if (!found.ok) throw verdictRefused(found.refusal);
-  return found.session;
 }
 
 /**
@@ -369,6 +359,12 @@ export async function recordVerdict(
     run?: string | undefined;
     /** The recording session a door already resolved; given, `run` is not read. */
     runSession?: string | null | undefined;
+    /**
+     * Whose judgement a draft naming no `judge` is: QA's (the REST door's documented default), or the
+     * recording run's own role's, as a comment's verdict fence reads (ISS-1021), QA's where that run
+     * judges as no role.
+     */
+    omittedJudge?: 'qa' | 'run-role';
   },
 ): Promise<{
   id: string;
@@ -406,7 +402,18 @@ export async function recordVerdict(
       }.`,
     });
   }
-  const judge = draft.judge ?? 'qa';
+  // the recording run is read before the judge, which a fence naming none takes from its role; a
+  // run that may not record is still refused where it always was, after the criterion's own faults
+  const recording = await recordingSessionOf(tx, {
+    issue,
+    criterion: draft.criterion,
+    author,
+    run: args.run,
+    runSession: args.runSession,
+  });
+  const declared = recording.ok ? await declaredRunOf(tx, recording.session) : null;
+  const judge =
+    draft.judge ?? (args.omittedJudge === 'run-role' ? (declared?.judge ?? 'qa') : 'qa');
   const route = (await criterionRoutesOf([criterion.id], tx)).get(criterion.id) ?? null;
   if (route !== null && route.judge !== judge) {
     throw verdictRefused(misrouted(draft.criterion, route.judge));
@@ -414,15 +421,9 @@ export async function recordVerdict(
   const identity = await identityColumns(tx, issue, draft, args.readDraft ?? readSourceDrafts);
   const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
   if (noClip) throw verdictRefused(noClip);
-  const runSessionId = await recordingSession(tx, {
-    issue,
-    criterion: draft.criterion,
-    author,
-    run: args.run,
-    runSession: args.runSession,
-  });
-  const notOwn = await judgeRoleFault(tx, {
-    session: runSessionId,
+  if (!recording.ok) throw verdictRefused(recording.refusal);
+  const runSessionId = recording.session;
+  const notOwn = judgeRoleFault(declared, {
     criterion: draft.criterion,
     judge,
     routed: route?.judge ?? null,

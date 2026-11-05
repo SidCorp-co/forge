@@ -13,7 +13,7 @@
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ForgeRecord } from '../../messaging/forge-record.js';
-import { criterionBlocksIn } from '../../messaging/verdict-identity.js';
+import { criterionBlocksIn, judgeLineRefusal } from '../../messaging/verdict-identity.js';
 import { type ParsedCriterion, parseCriteriaText } from './criteria-text.js';
 import { draftFromBlock, verdictDraftFault } from './verdict-input.js';
 
@@ -109,6 +109,11 @@ export function planIssueBackfill(
       const refuse = (why: string) => refusals.push(at(rec.source, block.criterion, why));
       if (!numbers.has(block.criterion)) {
         refuse(`the issue carries no numbered criterion ${block.criterion}`);
+        continue;
+      }
+      const wrongJudge = judgeLineRefusal(block);
+      if (wrongJudge) {
+        refuse(wrongJudge.why);
         continue;
       }
       const draft = draftFromBlock({ ...block, verdict: block.verdict });

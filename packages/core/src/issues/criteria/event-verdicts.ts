@@ -16,7 +16,7 @@ import {
   numberCriteria,
 } from '../../messaging/criterion-named.js';
 import type { ForgeRecord } from '../../messaging/forge-record.js';
-import { criterionBlocksIn } from '../../messaging/verdict-identity.js';
+import { criterionBlocksIn, judgeLineRefusal } from '../../messaging/verdict-identity.js';
 import type { Actor } from '../activity.js';
 import { namedCriteriaOf } from './criterion-names.js';
 import { lockIssue } from './store.js';
@@ -24,7 +24,7 @@ import { draftFromBlock } from './verdict-input.js';
 import { recordVerdict, type VerdictAuthor } from './verdict-record.js';
 
 const SHAPE =
-  'a verdict block names a criterion this issue carries, a verdict (pass | short | fail | skipped; skipped with a `why`), and what it was judged against: `commit: <the whole 40-character sha>`, `runtime: <whole object id>`, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>`, `design: <flow> rev <n>`, or `release: <version>` where production declares no source probe';
+  "a verdict block names a criterion this issue carries, a verdict (pass | short | fail | skipped; skipped with a `why`), and what it was judged against: `commit: <the whole 40-character sha>`, `runtime: <whole object id>`, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>`, `design: <flow> rev <n>`, or `release: <version>` where production declares no source probe; a `judge: qa | review` line names whose judgement it is, and a block with none is the recording run's own role's";
 
 const EXAMPLE = [
   '```forge-record: verdict · contract 1',
@@ -95,6 +95,10 @@ function unparsedBlocks(
     }
   }
   for (const block of criterionBlocksIn(record)) {
+    // the write door's screen refuses it first (`record-screen.ts`); asked again here so no door
+    // reaching this one records a judge nobody named
+    const judge = judgeLineRefusal(block);
+    if (judge) out.push(judge);
     if (block.verdict === null) {
       out.push(
         refusal(
@@ -164,6 +168,8 @@ export async function recordEventVerdicts(
           draft,
           author: authorOfActor(event.actor),
           commentId: event.commentId,
+          // a fence naming no `judge:` is its run's own judgement, as a reviewer run's reads (ISS-1021)
+          omittedJudge: 'run-role',
         });
         count += 1;
       } catch (err) {

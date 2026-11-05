@@ -34,6 +34,7 @@ import { type SecretSpan, secretSpans } from '@forge/observability';
 import { verdictValues } from '../../db/schema-issue-criteria.js';
 import {
   type CriterionBlock,
+  judgeOfLine,
   parseContractIdentity,
   parseDesignIdentity,
   parseStorefrontDraftRuntime,
@@ -70,7 +71,10 @@ export interface VerdictDraft {
   readonly evidence: readonly string[];
   /** The path prefixes the criterion rests on (ISS-845); omitted, it names none. */
   readonly covers?: readonly string[] | undefined;
-  /** QA's judgement of the running build, or the review's; omitted, it is QA's. */
+  /**
+   * QA's judgement of the running build, or the review's. Omitted, it is QA's at the REST door, and
+   * the recording run's own role's from a comment's verdict fence (`verdict-record.ts:recordVerdict`).
+   */
   readonly judge?: CriterionJudge | undefined;
   /** The probe this verdict keeps on its criterion (ISS-469); only the REST door sends one. */
   readonly probe?: CriterionProbe | undefined;
@@ -357,8 +361,18 @@ function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
   return null;
 }
 
-/** The draft a comment fence's criterion block stands for. */
+/**
+ * The draft a comment fence's criterion block stands for, its `judge:` line included. A judge that is
+ * neither `qa` nor `review` is refused at the write door before any block is read as a draft
+ * (`verdict-identity.ts:judgeLineRefusal`), so it is never carried here as another judge.
+ */
 export function draftFromBlock(block: CriterionBlock & { verdict: string }): VerdictDraft {
+  const judge = judgeOfLine(block.judge);
+  if (block.judge !== null && judge === null) {
+    throw new Error(
+      `criterion ${block.criterion}'s \`judge: ${block.judge}\` reached a draft unrefused; the write door refuses it by name`,
+    );
+  }
   return {
     criterion: block.criterion,
     verdict: block.verdict,
@@ -366,5 +380,6 @@ export function draftFromBlock(block: CriterionBlock & { verdict: string }): Ver
     identity: identityFromBlock(block),
     evidence: block.cited,
     withoutClip: block.withoutClip,
+    ...(judge === null ? {} : { judge }),
   };
 }

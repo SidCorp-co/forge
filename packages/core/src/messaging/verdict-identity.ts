@@ -7,6 +7,7 @@
  * still there to be told, rather than inferred later from wording.
  */
 
+import { CRITERION_JUDGES, type CriterionJudge } from '@forge/contracts/issue-design';
 import type { MessageRefusal } from './contract.js';
 import { criterionNamed, type NamedCriterion } from './criterion-named.js';
 import type { ForgeRecord } from './forge-record.js';
@@ -24,6 +25,9 @@ export const CONTRACT_FIELD = 'contract';
 export const RELEASE_FIELD = 'release';
 
 const ENVIRONMENT_FIELD = 'environment';
+
+/** `judge: qa | review`, whose judgement a block's verdict is; absent, its recording run's role's. */
+export const JUDGE_FIELD = 'judge';
 
 /** The field a criterion block cites what its verdict was taken from in. */
 export const EVIDENCE_FIELD = 'evidence';
@@ -168,6 +172,8 @@ export interface CriterionBlock {
   readonly environment: string | null;
   /** The block's `without-clip` line: why an observable criterion's judgement cites no clip (REQ-40 BC-4). */
   readonly withoutClip: string | null;
+  /** The block's `judge` line as written: `qa` or `review`; absent, the recording run's own role's (ISS-1021). */
+  readonly judge: string | null;
   /** Everything this block cites, in the order written. An empty value cites nothing. */
   readonly cited: readonly string[];
 }
@@ -185,6 +191,7 @@ const SINGLE_FIELDS = {
   [RELEASE_FIELD]: 'release',
   [ENVIRONMENT_FIELD]: 'environment',
   'without-clip': 'withoutClip',
+  [JUDGE_FIELD]: 'judge',
 } as const satisfies Record<string, Exclude<keyof CriterionBlock, 'criterion' | 'cited'>>;
 
 /** A `criterion:` value as the whole positive number it must be written as, or null. */
@@ -225,6 +232,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
           release: null,
           environment: null,
           withoutClip: null,
+          judge: null,
           cited: [],
         };
       }
@@ -313,6 +321,39 @@ function refusalsForBlock(block: CriterionBlock): MessageRefusal[] {
   return out;
 }
 
+/** The judge a block's `judge:` value names, or null where it names neither `qa` nor `review`. */
+export function judgeOfLine(value: string | null): CriterionJudge | null {
+  const named = value?.trim() ?? '';
+  return (CRITERION_JUDGES as readonly string[]).includes(named) ? (named as CriterionJudge) : null;
+}
+
+const JUDGE_SHAPE =
+  "a verdict block names its judge on a `judge:` line, `qa` (QA on the running build) or `review` (the review against the diff), or on no line at all, when it is the recording run's own role's judgement";
+
+const JUDGE_EXAMPLE = [
+  '```forge-record: verdict · contract 1',
+  'criterion: 2',
+  'verdict: pass',
+  'judge: review',
+  'commit: 3641ba21fec5096e2d1a91a40f2d9e50e9239068',
+  '```',
+].join('\n');
+
+/**
+ * The refusal of a block whose `judge:` line names neither judge, quoting the line (ISS-1021): read
+ * as either, it would record a judgement the writer never named.
+ */
+export function judgeLineRefusal(block: CriterionBlock): MessageRefusal | null {
+  if (block.judge === null || judgeOfLine(block.judge) !== null) return null;
+  return {
+    rule: 'verdict-judge',
+    why: `criterion ${block.criterion}'s \`${JUDGE_FIELD}\` line holds \`${block.judge}\`, which names no judge: a verdict's judge is ${listed(CRITERION_JUDGES)}, or the line is left out and the verdict is the recording run's own role's`,
+    quote: `${JUDGE_FIELD}: ${block.judge}`,
+    shape: JUDGE_SHAPE,
+    example: JUDGE_EXAMPLE,
+  };
+}
+
 export function listed(values: readonly (string | number)[]): string {
   return values.length === 0 ? 'none' : values.map((v) => `\`${v}\``).join(', ');
 }
@@ -383,6 +424,8 @@ export function verdictIdentityRefusals(
   for (const block of criterionBlocksIn(record)) {
     if (block.verdict === null) continue;
     out.push(...refusalsForBlock(block));
+    const judge = judgeLineRefusal(block);
+    if (judge) out.push(judge);
   }
   return out;
 }
