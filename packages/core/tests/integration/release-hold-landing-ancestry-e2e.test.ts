@@ -27,7 +27,12 @@ import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, truncateAll } from '../helpers/factories.js';
 import { declareControls } from '../helpers/project-controls.js';
-import { declareProductionDocument, fakeCoolify, releaseWorld } from '../helpers/release-world.js';
+import {
+  declareProductionDocument,
+  fakeCoolify,
+  releaseWorld,
+  verdictComment,
+} from '../helpers/release-world.js';
 
 /** 87a8c61, the commit release 0.139.0 shipped and production serves. */
 const SERVED = '87a8c6100000000000000000000000000000c610';
@@ -145,6 +150,24 @@ describe('a release hold asks for verdicts only at a commit holding the landing 
     expect(hold?.waitingFor).toBe(
       'the release that carries it to ship, then a verdict on each criterion named',
     );
+  });
+
+  it('earns nothing on passes judged at a served commit that does not hold the landing', async () => {
+    await shipped('0.139.0', SERVED, 30);
+    const id = await landedBeforeTheStamp();
+    // what the old hold asked for: passes judged at 87a8c61
+    const block = (n: number) =>
+      [`criterion: ${n}`, 'verdict: pass', `commit: ${SERVED}`, 'evidence: judge.txt'].join('\n');
+    await fx.postVerdict(id, verdictComment([block(1), block(2)]), 'judge.txt');
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result).toMatchObject({ issuesCut: 0, issuesExcluded: 1 });
+    const reason = String((await fx.holdOf(id))?.reason);
+    expect(reason).toContain(
+      `each of criteria 1 and 2: judged at ${SERVED}, which does not hold this issue's landing: production serves no commit that holds it yet`,
+    );
+    expect(reason).toContain('so the verdict is not about this change');
   });
 
   it('asks for verdicts at what production serves where it holds the landing', async () => {

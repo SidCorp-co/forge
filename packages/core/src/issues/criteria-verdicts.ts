@@ -256,6 +256,24 @@ interface Weighed {
   readonly owed: OwedRuntimes;
   readonly weighing: Weighing;
   readonly on: WeighedOn;
+  /** What the reading it is weighed on holds of the issue's landing, where that was read. */
+  readonly landing?: LandingHeld | undefined;
+}
+
+/**
+ * Why a verdict the deployment's reading would earn is not about this change (ISS-997): where what is
+ * served holds none of the issue's landing, a commit it serves, or one it carries, holds none of it
+ * either. Agenfold's hold had asked for verdicts on ISS-171 at 87a8c61, which does not hold its landing.
+ */
+function notOnTheChange(
+  at: VerdictIdentity | null,
+  weighed: WeighedVerdict,
+  landing: LandingHeld | undefined,
+): string | null {
+  if (landing?.kind !== 'lacks' || weighed.runtime !== null || !at) return null;
+  if (at.kind !== 'source' && at.kind !== 'runtime') return null;
+  const where = weighed.environment === null ? 'production' : `\`${weighed.environment}\``;
+  return `judged at ${at.value}, which does not hold this issue's landing: ${where} serves no commit that holds it yet (read from ${landing.by}), so the verdict is not about this change`;
 }
 
 function findingsFor(
@@ -312,6 +330,8 @@ function findingsFor(
     if (unresolved.length > 0) broken.push({ criterion, unresolved });
     const said = { ...pair, at: spoken(pair, standing) };
     const reasons = reasonsAgainst(said, w, identities, unresolved);
+    const off = reasons.length === 0 ? notOnTheChange(said.at, w, weigh.landing) : null;
+    if (off) reasons.push(off);
     const where = { runtime, environment };
     if (reasons.length > 0) {
       const undecided =
@@ -387,7 +407,13 @@ async function reportFor(
   const latest = latestByNumber(criteria, stands.unverified);
   const held = await heldAttachmentNames(row.id);
   const owed = owedRuntimes(row.id, weighing);
-  const found = findingsFor(numbers, latest, { serving, owed, weighing, on }, identities, held);
+  const found = findingsFor(
+    numbers,
+    latest,
+    { serving, owed, weighing, on, landing: landingHeld },
+    identities,
+    held,
+  );
   return {
     issueId: row.id,
     unearned: found.unearned,
