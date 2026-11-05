@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.532] - 2026-11-05
+
+Support rooms can promise to tell a person when an issue goes live
+
+### Added
+
+- **A support room promises to tell a person when an issue reaches an environment.** The session names the environment by the project's own name; Forge tells the thread once it serves that work, or if it never will.
+
 ## [0.4.0-dev.531] - 2026-11-05
 
 A dropped requirement trace is named by the line you sent

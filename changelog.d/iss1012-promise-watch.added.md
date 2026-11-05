@@ -1,1 +1,0 @@
-**A support room promises to tell a person when an issue reaches an environment.** The session names the environment by the project's own name; Forge tells the thread once it serves that work, or if it never will.
