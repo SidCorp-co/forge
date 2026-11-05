@@ -2,6 +2,7 @@
 import { PROBLEM_CONTENT_TYPE } from '@forge/contracts/refusal';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RequestIdVars } from './request-id.js';
 
 const reportFailure = vi.fn();
 vi.mock('../lib/error-tracking.js', () => ({ reportFailure }));
@@ -43,7 +44,7 @@ describe('connectionUnavailable', () => {
 });
 
 function app(thrown: () => unknown) {
-  const a = new Hono();
+  const a = new Hono<{ Variables: RequestIdVars }>();
   a.post('/write', () => {
     throw thrown();
   });
