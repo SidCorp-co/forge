@@ -151,6 +151,7 @@ export type {
   AdapterContext,
   AgentPath,
   AgentPathKind,
+  AlongsideBinding,
   BindingTargetRefusal,
   DeployDispatchOutcome,
   DeployTargetDispatch,

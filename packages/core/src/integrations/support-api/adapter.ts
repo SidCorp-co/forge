@@ -18,6 +18,7 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../index.js';
+import { verifyToolNames } from './tool-names.js';
 
 type SupportApiConfig = Record<string, unknown>;
 type SupportApiSecrets = Record<string, unknown>;
@@ -26,6 +27,9 @@ type SupportApiSecrets = Record<string, unknown>;
 export const SUPPORT_API_BINDING_CONFIG_KEYS = ['tools'] as const;
 
 const supportApiAdapterMethods: IntegrationAdapterMethods<SupportApiConfig, SupportApiSecrets> = {
+  // a tool name calls one API across the project's bindings (ISS-1011)
+  verifyBindingTarget: verifyToolNames,
+
   // the API is a project's own product, reached only by a declared tool a person asked for; a
   // health probe would be a call nobody asked for, so health is the configuration the door can use
   async healthcheck(
@@ -69,7 +73,9 @@ const supportApiAdapterMethods: IntegrationAdapterMethods<SupportApiConfig, Supp
 
 /**
  * No agent path: the support session reaches the API only through `forge_support`, which runs a
- * declared tool here. `multiBinding` is off: a project grants its session one API.
+ * declared tool here. `multiBinding`: a credential reads one scope (one Agenfold workspace), so a
+ * project binds one support API per credential, each under its own label, and the door serves
+ * every one, each tool with its own binding's credential and host grant (ISS-1011).
  */
 export const supportApiIntegration = declareIntegration<SupportApiConfig, SupportApiSecrets>({
   provider: 'support-api',
@@ -80,7 +86,7 @@ export const supportApiIntegration = declareIntegration<SupportApiConfig, Suppor
     canDeploy: false,
     liveConfirmGate: false,
     hasDeliveryLog: false,
-    multiBinding: false,
+    multiBinding: true,
     structuredRollback: false,
     agentPath: { kind: 'none' },
   },

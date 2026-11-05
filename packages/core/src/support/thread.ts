@@ -15,7 +15,7 @@ import {
   resolveRoomPostAuth,
   sendFixedReply,
 } from '../integrations/rocketchat/index.js';
-import { activeSupportApi, credentialValuesOf } from '../integrations/support-api/index.js';
+import { supportApiSecretsOf } from '../integrations/support-api/index.js';
 import { findProjectSlugs } from '../projects/index.js';
 import { no, type Outcome } from './outcome.js';
 import { supportVenueId } from './rules.js';
@@ -52,10 +52,9 @@ export async function threadConversationOf(
   });
 }
 
-/** Every value a line posted in this room must never carry: the room's tool credential. */
+/** Every value a line posted in this room must never carry: each of its support APIs' credentials. */
 export async function roomSecrets(room: RoomRow): Promise<string[]> {
-  const api = await activeSupportApi(room.projectId).catch(() => null);
-  return api ? credentialValuesOf(api.headers) : [];
+  return supportApiSecretsOf(room.projectId).catch(() => []);
 }
 
 /** Text with every secret the room holds, and every pattern the scrubber knows, taken out. */

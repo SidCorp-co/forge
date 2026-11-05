@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { supportBrief } from './prompt.js';
+import { supportBrief, toolsLine } from './prompt.js';
 
 const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
 
@@ -18,5 +18,32 @@ describe('the support brief states goals, and the consent a change waits on', ()
     );
     expect(brief).toContain('never claim it ran or was recorded until agree says so');
     expect(brief).not.toContain('type a code');
+  });
+});
+
+// ISS-1011: a project may bind several support APIs (one Agenfold workspace each); the session reads
+// which one each tool reads, so it can say which workspace it checked.
+describe('the tools line names the binding each tool reads', () => {
+  it('labels every tool of every binding with its binding', () => {
+    const line = toolsLine([
+      {
+        name: 'machines_moc',
+        kind: 'diagnose',
+        method: 'GET',
+        path: '/m',
+        summary: 'list machines',
+        binding: 'moc',
+      },
+      {
+        name: 'machines_sid',
+        kind: 'diagnose',
+        method: 'GET',
+        path: '/m',
+        summary: 'list machines',
+        binding: 'sidcorp',
+      },
+    ]);
+    expect(line).toContain('- machines_moc (diagnose) on moc: list machines');
+    expect(line).toContain('- machines_sid (diagnose) on sidcorp: list machines');
   });
 });

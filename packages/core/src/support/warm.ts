@@ -6,7 +6,7 @@
 // (`jobs/park-deadline.ts:closeIdleResidents` never closes it).
 
 import { turnCredentialChatDevice } from '../agent-sessions/index.js';
-import { activeSupportApi } from '../integrations/support-api/index.js';
+import { supportApisOf } from '../integrations/support-api/index.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceProjectIds } from '../runners/index.js';
@@ -144,7 +144,7 @@ async function retellOf(room: RoomRow, deviceId: string): Promise<string | null>
       reach: await projectsInScope(room),
     })}`;
   }
-  const tools = (await activeSupportApi(room.projectId))?.tools ?? [];
+  const { tools } = await supportApisOf(room.projectId);
   const config = await supportConfigOf(room);
   if (toldTools(room.id) === toolsKey(tools, config)) return null;
   // a channel agent's rooms share one session: it is told once for all of them (REQ-77)

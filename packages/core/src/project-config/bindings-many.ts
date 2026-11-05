@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { TxOnly } from '../db/client.js';
-import type { IntegrationConnectionRow } from '../integrations/index.js';
+import type { AlongsideBinding, IntegrationConnectionRow } from '../integrations/index.js';
 import { drizzleBindingStore } from './binding-store.js';
+import { encodeTarget } from './binding-target-codec.js';
 import {
   type BindingPlan,
   casRefusal,
@@ -11,8 +12,8 @@ import {
   planBinding,
   writtenDocumentOf,
 } from './bindings.js';
-import type { ApiRefusal } from './documents.js';
-import type { BindingDocument } from './schema.js';
+import { type ApiRefusal, parseVersionedDocument } from './documents.js';
+import { type BindingDocument, bindingDocumentSchema } from './schema.js';
 
 const store = drizzleBindingStore;
 
@@ -50,8 +51,9 @@ export async function writeBindings(input: {
   storePending?: (tx: TxOnly) => Promise<void>;
 }): Promise<BindingsOutcome> {
   const pending = input.pending ?? null;
+  const alongside = alongsideOf(input.items, pending);
   const planned = await Promise.all(
-    input.items.map((item) => planBinding({ ...item, userId: input.userId, pending })),
+    input.items.map((item) => planBinding({ ...item, userId: input.userId, pending, alongside })),
   );
   const refusals = planned.flatMap((p, index) =>
     p.ok ? [] : p.refusals.map((r) => ({ ...r, index })),
@@ -92,6 +94,34 @@ export async function writeBindings(input: {
     });
   }
   return { ok: true, held };
+}
+
+/**
+ * Every item as a check across bindings reads it, before any is stored: two items of one call can
+ * clash with each other as much as with a stored binding. An item that does not parse is left out;
+ * its own plan refuses it by name.
+ */
+function alongsideOf(
+  items: readonly BindingsItem[],
+  pending: IntegrationConnectionRow | null,
+): AlongsideBinding[] {
+  return items.flatMap((item) => {
+    const parsed = parseVersionedDocument(bindingDocumentSchema, item.raw, 'binding');
+    if (!parsed.ok) return [];
+    const doc = parsed.value;
+    const encoded = encodeTarget(doc.target);
+    return [
+      {
+        projectId: item.projectId,
+        bindingId: item.bindingId,
+        provider: encoded.provider,
+        label: encoded.label,
+        config: encoded.config,
+        active: doc.active ?? true,
+        displayName: pending?.id === doc.connection ? (pending.displayName ?? null) : null,
+      },
+    ];
+  });
 }
 
 /**

@@ -92,7 +92,7 @@ const room = (over: Partial<SupportRoomView>): SupportRoomView => ({
   sessionStatus: "completed",
   resident: true,
   principalUserId: "u",
-  toolCount: 0,
+  supportApis: [],
   name: "sid-catalog",
   readers: "team",
   answers: "mentions",

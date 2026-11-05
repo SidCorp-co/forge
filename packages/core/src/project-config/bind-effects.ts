@@ -2,6 +2,7 @@ import type { BindingRole } from '../db/release-axes.js';
 import {
   AGENT_ACCESS_CLOSED,
   type AgentAccess,
+  type AlongsideBinding,
   agentAccessRefusedMessage,
   agentAccessTier,
   findBindingWithConnectionById,
@@ -37,6 +38,10 @@ interface BindEffects {
     provider: string;
     config: Record<string, unknown>;
     held: Record<string, unknown> | null;
+    label: string;
+    active: boolean;
+    /** The other bindings the same call writes, not stored yet. */
+    alongside: readonly AlongsideBinding[];
     /** The connection itself, where it is not stored yet. */
     connection?: IntegrationConnectionRow;
   }): Promise<ApiRefusal[]>;
@@ -105,13 +110,26 @@ export const bindEffects: BindEffects = {
     provider,
     config,
     held,
+    label,
+    active,
+    alongside,
     ...given
   }) {
     const verify = getAdapter(provider)?.verifyBindingTarget;
     if (!verify) return [];
     const connection = given.connection ?? (await findConnectionById(connectionId));
     if (!connection) return [];
-    const refused = await verify({ projectId, bindingId, userId, connection, config, held });
+    const refused = await verify({
+      projectId,
+      bindingId,
+      userId,
+      connection,
+      config,
+      held,
+      label,
+      active,
+      alongside,
+    });
     return refused.map((r) => ({ ...r, path: `/target${r.path}` }));
   },
 

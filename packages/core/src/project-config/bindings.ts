@@ -1,7 +1,7 @@
 import { withArticle } from '@forge/contracts/articles';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import type { BindingRole as RowRole } from '../db/release-axes.js';
-import type { IntegrationConnectionRow } from '../integrations/index.js';
+import type { AlongsideBinding, IntegrationConnectionRow } from '../integrations/index.js';
 import { bindEffects } from './bind-effects.js';
 import { drizzleBindingStore, type StoredBinding } from './binding-store.js';
 import { decodeTarget, encodeTarget } from './binding-target-codec.js';
@@ -273,6 +273,8 @@ export async function planBinding(input: {
   baseRevision: number | null;
   raw: unknown;
   pending?: IntegrationConnectionRow | null;
+  /** The other bindings the same call writes, which a check across bindings reads beside the stored. */
+  alongside?: readonly AlongsideBinding[];
 }): Promise<BindingPlan> {
   const { projectId, bindingId, userId, baseRevision, raw } = input;
   const pending = input.pending ?? null;
@@ -313,6 +315,9 @@ export async function planBinding(input: {
     config: encoded.config,
     held:
       current?.connectionId === doc.connection && isRecord(current.config) ? current.config : null,
+    label: encoded.label,
+    active,
+    alongside: input.alongside ?? [],
     ...(pending?.id === doc.connection ? { connection: pending } : {}),
   });
   if (unverified.length > 0) return { ok: false, refusals: unverified };

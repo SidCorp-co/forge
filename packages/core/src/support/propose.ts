@@ -6,9 +6,9 @@
 
 import { SUPPORT_FIX_TTL_MS } from '@forge/contracts/support';
 import {
-  activeSupportApi,
-  planCall,
+  planSupportCall,
   type SupportCallArgs,
+  supportApisOf,
 } from '../integrations/support-api/index.js';
 import { changeWaitsOnRole, requestIsConsent, whoConfirms } from './confirm-role.js';
 import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
@@ -160,8 +160,8 @@ export async function proposeFix(input: {
   const { room } = input;
   const asked = await askerOf(room, input.thread, input.asker);
   if (!asked.ok) return asked;
-  const api = await activeSupportApi(room.projectId);
-  if (!api) {
+  const apis = await supportApisOf(room.projectId);
+  if (apis.bindings.length === 0) {
     return {
       ok: false,
       refusals: [
@@ -173,13 +173,7 @@ export async function proposeFix(input: {
       ],
     };
   }
-  const planned = planCall({
-    config: api.config,
-    tools: api.tools,
-    name: input.tool,
-    kind: 'fix',
-    args: input.args,
-  });
+  const planned = planSupportCall({ apis, name: input.tool, kind: 'fix', args: input.args });
   if ('refusal' in planned) {
     await insertAction({
       roomId: room.id,

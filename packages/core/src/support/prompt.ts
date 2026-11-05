@@ -9,10 +9,10 @@ import {
   type SupportRead,
   type SupportReaders,
   type SupportRoomConfig,
-  type SupportTool,
 } from '@forge/contracts/support';
 import { readMessages } from '../conversations/index.js';
 import { guideRef } from '../guides/index.js';
+import type { BoundSupportTool } from '../integrations/support-api/index.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { writerRoles } from './channel-read.js';
 import type { FollowedCheckout } from './dispatch.js';
@@ -34,7 +34,7 @@ const COLD_LINES = 12;
 export function supportBrief(input: {
   projectName: string;
   product: string | null;
-  tools: readonly SupportTool[];
+  tools: readonly BoundSupportTool[];
   config?: SupportRoomConfig | null;
   /** The channel record every bot of this group reads (REQ-75 r6 BC-41). */
   channel?: string | null;
@@ -180,12 +180,15 @@ export function grantsLine(g: SupportGrants): string {
 const grantsOfConfig = (config: SupportRoomConfig | null): SupportGrants =>
   config?.grants ?? { abilities: [] };
 
-/** The tools the project grants, as the brief lists them and a grant change re-tells them. */
-export function toolsLine(tools: readonly SupportTool[]): string {
+/**
+ * The tools the project grants, as the brief lists them and a grant change re-tells them: each
+ * names the support API (the workspace) it reads, since a project may bind several (ISS-1011).
+ */
+export function toolsLine(tools: readonly BoundSupportTool[]): string {
   const lines = tools.length
-    ? tools.map((t) => `- ${t.name} (${t.kind}): ${t.summary}`).join('\n')
+    ? tools.map((t) => `- ${t.name} (${t.kind}) on ${t.binding}: ${t.summary}`).join('\n')
     : '- none: this project grants no tools yet; answer and record only';
-  return `The tools this project grants:\n${lines}`;
+  return `The tools this project grants, each on the support API it reads:\n${lines}`;
 }
 
 /** Every open thread's recent lines, for a session that starts without its own history. */

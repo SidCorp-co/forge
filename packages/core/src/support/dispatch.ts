@@ -10,7 +10,7 @@
 // never heard, as one cut off by a core restart, is read lost once it goes silent (`lost-turns.ts`,
 // ISS-850), and its messages are tried again the same way.
 
-import type { SupportDeliveryPath, SupportRoomConfig, SupportTool } from '@forge/contracts/support';
+import type { SupportDeliveryPath, SupportRoomConfig } from '@forge/contracts/support';
 import type { ChatRole } from '@forge/contracts/support-operations';
 import {
   type CheckoutView,
@@ -24,7 +24,7 @@ import { db } from '../db/client.js';
 import type { agentSessions } from '../db/schema.js';
 import { findBindingWithConnectionById, forgeReads } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
-import { activeSupportApi } from '../integrations/support-api/index.js';
+import { type BoundSupportTool, supportApisOf } from '../integrations/support-api/index.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -71,9 +71,9 @@ export function noteTurn(roomId: string, at: Date): void {
  */
 const briefedTools = new Map<string, string>();
 /** What a support group's session was briefed with: its tools, and its room's persona, readers and grant. */
-export const toolsKey = (tools: readonly SupportTool[], config: SupportRoomConfig | null) =>
+export const toolsKey = (tools: readonly BoundSupportTool[], config: SupportRoomConfig | null) =>
   JSON.stringify([
-    tools.map((t) => [t.name, t.kind, t.summary]),
+    tools.map((t) => [t.name, t.kind, t.summary, t.binding]),
     config?.persona ?? null,
     config?.readers ?? null,
     config?.answers ?? null,
@@ -86,7 +86,7 @@ export function toldTools(roomId: string): string | undefined {
 }
 export function noteTools(
   roomId: string,
-  tools: readonly SupportTool[],
+  tools: readonly BoundSupportTool[],
   config: SupportRoomConfig | null,
 ): void {
   briefedTools.set(roomId, toolsKey(tools, config));
@@ -158,16 +158,16 @@ async function briefOf(
       await briefChannel(room),
     ].join('\n\n');
   }
-  const api = await activeSupportApi(room.projectId);
+  const { tools } = await supportApisOf(room.projectId);
   const config = await supportConfigOf(room);
-  noteTools(room.id, api?.tools ?? [], config);
+  noteTools(room.id, tools, config);
   if (room.kind === 'agent') {
-    return agentBriefOf(room, projectName, api?.tools ?? [], config, followed);
+    return agentBriefOf(room, projectName, tools, config, followed);
   }
   return supportBrief({
     projectName,
     product: config?.product ?? null,
-    tools: api?.tools ?? [],
+    tools,
     config,
     channel: await briefChannel(room),
   });
@@ -180,7 +180,7 @@ async function briefOf(
 async function agentBriefOf(
   room: RoomRow,
   projectName: string,
-  tools: readonly SupportTool[],
+  tools: readonly BoundSupportTool[],
   config: SupportRoomConfig | null,
   followed: readonly FollowedCheckout[],
 ): Promise<string> {

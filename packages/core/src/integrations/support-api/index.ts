@@ -1,5 +1,14 @@
 export { SUPPORT_API_BINDING_CONFIG_KEYS, supportApiIntegration } from './adapter.js';
-export { activeSupportApi, type SupportApi } from './binding.js';
+export {
+  type BoundSupportTool,
+  readSupportApis,
+  type SupportApi,
+  type SupportApiRead,
+  type SupportApis,
+  supportApiNameOf,
+  supportApiSecretsOf,
+  supportApisOf,
+} from './binding.js';
 export {
   callGranted,
   credentialValuesOf,
@@ -7,6 +16,7 @@ export {
   hostGranted,
   type PlannedCall,
   planCall,
+  planSupportCall,
   type SupportCallArgs,
   type SupportCallRefusal,
   type SupportCallResult,

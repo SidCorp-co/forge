@@ -5,12 +5,13 @@ import {
   SUPPORT_DELIVERY_PATHS,
   SUPPORT_LATENCY_WINDOW,
   type SupportActionView,
+  type SupportApiView,
   type SupportLatencyView,
   type SupportRoomView,
 } from '@forge/contracts/support';
 import { sessionStatusesByIds } from '../agent-sessions/index.js';
 import { externalItemPhases } from '../feedback/index.js';
-import { activeSupportApi } from '../integrations/support-api/index.js';
+import { readSupportApis } from '../integrations/support-api/index.js';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
 import { answersOfConfig, readersOfConfig, supportConfigOf } from './grants.js';
@@ -34,7 +35,7 @@ export async function supportRoomsOf(
   const statusOf = await sessionStatusesByIds(
     rooms.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
   );
-  const api = await activeSupportApi(projectId).catch(() => null);
+  const supportApis = await supportApisView(projectId);
   return Promise.all(
     rooms.map(async (r) => {
       const session = r.sessionId ? statusOf.get(r.sessionId) : undefined;
@@ -52,7 +53,7 @@ export async function supportRoomsOf(
         sessionStatus: session?.status ?? null,
         resident: session?.status === 'running' || session?.runtimeState === 'awaiting_input',
         principalUserId: r.principalUserId,
-        toolCount: api?.tools.length ?? 0,
+        supportApis,
         name,
         readers: readersOfConfig(r, config),
         answers: answersOfConfig(r, config),
@@ -64,6 +65,23 @@ export async function supportRoomsOf(
         createdAt: r.createdAt.toISOString(),
       };
     }),
+  );
+}
+
+/**
+ * Every support API the project grants, each with its tools or the fault that keeps the door from
+ * calling it: one that does not parse is shown with why, never dropped from the list.
+ */
+async function supportApisView(projectId: string): Promise<SupportApiView[]> {
+  return (await readSupportApis(projectId)).map((r) =>
+    r.ok
+      ? {
+          bindingId: r.api.bindingId,
+          name: r.api.name,
+          tools: r.api.tools.map((t) => ({ name: t.name, kind: t.kind })),
+          fault: null,
+        }
+      : { bindingId: r.bindingId, name: r.name, tools: [], fault: r.fault },
   );
 }
 

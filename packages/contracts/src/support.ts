@@ -981,6 +981,19 @@ export const SUPPORT_BOX_CAPABILITIES = {
 	siblings: "siblingCheckouts",
 } as const;
 
+/**
+ * One support API the project grants its rooms (ISS-1011): a project may bind several, one per
+ * credential (one Agenfold workspace each), and each tool reads the one that grants it.
+ */
+export interface SupportApiView {
+	bindingId: string;
+	/** Its label, else its connection's name: what the room calls it. */
+	name: string;
+	tools: { name: string; kind: SupportToolKind }[];
+	/** Why the support door cannot call it as stored; null where it can. */
+	fault: string | null;
+}
+
 export interface SupportRoomView {
 	id: string;
 	/** The project whose binding attaches the room; an operations room's home, whose box serves it. */
@@ -997,7 +1010,8 @@ export interface SupportRoomView {
 	/** Whether the session's process waits resident on its box for the next message. */
 	resident: boolean;
 	principalUserId: string;
-	toolCount: number;
+	/** Every support API the project grants, oldest first, each with the tools it serves. */
+	supportApis: SupportApiView[];
 	/** The group's name on the chat server, where the bot can read it. */
 	name: string | null;
 	readers: SupportReaders;

@@ -10,10 +10,10 @@
 
 import type { SupportGrants } from '@forge/contracts/support';
 import {
-  activeSupportApi,
   callGranted,
-  planCall,
+  planSupportCall,
   type SupportCallArgs,
+  supportApisOf,
 } from '../integrations/support-api/index.js';
 import { runConfirmed } from './ability-run.js';
 import { memberMessage } from './channel-store.js';
@@ -307,15 +307,14 @@ async function runFix(
   maxBytes: number,
   conversationId: string,
 ): Promise<Outcome<Agreed>> {
-  const api = await activeSupportApi(room.projectId);
+  const apis = await supportApisOf(room.projectId);
   const args = (fix.args ?? {}) as SupportCallArgs;
+  const granted = apis.bindings.length > 0;
   const planned =
-    api && fix.tool
-      ? planCall({ config: api.config, tools: api.tools, name: fix.tool, kind: 'fix', args })
-      : null;
-  if (!api || !planned || 'refusal' in planned) {
+    granted && fix.tool ? planSupportCall({ apis, name: fix.tool, kind: 'fix', args }) : null;
+  if (!granted || !planned || 'refusal' in planned) {
     // the grant changed between the proposal and the agreement: refused now, by the grant as it stands
-    const detail = !api
+    const detail = !granted
       ? 'this project no longer grants its support session tools'
       : planned && 'refusal' in planned
         ? planned.refusal.detail
@@ -338,10 +337,11 @@ async function runFix(
       value: { ran: false, what: `${changeName(fix)} was not run: ${detail}.`, result: null },
     };
   }
+  // sent with the credential of the binding that grants the tool, and no other's
   const called = await callGranted({
     plan: planned.plan,
-    config: api.config,
-    headers: api.headers,
+    config: planned.api.config,
+    headers: planned.api.headers,
     maxBytes,
   });
   const result =

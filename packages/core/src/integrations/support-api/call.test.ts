@@ -1,6 +1,7 @@
 import type { SupportApiConnectionConfig, SupportTool } from '@forge/contracts/support';
 import { describe, expect, it } from 'vitest';
-import { callGranted, credentialValuesOf, planCall } from './call.js';
+import type { SupportApi, SupportApis } from './binding.js';
+import { callGranted, credentialValuesOf, planCall, planSupportCall } from './call.js';
 
 // REQ-75 BC-12, BC-13, BC-17: the one door a support session's tools reach the product API through.
 
@@ -180,5 +181,83 @@ describe('callGranted: core sends, the credential never comes back (BC-17)', () 
     await callGranted({ plan: out.plan, config, headers, maxBytes: 1000, fetchImpl: ok.impl });
     expect(ok.seen[0]?.init.method).toBe('POST');
     expect(JSON.parse(String(ok.seen[0]?.init.body))).toEqual({ email: 'a@b.test' });
+  });
+});
+
+// ISS-1011: a project binds one support API per credential (one Agenfold workspace each); a tool is
+// planned on the binding that grants it, and goes out with that binding's host and headers alone.
+describe('planSupportCall: each tool on its own binding (ISS-1011)', () => {
+  const moc: SupportApi = {
+    bindingId: 'b-moc',
+    name: 'moc',
+    config: { baseUrl: 'https://moc.agenfold.test/api' },
+    tools: [
+      {
+        name: 'machines_moc',
+        kind: 'diagnose',
+        method: 'GET',
+        path: '/machines',
+        summary: 'list the machines of Moc',
+      },
+    ],
+    headers: { 'X-Api-Key': 'key_moc_0123456789' },
+  };
+  const sidcorp: SupportApi = {
+    bindingId: 'b-sidcorp',
+    name: 'sidcorp',
+    config: { baseUrl: 'https://sidcorp.agenfold.test/api' },
+    tools: [
+      {
+        name: 'machines_sidcorp',
+        kind: 'diagnose',
+        method: 'GET',
+        path: '/machines',
+        summary: 'list the machines of SidCorp',
+      },
+    ],
+    headers: { 'X-Api-Key': 'key_sidcorp_9876543210' },
+  };
+  const apis: SupportApis = {
+    bindings: [moc, sidcorp],
+    tools: [
+      ...moc.tools.map((t) => ({ ...t, binding: moc.name })),
+      ...sidcorp.tools.map((t) => ({ ...t, binding: sidcorp.name })),
+    ],
+  };
+
+  it("plans the second binding's tool on that binding's host, and hands back that binding", () => {
+    const out = planSupportCall({ apis, name: 'machines_sidcorp', kind: 'diagnose', args: {} });
+    if (!('plan' in out)) throw new Error(JSON.stringify(out));
+    expect(out.plan.url.href).toBe('https://sidcorp.agenfold.test/api/machines');
+    expect(out.api.bindingId).toBe('b-sidcorp');
+    expect(out.api.headers).toEqual({ 'X-Api-Key': 'key_sidcorp_9876543210' });
+  });
+
+  it("sends each tool's call with its own binding's credential, never the other's", async () => {
+    for (const [tool, key, host] of [
+      ['machines_moc', 'key_moc_0123456789', 'moc.agenfold.test'],
+      ['machines_sidcorp', 'key_sidcorp_9876543210', 'sidcorp.agenfold.test'],
+    ] as const) {
+      const out = planSupportCall({ apis, name: tool, kind: 'diagnose', args: {} });
+      if (!('plan' in out)) throw new Error(JSON.stringify(out));
+      const fetched = fakeFetch(() => new Response('{}', { status: 200 }));
+      await callGranted({
+        plan: out.plan,
+        config: out.api.config,
+        headers: out.api.headers,
+        maxBytes: 1000,
+        fetchImpl: fetched.impl,
+      });
+      const [sent] = fetched.seen;
+      if (!sent) throw new Error(`${tool} sent nothing`);
+      expect(new URL(sent.url).host).toBe(host);
+      expect((sent.init.headers as Record<string, string>)['X-Api-Key']).toBe(key);
+    }
+  });
+
+  it('refuses a tool no binding grants, naming the tools of every binding', () => {
+    const out = planSupportCall({ apis, name: 'drop_tables', kind: 'diagnose', args: {} });
+    expect('refusal' in out && out.refusal.code).toBe('SUPPORT_TOOL_UNDECLARED');
+    expect('refusal' in out && out.refusal.detail).toContain('machines_moc, machines_sidcorp');
   });
 });

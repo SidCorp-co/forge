@@ -44,7 +44,12 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
     expect(rooms).toHaveLength(1);
     roomId = String(rooms[0]?.id);
     sessionId = String(rooms[0]?.sessionId);
-    expect(rooms[0]).toMatchObject({ rid: w.chat.rid, toolCount: 3 });
+    expect(rooms[0]).toMatchObject({
+      rid: w.chat.rid,
+      supportApis: [{ name: 'Catalog API', fault: null }],
+    });
+    const [granted] = (rooms[0]?.supportApis ?? []) as { tools: unknown[] }[];
+    expect(granted?.tools).toHaveLength(3);
     const [session] = await rows<{ kind: string; user_id: string }>(
       sql`SELECT kind, user_id FROM agent_sessions WHERE id = ${sessionId}::uuid`,
     );

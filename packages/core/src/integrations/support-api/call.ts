@@ -12,6 +12,7 @@ import type {
   SupportToolKind,
 } from '@forge/contracts/support';
 import { scrubLogText, scrubSecretsDeep } from '@forge/observability';
+import type { SupportApi, SupportApis } from './binding.js';
 
 export interface SupportCallRefusal {
   code: SupportCallRefusalCode;
@@ -54,6 +55,41 @@ const refuse = (code: SupportCallRefusalCode, detail: string): { refusal: Suppor
   refusal: { code, detail },
 });
 
+function undeclared(
+  tools: readonly SupportTool[],
+  name: string,
+  kind: SupportToolKind,
+): { refusal: SupportCallRefusal } {
+  const names = tools.filter((t) => t.kind === kind).map((t) => t.name);
+  return refuse(
+    'SUPPORT_TOOL_UNDECLARED',
+    `this project grants no tool named "${name}"; its ${kind} tools are ${names.length ? names.join(', ') : 'none'}`,
+  );
+}
+
+/**
+ * Plan one call across every support API the project grants: the tool is found on the one binding
+ * that grants it, and planned against that binding's host grant alone. The binding comes back with
+ * the plan, so the call is sent with its credential and no other (ISS-1011).
+ */
+export function planSupportCall(input: {
+  apis: SupportApis;
+  name: string;
+  kind: SupportToolKind;
+  args: SupportCallArgs;
+}): { plan: PlannedCall; api: SupportApi } | { refusal: SupportCallRefusal } {
+  const api = input.apis.bindings.find((b) => b.tools.some((t) => t.name === input.name));
+  if (!api) return undeclared(input.apis.tools, input.name, input.kind);
+  const planned = planCall({
+    config: api.config,
+    tools: api.tools,
+    name: input.name,
+    kind: input.kind,
+    args: input.args,
+  });
+  return 'plan' in planned ? { plan: planned.plan, api } : planned;
+}
+
 /**
  * Plan one call: the tool by name, its kind checked against the door asking, every argument checked
  * against what the tool declares, the URL built and its host checked against the grant.
@@ -66,13 +102,7 @@ export function planCall(input: {
   args: SupportCallArgs;
 }): { plan: PlannedCall } | { refusal: SupportCallRefusal } {
   const tool = input.tools.find((t) => t.name === input.name);
-  if (!tool) {
-    const names = input.tools.filter((t) => t.kind === input.kind).map((t) => t.name);
-    return refuse(
-      'SUPPORT_TOOL_UNDECLARED',
-      `this project grants no tool named "${input.name}"; its ${input.kind} tools are ${names.length ? names.join(', ') : 'none'}`,
-    );
-  }
+  if (!tool) return undeclared(input.tools, input.name, input.kind);
   if (tool.kind !== input.kind) {
     return refuse(
       'SUPPORT_TOOL_KIND',

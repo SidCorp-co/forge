@@ -2,16 +2,16 @@
 // granted diagnose tools (BC-12), and reply (BC-11), every reply scrubbed and screened before it is
 // posted. Searching is `search.ts`, proposing a fix `fixes.ts`, recording Feedback `record.ts`.
 
-import type { SupportTool } from '@forge/contracts/support';
 import { readMessages } from '../conversations/index.js';
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
 import {
-  activeSupportApi,
+  type BoundSupportTool,
   callGranted,
-  planCall,
+  planSupportCall,
   type SupportCallArgs,
   type SupportCallResult,
+  supportApisOf,
 } from '../integrations/support-api/index.js';
 import { askerOf, mentionRefusal, readerOf } from './channel.js';
 import { readersOf } from './grants.js';
@@ -43,13 +43,13 @@ export async function readThread(
   };
 }
 
-/** What the session may call: each granted tool's name, kind, summary and arguments; never the credential. */
-export async function listTools(room: RoomRow): Promise<Outcome<Omit<SupportTool, 'path'>[]>> {
-  const api = await activeSupportApi(room.projectId);
-  return {
-    ok: true,
-    value: (api?.tools ?? []).map(({ path: _path, ...t }) => t),
-  };
+/**
+ * What the session may call: each granted tool's name, kind, summary and arguments, and the binding
+ * (the workspace) it reads; never the credential.
+ */
+export async function listTools(room: RoomRow): Promise<Outcome<Omit<BoundSupportTool, 'path'>[]>> {
+  const { tools } = await supportApisOf(room.projectId);
+  return { ok: true, value: tools.map(({ path: _path, ...t }) => t) };
 }
 
 /** Run a granted diagnose tool; the session is handed what came back, the thread nothing (BC-12). */
@@ -59,16 +59,15 @@ export async function runDiagnose(
 ): Promise<Outcome<SupportCallResult>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
-  const api = await activeSupportApi(room.projectId);
-  if (!api)
+  const apis = await supportApisOf(room.projectId);
+  if (apis.bindings.length === 0)
     return no(
       'SUPPORT_TOOLS_UNBOUND',
       '/tool',
       'this project grants its support session no tools: bind a support-api integration first',
     );
-  const planned = planCall({
-    config: api.config,
-    tools: api.tools,
+  const planned = planSupportCall({
+    apis,
     name: input.tool,
     kind: 'diagnose',
     args: input.args,
@@ -90,10 +89,11 @@ export async function runDiagnose(
   };
   if ('refusal' in planned) return refusedWith(planned.refusal.code, planned.refusal.detail);
   const config = await roomConfig(room);
+  // the call goes out with the credential of the binding that grants the tool, and no other's
   const called = await callGranted({
     plan: planned.plan,
-    config: api.config,
-    headers: api.headers,
+    config: planned.api.config,
+    headers: planned.api.headers,
     maxBytes: limitsOf(config).responseMaxBytes,
   });
   if ('refusal' in called) return refusedWith(called.refusal.code, called.refusal.detail);
