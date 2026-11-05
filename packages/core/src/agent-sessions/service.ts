@@ -155,7 +155,8 @@ export async function appendChatLines(
   sessionId: string,
   lines: ChatLine[],
 ): Promise<
-  { ok: true; inserted: { seq: number }[] } | { ok: false; taken: { seq: number; kind: string } }
+  | { ok: true; inserted: { seq: number }[] }
+  | { ok: false; taken: { seq: number; kind: string }; nextSeq: number }
 > {
   return db.transaction(async (tx) => {
     await lockXact(tx, 'agentSession', sessionId);
@@ -172,7 +173,14 @@ export async function appendChatLines(
         ),
       );
     const taken = claimed.find((row) => row.kind !== 'stdout');
-    if (taken) return { ok: false as const, taken };
+    if (taken) {
+      // the first seq no row holds, read under the lock: the box numbers the refused lines from it
+      const [top] = await tx
+        .select({ max: sql<number | null>`max(${agentSessionEvents.seq})` })
+        .from(agentSessionEvents)
+        .where(eq(agentSessionEvents.agentSessionId, sessionId));
+      return { ok: false as const, taken, nextSeq: Number(top?.max ?? 0) + 1 };
+    }
     const inserted = await tx
       .insert(agentSessionEvents)
       .values(

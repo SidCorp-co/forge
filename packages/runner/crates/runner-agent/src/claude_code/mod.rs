@@ -112,6 +112,8 @@ pub struct ClaudeCodeRunner {
     pending_permits: Arc<std::sync::Mutex<HashMap<String, String>>>,
     placing: Placing,
     close_grace: Duration,
+    /// Each chat session's one running turn and the seqs its turns numbered (ISS-977).
+    chat_turns: crate::chat_turns::ChatTurns,
 }
 
 /// A turn core handed this box for a session, held from the moment its frame is read until the
@@ -153,7 +155,13 @@ impl ClaudeCodeRunner {
             pending_permits: Arc::new(std::sync::Mutex::new(HashMap::new())),
             placing: Arc::new(std::sync::Mutex::new(HashMap::new())),
             close_grace: CLOSE_GRACE,
+            chat_turns: crate::chat_turns::ChatTurns::default(),
         }
+    }
+
+    /// Each chat session's turns on this box: one runs at a time (ISS-977).
+    pub fn chat_turns(&self) -> &crate::chat_turns::ChatTurns {
+        &self.chat_turns
     }
 
     /// The same runner with a shorter wait before a closed resident is killed.

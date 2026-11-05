@@ -61,6 +61,16 @@ pub enum WriteFailure {
     /// Core refused the write, naming `code` where its body carried one. The
     /// same bytes are refused again, so it is not retried.
     Refused { code: Option<String>, said: String },
+    /// Core holds a row of its own at a seq this batch was numbered into
+    /// (`SEQ_TAKEN_BY_CORE`) and named its next free seq: the batch is stored
+    /// none of, the `stored` lines before it were, and the rest may be numbered
+    /// again from `next_seq` (ISS-977). A refusal naming no next seq is a plain
+    /// [`WriteFailure::Refused`].
+    SeqTaken {
+        next_seq: u64,
+        stored: usize,
+        said: String,
+    },
     /// No answer, or a 5xx, after every attempt.
     Unreached(String),
 }
@@ -71,6 +81,7 @@ impl WriteFailure {
         match self {
             WriteFailure::Ended { said, .. }
             | WriteFailure::Refused { said, .. }
+            | WriteFailure::SeqTaken { said, .. }
             | WriteFailure::Unreached(said) => said,
         }
     }
@@ -85,7 +96,33 @@ impl WriteFailure {
                 code,
                 said: format!("{prefix}{said}"),
             },
+            WriteFailure::SeqTaken {
+                next_seq,
+                stored,
+                said,
+            } => WriteFailure::SeqTaken {
+                next_seq,
+                stored,
+                said: format!("{prefix}{said}"),
+            },
             WriteFailure::Unreached(said) => WriteFailure::Unreached(format!("{prefix}{said}")),
+        }
+    }
+
+    /// The same failure, `stored` more lines having landed before the batch it
+    /// names.
+    fn after(self, stored: usize) -> Self {
+        match self {
+            WriteFailure::SeqTaken {
+                next_seq,
+                stored: s,
+                said,
+            } => WriteFailure::SeqTaken {
+                next_seq,
+                stored: s + stored,
+                said,
+            },
+            other => other,
         }
     }
 }
@@ -114,6 +151,20 @@ fn refusal_of(name: &str, status: u16, text: &str) -> Option<WriteFailure> {
         Some(code) if SESSION_ENDED_CODES.contains(&code.as_str()) => {
             WriteFailure::Ended { code, said }
         }
+        Some(code) if code == SEQ_TAKEN_CODE => {
+            let said = format!("[{code}] {said}");
+            match next_free_seq(text) {
+                Some(next_seq) => WriteFailure::SeqTaken {
+                    next_seq,
+                    stored: 0,
+                    said,
+                },
+                None => WriteFailure::Refused {
+                    code: Some(code),
+                    said,
+                },
+            }
+        }
         code => {
             let said = match &code {
                 Some(c) => format!("[{c}] {said}"),
@@ -122,6 +173,20 @@ fn refusal_of(name: &str, status: u16, text: &str) -> Option<WriteFailure> {
             WriteFailure::Refused { code, said }
         }
     })
+}
+
+/// The code by which core says a seq this batch was numbered into holds a row of its own.
+const SEQ_TAKEN_CODE: &str = "SEQ_TAKEN_BY_CORE";
+
+/// The next free seq a `SEQ_TAKEN_BY_CORE` refusal names in its `details`
+/// (`events-routes.ts`); none where core did not name one, as a core older than
+/// ISS-977 does not.
+fn next_free_seq(body: &str) -> Option<u64> {
+    let parsed = serde_json::from_str::<Value>(body).ok()?;
+    parsed
+        .pointer("/details/nextSeq")?
+        .as_u64()
+        .filter(|n| *n > 0)
 }
 
 async fn post_chunk(
@@ -188,7 +253,7 @@ pub async fn post_events(
     let mut delivered = 0usize;
     for chunk in events.chunks(MAX_BATCH) {
         if let Err(failure) = post_chunk(client, session_id, chunk).await {
-            return Err(failure.prefixed(&format!(
+            return Err(failure.after(delivered).prefixed(&format!(
                 "{delivered} of {total} line(s) were stored before this failed: "
             )));
         }
@@ -294,6 +359,7 @@ mod tests {
             );
         }
         for (status, code) in [
+            // a seq clash naming no next free seq, as a core older than ISS-977 answers it
             (409, "SEQ_TAKEN_BY_CORE"),
             (409, "SESSION_STALE"),
             (409, "SEND_ALREADY_SETTLED"),
@@ -327,6 +393,33 @@ mod tests {
         assert!(matches!(
             refusal_of("w", 422, "<html><title>Bad</title></html>"),
             Some(WriteFailure::Refused { code: None, .. })
+        ));
+    }
+
+    #[test]
+    fn a_seq_clash_naming_the_next_free_seq_reads_as_one_the_box_numbers_again_from() {
+        let body = r#"{"code":"SEQ_TAKEN_BY_CORE","error":{"code":"SEQ_TAKEN_BY_CORE"},"details":{"seq":642,"kind":"seed","nextSeq":643}}"#;
+        match refusal_of("post_events", 409, body) {
+            Some(WriteFailure::SeqTaken {
+                next_seq,
+                stored,
+                said,
+            }) => {
+                assert_eq!((next_seq, stored), (643, 0));
+                assert!(
+                    said.starts_with("[SEQ_TAKEN_BY_CORE] post_events 409"),
+                    "{said}"
+                );
+            }
+            other => panic!("a seq clash naming nextSeq 643 read as {other:?}"),
+        }
+        let stored = refusal_of("post_events", 409, body).unwrap().after(100);
+        assert!(matches!(stored, WriteFailure::SeqTaken { stored: 100, .. }));
+        // a next seq of zero is no seq: the clash is refused as it always was
+        let zero = r#"{"code":"SEQ_TAKEN_BY_CORE","details":{"nextSeq":0}}"#;
+        assert!(matches!(
+            refusal_of("post_events", 409, zero),
+            Some(WriteFailure::Refused { .. })
         ));
     }
 

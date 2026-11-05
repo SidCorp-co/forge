@@ -122,11 +122,13 @@ agentSessionEventsRoutes.post(
 
     const appended = await appendChatLines(sessionId, lines);
     if (!appended.ok) {
-      const { taken } = appended;
+      const { taken, nextSeq } = appended;
+      // the batch is stored none of; `nextSeq` is core's next free seq, which a box numbers the
+      // refused lines and every one after them from (ISS-977)
       throw refuseSession(
         'SEQ_TAKEN_BY_CORE',
-        `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
-      );
+        `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free; the next free seq is ${nextSeq}`,
+      ).withDetails({ seq: taken.seq, kind: taken.kind, nextSeq });
     }
     const { inserted } = appended;
 

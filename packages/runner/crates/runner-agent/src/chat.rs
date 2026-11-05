@@ -399,8 +399,12 @@ async fn run_turn(
         cleanup_attachments(turn.attachment_dir.as_deref()).await;
         return Ok(());
     };
+    // one turn of a session runs at a time on this box, and a turn that waited for another numbers
+    // past the lines that one took (ISS-977)
+    let hold = runner.chat_turns().hold(&session_id).await;
+    let event_seq_base = hold.base(event_seq_base);
     tracing::info!(
-        "[chat {session_id}] turn start (resume={})",
+        "[chat {session_id}] turn start (resume={}, seq base {event_seq_base})",
         turn.resume_id.is_some()
     );
 
@@ -475,7 +479,7 @@ async fn run_turn(
         .note_head(&session_id, git_state.head_sha.clone())
         .await;
 
-    consume(client, &session_id, event_seq_base, rx).await;
+    hold.used(consume(client, &session_id, event_seq_base, rx).await);
     // Best-effort temp cleanup — runs even on a failed turn (consume always
     // returns). Leaking a temp dir is harmless but we don't want to accumulate.
     cleanup_attachments(turn.attachment_dir.as_deref()).await;
@@ -493,13 +497,18 @@ async fn run_turn(
 /// tool calls, zero tool frames stored. The lines go to core whole and
 /// `agent-sessions/session-transcript.ts` folds them with the parser every other producer
 /// already goes through.
+///
+/// A batch core refuses because a seq it was numbered into holds a row core wrote, naming its next
+/// free seq, is numbered again from that seq with every line after it (ISS-977), at most
+/// [`MAX_RENUMBERS`] times a turn. Answers the last seq this turn numbered a line with.
 async fn consume(
     client: &CoreClient,
     session_id: &str,
     event_seq_base: u64,
     mut rx: mpsc::Receiver<RunnerEvent>,
-) {
+) -> u64 {
     let mut seq = event_seq_base;
+    let mut renumbered = 0usize;
     let mut pending: Vec<agent_sessions::LineEvent> = Vec::new();
     let mut claude_sid: Option<String> = None;
     let mut runtime_state: Option<String> = None;
@@ -528,7 +537,7 @@ async fn consume(
             _ = beat.tick() => {
                 if let Err(WriteFailure::Ended { code, said }) = beat_turn(client, session_id).await {
                     tracing::info!("[chat {session_id}] core ended this session ({code}) — stopping stream: {said}");
-                    return;
+                    return seq;
                 }
             }
             _ = flush.tick() => {
@@ -537,15 +546,20 @@ async fn consume(
                     Ok(()) => pending.clear(),
                     Err(WriteFailure::Ended { code, said }) => {
                         tracing::info!("[chat {session_id}] core ended this session ({code}) — stopping stream: {said}");
-                        return;
+                        return seq;
                     }
-                    Err(refused @ WriteFailure::Refused { .. }) => {
+                    Err(WriteFailure::SeqTaken { next_seq, stored, said }) if renumbered < MAX_RENUMBERS => {
+                        renumbered += 1;
+                        seq = renumber(&mut pending, stored, next_seq);
+                        tracing::warn!("[chat {session_id}] core holds a row inside this turn's seqs; the {} unstored line(s) go again from core's next seq {next_seq}: {said}", pending.len());
+                    }
+                    Err(refused @ (WriteFailure::Refused { .. } | WriteFailure::SeqTaken { .. })) => {
                         let msg = format!(
                             "[TRANSCRIPT_REFUSED] core refused a batch of this turn's transcript and stored none of that batch: {refused}"
                         );
                         tracing::error!("[chat {session_id}] {msg}");
                         patch_failed(client, session_id, claude_sid.clone(), &msg).await;
-                        return;
+                        return seq;
                     }
                     Err(unreached @ WriteFailure::Unreached(_)) => {
                         // Transport or 5xx, already retried: keep the batch and try again next tick.
@@ -556,24 +570,52 @@ async fn consume(
         }
     }
 
-    if !pending.is_empty() {
-        if let Err(e) = agent_sessions::post_events(client, session_id, &pending).await {
-            if let WriteFailure::Ended { code, said } = &e {
+    while !pending.is_empty() {
+        match agent_sessions::post_events(client, session_id, &pending).await {
+            Ok(()) => pending.clear(),
+            Err(WriteFailure::Ended { code, said }) => {
                 tracing::info!("[chat {session_id}] core ended this session ({code}) before the last lines landed: {said}");
-                return;
+                return seq;
             }
-            let msg = format!(
-                "[TRANSCRIPT_INCOMPLETE] this turn's transcript was not delivered in full ({} line(s) pending at the end): {e}",
-                pending.len()
-            );
-            tracing::error!("[chat {session_id}] {msg}");
-            patch_failed(client, session_id, claude_sid.clone(), &msg).await;
-            return;
+            Err(WriteFailure::SeqTaken {
+                next_seq,
+                stored,
+                said,
+            }) if renumbered < MAX_RENUMBERS => {
+                renumbered += 1;
+                seq = renumber(&mut pending, stored, next_seq);
+                tracing::warn!("[chat {session_id}] core holds a row inside this turn's last seqs; the {} unstored line(s) go again from core's next seq {next_seq}: {said}", pending.len());
+            }
+            Err(e) => {
+                let msg = format!(
+                    "[TRANSCRIPT_INCOMPLETE] this turn's transcript was not delivered in full ({} line(s) pending at the end): {e}",
+                    pending.len()
+                );
+                tracing::error!("[chat {session_id}] {msg}");
+                patch_failed(client, session_id, claude_sid.clone(), &msg).await;
+                return seq;
+            }
         }
-        pending.clear();
     }
 
     close_turn(client, session_id, terminal, claude_sid, runtime_state).await;
+    seq
+}
+
+/// How many times one turn numbers its unstored lines again from core's next seq before a clash
+/// is its failure: each renumbering follows a row core wrote inside the turn's seqs, and a core
+/// that keeps writing them is not one this turn can outnumber.
+const MAX_RENUMBERS: usize = 3;
+
+/// Drop the `stored` lines core took, and number the rest from `next_seq` on; the last seq used.
+fn renumber(pending: &mut Vec<agent_sessions::LineEvent>, stored: usize, next_seq: u64) -> u64 {
+    pending.drain(..stored.min(pending.len()));
+    let mut seq = next_seq.saturating_sub(1);
+    for line in pending.iter_mut() {
+        seq += 1;
+        line.seq = seq;
+    }
+    seq
 }
 
 /// The turn's beat: `working`, which core takes as the box's word that the
@@ -620,7 +662,7 @@ async fn close_turn(
                 Err(WriteFailure::Ended { code, said }) => {
                     tracing::info!("[chat {session_id}] core ended this session ({code}) before the turn closed: {said}");
                 }
-                Err(refused @ WriteFailure::Refused { .. }) => {
+                Err(refused @ (WriteFailure::Refused { .. } | WriteFailure::SeqTaken { .. })) => {
                     let msg = format!(
                         "[TURN_CLOSE_REFUSED] core refused this turn's completion: {refused}"
                     );
@@ -744,6 +786,65 @@ mod tests {
             }
         });
         (CoreClient::new(format!("http://{addr}"), "token"), seen)
+    }
+
+    /// A fake core whose first `/events` is refused `SEQ_TAKEN_BY_CORE` naming
+    /// `next_seq` as its next free seq, as `events-routes.ts` answers a batch
+    /// numbered into a seed row it wrote; every later write is taken.
+    async fn fake_core_clashing_once(next_seq: u64) -> (CoreClient, Seen) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen: Seen = Arc::default();
+        let log = seen.clone();
+        tokio::spawn(async move {
+            let mut clashed = false;
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                let (method, path, body) = read_request(&mut sock).await;
+                let (status, reply) = if path.ends_with("/events") && !clashed {
+                    clashed = true;
+                    let code = "SEQ_TAKEN_BY_CORE";
+                    let envelope = serde_json::json!({
+                        "code": code,
+                        "message": "refused",
+                        "error": { "code": code, "message": "refused" },
+                        "details": { "seq": next_seq - 1, "kind": "seed", "nextSeq": next_seq },
+                    });
+                    (409, envelope.to_string())
+                } else {
+                    (200, "{}".to_string())
+                };
+                log.lock().unwrap().push((method, path, body));
+                let head = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    reply.len()
+                );
+                let _ = sock.write_all(head.as_bytes()).await;
+                let _ = sock.write_all(reply.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        (CoreClient::new(format!("http://{addr}"), "token"), seen)
+    }
+
+    /// The seqs of every `/events` batch core was sent, in order.
+    fn event_seqs(seen: &Seen) -> Vec<Vec<u64>> {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, p, _)| m == "POST" && p.ends_with("/events"))
+            .map(|(_, _, b)| {
+                let body: Value = serde_json::from_str(b).unwrap();
+                body["events"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|e| e["seq"].as_u64().unwrap())
+                    .collect()
+            })
+            .collect()
     }
 
     async fn read_request(sock: &mut tokio::net::TcpStream) -> (String, String, String) {
@@ -1112,6 +1213,54 @@ mod tests {
             said.contains("SEQ_TAKEN_BY_CORE"),
             "the failure does not name the code core refused by: {said}"
         );
+    }
+
+    /// ISS-977: after a restart two turns of one session were handed out 22 ms apart, and the
+    /// first's lines were numbered into the seed row core wrote for the second. A clash naming
+    /// core's next seq numbers the refused lines again from it, and the turn completes.
+    #[tokio::test]
+    async fn a_seq_clash_naming_cores_next_seq_numbers_the_lines_again_from_it() {
+        let (client, seen) = fake_core_clashing_once(643).await;
+        let (tx, rx) = mpsc::channel::<RunnerEvent>(8);
+        for _ in 0..2 {
+            tx.send(RunnerEvent::Stdout(
+                serde_json::json!({ "type": "assistant" }),
+            ))
+            .await
+            .unwrap();
+        }
+        tx.send(RunnerEvent::Done).await.unwrap();
+        drop(tx);
+        let last = tokio::time::timeout(Duration::from_secs(10), consume(&client, "s1", 641, rx))
+            .await
+            .expect("the stream loop never returned");
+        assert_eq!(
+            event_seqs(&seen),
+            vec![vec![642, 643], vec![643, 644]],
+            "the refused lines were not numbered again from core's next seq"
+        );
+        assert_eq!(last, 644, "the turn did not answer the last seq it used");
+        let patches = outcome_patches(&seen);
+        assert!(
+            patches.iter().any(|p| p["status"] == "completed")
+                && !patches.iter().any(|p| p["status"] == "failed"),
+            "a clash core named its next seq for failed the turn: {patches:?}"
+        );
+    }
+
+    #[test]
+    fn renumbering_drops_the_stored_lines_and_numbers_the_rest_from_cores_next_seq() {
+        let mut pending: Vec<agent_sessions::LineEvent> = (1..=4)
+            .map(|n| {
+                agent_sessions::LineEvent::stdout(n, serde_json::json!({ "type": "assistant" }))
+            })
+            .collect();
+        let last = renumber(&mut pending, 2, 10);
+        assert_eq!(
+            pending.iter().map(|l| l.seq).collect::<Vec<_>>(),
+            vec![10, 11]
+        );
+        assert_eq!(last, 11);
     }
 
     #[tokio::test]
