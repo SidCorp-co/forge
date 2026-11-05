@@ -9,6 +9,7 @@
 // @direct-test-of packages/core/src/assistant/agreement/plain-door.ts
 // @direct-test-of packages/core/src/assistant/agreement/rest-hold.ts
 // @direct-test-of packages/core/src/assistant/agreement/routes.ts
+// @direct-test-of packages/core/src/assistant/agreement/views.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
