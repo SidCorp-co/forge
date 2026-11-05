@@ -312,7 +312,7 @@ fn held_checkout(residence: &Residence, verb: Verb, run_id: &str, path: &Path) -
         Residence::Linked | Residence::NotAWorktree => Ok(Held::Ours),
         Residence::Gone => Ok(Held::Nothing),
         // Everything past this point reads the checkout at its path — its
-        // branch, its dirt, what a salvage would push — and every one of those
+        // branch, its dirt, what work only it carries — and every one of those
         // readings would be the enclosing checkout's (ISS-1250, judge j3).
         Residence::Enclosed(top) => Err(Error::Other(format!(
             "refusing to {verb:?} run {run_id}: {} stands, but it is no checkout of its own — \
@@ -414,7 +414,7 @@ pub async fn force_terminal(
     // preserve and none to give back (ISS-1183); a path that does not resolve
     // is a question about where the checkout went and not an answer that it is
     // gone (ISS-1193). Both used to be read off `exists()`, one of them
-    // wrongly, and the wrong one skipped the salvage guard below on its way
+    // wrongly, and the wrong one skipped the work guard below on its way
     // past.
     let held = held_checkout(
         &crate::worktree::residence_of(what.repo_root, worktree).await,
