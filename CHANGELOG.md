@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.523] - 2026-11-05
+
+Deploys leave a shorter gap, and the runner waits through it
+
+### Fixed
+
+- **The runner waits out a deploy's 503 window instead of failing on it.** It retries `CORE_DRAINING`, `DB_CONNECTIONS_EXHAUSTED` and Traefik's `no available server` for about 30 s, and core's healthcheck probes every second while it starts.
+
 ## [0.4.0-dev.522] - 2026-11-05
 
 Core keeps within its Postgres connection budget and answers busy, not 500

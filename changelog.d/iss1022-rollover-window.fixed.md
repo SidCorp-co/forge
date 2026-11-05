@@ -1,1 +1,0 @@
-**The runner waits out a deploy's 503 window instead of failing on it.** It retries `CORE_DRAINING`, `DB_CONNECTIONS_EXHAUSTED` and Traefik's `no available server` for about 30 s, and core's healthcheck probes every second while it starts.
