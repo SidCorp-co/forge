@@ -152,6 +152,10 @@ services:
       timeout: 3s
       retries: 5
       start_period: 20s
+      # cm:why Traefik routes to core only once it reads healthy: probing every second while it
+      # starts lets a ready core serve within a second of a deploy, not after the 10 s interval
+      # (ISS-1022). Needs Docker Engine 25+.
+      start_interval: 1s
 
 volumes:
   core_uploads:

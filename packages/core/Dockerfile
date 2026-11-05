@@ -77,7 +77,10 @@ ENV SOURCE_COMMIT=$SOURCE_COMMIT
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+# --start-interval: while it starts, core is probed every second, so a ready one reads healthy
+# (and Traefik routes to it) within a second instead of after the 10 s interval (ISS-1022).
+# Docker Engine 25+; the compose files declare the same for the core service.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --start-interval=1s --retries=3 \
   CMD wget -qO- http://localhost:8080/health || exit 1
 
 # Run migrations via the runtime migrator (drizzle-orm; no drizzle-kit in prod
