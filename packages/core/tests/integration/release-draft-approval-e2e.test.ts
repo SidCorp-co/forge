@@ -3,6 +3,7 @@
 // @direct-test-of packages/core/src/release-batch/version-routes.ts
 // @direct-test-of packages/core/src/release-batch/release-read.ts
 // @direct-test-of packages/core/src/permissions/holders-named.ts
+// @direct-test-of packages/core/src/release-page/sections.ts
 /**
  * ISS-869 (FB-465): Autoflow's own rules ask its owner to approve a release before the master opens
  * the upstream MR. Its release 0.1.0 was a draft with no run, the project declaring no production, so
@@ -19,7 +20,7 @@ import { mintPat } from '../../src/credentials/pat.js';
 import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
-import { F4, landedIssue, seedLandedWorld, world } from '../helpers/landed-world.js';
+import { BRANCH, F4, landedIssue, seedLandedWorld, world } from '../helpers/landed-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 vi.mock('../../src/release-batch/ancestry-source.js', async (importOriginal) => {
@@ -34,6 +35,7 @@ type Release = {
   version: string;
   state: string;
   can: { cut: boolean; decide: boolean };
+  gates: Array<{ code: string }>;
   approvers: Array<{ id: string; name: string; kind: string }>;
   draftApproval: null | {
     version: string;
@@ -188,5 +190,50 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('RELEASE_DRAFT_NOT_APPROVABLE');
     expect(JSON.stringify(res.body)).toContain('release-batches/<runId>/approvals');
+  });
+
+  // ISS-1019: catalog-fe's 0.13.0 offered "Approve release" while its gate stood at NO_RELEASE_GATE,
+  // and its page named neither the blocker nor what the release becomes.
+  it('names a no-production draft recorded by its master, not cut, and offers the decision on it as its door takes it', async () => {
+    await landedIssue(5, F4);
+    const d = await draft();
+    expect(d.gates.map((g) => g.code)).toContain('NO_RELEASE_GATE');
+    expect(d.can).toMatchObject({ cut: false, decide: true });
+    const page = await api(
+      world.token,
+      'GET',
+      `/api/projects/${world.projectId}/releases/${d.version}/page?view=user`,
+    );
+    expect(page.status, JSON.stringify(page.body)).toBe(200);
+    expect(page.body.header.recordedNotCut).toBe(true);
+    expect(page.body.can.approve).toBe(true);
+    expect((await decide(world.token, d.version, { decision: 'approve', reason: 'ok' })).status).toBe(
+      201,
+    );
+  });
+
+  it('offers no draft decision on a project releasing through its change requests, and its door refuses one by name', async () => {
+    await landedIssue(5, F4);
+    await seedProjectDocument(world.projectId, world.ownerId, {
+      environments: {},
+      defaultBranch: BRANCH,
+      extra: { release: { approval: { required: false }, changeRequests: true } },
+    });
+    const d = await draft();
+    expect(d.gates.map((g) => g.code)).not.toContain('NO_RELEASE_GATE');
+    expect(d.can.decide).toBe(false);
+    const page = await api(
+      world.token,
+      'GET',
+      `/api/projects/${world.projectId}/releases/${d.version}/page?view=user`,
+    );
+    expect(page.status, JSON.stringify(page.body)).toBe(200);
+    expect(page.body.header.recordedNotCut).toBe(false);
+    expect(page.body.can.approve).toBe(false);
+    const res = await decide(world.token, d.version, { decision: 'approve', reason: 'ok' });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.code).toBe('RELEASE_DRAFT_NOT_APPROVABLE');
+    expect(JSON.stringify(res.body)).toContain('release.changeRequests');
+    expect((await draft()).draftApproval).toBeNull();
   });
 });
