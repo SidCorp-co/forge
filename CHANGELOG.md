@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.525] - 2026-11-05
+
+Requirement coverage counts verdicts at builds carrying the issue's landing
+
+### Fixed
+
+- **A requirement counts a verdict judged on a build carrying its issue's landing.** A component deployed outside production's lineage now counts by the landing weighing its release reads; where nothing counts, the criterion names why and what would.
+
 ## [0.4.0-dev.524] - 2026-11-05
 
 Closing a run keeps worktrees it did not create

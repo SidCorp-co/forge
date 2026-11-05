@@ -1,1 +1,0 @@
-**A requirement counts a verdict judged on a build carrying its issue's landing.** A component deployed outside production's lineage now counts by the landing weighing its release reads; where nothing counts, the criterion names why and what would.
