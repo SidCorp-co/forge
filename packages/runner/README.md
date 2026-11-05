@@ -72,7 +72,10 @@ request could later succeed — a 429, a 5xx, or a dropped connection on an
 idempotent method. A conflict or a rejected body is never retryable, and
 neither is a dropped connection on a `POST`/`PATCH`: that exits `10`
 `DELIVERY_UNKNOWN`, because the write may already have landed and the only
-safe next move is to read the state back. The response body of a failed
+safe next move is to read the state back. An answer whose body breaks off
+before its end — core stopping mid-answer during a deploy — is `BODY_CUT`
+whatever its status, never an empty success: a `GET` is sent again within the
+rollover budget and then exits `9`, a `POST`/`PATCH` exits `10` at once. The response body of a failed
 call goes to stderr and never stdout, so `… > out.json` leaves that file empty
 on failure rather than filling it with an error shaped like an answer.
 

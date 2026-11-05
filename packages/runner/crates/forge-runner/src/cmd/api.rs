@@ -378,7 +378,12 @@ pub(crate) async fn get_json(client: &CoreClient, path: &str) -> Result<Value, S
         .await
         .map_err(|e| format!("GET {path}: {e}"))?;
     let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
+    // `send` read the body whole, and a cut one failed there by name (ISS-1025); a read failing
+    // here is never an empty answer.
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("GET {path} answered {status} and its body could not be read: {e}"))?;
     if !status.is_success() {
         return Err(format!("GET {path} answered {status}: {}", text.trim()));
     }

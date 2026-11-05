@@ -113,7 +113,10 @@ async fn post_json(client: &CoreClient, path: &str, body: &Value) -> anyhow::Res
         .await
         .map_err(|e| anyhow::anyhow!("POST {path}: {e}"))?;
     let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
+    // `send` read the body whole, and a cut one failed there by name (ISS-1025).
+    let text = resp.text().await.map_err(|e| {
+        anyhow::anyhow!("POST {path} answered {status} and its body could not be read: {e}")
+    })?;
     if !status.is_success() {
         anyhow::bail!("POST {path} answered {status}: {}", text.trim());
     }

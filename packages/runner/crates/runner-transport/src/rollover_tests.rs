@@ -423,3 +423,41 @@ async fn a_route_through_the_status_helpers_fails_a_cut_body_naming_it() {
     );
     assert!(err.starts_with(&said), "{err}");
 }
+
+/// A body the call's own deadline falls inside is slow, not cut by a restart: it fails as a cut
+/// naming the deadline, and is not sent again to double the wait the deadline was set to end.
+#[tokio::test]
+async fn a_body_the_deadline_cuts_fails_as_a_cut_naming_it_and_is_not_sent_again() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let seen = Arc::new(Mutex::new(0usize));
+    let count = seen.clone();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((mut sock, _)) = listener.accept().await {
+            *count.lock().unwrap() += 1;
+            read_request(&mut sock).await;
+            let head = "HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\n{\"items\":[";
+            let _ = sock.write_all(head.as_bytes()).await;
+            held.push(sock);
+        }
+    });
+    let client = CoreClient::new(format!("http://{addr}"), "t").with_rollover(QUICK);
+    let err = client
+        .get("/api/x")
+        .timeout(Duration::from_millis(200))
+        .send()
+        .await
+        .unwrap_err();
+    let SendError::Cut(cut) = &err else {
+        panic!("a body the deadline cut read as {err:?}");
+    };
+    assert!(err.is_timeout());
+    assert_eq!((cut.received, cut.expected), (10, Some(100)));
+    assert!(err.to_string().contains("deadline fell inside it"), "{err}");
+    assert_eq!(
+        *seen.lock().unwrap(),
+        1,
+        "a body the deadline cut was sent again"
+    );
+}
