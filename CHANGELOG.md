@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.508] - 2026-11-05
+
+Follow-ups in the bot's thread get answered; beta twin closes are accepted
+
+### Fixed
+
+- **A room answering only mentions now answers follow-ups in its own threads.** A reply mentioning nobody, in a thread the bot already replied in, reaches the assistant as a mention would; other messages without a mention stay context.
+- **Beta twin closes carry a mark beta takes.** Where forge-beta serves no project document, the beta port reads a project's landing from its project row by kind and branch, so closes are no longer refused on every fire.
+
 ## [0.4.0-dev.507] - 2026-11-05
 
 Activity groups work into batches and releases, and marks what waits on you
