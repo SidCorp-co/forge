@@ -103,7 +103,8 @@ export async function projectOfKey(
   if (slug) return projectInScope(room, slug);
   const prefix = key.split('-')[0]?.toUpperCase() ?? '';
   const reach = await reachOf(room);
-  const matching = reach.projects.filter((p) => (p.issuePrefix ?? '').toUpperCase() === prefix);
+  // a project with no prefix of its own numbers its issues ISS-n, as every read names them (`keyOf`)
+  const matching = reach.projects.filter((p) => (p.issuePrefix ?? 'ISS').toUpperCase() === prefix);
   if (matching.length === 1 && matching[0]) return { ok: true, value: matching[0] };
   if (matching.length > 1) {
     return no(
