@@ -68,10 +68,9 @@ pub(crate) async fn release_held_tree(
     {
         Ok(terminate::Release::Done(forced)) => {
             tracing::info!(
-                "[master] run {} reclaimed by {:?}: diff {:?}, checkout {:?}, commits {:?}, close {:?}",
+                "[master] run {} reclaimed by {:?}: checkout {:?}, commits {:?}, close {:?}",
                 r.run_id,
                 forced.verb,
-                forced.salvage.as_ref().map(|s| s.outcome),
                 forced.worktree,
                 forced.commits,
                 forced.close

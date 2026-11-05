@@ -1,4 +1,4 @@
-//! FB-273, against real repositories: a reclaim over a run whose subagent is
+//! FB-273 and ISS-1016, against real repositories: a reclaim over a run whose subagent is
 //! working, and over commits a local branch already names.
 //!
 //! Measured on this box 2026-10-23 (forge-runner 3332976): a run declared over
@@ -8,7 +8,7 @@
 //! was working in.
 
 use super::*;
-use runner_core::ledger::NewRun;
+use runner_core::ledger::{NewRun, TreeOrigin};
 use runner_platform::subagent_host::{Host, HostRead, Hosts, Running};
 use std::path::PathBuf;
 
@@ -117,6 +117,10 @@ async fn a_repo_with_an_origin(tag: &str) -> (PathBuf, PathBuf, PathBuf, Ledger)
 }
 
 fn declare(led: &mut Ledger, run_id: &str, wt: &Path) {
+    declare_as(led, run_id, wt, TreeOrigin::Created);
+}
+
+fn declare_as(led: &mut Ledger, run_id: &str, wt: &Path, origin: TreeOrigin) {
     led.create_run_group(NewRun {
         run_id: run_id.into(),
         project_id: "proj-1".into(),
@@ -126,7 +130,7 @@ fn declare(led: &mut Ledger, run_id: &str, wt: &Path) {
         issue_keys: vec!["ISS-23".into()],
         role: None,
         requirement: None,
-        worktree_origin: runner_core::ledger::TreeOrigin::Created,
+        worktree_origin: origin,
     })
     .unwrap();
 }
@@ -150,11 +154,10 @@ async fn on_origin(bare: &Path) -> String {
     .await
 }
 
-/// The commits are on `iss-23`, a branch this repository keeps, so the
-/// release has nothing to preserve and nothing to publish. It used to push the
-/// branch to `origin` first.
+/// The commit on `iss-23` is one `origin` has not seen, so the release keeps the checkout — and
+/// publishes nothing to make it removable. It used to push the branch to `origin` first.
 #[tokio::test]
-async fn a_release_publishes_nothing_a_local_branch_already_names() {
+async fn a_release_publishes_nothing_and_keeps_what_no_remote_holds() {
     let (base, root, wt, mut led) = a_repo_with_an_origin("named-no-push").await;
     let bare = base.join("origin.git");
     declare(&mut led, "run-1", &wt);
@@ -167,52 +170,24 @@ async fn a_release_publishes_nothing_a_local_branch_already_names() {
         ports(&Table(HostRead::Gone)),
     )
     .await
-    .expect("a clean checkout whose commits a branch names is released");
-    assert_eq!(forced.commits, Some(Commits::AlreadyNamed));
+    .expect("a checkout holding a commit on no remote is kept, not refused");
+    assert!(
+        matches!(forced.worktree, WorktreeOutcome::KeptWithWork { .. }),
+        "{forced:?}"
+    );
+    assert_eq!(forced.commits, None);
     assert!(
         !on_origin(&bare).await.contains("refs/heads/iss-23"),
-        "the release pushed `iss-23` to origin although a local branch already named its commits \
-         — a reclaim never publishes what is already preserved (FB-273)"
+        "the release pushed `iss-23` to origin — a reclaim never publishes (FB-273)"
     );
-    assert!(!wt.exists(), "released");
+    assert!(wt.exists(), "kept");
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// A dirty checkout's diff is committed onto its own branch, which names it,
-/// and goes nowhere else.
+/// A detached checkout's commits on no remote are kept with the checkout: no ref is written for
+/// them, because the directory is not taken, and they are published nowhere.
 #[tokio::test]
-async fn a_salvaged_diff_is_committed_locally_and_never_pushed() {
-    let (base, root, wt, mut led) = a_repo_with_an_origin("salvage-no-push").await;
-    let bare = base.join("origin.git");
-    std::fs::write(wt.join("c.txt"), "uncommitted").unwrap();
-    declare(&mut led, "run-1", &wt);
-    led.end_run("run-1", "master", "done").unwrap();
-
-    let forced = force_terminal(
-        &mut led,
-        "run-1",
-        forcing(&root),
-        ports(&Table(HostRead::Gone)),
-    )
-    .await
-    .expect("a diff committed onto its branch is preserved");
-    assert_eq!(
-        forced.salvage.map(|s| s.outcome),
-        Some(salvage::Outcome::Committed)
-    );
-    assert!(
-        !on_origin(&bare).await.contains("refs/heads/iss-23"),
-        "the salvage pushed `iss-23` to origin — a reclaim never publishes (FB-273)"
-    );
-    let kept = git(&root, &["log", "--format=%s", "iss-23"]).await;
-    assert!(kept.contains("wip(salvage)"), "{kept}");
-    let _ = std::fs::remove_dir_all(&base);
-}
-
-/// A detached checkout's commits are given a ref of their own in this
-/// repository, and are published nowhere.
-#[tokio::test]
-async fn unnamed_commits_are_named_by_a_local_ref_not_a_push() {
+async fn unnamed_commits_on_no_remote_keep_their_checkout_and_are_published_nowhere() {
     let (base, root, wt, mut led) = a_repo_with_an_origin("unnamed-ref").await;
     let bare = base.join("origin.git");
     git(&wt, &["checkout", "-q", "--detach"]).await;
@@ -229,11 +204,17 @@ async fn unnamed_commits_are_named_by_a_local_ref_not_a_push() {
         ports(&Table(HostRead::Gone)),
     )
     .await
-    .expect("unnamed commits are given a ref and released");
-    let Some(Commits::NamedBy(name)) = forced.commits else {
-        panic!("expected a kept ref, got {:?}", forced.commits);
+    .expect("unnamed commits on no remote are kept");
+    let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
+        panic!("expected the checkout kept, got {forced:?}");
     };
-    assert!(name.starts_with("refs/forge/kept/run-1-"), "{name}");
+    assert!(why.contains("2 commit(s)"), "{why}");
+    assert!(wt.join("d.txt").exists());
+    assert_eq!(
+        git(&root, &["for-each-ref", "refs/forge/kept"]).await,
+        "",
+        "a ref was written for commits whose checkout stays"
+    );
     assert_eq!(on_origin(&bare).await.trim(), "refs/heads/main");
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -275,6 +256,7 @@ async fn a_checkout_a_working_subagent_is_in_is_never_removed() {
 #[tokio::test]
 async fn a_subagent_between_turns_or_without_its_host_is_released() {
     let (base, root, wt, mut led) = a_repo_with_an_origin("ended-subagent").await;
+    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
     declare(&mut led, "run-1", &wt);
     assert!(led.bind_agent("run-1", "agent-1").unwrap());
     assert!(led.note_host("run-1", 4242, "777").unwrap());
@@ -292,6 +274,7 @@ async fn a_subagent_between_turns_or_without_its_host_is_released() {
     let _ = std::fs::remove_dir_all(&base);
 
     let (base, root, wt, mut led) = a_repo_with_an_origin("hostless-subagent").await;
+    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
     declare(&mut led, "run-1", &wt);
     assert!(led.bind_agent("run-1", "agent-1").unwrap());
     assert!(led.note_host("run-1", 4242, "777").unwrap());
@@ -304,5 +287,168 @@ async fn a_subagent_between_turns_or_without_its_host_is_released() {
     .await
     .expect("a subagent whose host process is gone cannot be working");
     assert!(!wt.exists());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The release a sweep makes once the run's master has closed it, as `run close` leaves it.
+async fn close_and_release(led: &mut Ledger, root: &Path) -> Release {
+    led.end_run("run-1", "master", "the master said so")
+        .unwrap();
+    release(
+        led,
+        "run-1",
+        forcing(root),
+        ports(&Table(HostRead::Gone)),
+        runner_platform::clock::now_secs(),
+    )
+    .await
+    .expect("the release answers")
+}
+
+/// What `git` says at `dir`, trimmed.
+async fn said(dir: &Path, args: &[&str]) -> String {
+    git(dir, args).await.trim().to_string()
+}
+
+/// FB-522, epod 2026-11-05: a master declared a run over its own batch tree, committed and pushed,
+/// to read one secret, and the run's release removed that tree. A run declared over a tree that
+/// already stood gives back its claim and nothing else: the directory, its branch, its HEAD and
+/// its files stay, git still lists it, and the run still closes.
+#[tokio::test]
+async fn a_tree_that_stood_before_its_run_outlives_the_runs_close() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("adopted-pushed").await;
+    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
+    let head = said(&wt, &["rev-parse", "HEAD"]).await;
+    declare_as(&mut led, "run-1", &wt, TreeOrigin::Adopted);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("an adopted tree's release is refused rather than made");
+    };
+    assert!(
+        wt.join("b.txt").exists(),
+        "the release removed {} — a tree the run did not create is never the release's to take",
+        wt.display()
+    );
+    assert_eq!(forced.worktree, WorktreeOutcome::AdoptedKept);
+    assert_eq!(forced.commits, None, "{forced:?}");
+    assert_eq!(said(&wt, &["rev-parse", "HEAD"]).await, head);
+    assert_eq!(
+        said(&wt, &["symbolic-ref", "--short", "HEAD"]).await,
+        "iss-23"
+    );
+    assert!(
+        git(&root, &["worktree", "list", "--porcelain"])
+            .await
+            .contains(&format!("worktree {}", wt.display())),
+        "git no longer lists the adopted tree"
+    );
+    assert!(forced.close.is_closed(), "{:?}", forced.close);
+    let row = led.run("run-1").unwrap().unwrap();
+    assert_eq!(row.released_as.as_deref(), Some("adopted_kept"));
+    assert_eq!(row.worktree_gone_at, None, "the tree is standing");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The same with the adopter's work uncommitted in it: nothing is committed onto its branch and
+/// nothing is removed — the file is exactly as the master left it.
+#[tokio::test]
+async fn an_adopted_tree_keeps_its_uncommitted_files_uncommitted() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("adopted-dirty").await;
+    std::fs::write(wt.join("notes.txt"), "the master's own, uncommitted").unwrap();
+    let head = said(&wt, &["rev-parse", "HEAD"]).await;
+    declare_as(&mut led, "run-1", &wt, TreeOrigin::Adopted);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("an adopted tree's release is refused rather than made");
+    };
+    assert_eq!(
+        std::fs::read_to_string(wt.join("notes.txt"))
+            .ok()
+            .as_deref(),
+        Some("the master's own, uncommitted"),
+        "the adopter's uncommitted file is gone"
+    );
+    assert_eq!(said(&wt, &["status", "--porcelain"]).await, "?? notes.txt");
+    assert_eq!(
+        said(&wt, &["rev-parse", "HEAD"]).await,
+        head,
+        "the release committed onto the adopter's branch"
+    );
+    assert_eq!(forced.worktree, WorktreeOutcome::AdoptedKept);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A tree cut for the run, clean and pushed, is the run's to give back, and goes as before.
+#[tokio::test]
+async fn a_tree_cut_for_its_run_is_still_removed_at_its_close() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("created-pushed").await;
+    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
+    declare_as(&mut led, "run-1", &wt, TreeOrigin::Created);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("a clean, pushed tree cut for the run was not released");
+    };
+    assert_eq!(forced.worktree, WorktreeOutcome::Released);
+    assert!(!wt.exists(), "the run's own tree is still on disk");
+    let row = led.run("run-1").unwrap().unwrap();
+    assert_eq!(row.released_as.as_deref(), Some("gone"));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A tree cut for the run that holds a file nobody committed is kept and named, never removed, and
+/// the file is left as it was rather than committed under a salvage. The run still closes.
+#[tokio::test]
+async fn a_cut_tree_with_an_uncommitted_file_is_kept_and_named() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("created-dirty").await;
+    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
+    std::fs::write(wt.join("c.txt"), "uncommitted").unwrap();
+    declare_as(&mut led, "run-1", &wt, TreeOrigin::Created);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("a dirty tree's release is refused rather than kept");
+    };
+    assert!(
+        wt.join("c.txt").exists(),
+        "the release removed a tree holding an uncommitted file"
+    );
+    let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
+        panic!("the dirty tree was not kept and named: {forced:?}");
+    };
+    assert!(why.contains("c.txt"), "{why}");
+    assert_eq!(said(&wt, &["status", "--porcelain"]).await, "?? c.txt");
+    assert!(
+        !git(&root, &["log", "--format=%s", "iss-23"])
+            .await
+            .contains("wip(salvage)"),
+        "the release committed the file under a salvage"
+    );
+    assert!(forced.close.is_closed(), "{:?}", forced.close);
+    let row = led.run("run-1").unwrap().unwrap();
+    assert_eq!(row.released_as.as_deref(), Some("kept_with_work"));
+    assert!(row.ended_by.is_some());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A tree cut for the run whose commit `origin` has not seen is kept and named the same way.
+#[tokio::test]
+async fn a_cut_tree_with_a_commit_on_no_remote_is_kept_and_named() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("created-unpushed").await;
+    declare_as(&mut led, "run-1", &wt, TreeOrigin::Created);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("an unpushed tree's release is refused rather than kept");
+    };
+    assert!(
+        wt.exists(),
+        "the release removed a tree holding an unpushed commit"
+    );
+    let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
+        panic!("the unpushed tree was not kept and named: {forced:?}");
+    };
+    assert!(why.contains("1 commit"), "{why}");
+    assert_eq!(
+        led.run("run-1").unwrap().unwrap().released_as.as_deref(),
+        Some("kept_with_work")
+    );
     let _ = std::fs::remove_dir_all(&base);
 }

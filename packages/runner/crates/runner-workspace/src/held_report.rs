@@ -24,7 +24,7 @@
 use crate::repo_cred::RepoCred;
 use crate::salvage::{self, Fate, Publication};
 use crate::worktree::Kind;
-use runner_core::ledger::{Incarnation, Ledger, Run};
+use runner_core::ledger::{Incarnation, Ledger, Run, TreeOrigin};
 use runner_platform::git::git_line;
 use runner_transport::{run_sessions, CoreClient};
 
@@ -92,6 +92,11 @@ pub async fn at_risk(run: &Run) -> Option<Held> {
     if !worktree.is_absolute() || !worktree.exists() {
         return None;
     }
+    // A tree the run adopted is its adopter's, before the run and after it, and this box holds
+    // nothing of it to say on the issue: no release of the run ever removes it (ISS-1016).
+    if run.worktree_origin == TreeOrigin::Adopted {
+        return None;
+    }
     // Every line below reads git at the path, and at a path that is no
     // checkout's top level git answers for the checkout around it: sid-desk's
     // ISS-684 report named the parent's `staging` at the parent's HEAD
@@ -127,7 +132,10 @@ pub async fn at_risk(run: &Run) -> Option<Held> {
     // is the defect this issue exists to remove, wearing its reporting face.
     let publication = salvage::publication_of(worktree, cred).await;
     let fate = salvage::fate_of(worktree).await;
-    let kept = matches!(fate, Fate::Kept { .. });
+    // The release's other reading: work nothing outside the checkout carries keeps it too
+    // (ISS-1016), so a report of that checkout says it is kept.
+    let only_here = salvage::work_only_here(worktree).await;
+    let kept = matches!(fate, Fate::Kept { .. }) || only_here.is_some();
     if !kept && publication == Publication::Published {
         return None;
     }
@@ -147,7 +155,13 @@ pub async fn at_risk(run: &Run) -> Option<Held> {
             Publication::Unpublished { commits } => Some(*commits),
             _ => None,
         },
-        reason: why(&fate, named_by.as_deref(), &publication, remote),
+        reason: why(
+            &fate,
+            only_here.as_deref(),
+            named_by.as_deref(),
+            &publication,
+            remote,
+        ),
         kept,
     })
 }
@@ -168,11 +182,37 @@ pub async fn at_risk(run: &Run) -> Option<Held> {
 /// tried one is not something it read (ISS-1250 judge, finding 2).
 fn why(
     fate: &Fate,
+    only_here: Option<&str>,
     named_by: Option<&str>,
     publication: &Publication,
     remote: Option<bool>,
 ) -> String {
-    let directory = match fate {
+    let directory = match (fate, only_here) {
+        (Fate::Kept { .. }, _) | (_, None) => committed(fate, named_by),
+        (_, Some(work)) => format!(
+            "this reading refuses this checkout's removal: it holds work nothing outside it \
+             carries ({work})"
+        ),
+    };
+    let work = match (publication, remote) {
+        (Publication::Published, _) => "the work here is on a remote".to_string(),
+        (Publication::Unpublished { commits }, Some(false)) => format!(
+            "{commits} commit(s) here are on no remote, and this repository has no remote to \
+             publish them to"
+        ),
+        (Publication::Unpublished { commits }, _) => {
+            format!("{commits} commit(s) here are on no remote")
+        }
+        (Publication::Unknown { why }, _) => {
+            format!("this box cannot tell whether the work here is on a remote ({why})")
+        }
+    };
+    format!("{work} — {directory}")
+}
+
+/// What the commits' fate says about the directory, where no work kept only here decides it.
+fn committed(fate: &Fate, named_by: Option<&str>) -> String {
+    match fate {
         Fate::Kept { why } => format!(
             "this reading refuses this checkout's removal: it cannot tell whether the commits \
              here are named by any ref besides this checkout's own HEAD ({why}), and not knowing \
@@ -191,21 +231,7 @@ fn why(
                      depend on this directory"
                 .to_string(),
         },
-    };
-    let work = match (publication, remote) {
-        (Publication::Published, _) => "the work here is on a remote".to_string(),
-        (Publication::Unpublished { commits }, Some(false)) => format!(
-            "{commits} commit(s) here are on no remote, and this repository has no remote to \
-             publish them to"
-        ),
-        (Publication::Unpublished { commits }, _) => {
-            format!("{commits} commit(s) here are on no remote")
-        }
-        (Publication::Unknown { why }, _) => {
-            format!("this box cannot tell whether the work here is on a remote ({why})")
-        }
-    };
-    format!("{work} — {directory}")
+    }
 }
 
 pub async fn report_held_worktrees(

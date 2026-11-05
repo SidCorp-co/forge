@@ -1,86 +1,22 @@
-//! Commit whatever a run being released left uncommitted onto its own branch,
-//! so the work outlives the checkout instead of going with it.
+//! What a release reads before it may take a run's checkout: whether the commits in it outlive
+//! the directory, and whether anything in it exists nowhere else.
 //!
-//! Committed, never pushed. The branch is a ref this repository keeps, and
-//! `git worktree remove` takes the directory and never the refs, so the commit
-//! is preserved the moment it is made. A push from here published a run's
-//! branch to the project's `origin`, a customer's repository, from a release
+//! The release used to commit a dirty checkout's diff onto its branch as a `wip(salvage)` commit
+//! and then remove the directory. A checkout holding work nothing else carries is now kept and
+//! named instead (ISS-1016): a commit made by a release is work nobody wrote, on a branch a
+//! person may be standing on, and the directory was the one place the files were whole.
+//!
+//! Runner-side by necessity: core has no working copy. Nothing here pushes: a push from a release
+//! published a run's branch to the project's `origin`, a customer's repository, from a release
 //! nobody asked to ship anything (FB-273).
-//!
-//! Runner-side by necessity: core has no working copy, and the agent that would
-//! have committed is the thing that died. Every path here — including refusal —
-//! produces a [`Salvage`] report rather than an error, because the report is
-//! what core forwards to the retry's prompt; "there is no salvage" and "salvage
-//! was refused because the checkout was ambiguous" are different facts to the
-//! next agent.
-//!
-//! The dirty checkout is FOUND, never assumed. Measured on dev1 2026-08-26:
-//! `<repo>/.worktrees/` did not exist at all, while six agent worktrees sat
-//! under `.claude/worktrees/`, one of them the very job this work came from. A
-//! salvage that derived a path from a branch name would have been a silent
-//! no-op on the whole fleet. This box cuts no checkout of its own, so where a
-//! run's worktree sits is whatever its dispatcher chose, several conventions
-//! can be live on one box at once, and only `git worktree list` sees them all.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use tokio::process::Command;
 
 use crate::repo_cred::RepoCred;
 use runner_platform::git::git;
-
-const PICK_BUDGET: Duration = Duration::from_secs(10);
-const LOCAL_BUDGET: Duration = Duration::from_secs(15);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
-    /// The diff is a commit on the checkout's own branch.
-    Committed,
-    None,
-    Refused,
-    Failed,
-}
-
-#[derive(Debug, Clone)]
-pub struct Salvage {
-    pub outcome: Outcome,
-    pub detail: Option<String>,
-}
-
-impl Salvage {
-    fn bare(outcome: Outcome) -> Self {
-        Self {
-            outcome,
-            detail: None,
-        }
-    }
-
-    fn refused(detail: impl Into<String>) -> Self {
-        Self {
-            detail: Some(detail.into()),
-            ..Self::bare(Outcome::Refused)
-        }
-    }
-
-    fn failed(detail: impl Into<String>) -> Self {
-        Self {
-            detail: Some(detail.into()),
-            ..Self::bare(Outcome::Failed)
-        }
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        return s.to_string();
-    }
-    let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    s[..end].to_string()
-}
 
 const FETCH_BUDGET: Duration = Duration::from_secs(20);
 
@@ -370,207 +306,86 @@ fn stderr_brief(out: &std::process::Output) -> String {
     }
 }
 
-/// `git diff --cached --numstat` → (files, insertions). Binary files report `-`
-/// for both columns and so count toward `files` without adding insertions.
-fn count_staged(numstat: &str) -> (u32, u32) {
-    let mut files = 0;
-    let mut insertions = 0;
-    for line in numstat.lines().filter(|l| !l.trim().is_empty()) {
-        files += 1;
-        if let Some(first) = line.split('\t').next() {
-            insertions += first.parse::<u32>().unwrap_or(0);
-        }
-    }
-    (files, insertions)
-}
+/// How many uncommitted files a line names before it says how many more there are.
+const FILES_NAMED: usize = 5;
 
-/// Trailers rather than prose so `git log --grep='forge-salvage: true'` is exact,
-/// and so a review step can refuse to treat a salvage commit as a deliverable.
-fn commit_message(branch: &str, job_id: &str, attempt: u32, failure: &str) -> String {
-    let subject = format!("wip(salvage): {branch} failed attempt — uncommitted work preserved");
-    let mut body = format!("forge-salvage: true\nforge-job-id: {job_id}\n");
-    if attempt > 0 {
-        body.push_str(&format!("forge-attempt: {attempt}\n"));
-    }
-    let reason = failure.lines().next().unwrap_or("").trim();
-    if !reason.is_empty() {
-        body.push_str(&format!("forge-failure: {}\n", truncate(reason, 300)));
-    }
-    format!("{subject}\n\n{body}")
-}
-
-/// `-c user.*` args to inject when the box has no git identity, so a salvage is
-/// not lost to `Please tell me who you are` on a freshly provisioned runner.
-async fn identity_args(dir: &Path) -> Vec<String> {
-    let configured = git(dir, &["config", "--get", "user.email"])
-        .await
-        .is_some_and(|o| o.status.success() && !stdout_trim(&o).is_empty());
-    if configured {
-        return Vec::new();
-    }
-    vec![
-        "-c".into(),
-        "user.name=forge-runner".into(),
-        "-c".into(),
-        "user.email=runner@forge.local".into(),
-    ]
-}
-
-/// One candidate checkout: a worktree of this repo sitting on its own branch.
-#[derive(Debug, Clone)]
-struct Target {
-    path: PathBuf,
-    branch: String,
-}
-
-/// Parse `git worktree list --porcelain` into (path, branch) pairs, dropping
-/// detached entries — a detached checkout is nobody's branch, and the agent's
-/// `_merge` worktree is exactly that.
-fn parse_worktrees(porcelain: &str) -> Vec<Target> {
-    let mut out = Vec::new();
-    let mut path: Option<PathBuf> = None;
-    for line in porcelain.lines() {
-        if let Some(p) = line.strip_prefix("worktree ") {
-            path = Some(PathBuf::from(p.trim()));
-        } else if let Some(b) = line.strip_prefix("branch refs/heads/") {
-            if let Some(p) = path.take() {
-                out.push(Target {
-                    path: p,
-                    branch: b.trim().to_string(),
+/// The work in `worktree` that exists nowhere but in it, in words a journal line and a run's close
+/// can carry, or `None` where nothing in it is only there.
+///
+/// Two readings, and either keeps the directory (ISS-1016):
+/// - a file git has not been told to keep — modified, staged, or untracked and not ignored. Files
+///   `.gitignore` claims are build output and hold nothing, which is what keeps them from pinning
+///   a checkout for ever;
+/// - a commit at HEAD that no remote-tracking ref holds, where this repository has a remote at
+///   all. Without one there is nowhere for a commit to be "on", and [`fate_of`] with [`keep_at`]
+///   already keeps every commit named by a ref the directory's removal leaves standing.
+///
+/// A reading git would not give keeps the directory too, and says so: not knowing is not the same
+/// as knowing nothing is there.
+pub async fn work_only_here(worktree: &Path) -> Option<String> {
+    match git(
+        worktree,
+        &["status", "--porcelain", "--untracked-files=all"],
+    )
+    .await
+    {
+        Some(out) if out.status.success() => {
+            let listed = String::from_utf8_lossy(&out.stdout);
+            let files: Vec<&str> = listed
+                .lines()
+                .filter_map(|l| l.get(3..))
+                .filter(|f| !f.is_empty())
+                .collect();
+            if !files.is_empty() {
+                let named = files[..files.len().min(FILES_NAMED)].join(", ");
+                return Some(match files.len().saturating_sub(FILES_NAMED) {
+                    0 => format!("{} uncommitted file(s): {named}", files.len()),
+                    more => format!(
+                        "{} uncommitted file(s): {named} and {more} more",
+                        files.len()
+                    ),
                 });
             }
-        } else if line.trim() == "detached" {
-            path = None;
         }
-    }
-    out
-}
-
-async fn is_dirty(wt: &Path) -> bool {
-    git(wt, &["status", "--porcelain"])
-        .await
-        .is_some_and(|o| o.status.success() && !o.stdout.is_empty())
-}
-
-/// What the runner needs to preserve one failed job's work.
-pub struct SalvageInput<'a> {
-    /// The job's repo root — the checkout core handed it, NOT the agent's.
-    pub repo_root: &'a Path,
-    /// The project's base branch per the server, when it has one.
-    pub base_branch: Option<&'a str>,
-    pub agent_branch: &'a str,
-    pub job_id: &'a str,
-    pub attempt: u32,
-    pub failure: &'a str,
-}
-
-/// Choose the checkout to salvage, or explain why there is none.
-async fn pick_target(input: &SalvageInput<'_>) -> std::result::Result<Target, Salvage> {
-    let listing = match git(input.repo_root, &["worktree", "list", "--porcelain"]).await {
-        Some(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
-        Some(out) => return Err(Salvage::failed(stderr_brief(&out))),
-        None => return Err(Salvage::failed("git worktree list could not be spawned")),
-    };
-    let root = input.repo_root.canonicalize();
-    let candidates: Vec<Target> = parse_worktrees(&listing)
-        .into_iter()
-        .filter(|t| {
-            let is_root = match (&root, t.path.canonicalize()) {
-                (Ok(r), Ok(p)) => &p == r,
-                _ => t.path == input.repo_root,
-            };
-            !is_root && Some(t.branch.as_str()) != input.base_branch
-        })
-        .collect();
-    let mut dirty: Vec<Target> = Vec::new();
-    for t in candidates {
-        if is_dirty(&t.path).await {
-            dirty.push(t);
+        Some(out) => {
+            return Some(format!(
+                "git would not say whether anything in it is uncommitted ({})",
+                stderr_brief(&out)
+            ))
         }
+        None => return Some("git could not be asked whether anything in it is uncommitted".into()),
     }
-    let seen: Vec<String> = dirty.iter().map(|t| t.branch.clone()).collect();
-    dirty.retain(|t| t.branch == input.agent_branch);
-    if dirty.is_empty() && !seen.is_empty() {
-        return Err(Salvage::refused(format!(
-            "no dirty worktree on {}; saw {}",
-            input.agent_branch,
-            seen.join(", ")
-        )));
-    }
-    match dirty.len() {
-        0 => Err(Salvage::bare(Outcome::None)),
-        1 => Ok(dirty.remove(0)),
-        n => Err(Salvage::refused(format!(
-            "{n} worktrees claim to be {}; refusing to guess",
-            input.agent_branch
-        ))),
+    match has_a_remote(worktree).await {
+        Some(false) => None,
+        None => Some(
+            "git would not say whether this repository has a remote, so whether its commits are \
+             on one cannot be read"
+                .into(),
+        ),
+        Some(true) => commits_on_no_remote(worktree).await,
     }
 }
 
-/// Preserve the working copy of a run being released, best-effort. Finds the
-/// agent's own checkout for this issue and commits what is uncommitted there
-/// onto its branch, which names it from then on.
-pub async fn salvage_wip(input: SalvageInput<'_>) -> Salvage {
-    let target = match tokio::time::timeout(PICK_BUDGET, pick_target(&input)).await {
-        Ok(Ok(t)) => t,
-        Ok(Err(s)) => return s,
-        Err(_) => return Salvage::failed("timed out looking for the job's checkout"),
-    };
-    let local = tokio::time::timeout(
-        LOCAL_BUDGET,
-        stage_and_commit(&target, input.job_id, input.attempt, input.failure),
-    );
-    match local.await {
-        Ok(said) => said,
-        Err(_) => Salvage::failed("timed out staging the working copy"),
+/// The commits at HEAD no remote-tracking ref holds, said as [`work_only_here`] says them.
+async fn commits_on_no_remote(worktree: &Path) -> Option<String> {
+    match git(
+        worktree,
+        &["rev-list", "--count", "HEAD", "--not", "--remotes"],
+    )
+    .await
+    {
+        Some(out) if out.status.success() => match stdout_trim(&out).parse::<u64>() {
+            Ok(0) => None,
+            Ok(n) => Some(format!("{n} commit(s) at its HEAD are on no remote")),
+            Err(_) => Some(format!(
+                "git counted the commits at its HEAD on no remote as `{}`, which is no count",
+                stdout_trim(&out)
+            )),
+        },
+        Some(out) => Some(format!(
+            "git would not count the commits at its HEAD on no remote ({})",
+            stderr_brief(&out)
+        )),
+        None => Some("git could not be asked which commits at its HEAD are on no remote".into()),
     }
-}
-
-/// `Committed` where a commit now names the diff on the checkout's branch, and
-/// otherwise why there is none.
-async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: &str) -> Salvage {
-    let wt = target.path.as_path();
-    let branch = target.branch.as_str();
-    let head = match git(wt, &["rev-parse", "--abbrev-ref", "HEAD"]).await {
-        Some(out) if out.status.success() => stdout_trim(&out),
-        Some(out) => return Salvage::failed(stderr_brief(&out)),
-        None => return Salvage::failed("git could not be spawned"),
-    };
-    if head != branch {
-        return Salvage::refused(format!(
-            "worktree moved to `{head}` while it was being salvaged, expected `{branch}`"
-        ));
-    }
-
-    if let Some(out) = git(wt, &["add", "-A"]).await {
-        if !out.status.success() {
-            return Salvage::failed(stderr_brief(&out));
-        }
-    } else {
-        return Salvage::failed("git add could not be spawned");
-    }
-
-    let (files, _) = match git(wt, &["diff", "--cached", "--numstat"]).await {
-        Some(out) if out.status.success() => count_staged(&String::from_utf8_lossy(&out.stdout)),
-        _ => (0, 0),
-    };
-    if files == 0 {
-        // Everything dirty was ignored — nothing to preserve, and an empty
-        // commit per failed attempt is noise on every branch.
-        return Salvage::bare(Outcome::None);
-    }
-
-    let message = commit_message(branch, job_id, attempt, failure);
-    let mut argv: Vec<String> = identity_args(wt).await;
-    argv.extend(["commit", "--no-verify", "-m", &message].map(str::to_string));
-    let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
-    if let Some(out) = git(wt, &argv_ref).await {
-        if !out.status.success() {
-            return Salvage::failed(stderr_brief(&out));
-        }
-    } else {
-        return Salvage::failed("git commit could not be spawned");
-    }
-
-    Salvage::bare(Outcome::Committed)
 }

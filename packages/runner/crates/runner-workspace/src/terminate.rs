@@ -29,10 +29,10 @@
 use std::path::Path;
 
 use crate::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
-use crate::salvage::{self, Outcome, Salvage};
+use crate::salvage;
 use crate::worktree::Residence;
 use runner_core::inflight::Reaped;
-use runner_core::ledger::{CheckoutReturn, Incarnation, Ledger, Run};
+use runner_core::ledger::{CheckoutReturn, Incarnation, Ledger, Run, TreeOrigin};
 use runner_platform::error::{Error, Result};
 
 /// How a run's process group is stopped. A port so the verb is testable
@@ -65,8 +65,6 @@ pub enum Verb {
 #[derive(Debug)]
 pub struct Forced {
     pub verb: Verb,
-    /// `None` when the worktree was already off the disk.
-    pub salvage: Option<Salvage>,
     pub close: CloseState,
     /// What became of the checkout the run named.
     pub worktree: WorktreeOutcome,
@@ -92,6 +90,12 @@ pub enum WorktreeOutcome {
     /// that run: nothing was preserved, committed or removed, and the run
     /// being released owes it back no longer.
     KeptForOpenRun { holder: String },
+    /// The tree already stood when the run was declared over it, so the run never took it and
+    /// gives back only its claim: nothing was preserved, committed or removed (ISS-1016).
+    AdoptedKept,
+    /// The tree was cut for the run but holds work nothing outside it carries, named in `why`, so
+    /// it was left standing rather than removed (ISS-1016).
+    KeptWithWork { why: String },
 }
 
 pub fn verb_for(run: &Run, this_boot: &str) -> Result<Verb> {
@@ -104,25 +108,6 @@ pub fn verb_for(run: &Run, this_boot: &str) -> Result<Verb> {
             run.run_id, run.incarnation, run.boot_id, this_boot
         ))),
     }
-}
-
-async fn branch_of(worktree: &Path) -> Option<String> {
-    let out = tokio::process::Command::new("git")
-        .args(["symbolic-ref", "--short", "HEAD"])
-        .current_dir(worktree)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!name.is_empty()).then_some(name)
-}
-
-fn committed(outcome: Outcome) -> bool {
-    outcome == Outcome::Committed
 }
 
 /// What the release did about the commits the checkout held.
@@ -235,6 +220,15 @@ async fn take_the_directory(
                 worktree.display()
             )));
         }
+    }
+    // The same reading the release kept on, taken once more at the removal: a file written or a
+    // commit made since is work this directory alone carries, and it stays (ISS-1016).
+    if let Some(work) = salvage::work_only_here(worktree).await {
+        return Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: {} came to hold work nothing outside it carries by \
+             the moment its removal was reached ({work}) — the checkout stays",
+            worktree.display()
+        )));
     }
     let why = match (&rewritten, commits) {
         (Some((at_risk, name)), _) => format!(
@@ -429,11 +423,26 @@ pub async fn force_terminal(
         worktree,
     )?;
 
+    // A tree that stood before the run was declared over it is its adopter's: the run borrowed it
+    // and gives back only its claim. Asked before anything below can touch the tree — the
+    // live-subagent refusal, a holder, the commit guard and the removal all treat it as the run's
+    // own (FB-522: a master's batch tree, removed by the release of a run declared over it).
+    let adopted = held == Held::Ours && run.worktree_origin == TreeOrigin::Adopted;
+    if adopted {
+        ledger.mark_checkout_returned_observed(run_id, CheckoutReturn::AdoptedKept)?;
+        tracing::info!(
+            "[release] run={run_id}: {} already stood when this run was declared over it, so the \
+             run gives back its claim and leaves the tree, its branch and its files as they were \
+             — nothing was preserved, committed or removed",
+            worktree.display()
+        );
+    }
+
     // A subagent at work in the checkout, which the reading of who lives in it
-    // cannot see (FB-273). Asked before anything is salvaged or committed in
-    // the tree, which would be its work moved under it, and refused as a live
-    // agent so the release is retried while it works and never decided.
-    if held == Held::Ours {
+    // cannot see (FB-273). Asked before anything is read or removed in the tree,
+    // and refused as a live agent so the release is retried while it works and
+    // never decided.
+    if held == Held::Ours && !adopted {
         let now_ms = runner_core::agent_activity::now_ms();
         if let Some(why) = live_subagent::working_subagent(&run, ports.hosts, now_ms) {
             return Err(Error::AgentInTree(format!(
@@ -443,56 +452,36 @@ pub async fn force_terminal(
         }
     }
 
-    let kept_for = leave_to_an_open_holder(ledger, run_id, held, worktree)?;
-
-    // A checkout whose branch this box cannot name is a DETACHED one, not an
-    // unreadable one, and it is no longer fatal here. The branch name is what
-    // `salvage_wip` picks a target by; the question the release turns on is
-    // asked by sha and needs none.
-    let mut commits = None;
-    let salvage = if held != Held::Ours || kept_for.is_some() {
-        None
-    } else if crate::worktree_reap::holds_work(worktree).await {
-        let branch = branch_of(worktree).await;
-        // `salvage::pick_target` drops detached entries by design, so a detached
-        // checkout has no salvage to run rather than a failed one. The guard
-        // below is what decides whether its diff may be let go, and it says no.
-        let report = match branch.as_deref() {
-            Some(branch) => Some(
-                salvage::salvage_wip(salvage::SalvageInput {
-                    repo_root: what.repo_root,
-                    base_branch: what.base_branch,
-                    agent_branch: branch,
-                    job_id: run_id,
-                    attempt: 0,
-                    failure: what.reason,
-                })
-                .await,
-            ),
-            None => None,
-        };
-        if !report.as_ref().is_some_and(|r| committed(r.outcome))
-            && crate::worktree_reap::has_unsaved_changes(worktree).await
-        {
-            return Err(Error::Other(format!(
-                "refusing to {verb:?} run {run_id}: the diff in {} was not preserved ({})",
-                run.worktree_path.display(),
-                report
-                    .as_ref()
-                    .and_then(|r| r.detail.as_deref())
-                    .unwrap_or("this checkout is on no branch, so there was no salvage to run")
-            )));
-        }
-        let kept = keep_before_release(run_id, verb, worktree).await?;
-        take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
-        commits = Some(kept);
-        report
-    } else {
-        let kept = keep_before_release(run_id, verb, worktree).await?;
-        take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
-        commits = Some(kept);
-        None
+    let kept_for = match adopted {
+        true => None,
+        false => leave_to_an_open_holder(ledger, run_id, held, worktree)?,
     };
+
+    // A tree cut for the run is the run's to give back, but never with work in it that nothing
+    // outside it carries: uncommitted files, or commits on no remote. That tree is kept and named,
+    // and the run is over without it, so its leases still come back (ISS-1016). It used to be
+    // committed onto its branch as `wip(salvage)` and removed.
+    let mut commits = None;
+    let mut kept_with_work = None;
+    if held == Held::Ours && !adopted && kept_for.is_none() {
+        match salvage::work_only_here(worktree).await {
+            Some(why) => {
+                ledger.mark_checkout_returned_observed(run_id, CheckoutReturn::KeptWithWork)?;
+                tracing::warn!(
+                    "[release] run={run_id}: {} was cut for this run and is kept, not removed — \
+                     {why}. The run is over and gives it back to nobody; remove it with `git \
+                     worktree remove` once nothing in it is wanted",
+                    worktree.display()
+                );
+                kept_with_work = Some(why);
+            }
+            None => {
+                let kept = keep_before_release(run_id, verb, worktree).await?;
+                take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
+                commits = Some(kept);
+            }
+        }
+    }
 
     let close = close_loop::close(
         ledger,
@@ -507,13 +496,14 @@ pub async fn force_terminal(
     }
     Ok(Forced {
         verb,
-        salvage,
         close,
-        worktree: match (held, kept_for) {
-            (Held::Ours, Some(holder)) => WorktreeOutcome::KeptForOpenRun { holder },
-            (Held::Ours, None) => WorktreeOutcome::Released,
-            (Held::MainWorkingTree, _) => WorktreeOutcome::MainWorkingTreeKept,
-            (Held::Nothing, _) => WorktreeOutcome::NothingRegistered,
+        worktree: match (held, adopted, kept_for, kept_with_work) {
+            (Held::Ours, true, _, _) => WorktreeOutcome::AdoptedKept,
+            (Held::Ours, false, Some(holder), _) => WorktreeOutcome::KeptForOpenRun { holder },
+            (Held::Ours, false, None, Some(why)) => WorktreeOutcome::KeptWithWork { why },
+            (Held::Ours, false, None, None) => WorktreeOutcome::Released,
+            (Held::MainWorkingTree, ..) => WorktreeOutcome::MainWorkingTreeKept,
+            (Held::Nothing, ..) => WorktreeOutcome::NothingRegistered,
         },
         commits,
     })
@@ -881,10 +871,7 @@ mod holder_tests {
                 wt.exists(),
                 "{ended}'s release removed the tree run-3 is open in"
             );
-            assert!(
-                forced.salvage.is_none() && forced.commits.is_none(),
-                "{forced:?}"
-            );
+            assert!(forced.commits.is_none(), "{forced:?}");
             assert_eq!(
                 format!("{:?}", forced.worktree),
                 "KeptForOpenRun { holder: \"run-3\" }"
