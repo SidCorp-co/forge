@@ -161,7 +161,9 @@ held, so nothing can say it still holds.
 A block's \`judge:\` line names it: \`qa\` (QA on the running build) or \`review\` (the review
 against the diff), as \`judge\` does at \`POST /api/issues/:id/verdicts\`. A block with no
 \`judge:\` line is its recording run's own role's: a run declared \`--role reviewer\` records the
-review's, any other QA's. Any other value is refused at the write door under \`verdict-judge\`,
+review's, any other QA's. A session id on the line (the plugin's \`Judge\` field) names the session
+that wrote the block, not a judge, so the block is likewise its recording run's own role's. Any
+other value is refused at the write door under \`verdict-judge\`,
 quoting the line, and a judge that is not the recording run's role is refused
 \`VERDICT_JUDGE_NOT_RUN_ROLE\`.
 

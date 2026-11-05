@@ -38,6 +38,7 @@ import {
   parseContractIdentity,
   parseDesignIdentity,
   parseStorefrontDraftRuntime,
+  writerIdOfLine,
 } from '../../messaging/verdict-identity.js';
 
 export type VerdictIdentity =
@@ -363,12 +364,13 @@ function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
 
 /**
  * The draft a comment fence's criterion block stands for, its `judge:` line included. A judge that is
- * neither `qa` nor `review` is refused at the write door before any block is read as a draft
- * (`verdict-identity.ts:judgeLineRefusal`), so it is never carried here as another judge.
+ * neither `qa` nor `review` nor the writing session's id is refused at the write door before any
+ * block is read as a draft (`verdict-identity.ts:judgeLineRefusal`), so it is never carried here as
+ * another judge; a session id leaves the judgement the recording run's own role's (FB-527).
  */
 export function draftFromBlock(block: CriterionBlock & { verdict: string }): VerdictDraft {
   const judge = judgeOfLine(block.judge);
-  if (block.judge !== null && judge === null) {
+  if (block.judge !== null && judge === null && writerIdOfLine(block.judge) === null) {
     throw new Error(
       `criterion ${block.criterion}'s \`judge: ${block.judge}\` reached a draft unrefused; the write door refuses it by name`,
     );

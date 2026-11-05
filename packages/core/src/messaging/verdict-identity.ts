@@ -327,8 +327,21 @@ export function judgeOfLine(value: string | null): CriterionJudge | null {
   return (CRITERION_JUDGES as readonly string[]).includes(named) ? (named as CriterionJudge) : null;
 }
 
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The writing session's id where a block's `judge:` value is one, or null. The forge plugin's
+ * `verdict` record writes its `Judge` field on this line as the session that wrote the verdict and
+ * reads it back to tell a second judge from the builder (FB-527), so a session id there says who
+ * judged, not whose judgement it is: the verdict is the recording run's own role's, as with no line.
+ */
+export function writerIdOfLine(value: string | null): string | null {
+  const named = value?.trim() ?? '';
+  return SESSION_ID.test(named) ? named : null;
+}
+
 const JUDGE_SHAPE =
-  "a verdict block names its judge on a `judge:` line, `qa` (QA on the running build) or `review` (the review against the diff), or on no line at all, when it is the recording run's own role's judgement";
+  "a verdict block names its judge on a `judge:` line, `qa` (QA on the running build) or `review` (the review against the diff), or on no line at all, when it is the recording run's own role's judgement; a session id on the line names the session that wrote it, and the judgement is then the recording run's own role's";
 
 const JUDGE_EXAMPLE = [
   '```forge-record: verdict · contract 1',
@@ -340,14 +353,20 @@ const JUDGE_EXAMPLE = [
 ].join('\n');
 
 /**
- * The refusal of a block whose `judge:` line names neither judge, quoting the line (ISS-1021): read
- * as either, it would record a judgement the writer never named.
+ * The refusal of a block whose `judge:` line names neither judge nor the writing session, quoting
+ * the line (ISS-1021): read as either judge, it would record a judgement the writer never named.
  */
 export function judgeLineRefusal(block: CriterionBlock): MessageRefusal | null {
-  if (block.judge === null || judgeOfLine(block.judge) !== null) return null;
+  if (
+    block.judge === null ||
+    judgeOfLine(block.judge) !== null ||
+    writerIdOfLine(block.judge) !== null
+  ) {
+    return null;
+  }
   return {
     rule: 'verdict-judge',
-    why: `criterion ${block.criterion}'s \`${JUDGE_FIELD}\` line holds \`${block.judge}\`, which names no judge: a verdict's judge is ${listed(CRITERION_JUDGES)}, or the line is left out and the verdict is the recording run's own role's`,
+    why: `criterion ${block.criterion}'s \`${JUDGE_FIELD}\` line holds \`${block.judge}\`, which names no judge: a verdict's judge is ${listed(CRITERION_JUDGES)}, the id of the session that wrote it, or the line is left out; without a judge named, the verdict is the recording run's own role's`,
     quote: `${JUDGE_FIELD}: ${block.judge}`,
     shape: JUDGE_SHAPE,
     example: JUDGE_EXAMPLE,
