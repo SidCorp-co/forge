@@ -15,12 +15,8 @@ const NOW = new Date('2026-11-05T09:11:00.000Z');
 const FROM = new Date(NOW.getTime() - 120 * 60_000);
 const at = (hm: string) => `2026-11-05T${hm}:00.000Z`;
 
-const move = (
-  hm: string,
-  key: string,
-  from: ProjectEvent['to'] | undefined,
-  to: ProjectEvent['to'],
-): ProjectEvent => ({
+type Status = NonNullable<ProjectEvent['to']>;
+const move = (hm: string, key: string, from: Status | undefined, to: Status): ProjectEvent => ({
   at: at(hm),
   kind: 'status',
   issueKey: key,

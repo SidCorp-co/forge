@@ -3,7 +3,8 @@
  * caller can read: what is in flight at its recorded step, what its master takes next in the master's
  * own admissible order, what waits on people and on a release. A project the caller cannot read is
  * absent, not blanked; an archived one is absent; an org with no project answers empty rows and zero
- * totals; a caller outside the org is refused.
+ * totals; a caller outside the org is refused. ISS-979: a row's group is Waiting on you or its
+ * master's standing, and the totals count projects in those groups.
  *
  * @direct-test-of packages/core/src/activity/read.ts
  * @direct-test-of packages/core/src/activity/routes.ts
@@ -146,14 +147,12 @@ describe('ISS-951 GET /api/orgs/:orgId/activity', () => {
     expect(row.next.total).toBe(3);
     expect(row.awaitingRelease).toBe(1);
     expect(row.master.state).toBe('none');
-    // the group follows the master, never an issue in flight (MK-9): no master, a backlog standing
-    expect(row.group, 'an issue in flight set the group, not the master').toBe('waiting');
-    expect(res.body.totals).toMatchObject({
-      inFlight: 1,
-      queued: 3,
-      awaitingRelease: 1,
-      noMaster: 1,
-    });
+    // the row stands by its master, never an issue in flight (MK-9): no master, a backlog standing;
+    // it sits first only where something waits on the reader (ISS-979)
+    expect(row.standing, 'an issue in flight set the standing, not the master').toBe('none');
+    expect(row.group).toBe(row.people.total > 0 ? 'you' : 'none');
+    // the chips count projects, in the groups
+    expect(res.body.totals).toMatchObject({ projects: 1, [row.group]: 1 });
   });
 
   it('next counts every admissible issue while it names only the first few', async () => {
@@ -169,12 +168,11 @@ describe('ISS-951 GET /api/orgs/:orgId/activity', () => {
     expect(res.body.projects).toEqual([]);
     expect(res.body.totals).toEqual({
       projects: 0,
-      running: 0,
-      inFlight: 0,
-      queued: 0,
-      people: 0,
-      awaitingRelease: 0,
-      noMaster: 0,
+      you: 0,
+      working: 0,
+      idle: 0,
+      paused: 0,
+      none: 0,
     });
   });
 
