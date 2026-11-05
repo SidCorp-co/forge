@@ -166,6 +166,11 @@ const WORDS: Readonly<Record<string, Words>> = {
     act: 'issues.releaseHold.act.releaseShippedInOwed',
     actor: 'agent',
   },
+  RELEASE_HEAD_CARRIES_HELD: {
+    cause: 'issues.releaseHold.cause.releaseHeadCarriesHeld',
+    act: 'issues.releaseHold.act.releaseHeadCarriesHeld',
+    actor: 'person',
+  },
   RELEASE_HELD_BY_ENDED_RUN: {
     cause: 'issues.releaseHold.cause.releaseHeldByEndedRun',
     act: 'issues.releaseHold.act.releaseHeldByEndedRun',

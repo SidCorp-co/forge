@@ -41,7 +41,8 @@ export function afterReleaseWarningSentence(held: HeldIssueRef[]): string {
 }
 
 /** Where nothing can read what the project serves, no judging run earns a criterion, so the remedy
- *  is the project's route and not a verdict (ISS-1346, judge r2 finding 1). */
+ *  is the project's route and not a verdict (ISS-1346, judge r2 finding 1). A held issue already under
+ *  the head production builds is waited on instead of cut around (ISS-968, `sweep-head.ts`). */
 export function heldBackWarningSentence(
   held: HeldIssueRef[],
   serving: ServingReading | null,
@@ -51,7 +52,7 @@ export function heldBackWarningSentence(
   const why =
     serving?.kind === 'undeclared'
       ? `${lead}: each owes an acceptance criterion, and nothing here can read what this project is serving, so no judging run can earn one until the project can be read. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
-      : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
+      : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned. Where what production builds already holds one's landing, no release can leave it out, so the sweep waits on it instead, and each issue it would have carried says so in its hold.`;
   return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
 }
 

@@ -542,6 +542,12 @@ export const SAID = {
 	"issues.releaseHold.act.releaseQueuedBehind": {
 		en: "take it in a later release",
 	},
+	"issues.releaseHold.cause.releaseHeadCarriesHeld": {
+		en: "What production builds already holds a held issue",
+	},
+	"issues.releaseHold.act.releaseHeadCarriesHeld": {
+		en: "clear that issue's hold, or cut by hand naming both",
+	},
 	"issues.releaseHold.cause.releaseCleanupPending": {
 		en: "Rated high impact, so it waits for a green cleanup before production",
 	},

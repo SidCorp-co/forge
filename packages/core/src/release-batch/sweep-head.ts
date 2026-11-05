@@ -44,7 +44,7 @@ export type ProductionHead = { branch: string; sha: string } | { why: string };
  * branch work lands on): asked of the source host, or, where none is bound, of a box holding the
  * project's checkout. A host binding that exists and cannot serve stays its own reason.
  */
-export async function readProductionHead(projectId: string): Promise<ProductionHead> {
+async function readProductionHead(projectId: string): Promise<ProductionHead> {
   const branches = await readLandingBranches(projectId);
   const branch = branches.promoted ?? branches.defaultBranch;
   if (!branch) {
@@ -73,6 +73,9 @@ export async function readProductionHead(projectId: string): Promise<ProductionH
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** The one door the head is read through, held as an object so an integration world can plant it. */
+export const productionHead = { read: readProductionHead };
+
 /** The reading the sweep takes before it cuts `eligible`, with the head it was taken against. */
 export interface SweepRange extends OutsideRead {
   head: ProductionHead | null;
@@ -86,12 +89,11 @@ export interface SweepRange extends OutsideRead {
 export async function readSweepRange(
   projectId: string,
   eligible: readonly string[],
-  deps: { head?: (projectId: string) => Promise<ProductionHead> } = {},
 ): Promise<SweepRange> {
   const roster = { issueIds: eligible.slice(0, RELEASE_ROSTER_LIMIT) };
   const outside = await outsideGateIssues(projectId, roster);
   if (outside.length === 0) return { carried: [], unchecked: [], head: null };
-  const head = await (deps.head ?? readProductionHead)(projectId);
+  const head = await productionHead.read(projectId);
   if ('why' in head) return { ...(await placeOutsideOf(projectId, outside, null, head)), head };
   const { base } = await rangeBaseOf(projectId, null);
   return { ...(await placeOutsideOf(projectId, outside, base, head.sha)), head };
