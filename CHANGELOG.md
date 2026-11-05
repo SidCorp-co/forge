@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.524] - 2026-11-05
+
+Closing a run keeps worktrees it did not create
+
+### Fixed
+
+- **A run's close never removes a worktree it did not create.** `run declare` adopts a standing tree and `--cut` cuts one; releases and the reaper leave adopted trees, and keep a cut tree holding uncommitted or unlanded work, naming it.
+
 ## [0.4.0-dev.523] - 2026-11-05
 
 Deploys leave a shorter gap, and the runner waits through it
