@@ -16,8 +16,10 @@ const codeOf = new Map([
   [BC2, 'REQ-25 BC-2'],
   [BC7, 'REQ-25 BC-7'],
 ]);
-const dropped = (live: typeof iss39Before, desired: Parameters<typeof droppedTraces>[1]) =>
-  droppedTraces(live, desired, codeOf);
+const dropped = (
+  live: Parameters<typeof droppedTraces>[0],
+  desired: Parameters<typeof droppedTraces>[1],
+) => droppedTraces(live, desired, codeOf);
 
 const iss39Before = [
   { n: 1, statement: 'Mọi màn hình kiểm tra quyền theo vai trò.', requirementCriterionId: BC1 }, // i18n-allow: Vietnamese criterion under test
