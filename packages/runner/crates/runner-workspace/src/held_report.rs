@@ -40,12 +40,13 @@ pub struct Held {
     /// Sent as `kept`, and required by core, because the sentence a person
     /// reads on the issue turns on it and nothing else carries it.
     ///
-    /// It is one half of the release's decision and never the whole of it:
-    /// `false` says retention does not hold the directory here, not that the
-    /// directory goes. `runner/terminate.rs` preserves a repository's own main
-    /// working tree whatever retention says, and refuses a checkout whose diff
-    /// it could not preserve, so a report that read `false` as "released" would
-    /// be making the opposite mistake to the one this issue is about
+    /// It is the release's two readings of the directory — retention, and work
+    /// nothing outside it carries (ISS-1016) — and never the whole decision:
+    /// `false` says neither holds the directory here, not that the directory
+    /// goes. `runner/terminate.rs` also keeps a repository's own main working
+    /// tree and a tree another open run is in, and refuses while a subagent
+    /// works in the checkout, so a report that read `false` as "released"
+    /// would be making the opposite mistake to the one this issue is about
     /// (consult 754b50 F1).
     pub kept: bool,
 }
