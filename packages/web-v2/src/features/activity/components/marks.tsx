@@ -38,7 +38,8 @@ export function useMarkWords() {
   const status = (s: string) => statusReading("issue", s, language).label;
   const kind = (p: OrgActivityPerson) => t(`activity.wait.kind.${p.group}`);
   const moved = (b: OrgActivityBatch) => tally(b.moves.map((m) => status(m.to))).map(([s, n]) => `${n} → ${s}`);
-  const kinds = (items: OrgActivityPerson[]) => tally(items.map(kind)).map(([k, n]) => `${n} ${k.toLowerCase()}`);
+  const kinds = (items: OrgActivityPerson[]) =>
+    tally(items.map((p) => p.group)).map(([g, n]) => (n === 1 ? t(`activity.wait.one.${g as OrgActivityPerson["group"]}`) : t(`activity.wait.many.${g as OrgActivityPerson["group"]}`, { n })));
   return {
     t,
     clock,

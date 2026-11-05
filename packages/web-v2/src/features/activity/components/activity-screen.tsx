@@ -183,7 +183,7 @@ export function ActivityScreen(): ReactNode {
   const title = (live?: string) => <PageTitle after={live ? <Live at={live} updating={updating} /> : undefined}>{t("activity.title")}</PageTitle>;
   if (!activeOrgId) {
     return (
-      <div className="grid min-h-full content-start bg-app" data-testid="activity-screen">
+      <div className="grid min-h-full grid-cols-1 content-start bg-app" data-testid="activity-screen">
         {title()}
         <div className="px-5 py-10">
           <EmptyState message={t("activity.noOrg")} />
@@ -194,7 +194,7 @@ export function ActivityScreen(): ReactNode {
   return (
     <QueryBoundary query={q} loadingLabel={t("activity.loading")} title={title()} height="60vh" retry="always">
       {(data) => (
-        <div className="grid min-h-full content-start bg-app" data-testid="activity-screen">
+        <div className="grid min-h-full grid-cols-1 content-start bg-app" data-testid="activity-screen">
           {title(data.generatedAt)}
           <ViewSwitch view={view} onView={(v) => setParams({ view: v === "batches" ? null : v })} t={t} />
           <ActivityList data={data} orgId={activeOrgId} view={view} />
