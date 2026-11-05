@@ -118,6 +118,13 @@ export const repoPullRequestsRelations = relations(repoPullRequests, ({ one }) =
 export const changeRequestLinkKinds = ['head-ref', 'title', 'description'] as const;
 export type ChangeRequestLinkKind = (typeof changeRequestLinkKinds)[number];
 
+/**
+ * The reading that named a linked issue, as a merge or a projection answers it (ISS-1027): a
+ * `head-ref` link told apart into the branch's leading key and the numbers its tail lists. Derived
+ * from the branch on each read, never stored.
+ */
+export type ChangeRequestReading = 'branch-lead' | 'branch-tail' | 'title' | 'body';
+
 const LINKED_BY_CHK = sql`linked_by IN ('head-ref', 'title', 'description')`;
 
 /**

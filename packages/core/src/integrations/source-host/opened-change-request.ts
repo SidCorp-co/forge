@@ -17,7 +17,7 @@ import { db } from '../../db/client.js';
 import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-projection.js';
 import { forgeReads } from '../index.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
-import { linkedIssuesOfNumber } from './repo-projection.js';
+import { linkedIssuesOfNumber, type NamedLink } from './repo-projection.js';
 import type { OpenedChangeRequest } from './types.js';
 
 type OpenedProjectionOutcome =
@@ -37,6 +37,8 @@ interface OpenedProjectionResult {
   outcome: OpenedProjectionOutcome;
   /** Every Forge issue the row delivers, in the order it names them: its branch's keys, then its title's, then the ones its description delivers (REQ-63 BC-4). */
   issueIds: string[];
+  /** The same issues, each with the reading that named it: branch lead or tail, title or body (ISS-1027). */
+  linkedIssues: NamedLink[];
   /** The primary issue: the branch's, else the first the title or description delivers; null where none is linked. */
   issueId: string | null;
   /** Where it links no issue, why, named by what was read (ISS-855); null where it links one, or nothing was read back. */
@@ -186,7 +188,7 @@ export async function projectOpenedPullRequest(args: {
   // branch resolved to, and a read that fails says nothing about the write that preceded it — so it
   // is caught rather than thrown. Letting it escape turned a committed row into `not-recorded` and a
   // log line saying the projection row never landed, which is the one thing known to be false.
-  let row: { issueIds: string[] } | undefined;
+  let row: { issueIds: string[]; links: NamedLink[] } | undefined;
   let unread: string | null = null;
   try {
     row = await linkedIssuesOfNumber(args.bindingId, identity.number);
@@ -196,6 +198,7 @@ export async function projectOpenedPullRequest(args: {
       'so the issue it links to is not reported here.';
   }
   const issueIds = row?.issueIds ?? [];
+  const linkedIssues = row?.links ?? [];
   const issueId = issueIds[0] ?? null;
   const noIssue =
     row && issueIds.length === 0
@@ -211,6 +214,7 @@ export async function projectOpenedPullRequest(args: {
     return {
       outcome: 'recorded',
       issueIds,
+      linkedIssues,
       issueId,
       noIssue,
       reason: unread === null ? null : `${unread} The row itself was written.`,
@@ -227,6 +231,7 @@ export async function projectOpenedPullRequest(args: {
     return {
       outcome: 'superseded',
       issueIds: [],
+      linkedIssues: [],
       issueId: null,
       noIssue: null,
       reason:
@@ -238,6 +243,7 @@ export async function projectOpenedPullRequest(args: {
     return {
       outcome: 'superseded',
       issueIds,
+      linkedIssues,
       issueId,
       noIssue,
       reason:
@@ -248,6 +254,7 @@ export async function projectOpenedPullRequest(args: {
   return {
     outcome: 'not-recorded',
     issueIds: [],
+    linkedIssues: [],
     issueId: null,
     noIssue: null,
     reason:

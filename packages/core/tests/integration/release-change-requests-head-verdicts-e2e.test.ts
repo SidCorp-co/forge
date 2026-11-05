@@ -113,7 +113,7 @@ async function mr5009(head: string, state: 'open' | 'merged' = 'open') {
         html_url: 'https://gitlab.com/acme/canawan-api/-/merge_requests/5009',
         state,
         merged: state === 'merged',
-        head: { ref: 'feat/req1-openapi-iss-10-13', sha: head },
+        head: { ref: 'feat/req1-openapi-iss-10', sha: head },
         base: { ref: BRANCH, sha: 'f'.repeat(40) },
         updated_at: new Date().toISOString(),
       },

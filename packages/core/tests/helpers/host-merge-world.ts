@@ -85,6 +85,7 @@ export async function mergeRequest(
   headRef: string,
   head: string,
   body: string | null,
+  title = `MR ${number}`,
 ) {
   heads.set(number, headRef);
   await applyPullRequestEvent(
@@ -93,7 +94,7 @@ export async function mergeRequest(
       action: 'open',
       pull_request: {
         number,
-        title: `MR ${number}`,
+        title,
         body,
         html_url: `https://gitlab.com/acme/canawan-api/-/merge_requests/${number}`,
         state: 'open',

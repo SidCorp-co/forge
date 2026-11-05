@@ -1,10 +1,13 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
+  type ChangeRequestLinkKind,
+  type ChangeRequestReading,
   type PullRequestState,
   repoPullRequestIssues,
   repoPullRequests,
 } from '../../db/schema-repo-projection.js';
+import { forgeReads } from '../index.js';
 import { type CheckRollup, rollupOf } from './projection-shape.js';
 
 interface IssuePullRequest {
@@ -105,34 +108,43 @@ export async function openPullRequestsForIssue(issueId: string): Promise<string[
   return rows.map((r) => r.id);
 }
 
-/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id, primary first. */
-export async function issuesOfPullRequest(pullRequestId: string): Promise<string[]> {
-  const rows = await db
-    .select({ issueId: repoPullRequestIssues.issueId })
-    .from(repoPullRequestIssues)
-    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId))
-    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
-  return rows.map((r) => r.issueId);
+/** An issue a stored change request delivers, with the reading that named it (ISS-1027). */
+export interface NamedLink {
+  issueId: string;
+  linkedBy: ChangeRequestLinkKind;
+  namedBy: ChangeRequestReading;
 }
 
 /**
- * The stored row numbered `number` on this binding and every issue it delivers, oldest link first;
- * undefined where Forge holds no row for that number.
+ * Every issue the stored change request delivers (REQ-63 BC-4), by its row id, primary first, each
+ * with the reading that named it: the branch's leading key, its tail's numbers, its title or body.
+ */
+export async function linksOfPullRequest(
+  pullRequestId: string,
+  headRef: string,
+): Promise<NamedLink[]> {
+  const links = await db
+    .select({ issueId: repoPullRequestIssues.issueId, linkedBy: repoPullRequestIssues.linkedBy })
+    .from(repoPullRequestIssues)
+    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId))
+    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
+  return forgeReads().changeRequestLinkReadings({ headRef, links });
+}
+
+/**
+ * The stored row numbered `number` on this binding and every issue it delivers, oldest link first,
+ * each with the reading that named it; undefined where Forge holds no row for that number.
  */
 export async function linkedIssuesOfNumber(
   bindingId: string,
   number: number,
-): Promise<{ id: string; issueIds: string[] } | undefined> {
+): Promise<{ id: string; issueIds: string[]; links: NamedLink[] } | undefined> {
   const [row] = await db
-    .select({ id: repoPullRequests.id })
+    .select({ id: repoPullRequests.id, headRef: repoPullRequests.headRef })
     .from(repoPullRequests)
     .where(and(eq(repoPullRequests.bindingId, bindingId), eq(repoPullRequests.number, number)))
     .limit(1);
   if (!row) return undefined;
-  const links = await db
-    .select({ issueId: repoPullRequestIssues.issueId })
-    .from(repoPullRequestIssues)
-    .where(eq(repoPullRequestIssues.pullRequestId, row.id))
-    .orderBy(asc(repoPullRequestIssues.position), asc(repoPullRequestIssues.issueId));
-  return { id: row.id, issueIds: links.map((l) => l.issueId) };
+  const links = await linksOfPullRequest(row.id, row.headRef);
+  return { id: row.id, issueIds: links.map((l) => l.issueId), links };
 }

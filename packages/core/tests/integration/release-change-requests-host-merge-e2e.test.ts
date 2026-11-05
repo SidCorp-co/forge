@@ -60,7 +60,7 @@ const _codeOf = (body: unknown) => {
   return b.error?.refusals?.[0]?.code ?? b.error?.code ?? null;
 };
 
-/** Two requests over three issues: !10 delivers ISS-1 and ISS-2 by branch and ISS-3 by description. */
+/** Two requests over three issues: !10 delivers ISS-1 by branch and ISS-2 and ISS-3 by description. */
 async function stack() {
   const one = await issue(1, 'awaiting_release');
   const two = await issue(2, 'awaiting_release');
@@ -68,9 +68,9 @@ async function stack() {
   const four = await issue(4, 'awaiting_release');
   await mergeRequest(
     10,
-    'feat/req3-site-write-iss-1-2',
+    'feat/req3-site-write-iss-1',
     HEAD_A,
-    'Also delivers ISS-3. Serves REQ-4.',
+    'Also delivers ISS-2, ISS-3. Serves REQ-4.',
   );
   await mergeRequest(11, 'fix/req4-token-iss-4', HEAD_B, null);
   return { one, two, three, four };
@@ -107,7 +107,7 @@ describe('a merge the host reports writes nothing, and names the mark each deliv
     await settleOutbox();
     await seedWorld({ approval: { required: true } });
     const { one, two, three, four } = await stack();
-    await hostMerged(10, 'feat/req3-site-write-iss-1-2', HOST_SHA);
+    await hostMerged(10, 'feat/req3-site-write-iss-1', HOST_SHA);
     for (const id of [one, two, three, four]) {
       expect((await issueRow(id))?.merged_at).toBeNull();
       expect((await issueRow(id))?.merged_commit_sha).toBeNull();
@@ -136,7 +136,7 @@ describe('a merge the host reports writes nothing, and names the mark each deliv
       actor: { id: world.ownerId, agency: 'human' },
     });
     expect(off.ok).toBe(true);
-    await hostMerged(10, 'feat/req3-site-write-iss-1-2', HOST_SHA);
+    await hostMerged(10, 'feat/req3-site-write-iss-1', HOST_SHA);
     const owed = (await owedMarks(world.projectId)).map((m) => m.issueId).sort();
     expect(owed).toEqual([one, three].sort());
   });
@@ -223,7 +223,7 @@ describe('a merge through Forge records the target and the head on every issue i
     ]) {
       await emitEvent(db, 'source.merged', {
         projectId: world.projectId,
-        headRef: 'feat/req3-site-write-iss-1-2',
+        headRef: 'feat/req3-site-write-iss-1',
         baseRef: BRANCH,
         commitSha: merged.get(10) as string,
         mergedAt: '2026-10-25T09:10:00.000Z',

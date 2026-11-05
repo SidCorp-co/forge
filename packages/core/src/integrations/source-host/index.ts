@@ -61,7 +61,6 @@ export { currentHeadRuns, rollupOf, runPassed } from './projection-shape.js';
 export { rateLimitHeadersOf } from './rate-headers.js';
 export { projectReadChangeRequest } from './read-projection.js';
 export {
-  issuesOfPullRequest,
   openPullRequestsForIssue,
   pullRequestNumbered,
   readPullRequestsForIssues,

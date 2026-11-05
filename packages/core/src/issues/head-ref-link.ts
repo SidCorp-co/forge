@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import type { ChangeRequestLinkKind, ChangeRequestReading } from '../db/schema-repo-projection.js';
 import { ISS_SEQ_MAX, LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import { heldIssuePrefixes, type IssueRefReader } from './issue-prefix-read.js';
 
@@ -12,37 +13,89 @@ interface IssueReference {
   issSeq: number;
 }
 
+/** A key a branch names, and where: a path segment's opening key, or the `feat/…-iss-16` tail. */
+interface BranchReference extends IssueReference {
+  from: 'lead' | 'tail';
+}
+
 function inRange(issSeq: number): boolean {
   return Number.isInteger(issSeq) && issSeq >= 1 && issSeq <= ISS_SEQ_MAX;
 }
 
-/** `feat/…-iss-16-31` (REQ-63 BC-4): a delivery branch ending in a prefix and the numbers it delivers. */
+/**
+ * `feat/…-iss-16` (REQ-63 BC-4 r11): a delivery branch ending in the one key it carries. A digit
+ * suffix after the key — a run's attempt number, `fix/x-iss-50-2` — is no second key (ISS-1027).
+ */
 const DELIVERY_BRANCH_SHAPE =
-  /^(?:feat|fix)\/.+-([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,10}(?:-\d{1,10})*)$/;
-
-function numbersIn(raw: string): number[] {
-  return raw.split('-').map(Number).filter(inRange);
-}
+  /^(?:feat|fix)\/.+-([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,10})(?:-\d{1,10})*$/;
 
 /**
  * Every `(prefix, number)` the branch names, in the order it names them: the key opening each path
- * segment (`iss-37-x`, `fix/iss-37-x`), then the numbers a `feat/…-iss-16-31` branch ends with.
+ * segment (`iss-37-x`, `fix/iss-37-x`), then the key a `feat/…-iss-16` branch ends with, a digit
+ * suffix after it read as no key.
  * Whether a prefix is this project's is the caller's question.
  */
-export function branchIssueReferences(headRef: string): IssueReference[] {
+export function branchIssueReferences(headRef: string): BranchReference[] {
   const ref = headRef.trim();
-  const out: IssueReference[] = [];
+  const out: BranchReference[] = [];
   for (const segment of ref.split('/')) {
     const hit = SEGMENT_LEAD_SHAPE.exec(segment);
     const issSeq = Number(hit?.[2]);
-    if (hit?.[1] && inRange(issSeq)) out.push({ prefix: hit[1].toUpperCase(), issSeq });
+    if (hit?.[1] && inRange(issSeq)) {
+      out.push({ prefix: hit[1].toUpperCase(), issSeq, from: 'lead' });
+    }
   }
   const tail = DELIVERY_BRANCH_SHAPE.exec(ref);
-  if (tail?.[1] && tail[2]) {
-    const prefix = tail[1].toUpperCase();
-    for (const issSeq of numbersIn(tail[2])) out.push({ prefix, issSeq });
+  const tailSeq = Number(tail?.[2]);
+  if (tail?.[1] && inRange(tailSeq)) {
+    out.push({ prefix: tail[1].toUpperCase(), issSeq: tailSeq, from: 'tail' });
   }
   return out;
+}
+
+/**
+ * Which reading of a change request named an issue it links (ISS-1027): `branch-lead` where a path
+ * segment of the branch opens with its key, `branch-tail` where only the key a `feat|fix/…-iss-n`
+ * branch ends with holds it, `title` and `body` as the link was written, so a caller sees which part
+ * of a request named each issue before its merge stamps it. A head-ref link whose number a lead key
+ * holds reads as the lead, as the link took it first.
+ */
+export function readingOfLink(
+  headRef: string,
+  issSeq: number,
+  linkedBy: ChangeRequestLinkKind,
+): ChangeRequestReading {
+  if (linkedBy === 'title') return 'title';
+  if (linkedBy === 'description') return 'body';
+  const refs = branchIssueReferences(headRef).filter((r) => r.issSeq === issSeq);
+  return refs.length > 0 && refs.every((r) => r.from === 'tail') ? 'branch-tail' : 'branch-lead';
+}
+
+/** Each stored link of a change request with the reading that named it (`readingOfLink`), in order. */
+export async function changeRequestLinkReadings(
+  args: {
+    headRef: string;
+    links: ReadonlyArray<{ issueId: string; linkedBy: ChangeRequestLinkKind }>;
+  },
+  dbi: IssueRefReader = defaultDb,
+): Promise<
+  Array<{ issueId: string; linkedBy: ChangeRequestLinkKind; namedBy: ChangeRequestReading }>
+> {
+  if (args.links.length === 0) return [];
+  const rows = await dbi
+    .select({ id: issues.id, issSeq: issues.issSeq })
+    .from(issues)
+    .where(
+      inArray(
+        issues.id,
+        args.links.map((l) => l.issueId),
+      ),
+    );
+  const seqOf = new Map(rows.map((r) => [r.id, r.issSeq]));
+  return args.links.map((l) => ({
+    ...l,
+    namedBy: readingOfLink(args.headRef, seqOf.get(l.issueId) ?? Number.NaN, l.linkedBy),
+  }));
 }
 
 /** One issue key: a prefix, a hyphen, a number, and no letter, digit or hyphen running on. */

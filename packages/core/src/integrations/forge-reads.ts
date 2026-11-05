@@ -1,3 +1,4 @@
+import type { ChangeRequestLinkKind, ChangeRequestReading } from '../db/schema-repo-projection.js';
 import { portSlot } from '../lib/port-slot.js';
 
 // What an adapter must know about Forge's own rows, handed in by the process entry at boot, so no
@@ -20,6 +21,16 @@ interface ForgeReads {
     title: string | null;
     description: string | null;
   }): Promise<string>;
+  /**
+   * Each stored link of a change request with the reading that named it (ISS-1027): the branch's
+   * leading key, the numbers its tail lists, its title or its body.
+   */
+  changeRequestLinkReadings(args: {
+    headRef: string;
+    links: ReadonlyArray<{ issueId: string; linkedBy: ChangeRequestLinkKind }>;
+  }): Promise<
+    Array<{ issueId: string; linkedBy: ChangeRequestLinkKind; namedBy: ChangeRequestReading }>
+  >;
   /** A project's slug, or null when no such project exists. */
   projectSlug(projectId: string): Promise<string | null>;
   /** Id, slug and name of each project in `ids` that exists. */

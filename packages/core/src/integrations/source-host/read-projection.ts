@@ -12,7 +12,7 @@ import { forgeReads, type InboundFact } from '../index.js';
 import { SourceHostCallError } from './errors.js';
 import { readMergedHead } from './merged-head.js';
 import { applyPullRequestEvent, type ProjectionContext, storeHostChecks } from './projection.js';
-import { linkedIssuesOfNumber } from './repo-projection.js';
+import { linkedIssuesOfNumber, type NamedLink } from './repo-projection.js';
 import type { ReadChangeRequest, SourceHost } from './types.js';
 
 /** A host answer missing a field the row cannot be written without, named field by field. */
@@ -38,6 +38,12 @@ export interface ReadProjection {
   state: string;
   /** Every Forge issue the row delivers, by its branch, its title and its description (REQ-63 BC-4). */
   issueIds: string[];
+  /**
+   * The same issues, each with the reading that named it — the branch's leading key, the numbers its
+   * tail lists, its title or its body — so a branch's run suffix read as an issue shows before the
+   * merge stamps it (ISS-1027).
+   */
+  linkedIssues: NamedLink[];
   /** Where it links no issue, why, named by what was read (ISS-855); null where it links one. */
   noIssue: string | null;
   checks: ChecksProjection;
@@ -120,6 +126,7 @@ export async function projectReadChangeRequest(args: {
     outcome: written > 0 ? 'recorded' : 'superseded',
     state: read.state,
     issueIds: row?.issueIds ?? [],
+    linkedIssues: row?.links ?? [],
     noIssue:
       row && row.issueIds.length === 0
         ? await forgeReads().noIssueForChangeRequest({

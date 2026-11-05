@@ -2,7 +2,7 @@
  * REQ-63: a project whose document sets `release.changeRequests` releases by merging its change
  * requests, in order, once the owner accepts the release in Forge (owner ruling 2026-10-23). Planted
  * from adminhub-api's stack: one merge request delivers several issues by its branch
- * (`feat/…-iss-1-2`) and its description (`ISS-3`), the issues it ships were closed by hand on a
+ * (`feat/…-iss-1`) and its description (`ISS-2, ISS-3`), the issues it ships were closed by hand on a
  * local merge before Forge knew the host, and the owner merges nothing himself any more.
  *
  * Each block drives one BC through its own door against real Postgres. The source host is a planted
@@ -156,7 +156,7 @@ const codeOf = (body: unknown) => {
   return b.error?.refusals?.[0]?.code ?? b.error?.code ?? null;
 };
 
-/** Two requests over three issues: !10 delivers ISS-1 and ISS-2 by branch and ISS-3 by description. */
+/** Two requests over three issues: !10 delivers ISS-1 by branch and ISS-2 and ISS-3 by description. */
 async function stack() {
   const one = await issue(1, 'awaiting_release');
   const two = await issue(2, 'awaiting_release');
@@ -164,9 +164,9 @@ async function stack() {
   const four = await issue(4, 'awaiting_release');
   await mergeRequest(
     10,
-    'feat/req3-site-write-iss-1-2',
+    'feat/req3-site-write-iss-1',
     HEAD_A,
-    'Also delivers ISS-3. Serves REQ-4.',
+    'Also delivers ISS-2, ISS-3. Serves REQ-4.',
   );
   await mergeRequest(11, 'fix/req4-token-iss-4', HEAD_B, null);
   return { one, two, three, four };
@@ -187,11 +187,11 @@ async function approve(runId: string) {
 describe('BC-4: one change request delivers every issue its branch and description name', () => {
   beforeEach(async () => seedWorld(THROUGH_CHANGE_REQUESTS));
 
-  it('links ISS-1 and ISS-2 by the branch and ISS-3 by the description, and not REQ-4', async () => {
+  it('links ISS-1 by the branch and ISS-2 and ISS-3 by the description, and not REQ-4', async () => {
     await stack();
     expect(await linkedTo(10)).toEqual([
       { key: 1, linked_by: 'head-ref' },
-      { key: 2, linked_by: 'head-ref' },
+      { key: 2, linked_by: 'description' },
       { key: 3, linked_by: 'description' },
     ]);
     expect(await linkedTo(11)).toEqual([{ key: 4, linked_by: 'head-ref' }]);
@@ -199,7 +199,7 @@ describe('BC-4: one change request delivers every issue its branch and descripti
 
   it('unlinks an issue whose key leaves the description', async () => {
     await stack();
-    await mergeRequest(10, 'feat/req3-site-write-iss-1-2', HEAD_A, 'Serves REQ-4.');
+    await mergeRequest(10, 'feat/req3-site-write-iss-1', HEAD_A, 'Delivers ISS-2. Serves REQ-4.');
     expect((await linkedTo(10)).map((r) => r.key)).toEqual([1, 2]);
   });
 });

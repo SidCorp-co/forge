@@ -2,7 +2,7 @@ import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
-import { repoPullRequests } from '../../db/schema-repo-projection.js';
+import { type ChangeRequestReading, repoPullRequests } from '../../db/schema-repo-projection.js';
 import { refuser } from '../../lib/refusal.js';
 import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
@@ -10,7 +10,7 @@ import { outcomeUnconfirmed, readBackMerge } from './merge-unknown.js';
 import { readMergedHead } from './merged-head.js';
 import { markPullRequestMerged } from './projection.js';
 import { projectChecksAfterMerge } from './read-projection.js';
-import { issuesOfPullRequest } from './repo-projection.js';
+import { linksOfPullRequest, type NamedLink } from './repo-projection.js';
 import { sourceHostForBinding } from './resolve.js';
 import type { HostMergeResult, SourceHost } from './types.js';
 
@@ -37,19 +37,53 @@ export type IssueMergeStamp = (
      */
     performed: boolean;
     issueId: string;
+    /** The reading of the request that named the issue: its branch's lead or tail, title or body. */
+    namedBy: ChangeRequestReading;
     commitSha: string;
     mergedAt: Date;
     target: string;
     /** The request's head and whether its tree is the landing's, read from the host at the merge. */
     head: MergedHead | null;
   },
-) => Promise<{ wrote: boolean; refused?: { code: string; detail: string } | null }>;
+) => Promise<{
+  wrote: boolean;
+  refused?: { code: string; detail: string } | null;
+  /** The issue was not written to at all, and why: one already over is no landing's (ISS-1027). */
+  skipped?: { status: string; detail: string } | null;
+}>;
 
 /** An issue the merged request links whose stamp was refused, and why. */
 interface RefusedStamp {
   issueId: string;
   code: string;
   detail: string;
+  namedBy: ChangeRequestReading;
+}
+
+/** An issue the merged request links that the stamp left untouched, its status and what named it. */
+interface SkippedStamp {
+  issueId: string;
+  status: string;
+  namedBy: ChangeRequestReading;
+  detail: string;
+}
+
+/**
+ * Every issue the merged request links, the reading that named it, and what its stamp did: wrote it,
+ * skipped it, refused it, or found this landing already held.
+ */
+interface LinkedStamp {
+  issueId: string;
+  namedBy: ChangeRequestReading;
+  stamp: 'stamped' | 'skipped' | 'refused' | 'held';
+}
+
+interface Evidence {
+  stamped: boolean;
+  stampedIssues: string[];
+  refusedStamps: RefusedStamp[];
+  skippedStamps: SkippedStamp[];
+  linkedIssues: LinkedStamp[];
 }
 
 interface MergeRequest {
@@ -81,6 +115,10 @@ type MergeOutcome =
       stampedIssues: string[];
       /** Every linked issue the commit is not the landing of, refused rather than stamped. */
       refusedStamps: RefusedStamp[];
+      /** Every linked issue already over, closed or dropped, left untouched (ISS-1027). */
+      skippedStamps: SkippedStamp[];
+      /** Every linked issue, what named it and what its stamp did. */
+      linkedIssues: LinkedStamp[];
       checks: MergeChecks;
       /** Where the merge call went unconfirmed and the request was read back merged: what it hit. */
       observedAfter: string | null;
@@ -94,6 +132,8 @@ type MergeOutcome =
       stamped: boolean;
       stampedIssues: string[];
       refusedStamps: RefusedStamp[];
+      skippedStamps: SkippedStamp[];
+      linkedIssues: LinkedStamp[];
       checks: MergeChecks;
       observedAfter: string | null;
     }
@@ -106,8 +146,8 @@ interface StoredRow {
   id: string;
   projectId: string;
   bindingId: string;
-  /** Every issue the request delivers (REQ-63 BC-4); its merge stamps each. */
-  issueIds: string[];
+  /** Every issue the request delivers (REQ-63 BC-4) and what named it; its merge stamps each. */
+  links: NamedLink[];
   number: number;
   state: string;
   headSha: string;
@@ -122,12 +162,13 @@ async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
       number: repoPullRequests.number,
       state: repoPullRequests.state,
       headSha: repoPullRequests.headSha,
+      headRef: repoPullRequests.headRef,
     })
     .from(repoPullRequests)
     .where(eq(repoPullRequests.id, pullRequestId))
     .limit(1);
   if (!row) return null;
-  return { ...row, issueIds: await issuesOfPullRequest(row.id) };
+  return { ...row, links: await linksOfPullRequest(row.id, row.headRef) };
 }
 
 /**
@@ -172,27 +213,45 @@ async function writeEvidence(args: {
   target: string;
   head: MergedHead | null;
   stampIssue: IssueMergeStamp;
-}): Promise<{ stamped: boolean; stampedIssues: string[]; refusedStamps: RefusedStamp[] }> {
+}): Promise<Evidence> {
   const { row, host, commitSha, mergedAt, target, head, stampIssue, performed } = args;
   try {
     return await db.transaction(async (tx) => {
-      const stampedIssues: string[] = [];
-      const refusedStamps: RefusedStamp[] = [];
-      for (const issueId of row.issueIds) {
+      const out: Evidence = {
+        stamped: false,
+        stampedIssues: [],
+        refusedStamps: [],
+        skippedStamps: [],
+        linkedIssues: [],
+      };
+      for (const { issueId, namedBy } of row.links) {
         const stamp = await stampIssue(tx, {
           pullRequestId: row.id,
           performed,
           issueId,
+          namedBy,
           commitSha,
           mergedAt,
           target,
           head,
         });
-        if (stamp.wrote) stampedIssues.push(issueId);
-        if (stamp.refused) refusedStamps.push({ issueId, ...stamp.refused });
+        if (stamp.wrote) out.stampedIssues.push(issueId);
+        if (stamp.refused) out.refusedStamps.push({ issueId, namedBy, ...stamp.refused });
+        if (stamp.skipped) out.skippedStamps.push({ issueId, namedBy, ...stamp.skipped });
+        out.linkedIssues.push({
+          issueId,
+          namedBy,
+          stamp: stamp.wrote
+            ? 'stamped'
+            : stamp.skipped
+              ? 'skipped'
+              : stamp.refused
+                ? 'refused'
+                : 'held',
+        });
       }
       await markPullRequestMerged(tx, row.id, { commitSha, mergedAt });
-      return { stamped: stampedIssues.length > 0, stampedIssues, refusedStamps };
+      return { ...out, stamped: out.stampedIssues.length > 0 };
     });
   } catch (err) {
     throw new Error(
@@ -265,7 +324,7 @@ export async function mergeStoredChangeRequest(
     payload: {
       pullRequestId: row.id,
       number: row.number,
-      issueIds: row.issueIds,
+      issueIds: row.links.map((l) => l.issueId),
       requestedBy: req.requestedBy,
       runId: req.runId ?? null,
       expectedHeadSha: req.expectedHeadSha ?? null,
@@ -304,7 +363,7 @@ export async function mergeStoredChangeRequest(
     const observedAfter = 'observedAfter' in result ? result.observedAfter : null;
 
     const head = await readMergedHead((a, b) => host.sameTree(a, b), result.head, result.commitSha);
-    const { stamped, stampedIssues, refusedStamps } = await writeEvidence({
+    const evidence = await writeEvidence({
       row,
       // a landing read back after an unconfirmed call may be anyone's: the commit says whose
       performed: result.kind === 'merged' && observedAfter === null,
@@ -330,18 +389,14 @@ export async function mergeStoredChangeRequest(
               alreadyMerged: true,
               commitSha: result.commitSha,
               target: result.target,
-              stamped,
-              stampedIssues,
-              refusedStamps,
+              ...evidence,
             }
           : {
               commitSha: result.commitSha,
               target: result.target,
               requestedBy: req.requestedBy,
               ...(observedAfter ? { observedAfter } : {}),
-              stamped,
-              stampedIssues,
-              refusedStamps,
+              ...evidence,
             },
       completedAt: new Date(),
     });
@@ -351,9 +406,7 @@ export async function mergeStoredChangeRequest(
       commitSha: result.commitSha,
       mergedAt: result.mergedAt,
       target: result.target,
-      stamped,
-      stampedIssues,
-      refusedStamps,
+      ...evidence,
       checks,
       observedAfter,
     };

@@ -17,9 +17,11 @@ import {
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
 import {
+  issueKeysAndTitles,
   issueScopeOf,
   mergedCommitShaSchema,
   mergeIdentityOf,
+  overIssueStampSkip,
   recordIssueMerge,
   recordRefusedStamp,
   type TransitionActor,
@@ -45,10 +47,14 @@ const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
  * the landing's, each read from the host. A later merge of another request delivering the issue
  * supersedes it (`recordIssueMerge`). Taken only where the commit is the issue's landing
  * (`issues/merge-identity.ts`); a refusal is recorded on the issue and answered beside the merge.
+ * Another linked issue already closed or dropped is not written to at all, and answered as skipped
+ * (`issues/merge-stamp-skip.ts`, ISS-1027); the issue the call names keeps the rules above.
  */
 const stampKernelMerge =
-  (actor: OutboxActor, projectId: string): IssueMergeStamp =>
-  async (tx, { pullRequestId, performed, issueId, commitSha, mergedAt, target, head }) => {
+  (actor: OutboxActor, projectId: string, callIssueId: string): IssueMergeStamp =>
+  async (tx, { pullRequestId, performed, issueId, namedBy, commitSha, mergedAt, target, head }) => {
+    const skipped = await overIssueStampSkip(tx, { issueId, callIssueId, namedBy });
+    if (skipped) return { wrote: false, skipped };
     // only a merge Forge made now names its request; one the host reports already made may have
     // landed through another request's commits, so the commit answers for it
     const identity = await mergeIdentityOf({
@@ -86,6 +92,15 @@ async function settleAfterMerge(runId: string, actor: TransitionActor) {
     logger.error({ err, runId }, 'merge-pull-request: the release could not be settled');
     return { runId, settled: false, settleError: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Each linked issue's key, as the answer names it beside its id. */
+async function issueKeyReader(projectId: string, linked: ReadonlyArray<{ issueId: string }>) {
+  const named = await issueKeysAndTitles(
+    projectId,
+    linked.map((l) => l.issueId),
+  );
+  return (issueId: string) => named.get(issueId)?.key ?? null;
 }
 
 export const issueMergePullRequestRoutes = new Hono<{ Variables: AuthVars }>();
@@ -192,7 +207,7 @@ issueMergePullRequestRoutes.post(
           ...(expectedHeadSha ? { expectedHeadSha } : {}),
           ...(body.method ? { method: body.method } : {}),
         },
-        stampKernelMerge(actor, issue.projectId),
+        stampKernelMerge(actor, issue.projectId, issueId),
       );
       if (!outcome) throw notFound('pull request not found');
       if (outcome.kind === 'refused') {
@@ -207,6 +222,7 @@ issueMergePullRequestRoutes.post(
               agency: actor.agency,
             })
           : null;
+      const keyOf = await issueKeyReader(issue.projectId, outcome.linkedIssues);
       return c.json({
         id: issueId,
         merged: true,
@@ -218,7 +234,9 @@ issueMergePullRequestRoutes.post(
         mergedAt: outcome.mergedAt.toISOString(),
         stamped: outcome.stamped,
         stampedIssues: outcome.stampedIssues,
-        refusedStamps: outcome.refusedStamps,
+        refusedStamps: outcome.refusedStamps.map((r) => ({ ...r, issue: keyOf(r.issueId) })),
+        skippedStamps: outcome.skippedStamps.map((r) => ({ ...r, issue: keyOf(r.issueId) })),
+        linkedIssues: outcome.linkedIssues.map((l) => ({ ...l, issue: keyOf(l.issueId) })),
         checks: outcome.checks,
         release,
         deliveryId: outcome.deliveryId,

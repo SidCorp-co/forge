@@ -3,6 +3,7 @@ import {
   branchIssueReferences,
   deliveredDescriptionReferences,
   noIssueReason,
+  readingOfLink,
   titleIssueReferences,
 } from './head-ref-link.js';
 
@@ -16,9 +17,24 @@ describe('branchIssueReferences: the keys a branch names, in order (ISS-705, REQ
     expect(keys(branchIssueReferences('ISS-37'))).toEqual(['ISS-37']);
   });
 
-  it('reads the numbers a feat|fix delivery branch ends with', () => {
-    expect(keys(branchIssueReferences('feat/req3-site-write-iss-1-2'))).toEqual(['ISS-1', 'ISS-2']);
+  it('reads the one key a feat|fix delivery branch ends with (REQ-63 BC-4 r11)', () => {
+    expect(keys(branchIssueReferences('feat/x-iss-16'))).toEqual(['ISS-16']);
     expect(keys(branchIssueReferences('fix/req4-token-iss-4'))).toEqual(['ISS-4']);
+  });
+
+  // adminhub-api MR 5162 (FB-528): a run's attempt number after the key read as a second issue, and
+  // its merge stamped ISS-2, closed and unrelated (ISS-1027)
+  it('reads a digit suffix after the key as no second key', () => {
+    expect(keys(branchIssueReferences('fix/strict-check-recursive-not-iss-50-2'))).toEqual([
+      'ISS-50',
+    ]);
+    expect(keys(branchIssueReferences('feat/x-iss-16-31'))).toEqual(['ISS-16']);
+    expect(keys(branchIssueReferences('fix/iss-50-2'))).toEqual(['ISS-50']);
+  });
+
+  it('tells the leading key from the tail key', () => {
+    expect(branchIssueReferences('fix/iss-37-x').map((r) => r.from)).toEqual(['lead']);
+    expect(branchIssueReferences('feat/x-iss-16').map((r) => r.from)).toEqual(['tail']);
   });
 
   it('reads nothing from a branch that names no key', () => {
@@ -138,5 +154,18 @@ describe('noIssueReason: an MR that links nothing says what was read (ISS-855)',
     });
     expect(why).toContain('ISS-4000');
     expect(why).toContain('REQ-4');
+  });
+});
+
+describe('readingOfLink: which reading of a change request named a linked issue (ISS-1027)', () => {
+  it('names the branch lead, the branch tail, the title and the body', () => {
+    expect(readingOfLink('fix/iss-37-x', 37, 'head-ref')).toBe('branch-lead');
+    expect(readingOfLink('feat/x-iss-16', 16, 'head-ref')).toBe('branch-tail');
+    expect(readingOfLink('feat/x-iss-16', 31, 'title')).toBe('title');
+    expect(readingOfLink('feat/x-iss-16', 31, 'description')).toBe('body');
+  });
+
+  it('reads a key both the lead and the tail hold as the lead', () => {
+    expect(readingOfLink('fix/iss-7-x-iss-7', 7, 'head-ref')).toBe('branch-lead');
   });
 });

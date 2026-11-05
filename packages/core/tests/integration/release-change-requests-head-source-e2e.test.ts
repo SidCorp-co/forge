@@ -26,7 +26,7 @@ import {
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 const BRANCH = 'release/stg';
-const MR_BRANCH = 'feat/req1-openapi-iss-10-13';
+const MR_BRANCH = 'feat/req1-openapi-iss-10';
 const MR_HEAD = '4d2198e9d95a713381442d7e3a9e9df59347fb7f';
 const WORK_BRANCH = 'feat/iss-10-openapi-foundation';
 const WORK_HEAD = '39587a27d716466215a1cdc647327d64cbeb1c35';
