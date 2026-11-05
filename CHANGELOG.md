@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.515] - 2026-11-05
+
+Release holds ask for checks only on a running build that holds the change
+
+### Fixed
+
+- **A release hold no longer asks for verdicts where the change cannot be.** It names a served commit only where it holds the landing, else says the criteria are owed after the carrying release, and names what production serves truthfully.
+
 ## [0.4.0-dev.514] - 2026-11-05
 
 Support screenshots reach the agent; Activity lanes and Releases read as short reports

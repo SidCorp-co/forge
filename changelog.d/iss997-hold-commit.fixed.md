@@ -1,1 +1,0 @@
-**A release hold no longer asks for verdicts where the change cannot be.** It names a served commit only where it holds the landing, else says the criteria are owed after the carrying release, and names what production serves truthfully.
