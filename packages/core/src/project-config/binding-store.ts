@@ -243,6 +243,26 @@ export const drizzleBindingStore = {
   },
 };
 
+/**
+ * What a health check observed of one binding's own target (`integrations/binding-health.ts`,
+ * ISS-983). An observation, not the binding document: `revision` and `updated_at` stay as they are,
+ * so a probe never makes a document write stale.
+ */
+export async function setBindingHealth(
+  id: string,
+  set: Pick<
+    Partial<typeof integrationBindings.$inferInsert>,
+    | 'lastHealthStatus'
+    | 'lastHealthDetail'
+    | 'lastHealthSays'
+    | 'lastHealthAt'
+    | 'inboundEndpointObserved'
+  >,
+): Promise<void> {
+  if (Object.keys(set).length === 0) return;
+  await db.update(integrationBindings).set(set).where(eq(integrationBindings.id, id));
+}
+
 /** A binding's inbound webhook secret, rotated. */
 export async function setBindingInboundSecret(
   id: string,

@@ -1,7 +1,6 @@
 import { type Said, sayEn } from '@forge/contracts/said';
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { integrationBindings, type ObservedEndpoint } from '../db/schema.js';
+import type { integrationBindings, ObservedEndpoint } from '../db/schema.js';
+import { setBindingHealth } from '../project-config/index.js';
 import { getAdapter } from './registry.js';
 import { type BindingWithConnection, updateConnection } from './store.js';
 import type { AdapterContext, HealthStatus } from './types.js';
@@ -52,11 +51,7 @@ export async function recordHealth(
   }
 }
 
-/**
- * Writes what a check observed of one binding's own target. It is an observation, not the binding
- * document: `revision` and `updated_at` are left as they are, so a probe never makes a document
- * write stale.
- */
+/** Writes what a check observed of one binding's own target, through its owner (`setBindingHealth`). */
 export async function updateBindingHealth(
   bindingId: string,
   patch: {
@@ -76,8 +71,7 @@ export async function updateBindingHealth(
   if (patch.inboundEndpointObserved !== undefined) {
     set.inboundEndpointObserved = patch.inboundEndpointObserved;
   }
-  if (Object.keys(set).length === 0) return;
-  await db.update(integrationBindings).set(set).where(eq(integrationBindings.id, bindingId));
+  await setBindingHealth(bindingId, set);
 }
 
 /** A reading as a project reads it: one status, its sentence in English and as said, and when. */
