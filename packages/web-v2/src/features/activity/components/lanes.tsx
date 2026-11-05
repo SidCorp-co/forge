@@ -10,6 +10,7 @@ import { useRef, useState } from "react";
 import {
   GroupHeader,
   type LegendTone,
+  TIMELINE_GROUP_STICKY,
   TimelineFrame,
   TimelineHead,
   spreadMarks,
@@ -238,7 +239,7 @@ export function ActivityLanes({
         const isOpen = fold.isOpen(g.id);
         return (
           <div key={g.id} data-testid="activity-group">
-            <GroupHeader id={g.id} label={g.label} count={g.rows.length} tone={g.tone} open={isOpen} onToggle={() => fold.toggle(g.id)} />
+            <GroupHeader id={g.id} label={g.label} count={g.rows.length} tone={g.tone} open={isOpen} onToggle={() => fold.toggle(g.id)} className={TIMELINE_GROUP_STICKY} />
             {isOpen
               ? g.rows.map((p) => (
                   <TimelineRow

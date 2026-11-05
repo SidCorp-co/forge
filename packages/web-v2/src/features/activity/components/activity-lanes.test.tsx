@@ -88,6 +88,34 @@ describe("the Activity tab's lanes", () => {
 });
 
 describe("the Activity tab's marks", () => {
+  it("a mark whose popover Escape closed shows no summary until the pointer comes back to it, so a neighbour's is the only one (fix round 3)", async () => {
+    serve(read([FORGE]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    const batch = within(rowOf("Forge")).getByTestId("mark-batch");
+    fireEvent.click(batch);
+    await pop();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("mark-pop")).toBeNull());
+    expect(within(batch).queryByTestId("timeline-tip")).toBeNull();
+    // moving off and focus leaving no longer bring it back; only the pointer returning does
+    fireEvent.pointerLeave(batch);
+    fireEvent.blur(batch);
+    expect(within(batch).queryByTestId("timeline-tip")).toBeNull();
+    fireEvent.pointerEnter(batch);
+    expect(within(batch).getByTestId("timeline-tip")).toBeTruthy();
+  });
+
+  it("on a phone each group's header stays put, the frame's own width, while the lanes scroll under it (fix round 3)", async () => {
+    serve(read([FORGE]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    for (const header of screen.getAllByTestId("list-group")) {
+      expect(header.className).toContain("max-md:sticky");
+      expect(header.className).toContain("max-md:w-[100cqw]");
+    }
+  });
+
   it("a batch summarises on hover, and on click lists each issue from → to, each a link by its title", async () => {
     serve(read([FORGE]));
     renderWithQuery(<ActivityScreen />);

@@ -20,9 +20,12 @@ const clamp = (n: number) => Math.min(100, Math.max(0, n));
 const left = (at: number) => ({ left: `${clamp(at)}%` });
 
 /** The lanes' frame: their own sideways scroller over a floor width, so the page itself never scrolls sideways. */
+/** A group header inside the frame: on a phone it stays put, the frame's own width, while the lanes scroll under it. */
+export const TIMELINE_GROUP_STICKY = "max-md:sticky max-md:left-0 max-md:w-[100cqw]";
+
 export function TimelineFrame({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section aria-label={label} className="overflow-x-auto" data-testid="timeline-frame">
+    <section aria-label={label} className="@container/frame overflow-x-auto" data-testid="timeline-frame">
       <div className="min-w-[900px]">{children}</div>
     </section>
   );
@@ -177,8 +180,9 @@ export function TimelineMark({
       data-testid={testId}
       data-lowered={lowered ? "" : undefined}
       data-shift={shift === 0 ? undefined : shift}
-      onBlur={() => setQuiet(false)}
-      onPointerLeave={() => setQuiet(false)}
+      // a mark whose popover just closed (Escape gives it focus back) stays quiet until the pointer comes
+      // back to it, so hovering a neighbour never shows two summaries at once
+      onPointerEnter={() => setQuiet(false)}
     >
       <TimelineGlyph shape={shape} />
       {open || quiet ? null : (

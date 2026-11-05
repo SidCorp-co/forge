@@ -113,6 +113,7 @@ export { DetailLeadEnd, DetailTabs, DetailLayout, DetailPane, FieldLabel, useUrl
 export { ViewModeSwitcher, useViewMode, type ViewMode } from "./patterns/view-mode-switcher";
 export { ListToolbar, ListLayout, ToolbarSelect } from "./patterns/list-page";
 export {
+  TIMELINE_GROUP_STICKY,
   TimelineFrame,
   TimelineGlyph,
   TimelineHead,
