@@ -1,1 +1,0 @@
-**Product tours have a drawing convention.** The templates guide now shows how to draw a product tour in a screen flow with the existing shapes, one start per role, so every run draws tours the same way.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.517] - 2026-11-05
+
+Product tours get one drawing convention in the ux-flow guide
+
+### Added
+
+- **Product tours have a drawing convention.** The templates guide now shows how to draw a product tour in a screen flow with the existing shapes, one start per role, so every run draws tours the same way.
+
 ## [0.4.0-dev.516] - 2026-11-05
 
 Decisions without a summary show their question; Ask Agent opens faster
