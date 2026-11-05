@@ -6,7 +6,6 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import type { ReleaseDetail } from "../types";
-import { ReleaseBanner } from "./release-bits";
 import { ApprovedDesigns, DemoNotesWarning, NotesAttention } from "./release-note-reads";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -39,10 +38,10 @@ describe("draft notes that need a rewrite", () => {
   });
 
   it("shows no line when no note needs attention, or once the release is cut", () => {
-    const { unmount } = renderWithQuery(<NotesAttention r={{ ...release, notes: { ...release.notes, attention: [] } } as ReleaseDetail} slug="hop" />);
+    const { unmount } = renderWithQuery(<NotesAttention r={{ ...release, notes: { ...release.notes, attention: [] } }} slug="hop" />);
     expect(screen.queryByTestId("release-notes-attention")).toBeNull();
     unmount();
-    renderWithQuery(<NotesAttention r={{ ...release, state: "shipped" } as ReleaseDetail} slug="hop" />);
+    renderWithQuery(<NotesAttention r={{ ...release, state: "shipped" }} slug="hop" />);
     expect(screen.queryByTestId("release-notes-attention")).toBeNull();
   });
 });
@@ -85,12 +84,5 @@ describe("a production release whose notes call it a demo", () => {
     renderWithQuery(<DemoNotesWarning r={r050 as never} />);
     expect(screen.getByTestId("release-customer-demo")).toHaveTextContent("ISS-122");
     expect(screen.getByTestId("release-customer-demo")).toHaveTextContent("hop.auto.sidcorp.co");
-  });
-
-  // REQ-43 BC-5: where a live release runs is the page's facts' (the reader's Runs at, the peek's
-  // Address); the banner of an ended release says only that nothing is owed
-  it("says nothing is owed on a live release, and leaves where it runs to the page's facts", () => {
-    renderWithQuery(<ReleaseBanner r={r050 as never} />);
-    expect(screen.getByTestId("wait-banner")).toHaveTextContent(/^Nothing owed$/);
   });
 });

@@ -75,21 +75,13 @@ describe("a release of a project that names its testing environment", () => {
   const onDev = (proven: number, total: number) =>
     ({ level: proven === total ? "criteria" : "some_criteria", proven, total, check: "landed", provider: null, judgedOn: "dev" }) as const;
 
-  it("says it was not judged on dev by name, and asks for that before the owner's review", () => {
+  it("asks for it to be judged on dev before the owner's review", () => {
     const s = standing({ state: "landed", landedOn: "release/stg", verified: onDev(0, 26) });
-    expect(s.verified).toBe("Not judged on dev: 0 of 26 checks met");
     expect(s.next).toBe("Have it judged on dev first");
   });
 
-  it("counts what passed on dev, and asks the owner once every one has", () => {
-    expect(standing({ state: "landed", landedOn: "release/stg", verified: onDev(3, 26) }).verified).toBe("3 of 26 checks met on dev");
-    const ready = standing({ state: "landed", landedOn: "release/stg", verified: onDev(26, 26) });
-    expect(ready.verified).toBe("All 26 checks met on dev");
-    expect(ready.next).not.toBe("Have it judged on dev first");
-  });
-
-  it("reads as before where the project names none", () => {
-    const s = standing({ state: "landed", landedOn: "release/stg", verified: { ...onDev(26, 26), judgedOn: null } });
-    expect(s.verified).toBe("All 26 checks met");
+  it("asks the owner once every one has passed on dev", () => {
+    expect(standing({ state: "landed", landedOn: "release/stg", verified: onDev(3, 26) }).next).toBe("Have it judged on dev first");
+    expect(standing({ state: "landed", landedOn: "release/stg", verified: onDev(26, 26) }).next).not.toBe("Have it judged on dev first");
   });
 });

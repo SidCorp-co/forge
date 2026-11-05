@@ -2,13 +2,11 @@ import type { Said } from "@forge/contracts/said";
 import { gateView, RULE, say, verbatim, waitingOn } from "./said";
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactElement } from "react";
-import { ComingNext } from "@/features/releases/components/coming-next";
 import { ReleaseActions } from "@/features/releases/components/release-actions";
 import { ReleaseItemScreen } from "@/features/releases/components/release-item-screen";
 import { ContinuedAs } from "@/features/releases/components/release-attempts";
 import { WhatChanges } from "@/features/releases/components/release-changes";
 import { ReleaseRecord } from "@/features/releases/components/release-record";
-import { ReleasePeek } from "@/features/releases/components/release-peek";
 import { ReleasesScreen } from "@/features/releases/components/releases-screen";
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { HealthBar, Legend, SearchBox, ViewBar, WalkBar, ZoomBar } from "@/features/workflows/canvas/controls";
@@ -144,27 +142,14 @@ const detail = {
   head: null,
 };
 
-const stamp = { label: "forecast" as const, asOf: AT };
-const coming = {
-  ...stamp,
-  projectId: P,
-  requirements: [{ ...stamp, scope: "requirement", key: "REQ-1", title: "Muc", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: null, next: null, delivery: null }],
-  draft: { ...stamp, scope: "release", key: "draft", title: null, progress: { total: 2, shipped: 0, awaitingRelease: 1, toDo: 1 }, forecast: null, next: null, delivery: null },
-};
-
 export const releaseSeed = (): [QueryKey, unknown][] => [
   [["releases", P], { releases: [draft, shipped], counts: {}, approvalRequired: true, production: { ok: false, reason: "r" } }],
-  [["issues", "standing", "forecast", "coming-next", P], coming],
   [["release", P, "0.1.0"], { release: detail }],
 ];
-
-const peek = { open: "0.1.0", position: { at: 1, of: 2 }, set: () => {}, move: () => {} };
 
 const releasesScreen = (): ReactElement => (
   <Seeded data={releaseSeed()}>
     <ReleasesScreen projectId={P} slug="hop" />
-    <ComingNext next={coming as never} draft={summary({ waitingOn: waitingOn("person", { who: say("standing.who.holderOf", { perm: "releases.approve" }), act: CUT, rule: RULE }) }) as never} slug="hop" clock={{ lang: "vi", now: Date.parse(AT) }} />
-    <ReleasePeek projectId={P} version="0.1.0" peek={peek} full={{ href: "/projects/hop", origin: null }} />
   </Seeded>
 );
 

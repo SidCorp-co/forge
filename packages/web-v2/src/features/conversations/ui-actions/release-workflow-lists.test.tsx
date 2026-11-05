@@ -24,9 +24,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "u-me" } }) }));
 vi.mock("@/lib/i18n/eta-clock", () => ({ useEtaClock: () => ({ lang: "en", now: Date.parse("2026-10-09T12:00:00Z") }) }));
 vi.mock("@/features/forecast/hooks", () => ({ useComingNext: () => ({ data: undefined }) }));
-// the release train, the coming-next strip and the system overview canvas are not what is judged here
-vi.mock("@/features/releases/components/coming-next", () => ({ ComingNext: () => null }));
-vi.mock("@/features/releases/components/release-train", () => ({ ReleaseTrain: () => null }));
+// the system overview canvas is not what is judged here
 vi.mock("@/features/workflows/components/system-overview", () => ({ SystemOverviewRegion: () => null }));
 
 const { useUiActions, useUiSnapshot } = await import("./use-ui-actions");
@@ -42,7 +40,9 @@ const release = (version: string, kind: WaitingKind, attentionGroup: string, sta
   issueCount: 1,
   requirements: [],
   criteria: { total: 0, proven: 0 },
+  verified: { level: "none", proven: 0, total: 0, check: null, provider: null, judgedOn: null },
   cutCount: 1,
+  can: { cut: false, decide: true, split: false },
   current: false,
   state,
   waitingOn: wait(kind),
@@ -50,7 +50,7 @@ const release = (version: string, kind: WaitingKind, attentionGroup: string, sta
   owner: null,
   at: AT,
 });
-const RELEASES = [release("0.4.0-dev.218", "you", "needs_you", "draft"), release("0.4.0-dev.217", "run", "moving", "deploying")];
+const RELEASES = [release("0.4.0-dev.218", "you", "needs_you", "draft"), release("0.4.0-dev.217", "run", "moving", "in_progress")];
 
 const workflow = (flow: string, title: string, kind: WaitingKind) => ({
   revision: 1,

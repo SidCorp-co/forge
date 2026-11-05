@@ -1,152 +1,207 @@
+// The Releases list in the shape the owner approved (ISS-1001, `approval-report-template`): three
+// groups (waiting on you, going to production, in production with the last few shown), one row per
+// release with its one proof bar, the short tags of what needs attention, and its one act; a release
+// a later one carries folds into one line under it (`release-list.ts`). The chat's narrowing still
+// applies (REQ-41 BC-5): whom a release waits on and its state.
 
-import { RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS } from "@forge/contracts/releases";
+import type { ReleaseLanding } from "@forge/contracts/releases";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
+import { useState } from "react";
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
-import {
-  ActorChip,
-  Disclosure,
-  EmptyState,
-  GroupedList,
-  type ListGroup,
-  standingGroups,
-  type ListRowView,
-  PageTitle,
-  StatusChip,
-  useListPage,
-  WaitingOn,
-  ListPage,
-  ListSearch,
-} from "@/design";
+import { EmptyState, GROUP_ROW_INDENT, GroupHeader, ListPage, PageTitle, useGroupFold } from "@/design";
+import { useReportShown } from "@/design/hooks/use-page-shown";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
+import { Link } from "@/lib/navigation/router";
+import { releaseHref } from "@/lib/routes/releases";
+import { cn } from "@/lib/utils/cn";
 import { useReleases } from "../hooks";
-import { RELEASES_LIST, releaseHref } from "@/lib/routes/releases";
+import { releaseProofOf, unprovenOf } from "../proof";
+import { type ReleaseLine, releaseListOf, versionsOf } from "../release-list";
 import type { ReleaseSummary } from "../types";
-import { useEtaClock } from "@/lib/i18n/eta-clock";
-import { useComingNext } from "@/features/forecast";
-import { ComingNext } from "./coming-next";
-import { ReleaseLandings } from "./release-landings";
-import { ReleasePeek } from "./release-peek";
-import { releaseTitle } from "./release-bits";
-import { ReleaseTrain } from "./release-train";
+import { ReleaseProofBar, type ReleaseTag, ReleaseTags } from "./release-proof";
 
-type Label = ReturnType<typeof useLabel>;
-type Time = ReturnType<typeof useTimeFormat>;
+/** What needs the decider's attention on a row, in two words each. */
+export function listTagsOf(r: ReleaseSummary, t: Copy): ReleaseTag[] {
+  const unproven = unprovenOf(releaseProofOf(r.verified));
+  return [
+    ...(unproven > 0 ? [{ key: "unproven", text: t("releases.tag.unproven", { n: unproven }), tone: "warn" as const }] : []),
+    ...(r.shippedFailing ? [{ key: "failing", text: t("releases.tag.failing", { n: r.shippedFailing.count }), tone: "warn" as const }] : []),
+    ...(r.attentionGroup === "stuck" ? [{ key: "stuck", text: t("releases.tag.stuck"), tone: "warn" as const }] : []),
+  ];
+}
 
-const groupsOf = (rows: ReleaseSummary[], label: Label): ListGroup<ReleaseSummary>[] =>
-  standingGroups(
-    rows,
-    RELEASE_ATTENTION_GROUPS,
-    Object.fromEntries(
-      RELEASE_ATTENTION_GROUPS.map((g) => {
-        const v = RELEASE_ATTENTION_LABELS[g];
-        return [g, { ...v, label: label("releaseAttention", g) }];
-      }),
-    ) as typeof RELEASE_ATTENTION_LABELS,
+/** The one act a row offers its reader: open the page where they decide or cut it. */
+const actOf = (r: ReleaseSummary, t: Copy): string => t(r.state === "draft" && !r.can.decide ? "releases.review.cut" : "releases.review.approve");
+
+const ROW = cn("relative flex min-h-14 items-center gap-4 border-b border-line-divider py-3 pr-5 hover:bg-hover max-md:flex-wrap max-md:pr-3", GROUP_ROW_INDENT);
+
+function Carried({ carries, slug }: { carries: readonly ReleaseSummary[]; slug: string }) {
+  const t = useCopy();
+  const [open, setOpen] = useState(false);
+  if (carries.length === 0) return null;
+  const newest = carries[0];
+  const oldest = carries[carries.length - 1];
+  const said =
+    carries.length === 1
+      ? t("releases.carries.one", { v: newest.version })
+      : t("releases.carries.many", { n: carries.length, from: oldest.version, to: newest.version });
+  return (
+    <div className={cn("border-b border-line-divider py-2.5 pr-5 text-13 text-muted", GROUP_ROW_INDENT)} data-testid="release-carries" data-n={carries.length}>
+      <span>{said}</span>
+      <button type="button" className="ml-2 font-medium text-link hover:underline" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="release-carries-toggle">
+        {t(open ? "releases.hide" : "releases.show")}
+      </button>
+      {open ? (
+        <ul className="mt-2 grid gap-1">
+          {carries.map((c) => (
+            <li key={c.version} data-testid="release-carried" data-key={c.version}>
+              <Link href={releaseHref(slug, c.version)} className="text-fg hover:text-link hover:underline">
+                <span className="font-mono">{c.version}</span>
+                {c.name ? <span className="ml-2">{c.name}</span> : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
+}
 
-/** How many requirements a release carries, its keys after them; never on the row's face (REQ-11 BC-19). */
-const requirementsOf = (r: ReleaseSummary, t: Copy) =>
-  r.requirements.length > 0 ? `${t("releases.requirementsCount", { n: r.requirements.length })} (${r.requirements.join(", ")})` : t("releases.maintenance");
+function ReleaseLineView({ line, slug, acts }: { line: ReleaseLine; slug: string; acts: boolean }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const r = line.release;
+  const shipped = r.state === "shipped";
+  const when = shipped && r.releasedAt ? time.date(r.releasedAt) : time.relative(r.at);
+  return (
+    <>
+      <div className={ROW} data-testid="list-row" data-key={r.version} data-state={r.state}>
+        <span className="grid min-w-0 flex-1 gap-1.5">
+          {/* the row is one link to the page; its act sits above that link */}
+          <Link href={releaseHref(slug, r.version)} className="flex min-w-0 items-baseline gap-2 text-fg after:absolute after:inset-0" data-testid="release-row-link">
+            <span className="font-mono text-14 font-semibold">{r.version}</span>
+            {r.name ? <span className="truncate text-14 font-medium">{r.name}</span> : null}
+          </Link>
+          {shipped ? null : <ReleaseProofBar proof={releaseProofOf(r.verified)} issues={r.issueCount} />}
+          <ReleaseTags tags={listTagsOf(r, t)} />
+        </span>
+        <span className="relative z-1 flex items-center gap-3">
+          <span className="text-12 text-muted tabular-nums" title={time.dateTime(r.at)}>
+            {when}
+          </span>
+          {acts ? (
+            <Link href={releaseHref(slug, r.version)} className="rounded-md bg-accent px-3 py-1.5 text-13 font-medium text-on-accent hover:opacity-90" data-testid="release-row-act">
+              {actOf(r, t)}
+            </Link>
+          ) : null}
+        </span>
+      </div>
+      <Carried carries={line.carries} slug={slug} />
+    </>
+  );
+}
 
-/** What a release holds, said on its state chip's hover and focus (ISS-903): issues, requirements, criteria, attempts. */
-const holdsOf = (r: ReleaseSummary, t: Copy) =>
-  [
-    t("releases.issuesCount", { n: r.issueCount }),
-    requirementsOf(r, t),
-    r.criteria.total === 0 ? t("releases.noCriteria") : t("releases.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total }),
-    ...(r.cutCount > 1 ? [t("releases.attemptsCount", { n: r.cutCount })] : []),
-    ...(r.landedOn ? [t("releases.landedNotProduction", { branch: r.landedOn })] : []),
-  ].join(" · ");
+function Older({ lines, landings, slug }: { lines: readonly ReleaseLine[]; landings: readonly ReleaseLanding[]; slug: string }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const [open, setOpen] = useState(false);
+  const n = lines.length + landings.length;
+  if (n === 0) return null;
+  return (
+    <>
+      <div className={cn("border-b border-line-divider py-2.5 pr-5 text-13 text-muted", GROUP_ROW_INDENT)} data-testid="release-older" data-n={n}>
+        <button type="button" className="font-medium text-link hover:underline" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="release-older-toggle">
+          {t("releases.older", { n })}
+        </button>
+      </div>
+      {open ? (
+        <>
+          {lines.map((l) => (
+            <ReleaseLineView key={l.release.version} line={l} slug={slug} acts={false} />
+          ))}
+          {landings.map((l) => (
+            <div key={l.runId} className={cn("border-b border-line-divider py-2.5 pr-5 text-13 text-muted", GROUP_ROW_INDENT)} data-testid="release-landing">
+              {t("releases.landings.title")} · <span className="font-mono">{l.branch}</span> · {time.date(l.at)}
+            </div>
+          ))}
+        </>
+      ) : null}
+    </>
+  );
+}
 
-const rowOf =
-  (slug: string, t: Copy, time: Time) =>
-  (r: ReleaseSummary): ListRowView => ({
-    key: r.version,
-    href: releaseHref(slug, r.version),
-    title: releaseTitle(r, t),
-    // only what changes what a person does stands on the face: it serves production, or shipped failing
-    facts: [
-      ...(r.current ? [t("releases.servingProduction")] : []),
-      ...(r.shippedFailing ? [t("releases.shippedFailingFact", { n: r.shippedFailing.count })] : []),
-    ],
-    state: <StatusChip family="releaseState" value={r.state} reason={holdsOf(r, t)} testId="release-row-state" />,
-    waitingOn: <WaitingOn w={r.waitingOn} />,
-    owner: r.owner ? <ActorChip name={r.owner.name} kind={r.owner.kind} size={20} /> : null,
-    age: { text: time.relative(r.at), title: t("releases.lastChanged", { at: time.dateTime(r.at) }) },
-    dim: r.attentionGroup === "done" || r.attentionGroup === "stopped",
-  });
+type GroupId = "you" | "going" | "production";
+
+const GROUP_TONE = { you: "you", going: "run", production: "done" } as const;
+
+function Group({ id, count, children, empty }: { id: GroupId; count: number; children: React.ReactNode; empty?: string }) {
+  const t = useCopy();
+  const fold = useGroupFold("web-v2:releases-groups");
+  const open = fold.isOpen(id);
+  return (
+    <div data-testid="release-group" data-group={id}>
+      <GroupHeader id={id} label={t(`releases.group.${id}`)} count={count} tone={GROUP_TONE[id]} open={open} onToggle={() => fold.toggle(id)} />
+      {open ? (count === 0 && empty ? <p className={cn("border-b border-line-divider py-2.5 text-13 text-muted", GROUP_ROW_INDENT)}>{empty}</p> : children) : null}
+    </div>
+  );
+}
 
 export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
-  const label = useLabel();
-  const time = useTimeFormat();
   const q = useReleases(projectId);
-  const comingQ = useComingNext(projectId);
-  const clock = useEtaClock();
   // whom a release waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("releases");
   const all = q.data?.releases ?? [];
-  const list = useListPage({
-    rows: all,
-    keyOf: (r) => r.version,
-    searchOf: (r) => `${r.version} ${r.name ?? ""} ${r.summary ?? ""} ${r.requirements.join(" ")}`,
-    narrow: (r) => matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", state: r.state }),
-    groupsOf: (rows) => groupsOf(rows, label),
-    foldKey: "web-v2:releases-fold",
-    hrefOf: (version) => releaseHref(slug, version),
-    origin: RELEASES_LIST,
-  });
-  const { peek } = list;
+  const narrow = (l: ReleaseLine) => matchesListFilter(filter, { waiting: waitingFilterOf(l.release), text: "", state: l.release.state });
+  const list = releaseListOf(all);
+  const you = list.you.filter(narrow);
+  const going = list.going.filter(narrow);
+  const production = list.production.filter(narrow);
+  const older = list.older.filter(narrow);
+  useReportShown(versionsOf([...you, ...going, ...production]));
 
   return (
     <QueryBoundary query={q} loadingLabel={t("releases.loadingList")} title={<PageTitle>{t("releases.title")}</PageTitle>} height="60vh" retry="always">
-      {({ production, landings }) => (
+      {({ production: path, landings }) => (
         <ListPage
           testId="releases-screen"
           title={t("releases.title")}
           toolbar={
             <>
-              <ListSearch noun={t("releases.searchNoun")} {...list.search} />
               <ListFilterBar list="releases" />
-              {production.ok ? null : (
-                <span className="text-12 text-muted" title={production.reason} data-testid="production-unreadable">
+              {path.ok ? null : (
+                <span className="text-12 text-muted" title={path.reason} data-testid="production-unreadable">
                   {t("releases.productionUnreadable")}
                 </span>
               )}
             </>
           }
-          peek={peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} full={list.fullOf(peek.open)} /> : null}
         >
-          <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} clock={clock} />
-          <ReleaseLandings landings={landings ?? []} />
-          {all.length === 0 ? (
-            (landings ?? []).length > 0 ? null : (
-              <div className="px-5 py-10">
-                <EmptyState message={t("releases.emptyTitle")} />
-              </div>
-            )
+          {all.length === 0 && (landings ?? []).length === 0 ? (
+            <div className="px-5 py-10">
+              <EmptyState message={t("releases.emptyTitle")} />
+            </div>
           ) : (
-            <>
-              {/* the train is the releases in order, the list below them by whose turn: one line shut (ISS-903) */}
-              <div className="border-b border-line-subtle px-5 max-md:px-3">
-                <Disclosure title={t("releases.train")} testId="release-train-fold">
-                  <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} headed={false} />
-                </Disclosure>
-              </div>
-              <GroupedList
-                ariaLabel={t("releases.title")}
-                groups={list.groups}
-                fold={list.fold}
-                row={rowOf(slug, t, time)}
-                selected={peek.open}
-                onPeek={list.togglePeek}
-                empty={t("releases.noMatch")}
-                columns={{ meta: list.rows.some((r) => r.owner) ? t("list.col.meta") : t("releases.colAge") }}
-                keyColumn={false}
-              />
-            </>
+            <section aria-label={t("releases.title")} data-testid="release-list">
+              <Group id="you" count={you.length}>
+                {you.map((l) => (
+                  <ReleaseLineView key={l.release.version} line={l} slug={slug} acts />
+                ))}
+              </Group>
+              <Group id="going" count={going.length} empty={t("releases.group.goingEmpty")}>
+                {going.map((l) => (
+                  <ReleaseLineView key={l.release.version} line={l} slug={slug} acts={false} />
+                ))}
+              </Group>
+              <Group id="production" count={production.length + older.length}>
+                {production.map((l) => (
+                  <ReleaseLineView key={l.release.version} line={l} slug={slug} acts={false} />
+                ))}
+                <Older lines={older} landings={landings ?? []} slug={slug} />
+              </Group>
+            </section>
           )}
         </ListPage>
       )}

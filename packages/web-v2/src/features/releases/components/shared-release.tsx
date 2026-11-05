@@ -1,13 +1,12 @@
 
 // A frozen release page a share link opens (BC-11): the user view as it was when it was shared,
-// drawn by the same reader the app uses, read-only and with no link into the project. Each clip and
-// picture plays from a download link minted for this opening alone.
+// drawn by the same report the app's page draws (ISS-1001), read-only and with no link into the project.
 
 import { releasePageOfSnapshot } from "@forge/contracts/release-page";
 import type { ShareReleaseSnapshot } from "@forge/contracts/shares";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { releaseTitle } from "./release-bits";
-import { ReleaseReader } from "./release-reader";
+import { ReleaseReport } from "./release-report";
 
 export function SharedReleaseView({ snapshot }: { snapshot: ShareReleaseSnapshot }) {
   const t = useCopy();
@@ -22,7 +21,7 @@ export function SharedReleaseView({ snapshot }: { snapshot: ShareReleaseSnapshot
           {snapshot.audience === "members" ? t("releases.page.shared.members") : t("releases.page.shared.link")} · {t("releases.page.shared.until", { at: time.dateTime(snapshot.expiresAt) })}
         </p>
       </header>
-      <ReleaseReader page={page} authed={false} />
+      <ReleaseReport page={page} />
     </article>
   );
 }

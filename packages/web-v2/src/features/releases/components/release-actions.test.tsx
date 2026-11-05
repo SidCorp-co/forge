@@ -21,6 +21,7 @@ const draft = (over: Partial<ReleaseDetail> = {}) =>
     issues: [...OLDEST, "i51", "i52"].map((id) => ({ id })),
     can: { cut: false, decide: false, split: true },
     split: { issueIds: OLDEST, rest: 2 },
+    waitingOn: { kind: "you", who: "You", act: "Split", rule: "r", ref: null, dueAt: null },
     ...over,
   }) as unknown as ReleaseDetail;
 

@@ -1,12 +1,13 @@
 // Where a merge-request release stands, witnessed at phone and desktop width in both themes (REQ-71
-// BC-6): its owner deploys, so it ends at merge and asks for no production; once accepted it says
-// the agent merges it. Planted from adminhub-api 0.1.0 (af0be6bc), which read "Add a production
-// environment, then approve".
+// BC-6): its owner deploys, so it ends at merge and asks for no production; once accepted it reads
+// accepted and merging. Since ISS-1001 these sit in the release page's Technical section, and the
+// next step is said at the top only where the reader has no act (release-standing.test.ts).
+// Planted from adminhub-api 0.1.0 (af0be6bc), which read "Add a production environment, then approve".
 //
 //   pnpm --filter web-v2 witness witness/release-owner-deploys.witness.tsx --out <dir>
 
 import { createRoot } from "react-dom/client";
-import { WhereReleaseStands } from "@/features/releases/components/release-rail";
+import { WhereItStands } from "@/features/releases/components/release-page";
 import type { ReleaseDetail } from "@/features/releases/types";
 import "./entry";
 import { InRouter } from "./router";
@@ -32,10 +33,10 @@ createRoot(document.getElementById("root") as HTMLElement).render(
     <div className="min-h-screen bg-app p-4">
       <div className="mx-auto grid max-w-sm gap-8">
         <div data-testid="awaiting">
-          <WhereReleaseStands r={release("awaiting_approval")} />
+          <WhereItStands r={release("awaiting_approval")} />
         </div>
         <div data-testid="accepted">
-          <WhereReleaseStands r={release("in_progress")} />
+          <WhereItStands r={release("in_progress")} />
         </div>
       </div>
     </div>
@@ -50,8 +51,6 @@ function reads(): string[] {
   const wrong: string[] = [];
   if (!text("awaiting", "standing-goes-to").includes("Ends at merge")) wrong.push(`goes to reads "${text("awaiting", "standing-goes-to")}"`);
   if (document.body.textContent?.includes("production environment")) wrong.push("the standing asks for a production environment");
-  if (!text("awaiting", "standing-next").includes("Approve the release")) wrong.push(`next before accept reads "${text("awaiting", "standing-next")}"`);
-  if (!text("accepted", "standing-next").includes("the agent merges it")) wrong.push(`next after accept reads "${text("accepted", "standing-next")}"`);
   if (!text("accepted", "standing-status").endsWith("Accepted, merging")) wrong.push(`status after accept reads "${text("accepted", "standing-status")}"`);
   if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
   return wrong;

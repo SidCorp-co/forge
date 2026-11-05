@@ -2,7 +2,8 @@
 import { useRef, useState } from "react";
 import { Button, Checkbox, Field, Popover, Textarea } from "@/design";
 import { ApiError } from "@/lib/api/client";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { saidView } from "@/lib/i18n/said";
 import type { ProductCopyKey as CopyKey } from "@/lib/i18n/product-copy";
 import { useCutRelease, useDraftDecision, useReleaseDecision } from "../hooks";
 import type { ReleaseDecisionBody, ReleaseDetail } from "../types";
@@ -110,6 +111,7 @@ function DecideWithReason({ projectId, target, decision }: { projectId: string; 
 
 export function ReleaseActions({ projectId, r }: { projectId: string; r: ReleaseDetail }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const cut = useCutRelease(projectId);
   const decision: Target | null = !r.can.decide
     ? null
@@ -136,6 +138,8 @@ export function ReleaseActions({ projectId, r }: { projectId: string; r: Release
             variant="primary"
             loading={cut.isPending}
             onClick={() => cut.mutate(split.issueIds)}
+            // what splitting does, where the page no longer carries a banner to say it (ISS-1001)
+            title={saidView(r.waitingOn, language).effect ?? undefined}
             data-testid="release-split"
           >
             {t("releases.split", { n: split.issueIds.length, version: r.version })}

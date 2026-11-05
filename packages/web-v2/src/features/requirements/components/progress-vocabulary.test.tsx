@@ -1,11 +1,12 @@
 // JU-2: hop REQ-19 read "Issues done 0/6" on the requirements list and "5/6 landed" on Releases, and
-// both said "xong" in Vietnamese. Both pages now print core's one progress — shipped, landed awaiting
-// release, to do — through one function, and the Vietnamese words for landed and shipped differ.
+// both said "xong" in Vietnamese. Core's one progress — shipped, landed awaiting release, to do — is
+// printed through one function (`IssueProgressText`, the status report's), and the Vietnamese words
+// for landed and shipped differ. Releases no longer repeats it (ISS-1001).
 
-import type { ComingNextForecast, RequirementForecasts, ScopeForecast } from "@forge/contracts/forecast";
-import { render, screen, within } from "@testing-library/react";
+import type { RequirementForecasts, ScopeForecast } from "@forge/contracts/forecast";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ComingNext } from "@/features/releases";
+import { IssueProgressText } from "@/features/forecast";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { REQ_PROJECT, reqQueries, Seeded } from "@/test/vi-chrome-requirements";
@@ -26,8 +27,6 @@ const REQ_19: ScopeForecast = {
   delivery: null,
 };
 const forecasts: RequirementForecasts = { ...stamp, projectId: REQ_PROJECT, requirements: [REQ_19] };
-const coming: ComingNextForecast = { ...stamp, projectId: REQ_PROJECT, requirements: [REQ_19], draft: null } as unknown as ComingNextForecast;
-const clock = { lang: "vi" as const, now: Date.parse(stamp.asOf), timeZone: "UTC" };
 
 function listText(language: "en" | "vi"): string {
   const { container, unmount } = render(
@@ -42,23 +41,21 @@ function listText(language: "en" | "vi"): string {
   return text;
 }
 
-function releasesText(language: "en" | "vi"): string {
+function progressOf(language: "en" | "vi"): string {
   const { unmount } = render(
     <InterfaceLanguageScope language={language}>
-      <ComingNext next={coming} draft={undefined} slug="hop" clock={clock} />
+      <IssueProgressText progress={REQ_19.progress} />
     </InterfaceLanguageScope>,
   );
-  const row = screen.getByTestId("coming-next-requirement");
-  const text = within(row).getByTestId("issue-progress").textContent ?? "";
+  const text = screen.getByTestId("issue-progress").textContent ?? "";
   unmount();
   return text;
 }
 
-describe("one progress on the requirements list and on Releases", () => {
-  it.each(["en", "vi"] as const)("prints REQ-19 progress on Releases only, in %s", (language) => {
-    const releases = releasesText(language);
-    expect(releases).toBe(language === "en" ? "0 shipped · 5 landed, awaiting release · 1 to do" : "0 đã phát hành · 5 xong code, chờ release · 1 còn lại"); // i18n-allow: asserts the vi progress copy
-    // the list is one line per requirement now (REQ-29 BC-4) and prints no issue progress, so Releases holds the one
+describe("one progress, printed by one function", () => {
+  it.each(["en", "vi"] as const)("prints REQ-19 progress in %s, and the requirements list prints none", (language) => {
+    expect(progressOf(language)).toBe(language === "en" ? "0 shipped · 5 landed, awaiting release · 1 to do" : "0 đã phát hành · 5 xong code, chờ release · 1 còn lại"); // i18n-allow: asserts the vi progress copy
+    // the list is one line per requirement now (REQ-29 BC-4) and prints no issue progress
     expect(listText(language)).not.toContain("awaiting release");
   });
 });

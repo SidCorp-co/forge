@@ -1,7 +1,7 @@
-// The groups of a release page: each change as its short title, whole (REQ-40 BC-6), with the
-// sentence that says it in full one click away (`release-row-detail.tsx`); what an admin must do
-// before it goes out (BC-7); and, on the Technical view, each requirement and open issue. Flush rows
-// under a heading: no card, no box in a box.
+// The roster in a release page's Technical section (ISS-1001): each change under its group with its
+// key and the criteria that prove it one click away (`release-row-detail.tsx`), each requirement and
+// each issue still open. What an admin must do before it goes out is the page's Needs attention
+// (`release-report.tsx`). Flush rows under a heading: no card, no box in a box.
 
 import type { ReleaseChangeGroup } from "@forge/contracts/release-digest";
 import { type ReleaseKnownIssue, type ReleasePage, type ReleasePageChange, type ReleasePageRequirement } from "@forge/contracts/release-page";
@@ -220,31 +220,6 @@ export function OtherChanges({ page, reach }: { page: ReleasePage; reach: Reach 
           />
         ))}
       </RowList>
-    </Section>
-  );
-}
-
-/**
- * What an admin must do before the release goes out (BC-7), at the head of its changes and set off by
- * a warning rule: the steps its notes name and what its range ships. The artifact behind a derived
- * step is the Technical view's; the overview names no path (BC-15).
- */
-export function BeforeYouRelease({ page }: { page: ReleasePage }) {
-  const t = useCopy();
-  const n = page.actionRequired.length;
-  if (n === 0) return null;
-  const developer = page.view === "developer";
-  return (
-    <Section id={ANCHOR.admin} title={<GroupTitle title={t(GROUP_TITLE.admin)} n={n} />} testId="page-actions" className="border-l-2 border-l-warn-9 pl-4">
-      <ol className="grid list-decimal gap-1.5 pl-5 text-14 text-fg" aria-label={t(GROUP_TITLE.admin)}>
-        {page.actionRequired.map((a) => (
-          <li key={`${a.kind}:${a.sentence}`} data-testid="page-action" data-kind={a.kind}>
-            <span>{a.sentence}</span>
-            {a.issues.length > 0 ? <span className="ml-2 font-mono text-12 text-subtle">{a.issues.join(", ")}</span> : null}
-            {developer && a.ref && !a.sentence.includes(a.ref) ? <span className="ml-2 font-mono text-12 text-subtle">{a.ref}</span> : null}
-          </li>
-        ))}
-      </ol>
     </Section>
   );
 }

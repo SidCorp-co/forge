@@ -1,25 +1,15 @@
 
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useState } from "react";
-import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
+import { Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { said, saidView } from "@/lib/i18n/said";
+import { said } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
-import type { ReleaseAttentionGroup, ReleaseDetail, ReleaseGateView } from "../types";
-
-const BANNER_TONE: Record<ReleaseAttentionGroup, BannerTone> = {
-  needs_you: "you",
-  moving: "run",
-  waiting: "calm",
-  queued: "calm",
-  stuck: "err",
-  done: "calm",
-  stopped: "calm",
-};
+import type { ReleaseDetail, ReleaseGateView } from "../types";
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
@@ -114,28 +104,6 @@ export function GateLine({ gate, slug, tone }: { gate: ReleaseGateView; slug: st
   );
 }
 
-export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: string }) {
-  const t = useCopy();
-  const w = saidView(r.waitingOn, useInterfaceLanguage());
-  const ended = r.attentionGroup === "done" || r.attentionGroup === "stopped";
-  const stuck = r.attentionGroup === "stuck";
-  // an ended one says only that nothing is owed: the header's badge says how it ended, and the page's
-  // facts say where it runs and whether it is still served (REQ-43 BC-5)
-  const head = ended
-    ? t("releases.bannerNothingOwed")
-    : stuck
-      ? t("releases.bannerStuck")
-      : w.kind === "you"
-        ? t("releases.bannerWaitingYou")
-        : t("releases.bannerWaitingOn", { who: w.who });
-  const body = ended
-    ? null
-    : stuck
-      ? `${w.who}: ${w.act}`
-      : w.act;
-  return <WaitBanner tone={BANNER_TONE[r.attentionGroup]} head={head} body={body} rule={w.rule || undefined} effect={w.effect} className={className} />;
-}
-
 /**
  * What a recorded landing shipped failing, said loud above the page (REQ-45 BC-14): the issues
  * closed because the work shipped, and these criteria are the follow-up's evidence.
@@ -148,13 +116,6 @@ export function ShippedFailingBanner({ r, className }: { r: Pick<ReleaseDetail, 
   for (const c of f.criteria) byIssue.set(c.issueKey, [...(byIssue.get(c.issueKey) ?? []), c.criterion]);
   const named = [...byIssue].map(([key, ns]) => `${key} ${ns.map((n) => `c${n}`).join(", ")}`).join("; ");
   return <WaitBanner tone="err" head={t(f.count === 1 ? "releases.shippedFailing.one" : "releases.shippedFailing.many", { n: f.count })} body={named} className={className} testId="release-shipped-failing" />;
-}
-
-/** A release that went ahead where a person's approval was only advised says so (REQ-79 r6). */
-export function UnapprovedBanner({ approval, className }: { approval: { state: string }; className?: string }) {
-  const t = useCopy();
-  if (approval.state !== "unapproved") return null;
-  return <WaitBanner tone="you" head={t("releases.unapproved")} body={null} className={className} testId="release-unapproved" />;
 }
 
 export function RefusalText({ error }: { error: unknown }) {

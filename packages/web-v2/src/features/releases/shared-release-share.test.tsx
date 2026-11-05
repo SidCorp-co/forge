@@ -1,23 +1,20 @@
 import { ReleasePageSnapshotSchema } from "@forge/contracts/release-page";
 import { type ShareReleaseSnapshot, ShareReleaseSnapshotSchema } from "@forge/contracts/shares";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
+import { rawKeysOnFace } from "@/test/screen-face";
 import { SharedAnswer } from "@/features/shares";
 import { SharedReleaseView } from "./components/shared-release";
 
 // A release page shared by link (REQ-40 BC-11): the frozen user view opens at /s/<token>, read-only,
-// drawn by the reader the app uses, its clip playing from the download link minted for this opening.
+// drawn by the report the app uses (ISS-1001).
 
 const TOKEN = `forge_share_${"r".repeat(43)}`;
 
 function opened(): ShareReleaseSnapshot {
   const page = releasePage();
-  if (page.highlights.state !== "drafted") throw new Error("fixture");
-  const media = page.highlights.highlights[0]?.media;
-  if (!media) throw new Error("fixture");
-  media.url = "/api/uploads/download/ticket-xyz";
   const { view, header, highlights, requirements, improvements, fixes, withoutNotes, actionRequired, knownIssues, technical, can } = page;
   return ShareReleaseSnapshotSchema.parse({
     audience: "link",
@@ -36,27 +33,15 @@ describe("a shared release page", () => {
     expect(calls).toEqual([{ method: "POST", path: "/shares/open", body: { token: TOKEN } }]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("0.4.0 · Readable releases");
     expect(screen.getByText(/read-only snapshot/)).toBeTruthy();
-    expect(screen.getByTestId("page-summary")).toHaveTextContent("opens as a page you can read in a minute");
-    expect(screen.getByTestId("page-group-new")).toHaveTextContent("Releases read as pages");
-    // the overview a share freezes counts what users do not see and lists no criterion (REQ-40 BC-15, BC-16)
+    // the same report the app draws: what users see by screen, in the notes' words, and no key on its face (ISS-1001)
+    expect(screen.getByTestId("page-screens")).toHaveTextContent("Releases read as pages");
+    expect(screen.getByTestId("page-unseen")).toHaveTextContent("Changes 1");
     expect(screen.queryByTestId("page-known-issue")).toBeNull();
-    expect(screen.getByTestId("page-internal-line")).toHaveTextContent("1 change has no note for users.");
-    const row = screen.getAllByTestId("page-change")[0];
-    if (!row) throw new Error("no change row");
-    fireEvent.click(within(row).getAllByRole("button")[0]);
-    expect(row).toHaveTextContent("Open any release and read what it brings, whole, in under a minute.");
+    expect(rawKeysOnFace(container)).toEqual([]);
     // a reader may not be a member: no link into the project (only the page's own anchors), and no share or export acts
     expect([...container.querySelectorAll("a")].filter((a) => !a.getAttribute("href")?.startsWith("#"))).toHaveLength(0);
     expect(screen.queryByTestId("page-row-technical")).toBeNull();
     expect(screen.queryByTestId("release-page-actions")).toBeNull();
-  });
-
-  it("plays the clip from the opening's own download link, fetching nothing with a session", async () => {
-    const real = fakeCore((c) => (c.path === "/shares/open" ? { body: opened() } : undefined));
-    renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} release={(r) => <SharedReleaseView snapshot={r} />} />);
-    const clip = await screen.findByTestId("release-media-clip");
-    expect(clip).toHaveAttribute("src", "/api/uploads/download/ticket-xyz#t=0.1");
-    expect(real.map((c) => c.path)).toEqual(["/shares/open"]);
   });
 
   it("still opens a frozen report document as before", async () => {

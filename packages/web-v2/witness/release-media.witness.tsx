@@ -1,6 +1,7 @@
-// A judge's clip on What's new and on the release page (REQ-40 BC-3), witnessed at phone and desktop
-// width in both themes: the release opens on its name and summary, and its highlight plays the clip
-// inline, muted, with controls, on the still QA kept beside it, inside the window.
+// A judge's clip on What's new (REQ-40 BC-3), witnessed at phone and desktop width in both themes:
+// the release opens on its name and summary, and its highlight plays the clip inline, muted, with
+// controls, on the still QA kept beside it, inside the window. The release page itself reads as the
+// approved report since ISS-1001 and draws no highlight; What's new is where a clip plays.
 //
 // The clip is a real one, never a stand-in: put a judge's recording and its still beside the page as
 // `<out>/release-clip.webm` and `<out>/release-clip.png` (what `pnpm --filter web-v2 clip` writes), then
@@ -10,10 +11,8 @@
 // A clip that is not there, or that Chrome cannot play, fails the run by name.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { ReleaseHighlight } from "@forge/contracts/release-page";
-import { ReleaseReader } from "@/features/releases/components/release-reader";
 import { WhatsNewSheet } from "@/features/whats-new/components/whats-new-panel";
 import { releaseOf, feedOf } from "@/features/whats-new/fixtures";
 import { releasePage } from "@/test/release-page";
@@ -67,21 +66,8 @@ const feed = feedOf(
   }),
 );
 
-type View = "panel" | "page";
-let show: (v: View) => void = () => {
-  throw new Error("the witness has not mounted");
-};
-
 function Witness() {
-  const [view, setView] = useState<View>("panel");
-  show = setView;
-  return view === "panel" ? (
-    <WhatsNewSheet open onClose={() => undefined} feed={feed} failure={null} />
-  ) : (
-    <div className="mx-auto max-w-3xl p-4">
-      <ReleaseReader page={page} authed={false} />
-    </div>
-  );
+  return <WhatsNewSheet open onClose={() => undefined} feed={feed} failure={null} />;
 }
 
 const root = document.getElementById("root");
@@ -114,13 +100,12 @@ async function playable(v: HTMLVideoElement): Promise<string[]> {
   return still ? [] : [`the clip's still at ${v.poster} did not load`];
 }
 
-async function reads(where: "panel" | "page", t: "light" | "dark"): Promise<string[]> {
-  show(where);
+async function reads(t: "light" | "dark"): Promise<string[]> {
+  const where = "panel";
   theme(t);
   await settle();
   const wrong: string[] = [];
-  // the release page's name is its title in the app's frame, which the reader sits under
-  if (where === "panel" && !document.querySelector("[data-testid=whats-new-name]")?.textContent?.includes(NAMING.name)) wrong.push("the panel does not open on the release's name");
+  if (!document.querySelector("[data-testid=whats-new-name]")?.textContent?.includes(NAMING.name)) wrong.push("the panel does not open on the release's name");
   if (!document.body.textContent?.includes(NAMING.summary)) wrong.push(`the ${where} does not say the release's summary`);
   const v = clip();
   if (!v) return [...wrong, `the ${where}'s highlight draws no clip`];
@@ -141,9 +126,7 @@ window.__witness = {
   ],
   ready: () => clip() !== null,
   stages: [
-    { name: "panel-light", run: () => reads("panel", "light") },
-    { name: "panel-dark", run: () => reads("panel", "dark") },
-    { name: "page-light", run: () => reads("page", "light") },
-    { name: "page-dark", run: () => reads("page", "dark") },
+    { name: "panel-light", run: () => reads("light") },
+    { name: "panel-dark", run: () => reads("dark") },
   ],
 };

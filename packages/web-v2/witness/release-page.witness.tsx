@@ -1,16 +1,17 @@
-// A release page witnessed at phone and desktop width (REQ-40 BC-5, ISS-492): the change's row opens
-// on seven criteria of one issue proving one requirement criterion, drawn as seven lines a reader
-// tells apart, and the requirement's row opens on that criterion said once, counted in its own
-// criteria. J7 on 0.4.0-dev.222 saw the same sentence drawn seven times. The Technical view's What it
-// changes then opens, so a clip of the run shows both.
+// A release page in the approved report shape (ISS-1001), witnessed at phone and desktop width in
+// both themes over adminhub-fe's draft 0.56.0: its one act at the top, its one proof bar, what users
+// see by screen with no key or sha on the face, Needs attention naming the release it ships with and
+// what it removes, and everything technical folded. Opened, the Technical section's roster still
+// draws seven criteria of one issue as seven lines a reader tells apart (REQ-40 BC-5, ISS-492).
 //
-//   pnpm --filter web-v2 witness witness/release-page.witness.tsx --out <dir> --clip
+//   pnpm --filter web-v2 witness witness/release-page.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
-import { ReleaseReader } from "@/features/releases/components/release-reader";
-import { releasePage, TECHNICAL } from "@/test/release-page";
+import { ReleaseItemScreen } from "@/features/releases/components/release-item-screen";
+import { rawKeysOnFace } from "@/test/screen-face";
 import "./entry";
+import { DETAIL, DEVELOPER_PAGE, P, SLUG, USER_PAGE } from "./releases-redesign.fixture";
 import { InRouter } from "./router";
 
 const BC18 = "A refusal says in plain words what to fix, on that field.";
@@ -24,89 +25,88 @@ const SEVEN = [
   "An estimate below zero is refused on the estimate field.",
 ];
 
-const page = releasePage({
-  view: "developer",
-  highlights: { state: "none", why: "nothing on this build is claimed yet" },
+const developer = {
+  ...DEVELOPER_PAGE,
   requirements: [
     {
       key: "REQ-34",
       title: "Every refusal names the field and the fix",
       completes: false,
-      proven: SEVEN.map((statement, i) => ({ code: "BC-18", statement, short: i === 6, issueKey: "ISS-451", n: i + 2, countedUnderCutover: false })),
+      proven: SEVEN.map((statement, i) => ({ code: "BC-18", statement, short: i === 6, issueKey: "ISS-201", n: i + 2, countedUnderCutover: false })),
       unproven: 30,
       business: { total: 26, proven: [{ code: "BC-18", statement: BC18 }] },
     },
   ],
-  improvements: [
-    {
-      issueKey: "ISS-451",
-      kind: "improved",
-      section: "Changed",
-      line: "Every refusal names its field",
-      detail: "Every refusal now names the field to fix and how to fix it.",
-      requirementKey: "REQ-34",
-    },
-  ],
-  fixes: [],
-  knownIssues: [],
-  technical: TECHNICAL,
-});
+};
 
-const root = document.getElementById("root");
-if (!root) throw new Error("the page has no #root");
-createRoot(root).render(
-  <InRouter>
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <div className="mx-auto max-w-3xl p-4">
-        <ReleaseReader page={page} authed={false} />
-      </div>
+window.fetch = async () => new Promise<Response>(() => {});
+const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } });
+client.setQueryData(["release", P, "0.56.0"], { release: DETAIL });
+client.setQueryData(["release-page", P, "0.56.0", "user"], USER_PAGE);
+client.setQueryData(["release-page", P, "0.56.0", "developer"], developer);
+createRoot(document.getElementById("root") as HTMLElement).render(
+  <InRouter at={`/projects/${SLUG}/releases/0.56.0`} pattern="/projects/$slug/releases/$release">
+    <QueryClientProvider client={client}>
+      <ReleaseItemScreen projectId={P} slug={SLUG} version="0.56.0" />
     </QueryClientProvider>
   </InRouter>,
 );
 
-const req = () => document.querySelector("[data-testid=page-requirement]");
-const changeRow = () => document.querySelector("[data-testid=page-change][data-row-key=ISS-451]");
-const settle = () => new Promise((ok) => setTimeout(ok, 50));
+const theme = (t: "light" | "dark") => {
+  document.documentElement.dataset.theme = t;
+  document.documentElement.classList.toggle("dark", t === "dark");
+};
+const settle = (ms = 150) => new Promise((ok) => setTimeout(ok, ms));
+const detail = () => document.querySelector("[data-testid=release-detail]");
 
-async function proves(): Promise<string[]> {
-  const r = req();
-  const c = changeRow();
-  if (!r || !c) return ["no requirement or no ISS-451 row is drawn"];
-  const wrong: string[] = [];
-  c.querySelector<HTMLButtonElement>("button")?.click();
-  r.querySelector<HTMLButtonElement>("button")?.click();
-  await settle();
-  const lines = [...c.querySelectorAll("[data-testid=page-row-detail] li")].map((e) => (e.textContent ?? "").trim());
-  if (lines.length !== 7) wrong.push(`ISS-451 opens on ${lines.length} criteria, not 7`);
-  if (new Set(lines).size !== lines.length) wrong.push(`ISS-451 draws ${lines.length} lines and only ${new Set(lines).size} read apart`);
-  const said = (r.textContent ?? "").split(BC18).length - 1;
-  if (said !== 1) wrong.push(`BC-18's wording is drawn ${said} times under REQ-34, not once`);
-  const count = r.querySelector("[data-testid=page-requirement-count]")?.textContent ?? "";
-  if (count !== "1 of its 26 criteria proven") wrong.push(`the requirement's count reads "${count}"`);
-  for (const line of c.querySelectorAll("[data-testid=page-row-detail] li")) {
-    if (line.getBoundingClientRect().right > window.innerWidth) wrong.push(`a line runs past the window: ${(line.textContent ?? "").slice(0, 40)}`);
-  }
-  if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
-  return wrong;
+function sideways(): string[] {
+  return document.documentElement.scrollWidth > window.innerWidth ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`] : [];
 }
 
-async function opensChanges(): Promise<string[]> {
-  const toggle = document.querySelector<HTMLButtonElement>("[data-testid=release-technical-toggle]");
-  if (!toggle) return ["the developer view draws no What it changes toggle"];
-  toggle.scrollIntoView({ block: "center" });
-  toggle.click();
-  await new Promise((ok) => setTimeout(ok, 50));
-  return toggle.getAttribute("aria-expanded") === "true" ? [] : ["What it changes did not open"];
+function reads(): string[] {
+  const wrong: string[] = [];
+  const page = detail();
+  if (!page) return ["no release page is drawn"];
+  if (document.querySelectorAll("[data-testid=release-actions]").length !== 1) wrong.push("the act is not drawn exactly once");
+  if (page.querySelector("[data-testid=release-actions]")) wrong.push("the act is repeated under the header");
+  const bars = page.querySelectorAll("[data-testid=release-proof]");
+  if (bars.length !== 1 || bars[0]?.getAttribute("data-proven") !== "22") wrong.push(`the page draws ${bars.length} proof bars, not one of 22`);
+  const keys = rawKeysOnFace(page);
+  if (keys.length > 0) wrong.push(`raw keys on the face: ${keys.join("; ")}`);
+  const screens = [...page.querySelectorAll("[data-testid=page-screen] dt")].map((d) => d.textContent);
+  if (screens[0] !== "Supplier · Mapping") wrong.push(`the first screen reads ${screens[0] ?? "nothing"}`);
+  const kinds = [...page.querySelectorAll("[data-testid=page-attention-item]")].map((i) => i.getAttribute("data-kind"));
+  if (kinds.join() !== "step,removed") wrong.push(`Needs attention reads ${kinds.join() || "nothing"}, not the release it ships with and what it removes`);
+  if (page.querySelector("[data-testid=release-technical-fold]")?.hasAttribute("open")) wrong.push("Technical opens unasked");
+  return [...wrong, ...sideways()];
+}
+
+async function technical(): Promise<string[]> {
+  const fold = document.querySelector<HTMLDetailsElement>("[data-testid=release-technical-fold]");
+  if (!fold) return ["no Technical section is drawn"];
+  fold.open = true;
+  await settle(300);
+  document.querySelector<HTMLButtonElement>("[data-testid=page-change][data-row-key=ISS-201] button")?.click();
+  await settle();
+  const row = document.querySelector("[data-testid=page-change][data-row-key=ISS-201]");
+  row?.scrollIntoView({ block: "start" });
+  const lines = [...(row?.querySelectorAll("[data-testid=page-row-detail] li") ?? [])].map((e) => (e.textContent ?? "").trim());
+  const wrong: string[] = [];
+  if (lines.length !== 7) wrong.push(`ISS-201 opens on ${lines.length} criteria, not 7`);
+  if (new Set(lines).size !== lines.length) wrong.push(`ISS-201 draws ${lines.length} lines and only ${new Set(lines).size} read apart`);
+  if (!fold.querySelector("[data-testid=release-merges-section]")) wrong.push("Technical lists no change requests");
+  return [...wrong, ...sideways()];
 }
 
 window.__witness = {
   cases: [
-    { name: "phone", width: 390 },
-    { name: "desktop", width: 1280 },
+    { name: "phone", width: 420 },
+    { name: "desktop", width: 1440 },
   ],
-  ready: () => req() !== null,
+  ready: () => detail()?.querySelector("[data-testid=page-screens]") != null,
   stages: [
-    { name: "proves", run: proves },
-    { name: "changes", run: opensChanges },
+    { name: "light", run: async () => (theme("light"), await settle(), reads()) },
+    { name: "dark", run: async () => (theme("dark"), await settle(), reads()) },
+    { name: "technical", run: technical },
   ],
 };

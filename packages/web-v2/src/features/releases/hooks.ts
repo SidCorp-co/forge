@@ -10,14 +10,8 @@ export const useReleases = (projectId: string | undefined) => useQuery(readOf(["
 export const useRelease = (projectId: string | undefined, version: string | undefined) =>
   useQuery(readOf(["release", projectId, version], () => releasesApi.get(projectId as string, version as string), 0));
 
-/** How often a page owed a highlight draft is read again while it waits. */
-const DRAFT_POLL_MS = 5_000;
-
 export const useReleasePage = (projectId: string | undefined, version: string | undefined, view: ReleasePageViewKind) =>
-  useQuery({
-    ...readOf(["release-page", projectId, version, view], () => releasesApi.page(projectId as string, version as string, view), 0),
-    refetchInterval: (q) => (q.state.data?.highlights.state === "pending" ? DRAFT_POLL_MS : false),
-  });
+  useQuery(readOf(["release-page", projectId, version, view], () => releasesApi.page(projectId as string, version as string, view), 0));
 
 /** Every release read of the project, which a decision or a cut changes. */
 const touched = (projectId: string) => [["releases", projectId], ["release", projectId], ["release-page", projectId]];

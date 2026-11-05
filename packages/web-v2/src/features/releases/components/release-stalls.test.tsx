@@ -1,16 +1,16 @@
 // A release page reports what stalled its delivery by cause (REQ-67 BC-7): one line counting each
 // cause, each count opening the stalls behind it with the item and the question each raised, never a
-// raw key. A release with none says so in two words; a shared page, which carries no stalls, draws none.
+// raw key. A release with none says so in two words; a page carrying no stalls draws none. It sits in
+// the page's Technical section since ISS-1001, and a shared page draws no Technical section at all.
 //
 // @direct-test-of packages/web-v2/src/features/releases/components/release-stalls.tsx
-// @direct-test-of packages/web-v2/src/features/releases/components/release-reader.tsx
 
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReleaseStalls } from "@forge/contracts/stalls";
 import { releasePage } from "@/test/release-page";
 import { renderWithQuery } from "@/test/render";
-import { ReleaseReader } from "./release-reader";
+import { ReleaseStalls as Stalls } from "./release-stalls";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -46,7 +46,7 @@ function words(el: HTMLElement): number {
 
 describe("the stalls section", () => {
   it("counts each cause in one line and opens a cause's stalls on demand, with no raw key", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ stalls: STALLS })} authed />);
+    renderWithQuery(<Stalls page={releasePage({ stalls: STALLS })} />);
     const section = screen.getByTestId("page-stalls");
     expect(within(section).getByTestId("page-stalls-unclear_item").textContent).toBe("Unclear item 1");
     expect(within(section).getByTestId("page-stalls-defect").textContent).toBe("Defect 1");
@@ -65,27 +65,27 @@ describe("the stalls section", () => {
   });
 
   it("says a release nothing stalled in one short line", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} authed />);
+    renderWithQuery(<Stalls page={releasePage()} />);
     expect(screen.getByTestId("page-stalls-none").textContent).toBe("No stalls");
     expect(screen.queryByTestId("page-stalls")).toBeNull();
   });
 
-  it("draws nothing on a shared page, which carries no stalls", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ stalls: null })} authed={false} />);
+  it("draws nothing for a page that carries no stalls", () => {
+    renderWithQuery(<Stalls page={releasePage({ stalls: null })} />);
     expect(screen.queryByTestId("page-stalls")).toBeNull();
     expect(screen.queryByTestId("page-stalls-none")).toBeNull();
   });
 
   it("adds at most a few visible words to the page", () => {
-    const before = renderWithQuery(<ReleaseReader page={releasePage({ stalls: null })} authed />);
+    const before = renderWithQuery(<Stalls page={releasePage({ stalls: null })} />);
     const without = words(before.container);
     before.unmount();
-    const none = renderWithQuery(<ReleaseReader page={releasePage()} authed />);
+    const none = renderWithQuery(<Stalls page={releasePage()} />);
     const withNone = words(none.container);
     none.unmount();
-    const some = renderWithQuery(<ReleaseReader page={releasePage({ stalls: STALLS })} authed />);
+    const some = renderWithQuery(<Stalls page={releasePage({ stalls: STALLS })} />);
     const withSome = words(some.container);
-    console.info(`release page visible words: ${without} without the section, ${withNone} with none, ${withSome} with two`);
+    console.info(`release stalls visible words: ${without} without the section, ${withNone} with none, ${withSome} with two`);
     expect(withNone - without).toBe(2);
     expect(withSome - without).toBeLessThanOrEqual(6);
   });

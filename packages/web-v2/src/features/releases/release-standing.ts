@@ -3,15 +3,14 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import type { ReleaseDetail } from "./types";
 
 // Where a release stands, in the plain words a product owner reads (REQ-40 BC-19): its status, who
-// approves it, where it goes, what was checked, and the one next step. Read off the release record,
-// so the page's rail and the list's peek say the same thing in the same words. A release whose owner
+// approves it, where it goes, and the one next step. Read off the release record. What was checked is
+// the release's one proof number (`proof.ts`, ISS-1001), never said a second time here. A release whose owner
 // deploys ends at its last merge (REQ-71 BC-6): it goes nowhere Forge deploys, and nothing is missing.
 
 export interface ReleaseStanding {
   status: string;
   approver: string;
   goesTo: string;
-  verified: string;
   /** The one act that moves it on; null once it is out. */
   next: string | null;
 }
@@ -33,15 +32,6 @@ function approverOf(r: Standing, t: Copy): string {
   const decided = r.approval?.decision ? r.approval.decidedBy : null;
   if (decided) return decided.name;
   return r.approvalRequired || r.approval ? t("releases.standing.approver.admin") : t("releases.standing.approver.notNeeded");
-}
-
-// on a project naming its testing environment, the count is of passes judged on the build it serves (REQ-36 BC-18, BC-19)
-function verifiedOf(r: Standing, t: Copy): string {
-  const { proven, total, judgedOn } = r.verified;
-  if (total === 0) return t("releases.standing.verified.unchecked");
-  if (judgedOn && proven === 0) return t("releases.standing.verified.notJudgedOn", { environment: judgedOn, total });
-  const met = proven === total ? t("releases.standing.verified.all", { n: total }) : t("releases.standing.verified.some", { proven, total });
-  return judgedOn ? t("releases.standing.verified.onEnvironment", { met, environment: judgedOn }) : met;
 }
 
 const ENDED: readonly ReleaseState[] = ["failed", "aborted"];
@@ -75,7 +65,6 @@ export function releaseStandingOf(r: Standing, t: Copy, date: (iso: string) => s
     status: statusOf(r, t, date),
     approver: approverOf(r, t),
     goesTo: where ?? t(r.ownerDeploys ? "releases.standing.goesTo.ownerDeploys" : "releases.standing.goesTo.undeclared"),
-    verified: verifiedOf(r, t),
     next: nextOf(r, t, where !== null || r.ownerDeploys),
   };
 }

@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReleasePage } from "@forge/contracts/release-page";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { renderWithQuery } from "@/test/render";
-import { ReleaseReader } from "./release-reader";
+import { Technical } from "./release-technical";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -20,7 +20,7 @@ const read = (unchecked: Extract<ReleasePage["shipped"], { state: "read" }>["unc
 describe("the gate issues outside the roster the range could not place (ISS-962)", () => {
   it("names each with why", () => {
     const shipped = read([{ issueKey: "ISS-144", commit: null, why: "its merge names no commit" }]);
-    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL, shipped })} slug="forge" authed />);
+    renderWithQuery(<Technical page={releasePage({ view: "developer", technical: TECHNICAL, shipped })} slug="forge" />);
     const unchecked = screen.getByTestId("page-technical-unchecked");
     expect(unchecked).toHaveTextContent("Not checked");
     expect(unchecked).toHaveTextContent("ISS-144: its merge names no commit");
@@ -29,7 +29,7 @@ describe("the gate issues outside the roster the range could not place (ISS-962)
   it("draws nothing where none went unplaced, or where the reading predates the check", () => {
     for (const unchecked of [[], null]) {
       const { unmount } = renderWithQuery(
-        <ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL, shipped: read(unchecked) })} slug="forge" authed />,
+        <Technical page={releasePage({ view: "developer", technical: TECHNICAL, shipped: read(unchecked) })} slug="forge" />,
       );
       expect(screen.queryByTestId("page-technical-unchecked")).toBeNull();
       unmount();

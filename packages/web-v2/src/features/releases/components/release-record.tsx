@@ -38,6 +38,27 @@ export function recordContents(r: ReleaseDetail, t: Copy): ContentsItem[] {
 }
 
 /**
+ * Its tag on the source host (REQ-63 r7 BC-15), from the moment the commit its version names is known,
+ * before any deploy: one word while the host is asked, the tag's own name where the host holds it,
+ * else one word for why not. The sentence why is the record's (`release-tag-why`).
+ */
+export function ReleaseTagLine({ r }: { r: Pick<ReleaseDetail, "releasedAt" | "tag"> }) {
+  const t = useCopy();
+  const tag = r.tag ?? null;
+  if (!tag && !r.releasedAt) return null;
+  return (
+    <p className="text-13 text-muted" data-testid="standing-tag">
+      {t("releases.standing.label.tag")}{" "}
+      {tag?.state === "tagged" ? (
+        <span className="font-mono text-fg">{tag.name}</span>
+      ) : (
+        <span>{t(`releases.standing.tag.${tag?.state === "owed" ? "owed" : (tag?.code ?? "none")}`)}</span>
+      )}
+    </p>
+  );
+}
+
+/**
  * What stands in the way reads the same gates the banner and the rail read, in the same words: the
  * gate the banner names is the first one here.
  */

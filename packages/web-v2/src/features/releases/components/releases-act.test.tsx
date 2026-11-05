@@ -1,7 +1,7 @@
-// Releases shows on its face what a person acts on (REQ-11 BC-18, BC-19): every row — the list's, the
-// coming-next table's and the train's — leads with its title or name, and a requirement key sits in
-// a tooltip, never in a column of its own or a facts line.
-// @direct-test-of packages/web-v2/src/design/patterns/grouped-list.tsx
+// The Releases list shows on its face what a person acts on (REQ-11 BC-18, BC-19; ISS-1001): each
+// row leads with its version and name, carries one proof bar and the short tags of what needs
+// attention, and only a release waiting on the reader offers its one act. No key, sha or second
+// table repeating the draft (the retired coming-next) is drawn.
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -14,37 +14,38 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 const releases = () => render(<Seeded data={releaseSeed()}><ReleasesScreen projectId={P} slug="hop" /></Seeded>);
 
-describe("Releases leads with names, never keys (REQ-11 BC-19)", () => {
+describe("the Releases list's face (REQ-11 BC-19, ISS-1001)", () => {
   it("draws no requirement key, issue key or sha as text on its face", () => {
     const { container } = releases();
     expect(rawKeysOnFace(container)).toEqual([]);
   });
 
-  it("has no Key column: the list's header starts at the title, and each row's first text is its title", () => {
+  it("groups the draft waiting on the reader first and the release in production last", () => {
     releases();
-    const list = screen.getByTestId("grouped-list");
-    expect(within(list).getByTestId("list-header").textContent).not.toMatch(/^Key/);
-    const row = within(list).getAllByTestId("list-row")[0];
-    expect(row.textContent).toMatch(/^Release 0\.1\.0/);
-    expect(row.querySelector("[title='0.1.0']")?.textContent).toBe("Release 0.1.0");
+    const groups = screen.getAllByTestId("release-group").map((g) => [g.dataset.group, within(g).queryAllByTestId("list-row").map((r) => r.dataset.key)]);
+    expect(groups).toEqual([
+      ["you", ["0.1.0"]],
+      ["going", []],
+      ["production", ["0.0.9"]],
+    ]);
   });
 
-  it("says what a release holds, its requirement keys among it, on its state chip's hover, never on the face (ISS-903)", () => {
+  it("leads each row with its version, gives the draft one proof bar, and the one act only where it waits on the reader", () => {
+    releases();
+    const [draft, shipped] = screen.getAllByTestId("list-row");
+    expect(draft.textContent).toMatch(/^0\.1\.0/);
+    expect(within(draft).getAllByTestId("release-proof")).toHaveLength(1);
+    expect(within(draft).getByTestId("release-proof")).toHaveAttribute("data-proven", "1");
+    expect(within(draft).getByTestId("release-proof")).toHaveAttribute("data-total", "2");
+    expect(within(draft).getByTestId("release-tags")).toHaveTextContent("1 unproven");
+    expect(within(draft).getAllByTestId("release-row-act")).toHaveLength(1);
+    expect(within(shipped).queryByTestId("release-row-act")).toBeNull();
+  });
+
+  it("draws no second table repeating the draft: coming next is retired", () => {
     const { container } = releases();
-    const chips = screen.getAllByTestId("release-row-state");
-    const holds = chips.map((c) => c.dataset.reason ?? "").find((r) => r.includes("REQ-1"));
-    expect(holds).toMatch(/^Issues \d+ · Requirements 1 \(REQ-1\) · /);
-    for (const facts of screen.queryAllByTestId("row-facts")) expect(facts.textContent).not.toMatch(/Issues|Requirements|REQ-1/);
-    expect(container.querySelector("[data-testid=release-requirements]")).toBeNull();
-  });
-
-  it("leads coming next's rows with the requirement's title, its link, the key its tooltip", () => {
-    releases();
-    const row = screen.getByTestId("coming-next-requirement");
-    const link = within(row).getByRole("link");
-    expect(link.textContent).toBe("Muc");
-    expect(link.getAttribute("title")).toBe("REQ-1");
-    expect(within(screen.getByTestId("coming-next-header")).queryByText("Key")).toBeNull();
+    expect(container.querySelector("[data-testid^=coming-next]")).toBeNull();
+    expect(container.querySelector("[data-testid=release-train]")).toBeNull();
   });
 
   it("stays within the first view's budget of 300 words (BC-21)", () => {
