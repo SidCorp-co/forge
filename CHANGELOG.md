@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.507] - 2026-11-05
+
+Activity groups work into batches and releases, and marks what waits on you
+
+### Added
+
+- **Activity reads per batch and release, and shows what waits on you.** Status moves gather into numbered batches, releases show as coloured diamonds, and amber pins open what you owe. Every grouped list now reads as an indented hierarchy.
+
 ## [0.4.0-dev.506] - 2026-11-05
 
 Beta issues reach forge-dev as Feedback to triage, not open issues

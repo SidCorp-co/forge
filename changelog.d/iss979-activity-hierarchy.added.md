@@ -1,1 +1,0 @@
-**Activity reads per batch and release, and shows what waits on you.** Status moves gather into numbered batches, releases show as coloured diamonds, and amber pins open what you owe. Every grouped list now reads as an indented hierarchy.
