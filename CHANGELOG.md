@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.509] - 2026-11-05
+
+Activity marker collisions stay reachable and pins count every waiting decision
+
+### Fixed
+
+- **Activity markers never cover each other.** A release or batch that falls on another marker hangs just below the line so both stay clickable, and each amber pin counts every decision waiting, matching the You count.
+
 ## [0.4.0-dev.508] - 2026-11-05
 
 Follow-ups in the bot's thread get answered; beta twin closes are accepted
