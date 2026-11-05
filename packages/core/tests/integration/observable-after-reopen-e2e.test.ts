@@ -35,7 +35,7 @@ import type { ReleaseBlocker, ReleaseWarning } from '../../src/release-batch/blo
 import { criteriaBasisOf, landingCriteriaReports } from '../../src/release-batch/criteria-basis.js';
 import { criteriaHold } from '../../src/release-batch/criteria-hold.js';
 import { landingCriteriaHold } from '../../src/release-batch/criteria-hold-words.js';
-import { designed, shipped, stored } from '../helpers/agenfold-world.js';
+import { agenfold, designed, shipped, stored } from '../helpers/agenfold-world.js';
 import { api } from '../helpers/api.js';
 import { seedIssueStatus } from '../helpers/factories.js';
 import {
@@ -173,9 +173,11 @@ describe('a release holds an issue only for the round it carried (ISS-967)', () 
   });
 
   it('lets a fail at the landing the reopen rejected stop holding, before any release', async () => {
+    await agenfold('onLand');
     const fixed = await landedIssue(1, C1);
     await designed(fixed, [[3, 'observable']]);
     await stored(fixed, 3, { commit: C1 }, 'fail');
+    expect((await report(fixed)).unearned.map((c) => c.criterion)).toEqual([1, 2, 3]);
     // the reopen leaves the gate, not a shipped release: no release ever carried this issue
     await db.execute(sql`
       INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type,
