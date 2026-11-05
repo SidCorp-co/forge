@@ -32,6 +32,7 @@ const asked: AgentQuestion = {
     },
   ],
   round: 1,
+  plain: null,
   prompt: "Which flow ships first?",
   askedAt: "2026-10-06T00:00:00Z",
   maxRounds: 3,

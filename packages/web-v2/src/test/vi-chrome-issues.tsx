@@ -280,6 +280,7 @@ const MOOT_QUESTION: AgentQuestion = {
   blockerKind: "human",
   steps: [{ round: 1, prompt: "Cau hoi", askedAt: AT, answerShape: "free_text", needed: "Cach dong" }],
   round: 1,
+  plain: null,
   prompt: "Cau hoi",
   askedAt: AT,
   maxRounds: 3,

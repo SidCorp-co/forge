@@ -26,6 +26,7 @@ const asked: AgentQuestion = {
   blockerKind: "human",
   steps: [{ round: 1, prompt: PROMPT, askedAt: "2026-10-21T00:00:00Z", answerShape: "free_text", needed: "how it closes" }],
   round: 1,
+  plain: null,
   prompt: PROMPT,
   askedAt: "2026-10-21T00:00:00Z",
   maxRounds: 3,

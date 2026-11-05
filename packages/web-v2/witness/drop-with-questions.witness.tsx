@@ -28,6 +28,7 @@ const ask = (id: string, issueId: string, prompt: string): AgentQuestion => ({
   blockerKind: "human",
   steps: [{ round: 1, prompt, askedAt: AT, answerShape: "free_text", needed: "an answer" }],
   round: 1,
+  plain: null,
   prompt,
   askedAt: AT,
   maxRounds: 3,

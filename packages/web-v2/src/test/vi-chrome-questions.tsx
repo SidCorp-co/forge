@@ -35,6 +35,7 @@ const question = (over: Partial<AgentQuestion> = {}): AgentQuestion => ({
   blockerKind: "human",
   steps: [freeStep(1)],
   round: 1,
+  plain: null,
   prompt: "Cau hoi 1",
   askedAt: AT,
   maxRounds: 3,

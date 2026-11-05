@@ -37,11 +37,6 @@
       "count": 2
     }
   },
-  "src/features/issues/components/comment-thread.test.tsx": {
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
   "src/features/issues/components/new-issue-dialog.test.tsx": {
     "@typescript-eslint/unbound-method": {
       "count": 1

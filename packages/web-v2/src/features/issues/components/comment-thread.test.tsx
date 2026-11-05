@@ -7,7 +7,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, HANG, renderWithQuery } from "@/test/render";
-import type { AgentQuestion } from "@/features/questions/types";
+import type { AgentQuestion } from "@/features/questions";
 import type { CommentNode } from "../types";
 import { CommentThread } from "./comment-thread";
 
@@ -101,6 +101,7 @@ describe("a decision that answers the issue's open question", () => {
       { round: 2, prompt: "Which flag guards it?", askedAt: "2026-10-09T02:00:00Z", answerShape: "free_text", needed: "the flag" },
     ],
     round: 2,
+    plain: null,
     prompt: "Which flag guards it?",
     askedAt: "2026-10-09T02:00:00Z",
     answerShape: "free_text",
