@@ -83,6 +83,7 @@ const projectOf = (p: Mock, i: number): OrgActivityProject => {
   const waits = p.y.map(([t, list]) => ({
     at: clampFrom(at(t)),
     items: list.map(([key, title, group]): OrgActivityPerson => ({ decisionId: `d-${key}`, group, key, title, since: at(t), opens: null })),
+    more: 0,
   }));
   const items = waits.flatMap((w) => w.items);
   return {
