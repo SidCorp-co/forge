@@ -154,6 +154,8 @@ class RocketChatConnectionManager {
       await unlockSession(session, 'rocketchatConnection', connectionId).catch(() => {});
       throw err;
     }
+    // the session was lost while the row was read: its lock went with it, and `resume` takes it again
+    if (this.session !== session) return;
     if (!active) {
       await unlockSession(session, 'rocketchatConnection', connectionId);
       return;
