@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use runner_core::ledger::Ledger;
+use runner_core::ledger::{Ledger, TreeOrigin};
 use runner_transport::CoreClient;
 use serde_json::Value;
 
@@ -55,6 +55,8 @@ pub struct Facts {
     /// The base's commit, `None` when the remote holds no base branch yet.
     pub base_sha: Option<String>,
     pub tree: Tree,
+    /// Whether the tree stood before the run was declared, or was cut for it (ISS-1016).
+    pub tree_origin: TreeOrigin,
     pub others: Vec<Held>,
 }
 
@@ -125,6 +127,11 @@ pub fn compose(f: &Facts) -> String {
         f.tree.path.display(),
         f.tree.branch.as_deref().unwrap_or("detached"),
         f.tree.head.as_deref().map(short).unwrap_or("none")
+    ));
+    lines.push(format!(
+        "Tree origin: {} — {}",
+        f.tree_origin.wire(),
+        f.tree_origin.fate()
     ));
     match &f.base_sha {
         Some(sha) => {
@@ -383,7 +390,7 @@ pub fn no_base_branch(project_id: &str, config: Option<&Value>) -> String {
 }
 
 /// What a declared run is briefed over: its tree, project, issue keys and any requirement it judges.
-pub type Declared = (PathBuf, String, Vec<String>, Option<String>);
+pub type Declared = (PathBuf, String, Vec<String>, Option<String>, TreeOrigin);
 
 /// The refusal for a run this box cannot brief, or the run with its project, issue keys and the
 /// requirement a judge run judges.
@@ -407,13 +414,19 @@ pub fn declared(led: &Ledger, run_id: &str) -> anyhow::Result<Declared> {
         .into_iter()
         .map(|m| m.issue_key)
         .collect();
-    Ok((run.worktree_path, project_id, keys, run.requirement))
+    Ok((
+        run.worktree_path,
+        project_id,
+        keys,
+        run.requirement,
+        run.worktree_origin,
+    ))
 }
 
 pub async fn brief(client: &CoreClient, run_id: &str) -> anyhow::Result<String> {
     let led = Ledger::open_read_only(&Ledger::default_path()?)?;
     let run_id = &super::full_id(&led, run_id)?;
-    let (worktree, project_id, keys, requirement) = declared(&led, run_id)?;
+    let (worktree, project_id, keys, requirement, tree_origin) = declared(&led, run_id)?;
 
     let project_path = format!("/api/projects/{project_id}");
     let project = get_json(client, &project_path)
@@ -459,6 +472,7 @@ pub async fn brief(client: &CoreClient, run_id: &str) -> anyhow::Result<String> 
         base,
         base_sha,
         tree,
+        tree_origin,
         others,
     }))
 }
@@ -503,6 +517,7 @@ mod tests {
             base: "dev".into(),
             base_sha: Some("1aae01978374e30b3c35f799789b4441a9798a78".into()),
             tree: tree("/r/.claude/worktrees/ISS-294", Some("dev-ISS-294")),
+            tree_origin: TreeOrigin::Adopted,
             others: vec![
                 Held {
                     tree: tree("/r", Some("dev")),
@@ -529,6 +544,7 @@ mod tests {
             "Project: forge · d1bb4907",
             "Run: 70d69d6e",
             "Tree: /r/.claude/worktrees/ISS-294 · branch dev-ISS-294 · head 1aae01978",
+            "Tree origin: adopted — it stood before this run was declared over it",
             "Base branch: dev (the project's baseBranch); held trees read against origin/dev at 1aae01978",
             "  /r (branch dev): nothing held",
             "  /r/.claude/worktrees/ISS-280 (issue ISS-280 · branch dev-ISS-280): committed: a.rs, b.rs; uncommitted: not read",
@@ -763,6 +779,7 @@ mod tests {
             base: "release".into(),
             base_sha,
             tree: tree("/r/one", Some("dev-one")),
+            tree_origin: TreeOrigin::Created,
             others,
         });
         assert!(
@@ -811,7 +828,7 @@ mod tests {
                 worktree_origin: runner_core::ledger::TreeOrigin::Created,
             })
             .unwrap();
-        let (path, project, keys, _) = declared(&led, &run.run_id).unwrap();
+        let (path, project, keys, ..) = declared(&led, &run.run_id).unwrap();
         assert_eq!(
             (path, project.as_str(), keys),
             ("/r/one".into(), "p-1", vec!["ISS-9".to_string()])

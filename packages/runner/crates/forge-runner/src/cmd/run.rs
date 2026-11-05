@@ -306,6 +306,7 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
                 "{}",
                 closed(recorded_logins(run_id), &judge_dir::root(), run_id)
             );
+            println!("{}", tree_said(recorded_run(run_id)));
             // What core did with the run's session, as the daemon's close found it (ISS-929):
             // `closed` is this box's record, and the session's own line says whether core's is.
             if let Some(at_core) = reply.reason.as_deref() {
@@ -317,6 +318,41 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// The run `run_id` as this box's ledger records it, or why it could not be read.
+fn recorded_run(run_id: &str) -> Result<Option<runner_core::ledger::Run>, String> {
+    Ledger::default_path()
+        .and_then(|p| Ledger::open_read_only(&p))
+        .and_then(|led| led.run(run_id))
+        .map_err(|e| e.to_string())
+}
+
+/// What `run close` says about the run's tree: an adopted one is left in place and why, and a tree
+/// cut for the run is said to be the release's to give back (ISS-1016).
+fn tree_said(run: Result<Option<runner_core::ledger::Run>, String>) -> String {
+    use runner_core::ledger::TreeOrigin;
+    match run {
+        Ok(Some(run)) => match run.worktree_origin {
+            TreeOrigin::Adopted => format!(
+                "tree {} is left in place: {}",
+                run.worktree_path.display(),
+                TreeOrigin::Adopted.fate()
+            ),
+            TreeOrigin::Created => format!(
+                "tree {}: {}",
+                run.worktree_path.display(),
+                TreeOrigin::Created.fate()
+            ),
+        },
+        Ok(None) => "tree: this box's ledger no longer holds the run, so what becomes of its tree \
+                     is not said here"
+            .into(),
+        Err(e) => format!(
+            "tree: this box's ledger could not be read ({e}), so what becomes of the run's tree is \
+             not said here"
+        ),
+    }
 }
 
 /// The judge logins `judge-login` recorded on `run_id` in this box's ledger, or why they could
@@ -392,7 +428,7 @@ mod tests {
                 issue_keys: vec![format!("ISS-{n}")],
                 role: None,
                 requirement: None,
-                worktree_origin: runner_core::ledger::TreeOrigin::Created,
+                worktree_origin: runner_core::ledger::TreeOrigin::Adopted,
             })
             .unwrap();
         }
@@ -588,5 +624,31 @@ mod tests {
         let said = closed(Ok(vec![other.clone()]), &closer.0, JUDGED);
         assert!(said.contains("is not named forge-judge-"), "{said}");
         assert!(other.join("x.json").exists());
+    }
+
+    /// ISS-1016: the close of a run declared over a tree that already stood says the tree is left
+    /// in place and why; the close of one whose tree was cut for it says the release takes it.
+    #[test]
+    fn a_close_says_an_adopted_tree_is_left_in_place_and_why() {
+        let led = ledger_with("tree-said", &[JUDGED]);
+        let adopted = tree_said(led.run(JUDGED).map_err(|e| e.to_string()));
+        assert!(
+            adopted
+                .starts_with("tree /r/w0 is left in place: it stood before this run was declared"),
+            "{adopted}"
+        );
+        assert!(
+            adopted.contains("no close, release or reaper removes it"),
+            "{adopted}"
+        );
+        let mut cut = led.run(JUDGED).unwrap().unwrap();
+        cut.worktree_origin = runner_core::ledger::TreeOrigin::Created;
+        let created = tree_said(Ok(Some(cut)));
+        assert!(
+            created.starts_with("tree /r/w0: it was cut for this run"),
+            "{created}"
+        );
+        assert!(!created.contains("left in place"), "{created}");
+        assert!(tree_said(Err("locked".into())).contains("could not be read (locked)"));
     }
 }

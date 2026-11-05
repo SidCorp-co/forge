@@ -81,6 +81,22 @@ impl TreeOrigin {
         }
     }
 
+    /// What becomes of the tree once the run ends, and why, in the words `run close` and the brief
+    /// print beside its path.
+    pub fn fate(self) -> &'static str {
+        match self {
+            TreeOrigin::Adopted => {
+                "it stood before this run was declared over it, so the run gives back only its \
+                 claim, and no close, release or reaper removes it"
+            }
+            TreeOrigin::Created => {
+                "it was cut for this run, so the release after the run ends removes it — unless it \
+                 holds uncommitted files or commits on no remote, which keep it, named in the \
+                 daemon's journal"
+            }
+        }
+    }
+
     /// The origin a row records. Anything but `created` reads as adopted: a release may remove
     /// only a tree it can show this run was given, so a row that cannot show it keeps its tree.
     pub fn from_wire(s: Option<&str>) -> Self {
