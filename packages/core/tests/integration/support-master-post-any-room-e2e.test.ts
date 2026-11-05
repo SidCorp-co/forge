@@ -15,6 +15,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/routes.ts
 // @direct-test-of packages/contracts/src/support-channel.ts
+// @direct-test-of packages/core/src/support/dispatch.ts (ISS-977: two hand-overs racing one session collided minting its turn token)
 //
 // ISS-943: sid-desk's master had no way to post its release line into a thread of #sid-email, the
 // support room its project binds, so the orchestrator relayed it by hand as the bot. The master's
