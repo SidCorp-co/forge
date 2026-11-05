@@ -38,11 +38,8 @@ pub(crate) async fn stage_attachments(
     }
     let mut paths: Vec<PathBuf> = Vec::new();
     for att in refs {
-        let url = client.url(&att.url);
         let bytes = match client
-            .http()
-            .get(&url)
-            .bearer_auth(client.device_token())
+            .get(&att.url)
             .timeout(runner_transport::LONG_DEADLINE)
             .send()
             .await

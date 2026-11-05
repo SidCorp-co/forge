@@ -59,12 +59,7 @@ pub async fn fetch_within(
         .timeout(deadline)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "{ROUTE} request: {}",
-                status::unanswered(&e, deadline)
-            ))
-        })?;
+        .map_err(|e| Error::Other(format!("{ROUTE} request: {}", status::unsent(&e, deadline))))?;
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();

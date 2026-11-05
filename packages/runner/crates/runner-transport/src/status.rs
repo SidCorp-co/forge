@@ -7,7 +7,8 @@
 //! failed — and all three printed under that one phrase, which labels as
 //! unknown a code the message is already carrying (ISS-1234).
 
-use reqwest::{RequestBuilder, Response};
+use crate::{CoreRequest, SendError};
+use reqwest::Response;
 use runner_platform::error::{Error, Result};
 use serde::de::DeserializeOwned;
 
@@ -131,7 +132,7 @@ pub(crate) fn refused(what: &str, status: u16, text: &str) -> String {
 }
 
 /// `req` sent; a call that got no answer is `<what>: <the transport's words>`.
-pub(crate) async fn sent(req: RequestBuilder, what: &str) -> Result<Response> {
+pub(crate) async fn sent(req: CoreRequest, what: &str) -> Result<Response> {
     req.send()
         .await
         .map_err(|e| Error::Other(format!("{what}: {e}")))
@@ -140,7 +141,7 @@ pub(crate) async fn sent(req: RequestBuilder, what: &str) -> Result<Response> {
 /// `req` sent within `deadline` and [`checked`]; one that got no answer is
 /// `<what> request: <what went wrong>`, as [`unanswered`] names it.
 pub(crate) async fn send_within(
-    req: RequestBuilder,
+    req: CoreRequest,
     what: &str,
     deadline: std::time::Duration,
 ) -> Result<Response> {
@@ -148,7 +149,7 @@ pub(crate) async fn send_within(
         .timeout(deadline)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("{what} request: {}", unanswered(&e, deadline))))?;
+        .map_err(|e| Error::Other(format!("{what} request: {}", unsent(&e, deadline))))?;
     checked(resp, what).await
 }
 
@@ -174,14 +175,14 @@ pub(crate) async fn decode<T: DeserializeOwned>(resp: Response, what: &str) -> R
 }
 
 /// Send, check and decode, every failure named by `what`.
-pub(crate) async fn fetch<T: DeserializeOwned>(req: RequestBuilder, what: &str) -> Result<T> {
+pub(crate) async fn fetch<T: DeserializeOwned>(req: CoreRequest, what: &str) -> Result<T> {
     let resp = checked(sent(req, &format!("{what} request")).await?, what).await?;
     decode(resp, what).await
 }
 
 /// [`fetch`] within `deadline`.
 pub(crate) async fn fetch_within<T: DeserializeOwned>(
-    req: RequestBuilder,
+    req: CoreRequest,
     what: &str,
     deadline: std::time::Duration,
 ) -> Result<T> {
@@ -361,6 +362,15 @@ pub(crate) fn held_code(status: u16, body: &str) -> Option<String> {
     codes_of(body)
         .into_iter()
         .find(|c| HELD_CODES.contains(&c.as_str()))
+}
+
+/// A call that got no answer to hand back: the rollover it waited out to the end, or the
+/// transport's fault as [`unanswered`] names it.
+pub fn unsent(e: &SendError, deadline: std::time::Duration) -> String {
+    match e {
+        SendError::Unanswered(e) => unanswered(e, deadline),
+        SendError::RolledOver(gave_up) => gave_up.to_string(),
+    }
 }
 
 /// A call that got no status at all, named by what went wrong and then by the

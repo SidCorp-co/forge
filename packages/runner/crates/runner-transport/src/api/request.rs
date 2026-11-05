@@ -2,12 +2,11 @@
 //! through stdout / stderr / exit code.
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
-use reqwest::RequestBuilder;
 use serde_json::Value;
 
 use crate::api::exit::{classify, transport_failure, usage_failure, Outcome};
 use crate::api::form::{encode, read_parts, FormField};
-use crate::CoreClient;
+use crate::{CoreClient, CoreRequest, SendError};
 
 /// What a request carries: JSON text, or form fields whose files are read when it is sent.
 #[derive(Debug, PartialEq, Eq)]
@@ -107,7 +106,7 @@ fn caller_headers(headers: &[(String, String)]) -> Result<HeaderMap, String> {
 }
 
 /// The body, with the Content-Type the runner writes for it unless the caller names one.
-fn with_body(rb: RequestBuilder, body: Option<&Body>) -> Result<RequestBuilder, String> {
+fn with_body(rb: CoreRequest, body: Option<&Body>) -> Result<CoreRequest, String> {
     Ok(match body {
         Some(Body::Json(json)) => rb
             .header(CONTENT_TYPE, "application/json")
@@ -158,6 +157,12 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
 
     let resp = match rb.timeout(crate::LONG_DEADLINE).send().await {
         Ok(r) => r,
+        // A rollover waited out to the end is the 503 it kept answering, named by its code.
+        Err(SendError::RolledOver(gave_up)) => {
+            let outcome = classify(503, Some(gave_up.last.code()));
+            let msg = format!("{url}: {gave_up}");
+            return Response::failed(failure_json(&outcome, Some(503), &msg), outcome);
+        }
         Err(e) => {
             let (outcome, msg) = transport_failure(&req.method, format!("{url}: {e}"));
             return Response::failed(failure_json(&outcome, None, &msg), outcome);

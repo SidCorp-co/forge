@@ -32,6 +32,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use reqwest::Url;
+use runner_transport::rollover::{self, ROLLOVER};
 use serde_json::{json, Map, Value};
 
 /// The fields an account may be named by: each is also the field the sign-in route reads.
@@ -420,10 +421,8 @@ pub(crate) async fn sign_in(
     let mut body = Map::new();
     body.insert(secret.field.to_string(), json!(secret.account));
     body.insert("password".to_string(), json!(secret.password));
-    let resp = http
-        .post(url.clone())
-        .json(&body)
-        .send()
+    // forge-dev is judged at the deployment a rollover answers 503 for, like core (ISS-1022).
+    let resp = rollover::send_builder(http.post(url.clone()).json(&body), ROLLOVER)
         .await
         .map_err(|e| {
             format!(

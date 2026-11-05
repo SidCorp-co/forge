@@ -223,7 +223,7 @@ pub async fn list_within(
         .await
         .map_err(|e| ReadFailure {
             status: None,
-            reason: format!("pool request: {}", status::unanswered(&e, deadline)),
+            reason: format!("pool request: {}", status::unsent(&e, deadline)),
         })?;
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
@@ -327,7 +327,7 @@ async fn post(
         .timeout(deadline)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("pool {path}: {}", status::unanswered(&e, deadline))))?;
+        .map_err(|e| Error::Other(format!("pool {path}: {}", status::unsent(&e, deadline))))?;
     let code = resp.status().as_u16();
     if (400..500).contains(&code) && code != 401 {
         let text = resp.text().await.unwrap_or_default();

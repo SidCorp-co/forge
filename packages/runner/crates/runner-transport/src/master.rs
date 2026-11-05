@@ -187,7 +187,7 @@ async fn pass_call(
         .map_err(|e| {
             PassError::Unreached(format!(
                 "{WHAT} request: {}",
-                status::unanswered(&e, CALL_DEADLINE)
+                status::unsent(&e, CALL_DEADLINE)
             ))
         })?;
     let code = resp.status().as_u16();

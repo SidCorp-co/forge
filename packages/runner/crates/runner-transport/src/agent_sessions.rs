@@ -204,7 +204,7 @@ async fn post_chunk(
 /// every failure.
 async fn send_with_backoff(
     name: &str,
-    request: impl Fn() -> reqwest::RequestBuilder,
+    request: impl Fn() -> crate::CoreRequest,
 ) -> std::result::Result<(), WriteFailure> {
     let mut delay_ms: u64 = 1000;
     for attempt in 1..=MAX_ATTEMPTS {

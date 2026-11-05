@@ -3,6 +3,7 @@
 use serde::Deserialize;
 
 use runner_platform::error::{Error, Result};
+use runner_transport::rollover::{self, ROLLOVER};
 
 pub fn detected_platform() -> &'static str {
     #[cfg(target_os = "macos")]
@@ -145,10 +146,7 @@ pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse>
         body["machine_id"] = serde_json::Value::String(mid);
     }
     let url = format!("{}/api/devices/login/init", core_url.trim_end_matches('/'));
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .json(&body)
-        .send()
+    let resp = rollover::send_builder(reqwest::Client::new().post(&url).json(&body), ROLLOVER)
         .await
         .map_err(|e| Error::Other(format!("login init request: {e}")))?;
     let status = resp.status();
@@ -172,7 +170,7 @@ pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll>
         core_url.trim_end_matches('/'),
         urlencoding(pairing_code),
     );
-    let resp = match reqwest::Client::new().get(&url).send().await {
+    let resp = match rollover::send_builder(reqwest::Client::new().get(&url), ROLLOVER).await {
         Ok(resp) => resp,
         Err(e) => return Ok(LoginPoll::Retry(format!("transport error: {e}"))),
     };

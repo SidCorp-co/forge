@@ -33,6 +33,7 @@ pub mod plugins;
 pub mod pool;
 pub mod provision;
 pub mod questions;
+pub mod rollover;
 pub mod run_sessions;
 pub mod run_verdict;
 pub mod runners;
@@ -40,6 +41,8 @@ pub mod skills;
 pub mod status;
 pub mod support_build;
 pub mod ws;
+
+pub use rollover::{Rollover, SendError, ROLLOVER};
 
 /// How long one call to core may take before it is a failed call rather than a
 /// wait. Before [`DEFAULT_DEADLINE`] a [`CoreClient`] carried none, so a peer that accepts
@@ -66,6 +69,7 @@ pub struct CoreClient {
     base: String,
     device_token: String,
     http: reqwest::Client,
+    rollover: Rollover,
 }
 
 impl CoreClient {
@@ -87,7 +91,14 @@ impl CoreClient {
             base: core_url.into().trim_end_matches('/').to_string(),
             device_token: device_token.into(),
             http,
+            rollover: ROLLOVER,
         }
+    }
+
+    /// The same client waiting a rollover out by `rollover` instead of [`ROLLOVER`].
+    pub fn with_rollover(mut self, rollover: Rollover) -> Self {
+        self.rollover = rollover;
+        self
     }
 
     pub fn base(&self) -> &str {
@@ -98,35 +109,87 @@ impl CoreClient {
         &self.device_token
     }
 
-    pub fn http(&self) -> &reqwest::Client {
-        &self.http
-    }
-
     pub fn url(&self, path: &str) -> String {
         format!("{}{}", self.base, path)
     }
 
-    /// A call to `path` on core, carrying the device token.
-    pub fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        self.http
-            .request(method, self.url(path))
-            .bearer_auth(&self.device_token)
+    /// A call to `path` on core, carrying the device token. Its `send` waits a rollover out
+    /// ([`rollover`]); there is no way to send one that does not.
+    pub fn request(&self, method: reqwest::Method, path: &str) -> CoreRequest {
+        CoreRequest {
+            builder: self
+                .http
+                .request(method, self.url(path))
+                .bearer_auth(&self.device_token),
+            rollover: self.rollover,
+        }
     }
 
-    pub fn get(&self, path: &str) -> reqwest::RequestBuilder {
+    pub fn get(&self, path: &str) -> CoreRequest {
         self.request(reqwest::Method::GET, path)
     }
 
-    pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+    pub fn post(&self, path: &str) -> CoreRequest {
         self.request(reqwest::Method::POST, path)
     }
 
-    pub fn patch(&self, path: &str) -> reqwest::RequestBuilder {
+    pub fn patch(&self, path: &str) -> CoreRequest {
         self.request(reqwest::Method::PATCH, path)
     }
 
-    pub fn delete(&self, path: &str) -> reqwest::RequestBuilder {
+    pub fn delete(&self, path: &str) -> CoreRequest {
         self.request(reqwest::Method::DELETE, path)
+    }
+}
+
+/// One call to core being built: `reqwest::RequestBuilder`'s setters, and a `send` that goes
+/// through [`rollover::send`].
+pub struct CoreRequest {
+    builder: reqwest::RequestBuilder,
+    rollover: Rollover,
+}
+
+impl CoreRequest {
+    fn map(self, f: impl FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder) -> Self {
+        Self {
+            builder: f(self.builder),
+            rollover: self.rollover,
+        }
+    }
+
+    pub fn json<T: serde::Serialize + ?Sized>(self, json: &T) -> Self {
+        self.map(|b| b.json(json))
+    }
+
+    pub fn query<T: serde::Serialize + ?Sized>(self, query: &T) -> Self {
+        self.map(|b| b.query(query))
+    }
+
+    pub fn header<K, V>(self, key: K, value: V) -> Self
+    where
+        reqwest::header::HeaderName: TryFrom<K>,
+        <reqwest::header::HeaderName as TryFrom<K>>::Error: Into<http::Error>,
+        reqwest::header::HeaderValue: TryFrom<V>,
+        <reqwest::header::HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
+    {
+        self.map(|b| b.header(key, value))
+    }
+
+    pub fn headers(self, headers: reqwest::header::HeaderMap) -> Self {
+        self.map(|b| b.headers(headers))
+    }
+
+    pub fn body<T: Into<reqwest::Body>>(self, body: T) -> Self {
+        self.map(|b| b.body(body))
+    }
+
+    /// This call's own bound, per attempt, in place of the client's.
+    pub fn timeout(self, timeout: std::time::Duration) -> Self {
+        self.map(|b| b.timeout(timeout))
+    }
+
+    pub async fn send(self) -> Result<reqwest::Response, SendError> {
+        rollover::send_builder(self.builder, self.rollover).await
     }
 }
 
