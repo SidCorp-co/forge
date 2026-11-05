@@ -38,7 +38,7 @@ export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job
 export { runningBuildObserved } from './gate.js';
 export { heldFromUnattendedCut, releaseHoldsOf } from './hold.js';
 export { judgedBuildOf, liveBuildHolds, unobservedBuildOf } from './judged-build.js';
-export { deliveryHeadsOf } from './landed-build.js';
+export { deliveryHeadsOf, landedBuildsOf } from './landed-build.js';
 export { landedBuildHolds } from './landed-build-holds.js';
 export { registerLandingDeploy } from './landing-deploy.js';
 export {
@@ -87,6 +87,7 @@ export { registerReleaseTag } from './release-tag.js';
 export type { ViewerFacts } from './release-view.js';
 export { releasedLineReads } from './released-line.js';
 export { readServedAncestry, type ServedAncestryPassResult } from './served-ancestry.js';
+export { servedOnEnvironment } from './serving-reading.js';
 export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
 export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 export { stewardReleaseFacts } from './steward-release-facts.js';

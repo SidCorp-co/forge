@@ -4,7 +4,7 @@
 // each kind's own acts are refused in the other's room by name.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { SupportRecordKind } from '@forge/contracts/support';
+import type { SupportPromiseRequest, SupportRecordKind } from '@forge/contracts/support';
 import type {
   ChannelRole,
   ChannelRoute,
@@ -33,6 +33,7 @@ import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
 import { askOwner } from './owner-ask.js';
 import { readProjectFacts } from './project-read.js';
+import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
 import { search } from './search.js';
@@ -122,6 +123,7 @@ export type SupportActInput =
     }
   | { action: 'link'; thread: string; member: string }
   | { action: 'image'; message: string; n?: number | undefined }
+  | ({ action: 'promise' } & SupportPromiseRequest)
   | {
       action: 'read';
       name: string;
@@ -338,5 +340,9 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     }
     case 'image':
       return readImage(room, { message: input.message, n: input.n });
+    case 'promise': {
+      const { action: _, ...request } = input;
+      return makePromise(room, request);
+    }
   }
 }

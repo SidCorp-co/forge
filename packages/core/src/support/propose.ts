@@ -34,7 +34,7 @@ export type ProposeOutcome = { ok: true; value: Proposed } | { ok: false; refusa
 type Member = { key: string; label: string | null };
 
 /** The thread's member a change waits on: `asker` when named, else the thread's first writer. */
-async function askerOf(
+export async function askerOf(
   room: RoomRow,
   thread: string,
   asker: string | undefined,

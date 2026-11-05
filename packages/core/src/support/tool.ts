@@ -15,6 +15,7 @@ import {
   supportLinkRequestSchema,
   supportMoveIssueRequestSchema,
   supportProjectRequestSchema,
+  supportPromiseRequestSchema,
   supportProposeFixRequestSchema,
   supportReadRequestSchema,
   supportRecordRequestSchema,
@@ -119,6 +120,7 @@ const REQUESTS = {
   link: supportLinkRequestSchema,
   read: supportReadRequestSchema,
   image: supportImageRequestSchema,
+  promise: supportPromiseRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 // one flat strict input, every field but `action` optional, as the model is shown it: the action's
@@ -150,6 +152,8 @@ const inputSchema = z.strictObject({
   ...operationsResearchRequestSchema.partial().shape,
   ...supportDeployRequestSchema.partial().shape,
   ...supportCommandRequestSchema.partial().shape,
+  // a promise's environment, by the project's own name for it (ISS-1012)
+  environment: supportPromiseRequestSchema.shape.environment.optional(),
   // a picture's place in its message; the message is the agreement's own field (ISS-1010)
   n: supportImageRequestSchema.shape.n,
   // an issue move's status, or a route's destination: each action's own request judges which
@@ -194,8 +198,9 @@ const SHAPE = [
   'link { thread, member }',
   'read { name, args?, thread?, check? }',
   'image { message, n? }',
+  'promise { thread, issue, environment, asker?, project? }',
   'any action may add rid: the group, where you answer several and the act names no thread',
-  'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements; its home when omitted',
+  'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements, and on promise where the key alone does not say; its home when omitted',
 ].join('; ');
 
 const DESCRIPTION = [
@@ -206,6 +211,7 @@ const DESCRIPTION = [
   'run {thread, tool, args}: run a granted diagnose check; you get what came back, and the thread is shown nothing.',
   'propose_fix {thread, tool, args, asker}: propose a granted fix for the person who asked (`from.id`). Nothing is posted: you are handed `proposal`, whom it waits on and when it expires. Ask that person in your own words; nothing runs until you cite their answer with agree.',
   `record {thread, kind, title, summary, asker?}: propose recording what needs code or a decision as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}). Nothing is posted and nothing is filed yet: you are handed \`proposal\`. Ask the asker (the thread's first writer unless named) in your own words whether to record it; when they agree in plain words, call agree. You are handed the key then, and told again once it is live, shipped or declined: then post its result in its thread. Never post progress, and never promise a date.`,
+  "promise {thread, issue, environment, asker?, project?}: promise the person (`from.id` as asker; the thread's first writer when omitted) to tell them in this thread when an issue of a project you follow reaches an environment, named as the project calls it (staging, production; no deployment target id), whether or not it was filed from this thread. Nothing is posted: tell them in your own words, and never promise a date. Forge tells you once, when that environment first serves a build holding the issue's landing, or if the issue is dropped or the environment stops being tracked first: then tell them in this thread, naming the work as they know it. One you cannot keep is refused by name: SUPPORT_PROMISE_NOT_FOLLOWED (a project you do not follow), SUPPORT_PROMISE_ISSUE_UNKNOWN, SUPPORT_PROMISE_ISSUE_DROPPED, SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED (listing the environments the project tracks); tell the person so in your words.",
   "image {message, n?}: read picture n (1 when omitted) of a member's message, whose head names `images` with their count: Forge fetches it from the chat server, which your box cannot reach, and hands it back as a viewable image block, its name framed as data. Read the pictures before you answer; never ask the person to describe one. One Forge cannot fetch is refused by name with why: SUPPORT_IMAGE_TOO_LARGE, SUPPORT_IMAGE_GONE, SUPPORT_IMAGE_REFUSED, SUPPORT_IMAGE_OFF_SERVER or SUPPORT_IMAGE_UNREACHABLE; a place the message holds no picture at, SUPPORT_IMAGE_UNKNOWN. Nothing is posted.",
   'agree {thread, proposal, message, decision?}: the person answered your proposal. Cite the id of their message (`message` in what you were handed); decision "decline" when they said no. Forge checks the message is theirs (the asker, or for a build, a deploy, a host change or a channel fix a confirmer the room allows), in the proposal\'s thread, and written after the proposal (the owner\'s own request for it counts whenever he wrote it: cite it at once, never ask him), then runs or files it and hands you what came of it: tell the person in your own words. A refusal names why; nothing is posted either way.',
   'link {thread, member}: whether a member (`from.id`) is linked to a Forge account, so what they ask you to do as them can run; where not, you are handed the page to give them, which they open signed in to Forge. You are told when they have linked. Nothing is posted.',

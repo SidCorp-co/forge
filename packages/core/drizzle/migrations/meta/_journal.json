@@ -3851,6 +3851,13 @@
       "when": 1835136000000,
       "tag": "0604_a_beta_pair_records_its_close_by_release",
       "breakpoints": true
+    },
+    {
+      "idx": 605,
+      "version": "7",
+      "when": 1835222400000,
+      "tag": "0605_a_support_room_promises_to_tell_when_an_issue_reaches_an_environment",
+      "breakpoints": true
     }
   ]
 }

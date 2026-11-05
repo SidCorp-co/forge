@@ -10,6 +10,7 @@ import { externalItemPhases } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { deliverWaiting } from './dispatch.js';
+import { tellProjectPromises } from './promise-watch.js';
 import { resultNote } from './rules.js';
 import {
   advanceLink,
@@ -82,8 +83,11 @@ export async function tellAllResults(): Promise<void> {
 
 export function registerSupportResults(): void {
   const name = 'support-results';
+  // the same events answer a room's promises about the project's issues (ISS-1012): a landing, a
+  // drop and a release each move one
   const handle = async (p: { projectId: string }) => {
     await tellProjectResults(p.projectId);
+    await tellProjectPromises(p.projectId);
   };
   consume('issue.created', { name, handle });
   consume('issue.transitioned', { name, handle });

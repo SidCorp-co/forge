@@ -6,7 +6,7 @@ import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { ServedAt, ServingReading } from '@forge/contracts/releases';
 import type { JudgedOnReading } from '../issues/index.js';
 import { longestSpelling } from '../messaging/verdict-identity.js';
-import type { EnvironmentState } from '../project-config/index.js';
+import type { EnvironmentState, ProjectDocument } from '../project-config/index.js';
 import {
   readEnvironmentState,
   readProjectDocument,
@@ -94,27 +94,35 @@ export async function servedOnJudgedOn(
   const held = await readProjectDocument(projectId);
   const name = judgedOnOf(held?.document.delivery);
   if (!held || name === null) return null;
-  const declaration = held.document.environments[name];
-  if (!declaration) {
-    return { name, served: { ok: false, why: `the project document declares no \`${name}\`` } };
+  return { name, served: await servedOnEnvironment(projectId, name, held.document) };
+}
+
+/**
+ * What one environment the project document declares, by its own name for it, serves now: one whole
+ * commit, or why that cannot be said. The same reading the judged-on environment is read through,
+ * for any environment (a support room's promise, ISS-1012).
+ */
+export async function servedOnEnvironment(
+  projectId: string,
+  name: string,
+  document?: ProjectDocument,
+): Promise<Reading<string>> {
+  const held = document ?? (await readProjectDocument(projectId))?.document;
+  const declaration = held?.environments[name];
+  if (!held || !declaration) {
+    return { ok: false, why: `the project document declares no \`${name}\`` };
   }
-  const state = await readEnvironmentState(projectId, held.document, { name, declaration });
-  if (state.state === 'unknown') return { name, served: { ok: false, why: state.reason.message } };
+  const state = await readEnvironmentState(projectId, held, { name, declaration });
+  if (state.state === 'unknown') return { ok: false, why: state.reason.message };
   const reading = fromState(state, new Date().toISOString());
-  if (reading.kind === 'unreadable') return { name, served: { ok: false, why: reading.why } };
-  if (reading.kind === 'undeclared') return { name, served: { ok: false, why: reading.missing } };
+  if (reading.kind === 'unreadable') return { ok: false, why: reading.why };
+  if (reading.kind === 'undeclared') return { ok: false, why: reading.missing };
   const commits = [...new Set(reading.served.map((s) => s.commit.toLowerCase()))];
   const whole = commits.filter((c) => /^[0-9a-f]{40}$/.test(c));
   if (whole.length !== 1 || commits.some((c) => !whole[0]?.startsWith(c))) {
-    return {
-      name,
-      served: {
-        ok: false,
-        why: `it answers ${servedClause(reading.served)}, not one whole commit`,
-      },
-    };
+    return { ok: false, why: `it answers ${servedClause(reading.served)}, not one whole commit` };
   }
-  return { name, served: { ok: true, value: whole[0] as string } };
+  return { ok: true, value: whole[0] as string };
 }
 
 /** The read is the server's: a caller's claim about what is deployed is not admissible here, for

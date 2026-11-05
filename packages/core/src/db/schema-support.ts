@@ -7,6 +7,7 @@ import {
   SUPPORT_ACTION_KINDS,
   SUPPORT_ACTOR_KINDS,
   SUPPORT_FIX_STATES,
+  SUPPORT_PROMISE_STATES,
   SUPPORT_PROPOSAL_KINDS,
 } from '@forge/contracts/support';
 import { CHANNEL_MEMBER_STATES, CHANNEL_ROLES } from '@forge/contracts/support-channel';
@@ -29,6 +30,7 @@ import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { conversations } from './schema-conversations.js';
 import { feedback } from './schema-feedback.js';
+import { issues } from './schema-issues.js';
 import { integrationBindings } from './schema-project-config.js';
 import { projects } from './schema-projects.js';
 
@@ -211,6 +213,59 @@ export const supportFeedbackLinks = pgTable(
     phaseChk: check(
       'support_feedback_links_phase_chk',
       sql`${t.lastPhase} IN (${inList(FEEDBACK_PHASES)})`,
+    ),
+  }),
+);
+
+/**
+ * A promise a room's session made a person in their thread (ISS-1012): to tell them when an issue of
+ * a project the room follows reaches an environment, named as that project's document names it. The
+ * support-results watch answers it once (`support/promise-watch.ts`): `reached` when the environment
+ * first serves a commit holding the issue's landing, `dropped` when the issue is, `untracked` when
+ * Forge can no longer read what the environment serves. Nothing is answered twice.
+ */
+export const supportPromises = pgTable(
+  'support_promises',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    roomId: uuid('room_id')
+      .notNull()
+      .references(() => supportRooms.id, { onDelete: 'cascade' }),
+    thread: text('thread').notNull(),
+    /** The issue's project: the room's home, or a project its channel agent follows. */
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    /** The environment by the project document's own name for it. */
+    environment: text('environment').notNull(),
+    /** Who asked: the member's chat account id, and their name as the group shows it. */
+    askerKey: text('asker_key').notNull(),
+    askerLabel: text('asker_label'),
+    state: text('state', { enum: SUPPORT_PROMISE_STATES }).notNull().default('open'),
+    /** The commit the environment served when the promise was answered `reached`. */
+    servedCommit: text('served_commit'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    answeredAt: timestamp('answered_at', { withTimezone: true }),
+  },
+  (t) => ({
+    // one open promise per thread, issue and environment: asked again, the same promise stands
+    openUq: uniqueIndex('support_promises_open_uq')
+      .on(t.roomId, t.thread, t.issueId, t.environment)
+      .where(sql`state = 'open'`),
+    openProjectIdx: index('support_promises_open_project_idx')
+      .on(t.projectId)
+      .where(sql`state = 'open'`),
+    issueIdx: index('support_promises_issue_idx').on(t.issueId),
+    stateChk: check(
+      'support_promises_state_chk',
+      sql`${t.state} IN (${inList(SUPPORT_PROMISE_STATES)})`,
+    ),
+    answeredChk: check(
+      'support_promises_answered_chk',
+      sql`(${t.state} = 'open') = (${t.answeredAt} IS NULL) AND (${t.servedCommit} IS NULL OR ${t.state} = 'reached')`,
     ),
   }),
 );

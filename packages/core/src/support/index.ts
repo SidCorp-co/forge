@@ -21,6 +21,7 @@ import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { recoverLostTurns } from './lost-turns.js';
+import { tellAllPromises } from './promise-watch.js';
 import { handQuestionToChannelAgent } from './question-task.js';
 import {
   deliverReleaseNotes,
@@ -37,9 +38,13 @@ export { forgetMemberships } from './health.js';
 export { roomWriterUserId } from './ops-asker.js';
 export { supportRoutes } from './routes.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
-/** What a recorded item or a release came to, handed on to the sessions owed it (a process timer). */
+/**
+ * What a recorded item or a release came to, and each promise an environment answered (ISS-1012),
+ * handed on to the sessions owed it (a process timer).
+ */
 export async function followSupportResults(): Promise<void> {
   await tellAllResults();
+  await tellAllPromises();
   await deliverReleaseNotes();
 }
 

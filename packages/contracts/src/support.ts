@@ -609,6 +609,10 @@ export const SUPPORT_ACTION_KINDS = [
 	"check_result",
 	/** The finding core posted in the group for a check result (REQ-77 BC-13). */
 	"check_posted",
+	/** The session promised a person to tell them when an issue reaches an environment (ISS-1012). */
+	"promise_made",
+	/** Core told the session a promise's answer: reached, dropped, or no longer tracked (ISS-1012). */
+	"promise_told",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -691,6 +695,7 @@ export const SUPPORT_ACTIONS = [
 	"link",
 	"read",
 	"image",
+	"promise",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -811,6 +816,39 @@ export const supportMoveIssueRequestSchema = z.strictObject({
 	to: z.enum(ISSUE_STATUSES).describe("the status to move it to"),
 	reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
 });
+/**
+ * A promise to tell a person, in their thread, when an issue of a project the room follows reaches
+ * an environment, named as that project's document names it (ISS-1012). No deployment target id.
+ */
+export const supportPromiseRequestSchema = z.strictObject({
+	thread: threadId,
+	issue: supportMoveIssueRequestSchema.shape.issue.describe(
+		"an issue of a project you follow, by its key, e.g. ISS-12",
+	),
+	environment: z
+		.string()
+		.trim()
+		.min(1)
+		.max(64)
+		.describe(
+			"the environment by the project's own name for it, as its document declares it (staging, production)",
+		),
+	/** The member to tell: their account id; the thread's first writer when omitted. */
+	asker: z.string().min(1).max(64).optional(),
+	/** The issue's project: a project you follow; read from the key's prefix when omitted. */
+	project: supportProjectSlugSchema.optional(),
+});
+export type SupportPromiseRequest = z.infer<typeof supportPromiseRequestSchema>;
+
+/** The states a promise is in: waiting, or answered once and never again (ISS-1012). */
+export const SUPPORT_PROMISE_STATES = [
+	"open",
+	"reached",
+	"dropped",
+	"untracked",
+] as const;
+export type SupportPromiseState = (typeof SUPPORT_PROMISE_STATES)[number];
+
 /** A branch a room's build pushes: feat/ or fix/, then a slug. */
 export const supportBuildBranchSchema = z
 	.string()
@@ -1157,6 +1195,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_IMAGE_OFF_SERVER",
 	/** The chat server could not be read for the picture (ISS-1010). */
 	"SUPPORT_IMAGE_UNREACHABLE",
+	/** A promise naming an issue of a project the room does not follow (ISS-1012). */
+	"SUPPORT_PROMISE_NOT_FOLLOWED",
+	/** A promise naming no issue of the project its key or `project` names (ISS-1012). */
+	"SUPPORT_PROMISE_ISSUE_UNKNOWN",
+	/** A promise about an issue already dropped, which will never reach any environment (ISS-1012). */
+	"SUPPORT_PROMISE_ISSUE_DROPPED",
+	/** A promise naming an environment the project does not declare, or whose serving Forge cannot read (ISS-1012). */
+	"SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1248,4 +1294,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_IMAGE_REFUSED: 503,
 	SUPPORT_IMAGE_OFF_SERVER: 409,
 	SUPPORT_IMAGE_UNREACHABLE: 503,
+	SUPPORT_PROMISE_NOT_FOLLOWED: 403,
+	SUPPORT_PROMISE_ISSUE_UNKNOWN: 404,
+	SUPPORT_PROMISE_ISSUE_DROPPED: 409,
+	SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

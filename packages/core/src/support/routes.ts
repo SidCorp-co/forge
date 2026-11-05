@@ -37,17 +37,18 @@ import {
   operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
-import { type Context, Hono } from 'hono';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresNoPermission, requiresOnParam } from '../permissions/index.js';
-import { type SupportActInput, supportAct } from './acts.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
+import { mountPromiseRoutes } from './promise-routes.js';
 import { supportActionsOf, supportRoomsOf } from './read.js';
+import { act, SESSION_ONLY } from './session-door.js';
 import { supportTurnsOf } from './turns.js';
 
 /**
@@ -94,22 +95,6 @@ const ridProjectQuery = zValidator(
   invalid('invalid query: rid is a Rocket.Chat group id, project a project slug you follow'),
 );
 
-/** One act of the room's session; `rid` names the group where the act names no thread of it. */
-async function act(
-  c: Context<{ Variables: AuthVars }>,
-  projectId: string,
-  input: SupportActInput,
-  rid?: string,
-) {
-  const out = await supportAct(
-    { userId: c.get('userId'), tokenId: c.get('patTokenId'), projectId },
-    input,
-    { rid },
-  );
-  if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
-  return c.json(out.value as Record<string, unknown>);
-}
-
 const SHAPES = {
   search: '{ query, project? }',
   thread: '{ thread }',
@@ -145,11 +130,6 @@ const SHAPES = {
   gitCredential: '{ host, path }',
   image: '{ message, n? }',
 } as const;
-
-/** What every session act declares: its door admits the room's own session, never a permission. */
-const SESSION_ONLY = requiresNoPermission(
-  "only the room's own session, under its current turn's token, is admitted (support/access.ts)",
-);
 
 supportRoutes.post(
   '/:id/support/session/search',
@@ -464,6 +444,7 @@ supportRoutes.post(
 );
 
 mountChannelRoutes(supportRoutes);
+mountPromiseRoutes(supportRoutes);
 
 const SUPPORT_READ = requiresOnParam('project.read', 'id');
 
