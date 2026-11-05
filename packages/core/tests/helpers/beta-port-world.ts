@@ -3,7 +3,7 @@
  * server holding projects, their project documents, issues, comments, activity and merge marks,
  * answering a transition the way beta's issue machine does where a test asks it to (with the status
  * it stored, as beta's transition answers), refusing a mark whose shape is not the project's the way
- * beta's mark writer does (`landingMarkRefusal`), taking a release note and a release record the way
+ * beta's mark writer does (`landingMarkRefusal` at beta's served commit), taking a release note and a release record the way
  * beta's record door does (ISS-1005: the issue at the release gate, marked and noted, every one or
  * none), and counting every request it took.
  */

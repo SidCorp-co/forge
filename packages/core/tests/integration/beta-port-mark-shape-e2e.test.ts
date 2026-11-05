@@ -8,7 +8,7 @@
  * without a second mark where beta already holds one (sid-desk ISS-769 and ISS-770, marked by hand).
  * A close beta has not taken stays owed and is tried again at every fire (ISS-1005).
  * The outside_git mark is `beta-port-e2e.test.ts`'s close test. forge-beta is a stub HTTP server
- * enforcing beta's mark rule (`landingMarkRefusal`). ISS-986: a beta that serves no project document
+ * enforcing beta's mark rule (`landingMarkRefusal` at beta's served commit). ISS-986: a beta that serves no project document
  * (0.3.0, `/config` answers 404 ROUTE_ABSENT) is read from its project row by `kind`, so its twin
  * closes carry a mark it takes. Against real Postgres.
  *

@@ -331,7 +331,8 @@ export async function peerMovedIntoSince(
 
 /**
  * A peer merge mark, in the shape the peer project's landing takes: `commit` and `target` where its
- * work lands in git, `landing` where it lands outside git (`landing-evidence.ts:landingMarkRefusal`).
+ * work lands in git, `landing` where it lands outside git, as the peer's own mark writer judges it
+ * (`landing-evidence.ts:landingMarkRefusal` at the commit forge-beta serves; dev's mark takes any shape, ISS-1017).
  */
 export type PeerMergeMark =
   | { commit: string; target: string; mergedAt: string | null; note: string }

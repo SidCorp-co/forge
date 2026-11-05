@@ -1,5 +1,6 @@
 // How a peer Forge project's work lands, read from its project document (ISS-923 fix forward): the
-// same `source.type` its mark writer judges a mark by (`landing-evidence.ts:landingMarkRefusal`), and
+// same `source.type` its mark writer judges a mark by (`landing-evidence.ts:landingMarkRefusal` at the
+// commit the peer serves; dev's own mark no longer judges shape, ISS-1017), and
 // for git the branch a landing lands on. The peer may run an older release, so the document is read
 // for these few fields alone and a document that does not answer them is refused by name. A peer old
 // enough to serve no project document (forge-beta 0.3.0, ISS-986) judges a mark by its project's
