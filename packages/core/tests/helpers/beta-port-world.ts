@@ -61,7 +61,7 @@ export const beta = {
    * Projects as forge-beta 0.3.0 serves them (ISS-986): no `/config` route (404 ROUTE_ABSENT), the
    * project row at `GET /api/projects/:id`, and a mark judged by its `kind`.
    */
-  legacy: new Map<string, { kind: string; baseBranch: string | null; releaseChain: unknown[] }>(),
+  legacy: new Map<string, { kind: string; baseBranch: string | null }>(),
   /** How many times each legacy project's row was read. */
   projectReads: new Map<string, number>(),
   /** Every mark beta took, by issue, as the body that was sent. */

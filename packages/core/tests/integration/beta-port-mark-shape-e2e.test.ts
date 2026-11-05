@@ -222,31 +222,23 @@ describe('a beta port mark in the twin project landing shape (ISS-923 fix forwar
 });
 
 describe('a beta port mark against a beta serving no project document (ISS-986)', () => {
-  it('(ISS-986) a beta serving no /config is read from its project row: standard marks its base branch, or the live branch where the chain promotes; an unknown kind is named and nothing is sent', async () => {
-    const legacyTwin = async (row: {
-      kind: string;
-      baseBranch: string | null;
-      releaseChain: unknown[];
-    }) => {
+  it('(ISS-986) a beta serving no /config is read from its project row: a standard project marks its base branch; one naming no base branch, or an unknown kind, is named and nothing is sent', async () => {
+    const legacyTwin = async (row: { kind: string; baseBranch: string | null }) => {
       const t = await twinWith(null);
       beta.legacy.set(t.betaId, row);
       return t;
     };
-    const plain = await legacyTwin({ kind: 'standard', baseBranch: 'staging', releaseChain: [] });
-    const chained = await legacyTwin({
-      kind: 'standard',
-      baseBranch: 'dev',
-      releaseChain: [{ branch: 'dev' }, { branch: 'master', from: { kind: 'merge' } }],
-    });
-    const odd = await legacyTwin({ kind: 'mystery', baseBranch: 'dev', releaseChain: [] });
+    const plain = await legacyTwin({ kind: 'standard', baseBranch: 'staging' });
+    const noBase = await legacyTwin({ kind: 'standard', baseBranch: null });
+    const odd = await legacyTwin({ kind: 'mystery', baseBranch: 'dev' });
     const a = betaIssue(40);
     const b = betaIssue(41);
     const c = betaIssue(42);
     beta.issues.set(plain.betaId, [a]);
-    beta.issues.set(chained.betaId, [b]);
+    beta.issues.set(noBase.betaId, [b]);
     beta.issues.set(odd.betaId, [c]);
     await seedTwin(say, plain.dev, a);
-    await seedTwin(say, chained.dev, b);
+    await seedTwin(say, noBase.dev, b);
     await seedTwin(say, odd.dev, c);
     const keyA = await closeDev(a.id, X);
     await closeDev(b.id, Y);
@@ -264,8 +256,12 @@ describe('a beta port mark against a beta serving no project document (ISS-986)'
     expect(settled.output).toContain(
       `${plain.dev.slug}: ${keyA}: open → closed (beta ISS-40), its landing recorded as commit ${X.slice(0, 12)} on staging`,
     );
-    expect(beta.marks.get(b.id)).toMatchObject({ commit: Y, target: 'master' });
-    expect(b.status).toBe('closed');
+    // a standard project naming no base branch is refused by name; nothing is guessed or sent
+    expect(beta.marks.has(b.id)).toBe(false);
+    expect(settled.output).toContain(
+      `${noBase.dev.slug}: beta landing shape: PEER_FORGE_LANDING_UNREADABLE`,
+    );
+    expect(settled.output).toContain('names no baseBranch');
     // an unknown kind is refused by name; nothing is guessed or sent
     expect(beta.marks.has(c.id)).toBe(false);
     expect(settled.output).toContain(
@@ -274,7 +270,7 @@ describe('a beta port mark against a beta serving no project document (ISS-986)'
     expect(settled.output).toContain('kind is `mystery`');
     // the row is read once per project per fire
     expect(beta.projectReads.get(plain.betaId)).toBe(1);
-    expect(beta.projectReads.get(chained.betaId)).toBe(1);
+    expect(beta.projectReads.get(noBase.betaId)).toBe(1);
     beta.closeNeedsMark = false;
   });
 });
