@@ -321,6 +321,8 @@ describe('an issue reopened after the release claimed it (BC-6, J9 on 0.4.0-dev.
         technical: 'retry',
       };
       later.reopenedAt = new Date(OPENED + DAY);
+      // its next round re-landed: the mark it stands on now is a later round's (ISS-971)
+      later.merged.at = new Date(OPENED + 2 * DAY);
     }
     if (earlier) {
       earlier.releaseNotes = {
@@ -340,6 +342,27 @@ describe('an issue reopened after the release claimed it (BC-6, J9 on 0.4.0-dev.
     expect(d.notes.withoutNotes).toEqual([]);
     expect(d.issues.find((i) => i.key === 'ISS-1')?.section).toBeNull();
     expect(JSON.stringify(d.notes.sections)).not.toContain('tried again');
+  });
+
+  it('keeps an issue reopened with its landing unchanged, and its note, on the release that shipped it (ISS-971)', () => {
+    const s = reworked();
+    const later = s.facts.issues.get('i1');
+    if (later) later.merged.at = new Date(T0 + DAY);
+    const d = detailOf(claimed('shipped', OPENED), s, null, new Map(), [], null);
+    expect(d.notes.reworked).toEqual([]);
+    expect(d.notes.sections.flatMap((x) => x.entries.map((e) => e.key)).sort()).toEqual([
+      'ISS-1',
+      'ISS-2',
+    ]);
+    expect(d.issues.find((i) => i.key === 'ISS-1')?.section).toBe('Fixed');
+  });
+
+  it('reads it reworked while a rework is under way with no mark standing (ISS-971)', () => {
+    const s = reworked();
+    const later = s.facts.issues.get('i1');
+    if (later) later.merged.at = null;
+    const d = detailOf(claimed('shipped', OPENED), s, null, new Map(), [], null);
+    expect(d.notes.reworked).toEqual([{ key: 'ISS-1', title: 'Issue 1' }]);
   });
 
   it('keeps a reopen from before the claim, and claims nothing for a draft', () => {
@@ -369,7 +392,7 @@ describe('a release that shipped the rework claims it at its own close (BC-6, J1
   });
   const DEV224 = release('0.4.0-dev.224', '01:19:11.380', '02:01:10.033');
   const DEV225 = release('0.4.0-dev.225', '02:17:16.051', '03:12:04.688');
-  const iss455 = (closes: string[], reopened: string | null): Shared => {
+  const iss455 = (closes: string[], reopened: string | null, marked = '02:51:29.870'): Shared => {
     const s = shared(0);
     s.facts.issues.set('i455', {
       id: 'i455',
@@ -386,7 +409,7 @@ describe('a release that shipped the rework claims it at its own close (BC-6, J1
       reopenedAt: reopened ? at(reopened) : null,
       closedAt: closes.map(at),
       merged: {
-        at: at('02:51:29.870'),
+        at: at(marked),
         landing: null,
         artifacts: null,
         commitSha: null,
@@ -414,10 +437,19 @@ describe('a release that shipped the rework claims it at its own close (BC-6, J1
     expect(d.issues.find((i) => i.key === 'ISS-455')?.section).toBeNull();
   });
 
-  it('reads it reworked on dev.225 too once a reopen follows that close', () => {
-    const again = iss455(['02:01:10.040', '03:12:04.690'], '06:09:37.000');
+  it('reads it reworked on dev.225 too once a reopen follows that close and a fix re-lands', () => {
+    const again = iss455(['02:01:10.040', '03:12:04.690'], '06:09:37.000', '06:40:00.000');
     expect(detailOf(DEV225, again, null, new Map(), [], null).notes.reworked).toHaveLength(1);
     expect(detailOf(DEV224, again, null, new Map(), [], null).notes.reworked).toHaveLength(1);
+  });
+
+  it('keeps it on dev.225 when a reopen after that close leaves its landing unchanged (ISS-971)', () => {
+    const unchanged = iss455(['02:01:10.040', '03:12:04.690'], '06:09:37.000');
+    const d = detailOf(DEV225, unchanged, null, new Map(), [], null);
+    expect(d.notes.reworked).toEqual([]);
+    expect(fixes(d).map((e) => e.key)).toEqual(['ISS-455']);
+    // dev.224 shipped the round before the 02:51 landing dev.225 carries: still reworked there
+    expect(detailOf(DEV224, unchanged, null, new Map(), [], null).notes.reworked).toHaveLength(1);
   });
 
   it('claims at the cut where the release has not closed it: unshipped, or shipped without closing it', () => {
