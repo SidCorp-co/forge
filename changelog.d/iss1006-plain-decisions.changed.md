@@ -1,1 +1,0 @@
-**A person decides from three plain lines the agent writes.** Run questions, steward decisions and chat proposals carry the agent's plain text; Approvals and the proposal card show it with outcome buttons, the rest behind Technical.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.513] - 2026-11-05
+
+People decide questions and proposals from three plain lines the agent writes
+
+### Changed
+
+- **A person decides from three plain lines the agent writes.** Run questions, steward decisions and chat proposals carry the agent's plain text; Approvals and the proposal card show it with outcome buttons, the rest behind Technical.
+
 ## [0.4.0-dev.512] - 2026-11-05
 
 Activity shows each project's work on one line; beta issues arrive as Feedback
