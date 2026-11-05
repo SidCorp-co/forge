@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.529] - 2026-11-05
+
+Plugin-written verdicts naming their session are accepted again
+
+### Fixed
+
+- **A verdict naming its writing session on the judge line is recorded again.** A session id there, as the plugin writes it, names the writer; the verdict stays its run's own role's, and only other values are refused.
+
 ## [0.4.0-dev.528] - 2026-11-05
 
 A reviewer run's comment verdicts now count as the review's, not QA's

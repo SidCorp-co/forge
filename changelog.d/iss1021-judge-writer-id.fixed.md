@@ -1,1 +1,0 @@
-**A verdict naming its writing session on the judge line is recorded again.** A session id there, as the plugin writes it, names the writer; the verdict stays its run's own role's, and only other values are refused.
