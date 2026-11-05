@@ -132,6 +132,19 @@ export const ISSUE_PRIORITY_BARS: Record<IssuePriorityValue, number> = {
 	none: 0,
 };
 
+/**
+ * The kinds a technical backlog item is filed under (guide `what-is-an-issue`, *Two lanes*): an
+ * agent's own finding against an expectation that already exists, never a feature. The Issues list's
+ * Technical filter (ISS-1001) shows the agent-filed issues of these kinds.
+ */
+export const TECHNICAL_ISSUE_KINDS = [
+	"bug",
+	"security",
+	"performance",
+	"debt",
+	"contract",
+] as const;
+
 /** `issues.category` is free text; these are the words it takes in practice, each with its label.
  *  A value outside the list is drawn sentence-cased, its raw value in the tooltip. */
 export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
@@ -146,6 +159,8 @@ export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
 	review: "Review",
 	security: "Security",
 	performance: "Performance",
+	debt: "Debt",
+	contract: "Contract",
 	ops: "Ops",
 	infra: "Infra",
 	ux: "UX",

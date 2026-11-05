@@ -1,7 +1,7 @@
 
 // The grouped Issues views (`forge-prototype.html` #/dev/issues): Attention (whose turn), Module (by
 // primary module) and Waves (by layers of open blockers), over core's read model
-// (`GET /projects/:id/issues/standing`). The toolbar holds the scope, a search and three quick
+// (`GET /projects/:id/issues/standing`). The toolbar holds the scope, a search and four quick
 // filters; the assistant's `ui.issues.filter` params (status, priority, createdBy, assignee) narrow
 // these views the same way they narrow the Table, and whom an issue waits on (`waiting`, REQ-41 BC-5)
 // narrows them from each row's standing. The URL is the state, so back from a full page lands on the
@@ -15,6 +15,7 @@ import {
   type IssueStandingRow,
   type IssueStandingScope,
 } from "@forge/contracts/issue-standing";
+import { TECHNICAL_ISSUE_KINDS } from "@forge/contracts/issue-vocabulary";
 import { listFilterFromSearch, type UiWaitingFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import {
@@ -56,8 +57,13 @@ const ISSUE_WAITING_FILTERS: readonly UiWaitingFilter[] = ["agent", "running"];
 
 type BoardMode = "attention" | "module" | "waves";
 
-const QUICK = ["blocked", "blocking"] as const;
+const QUICK = ["blocked", "blocking", "technical"] as const;
 type Quick = (typeof QUICK)[number];
+
+const TECHNICAL_KINDS: ReadonlySet<string> = new Set(TECHNICAL_ISSUE_KINDS);
+
+/** A technical backlog item: an agent's own finding, filed under one of the technical kinds (guide `what-is-an-issue`, *Two lanes*). */
+export const isTechnicalItem = (r: Pick<IssueStandingRow, "byAgent" | "category">): boolean => r.byAgent && TECHNICAL_KINDS.has(r.category ?? "");
 
 const scopeOf = (raw: string | null): IssueStandingScope =>
   (ISSUE_STANDING_SCOPES as readonly string[]).includes(raw ?? "") ? (raw as IssueStandingScope) : "open";
@@ -74,6 +80,7 @@ interface Narrowing {
 function narrows(r: IssueStandingRow, n: Narrowing): boolean {
   if (n.quick.has("blocked") && r.standing.blockedBy.length === 0) return false;
   if (n.quick.has("blocking") && r.standing.blocks.length === 0) return false;
+  if (n.quick.has("technical") && !isTechnicalItem(r)) return false;
   if (n.statuses.length && !n.statuses.includes(r.status)) return false;
   if (n.priority && r.priority !== n.priority) return false;
   if (n.createdBy && r.createdById !== n.createdBy) return false;
@@ -92,7 +99,26 @@ function attentionGroups(rows: IssueStandingRow[], t: Copy): ListGroup<IssueStan
 
 const SUMMARY_GROUPS = ["moving", "stuck"] as const;
 
-function moduleGroups(rows: IssueStandingRow[], t: Copy): ListGroup<IssueStandingRow>[] {
+type GroupSummary = NonNullable<ListGroup<IssueStandingRow>["summary"]>;
+
+/** What a module's group counts after its name: its issues moving and stuck. */
+const attentionSummary = (list: readonly IssueStandingRow[], t: Copy): GroupSummary =>
+  SUMMARY_GROUPS.map((g) => ({
+    label: t(`issues.attention.${g}`),
+    count: list.filter((r) => r.standing.attentionGroup === g).length,
+    tone: ISSUE_ATTENTION_LABELS[g].tone,
+  })).filter((s) => s.count > 0);
+
+/** What a module's technical items count after its name: how many of each kind, most first (ISS-1001). */
+export function kindSummary(list: readonly IssueStandingRow[], label: (kind: string) => string): GroupSummary {
+  const by = new Map<string, number>();
+  for (const r of list) by.set(r.category ?? "", (by.get(r.category ?? "") ?? 0) + 1);
+  return [...by]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([kind, count]) => ({ label: label(kind), count, tone: "neutral" as const }));
+}
+
+function moduleGroups(rows: IssueStandingRow[], t: Copy, summaryOf: (list: readonly IssueStandingRow[]) => GroupSummary = (l) => attentionSummary(l, t)): ListGroup<IssueStandingRow>[] {
   const by = new Map<string, IssueStandingRow[]>();
   for (const r of rows) {
     const path = r.standing.module?.path ?? "";
@@ -105,11 +131,7 @@ function moduleGroups(rows: IssueStandingRow[], t: Copy): ListGroup<IssueStandin
       id: `module:${path || "none"}`,
       label: path || t("issues.board.noModule"),
       mono: Boolean(path),
-      summary: SUMMARY_GROUPS.map((g) => ({
-        label: t(`issues.attention.${g}`),
-        count: list.filter((r) => r.standing.attentionGroup === g).length,
-        tone: ISSUE_ATTENTION_LABELS[g].tone,
-      })).filter((s) => s.count > 0),
+      summary: summaryOf(list),
       rows: list,
     };
   });
@@ -288,6 +310,8 @@ function Toolbar({ data, scope, search, quick, onQuick, waiting, children }: {
   const chips: { id: Quick; label: ReactNode; count: number | undefined }[] = [
     { id: "blocked", label: <span className="font-mono text-12">{t("issues.board.quickBlocked")}</span>, count: counts?.blocked },
     { id: "blocking", label: <span className="font-mono text-12">{t("issues.board.quickBlocking")}</span>, count: counts?.blocking },
+    // the technical backlog is this list narrowed, grouped by module and counted by kind, never a screen of its own (ISS-1001)
+    { id: "technical", label: <span className="text-12">{t("issues.board.quickTechnical")}</span>, count: data?.issues.filter(isTechnicalItem).length },
   ];
   return (
     <ListToolbar testId="issues-toolbar">
@@ -340,6 +364,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
   const [params] = useUrlParams();
   const t = useCopy();
   const words = useRowWords();
+  const L = useLabel();
   const scope = scopeOf(params.get("filter"));
   const q = useIssueStanding(project.projectId, scope);
   const [quick, toggleQuick] = useUrlFlags(QUICK);
@@ -362,7 +387,11 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
     searchOf: (r) => `${r.key} ${r.title}`,
     narrow: (r) => narrows(r, n),
     groupsOf: (rows) => {
-      const plain = mode === "module" ? moduleGroups(rows, t) : attentionGroups(rows, t);
+      const plain = quick.has("technical")
+        ? moduleGroups(rows, t, (l) => kindSummary(l, (k) => L("issueCategory", k)))
+        : mode === "module"
+          ? moduleGroups(rows, t)
+          : attentionGroups(rows, t);
       return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
     },
     stepsOf: mode === "waves" ? (_groups, rows) => rows.filter((r) => r.standing.wave !== null) : undefined,
