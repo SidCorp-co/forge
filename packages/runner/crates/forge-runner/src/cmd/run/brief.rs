@@ -808,6 +808,7 @@ mod tests {
                 issue_keys: vec!["ISS-9".into()],
                 role: None,
                 requirement: None,
+                worktree_origin: runner_core::ledger::TreeOrigin::Created,
             })
             .unwrap();
         let (path, project, keys, _) = declared(&led, &run.run_id).unwrap();

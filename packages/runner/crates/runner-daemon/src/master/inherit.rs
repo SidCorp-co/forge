@@ -734,6 +734,7 @@ mod resumed_brief_tests {
                 issue_keys: vec![format!("ISS-{n}")],
                 role: None,
                 requirement: None,
+                worktree_origin: runner_core::ledger::TreeOrigin::Created,
             })
             .unwrap();
             led.bind_agent(run, &format!("agent-{n}")).unwrap();

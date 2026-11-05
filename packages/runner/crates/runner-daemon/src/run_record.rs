@@ -663,6 +663,7 @@ mod close_refusal_tests {
             issue_keys: vec!["ISS-1".into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -718,6 +719,7 @@ mod close_refusal_tests {
                 issue_keys: vec!["ISS-1".into()],
                 role: None,
                 requirement: None,
+                worktree_origin: runner_core::ledger::TreeOrigin::Created,
             })
             .unwrap();
             std::fs::write(
@@ -755,6 +757,7 @@ mod close_refusal_tests {
             issue_keys: vec!["ISS-1".into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
         led.attach_session("run-1", "session-1").unwrap();
@@ -860,6 +863,7 @@ mod session_hold_tests {
             issue_keys: vec!["ISS-46".into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
         (Some(led), dir)
@@ -1094,6 +1098,7 @@ mod settle_tests {
             issue_keys: vec!["ISS-1".into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         }
     }
 

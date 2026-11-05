@@ -119,6 +119,7 @@ fn ledger_with_one_run() -> (Ledger, PathBuf) {
             issue_keys: vec!["ISS-1".into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
     ledger.attach_session("run-1", "session-1").unwrap();

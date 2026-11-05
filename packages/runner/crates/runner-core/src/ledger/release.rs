@@ -346,6 +346,7 @@ mod rearm_tests {
             issue_keys: vec![format!("ISS-{run_id}")],
             role: None,
             requirement: None,
+            worktree_origin: TreeOrigin::Created,
         })
         .unwrap();
         led.note_release_refusal(run_id, why, 100).unwrap();

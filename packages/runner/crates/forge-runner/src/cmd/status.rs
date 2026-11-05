@@ -591,6 +591,7 @@ mod orientation_tests {
             issue_keys: vec!["ISS-71".into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
         let why = format!(

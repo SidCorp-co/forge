@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS runs (
   release_rearmed_at  INTEGER,
   role                TEXT,
   requirement         TEXT,
-  claim_holder        TEXT
+  claim_holder        TEXT,
+  worktree_origin     TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -137,6 +138,7 @@ pub(crate) const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "role", "TEXT"),
     ("runs", "requirement", "TEXT"),
     ("runs", "claim_holder", "TEXT"),
+    ("runs", "worktree_origin", "TEXT"),
     ("masters", "session_id", "TEXT"),
     ("masters", "placed_at", "INTEGER"),
     ("masters", "unattributed", "TEXT"),
@@ -215,6 +217,7 @@ impl Ledger {
         Self::add_missing_columns(&tx)?;
         Self::carry_the_old_mark_forward(&tx)?;
         Self::carry_the_refusal_ending_forward(&tx)?;
+        Self::carry_the_tree_origin_forward(&tx)?;
         Self::carry_the_standing_forward(&tx, carried)?;
         tx.commit().map_err(sql_err)
     }
@@ -377,6 +380,26 @@ impl Ledger {
         .map_err(sql_err)?;
         Ok(())
     }
+
+    /// Give every row an earlier build wrote the origin of its tree: `adopted`.
+    ///
+    /// No earlier build recorded the origin, and none created a tree either. `run declare`
+    /// refused any path that was not already a worktree (`tree_refusal`), and nothing else on a
+    /// box writes a run, so every row on an upgraded ledger was declared over a tree that stood
+    /// before the declaration — which is what `adopted` says. Reading them `created` would keep
+    /// today's behaviour, and today's behaviour is the defect: a run still open at the upgrade
+    /// over a master's own batch tree would have that tree removed at its release (FB-522). The
+    /// price is that the checkouts of runs open at the upgrade stay on disk after they end, for
+    /// their master to remove; a row already released is untouched, since nothing releases it
+    /// again.
+    pub(crate) fn carry_the_tree_origin_forward(conn: &Connection) -> Result<()> {
+        conn.execute(
+            "UPDATE runs SET worktree_origin = 'adopted' WHERE worktree_origin IS NULL",
+            [],
+        )
+        .map_err(sql_err)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -418,5 +441,58 @@ mod tests {
         assert_eq!(run.ended_reason.as_deref(), Some("the-reason"));
         assert_eq!(run.created_at, 1234);
         assert_eq!(run.close_refusal.as_deref(), Some("the-refusal"));
+    }
+
+    /// ISS-1016: a row an older build wrote carries no origin, and no older build created a
+    /// tree, so the upgrade writes `adopted` on it — the release then leaves its tree standing.
+    /// A row this build writes keeps the origin it was declared with.
+    #[test]
+    fn an_upgraded_ledger_reads_every_earlier_run_as_adopting_its_tree() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE runs (run_id TEXT PRIMARY KEY, project_id TEXT, master_session_id TEXT NOT NULL,
+               session_id TEXT, worktree_path TEXT NOT NULL, pid INTEGER, boot_id TEXT NOT NULL,
+               incarnation TEXT NOT NULL, work TEXT NOT NULL, blocker_kind TEXT, waiting_on TEXT,
+               resume_id TEXT, session_terminal_at INTEGER, worktree_gone_at INTEGER, released_as TEXT,
+               created_at INTEGER NOT NULL);
+             INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id, incarnation, work, created_at)
+             VALUES ('old', 'm', '/w/batch', 'b', 'live', 'runnable', 1);",
+        )
+        .unwrap();
+        let mut ledger = Ledger::from_conn(conn).unwrap();
+        let stored: Option<String> = ledger
+            .conn
+            .query_row(
+                "SELECT worktree_origin FROM runs WHERE run_id = 'old'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stored.as_deref(),
+            Some("adopted"),
+            "the upgrade left an earlier run's origin unwritten"
+        );
+        assert_eq!(
+            ledger.run("old").unwrap().unwrap().worktree_origin,
+            TreeOrigin::Adopted
+        );
+        ledger
+            .create_run_group(NewRun {
+                run_id: "new".into(),
+                project_id: "p".into(),
+                master_session_id: "m2".into(),
+                worktree_path: "/w/cut".into(),
+                boot_id: "b".into(),
+                issue_keys: vec!["ISS-1".into()],
+                role: None,
+                requirement: None,
+                worktree_origin: TreeOrigin::Created,
+            })
+            .unwrap();
+        assert_eq!(
+            ledger.run("new").unwrap().unwrap().worktree_origin,
+            TreeOrigin::Created
+        );
     }
 }

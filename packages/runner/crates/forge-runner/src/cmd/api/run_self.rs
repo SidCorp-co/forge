@@ -117,6 +117,7 @@ mod tests {
             issue_keys: vec!["ISS-49".into()],
             role: Some("qa".into()),
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
         (Scratch(root), led)

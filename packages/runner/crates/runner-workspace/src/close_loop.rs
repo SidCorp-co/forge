@@ -212,8 +212,11 @@ pub(crate) async fn close_under(
                     run.worktree_path.display()
                 ),
                 // Never read off the world here: only the release decides a
-                // checkout is left to another open run, and it says so itself.
-                CheckoutReturn::KeptForOpenRun => {}
+                // checkout is left to another open run, to its adopter or to
+                // the work in it, and it says so itself.
+                CheckoutReturn::KeptForOpenRun
+                | CheckoutReturn::AdoptedKept
+                | CheckoutReturn::KeptWithWork => {}
             }
             checkout_is_back = true;
         }
@@ -365,6 +368,7 @@ mod tests {
             issue_keys: vec![key.into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
     }

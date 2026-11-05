@@ -126,6 +126,7 @@ fn declare(led: &mut Ledger, run_id: &str, wt: &Path) {
         issue_keys: vec!["ISS-23".into()],
         role: None,
         requirement: None,
+        worktree_origin: runner_core::ledger::TreeOrigin::Created,
     })
     .unwrap();
 }

@@ -293,6 +293,7 @@ pub(crate) async fn run_declare_as(
         issue_keys: issue_keys.to_vec(),
         role: role.map(str::to_string),
         requirement: requirement.map(str::to_string),
+        worktree_origin: runner_core::ledger::TreeOrigin::Created,
     };
     // A record's run is written while the registry is held, under the session
     // it names for the pane at that moment: an adoption between the bound

@@ -680,6 +680,7 @@ mod role_tests {
                 issue_keys: vec![format!("ISS-{}", run_id.trim_start_matches("run-"))],
                 role: None,
                 requirement: None,
+                worktree_origin: runner_core::ledger::TreeOrigin::Created,
             })
             .unwrap();
     }

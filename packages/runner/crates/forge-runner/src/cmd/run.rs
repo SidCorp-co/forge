@@ -379,6 +379,7 @@ mod tests {
                 issue_keys: vec![format!("ISS-{n}")],
                 role: None,
                 requirement: None,
+                worktree_origin: runner_core::ledger::TreeOrigin::Created,
             })
             .unwrap();
         }

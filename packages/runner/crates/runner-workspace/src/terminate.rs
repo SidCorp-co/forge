@@ -827,6 +827,7 @@ mod holder_tests {
             issue_keys: vec![key.into()],
             role: None,
             requirement: None,
+            worktree_origin: runner_core::ledger::TreeOrigin::Created,
         })
         .unwrap();
     }

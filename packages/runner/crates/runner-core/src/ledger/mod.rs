@@ -57,6 +57,40 @@ pub enum BlockerKind {
     Nobody,
 }
 
+/// Whether a run's checkout was already standing when the run was declared, or was cut for it.
+///
+/// The one fact that decides whether a release may take the directory at all (ISS-1016). A
+/// release gives back what the run took and nothing else: a tree a master, a person or another
+/// run was already working in is theirs, and the run only ever borrowed it. Before this was
+/// recorded, a master that declared a run over its own batch tree to read one secret had that
+/// tree removed by the run's release, branch checkout and all (FB-522).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreeOrigin {
+    /// The path was already a worktree when the run was declared over it. No release removes it:
+    /// the run's claim on it ends and the directory, its branch and its files stay as they were.
+    Adopted,
+    /// The tree was cut for this run by `run declare --cut`, so it is the run's to give back.
+    Created,
+}
+
+impl TreeOrigin {
+    pub fn wire(self) -> &'static str {
+        match self {
+            TreeOrigin::Adopted => "adopted",
+            TreeOrigin::Created => "created",
+        }
+    }
+
+    /// The origin a row records. Anything but `created` reads as adopted: a release may remove
+    /// only a tree it can show this run was given, so a row that cannot show it keeps its tree.
+    pub fn from_wire(s: Option<&str>) -> Self {
+        match s {
+            Some("created") => TreeOrigin::Created,
+            _ => TreeOrigin::Adopted,
+        }
+    }
+}
+
 impl Run {
     pub fn is_parked_on_human(&self) -> bool {
         matches!(self.incarnation, Incarnation::Exited)
@@ -201,6 +235,9 @@ pub struct Run {
     /// its master closed it (ISS-787): the tree may hold the next run's id by
     /// the time the close reaches core.
     pub claim_holder: Option<String>,
+    /// Whether the checkout was standing before the run was declared over it, or cut for it
+    /// (ISS-1016). Only a created one is the release's to remove.
+    pub worktree_origin: TreeOrigin,
 }
 
 /// A run's host ended because this box started a new master pane for its
@@ -499,6 +536,8 @@ pub struct NewRun {
     /// The requirement a judge run judges at the requirement, in place of any
     /// issue (ISS-735). `None` for a run over issues.
     pub requirement: Option<String>,
+    /// Whether the checkout already stood when the run was declared, or was cut for it.
+    pub worktree_origin: TreeOrigin,
 }
 
 /// The ledger, open on one box.
@@ -528,7 +567,8 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
         host_ended_by, host_pid, host_start, close_refused_at, close_refusal,
-        session_refused_at, session_refusal, session_retry_at, role, requirement, claim_holder
+        session_refused_at, session_refusal, session_retry_at, role, requirement, claim_holder,
+        worktree_origin
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -649,6 +689,7 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         role: row.get(38)?,
         requirement: row.get(39)?,
         claim_holder: row.get(40)?,
+        worktree_origin: TreeOrigin::from_wire(row.get::<_, Option<String>>(41)?.as_deref()),
     })
 }
 
@@ -671,6 +712,14 @@ pub enum CheckoutReturn {
     /// run's own release is what preserves and removes it. `worktree_gone_at`
     /// is NOT stamped: the directory is right there.
     KeptForOpenRun,
+    /// The run was declared over a tree that already stood, so it never took the checkout and
+    /// gives back only its claim: nothing was preserved, committed or removed, and
+    /// `worktree_gone_at` is NOT stamped (ISS-1016).
+    AdoptedKept,
+    /// A tree cut for the run still holds work no ref outside it carries — uncommitted files, or
+    /// commits on no remote — so the release left it standing and named it rather than take it.
+    /// `worktree_gone_at` is NOT stamped (ISS-1016).
+    KeptWithWork,
 }
 
 impl CheckoutReturn {
@@ -679,6 +728,8 @@ impl CheckoutReturn {
             Self::Gone => "gone",
             Self::MainWorkingTreeKept => "main_working_tree_kept",
             Self::KeptForOpenRun => "kept_for_open_run",
+            Self::AdoptedKept => "adopted_kept",
+            Self::KeptWithWork => "kept_with_work",
         }
     }
 }
