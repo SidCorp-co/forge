@@ -19,6 +19,7 @@ import {
   conversationAgentUnavailableReason,
   deleteConversation,
   derivedScope,
+  listableRooms,
   listConversationsInProject,
   listParticipants,
   mayChangeMembership,
@@ -35,13 +36,7 @@ import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
-import {
-  actorFor,
-  can,
-  projectResource,
-  requireDeclared,
-  requiresOnResolved,
-} from '../permissions/index.js';
+import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
 import { batchesOfConversation } from '../questionnaires/index.js';
 import { conversationProposalRoutes } from './agreement/routes.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
@@ -134,30 +129,17 @@ conversationRoutes.get(
     requireDeclared(await loadProjectAccess(projectId, userId));
 
     const rows = await listConversationsInProject(projectId, { archived });
-    const pinned = await pinnedBy(
-      userId,
-      rows.map((r) => r.id),
+    // which rooms the caller sees is read for all of them at once, never room by room (ISS-1006)
+    const [pinned, listable] = await Promise.all([
+      pinnedBy(
+        userId,
+        rows.map((r) => r.id),
+      ),
+      listableRooms(rows, userId),
+    ]);
+    const visible = listable.map(
+      (row) => ({ ...row, pinned: pinned.has(row.id) }) as ConversationRow,
     );
-
-    const roleByProject = new Map<string, boolean>();
-    const visible: ConversationRow[] = [];
-    for (const row of rows) {
-      const scope = await derivedScope(row.id);
-      let ok = scope.length > 0;
-      for (const pid of scope) {
-        let held = roleByProject.get(pid);
-        if (held === undefined) {
-          held = await can(actorFor(userId), 'project.read', projectResource(pid));
-          roleByProject.set(pid, held);
-        }
-        if (!held) ok = false;
-      }
-      if (ok && row.shape === 'direct') {
-        const people = await listParticipants(row.id);
-        ok = people.some((p) => p.kind === 'person' && p.userId === userId);
-      }
-      if (ok) visible.push({ ...row, pinned: pinned.has(row.id) } as ConversationRow);
-    }
 
     const offset = (page - 1) * pageSize;
     const pageRows = visible.slice(offset, offset + pageSize);
