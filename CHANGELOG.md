@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.504] - 2026-11-05
+
+Judges are no longer told the old login-file rule
+
+### Changed
+
+- **Judges are no longer told the older-runner login-file rule.** The box now runs a runner whose judge-login signs in itself and hands back only a session, so the guides drop the stopgap sentence.
+
 ## [0.4.0-dev.503] - 2026-11-05
 
 A steward job prepared twice now starts with a fresh working credential
