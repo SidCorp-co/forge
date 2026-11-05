@@ -243,9 +243,13 @@ describe('ISS-1012: a support room promises to tell a person when an issue reach
     served = OLDER;
     expect(await tellProjectPromises(w.projectId)).toBe(0);
     expect((await promises())[0]?.state).toBe('open');
-    // staging now serves the landing itself
+    // staging now serves the landing itself: two watches reading it at once tell it once
     served = LANDING;
-    expect(await tellProjectPromises(w.projectId)).toBe(1);
+    const both = await Promise.all([
+      tellProjectPromises(w.projectId),
+      tellProjectPromises(w.projectId),
+    ]);
+    expect(both[0] + both[1]).toBe(1);
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
     expect(notes[0]?.text).toContain(`"${TITLE}"`);
     expect(notes[0]?.text).toContain('it is on staging now');
