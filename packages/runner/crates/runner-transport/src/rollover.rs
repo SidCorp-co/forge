@@ -24,8 +24,10 @@
 //! mid-answer sends a status and then drops the connection, and a caller that read the body after
 //! `send` turned the failed read into an empty body and judged the call by its status alone, so a
 //! `200` cut short read as an empty success. A body that breaks off is [`SendError::Cut`], for
-//! any status, and an idempotent call cut so is sent again within the same budget as a rollover's
-//! `503`; a POST or PATCH is not, since its write may have landed.
+//! any status, and a call that writes nothing (GET, HEAD, OPTIONS) cut so is sent again within the
+//! same budget as a rollover's `503`. A POST, PATCH, PUT or DELETE is not: its answer came from a
+//! handler that ran, so its write may have landed, and a second send would turn it into another
+//! answer — a DELETE's `404`, a PUT's stale `baseRevision` — that reads as the write's refusal.
 
 use std::time::{Duration, Instant};
 
@@ -122,8 +124,9 @@ pub struct Cut {
     pub received: usize,
     /// The length the answer's `Content-Length` named, where it named one.
     pub expected: Option<u64>,
-    /// Whether the method may be sent again; a cut POST or PATCH reached a handler and is not.
-    pub idempotent: bool,
+    /// Whether the method writes nothing, so it was sent again; a cut POST, PATCH, PUT or DELETE
+    /// reached a handler that ran, and is not.
+    pub safe: bool,
     /// How many times the call was sent; each one was answered and cut.
     pub attempts: u32,
     /// The transport's error that ended the read.
@@ -148,7 +151,7 @@ impl std::fmt::Display for Cut {
         if self.attempts > 1 {
             write!(f, ", on each of {} attempts", self.attempts)?;
         }
-        if !self.idempotent {
+        if !self.safe {
             write!(
                 f,
                 "; the write may have landed, so read the state back before sending it again"
@@ -229,7 +232,7 @@ pub async fn send_builder(
     send(&http, req?, rollover).await
 }
 
-/// `req` sent on `http`, again while a rollover answers it or an idempotent call's body is cut,
+/// `req` sent on `http`, again while a rollover answers it or a safe call's body is cut,
 /// until `rollover.budget` runs out. The answer handed back carries its whole body, already read.
 /// A request whose body cannot be copied (a stream) is sent once.
 pub async fn send(
@@ -239,6 +242,7 @@ pub async fn send(
 ) -> Result<Response, SendError> {
     let started = Instant::now();
     let idempotent = idempotent(req.method());
+    let safe = safe(req.method());
     let mut pause = rollover.first_pause;
     let mut attempts = 0u32;
     loop {
@@ -247,7 +251,7 @@ pub async fn send(
             return read_whole(resp)
                 .await
                 .map(|(resp, _)| resp)
-                .map_err(|read| SendError::Cut(read.cut(idempotent, 1)));
+                .map_err(|read| SendError::Cut(read.cut(safe, 1)));
         };
         attempts += 1;
         let resp = http.execute(this).await?;
@@ -257,8 +261,8 @@ pub async fn send(
             Err(read) => {
                 // A body the deadline cut is slow, not cut by a restart: sending it again doubles
                 // the wait the call's own bound was set to end.
-                let again = idempotent && !read.source.is_timeout();
-                let cut = read.cut(idempotent, attempts);
+                let again = safe && !read.source.is_timeout();
+                let cut = read.cut(safe, attempts);
                 let Some(wait) = again
                     .then(|| next_wait(started, rollover, pause, None))
                     .flatten()
@@ -325,6 +329,14 @@ fn next_wait(
     (!left.is_zero()).then(|| asked.map_or(pause, |a| a.max(pause)).min(left))
 }
 
+/// A method that writes nothing, so a call cut mid-answer may be sent again.
+fn safe(method: &Method) -> bool {
+    matches!(
+        *method,
+        Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+    )
+}
+
 fn idempotent(method: &Method) -> bool {
     matches!(
         *method,
@@ -353,12 +365,12 @@ struct BrokenRead {
 }
 
 impl BrokenRead {
-    fn cut(self, idempotent: bool, attempts: u32) -> Cut {
+    fn cut(self, safe: bool, attempts: u32) -> Cut {
         Cut {
             status: self.status,
             received: self.received,
             expected: self.expected,
-            idempotent,
+            safe,
             attempts,
             source: self.source,
         }

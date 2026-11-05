@@ -1,1 +1,1 @@
-**`forge-runner api` fails an answer cut mid-body instead of printing nothing.** It exits `BODY_CUT` for any status, sends a cut GET again within the rollover budget, and tells a cut POST to read back before resending.
+**`forge-runner api` fails an answer cut mid-body instead of printing nothing.** It exits `BODY_CUT` for any status, sends a cut GET again within the rollover budget, and tells a cut write to read back before resending.

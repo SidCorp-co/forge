@@ -4,7 +4,7 @@
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
 
-use crate::api::exit::{body_cut, classify, idempotent, transport_failure, usage_failure, Outcome};
+use crate::api::exit::{body_cut, classify, safe, transport_failure, usage_failure, Outcome};
 use crate::api::form::{encode, read_parts, FormField};
 use crate::{CoreClient, CoreRequest, SendError};
 
@@ -165,7 +165,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         }
         // A status, and a body that broke off: never the status alone over an empty body (ISS-1025).
         Err(SendError::Cut(cut)) => {
-            let outcome = body_cut(cut.idempotent);
+            let outcome = body_cut(cut.safe);
             let msg = format!("{url}: {cut}");
             let status = cut.status.as_u16();
             return Response::failed(failure_json(&outcome, Some(status), &msg), outcome);
@@ -193,7 +193,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
     let body = match resp.bytes().await {
         Ok(b) => b.to_vec(),
         Err(e) => {
-            let outcome = body_cut(idempotent(&req.method));
+            let outcome = body_cut(safe(&req.method));
             let msg = format!("{url}: core answered {status} and its body could not be read: {e}");
             return Response::failed(failure_json(&outcome, Some(status), &msg), outcome);
         }

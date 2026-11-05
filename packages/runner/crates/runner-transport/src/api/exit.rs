@@ -27,8 +27,8 @@ EXIT CODES
       before deciding.
   9/10 BODY_CUT — core answered a status and its body broke off before its
       end. A GET was already sent again within the rollover budget, and
-      exits 9, RETRYABLE; a POST or PATCH exits 10, NOT retryable, as
-      DELIVERY_UNKNOWN does. Nothing goes to stdout.
+      exits 9, RETRYABLE; a POST, PATCH, PUT or DELETE exits 10, NOT
+      retryable, as DELIVERY_UNKNOWN does. Nothing goes to stdout.
   1   anything else
 
 `retryable` is repeated as JSON on stderr, so a caller can parse the reason
@@ -93,11 +93,11 @@ pub fn is_json(body: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(body).is_ok()
 }
 
-/// An answer whose body broke off before its end ([`crate::rollover::Cut`]): retryable as a
-/// transport fault is, by method, since a cut POST or PATCH reached a handler that may have
-/// written.
-pub fn body_cut(idempotent: bool) -> Outcome {
-    let (exit_code, retryable) = if idempotent { (9, true) } else { (10, false) };
+/// An answer whose body broke off before its end ([`crate::rollover::Cut`]): retryable for a
+/// method that writes nothing, and never for a POST, PATCH, PUT or DELETE, whose handler ran and
+/// may have written.
+pub fn body_cut(safe: bool) -> Outcome {
+    let (exit_code, retryable) = if safe { (9, true) } else { (10, false) };
     Outcome {
         exit_code,
         retryable,
@@ -105,16 +105,20 @@ pub fn body_cut(idempotent: bool) -> Outcome {
     }
 }
 
-/// Whether `method` may be sent twice to the same effect.
-pub fn idempotent(method: &str) -> bool {
+/// Whether `method` writes nothing.
+pub fn safe(method: &str) -> bool {
     matches!(
         method.to_uppercase().as_str(),
-        "GET" | "HEAD" | "PUT" | "DELETE" | "OPTIONS" | "TRACE"
+        "GET" | "HEAD" | "OPTIONS" | "TRACE"
     )
 }
 
 pub fn transport_failure(method: &str, message: impl Into<String>) -> (Outcome, String) {
-    let outcome = if idempotent(method) {
+    let idempotent = matches!(
+        method.to_uppercase().as_str(),
+        "GET" | "HEAD" | "PUT" | "DELETE" | "OPTIONS" | "TRACE"
+    );
+    let outcome = if idempotent {
         Outcome {
             exit_code: 9,
             retryable: true,

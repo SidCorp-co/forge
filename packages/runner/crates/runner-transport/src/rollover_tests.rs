@@ -361,25 +361,32 @@ async fn a_get_cut_once_is_sent_again_and_answered_whole() {
     assert_eq!(seen.lock().unwrap().len(), 2);
 }
 
-/// A POST whose answer is cut reached a handler: it is never sent again, and its failure says the
-/// write may have landed and to read before sending it again.
+/// A write whose answer is cut reached a handler that ran: it is never sent again, and its failure
+/// says the write may have landed and to read before sending it again. PUT and DELETE too: a second
+/// DELETE answers `404` and a second PUT a stale `baseRevision`, either read as the write refused.
 #[tokio::test]
-async fn a_post_cut_is_not_sent_again_and_says_the_write_may_have_landed() {
-    let (client, seen) = scripted(vec![
-        cut("201 Created", WHOLE, 100),
-        reply("201 Created", WHOLE),
-    ])
-    .await;
-    let out = crate::api::run(&client, &api_call("POST")).await;
-    assert_eq!(seen.lock().unwrap().len(), 1, "a cut POST was sent again");
-    assert!(out.stdout.is_empty());
-    assert_eq!(out.outcome.code, "BODY_CUT", "{}", out.stderr);
-    assert_eq!(out.outcome.exit_code, 10);
-    assert!(!out.outcome.retryable);
-    let said = failure(&out.stderr);
-    let message = said["message"].as_str().unwrap();
-    assert!(message.contains("may have landed"), "{message}");
-    assert!(message.contains("read"), "{message}");
+async fn a_write_cut_is_not_sent_again_and_says_the_write_may_have_landed() {
+    for method in ["POST", "PATCH", "PUT", "DELETE"] {
+        let (client, seen) = scripted(vec![
+            cut("201 Created", WHOLE, 100),
+            reply("201 Created", WHOLE),
+        ])
+        .await;
+        let out = crate::api::run(&client, &api_call(method)).await;
+        assert_eq!(
+            seen.lock().unwrap().len(),
+            1,
+            "a cut {method} was sent again"
+        );
+        assert!(out.stdout.is_empty());
+        assert_eq!(out.outcome.code, "BODY_CUT", "{method}: {}", out.stderr);
+        assert_eq!(out.outcome.exit_code, 10, "{method}");
+        assert!(!out.outcome.retryable);
+        let said = failure(&out.stderr);
+        let message = said["message"].as_str().unwrap();
+        assert!(message.contains("may have landed"), "{message}");
+        assert!(message.contains("read"), "{message}");
+    }
 }
 
 /// A refusal whose body is cut is a cut call, not a refusal with empty words.
