@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.502] - 2026-11-05
+
+A reopened issue with an unchanged landing stays carried by its release
+
+### Fixed
+
+- **A reopened issue whose landing never changed still counts on the release that shipped it.** Verdicts on that release, or on any later one carrying it, count for the issue and its requirement again.
+
 ## [0.4.0-dev.501] - 2026-11-05
 
 Automatic releases wait on a held gate issue instead of looping on aborted cuts
