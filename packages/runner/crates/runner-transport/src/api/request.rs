@@ -4,7 +4,7 @@
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
 
-use crate::api::exit::{classify, transport_failure, usage_failure, Outcome};
+use crate::api::exit::{body_cut, classify, idempotent, transport_failure, usage_failure, Outcome};
 use crate::api::form::{encode, read_parts, FormField};
 use crate::{CoreClient, CoreRequest, SendError};
 
@@ -163,6 +163,13 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
             let msg = format!("{url}: {gave_up}");
             return Response::failed(failure_json(&outcome, Some(503), &msg), outcome);
         }
+        // A status, and a body that broke off: never the status alone over an empty body (ISS-1025).
+        Err(SendError::Cut(cut)) => {
+            let outcome = body_cut(cut.idempotent);
+            let msg = format!("{url}: {cut}");
+            let status = cut.status.as_u16();
+            return Response::failed(failure_json(&outcome, Some(status), &msg), outcome);
+        }
         Err(e) => {
             let (outcome, msg) = transport_failure(&req.method, format!("{url}: {e}"));
             return Response::failed(failure_json(&outcome, None, &msg), outcome);
@@ -182,7 +189,15 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|t| t.to_ascii_lowercase().contains("json"));
-    let body = resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default();
+    // `send` read the body whole already; a read failing here is still a cut, never an empty body.
+    let body = match resp.bytes().await {
+        Ok(b) => b.to_vec(),
+        Err(e) => {
+            let outcome = body_cut(idempotent(&req.method));
+            let msg = format!("{url}: core answered {status} and its body could not be read: {e}");
+            return Response::failed(failure_json(&outcome, Some(status), &msg), outcome);
+        }
+    };
     let text = String::from_utf8_lossy(&body);
     let outcome = classify(status, crate::status::refusal_code(&text).as_deref());
 

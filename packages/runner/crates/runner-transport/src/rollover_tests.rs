@@ -24,6 +24,8 @@ struct Reply {
     status: &'static str,
     headers: &'static str,
     body: &'static str,
+    /// How much of `body` goes out before the socket is dropped; its content-length names all of it.
+    sent: Option<usize>,
 }
 
 fn reply(status: &'static str, body: &'static str) -> Reply {
@@ -31,6 +33,16 @@ fn reply(status: &'static str, body: &'static str) -> Reply {
         status,
         headers: "",
         body,
+        sent: None,
+    }
+}
+
+/// `status` with a content-length naming all of `body`, and the socket dropped after `sent` bytes
+/// of it: what a core stopping mid-answer during a deploy looks like (ISS-1025).
+fn cut(status: &'static str, body: &'static str, sent: usize) -> Reply {
+    Reply {
+        sent: Some(sent),
+        ..reply(status, body)
     }
 }
 
@@ -52,7 +64,7 @@ async fn scripted(script: Vec<Reply>) -> (CoreClient, Arc<Mutex<Vec<String>>>) {
                 one.status,
                 one.headers,
                 one.body.len(),
-                one.body
+                &one.body[..one.sent.unwrap_or(one.body.len())]
             );
             let _ = sock.write_all(answer.as_bytes()).await;
         }
@@ -204,6 +216,7 @@ async fn a_get_refused_for_want_of_a_connection_waits_the_retry_after_core_names
             status: "503 Service Unavailable",
             headers: "retry-after: 1\r\n",
             body: NO_CONNECTION,
+            sent: None,
         },
         reply("200 OK", "{}"),
     ])
@@ -281,4 +294,132 @@ fn only_the_three_rollover_answers_are_unready() {
         Unready::of(unavailable, "<html><title>503</title></html>"),
         None
     );
+}
+
+/// The answer a cut test reads: a JSON listing, cut a hundred bytes in (ISS-1025).
+const WHOLE: &str = r#"{"items":[{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"v"},{"k":"x"}]}"#;
+
+fn api_call(method: &str) -> crate::api::Request {
+    crate::api::Request {
+        method: method.into(),
+        path: "/issues/x".into(),
+        body: None,
+        project_slug: None,
+        headers: Vec::new(),
+        include_headers: false,
+    }
+}
+
+/// The JSON object on the last line of a failure's stderr.
+fn failure(stderr: &str) -> serde_json::Value {
+    let line = stderr.lines().last().unwrap_or("");
+    serde_json::from_str(line).unwrap_or_else(|e| panic!("no failure JSON ({e}) in: {stderr}"))
+}
+
+/// A 200 whose body never arrives whole is a failure by name on every attempt, never an empty
+/// success: before ISS-1025 `forge-runner api` exited 0 with nothing on stdout or stderr.
+#[tokio::test]
+async fn forge_runner_api_fails_a_200_cut_mid_body_by_name_never_as_an_empty_success() {
+    let (client, seen) = scripted(vec![cut("200 OK", WHOLE, 100)]).await;
+    let client = client.with_rollover(Rollover {
+        budget: Duration::from_millis(200),
+        ..QUICK
+    });
+    let out = crate::api::run(&client, &api_call("GET")).await;
+    assert_ne!(
+        out.outcome.exit_code,
+        0,
+        "a cut 200 exited 0 with stdout {:?} and stderr {:?}",
+        String::from_utf8_lossy(&out.stdout),
+        out.stderr
+    );
+    assert!(out.stdout.is_empty(), "a cut body reached stdout");
+    assert_eq!(out.outcome.code, "BODY_CUT");
+    assert_eq!(out.outcome.exit_code, 9);
+    assert!(out.outcome.retryable);
+    let said = failure(&out.stderr);
+    assert_eq!(said["code"], "BODY_CUT");
+    assert_eq!(said["status"], 200);
+    assert_eq!(said["retryable"], true);
+    let message = said["message"].as_str().unwrap();
+    let part = format!("100 of {} bytes", WHOLE.len());
+    assert!(message.contains(&part), "{message}");
+    assert!(
+        seen.lock().unwrap().len() >= 2,
+        "a GET whose body was cut was not sent again"
+    );
+}
+
+/// A GET whose answer is cut once, as a core stopping mid-answer cuts it, is sent again and the
+/// whole body read the second time is what the caller gets.
+#[tokio::test]
+async fn a_get_cut_once_is_sent_again_and_answered_whole() {
+    let (client, seen) = scripted(vec![cut("200 OK", WHOLE, 100), reply("200 OK", WHOLE)]).await;
+    let out = crate::api::run(&client, &api_call("GET")).await;
+    assert_eq!(out.outcome.exit_code, 0, "{}", out.stderr);
+    assert_eq!(String::from_utf8_lossy(&out.stdout), WHOLE);
+    assert_eq!(seen.lock().unwrap().len(), 2);
+}
+
+/// A POST whose answer is cut reached a handler: it is never sent again, and its failure says the
+/// write may have landed and to read before sending it again.
+#[tokio::test]
+async fn a_post_cut_is_not_sent_again_and_says_the_write_may_have_landed() {
+    let (client, seen) = scripted(vec![
+        cut("201 Created", WHOLE, 100),
+        reply("201 Created", WHOLE),
+    ])
+    .await;
+    let out = crate::api::run(&client, &api_call("POST")).await;
+    assert_eq!(seen.lock().unwrap().len(), 1, "a cut POST was sent again");
+    assert!(out.stdout.is_empty());
+    assert_eq!(out.outcome.code, "BODY_CUT", "{}", out.stderr);
+    assert_eq!(out.outcome.exit_code, 10);
+    assert!(!out.outcome.retryable);
+    let said = failure(&out.stderr);
+    let message = said["message"].as_str().unwrap();
+    assert!(message.contains("may have landed"), "{message}");
+    assert!(message.contains("read"), "{message}");
+}
+
+/// A refusal whose body is cut is a cut call, not a refusal with empty words.
+#[tokio::test]
+async fn a_4xx_cut_mid_body_is_a_cut_call_not_an_empty_refusal() {
+    let refusal = r#"{"code":"ISSUE_LEASE_HELD","message":"the issue is held by another run"}"#;
+    let (client, _) = scripted(vec![cut("409 Conflict", refusal, 12)]).await;
+    let out = crate::api::run(&client, &api_call("POST")).await;
+    assert_eq!(
+        out.outcome.code, "BODY_CUT",
+        "a cut 409 read as a refusal: {}",
+        out.stderr
+    );
+    assert_eq!(out.outcome.exit_code, 10);
+    assert!(out.refused_body.is_empty());
+    assert_eq!(failure(&out.stderr)["status"], 409);
+
+    let (client, seen) = scripted(vec![cut("404 Not Found", refusal, 12)]).await;
+    let client = client.with_rollover(Rollover {
+        budget: Duration::from_millis(100),
+        ..QUICK
+    });
+    let out = crate::api::run(&client, &api_call("GET")).await;
+    assert_eq!(out.outcome.code, "BODY_CUT", "{}", out.stderr);
+    assert_eq!(out.outcome.exit_code, 9);
+    assert!(seen.lock().unwrap().len() >= 2);
+}
+
+/// Every route reading core through the status helpers fails a cut body by name, so no caller of
+/// [`crate::CoreClient`] reads half an answer, or an empty one, as core's.
+#[tokio::test]
+async fn a_route_through_the_status_helpers_fails_a_cut_body_naming_it() {
+    let (client, _) = scripted(vec![cut("200 OK", WHOLE, 100)]).await;
+    let err = crate::status::fetch::<serde_json::Value>(client.post("/api/x"), "x read")
+        .await
+        .unwrap_err()
+        .to_string();
+    let said = format!(
+        "x read request: core answered 200 OK and its body broke off after 100 of {} bytes",
+        WHOLE.len()
+    );
+    assert!(err.starts_with(&said), "{err}");
 }

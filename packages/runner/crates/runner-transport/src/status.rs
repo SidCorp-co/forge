@@ -364,12 +364,13 @@ pub(crate) fn held_code(status: u16, body: &str) -> Option<String> {
         .find(|c| HELD_CODES.contains(&c.as_str()))
 }
 
-/// A call that got no answer to hand back: the rollover it waited out to the end, or the
-/// transport's fault as [`unanswered`] names it.
+/// A call that got no answer to hand back: the rollover it waited out to the end, an answer
+/// whose body broke off, or the transport's fault as [`unanswered`] names it.
 pub fn unsent(e: &SendError, deadline: std::time::Duration) -> String {
     match e {
         SendError::Unanswered(e) => unanswered(e, deadline),
         SendError::RolledOver(gave_up) => gave_up.to_string(),
+        SendError::Cut(cut) => cut.to_string(),
     }
 }
 
@@ -402,7 +403,7 @@ pub fn unanswered(e: &reqwest::Error, deadline: std::time::Duration) -> String {
 
 /// The deepest source's own words, which is where the fault is named: hyper
 /// and the socket sit under reqwest's wrapper, and the wrapper names the url.
-fn innermost(e: &(dyn std::error::Error + 'static)) -> Option<String> {
+pub(crate) fn innermost(e: &(dyn std::error::Error + 'static)) -> Option<String> {
     let mut deepest = e.source()?;
     while let Some(next) = deepest.source() {
         deepest = next;
