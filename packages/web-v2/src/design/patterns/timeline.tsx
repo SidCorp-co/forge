@@ -13,8 +13,11 @@ import { GROUP_ROW_INDENT } from "./group-header";
 /** One grid for the column header and every lane: lead · track · two trailing cells. */
 const LANE_COLS = "grid grid-cols-[214px_minmax(0,1fr)_92px_100px] items-center max-md:grid-cols-[140px_minmax(0,1fr)_70px_80px]";
 const CELL = "min-w-0 px-4 max-md:px-2.5";
-/** On a phone the lanes scroll sideways under their names: the name column stays put, above the marks. */
-const STICKY_LEAD = "max-md:sticky max-md:left-0 max-md:z-[4] max-md:self-stretch max-md:justify-center";
+/**
+ * On a phone the lanes scroll sideways under their names: the name column stays put, above the marks,
+ * with an edge, so a tick label or mark passing under it reads as covered by the column, not cut (".6:00").
+ */
+const STICKY_LEAD = "max-md:sticky max-md:left-0 max-md:z-[4] max-md:self-stretch max-md:justify-center max-md:border-r max-md:border-line-divider";
 
 const clamp = (n: number) => Math.min(100, Math.max(0, n));
 const left = (at: number) => ({ left: `${clamp(at)}%` });

@@ -37,6 +37,17 @@ describe("keepReadWaits", () => {
     expect(kept?.lane.batches).toHaveLength(1);
   });
 
+  it("counts the chips over the groups it kept, not the groups the pending read guessed (ISS-979 round 4)", () => {
+    const held = read([project("forge", { group: "you", people: { total: 6, items: [] } }), project("eco", { group: "you", people: { total: 1, items: [] } })]);
+    // the pending read's own totals: core counted the projects under the groups it guessed
+    const fresh: OrgActivity = {
+      ...read([project("forge", { group: "working", peoplePending: true }), project("eco", { group: "none", peoplePending: true }), project("agenfold", {})]),
+      totals: { projects: 3, you: 0, working: 1, idle: 1, paused: 0, none: 1 },
+    };
+    const out = keepReadWaits(fresh, held);
+    expect(out.totals).toMatchObject({ projects: 3, you: 2, working: 0, idle: 1, none: 0 });
+  });
+
   it("answers the fresh read where it has read everything, and keeps pending where nothing was read before", () => {
     const held = read([project("forge", { group: "you", people: { total: 7, items: [] } })]);
     const fresh = read([project("forge", { people: { total: 2, items: [] } }), project("agenfold", { peoplePending: true })]);

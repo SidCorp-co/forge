@@ -6,7 +6,8 @@ import { LEGEND, type LegendTone } from "../vocabulary";
 interface FilterChipProps {
   on: boolean;
   onToggle: () => void;
-  count: number;
+  /** `null` while the list is still reading this group: the chip says so ("…") rather than a 0 nobody counted. */
+  count: number | null;
   children: ReactNode;
   /** The count wears this tone while it is above zero ("Waiting on you" amber). */
   tone?: LegendTone;
@@ -17,7 +18,8 @@ interface FilterChipProps {
 
 /** A toggle filter beside a list's search: its label, its count, pressed while it narrows the list. */
 export function FilterChip({ on, onToggle, count, children, tone, fill = false, testId }: FilterChipProps) {
-  const filled = fill && !on && tone && count > 0 ? LEGEND[tone] : null;
+  const lit = count === null || count > 0;
+  const filled = fill && !on && tone && lit ? LEGEND[tone] : null;
   return (
     <button
       type="button"
@@ -31,8 +33,8 @@ export function FilterChip({ on, onToggle, count, children, tone, fill = false, 
       )}
     >
       {children}
-      <span className="font-mono text-12" style={!on && tone && count > 0 ? { color: LEGEND[tone].fg } : undefined}>
-        {count}
+      <span className="font-mono text-12" style={!on && tone && lit ? { color: LEGEND[tone].fg } : undefined}>
+        {count ?? "…"}
       </span>
     </button>
   );

@@ -56,16 +56,21 @@ function groupsOf(data: OrgActivity, show: Show, t: Copy): LaneGroup[] {
   }));
 }
 
-/** The chips: All and each group that holds a project, each counting projects; Waiting on you in amber. */
-function Strip({ totals, show, onShow, t }: { totals: OrgActivity["totals"]; show: Show; onShow: (s: Show) => void; t: Copy }) {
+/**
+ * The chips: All and each group that holds a project, each counting projects; Waiting on you in amber.
+ * While core is still reading what waits on the person for a project the page never read (`reading`),
+ * Waiting on you stands with "…": a count of 0 would say nothing waits, which nobody has read yet.
+ */
+function Strip({ totals, reading, show, onShow, t }: { totals: OrgActivity["totals"]; reading: boolean; show: Show; onShow: (s: Show) => void; t: Copy }) {
+  const youUnread = reading && totals.you === 0;
   return (
     <ListToolbar testId="activity-strip">
-      {SHOWS.filter((s) => s === "all" || totals[s] > 0).map((s) => (
+      {SHOWS.filter((s) => s === "all" || totals[s] > 0 || (s === "you" && youUnread)).map((s) => (
         <FilterChip
           key={s}
           on={show === s}
           onToggle={() => onShow(s === show ? "all" : s)}
-          count={s === "all" ? totals.projects : totals[s]}
+          count={s === "all" ? totals.projects : s === "you" && youUnread ? null : totals[s]}
           tone={s === "you" ? "you" : undefined}
           fill={s === "you"}
           testId={`activity-show-${s}`}
@@ -127,7 +132,7 @@ function ActivityList({ data, orgId, view }: { data: OrgActivity; orgId: string;
   return (
     <ListLayout peek={open ? <ActivityPeek key={open.slug} row={open} orgId={orgId} peek={peek} now={now} full={{ href: projectHref(open.slug), origin: ACTIVITY_LIST }} /> : undefined}>
       <div className="min-w-0">
-        <Strip totals={data.totals} show={show} onShow={(s) => setParams({ show: s === "all" ? null : s })} t={t} />
+        <Strip totals={data.totals} reading={data.projects.some((p) => p.peoplePending)} show={show} onShow={(s) => setParams({ show: s === "all" ? null : s })} t={t} />
         <Legend view={view} t={t} />
         {data.projects.length === 0 ? (
           <div className="px-5 py-10">

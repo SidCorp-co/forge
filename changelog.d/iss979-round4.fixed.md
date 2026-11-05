@@ -1,0 +1,1 @@
+**Activity's chips count what the list shows.** While Forge still reads what waits on you, the chips follow the groups kept on screen, a first load says "Waiting on you …", and on a phone the name column has an edge.

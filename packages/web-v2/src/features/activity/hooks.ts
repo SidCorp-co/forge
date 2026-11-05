@@ -1,4 +1,4 @@
-import { type OrgActivity, orgRoom } from "@forge/contracts/org-activity";
+import { ORG_ACTIVITY_GROUPS, type OrgActivity, type OrgActivityGroup, orgRoom } from "@forge/contracts/org-activity";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoom } from "@/lib/ws/use-room";
 import { activityApi } from "./api";
@@ -36,13 +36,20 @@ export function useOrgActivity(orgId: string | null) {
 export function keepReadWaits(fresh: OrgActivity, held: OrgActivity | undefined): OrgActivity {
   if (!held || !fresh.projects.some((p) => p.peoplePending)) return fresh;
   const known = new Map(held.projects.filter((p) => !p.peoplePending).map((p) => [p.projectId, p]));
+  const projects = fresh.projects.map((p) => {
+    const last = p.peoplePending ? known.get(p.projectId) : undefined;
+    if (!last) return p;
+    return { ...p, group: last.group, people: last.people, peoplePending: false, lane: { ...p.lane, waits: last.lane.waits } };
+  });
+  // the chips count the groups the list shows, never the groups the pending read guessed (ISS-979 round 4)
+  return { ...fresh, projects, totals: totalsOf(projects) };
+}
+
+/** Projects per group, as core counts them (`activity/read.ts`), over the projects the page shows. */
+export function totalsOf(projects: OrgActivity["projects"]): OrgActivity["totals"] {
   return {
-    ...fresh,
-    projects: fresh.projects.map((p) => {
-      const last = p.peoplePending ? known.get(p.projectId) : undefined;
-      if (!last) return p;
-      return { ...p, group: last.group, people: last.people, peoplePending: false, lane: { ...p.lane, waits: last.lane.waits } };
-    }),
+    projects: projects.length,
+    ...(Object.fromEntries(ORG_ACTIVITY_GROUPS.map((g) => [g, projects.filter((p) => p.group === g).length])) as Record<OrgActivityGroup, number>),
   };
 }
 

@@ -150,6 +150,16 @@ describe("the Activity tab", () => {
     expect(screen.getByTestId("activity-show-you").getAttribute("style") ?? "").not.toContain("--amberw-50");
   });
 
+  it("a first read still reading what waits on the person says so on Waiting on you, never a 0 nobody counted (ISS-979 round 4)", async () => {
+    const pending = { ...FORGE, group: "working" as const, people: { total: 0, items: [] }, peoplePending: true, lane: { ...FORGE.lane, waits: [] } };
+    serve(read([pending, ADMINHUB], true));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Forge");
+    const you = screen.getByTestId("activity-show-you");
+    expect(you.textContent).toBe("Waiting on you…");
+    expect(you.getAttribute("style")).toContain("--amberw-50");
+  });
+
 });
 
 describe("the Activity tab's peek and reads", () => {
