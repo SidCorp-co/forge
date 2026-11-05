@@ -1,1 +1,0 @@
-**A forge-beta issue now closes when the dev release that closed its twin ships**: the beta port records that release on beta, and a refusal is commented there once while the close is retried each fire.

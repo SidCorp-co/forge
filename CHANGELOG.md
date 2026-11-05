@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.520] - 2026-11-05
+
+Forge-beta issues now close when the forge-dev release that shipped them goes out
+
+### Fixed
+
+- **A forge-beta issue now closes when the dev release that closed its twin ships**: the beta port records that release on beta, and a refusal is commented there once while the close is retried each fire.
+
 ## [0.4.0-dev.519] - 2026-11-05
 
 Release pages read one count, real promotion requests, and whole versions on phones
