@@ -394,7 +394,7 @@ export function questionDecision(
         answers: shown.map((o) =>
           answer({
             id: o.id,
-            label: clip(stewardOptionLabel(o.id, o.label, kind), 120),
+            label: clip(o.label, 120),
             act: 'question.answer',
             path,
             body: { round: step.round, optionId: o.id },

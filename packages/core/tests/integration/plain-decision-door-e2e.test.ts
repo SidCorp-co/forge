@@ -8,6 +8,7 @@
 // @direct-test-of packages/core/src/questions/plain-door.ts
 // @direct-test-of packages/core/src/questions/routes.ts
 // @direct-test-of packages/core/src/questions/read.ts
+// @direct-test-of packages/core/src/development/needs-you-decision-builders.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -154,5 +155,81 @@ describe('the door refuses by name', () => {
     const r = await write(tok.asker, id, '   ');
     expect(r.status, JSON.stringify(r.body)).toBe(400);
     expect((await roundOf(id))?.plain).toBeUndefined();
+  });
+});
+
+describe('a round stored with a keyed steward label reads keyless (ISS-1006 round 2)', () => {
+  it("names a merge's target by its title on the question read, its id unchanged", async () => {
+    const id = await pending();
+    const step = {
+      round: 1,
+      prompt: 'Open it, merge it into ISS-98, keep it as a draft, or drop it?',
+      askedAt: new Date().toISOString(),
+      answerShape: 'choice',
+      options: [
+        {
+          id: 'steward.open',
+          label: 'Open it: admit it for work',
+          authority: 'writer',
+          bindsTo: 'session',
+          executedBy: 'core',
+        },
+        {
+          id: 'steward.merge:ISS-98',
+          label: 'Merge it into ISS-98: Declare the order read types',
+          authority: 'writer',
+          bindsTo: 'session',
+          executedBy: 'core',
+        },
+      ],
+      recommendedOptionId: 'steward.open',
+    };
+    await rows(
+      sql`UPDATE agent_questions SET steps = ${JSON.stringify([step])}::jsonb WHERE id = ${id} RETURNING id`,
+    );
+    const read = await api(tok.owner, 'GET', `/api/questions/${id}`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const options = read.body.options as { id: string; label: string }[];
+    expect(options.map((o) => [o.id, o.label])).toEqual([
+      ['steward.open', 'Open it: admit it for work'],
+      ['steward.merge:ISS-98', 'Merge it into: Declare the order read types'],
+    ]);
+  });
+});
+
+describe("a run's own option text is the run's words (ISS-1006 round 2: teach, never rewrite)", () => {
+  it('lists a run question whose option names a key with that label as written', async () => {
+    const id = randomUUID();
+    const option = (oid: string, label: string) => ({
+      id: oid,
+      label,
+      authority: 'writer' as const,
+      bindsTo: 'session' as const,
+      executedBy: 'agent' as const,
+    });
+    await askQuestion({
+      id,
+      projectId,
+      askedBy: askerId,
+      prompt: 'ISS-673 c1 failed again. Second fix round, or drop it?',
+      blockerKind: 'human',
+      answer: {
+        shape: 'choice',
+        options: [
+          option('second-round', 'Build a second fix round'),
+          option('drop', 'Drop ISS-673: the shipped change stays'),
+        ],
+        recommendedOptionId: 'second-round',
+      },
+    });
+    await settleOutbox();
+    const read = await api(tok.owner, 'GET', `/api/projects/${projectId}/needs-you/decisions`);
+    const decision = (read.body.decisions as Record<string, unknown>[]).find(
+      (d) => d.id === `question:${id}`,
+    );
+    expect((decision?.answers as { label: string }[] | undefined)?.map((a) => a.label)).toEqual([
+      'Build a second fix round',
+      'Drop ISS-673: the shipped change stays',
+    ]);
   });
 });

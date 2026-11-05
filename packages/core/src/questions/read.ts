@@ -11,6 +11,7 @@ import type {
   QuestionAsker,
   QuestionRoundFacts,
 } from '@forge/contracts/questions';
+import { type StewardDecisionSubject, stewardOptionLabel } from '@forge/contracts/steward';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { delegationOf } from '../credentials/pat-scope.js';
@@ -46,14 +47,27 @@ export async function accessOn(projectId: string, userId: string): Promise<Permi
   return access?.role ? access : null;
 }
 
+/** The kind of item a question stands on, as a steward decision's buttons name it. */
+const itemKindOf = (row: {
+  issueId: string | null;
+  requirementId: string | null;
+}): StewardDecisionSubject =>
+  row.issueId ? 'issue' : row.requirementId ? 'requirement' : 'feedback';
+
 function shapeOf(
   current: QuestionStep | undefined,
   access: PermissionFacts | null,
+  kind: StewardDecisionSubject,
 ): QuestionRoundFacts & { options: VisibleOption[] } {
   const choice = current ? isChoiceStep(current) : true;
+  // a round stored with a keyed link or merge label reads as one asked now (ISS-1006 round 2)
   const options: VisibleOption[] =
     current && isChoiceStep(current)
-      ? current.options.map((o) => ({ ...o, locked: !mayChoose(o, access) }))
+      ? current.options.map((o) => ({
+          ...o,
+          label: stewardOptionLabel(o.id, o.label, kind),
+          locked: !mayChoose(o, access),
+        }))
       : [];
   return {
     answerShape: (choice ? 'choice' : 'free_text') satisfies AnswerShape as AnswerShape,
@@ -68,8 +82,10 @@ function shapeOf(
   };
 }
 
-function seenBy<T extends { steps: QuestionStep[] }>(row: T, access: PermissionFacts | null) {
-  return { ...row, ...shapeOf(row.steps[row.steps.length - 1], access) };
+function seenBy<
+  T extends { steps: QuestionStep[]; issueId: string | null; requirementId: string | null },
+>(row: T, access: PermissionFacts | null) {
+  return { ...row, ...shapeOf(row.steps[row.steps.length - 1], access, itemKindOf(row)) };
 }
 
 /** The issue whose merge mark a question waits on, by its key, as every reader shows it. */
@@ -230,7 +246,7 @@ export async function projectQuestionsFor(
           pageRows.map(({ cursor: _cursor, ...row }) => ({
             ...row,
             rounds: Number(row.rounds),
-            ...shapeOf(row.currentStep ?? undefined, access),
+            ...shapeOf(row.currentStep ?? undefined, access, itemKindOf(row)),
           })),
         ),
       ),
