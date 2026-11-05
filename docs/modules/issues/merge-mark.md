@@ -132,6 +132,24 @@ commits landed through another one — sharing its head, its links naming issues
 supersedes the mark an issue holds from its own merge. Every stamp written carries its actor, so its
 `issue.updated` row is written too.
 
+Forge's own merge writes nothing onto a linked issue other than the one the call names that is
+already `closed` or `dropped` (`packages/core/src/issues/merge-stamp-skip.ts:overIssueStampSkip`,
+ISS-1027): an issue that is over takes no landing from another issue's merge. It is answered as
+`skippedStamps` with its status and the reading that named it, and `linkedIssues` names, for every
+issue the request links, that reading — `branch-lead` (`fix/iss-n-…`), `branch-tail`
+(`feat/…-iss-n`), `title` or `body` — and whether it was stamped, skipped, refused or already held.
+A branch names one key: a digit suffix after it (`fix/x-iss-50-2`, a run's attempt number) is no
+second key (REQ-63 BC-4 r11). adminhub-api MR 5162 had stamped ISS-2, closed and unrelated, that way.
+
+A closed issue whose mark holds such a misread commit is corrected in place by
+`POST /api/issues/:id/merge/correction` `{ commit, reason, misread?, mergedAt? }`
+(`packages/core/src/issues/merge-correction.ts:correctClosedMerge`), under the `project.write` the
+mark takes. It never moves the status, clears the misread request's head, and writes an
+`issue.mergeCorrected` row naming who, the commit replaced, the commit named, the reason and the
+misread source, beside the `issue.updated` row (`via: correction`). Refused by name: an issue not
+`closed` (`CORRECTION_REQUIRES_CLOSED`), a commit not a whole sha (`COMMIT_NOT_WHOLE`), no reason
+(`CORRECTION_REASON_MISSING`), the commit the mark already holds (`MARK_ALREADY_STANDS`).
+
 A request whose head is the branch work lands on, or a declared promotion's source
 (`packages/core/src/project-config/promotion-path.ts:promotionSourcesOf`), promotes what already
 landed and is nobody's landing (REQ-45 BC-16): its links

@@ -151,6 +151,7 @@ async function open(head: string, body: string | null, title = `MR on ${head}`) 
       outcome: string;
       issueId: string | null;
       issueIds: string[];
+      linkedIssues: Array<{ issueId: string; linkedBy: string; namedBy: string }>;
       noIssue: string | null;
     };
   };
@@ -231,6 +232,25 @@ describe('c1, c2: the !1979 shape links its branch issue alone, and that issue i
   it('a branch key and a delivered description key both link, the branch first', async () => {
     const opened = await open('fix/iss-37-cr-links', 'Closes ISS-11');
     expect(opened.projection.issueIds).toEqual([ID[37], ID[11]]);
+  });
+
+  // ISS-1027 (FB-528): a run suffix after the branch's key is no key, and the projection says which
+  // reading named each issue before the merge stamps it
+  it('names the reading behind each link, and reads a run suffix as no key', async () => {
+    const opened = await open(
+      'fix/strict-check-recursive-not-iss-37-11',
+      'Delivers ISS-38.',
+      'ISS-18: x',
+    );
+    expect(opened.projection.linkedIssues).toEqual([
+      { issueId: ID[37], linkedBy: 'head-ref', namedBy: 'branch-tail' },
+      { issueId: ID[18], linkedBy: 'title', namedBy: 'title' },
+      { issueId: ID[38], linkedBy: 'description', namedBy: 'body' },
+    ]);
+    const lead = await open('fix/iss-37-cr-links', null);
+    expect(lead.projection.linkedIssues).toEqual([
+      { issueId: ID[37], linkedBy: 'head-ref', namedBy: 'branch-lead' },
+    ]);
   });
 
   it('a request naming no key links nothing and has no primary', async () => {

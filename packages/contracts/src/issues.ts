@@ -128,6 +128,10 @@ export const MERGE_REFUSAL_CODES = [
 	"ADOPTION_BESIDE_CODE",
 	/** An `adoption` artifact sent by hand: only `adoptions`, which Forge reads, stamps one (REQ-5 BC-17). */
 	"ARTIFACTS_ADOPTION_BY_HAND",
+	/** A merge correction on an issue that is not `closed`: there the ordinary unmark and mark serve (ISS-1027). */
+	"CORRECTION_REQUIRES_CLOSED",
+	/** A merge correction that says no reason for replacing a shipped issue's commit (ISS-1027). */
+	"CORRECTION_REASON_MISSING",
 	/** `adoptions` sent to an issue already marked merged on something else, which would drop them unwritten. */
 	"ADOPTION_MARK_HELD",
 	...COMMIT_LANDING_REFUSAL_CODES,

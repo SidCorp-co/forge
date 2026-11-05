@@ -114,7 +114,8 @@ export interface JobCancel {
  * The route a merge stamp arrived by (github-merge-sequence `m-stamp`): the host's webhook
  * (`event`), Forge's own merge (`kernel`), a mark whose commit Forge read from the repository or its
  * record of the pull request (`repository`), a mark resting on its writer's word (`mark`), or the
- * approval of the design revision the issue drew (`design`, ISS-262).
+ * approval of the design revision the issue drew (`design`, ISS-262), or a person's correction of a
+ * closed issue's misread landing (`correction`, ISS-1027).
  */
 export const MERGE_STAMP_VIAS = [
 	"event",
@@ -122,6 +123,7 @@ export const MERGE_STAMP_VIAS = [
 	"repository",
 	"mark",
 	"design",
+	"correction",
 ] as const;
 export type MergeStampVia = (typeof MERGE_STAMP_VIAS)[number];
 

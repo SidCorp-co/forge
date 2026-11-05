@@ -1,0 +1,1 @@
+**A merge no longer stamps a shipped issue it merely names.** A branch names one key, so a run suffix is no second issue; closed or dropped links are skipped and named, and a misread landing is correctable.

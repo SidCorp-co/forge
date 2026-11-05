@@ -41,6 +41,7 @@ import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from './issue-route-ref.j
 import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
+import { correctClosedMerge } from './merge-correction.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
 import { settleReleaseOnMark } from './owed-merges.js';
 import { issueReviewOf, recordReview } from './review.js';
@@ -136,6 +137,42 @@ const mergeMarkerValidators = [
 
 issueMergeRoutes.post('/:id/merge', ...mergeMarkerValidators, (c) => runMergeMarker(c, 'mark'));
 issueMergeRoutes.delete('/:id/merge', ...mergeMarkerValidators, (c) => runMergeMarker(c, 'unmark'));
+
+// ISS-1027: a closed issue's misread landing, replaced in place under the permission the mark takes;
+// the status never moves and the correction is written on the issue's history (`merge-correction.ts`)
+const mergeCorrectionBodySchema = z
+  .object({
+    commit: z.string().optional(),
+    reason: z.string().max(REASON_PARAGRAPH_MAX).optional(),
+    misread: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
+    mergedAt: z.iso.datetime().optional(),
+  })
+  .strict();
+
+issueMergeRoutes.post(
+  '/:id/merge/correction',
+  zValidator('param', idParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
+  zValidator('json', mergeCorrectionBodySchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const scope = await heldIssue(id, c.get('userId'), 'project.write');
+    const actor = restActor(c);
+    return c.json(
+      await correctClosedMerge({
+        issueId: scope.id,
+        input: {
+          commit: body.commit,
+          reason: body.reason,
+          misread: body.misread,
+          mergedAt: body.mergedAt ? new Date(body.mergedAt) : undefined,
+        },
+        actor: { type: actor.type, id: actor.id, agency: actor.agency },
+      }),
+    );
+  },
+);
 
 // The merge check's record (Issue to release r20 `rule-merge`, ISS-472): the report a project's check
 // wrote, refused by the name of what failed or recorded on the issue for the mark to ask for.
