@@ -133,9 +133,9 @@ export async function lockPatName(tx: Tx, name: string): Promise<void> {
   await lockXact(tx, 'patName', name);
 }
 
-/** Who a live token is revoked for: its holder, the box it was issued to, or its name. */
+/** Who a live token is revoked for: its holder, the box it was issued to, its name, or its holder's name for it. */
 type TokenHolder =
-  | { userId: string }
+  | { userId: string; name?: string }
   | { deviceId: string }
   | { deviceIds: readonly string[] }
   | { name: string };
@@ -145,7 +145,10 @@ export async function revokeLiveTokens(holder: TokenHolder, tx: Tx = db): Promis
   if ('deviceIds' in holder && holder.deviceIds.length === 0) return 0;
   const of =
     'userId' in holder
-      ? eq(personalAccessTokens.userId, holder.userId)
+      ? and(
+          eq(personalAccessTokens.userId, holder.userId),
+          holder.name === undefined ? undefined : eq(personalAccessTokens.name, holder.name),
+        )
       : 'deviceId' in holder
         ? eq(personalAccessTokens.deviceId, holder.deviceId)
         : 'deviceIds' in holder

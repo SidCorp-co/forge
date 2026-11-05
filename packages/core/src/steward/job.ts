@@ -7,12 +7,12 @@
 import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { STEWARD_ACTS, type StewardAct, type StewardRefusalCode } from '@forge/contracts/steward';
-import { and, eq, isNull, sql } from 'drizzle-orm';
-import { lockPatName } from '../credentials/pat.js';
+import { eq, sql } from 'drizzle-orm';
+import { lockPatName, revokeLiveTokens } from '../credentials/pat.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
-import { jobs, personalAccessTokens, runners } from '../db/schema.js';
+import { jobs, runners } from '../db/schema.js';
 import { finalizeJobDone } from '../jobs/index.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
@@ -126,18 +126,8 @@ function jobActsOf(job: { id: string; payload: unknown }): StewardAct[] {
 }
 
 /** Revoke the live steward tokens named for one job: the one lookup its prepare and its end share. */
-async function revokeLiveJobTokens(tx: Tx, stewardId: string, jobId: string): Promise<void> {
-  await tx
-    .update(personalAccessTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(
-      and(
-        eq(personalAccessTokens.userId, stewardId),
-        eq(personalAccessTokens.name, jobTokenName(jobId)),
-        isNull(personalAccessTokens.revokedAt),
-      ),
-    );
-}
+const revokeLiveJobTokens = (tx: Tx, stewardId: string, jobId: string) =>
+  revokeLiveTokens({ userId: stewardId, name: jobTokenName(jobId) }, tx);
 
 /**
  * The credential section a claimed steward job's brief ends with: the steward account's token for
