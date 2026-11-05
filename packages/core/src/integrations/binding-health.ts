@@ -1,6 +1,6 @@
 import { type Said, sayEn } from '@forge/contracts/said';
 import type { integrationBindings, ObservedEndpoint } from '../db/schema.js';
-import { setBindingHealth } from '../project-config/index.js';
+import { setBindingHealth } from '../project-config/binding-store.js';
 import { getAdapter } from './registry.js';
 import { type BindingWithConnection, updateConnection } from './store.js';
 import type { AdapterContext, HealthStatus } from './types.js';

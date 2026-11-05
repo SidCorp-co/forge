@@ -27,8 +27,12 @@ vi.mock('../release-batch/index.js', () => ({
   admitChangeRequestMerge: async () => ({ kind: 'free' }),
   settleChangeRequestRelease: async () => ({ settled: false }),
 }));
-vi.mock('../lib/authz.js', () => ({ loadProjectAccess: async () => ({}) }));
-vi.mock('../permissions/index.js', () => ({
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: async () => ({}),
+}));
+vi.mock('../permissions/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../permissions/index.js')>()),
   requireDeclared: () => {},
   requiresOnResolved: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
