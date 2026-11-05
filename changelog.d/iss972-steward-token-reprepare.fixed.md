@@ -1,0 +1,1 @@
+**A steward job prepared again now starts.** Its earlier token is revoked as the new one is minted, so a lost answer or restarted pane no longer fails every prepare; a steward that cannot act is refused POOL_STEWARD_CANNOT_ACT.

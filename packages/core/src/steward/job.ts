@@ -4,11 +4,13 @@
 // claims the job and handed in the brief, never stored with the job; it is revoked when the job ends.
 // Where no runner is bound the run ends failed naming it: it never falls back to a gateway guess.
 
+import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { STEWARD_ACTS, type StewardAct, type StewardRefusalCode } from '@forge/contracts/steward';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { revokePat } from '../credentials/pat.js';
-import { db } from '../db/client.js';
+import { lockPatName } from '../credentials/pat.js';
+import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
+import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { jobs, personalAccessTokens, runners } from '../db/schema.js';
 import { finalizeJobDone } from '../jobs/index.js';
@@ -107,35 +109,72 @@ export async function enqueueStewardJob(
 
 const jobTokenName = (jobId: string) => `steward job ${jobId}`;
 
+/** A claimed steward job's prepare that cannot hand it a token, refused under the pool's own code. */
+const refuseClaim = refuser<PoolClaimRefusalCode>('POOL_STEWARD_CANNOT_ACT');
+
 /** The acts a steward job was enqueued for, which its token's approvals follow; a job naming none is refused. */
 function jobActsOf(job: { id: string; payload: unknown }): StewardAct[] {
   const named = (job.payload as { stewardActs?: unknown } | null)?.stewardActs;
   const acts = Array.isArray(named) ? STEWARD_ACTS.filter((a) => named.includes(a)) : [];
   if (acts.length === 0 || !Array.isArray(named) || acts.length !== named.length) {
-    throw new Error(
-      `steward: job ${job.id} names no steward acts its token can be minted for (payload.stewardActs is ${JSON.stringify(named)})`,
+    throw refuseClaim(
+      'POOL_STEWARD_CANNOT_ACT',
+      `steward job ${job.id} names no steward acts its token can be minted for (payload.stewardActs is ${JSON.stringify(named)})`,
     );
   }
   return acts;
 }
 
+/** Revoke the live steward tokens named for one job: the one lookup its prepare and its end share. */
+async function revokeLiveJobTokens(tx: Tx, stewardId: string, jobId: string): Promise<void> {
+  await tx
+    .update(personalAccessTokens)
+    .set({ revokedAt: sql`now()` })
+    .where(
+      and(
+        eq(personalAccessTokens.userId, stewardId),
+        eq(personalAccessTokens.name, jobTokenName(jobId)),
+        isNull(personalAccessTokens.revokedAt),
+      ),
+    );
+}
+
 /**
  * The credential section a claimed steward job's brief ends with: the steward account's token for
- * this job, minted now and named for the job so its end revokes it.
+ * this job, minted now and named for the job so its end revokes it. A job prepared again (its answer
+ * lost, its hold given back, its pane restarted) supersedes the earlier token in the mint's
+ * transaction, under the name's lock: that token's plaintext cannot be handed out again, and the job
+ * keeps one live token. A steward that cannot act is refused POOL_STEWARD_CANNOT_ACT, naming why.
  */
 export async function stewardJobCredential(job: {
   id: string;
   projectId: string;
   payload: unknown;
 }): Promise<string> {
+  const acts = jobActsOf(job);
   const stewardId = await stewardAccountOf(job.projectId);
-  const credential = await mintStewardCredential({
-    projectId: job.projectId,
-    stewardId,
-    acts: jobActsOf(job),
-    ttlMs: JOB_TOKEN_TTL_MS,
-    name: jobTokenName(job.id),
-  });
+  const name = jobTokenName(job.id);
+  const credential = await db
+    .transaction(async (tx) => {
+      await lockPatName(tx, name);
+      await revokeLiveJobTokens(tx, stewardId, job.id);
+      return mintStewardCredential({
+        projectId: job.projectId,
+        stewardId,
+        acts,
+        ttlMs: JOB_TOKEN_TTL_MS,
+        name,
+        tx,
+      });
+    })
+    .catch((err: unknown) => {
+      const refused = turnAuthorityRefusalOf(err);
+      if (!refused) throw err;
+      throw refuseClaim(
+        'POOL_STEWARD_CANNOT_ACT',
+        `steward job ${job.id} cannot be handed a token: ${refused.code}: ${refused.message}`,
+      );
+    });
   const base = env.PUBLIC_API_BASE_URL ?? env.APP_BASE_URL;
   return [
     "You act as this project's steward account, not as this box. Make every Forge call this act names over HTTP:",
@@ -146,18 +185,7 @@ export async function stewardJobCredential(job: {
 
 /** Revoke the job's steward token, if it is still live. */
 export async function revokeJobCredential(projectId: string, jobId: string): Promise<void> {
-  const stewardId = await stewardAccountOf(projectId);
-  const live = await db
-    .select({ id: personalAccessTokens.id })
-    .from(personalAccessTokens)
-    .where(
-      and(
-        eq(personalAccessTokens.userId, stewardId),
-        eq(personalAccessTokens.name, jobTokenName(jobId)),
-        isNull(personalAccessTokens.revokedAt),
-      ),
-    );
-  for (const row of live) await revokePat(row.id, stewardId);
+  await revokeLiveJobTokens(db, await stewardAccountOf(projectId), jobId);
 }
 
 /**

@@ -21,6 +21,8 @@ export const POOL_CLAIM_REFUSAL_CODES = [
 	"POOL_NO_PROMPT",
 	"POOL_POLICY_REFUSED",
 	"POOL_CHECKOUT_UNBOUND",
+	/** A steward job whose steward account cannot be given a token for it: the reason is in the detail (ISS-972). */
+	"POOL_STEWARD_CANNOT_ACT",
 ] as const;
 
 export type PoolClaimRefusalCode = (typeof POOL_CLAIM_REFUSAL_CODES)[number];
@@ -81,4 +83,5 @@ export const DEVICE_REFUSAL_STATUSES = {
 	POOL_HOLD_LOST: 409,
 	POOL_RUN_PAUSED: 409,
 	POOL_RUN_NOT_RUNNING: 409,
+	POOL_STEWARD_CANNOT_ACT: 409,
 } as const satisfies RefusalStatuses<DeviceRefusalCode>;

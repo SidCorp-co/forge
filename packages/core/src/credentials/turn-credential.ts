@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { TURN_AUTHORITY_REFUSAL_CODES, type TurnAuthorityRefusalCode } from '@forge/contracts/auth';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
@@ -148,6 +148,8 @@ export async function mintTurnCredential(args: {
   name?: string;
   ttlMs: number;
   deviceId?: string | null;
+  /** The transaction the token is inserted in, where the caller supersedes an earlier one of its name. */
+  tx?: Tx;
 }): Promise<TurnCredential> {
   const { authority } = args;
   const routes = args.menu.filter((p) => patGrantCovers(authority.grant, p));
@@ -172,18 +174,21 @@ export async function mintTurnCredential(args: {
   const scopes = ['read', 'write'].filter(
     (s) => authority.scopes.includes(s) && (s === 'read' || writes),
   );
-  const minted = await mintPat({
-    userId: authority.userId,
-    name: args.name ?? turnTokenDefaultName(new Date(), randomBytes(4).toString('hex')),
-    scopes,
-    permissions: granted,
-    projectIds: [authority.projectId],
-    boundProjectId: authority.projectId,
-    grantEpoch: Math.min(authority.grantEpoch, PAT_GRANT_EPOCH),
-    deviceId: args.deviceId ?? null,
-    expiresAt: new Date(Date.now() + args.ttlMs),
-    onBehalfOf: authority.userId,
-  });
+  const minted = await mintPat(
+    {
+      userId: authority.userId,
+      name: args.name ?? turnTokenDefaultName(new Date(), randomBytes(4).toString('hex')),
+      scopes,
+      permissions: granted,
+      projectIds: [authority.projectId],
+      boundProjectId: authority.projectId,
+      grantEpoch: Math.min(authority.grantEpoch, PAT_GRANT_EPOCH),
+      deviceId: args.deviceId ?? null,
+      expiresAt: new Date(Date.now() + args.ttlMs),
+      onBehalfOf: authority.userId,
+    },
+    args.tx,
+  );
   const tokenId = minted.row.id;
   return {
     token: minted.plaintext,
