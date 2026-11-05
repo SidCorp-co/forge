@@ -70,8 +70,13 @@ describe('the dispatch guide asks for no triage ritual', () => {
 describe('the dispatch guide names the room door a master posts its own results through', () => {
   it('names the door with its body and the rooms it takes', () => {
     expect(prose).toContain(
-      '`POST /api/projects/:id/support/master-posts` with `{ text, rid?, thread? }`',
+      '`POST /api/projects/:id/support/master-posts` with `{ text, rid?, thread?, attachments? }`',
     );
+    // ISS-1024: the images a post carries, named by their Forge uploads
+    expect(prose).toContain('`{ target: issue | comment | session, attachmentId }`');
+    for (const code of ['SUPPORT_POST_IMAGE_NOT_AN_IMAGE', 'SUPPORT_POST_IMAGE_UNREADABLE']) {
+      expect(prose).toContain(code);
+    }
     expect(prose).toContain("a support room, a channel agent's group, an operations room");
     expect(prose).toContain('Never relay it by hand or through a script posting as the bot');
   });

@@ -1,0 +1,1 @@
+**A master's room post carries its screenshots.** `master-posts` takes up to four image uploads by id; each follows the text into the same room and thread, and an item that cannot go is refused by name before anything posts.

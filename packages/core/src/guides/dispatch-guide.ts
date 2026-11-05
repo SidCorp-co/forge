@@ -142,7 +142,7 @@ records — before acting on it.
 ### Telling a room what came of it
 A result someone asked for in a chat room, a release line the room's users should hear, a daily
 review: the master posts it itself, in its own words, as the room's bot, through
-\`POST /api/projects/:id/support/master-posts\` with \`{ text, rid?, thread? }\`
+\`POST /api/projects/:id/support/master-posts\` with \`{ text, rid?, thread?, attachments? }\`
 (\`forge-runner api projects/<projectId>/support/master-posts -X POST -d '{"text":"…","rid":"<room id>","thread":"<message id>"}'\`).
 Never relay it by hand or through a script posting as the bot: core holds the bot's credential,
 screens the words for the room's readers and records the post as the master's.
@@ -152,6 +152,10 @@ screens the words for the room's readers and records the post as the master's.
 - **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
   result. With none the post goes at the top level of a room the team reads, or, in an operations
   room every project shares, in the project's own thread its binding records.
+- **Images.** \`attachments\` names up to four Forge uploads as \`{ target: issue | comment | session,
+  attachmentId }\`: attach a screenshot to the issue first (\`forge attach\`), then name its id. Each
+  is a png, jpeg, gif or webp of at most 4000000 bytes, of a project you read, and follows the text
+  into the same room and thread under a neutral name.
 - **A room its users read** takes a master's words only in an asker's thread (one a member wrote
   in), never at its top level, mentioning at most the asker or a member the channel lists. Plain
   words, things named as the user sees them on screen: no issue key, MR or PR number, environment
@@ -161,7 +165,11 @@ screens the words for the room's readers and records the post as the master's.
   \`SUPPORT_MASTER_POST_USERS_ROOM\` (a top-level post in a room its users read),
   \`SUPPORT_THREAD_OF_ANOTHER_ROOM\`, \`SUPPORT_THREAD_UNKNOWN\`, \`SUPPORT_ROOM_AMBIGUOUS\` (name the
   room), \`SUPPORT_PROJECT_THREAD_UNRECORDED\`, \`SUPPORT_INTERNAL_CODE\` and
-  \`SUPPORT_MENTION_REFUSED\`. The caller holds project write on the project.
+  \`SUPPORT_MENTION_REFUSED\`. An image is refused \`SUPPORT_POST_IMAGE_UNKNOWN\`,
+  \`SUPPORT_POST_IMAGE_UNREADABLE\`, \`SUPPORT_POST_IMAGE_NOT_AN_IMAGE\`,
+  \`SUPPORT_POST_IMAGE_TOO_LARGE\`, \`SUPPORT_POST_IMAGE_FILE_MISSING\` or
+  \`SUPPORT_POST_IMAGE_UNPOSTED\` (the chat server took none). The caller holds project write on the
+  project.
 
 ### Direct mode: a project that runs fast
 A project whose gate profile is not \`strict\` (\`GET /api/projects/:id/gates\`) and whose project
