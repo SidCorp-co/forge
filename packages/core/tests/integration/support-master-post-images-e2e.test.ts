@@ -180,7 +180,7 @@ describe('ISS-1024: an image the room cannot take is refused by name, nothing po
     expect(refusalsOf(res)[0]?.detail).toContain('4000001 bytes, over the 4000000');
   });
 
-  it("refuses an upload of a project the caller cannot read, and an unknown one, each by name", async () => {
+  it('refuses an upload of a project the caller cannot read, and an unknown one, each by name', async () => {
     const stranger = (await createTestUser({ verified: true })).id;
     const theirs = (await createTestProject(stranger)).id;
     const theirIssue = await createTestIssue(theirs, stranger, 1, {
@@ -211,7 +211,11 @@ describe('ISS-1024: an image the room cannot take is refused by name, nothing po
   it('refuses a fifth image, and a feedback file, by the body shape', async () => {
     const one = await attach(issueId, 'one.png', 'image/png', PNG);
     const lines = allLines();
-    const five = await post({ text: RESULT, rid: chat.rid2, attachments: Array(5).fill(issueImage(one)) });
+    const five = await post({
+      text: RESULT,
+      rid: chat.rid2,
+      attachments: Array(5).fill(issueImage(one)),
+    });
     expect(five.status).toBe(400);
     expect(JSON.stringify(five.body)).toContain('attachments');
     const feedback = await post({
