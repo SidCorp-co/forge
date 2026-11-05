@@ -44,11 +44,12 @@ const MIME_EXT: Record<(typeof ROOM_IMAGE_MIMES)[number], string> = {
   'image/gif': 'gif',
   'image/webp': 'webp',
 };
-const VALID = `an issue, comment or session upload of a project you read, a ${ROOM_IMAGE_MIMES.join(', ')} of at most ${ROOM_IMAGE_CAPS.bytes} bytes`;
+const VALID = `an issue, comment or session upload of this project, a ${ROOM_IMAGE_MIMES.join(', ')} of at most ${ROOM_IMAGE_CAPS.bytes} bytes`;
 
 /** One item checked: the image, or why it cannot go into a room. */
 async function checkOne(
   userId: string,
+  projectId: string,
   item: SupportMasterPostAttachment,
   at: string,
 ): Promise<PostImage | Refusal> {
@@ -56,6 +57,15 @@ async function checkOne(
   const att = await loadAttachment(item.target, item.attachmentId);
   if (!att) {
     return refusalOf('SUPPORT_POST_IMAGE_UNKNOWN', at, `no ${named} exists; name ${VALID}`);
+  }
+  // A room is read by the posting project's people alone, so an upload of another project, however
+  // readable to the caller, would carry that project's file to readers who were never let in.
+  if (att.projectId !== projectId) {
+    return refusalOf(
+      'SUPPORT_POST_IMAGE_UNREADABLE',
+      at,
+      `${named} belongs to another project, and this room is read by this project's people; name ${VALID}`,
+    );
   }
   if (!(await can(actorFor(userId), 'project.read', projectResource(att.projectId)))) {
     return refusalOf(
@@ -94,11 +104,12 @@ async function checkOne(
 /** Every item of a post checked and read, or every item's refusal; nothing is posted either way. */
 export async function checkPostImages(
   userId: string,
+  projectId: string,
   items: readonly SupportMasterPostAttachment[] | undefined,
 ): Promise<Outcome<PostImage[]>> {
   if (!items?.length) return { ok: true, value: [] };
   const checked = await Promise.all(
-    items.map((item, i) => checkOne(userId, item, `/attachments/${i}`)),
+    items.map((item, i) => checkOne(userId, projectId, item, `/attachments/${i}`)),
   );
   const refusals = checked.filter((c): c is Refusal => 'code' in c);
   if (refusals.length > 0) {

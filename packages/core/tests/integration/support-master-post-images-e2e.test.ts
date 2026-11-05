@@ -209,6 +209,22 @@ describe('ISS-1024: an image the room cannot take is refused by name, nothing po
     expect(unknown?.detail).toContain('no comment upload');
   });
 
+  it("refuses an upload of another project even where the caller reads it, so no project's file reaches this room's readers", async () => {
+    const otherProject = (await createTestProject(w.ownerId)).id;
+    const otherIssue = await createTestIssue(otherProject, w.ownerId, 1, {
+      status: 'open',
+      createdAt: new Date(),
+    });
+    const elsewhere = await attach(otherIssue.id, 'elsewhere.png', 'image/png', PNG);
+    const res = await nothingPosted(
+      { text: RESULT, rid: chat.rid2, attachments: [issueImage(elsewhere)] },
+      '/attachments/',
+      ['SUPPORT_POST_IMAGE_UNREADABLE'],
+    );
+    expect(res.status).toBe(403);
+    expect(refusalsOf(res)[0]?.detail).toContain('belongs to another project');
+  });
+
   it('refuses a fifth image, and a feedback file, by the body shape', async () => {
     const one = await attach(issueId, 'one.png', 'image/png', PNG);
     const lines = allLines();

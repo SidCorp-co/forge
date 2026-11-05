@@ -155,7 +155,7 @@ screens the words for the room's readers and records the post as the master's.
 - **Images.** \`attachments\` names up to four Forge uploads as \`{ target: issue | comment | session,
   attachmentId }\`: attach a screenshot to the issue first
   (\`POST /api/issues/:id/attachments\`), then name the id it answers. Each
-  is a png, jpeg, gif or webp of at most 4000000 bytes, of a project you read, and follows the text
+  is a png, jpeg, gif or webp of at most 4000000 bytes, uploaded to this project, and follows the text
   into the same room and thread under a neutral name.
 - **A room its users read** takes a master's words only in an asker's thread (one a member wrote
   in), never at its top level, mentioning at most the asker or a member the channel lists. Plain

@@ -397,7 +397,7 @@ async function roomRecording(
  */
 export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest): Promise<Posted> {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
-  const images = await checkPostImages(actor.userId, input.attachments);
+  const images = await checkPostImages(actor.userId, actor.projectId, input.attachments);
   if (!images.ok) return images;
   const rooms = await postableRoomsNaming(actor.projectId, input.rid);
   if (input.rid && !rooms.some((r) => r.room.rid === input.rid)) {
