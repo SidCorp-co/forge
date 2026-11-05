@@ -497,6 +497,7 @@ describe('an issue reopened between two releases reads as the rework of the one 
         line: 'Missed drafts retried',
         detail: RETRY,
         requirementKey: null,
+        screen: null,
       },
     ]);
     expect(dev225.actionRequired).toEqual([

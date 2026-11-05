@@ -38,6 +38,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { issueNamingOf, namedIssue, standingsOf } from '../requirements/index.js';
+import { criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import { voidedStillRead } from './judged-before-reopen.js';
 import type { CompletionFacts } from './release-view.js';
 import { releasedLineOf } from './released-line.js';
@@ -92,12 +93,38 @@ export interface ReleaseFacts {
   released: ReleasedLine | null;
   /** The issues of the project holding a verdict judged on a release, loaded beside the rosters'. */
   judgedOnRelease: readonly string[];
+  /**
+   * Where the project earns criteria at an issue's landing (`criteria-basis.ts:criteriaBasisOf`), what
+   * each issue earned there, by issue id: the weighing the issue's own criteria read shows
+   * (`criteria-weighing.ts`, `landingCriteriaReports`), so a release never reads open what its issue
+   * reads earned (FB-515). Null on a project weighing at what is served.
+   */
+  landing: ReadonlyMap<string, LandingEarned> | null;
+}
+
+/** One issue's criteria as its landing weighs them: the numbers it earned there. */
+export interface LandingEarned {
+  earned: ReadonlySet<number>;
+}
+
+/** Each of `issueIds` weighed at its landing, where the project's basis is the landing; else null. */
+async function landingEarnedOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, LandingEarned> | null> {
+  if (issueIds.length === 0) return null;
+  const basis = await criteriaBasisOf(projectId);
+  if (basis.kind !== 'landing') return null;
+  const reports = await landingCriteriaReports(projectId, issueIds);
+  return new Map(
+    reports.map((r) => [r.issueId, { earned: new Set(r.counted.map((c) => c.criterion)) }]),
+  );
 }
 
 /** What a release reads its criteria's proof by: the project's judge, its testing environment, and
  *  where its releases are its agent's record, what each carries (ISS-900). */
 export type ReleaseProof = Pick<ReleaseFacts, 'judge' | 'judgedOn'> &
-  Partial<Pick<ReleaseFacts, 'released'>>;
+  Partial<Pick<ReleaseFacts, 'released' | 'landing'>>;
 
 /** One verdict a carried criterion earned, as a release reads it. */
 export interface CarriedVerdict extends ReleaseVerdictReading {
@@ -199,7 +226,7 @@ export async function carriedVerdictsOf(
 export function criteriaAt(
   issue: IssueFact,
   build: string | null,
-  { judge, judgedOn, released }: ReleaseProof,
+  { judge, judgedOn, released, landing }: ReleaseProof,
   version: string | null = null,
   /** When the release shipped; absent, as its record says (ISS-900), null where it has not. */
   shippedAt: Date | null = version === null ? null : (released?.shipped.get(version)?.at ?? null),
@@ -218,7 +245,11 @@ export function criteriaAt(
     );
     const read = verifiedOf(counted, judge);
     const stands = read.stands;
-    const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
+    // on a landing basis a criterion its issue earned at its landing is proven on the release too
+    // (FB-515): the issue's own weighing (`criteria-basis.ts:landingCriteriaReports`) decides it
+    const proven =
+      (read.proven && stands?.identityKind !== 'commit_unresolved') ||
+      (landing?.get(issue.id)?.earned.has(c.n) ?? false);
     const unjudgedThere = build !== null && judgedOn !== null && !stands;
     const unverified = proven
       ? null
@@ -369,7 +400,7 @@ export async function loadReleaseFacts(
   // refuses one anywhere else), so a project with no line holds none, and its reads ask nothing more
   const judgedOnRelease = released ? await issuesJudgedOnRelease(projectId) : [];
   const ids = [...new Set([...issueIds, ...judgedOnRelease])];
-  const [rows, prefix, cutters, judge, held] = await Promise.all([
+  const [rows, prefix, cutters, judge, held, landing] = await Promise.all([
     ids.length === 0
       ? Promise.resolve([])
       : db
@@ -393,6 +424,7 @@ export async function loadReleaseFacts(
     cuttersOf(runIds),
     readVerifiedJudge(projectId),
     readProjectDocument(projectId),
+    landingEarnedOf(projectId, ids),
   ]);
   const [criteria, reopened, closed, reqs] = await Promise.all([
     listCriteriaOf(db, ids),
@@ -462,6 +494,7 @@ export async function loadReleaseFacts(
     judgedOn: judgedOnOf(held?.document.delivery),
     released,
     judgedOnRelease,
+    landing,
   };
 }
 

@@ -33,7 +33,10 @@ export const codeOf = (body: unknown) => {
   return b.error?.refusals?.[0]?.code ?? b.error?.code ?? null;
 };
 
-export async function seedPromotionWorld(environment: Record<string, unknown>) {
+export async function seedPromotionWorld(
+  environment: Record<string, unknown>,
+  delivery: Record<string, unknown> = { verdictsRequired: false },
+) {
   await truncateAll();
   world.ownerId = (await createTestUser({ verified: true })).id;
   world.projectId = (await createTestProject(world.ownerId)).id;
@@ -51,7 +54,7 @@ export async function seedPromotionWorld(environment: Record<string, unknown>) {
         branches: [STG, PROD],
       },
     },
-    extra: { delivery: { verdictsRequired: false } } as never,
+    extra: { delivery } as never,
   });
   const connectionId = randomUUID();
   world.bindingId = randomUUID();
