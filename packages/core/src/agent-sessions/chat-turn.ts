@@ -25,6 +25,7 @@ import {
   requireListeningBox,
 } from './chat-device.js';
 import { runsConfined } from './chat-door.js';
+import { credentialOf, failUndelivered } from './chat-turn-unsent.js';
 import { stripSystemNoise } from './content-filter.js';
 import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
@@ -514,38 +515,6 @@ async function boxFrame(
   };
 }
 
-/** The box's socket dropped between the check and the frame: the turn is failed, never left running. */
-async function failUndelivered(sessionId: string): Promise<never> {
-  await failUnsent(sessionId, 'no_client_ack');
-  throw noClaudeClient('session');
-}
-
-/** A turn that holds the session but was never sent to its box ends failed, never left running. */
-async function failUnsent(
-  sessionId: string,
-  reason: 'no_client_ack' | 'credential_mint_failed',
-): Promise<void> {
-  await transitionSessions(db, {
-    to: 'failed',
-    set: { failureReason: reason, updatedAt: new Date() },
-    where: eq(agentSessions.id, sessionId),
-    reason,
-    actor: { type: 'system' },
-    source: 'chat-turn',
-  });
-}
-
-/** The turn's token: as handed, or minted now that the turn holds the session. */
-async function credentialOf(args: DispatchChatTurnArgs, sessionId: string) {
-  if (typeof args.credential !== 'function') return args.credential;
-  try {
-    return await args.credential();
-  } catch (err) {
-    await failUnsent(sessionId, 'credential_mint_failed');
-    throw err;
-  }
-}
-
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const plan = await planTurn(args);
   const { patch, metadata, fallbackTitle } = sessionPatch(args, plan);
@@ -563,7 +532,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     void applyAutoTitleAsync({ sessionId: updated.id, userMessage: args.message, fallbackTitle });
   }
 
-  const credential = await credentialOf(args, updated.id);
+  const credential = await credentialOf(args.credential, updated.id);
   const frame = await boxFrame({ ...args, credential }, plan, updated.id, eventSeqBase);
   if (agentSessionsPorts().sendToBoxNow(plan.deviceId, frame) === 0) {
     await failUndelivered(updated.id);
