@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.518] - 2026-11-05
+
+Support rooms read every connected workspace, each with its own key
+
+### Fixed
+
+- **A support room now reads every support API its project binds.** Each workspace's tools are listed with the workspace they read, each call goes out with that workspace's own key, and a tool name two bindings share is refused.
+
 ## [0.4.0-dev.517] - 2026-11-05
 
 Product tours get one drawing convention in the ux-flow guide

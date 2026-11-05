@@ -1,1 +1,0 @@
-**A support room now reads every support API its project binds.** Each workspace's tools are listed with the workspace they read, each call goes out with that workspace's own key, and a tool name two bindings share is refused.
