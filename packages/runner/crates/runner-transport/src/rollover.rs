@@ -188,6 +188,15 @@ pub async fn send(
         attempts += 1;
         let resp = http.execute(this).await?;
         if resp.status() != StatusCode::SERVICE_UNAVAILABLE {
+            if attempts > 1 {
+                tracing::debug!(
+                    "{} {}: answered {} on attempt {attempts}, {}ms after the first",
+                    req.method(),
+                    req.url().path(),
+                    resp.status().as_u16(),
+                    started.elapsed().as_millis()
+                );
+            }
             return Ok(resp);
         }
         let asked = retry_after(&resp);
