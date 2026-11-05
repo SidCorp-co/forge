@@ -319,11 +319,12 @@ refused a closed issue by name.
 Never reopen an issue so it can be judged.
 
 The tree you declare is either a worktree that already exists, which the run adopts, or one the box
-cuts for it with `--cut <branch>` (from `--from <ref>`, or your checkout's `HEAD`), which the run
-owns. An adopted tree is never removed: when the run ends it gives back only its claim, so a tree you
-cut by hand and declared is yours to remove once nothing in it is wanted. A tree the box cut is
-removed after the run ends, unless it holds uncommitted files or commits on no remote; then it is
-kept and named. A path that is gone or is no worktree is refused by name, and nothing is recorded;
+cuts for it with `--cut <branch>` from `--from <ref>` — the branch its work lands on, `origin`'s
+default branch where you name none — which the run owns. An adopted tree is never removed: when the
+run ends it gives back only its claim, so a tree you cut by hand and declared is yours to remove once
+nothing in it is wanted. A tree the box cut is removed after the run ends once its work has landed on
+that branch, a rebase included; one holding uncommitted files or commits whose change the branch
+does not hold is kept and named. A path that is gone or is no worktree is refused by name, and nothing is recorded;
 so is a worktree of another repository than the checkout you work in, where the box can read which
 that is, and a `--cut` over a path that already exists.
 

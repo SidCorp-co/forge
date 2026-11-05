@@ -135,7 +135,7 @@ pub async fn at_risk(run: &Run) -> Option<Held> {
     let fate = salvage::fate_of(worktree).await;
     // The release's other reading: work nothing outside the checkout carries keeps it too
     // (ISS-1016), so a report of that checkout says it is kept.
-    let only_here = salvage::work_only_here(worktree).await;
+    let only_here = salvage::work_only_here(worktree, run.worktree_base.as_deref()).await;
     let kept = matches!(fate, Fate::Kept { .. }) || only_here.is_some();
     if !kept && publication == Publication::Published {
         return None;

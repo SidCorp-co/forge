@@ -116,6 +116,9 @@ async fn a_repo_with_an_origin(tag: &str) -> (PathBuf, PathBuf, PathBuf, Ledger)
     (base, root, wt, led)
 }
 
+/// The ref every tree here is cut from, as `run declare --cut` records it.
+const BASE: &str = "origin/main";
+
 fn declare(led: &mut Ledger, run_id: &str, wt: &Path) {
     declare_as(led, run_id, wt, TreeOrigin::Created);
 }
@@ -131,6 +134,7 @@ fn declare_as(led: &mut Ledger, run_id: &str, wt: &Path, origin: TreeOrigin) {
         role: None,
         requirement: None,
         worktree_origin: origin,
+        worktree_base: (origin == TreeOrigin::Created).then(|| BASE.to_string()),
     })
     .unwrap();
 }
@@ -170,7 +174,7 @@ async fn a_release_publishes_nothing_and_keeps_what_no_remote_holds() {
         ports(&Table(HostRead::Gone)),
     )
     .await
-    .expect("a checkout holding a commit on no remote is kept, not refused");
+    .expect("a checkout holding a commit its base does not hold is kept, not refused");
     assert!(
         matches!(forced.worktree, WorktreeOutcome::KeptWithWork { .. }),
         "{forced:?}"
@@ -184,7 +188,7 @@ async fn a_release_publishes_nothing_and_keeps_what_no_remote_holds() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// A detached checkout's commits on no remote are kept with the checkout: no ref is written for
+/// A detached checkout's commits its base does not hold are kept with the checkout: no ref is written for
 /// them, because the directory is not taken, and they are published nowhere.
 #[tokio::test]
 async fn unnamed_commits_on_no_remote_keep_their_checkout_and_are_published_nowhere() {
@@ -204,7 +208,7 @@ async fn unnamed_commits_on_no_remote_keep_their_checkout_and_are_published_nowh
         ports(&Table(HostRead::Gone)),
     )
     .await
-    .expect("unnamed commits on no remote are kept");
+    .expect("unnamed, unlanded commits are kept");
     let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
         panic!("expected the checkout kept, got {forced:?}");
     };
@@ -256,7 +260,7 @@ async fn a_checkout_a_working_subagent_is_in_is_never_removed() {
 #[tokio::test]
 async fn a_subagent_between_turns_or_without_its_host_is_released() {
     let (base, root, wt, mut led) = a_repo_with_an_origin("ended-subagent").await;
-    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
+    git(&wt, &["push", "-q", "origin", "iss-23:main"]).await;
     declare(&mut led, "run-1", &wt);
     assert!(led.bind_agent("run-1", "agent-1").unwrap());
     assert!(led.note_host("run-1", 4242, "777").unwrap());
@@ -274,7 +278,7 @@ async fn a_subagent_between_turns_or_without_its_host_is_released() {
     let _ = std::fs::remove_dir_all(&base);
 
     let (base, root, wt, mut led) = a_repo_with_an_origin("hostless-subagent").await;
-    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
+    git(&wt, &["push", "-q", "origin", "iss-23:main"]).await;
     declare(&mut led, "run-1", &wt);
     assert!(led.bind_agent("run-1", "agent-1").unwrap());
     assert!(led.note_host("run-1", 4242, "777").unwrap());
@@ -378,11 +382,12 @@ async fn an_adopted_tree_keeps_its_uncommitted_files_uncommitted() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// A tree cut for the run, clean and pushed, is the run's to give back, and goes as before.
+/// A tree cut for the run, clean and landed on its base, is the run's to give back, and goes as
+/// before.
 #[tokio::test]
 async fn a_tree_cut_for_its_run_is_still_removed_at_its_close() {
     let (base, root, wt, mut led) = a_repo_with_an_origin("created-pushed").await;
-    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
+    git(&wt, &["push", "-q", "origin", "iss-23:main"]).await;
     declare_as(&mut led, "run-1", &wt, TreeOrigin::Created);
 
     let Release::Done(forced) = close_and_release(&mut led, &root).await else {
@@ -429,9 +434,10 @@ async fn a_cut_tree_with_an_uncommitted_file_is_kept_and_named() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// A tree cut for the run whose commit `origin` has not seen is kept and named the same way.
+/// A tree cut for the run whose commit its base does not hold is kept and named the same way —
+/// pushed to a branch of its own or not, the work has not landed.
 #[tokio::test]
-async fn a_cut_tree_with_a_commit_on_no_remote_is_kept_and_named() {
+async fn a_cut_tree_with_a_commit_not_in_its_base_is_kept_and_named() {
     let (base, root, wt, mut led) = a_repo_with_an_origin("created-unpushed").await;
     declare_as(&mut led, "run-1", &wt, TreeOrigin::Created);
 
@@ -445,10 +451,61 @@ async fn a_cut_tree_with_a_commit_on_no_remote_is_kept_and_named() {
     let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
         panic!("the unpushed tree was not kept and named: {forced:?}");
     };
-    assert!(why.contains("1 commit"), "{why}");
+    assert!(why.contains("1 commit") && why.contains(BASE), "{why}");
     assert_eq!(
         led.run("run-1").unwrap().unwrap().released_as.as_deref(),
         Some("kept_with_work")
     );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The leak a sha compare left: the master landed the run's branch by a rebase onto the base, so
+/// the base holds the same change under another commit. Nothing in the tree is unlanded, and it is
+/// removed at the close like any landed tree.
+#[tokio::test]
+async fn a_cut_tree_landed_by_a_rebase_is_removed_at_its_close() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("created-rebased").await;
+    // `main` moves on, and the run's commit lands on top of it as a new commit: a rebase.
+    std::fs::write(root.join("x.txt"), "x").unwrap();
+    git(&root, &["add", "x.txt"]).await;
+    git(&root, &["commit", "-q", "-m", "x"]).await;
+    git(&root, &["cherry-pick", "iss-23"]).await;
+    git(&root, &["push", "-q", "origin", "main"]).await;
+    assert_ne!(
+        said(&wt, &["rev-parse", "HEAD"]).await,
+        said(&root, &["rev-parse", "origin/main"]).await,
+        "the landing kept the run's sha, so this is no rebase"
+    );
+    declare(&mut led, "run-1", &wt);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("a landed tree's release was refused");
+    };
+    assert_eq!(
+        forced.worktree,
+        WorktreeOutcome::Released,
+        "a tree whose every change is in its base was kept"
+    );
+    assert!(!wt.exists(), "the landed tree is still on disk");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A base the release cannot read — a ref this repository no longer holds — keeps the tree and
+/// names why, however landed its work may be.
+#[tokio::test]
+async fn a_cut_tree_whose_base_is_gone_is_kept_and_named() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("created-base-gone").await;
+    git(&wt, &["push", "-q", "origin", "iss-23:main"]).await;
+    git(&root, &["branch", "-q", "-r", "-D", "origin/main"]).await;
+    declare(&mut led, "run-1", &wt);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("a tree whose base is gone was refused rather than kept");
+    };
+    let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
+        panic!("a tree whose base cannot be read was not kept: {forced:?}");
+    };
+    assert!(why.contains("origin/main is no ref"), "{why}");
+    assert!(wt.exists());
     let _ = std::fs::remove_dir_all(&base);
 }

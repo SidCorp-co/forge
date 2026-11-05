@@ -1,1 +1,1 @@
-**A run's close never removes a worktree it did not create.** `run declare` adopts a standing tree and `--cut` cuts one; releases and the reaper leave adopted trees, and keep any tree holding uncommitted or unpushed work, naming it.
+**A run's close never removes a worktree it did not create.** `run declare` adopts a standing tree and `--cut` cuts one; releases and the reaper leave adopted trees, and keep a cut tree holding uncommitted or unlanded work, naming it.

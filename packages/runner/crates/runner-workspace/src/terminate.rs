@@ -187,6 +187,7 @@ async fn take_the_directory(
     repo_root: &Path,
     worktree: &Path,
     commits: &Commits,
+    base: Option<&str>,
 ) -> Result<()> {
     let rewritten = match salvage::fate_of(worktree).await {
         salvage::Fate::Named => None,
@@ -223,7 +224,7 @@ async fn take_the_directory(
     }
     // The same reading the release kept on, taken once more at the removal: a file written or a
     // commit made since is work this directory alone carries, and it stays (ISS-1016).
-    if let Some(work) = salvage::work_only_here(worktree).await {
+    if let Some(work) = salvage::work_only_here(worktree, base).await {
         return Err(Error::Other(format!(
             "refusing to {verb:?} run {run_id}: {} came to hold work nothing outside it carries by \
              the moment its removal was reached ({work}) — the checkout stays",
@@ -457,14 +458,15 @@ pub async fn force_terminal(
         false => leave_to_an_open_holder(ledger, run_id, held, worktree)?,
     };
 
-    // A tree cut for the run is the run's to give back, but never with work in it that nothing
-    // outside it carries: uncommitted files, or commits on no remote. That tree is kept and named,
+    // A tree cut for the run is the run's to give back, but never with work in it that has not
+    // landed: uncommitted files, or commits whose change the base it was cut from does not hold. That tree is kept and named,
     // and the run is over without it, so its leases still come back (ISS-1016). It used to be
     // committed onto its branch as `wip(salvage)` and removed.
     let mut commits = None;
     let mut kept_with_work = None;
     if held == Held::Ours && !adopted && kept_for.is_none() {
-        match salvage::work_only_here(worktree).await {
+        let base = run.worktree_base.as_deref();
+        match salvage::work_only_here(worktree, base).await {
             Some(why) => {
                 ledger.mark_checkout_returned_observed(run_id, CheckoutReturn::KeptWithWork)?;
                 tracing::warn!(
@@ -477,7 +479,7 @@ pub async fn force_terminal(
             }
             None => {
                 let kept = keep_before_release(run_id, verb, worktree).await?;
-                take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
+                take_the_directory(run_id, verb, what.repo_root, worktree, &kept, base).await?;
                 commits = Some(kept);
             }
         }
@@ -818,6 +820,7 @@ mod holder_tests {
             role: None,
             requirement: None,
             worktree_origin: runner_core::ledger::TreeOrigin::Created,
+            worktree_base: Some("main".into()),
         })
         .unwrap();
     }
@@ -903,15 +906,21 @@ mod holder_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// The same pair with nobody open in the tree: the first release takes it
-    /// by the ordinary rules — its commits named before it goes — and the
-    /// second finds nothing registered.
+    /// The same pair with nobody open in the tree, its change landed on `main` as another commit:
+    /// the first release takes it by the ordinary rules — its own commit named before it goes —
+    /// and the second finds nothing registered.
     #[tokio::test]
     async fn ended_runs_with_no_open_holder_release_by_the_ordinary_rules() {
         let (root, wt, mut led) = a_repo("ended-pair-alone").await;
         std::fs::write(wt.join("b.txt"), "b").unwrap();
         git(&wt, &["add", "b.txt"]).await;
         git(&wt, &["commit", "-q", "-m", "b"]).await;
+        // The change lands on `main`, moved on since, as a commit of its own, so only the checkout
+        // names this one.
+        std::fs::write(root.join("x.txt"), "x").unwrap();
+        git(&root, &["add", "x.txt"]).await;
+        git(&root, &["commit", "-q", "-m", "x"]).await;
+        git(&root, &["cherry-pick", "iss-964"]).await;
         git(&wt, &["checkout", "-q", "--detach"]).await;
         git(&root, &["branch", "-q", "-D", "iss-964"]).await;
         declare(&mut led, "run-1", "master-1", "ISS-71", &wt);

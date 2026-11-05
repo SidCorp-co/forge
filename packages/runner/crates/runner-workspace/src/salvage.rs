@@ -309,20 +309,23 @@ fn stderr_brief(out: &std::process::Output) -> String {
 /// How many uncommitted files a line names before it says how many more there are.
 const FILES_NAMED: usize = 5;
 
-/// The work in `worktree` that exists nowhere but in it, in words a journal line and a run's close
-/// can carry, or `None` where nothing in it is only there.
+/// How many unlanded commits a line names by sha before it says how many more there are.
+const COMMITS_NAMED: usize = 3;
+
+/// The work in `worktree` that has not landed, in words a journal line and a run's close can
+/// carry, or `None` where everything in it is already in `base` — the ref the tree was cut from.
 ///
 /// Two readings, and either keeps the directory (ISS-1016):
 /// - a file git has not been told to keep — modified, staged, or untracked and not ignored. Files
 ///   `.gitignore` claims are build output and hold nothing, which is what keeps them from pinning
 ///   a checkout for ever;
-/// - a commit at HEAD that no remote-tracking ref holds, where this repository has a remote at
-///   all. Without one there is nowhere for a commit to be "on", and [`fate_of`] with [`keep_at`]
-///   already keeps every commit named by a ref the directory's removal leaves standing.
+/// - a commit at HEAD whose CONTENT `base` does not hold, as `git cherry <base> HEAD` marks it `+`.
+///   Content, not sha: a branch landed by a rebase lands as other commits with the same patches,
+///   and asking by sha kept every such tree for ever.
 ///
-/// A reading git would not give keeps the directory too, and says so: not knowing is not the same
-/// as knowing nothing is there.
-pub async fn work_only_here(worktree: &Path) -> Option<String> {
+/// A base that cannot be read — none recorded, or a ref this repository no longer holds — keeps
+/// the directory too, and says so: not knowing whether work landed is not knowing it did.
+pub async fn work_only_here(worktree: &Path, base: Option<&str>) -> Option<String> {
     match git(
         worktree,
         &["status", "--porcelain", "--untracked-files=all"],
@@ -337,14 +340,11 @@ pub async fn work_only_here(worktree: &Path) -> Option<String> {
                 .filter(|f| !f.is_empty())
                 .collect();
             if !files.is_empty() {
-                let named = files[..files.len().min(FILES_NAMED)].join(", ");
-                return Some(match files.len().saturating_sub(FILES_NAMED) {
-                    0 => format!("{} uncommitted file(s): {named}", files.len()),
-                    more => format!(
-                        "{} uncommitted file(s): {named} and {more} more",
-                        files.len()
-                    ),
-                });
+                return Some(format!(
+                    "{} uncommitted file(s): {}",
+                    files.len(),
+                    named(&files, FILES_NAMED)
+                ));
             }
         }
         Some(out) => {
@@ -355,37 +355,62 @@ pub async fn work_only_here(worktree: &Path) -> Option<String> {
         }
         None => return Some("git could not be asked whether anything in it is uncommitted".into()),
     }
-    match has_a_remote(worktree).await {
-        Some(false) => None,
-        None => Some(
-            "git would not say whether this repository has a remote, so whether its commits are \
-             on one cannot be read"
-                .into(),
-        ),
-        Some(true) => commits_on_no_remote(worktree).await,
+    match base {
+        Some(base) => unlanded(worktree, base).await,
+        None => {
+            Some("no base was recorded for it, so whether its commits landed cannot be read".into())
+        }
     }
 }
 
-/// The commits at HEAD no remote-tracking ref holds, said as [`work_only_here`] says them.
-async fn commits_on_no_remote(worktree: &Path) -> Option<String> {
-    match git(
-        worktree,
-        &["rev-list", "--count", "HEAD", "--not", "--remotes"],
-    )
-    .await
-    {
-        Some(out) if out.status.success() => match stdout_trim(&out).parse::<u64>() {
-            Ok(0) => None,
-            Ok(n) => Some(format!("{n} commit(s) at its HEAD are on no remote")),
-            Err(_) => Some(format!(
-                "git counted the commits at its HEAD on no remote as `{}`, which is no count",
-                stdout_trim(&out)
-            )),
-        },
+/// The first `max` of `items`, and how many more there are.
+fn named(items: &[&str], max: usize) -> String {
+    let shown = items[..items.len().min(max)].join(", ");
+    match items.len().saturating_sub(max) {
+        0 => shown,
+        more => format!("{shown} and {more} more"),
+    }
+}
+
+/// The commits at HEAD whose patch `base` does not hold, said as [`work_only_here`] says them.
+async fn unlanded(worktree: &Path, base: &str) -> Option<String> {
+    let at = format!("{base}^{{commit}}");
+    match git(worktree, &["rev-parse", "--verify", "--quiet", &at]).await {
+        Some(out) if out.status.success() => {}
+        Some(_) => {
+            return Some(format!(
+                "its base {base} is no ref this repository holds, so whether its commits landed \
+                 cannot be read"
+            ))
+        }
+        None => {
+            return Some(format!(
+                "git could not be asked whether its base {base} is a ref this repository holds"
+            ))
+        }
+    }
+    match git(worktree, &["cherry", base, "HEAD"]).await {
+        Some(out) if out.status.success() => {
+            let listed = String::from_utf8_lossy(&out.stdout);
+            let missing: Vec<&str> = listed
+                .lines()
+                .filter_map(|l| l.strip_prefix("+ "))
+                .map(|sha| sha.get(..9).unwrap_or(sha))
+                .collect();
+            (!missing.is_empty()).then(|| {
+                format!(
+                    "{} commit(s) at its HEAD whose change is not in {base}: {}",
+                    missing.len(),
+                    named(&missing, COMMITS_NAMED)
+                )
+            })
+        }
         Some(out) => Some(format!(
-            "git would not count the commits at its HEAD on no remote ({})",
+            "git would not compare its commits with {base} ({})",
             stderr_brief(&out)
         )),
-        None => Some("git could not be asked which commits at its HEAD are on no remote".into()),
+        None => Some(format!(
+            "git could not be asked which of its commits are in {base}"
+        )),
     }
 }

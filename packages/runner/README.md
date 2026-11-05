@@ -138,9 +138,11 @@ names the pane's own project when it refuses another. `--role` names the role th
 run is dispatched as: core admits a `qa` or `reviewer` run over closed issues untaken,
 refuses any other role a closed issue, and the box refuses a dispatch of another role onto it.
 `--worktree` names a tree that already stands, which the run adopts: no close, release or reaper
-removes it, and `run close` says so. With `--cut <branch>` (and `--from <ref>`) the box cuts the
-tree from the master's checkout instead, and the release after the run ends removes it unless it
-holds uncommitted files or commits on no remote, which keep it, named (ISS-1016).
+removes it, and `run close` says so. With `--cut <branch>` the box cuts the tree from the master's
+checkout instead, from `--from <ref>` or `origin`'s default branch, and records that ref as the
+tree's base. The release after the run ends removes it once every commit's change is in the base
+(`git cherry`, so a rebase landing counts), and keeps it, named, while it holds uncommitted files,
+an unlanded commit, or a base it cannot read (ISS-1016).
 
 ### A chat session's credential
 
