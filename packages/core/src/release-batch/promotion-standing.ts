@@ -2,7 +2,7 @@
 // promotion, open or merged and not yet released — read off the projection, so a draft pairs with the
 // request under review. No read here reaches the host.
 
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, not, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -25,8 +25,22 @@ const unreleased = sql`not exists (
      and ${pipelineRuns.status} in ('completed', 'failed'))`;
 
 /**
+ * A merged request production already serves: a release of this project shipped to production at or
+ * after its merge, whether or not that release's record pinned it (ISS-1001, adminhub-fe: !2070
+ * merged 2026-10-31 and shipped in 0.55.0 that day, whose record named no request, and the draft 0.56.0
+ * still showed it as its own). A landing recorded on another branch puts nothing in production.
+ */
+const shippedSince = (projectId: string, to: string) => sql`exists (
+  select 1 from ${pipelineRuns}
+   where ${pipelineRuns.projectId} = ${projectId}
+     and ${pipelineRuns.releaseReleasedAt} >= ${repoPullRequests.mergedAt}
+     and not (coalesce(${pipelineRuns.metadata} ->> 'verification', '') = 'landed'
+              and coalesce(${pipelineRuns.metadata} ->> 'branch', '') <> ${to}))`;
+
+/**
  * The requests into the branch production deploys from that a release may be: open ones, and merged
- * ones no release has taken, as the projection holds them, open first then newest. A request's head may
+ * ones no release has taken and production has not shipped since, as the projection holds them, open
+ * first then newest. A request's head may
  * be the promotion's source branch or one cut from it to pin a judged head (adminhub-fe !2055,
  * `promote/prod-2026-10-29`). Which roster issues it carries is the agent's statement at the cut, never
  * read here: nothing in this module asks the host (VISION: state-never-lies, owner ruling 2026-10-29).
@@ -41,7 +55,11 @@ export async function requestsAcross(projectId: string, across: Across) {
         eq(repoPullRequests.baseRef, across.to),
         or(
           eq(repoPullRequests.state, 'open'),
-          and(eq(repoPullRequests.state, 'merged'), unreleased),
+          and(
+            eq(repoPullRequests.state, 'merged'),
+            unreleased,
+            not(shippedSince(projectId, across.to)),
+          ),
         ),
       ),
     )

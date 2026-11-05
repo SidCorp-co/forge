@@ -15,19 +15,26 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
 import { admitChangeRequestMerge } from '../../src/release-batch/change-request-merge.js';
-import { api, userToken } from '../helpers/api.js';
+import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
-import {
-  addProjectMember,
-  createTestProject,
-  createTestUser,
-  seedIssueStatus,
-  truncateAll,
-} from '../helpers/factories.js';
 import { underStrict } from '../helpers/project-controls.js';
-import { declareGate, seedProjectDocument } from '../helpers/release-world.js';
+import {
+  call,
+  codeOf,
+  DEPLOYED,
+  EXTERNAL,
+  HEAD,
+  landedIssues,
+  MERGE,
+  PROD,
+  promotionRequest,
+  rows,
+  STG,
+  seedPromotionWorld,
+  world,
+} from '../helpers/promotion-world.js';
+import { declareGate } from '../helpers/release-world.js';
 
 const planted = vi.hoisted(() => ({
   compares: 0,
@@ -53,99 +60,11 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
   }),
 }));
 
-const STG = 'release/stg';
-const PROD = 'release/production';
-const HEAD = 'a1'.repeat(20);
-const MERGE = 'b2'.repeat(20);
-const DEPLOYED = 'c3'.repeat(20);
-const LANDED = ['d4'.repeat(20), 'e5'.repeat(20)];
-const NOTE = { section: 'Added', title: 'Site writes', userFacing: 'A site writes through.' };
-
-const world = { projectId: '', ownerId: '', token: '', bindingId: '' };
-const rows = async <T>(q: ReturnType<typeof sql>) => [...(await db.execute(q))] as T[];
-const call = (method: 'GET' | 'POST', path: string, body?: unknown) =>
-  api(world.token, method, `/api/projects/${world.projectId}${path}`, body);
-const codeOf = (body: unknown) => {
-  const b = body as { error?: { code?: string; refusals?: Array<{ code: string }> } };
-  return b.error?.refusals?.[0]?.code ?? b.error?.code ?? null;
-};
-
 async function seed(environment: Record<string, unknown>) {
-  await truncateAll();
   planted.compares = 0;
   planted.checks = [];
   planted.askedAbout = [];
-  world.ownerId = (await createTestUser({ verified: true })).id;
-  world.projectId = (await createTestProject(world.ownerId)).id;
-  await addProjectMember(world.projectId, world.ownerId, 'admin');
-  world.token = await userToken(world.ownerId);
-  await seedProjectDocument(world.projectId, world.ownerId, {
-    environments: { production: environment as never },
-    promotions: [{ from: STG, to: PROD, via: 'merge' } as never],
-    defaultBranch: STG,
-    source: {
-      type: 'git',
-      git: {
-        repository: 'gitlab.com/acme/adminhub-api',
-        defaultBranch: STG,
-        branches: [STG, PROD],
-      },
-    },
-    extra: { delivery: { verdictsRequired: false } } as never,
-  });
-  const connectionId = randomUUID();
-  world.bindingId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-    VALUES (${connectionId}, 'user', ${world.ownerId}, 'gitlab', true)`);
-  await db.execute(sql`
-    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
-    VALUES (${world.bindingId}, ${connectionId}, ${world.projectId}, 'gitlab', 'source', true,
-            ${JSON.stringify({ repository: 'acme/adminhub-api' })}::jsonb)`);
-}
-
-const EXTERNAL = {
-  tier: 'production',
-  deploysFrom: PROD,
-  deployment: { mode: 'external' },
-  url: 'https://adminhub-api.example.test',
-};
-
-/** Issues whose merge requests already merged into release/stg, waiting at the release gate. */
-async function landedIssues(shas: readonly string[] = LANDED, after = 0): Promise<string[]> {
-  const ids: string[] = [];
-  for (const [n, sha] of shas.entries()) {
-    const id = randomUUID();
-    await db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes,
-                          merged_at, merged_commit_sha, merged_target)
-      VALUES (${id}, ${world.projectId}, ${after + n + 1}, ${`issue ${after + n + 1}`}, 'in_progress', ${world.ownerId},
-              ${JSON.stringify(NOTE)}::jsonb, now() - interval '1 hour', ${sha}, ${STG})`);
-    await seedIssueStatus(id, 'awaiting_release');
-    ids.push(id);
-  }
-  return ids;
-}
-
-/** The promotion merge request as GitLab's hook writes it into the projection. */
-async function promotionRequest(number: number, head: string, from = STG, into = PROD) {
-  await applyPullRequestEvent(
-    { projectId: world.projectId, bindingId: world.bindingId, host: 'gitlab' },
-    {
-      action: 'open',
-      pull_request: {
-        number,
-        title: 'Promote release/stg to production',
-        body: null,
-        html_url: `https://gitlab.com/acme/adminhub-api/-/merge_requests/${number}`,
-        state: 'open',
-        head: { ref: from, sha: head },
-        base: { ref: into, sha: 'f'.repeat(40) },
-        updated_at: new Date().toISOString(),
-      },
-      repository: { full_name: 'acme/adminhub-api' },
-    },
-  );
+  await seedPromotionWorld(environment);
 }
 
 /** GitLab's merge of the request, done by the owner on GitLab, as the projection reads it. */
