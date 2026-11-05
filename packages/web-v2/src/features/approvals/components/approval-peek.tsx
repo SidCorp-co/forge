@@ -193,7 +193,7 @@ function Reasons({ d }: { d: NeedsYouDecision }) {
 
 
 /** The asker's plain text the person decides from, or the plain word that it wrote none (ISS-1006). */
-export function PlainText({ plain }: { plain: string | null }) {
+function PlainText({ plain }: { plain: string | null }) {
   const t = useCopy();
   return plain ? (
     <p className="whitespace-pre-line text-15 leading-relaxed text-fg" data-testid="approval-peek-plain">
@@ -243,7 +243,7 @@ function Technical({ d, slug }: { d: NeedsYouDecision; slug: string }) {
 }
 
 /** A decision an agent writes plain text for: a question, where its asker's text is read or its absence said. */
-export const decidedFromPlain = (d: NeedsYouDecision): d is NeedsYouDecision & { plain: string | null } => d.plain !== undefined;
+const decidedFromPlain = (d: NeedsYouDecision): d is NeedsYouDecision & { plain: string | null } => d.plain !== undefined;
 
 interface PeekProps {
   d: NeedsYouDecision;

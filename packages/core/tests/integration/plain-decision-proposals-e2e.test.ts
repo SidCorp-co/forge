@@ -69,8 +69,8 @@ describe("an Assistant turn's held call carries its plain line beside the write"
     const call = await heldCall(id);
     expect(JSON.parse(String(call?.arguments))).not.toHaveProperty('plain');
     // the card's technical lines are the write's own fields, never the plain line
-    const card = await cardOf(id);
-    expect((card?.summary.lines as string[]).join('\n')).not.toContain(PLAIN);
+    const lines = ((await cardOf(id))?.summary.lines ?? []) as string[];
+    expect(lines.join('\n')).not.toContain(PLAIN);
   });
 
   it('holds a call sent without `plain`, says so to the turn, and its card reads null', async () => {

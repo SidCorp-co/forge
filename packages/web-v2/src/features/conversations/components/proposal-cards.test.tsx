@@ -189,7 +189,7 @@ describe("the person decides from the agent's plain line (ISS-1006)", () => {
   it("says plainly that the agent wrote no line, and is still decided from its buttons", async () => {
     listing(proposal({ summary: { ...RAW, plain: null } }));
     renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
-    expect((await screen.findByTestId("proposal-no-plain")).textContent).toBe("The agent wrote no summary");
+    expect((await screen.findByTestId("proposal-no-plain")).textContent).toBe("No summary");
     expect(screen.getByRole("button", { name: "Record it" })).toBeTruthy();
   });
 

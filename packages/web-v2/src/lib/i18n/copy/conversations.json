@@ -196,7 +196,7 @@
     "conversations.refused.unarchive": "Couldn't unarchive",
     "conversations.refused.unpin": "Couldn't unpin",
     "conversations.proposal.technical": "Technical",
-    "conversations.proposal.noPlain": "The agent wrote no summary",
+    "conversations.proposal.noPlain": "No summary",
     "conversations.proposal.fold": "Fold the card",
     "conversations.proposal.unfold": "Unfold the card"
   },
@@ -324,7 +324,7 @@
     "conversations.ui.undo": "Hoàn tác",
     "conversations.ui.undone": "Đã hoàn tác",
     "conversations.proposal.technical": "Kỹ thuật",
-    "conversations.proposal.noPlain": "Agent chưa viết tóm tắt",
+    "conversations.proposal.noPlain": "Chưa có tóm tắt",
     "conversations.proposal.fold": "Thu gọn thẻ",
     "conversations.proposal.unfold": "Mở thẻ"
   }

@@ -114,12 +114,12 @@
     "approvals.cmd.topic": "Only {topic}",
     "approvals.cmd.allTopics": "Every topic",
     "approvals.peek.technical": "Technical",
-    "approvals.peek.noPlain": "The agent wrote no summary",
+    "approvals.peek.noPlain": "No summary",
     "approvals.peek.effects": "What each answer does"
   },
   "vi": {
     "approvals.peek.technical": "Kỹ thuật",
-    "approvals.peek.noPlain": "Agent chưa viết tóm tắt",
+    "approvals.peek.noPlain": "Chưa có tóm tắt",
     "approvals.peek.effects": "Mỗi lựa chọn làm gì"
   }
 }

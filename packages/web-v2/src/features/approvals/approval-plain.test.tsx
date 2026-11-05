@@ -117,7 +117,7 @@ describe("the owner's question is decided from the plain text alone", () => {
 
   it("says the agent wrote no summary where it wrote none, and the buttons still decide it", () => {
     const panel = drawPeek(owners(null));
-    expect(within(panel).getByTestId("approval-peek-no-plain").textContent).toBe("The agent wrote no summary");
+    expect(within(panel).getByTestId("approval-peek-no-plain").textContent).toBe("No summary");
     expect(within(panel).getAllByTestId("approval-peek-answer")).toHaveLength(4);
   });
 
@@ -145,6 +145,6 @@ describe("the Approvals row reads the plain text too", () => {
 
   it("says the agent wrote no summary where it wrote none", () => {
     drawRow(owners(null));
-    expect(screen.getByTestId("approval-row-no-plain").textContent).toBe("The agent wrote no summary");
+    expect(screen.getByTestId("approval-row-no-plain").textContent).toBe("No summary");
   });
 });
