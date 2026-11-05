@@ -44,13 +44,19 @@ export function WhatUsersSee({ page }: { page: ReleasePage }) {
   );
 }
 
-/** What the decider must weigh, each in one line: the steps before it goes out, what it removes, what is unproven or failing. */
-export function attentionOf(page: ReleasePage, t: Copy): { key: string; text: string }[] {
+/**
+ * What the decider must weigh, each in one line: that the master records it rather than cutting it,
+ * the steps before it goes out, what it removes, what is unproven or failing. A line's `detail` opens
+ * on demand, never inline.
+ */
+export function attentionOf(page: ReleasePage, t: Copy): { key: string; text: string; detail?: string }[] {
   const proof = releaseProofOf(page.header.verified);
   const unproven = unprovenOf(proof);
   const removed = removedLines(page);
   const failing = page.header.shippedFailing?.count ?? 0;
   return [
+    // NO_RELEASE_GATE, named: no production is declared, so nothing cuts this release (ISS-1019)
+    ...(page.header.recordedNotCut ? [{ key: "recorded", text: t("releases.attention.recorded"), detail: t("releases.attention.recordedDetail") }] : []),
     ...page.actionRequired.map((a, i) => ({ key: `step:${i}`, text: a.sentence })),
     ...(removed.length > 0 ? [{ key: "removed", text: t("releases.attention.removed", { list: removed.join(", ") }) }] : []),
     ...(proof && unproven > 0
@@ -79,7 +85,7 @@ export function NeedsAttention({ page }: { page: ReleasePage }) {
         {items.map((a) => (
           <li key={a.key} className="flex items-baseline gap-2.5 border-t border-line-subtle py-2 text-14 text-fg" data-testid="page-attention-item" data-kind={a.key.split(":")[0]}>
             <i aria-hidden className="inline-block size-2 flex-none rounded-full bg-warn-9" />
-            <span>{a.text}</span>
+            <span title={a.detail}>{a.text}</span>
           </li>
         ))}
       </ul>

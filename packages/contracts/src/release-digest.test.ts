@@ -29,6 +29,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 			},
 			approval: { required: false, state: "not_asked", by: null, at: null },
 			shippedFailing: null,
+			recordedNotCut: false,
 		},
 		highlights: { state: "none", why: "no build" },
 		requirements: [],

@@ -88,7 +88,12 @@ const gate = (code: string): ReleaseGateView => ({
   says: { title: verbatim(code), sentence: verbatim(code) },
 });
 
-function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft'): Part {
+function part(
+  n: number,
+  gates: ReleaseGateView[],
+  state: Part['state'] = 'draft',
+  draftDecidable = false,
+): Part {
   return {
     version: '0.1.0',
     runId: null,
@@ -110,13 +115,13 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     shippedFailing: null,
     tag: null,
     draftApproval: null,
+    draftDecidable,
   };
 }
 
 const shared = (n: number, isAdmin = true): Shared => ({
   projectId: 'p1',
   ownerDeploys: false,
-  draftsDecided: false,
   current: null,
   required: false,
   viewer: { userId: 'u1', agency: 'human', isAdmin, mayApprove: isAdmin },
@@ -157,6 +162,21 @@ describe('splitting an oversize draft', () => {
     const s = summaryOf(part(3, []), shared(3));
     expect(s.can).toMatchObject({ cut: true, split: false });
     expect(s.split).toBeNull();
+  });
+});
+
+describe('the decision a draft offers (ISS-1019)', () => {
+  const N = 2;
+  it('offers an approver the decision only where the draft itself is decidable', () => {
+    const recorded = part(N, [gate('NO_RELEASE_GATE')], 'draft', true);
+    expect(summaryOf(recorded, shared(N)).can.decide).toBe(true);
+    expect(summaryOf(part(N, [gate('NO_RELEASE_GATE')]), shared(N)).can.decide).toBe(false);
+  });
+
+  it('offers it to nobody who may not approve, whatever the draft', () => {
+    expect(
+      summaryOf(part(N, [gate('NO_RELEASE_GATE')], 'draft', true), shared(N, false)).can.decide,
+    ).toBe(false);
   });
 });
 

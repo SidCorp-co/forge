@@ -35,6 +35,7 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				at: "2026-10-09T09:00:00.000Z",
 			},
 			shippedFailing: null,
+			recordedNotCut: false,
 		},
 		highlights: {
 			state: "drafted",

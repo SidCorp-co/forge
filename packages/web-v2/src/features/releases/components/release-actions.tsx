@@ -19,6 +19,20 @@ const DECIDE_WITH_REASON: Record<Decided, { opens: CopyKey; why: CopyKey; placeh
 /** What a decision is taken on: a run's pending request, or a draft by its version (ISS-869). */
 type Target = { runId: string; approvalId: string } | { version: string };
 
+/**
+ * A draft is decided only where its master records it rather than cutting it (`can.decide`, from
+ * core's `draftDecisionRefusal`): its approval agrees to that record, and says so (ISS-1019).
+ */
+const APPROVE_RECORD: (typeof DECIDE_WITH_REASON)[Decided] = {
+  ...DECIDE_WITH_REASON.approve,
+  opens: "releases.approveRecord",
+  why: "releases.whyRecord",
+  submit: "releases.approveRecord",
+};
+
+const wordingOf = (target: Target, decision: Decided) =>
+  "version" in target && decision === "approve" ? APPROVE_RECORD : DECIDE_WITH_REASON[decision];
+
 function useDecide(projectId: string, target: Target) {
   const onRun = useReleaseDecision(projectId);
   const onDraft = useDraftDecision(projectId);
@@ -49,7 +63,7 @@ function DecideWithReason({ projectId, target, decision }: { projectId: string; 
   const [reason, setReason] = useState("");
   const [carry, setCarry] = useState(false);
   const [carryWhy, setCarryWhy] = useState("");
-  const c = DECIDE_WITH_REASON[decision];
+  const c = wordingOf(target, decision);
   const mayCarry = decision === "approve" && (carry || refusedOnlyOnUnproven(decide.error));
   const carrying = mayCarry && carry;
   return (

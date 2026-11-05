@@ -26,7 +26,7 @@ import {
   releaseVerifiedBy,
   resolveReleaseChannels,
 } from './channel.js';
-import { draftNotApprovableWhy, standingDraftApproval } from './draft-approval.js';
+import { draftDecisionRefusal, standingDraftApproval } from './draft-approval.js';
 import { draftVersionOf } from './draft-version.js';
 import { readEndedRunHolds } from './ended-claims.js';
 
@@ -82,9 +82,10 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
     holderNames('project.admin', projectId),
   ]);
   const version = draftVersionOf(decision);
-  const [naming, draftApproval] = await Promise.all([
+  const [naming, draftApproval, refused] = await Promise.all([
     draftNaming(projectId, version),
     standingDraftApproval(projectId, version, ids),
+    draftDecisionRefusal(projectId, version),
   ]);
   return {
     recutOf: 'recutOf' in decision ? decision.recutOf.id : null,
@@ -109,6 +110,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       unapproved: null,
       tag: null,
       draftApproval,
+      draftDecidable: refused === null,
     },
   };
 }
@@ -187,6 +189,7 @@ function runPart(
     unapproved: unapprovedOf(run.metadata),
     tag: releaseTagOf(run.metadata),
     draftApproval: null,
+    draftDecidable: false,
     corrections: correctionsIn(run.metadata),
   };
 }
@@ -237,7 +240,7 @@ async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language, channels, changeRequestLinks, doc, draftsNot] =
+  const [facts, approvers, admins, language, channels, changeRequestLinks, doc] =
     await Promise.all([
       loadReleaseFacts(
         projectId,
@@ -253,12 +256,10 @@ async function sharedFor(
         parts.flatMap((p) => p.issueIds),
       ),
       readProjectDocument(projectId),
-      draftNotApprovableWhy(projectId),
     ]);
   return {
     projectId,
     ownerDeploys: releaseThroughChangeRequests(doc?.document),
-    draftsDecided: draftsNot === null,
     current,
     required,
     viewer,

@@ -71,7 +71,17 @@ export function headerOf(detail: ReleaseDetail): ReleasePageHeader {
     verified: detail.verified,
     approval: approvalOf(detail),
     shippedFailing: detail.shippedFailing,
+    recordedNotCut: recordedNotCut(detail),
   };
+}
+
+/**
+ * Whether the release is a draft its master records rather than cuts: its gate stands at
+ * NO_RELEASE_GATE, the project declaring no production (`release-batch/blockers.ts`), so the page
+ * names that blocker beside what the decider weighs (ISS-1019).
+ */
+export function recordedNotCut(detail: Pick<ReleaseDetail, 'state' | 'gates'>): boolean {
+  return detail.state === 'draft' && detail.gates.some((g) => g.code === 'NO_RELEASE_GATE');
 }
 
 const isWhatsNewSection = (s: string): s is WhatsNewSection =>

@@ -581,6 +581,11 @@ export interface ReleasePageHeader {
 	approval: ReleasePageApproval;
 	/** What a recorded landing shipped failing, said loud to every reader (REQ-45 BC-14); null where nothing did. */
 	shippedFailing: ReleaseShippedFailing | null;
+	/**
+	 * A draft its master records rather than cuts: the project declares no production, so the gate
+	 * stands at NO_RELEASE_GATE and no run is cut (ISS-1019). False on every release cut as a run.
+	 */
+	recordedNotCut: boolean;
 }
 
 /**
@@ -919,6 +924,8 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			})
 			.nullable()
 			.default(null),
+		// a share frozen before a draft said it is recorded, not cut, reads as cut (ISS-1019)
+		recordedNotCut: z.boolean().default(false),
 	}),
 	highlights: ReleaseHighlightsSchema,
 	requirements: z.array(

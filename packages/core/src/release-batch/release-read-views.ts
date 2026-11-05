@@ -80,14 +80,14 @@ export interface Part {
   tag: ReleaseTag | null;
   /** A listed approver's standing decision on the draft, by its version (`draft-approval.ts`); null elsewhere. */
   draftApproval: ReleaseDraftApprovalView | null;
+  /** Whether a decision on this draft is taken (`draft-approval.ts:draftDecisionRefusal`); false on a cut run. */
+  draftDecidable: boolean;
 }
 
 export interface Shared {
   projectId: string;
   /** The project releases by merging its change requests and its owner deploys, so a release ends at its last merge (REQ-71 BC-6). */
   ownerDeploys: boolean;
-  /** The project declares no production, so its draft is what a listed approver decides (ISS-869). */
-  draftsDecided: boolean;
   current: string | null;
   required: boolean;
   viewer: ViewerFacts | null;
@@ -335,7 +335,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
         !p.gates.some((g) => g.kind === 'blocker'),
       decide:
         s.viewer?.mayApprove === true &&
-        (p.state === 'draft' ? s.draftsDecided : approvalFacts(p)?.decision === null),
+        (p.state === 'draft' ? p.draftDecidable : approvalFacts(p)?.decision === null),
       split: split !== null,
     },
     split,
