@@ -8,6 +8,7 @@
  * @direct-test-of packages/core/src/release-batch/release-view.ts
  * @direct-test-of packages/core/src/development/needs-you-approve-builders.ts
  * @direct-test-of packages/contracts/src/needs-you-decisions.ts
+ * @direct-test-of packages/core/src/issues/release-evidence.ts
  */
 
 import { sql } from 'drizzle-orm';
