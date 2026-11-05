@@ -386,7 +386,12 @@ export async function recordRange(args: {
       '/files',
     );
   }
-  const outside = await readOutsideLandings(args.projectId, args.runId, report.base, report.head);
+  const outside = await readOutsideLandings(
+    args.projectId,
+    { runId: args.runId },
+    report.base,
+    report.head,
+  );
   if (outside.carried.length > 0) {
     throw refuseRelease(
       'RELEASE_RANGE_OUTSIDE_ROSTER',

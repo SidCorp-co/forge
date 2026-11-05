@@ -35,6 +35,7 @@ import {
   queuedBehindHold,
   type ReleaseHold,
   refusalHold,
+  releaseHoldsOf,
   runtimeUnroutedHold,
   targetUndeclaredHold,
   writeReleaseHolds,
@@ -50,6 +51,7 @@ import {
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 import { shippedInHold, shippedInOwed } from './shipped-in.js';
+import { headCarriesHeldHold, readSweepRange } from './sweep-head.js';
 import { clearAnsweredQuestionHolds } from './unclosed-hold.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
@@ -68,6 +70,8 @@ export interface AutomaticReleaseSweepResult {
   shippedInOwed: number;
   /** How many gate issues a release run that ended still claims, so no roster carries them (ISS-961). */
   endedRunClaims: number;
+  /** How many eligible issues wait because the head production builds carries a held one (ISS-968). */
+  issuesWaiting: number;
 }
 
 interface CandidateRow {
@@ -289,6 +293,36 @@ async function weighWaiting(
   return eligible;
 }
 
+/**
+ * Whether the cut waits because the head production builds already carries a gate issue held outside
+ * its roster (ISS-968): a cut then aborts at its range report, so each issue it would have carried is
+ * held naming that issue, once while the wait stands. A landing nobody could place is named and the
+ * cut goes on: the range check reads it again at the run's report.
+ */
+async function waitsOnCarried(projectId: string, eligible: string[], base: Base): Promise<boolean> {
+  const range = await readSweepRange(projectId, eligible);
+  if (range.carried.length === 0 || !range.head || 'why' in range.head) {
+    if (range.unchecked.length > 0) {
+      logger.warn(
+        { projectId, unchecked: range.unchecked },
+        'release-sweep: cutting with gate issues outside the roster nobody could place under the head',
+      );
+    }
+    return false;
+  }
+  const holds = await releaseHoldsOf(range.carried.map((i) => i.id));
+  const reason = headCarriesHeldHold({
+    projectId,
+    head: range.head,
+    carried: range.carried,
+    holds,
+    owes: await holdOwer(projectId),
+  });
+  await holdAlike({ ...base, issueIds: eligible }, reason);
+  base.result.issuesWaiting += eligible.length;
+  return true;
+}
+
 async function sweepProject(
   projectId: string,
   result: AutomaticReleaseSweepResult,
@@ -344,6 +378,8 @@ async function sweepProject(
     return;
   }
 
+  if (await waitsOnCarried(projectId, eligible, base)) return;
+
   const outcome = await cutWaitingRelease({ projectId, userId: owner, issueIds: eligible });
   // One release carries at most the oldest RELEASE_ROSTER_LIMIT; the rest were never sent.
   const named = new Set(outcome.named);
@@ -383,6 +419,7 @@ export async function sweepAutomaticReleases(
     holdsWritten: 0,
     shippedInOwed: 0,
     endedRunClaims: 0,
+    issuesWaiting: 0,
   };
   await clearStaleReleaseHolds();
   const projectIds = await candidateProjectIds(now);

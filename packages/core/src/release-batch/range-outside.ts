@@ -18,7 +18,7 @@
 // over, and an issue held out of it (ISS-144 was held for the next draft) has passed none of them.
 
 import type { ReleaseRangeUnchecked } from '@forge/contracts/release-page';
-import { and, eq, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, isNull, ne, notInArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/index.js';
@@ -96,32 +96,68 @@ export async function placeOutside(
   return read;
 }
 
-/** The gate issues of `projectId` the release run `runId` does not claim, oldest landing first. */
-export async function outsideGateIssues(projectId: string, runId: string): Promise<OutsideIssue[]> {
+/**
+ * The roster a reading is taken outside of: the issues a release run claims, or, before any run
+ * claims them, the ones the release sweep is about to cut (ISS-968).
+ */
+export type RangeRoster = { runId: string } | { issueIds: readonly string[] };
+
+/** The gate issues of `projectId` outside `roster`, oldest landing first. */
+export async function outsideGateIssues(
+  projectId: string,
+  roster: RangeRoster,
+): Promise<OutsideIssue[]> {
+  const outside =
+    'runId' in roster
+      ? or(isNull(issues.releaseBatchRunId), ne(issues.releaseBatchRunId, roster.runId))
+      : roster.issueIds.length === 0
+        ? undefined
+        : notInArray(issues.id, [...roster.issueIds]);
   const rows = await db
     .select({ id: issues.id, commit: issues.mergedCommitSha })
     .from(issues)
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        eq(issues.status, RELEASE_GATE_STATUS),
-        or(isNull(issues.releaseBatchRunId), ne(issues.releaseBatchRunId, runId)),
-      ),
-    )
+    .where(and(eq(issues.projectId, projectId), eq(issues.status, RELEASE_GATE_STATUS), outside))
     .orderBy(issues.mergedAt, issues.id);
   const keys = await issueDisplayIds(rows.map((r) => r.id));
   return rows.map((r) => ({ id: r.id, key: keys.get(r.id) ?? r.id, commit: r.commit }));
 }
 
-/** What `head` carries of the gate outside the roster of `runId`, read by the project's ancestry. */
+/**
+ * What `head` carries of the gate outside `roster`, read by the project's ancestry: the one rule both
+ * the run's range report (`shipped-range.ts:recordRange`) and the sweep before its cut
+ * (`sweep-head.ts:readSweepRange`) answer by.
+ */
 export async function readOutsideLandings(
   projectId: string,
-  runId: string,
+  roster: RangeRoster,
   base: string | null,
-  head: string,
+  head: string | { why: string },
 ): Promise<OutsideRead> {
-  const outside = await outsideGateIssues(projectId, runId);
+  return placeOutsideOf(projectId, await outsideGateIssues(projectId, roster), base, head);
+}
+
+/**
+ * `placeOutside` asked through the project's ancestry reader. A head nobody could read places
+ * nothing: each issue is unchecked, naming why.
+ */
+export async function placeOutsideOf(
+  projectId: string,
+  outside: readonly OutsideIssue[],
+  base: string | null,
+  head: string | { why: string },
+): Promise<OutsideRead> {
   if (outside.length === 0) return { carried: [], unchecked: [] };
+  if (typeof head !== 'string') {
+    const why = `the head it would ship under could not be read: ${head.why}`;
+    return {
+      carried: [],
+      unchecked: outside.map((i) => ({
+        issueKey: i.key,
+        commit: i.commit,
+        why: i.commit ? why : 'its merge names no commit',
+      })),
+    };
+  }
   const source = await ancestrySourceFor(projectId);
   const ask = source.kind === 'none' ? { why: source.why } : source.reader.ask.bind(source.reader);
   return placeOutside(outside, base, head, ask);
