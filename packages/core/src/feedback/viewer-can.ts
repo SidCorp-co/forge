@@ -9,6 +9,11 @@ import { holds, masterFactsOf } from '../permissions/index.js';
 import { personGateOf } from '../project-config/index.js';
 import type { StandingViewer } from './standing.js';
 
+/** What the project's `approvals.triage` asks of whoever routes an item on `projectId`. */
+export async function routeAsksOf(projectId: string): Promise<ProjectPermission> {
+  return (await personGateOf(projectId, 'triage')).permission;
+}
+
 /** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
 export type ViewerCan = Omit<StandingViewer, 'isReporter'>;
 
@@ -31,9 +36,9 @@ export async function viewerCanIn(
   viewer: { userId: string; agency: ActorAgency },
   projectId: string,
 ): Promise<ViewerCan> {
-  const [facts, gate] = await Promise.all([
+  const [facts, routeAsks] = await Promise.all([
     masterFactsOf(viewer.userId, projectId, viewer.agency),
-    personGateOf(projectId, 'triage'),
+    routeAsksOf(projectId),
   ]);
-  return viewerCanOf(facts, gate.permission);
+  return viewerCanOf(facts, routeAsks);
 }

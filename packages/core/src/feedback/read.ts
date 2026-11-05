@@ -24,7 +24,6 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { holds, masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
-import { personGateOf } from '../project-config/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { confirmWaitsOf } from './confirm-wait-read.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
@@ -38,7 +37,7 @@ import { productsOfAccounts } from './server-keys.js';
 import { shipNoticeOf } from './ship-notice.js';
 import { clarificationViewOf } from './told.js';
 import { recordCheckOf, verifyHeldOf } from './verify-window.js';
-import { viewerCanOf } from './viewer-can.js';
+import { routeAsksOf, viewerCanOf } from './viewer-can.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -248,7 +247,7 @@ export async function detailAs(
     messages,
     mergedAttachments,
     occurrences,
-    routeGate,
+    routeAsks,
   ] = await Promise.all([
     dataPolicyOf(projectId),
     // the master's grant read in, so `can` says what its doors take (REQ-79 r6 BC-11)
@@ -285,9 +284,8 @@ export async function detailAs(
       .orderBy(asc(feedbackAttachments.createdAt)),
     occurrencesOf(row),
     // who routes the item: the project's approvals.triage (ISS-639)
-    personGateOf(projectId, 'triage'),
+    routeAsksOf(projectId),
   ]);
-  const routeAsks = routeGate.permission;
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const summary = summaryOf(row, linked, viewer, withhold, viewerCanOf(facts, routeAsks));
   const phase = summary.phase;
