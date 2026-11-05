@@ -35,6 +35,8 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | Block | What it is |
 |---|---|
 | `GroupedList` | records grouped by where they stand, with folded groups and fixed columns |
+| `GroupHeader` + `GROUP_ROW_INDENT` | a group's header in any grouped list, and the indent of the rows under it (see Grouping) |
+| `TimelineFrame` / `TimelineHead` / `TimelineRow` / `TimelineTrack` / `TimelineMark` / `TimelineLegend` | lanes on one time axis: runs as bars, marks a page places (a numbered circle, a diamond, a pin) that open its popover |
 | `RowList` / `RowItem` | a flush list: lead, title, facts, trailing; a hairline between items |
 | `Section` | a flush heading, an act at its right, and a body. Never a card |
 | `PropertyList` / `Property` | label and value rows in a main column |
@@ -56,6 +58,15 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | `focusOnMount` | the ref callback for a field an act opens ready to type in, in place of `autoFocus` |
 | `graph-canvas.css` | the skin every React Flow picture shares (the workflow canvas, the module map): import it beside the canvas |
 | `RecordViewSwitch` + `useRecordView` | a record page's two readings, the person's state and the developer's agent text, in `?view=` (REQ-43 BC-7) |
+
+## Grouping
+
+Grouped data reads as a hierarchy, and stays flat (owner ruling `owner-2026-11-05-group-hierarchy`):
+
+- Every group header is `GroupHeader`: a dot in the group's tone, a semibold label one step larger than its rows at full contrast, and its count as a small pill. A group that needs the person (tone `you`) takes amber.
+- Its fold is a thin chevron after the count. It shows on hover or keyboard focus, and stays shown, turned, while the group is folded. Never a filled triangle before the label.
+- The rows under it start under its label, 32px in (`GROUP_ROW_INDENT`), and so does a column header over them.
+- No box and no tinted band: hierarchy comes from type, colour and the indent. A list that groups builds on `GroupedList` or the timeline's lanes, never a header of its own.
 
 ## Hooks
 

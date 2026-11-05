@@ -11,6 +11,7 @@ import { useCopy, useCopyLocale, useInterfaceLanguage } from "@/lib/i18n/interfa
 import { issueHref } from "@/lib/routes/issues";
 import { formatAge } from "@/lib/utils/format";
 import { useProjectRecent } from "../hooks";
+import { answerHref } from "./marks";
 import { Doing, PaneMark } from "./pane";
 
 /** Shipped (solid) over shipped-or-awaiting (lighter), and `shipped/total`; the scope's name on hover. */
@@ -185,11 +186,11 @@ export function ActivityPeek({ row, orgId, peek, full, now }: { row: OrgActivity
           <RowList label={t("activity.col.people")}>
             {row.people.items.map((d) => (
               <RowItem
-                key={`${d.group}:${d.key ?? ""}:${d.title}`}
-                rowKey={d.key ?? d.title}
+                key={d.decisionId}
+                rowKey={d.decisionId}
                 title={d.title}
                 tip={d.key ? `${d.key} · ${d.title}` : d.title}
-                href={`${full.href}/approvals`}
+                href={answerHref(row.slug, d)}
                 trailing={<span className="text-12 font-medium" style={{ color: LEGEND.you.fg }}>{t(`activity.people.${d.group}`)}</span>}
               />
             ))}

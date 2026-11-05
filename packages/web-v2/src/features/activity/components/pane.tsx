@@ -81,19 +81,19 @@ export function PaneMark({ master, now }: { master: OrgActivityMaster; now: numb
 }
 
 /**
- * The open pass's verb and the title of its issue, or the title of its newest run's issue, quieter; a
- * dash where neither stands. The issue's key is never text (ISS-951 round 4): it is the tooltip.
+ * The title of the issue the open pass or the newest run works on, quieter for a run; a dash where
+ * neither stands. Neither the issue's key nor the pass's verb is text (ISS-951 round 4, ISS-979: no
+ * internal jargon on the page): both are the tooltip.
  */
 export function Doing({ master }: { master: OrgActivityMaster }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const d = master.doing;
-  if (!d) return <span className="text-subtle">—</span>;
-  const tip = [d.kind === "run" ? t("activity.doing.run") : null, d.issueKey].filter(Boolean).join(" · ");
+  if (!d?.issueTitle) return <span className="text-subtle">—</span>;
+  const tip = [d.kind === "run" ? t("activity.doing.run") : d.verb ? enumLabel("masterVerb", d.verb, language) : null, d.issueKey].filter(Boolean).join(" · ");
   return (
-    <span className="inline-flex min-w-0 items-baseline gap-1.5 truncate text-13" data-testid="activity-doing" title={tip || undefined}>
-      {d.verb ? <span className="font-medium text-fg">{enumLabel("masterVerb", d.verb, language)}</span> : null}
-      {d.issueTitle ? <span className={cn("min-w-0 truncate text-12", d.kind === "run" ? "text-subtle" : "text-muted")}>{d.issueTitle}</span> : null}
+    <span className={cn("min-w-0 truncate text-13", d.kind === "run" ? "text-subtle" : "text-muted")} data-testid="activity-doing" title={tip || undefined}>
+      {d.issueTitle}
     </span>
   );
 }

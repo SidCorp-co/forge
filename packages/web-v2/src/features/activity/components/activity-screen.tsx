@@ -1,10 +1,11 @@
-// The workspace's Activity tab (ISS-951; MK-10 C, the timeline the owner chose): one lane per project
-// over its last two hours, grouped where core put it (Running · Idle with backlog · Waiting on a
-// person · Quiet), with its name and what it does on the left and its pane badge and how fresh that
-// is on the right. The strip filters it; a lane opens its peek for the rest (Now, Backlog, People, the
+// The workspace's Activity tab (ISS-951; ISS-979, the owner's mockup v3): one lane per project over
+// its last two hours, in core's groups (Waiting on you first, then Working, Idle, Paused, No master),
+// each group the shared hierarchy with its lanes indented under it. The chips filter by group and
+// count projects, the same unit as the groups; the switch shows batches of status moves or releases
+// only; the legend names each mark. A lane opens its peek for the rest (Now, Backlog, People, the
 // releases, Recent). The org's room keeps it live, and the last answer stays on screen while it reads again.
 
-import { ORG_ACTIVITY_GROUPS, type OrgActivity, type OrgActivityGroup, type OrgActivityProject } from "@forge/contracts/org-activity";
+import { ORG_ACTIVITY_GROUPS, type OrgActivity, type OrgActivityGroup } from "@forge/contracts/org-activity";
 import type { ReactNode } from "react";
 import {
   EmptyState,
@@ -14,6 +15,11 @@ import {
   ListToolbar,
   PageTitle,
   rememberListOrigin,
+  SegmentedControl,
+  TimelineGlyph,
+  TimelineLegend,
+  TimelineRunSwatch,
+  TopBarActions,
   useGroupFold,
   useNow,
   usePeek,
@@ -34,40 +40,54 @@ import { ActivityLanes, type LaneGroup } from "./lanes";
 export const ACTIVITY_LIST = "/activity";
 export const projectHref = (slug: string) => `/projects/${encodeURIComponent(slug)}`;
 
-const GROUP_TONE: Record<OrgActivityGroup, LegendTone> = { running: "run", idle: "ready", waiting: "you", quiet: "neutral" };
+/** Each group's tone: its dot, and amber for the one that needs the reader. */
+const GROUP_TONE: Record<OrgActivityGroup, LegendTone> = { you: "you", working: "run", idle: "blocked", paused: "neutral", none: "err" };
 
-/** The strip's filters: each names the rows it keeps and the total core counted for it. */
-const SHOWS = ["all", "running", "queued", "people", "release", "noMaster"] as const;
-type Show = (typeof SHOWS)[number];
+type Show = "all" | OrgActivityGroup;
+const SHOWS: readonly Show[] = ["all", ...ORG_ACTIVITY_GROUPS];
+type View = "batches" | "releases";
 
-const keeps: Record<Show, (p: OrgActivityProject) => boolean> = {
-  all: () => true,
-  running: (p) => p.group === "running",
-  queued: (p) => p.next.total > 0,
-  people: (p) => p.people.total > 0,
-  release: (p) => p.awaitingRelease > 0,
-  noMaster: (p) => p.master.state === "none",
-};
-
-const countOf = (totals: OrgActivity["totals"], show: Show): number =>
-  ({ all: totals.projects, running: totals.running, queued: totals.queued, people: totals.people, release: totals.awaitingRelease, noMaster: totals.noMaster })[show];
-
-const SHOW_TONE: Partial<Record<Show, LegendTone>> = { running: "run", people: "you", release: "ready" };
-
-function groupsOf(rows: OrgActivityProject[], t: Copy): LaneGroup[] {
-  return ORG_ACTIVITY_GROUPS.map((g) => ({ id: g, label: t(`activity.group.${g}`), tone: GROUP_TONE[g], rows: rows.filter((r) => r.group === g) }));
+function groupsOf(data: OrgActivity, show: Show, t: Copy): LaneGroup[] {
+  return ORG_ACTIVITY_GROUPS.filter((g) => show === "all" || show === g).map((g) => ({
+    id: g,
+    label: t(`activity.group.${g}`),
+    tone: GROUP_TONE[g],
+    rows: data.projects.filter((r) => r.group === g),
+  }));
 }
 
+/** The chips: All and each group that holds a project, each counting projects; Waiting on you in amber. */
 function Strip({ totals, show, onShow, t }: { totals: OrgActivity["totals"]; show: Show; onShow: (s: Show) => void; t: Copy }) {
   return (
     <ListToolbar testId="activity-strip">
-      {SHOWS.map((s) => (
-        <FilterChip key={s} on={show === s} onToggle={() => onShow(s === show ? "all" : s)} count={countOf(totals, s)} tone={SHOW_TONE[s]} testId={`activity-show-${s}`}>
-          {t(`activity.show.${s}`)}
+      {SHOWS.filter((s) => s === "all" || totals[s] > 0).map((s) => (
+        <FilterChip
+          key={s}
+          on={show === s}
+          onToggle={() => onShow(s === show ? "all" : s)}
+          count={s === "all" ? totals.projects : totals[s]}
+          tone={s === "you" ? "you" : undefined}
+          fill={s === "you"}
+          testId={`activity-show-${s}`}
+        >
+          {s === "all" ? t("activity.show.all") : t(`activity.group.${s}`)}
         </FilterChip>
       ))}
     </ListToolbar>
   );
+}
+
+/** What each mark means; the batch's only while batches are shown. */
+function Legend({ view, t }: { view: View; t: Copy }) {
+  const items = [
+    { key: "you", swatch: <TimelineGlyph shape={{ kind: "pin", n: 0 }} small />, label: t("activity.legend.you") },
+    { key: "released", swatch: <TimelineGlyph shape={{ kind: "diamond", tone: "ok" }} small />, label: t("activity.legend.released") },
+    { key: "releasing", swatch: <TimelineGlyph shape={{ kind: "diamond", tone: "info" }} small />, label: t("activity.legend.releasing") },
+    { key: "failed", swatch: <TimelineGlyph shape={{ kind: "diamond", tone: "danger" }} small />, label: t("activity.legend.failed") },
+    ...(view === "batches" ? [{ key: "batch", swatch: <TimelineGlyph shape={{ kind: "count", n: 3 }} small />, label: t("activity.legend.batch") }] : []),
+    { key: "run", swatch: <TimelineRunSwatch />, label: t("activity.legend.run") },
+  ];
+  return <TimelineLegend items={items} />;
 }
 
 function Live({ at, updating }: { at: string; updating: boolean }) {
@@ -86,7 +106,7 @@ function Live({ at, updating }: { at: string; updating: boolean }) {
   );
 }
 
-function ActivityList({ data, orgId }: { data: OrgActivity; orgId: string }) {
+function ActivityList({ data, orgId, view }: { data: OrgActivity; orgId: string; view: View }) {
   const t = useCopy();
   const router = useRouter();
   const now = useNowSeconds();
@@ -94,8 +114,7 @@ function ActivityList({ data, orgId }: { data: OrgActivity; orgId: string }) {
   const raw = params.get("show");
   const show: Show = (SHOWS as readonly string[]).includes(raw ?? "") ? (raw as Show) : "all";
   const fold = useGroupFold("web-v2:activity-fold");
-  const rows = data.projects.filter(keeps[show]);
-  const groups = groupsOf(rows, t);
+  const groups = groupsOf(data, show, t);
   const visible = visibleRows(groups, fold).map((r) => r.slug);
   const peek = usePeek(visible, data.projects.map((p) => p.slug));
   const open = peek.open ? data.projects.find((p) => p.slug === peek.open) : undefined;
@@ -109,6 +128,7 @@ function ActivityList({ data, orgId }: { data: OrgActivity; orgId: string }) {
     <ListLayout peek={open ? <ActivityPeek key={open.slug} row={open} orgId={orgId} peek={peek} now={now} full={{ href: projectHref(open.slug), origin: ACTIVITY_LIST }} /> : undefined}>
       <div className="min-w-0">
         <Strip totals={data.totals} show={show} onShow={(s) => setParams({ show: s === "all" ? null : s })} t={t} />
+        <Legend view={view} t={t} />
         {data.projects.length === 0 ? (
           <div className="px-5 py-10">
             <EmptyState message={t("activity.empty")} />
@@ -120,6 +140,7 @@ function ActivityList({ data, orgId }: { data: OrgActivity; orgId: string }) {
             fold={fold}
             generatedAt={data.generatedAt}
             now={now}
+            batches={view === "batches"}
             hrefOf={projectHref}
             selected={peek.open}
             onPeek={(k) => peek.set(k === peek.open ? null : k)}
@@ -131,6 +152,24 @@ function ActivityList({ data, orgId }: { data: OrgActivity; orgId: string }) {
   );
 }
 
+/** Batches of status moves, or releases only: kept in the URL as `?view=releases`. */
+function ViewSwitch({ view, onView, t }: { view: View; onView: (v: View) => void; t: Copy }) {
+  return (
+    <TopBarActions>
+      <span role="group" aria-label={t("activity.view.label")} data-testid="activity-view">
+        <SegmentedControl<View>
+          value={view}
+          onChange={onView}
+          options={[
+            { value: "batches", label: t("activity.view.batches") },
+            { value: "releases", label: t("activity.view.releases") },
+          ]}
+        />
+      </span>
+    </TopBarActions>
+  );
+}
+
 /** The time a page's "N s ago" reads against, moving each second so a silent box is seen to go silent. */
 const useNowSeconds = (): number => useNow(1_000);
 
@@ -138,6 +177,8 @@ export function ActivityScreen(): ReactNode {
   const t = useCopy();
   const { activeOrgId } = useActiveOrg();
   const q = useOrgActivity(activeOrgId);
+  const [params, setParams] = useUrlParams();
+  const view: View = params.get("view") === "releases" ? "releases" : "batches";
   const updating = q.isFetching && !q.isLoading;
   const title = (live?: string) => <PageTitle after={live ? <Live at={live} updating={updating} /> : undefined}>{t("activity.title")}</PageTitle>;
   if (!activeOrgId) {
@@ -155,7 +196,8 @@ export function ActivityScreen(): ReactNode {
       {(data) => (
         <div className="grid min-h-full content-start bg-app" data-testid="activity-screen">
           {title(data.generatedAt)}
-          <ActivityList data={data} orgId={activeOrgId} />
+          <ViewSwitch view={view} onView={(v) => setParams({ view: v === "batches" ? null : v })} t={t} />
+          <ActivityList data={data} orgId={activeOrgId} view={view} />
         </div>
       )}
     </QueryBoundary>

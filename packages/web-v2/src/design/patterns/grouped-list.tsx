@@ -1,7 +1,8 @@
 
 // Every entity list draws this one grid: [Key] · Title (with one secondary facts line) · State ·
 // Waiting on · [ETA] · Owner·age, grouped under sticky headers that read label-first ("Needs you 4") and
-// fold. A row is a link to its full page: a plain click opens the peek, a modified click (Cmd, Ctrl,
+// fold, as a hierarchy: each header is the shared `GroupHeader`, and its rows sit indented under its
+// label (owner-2026-11-05-group-hierarchy, ISS-979). A row is a link to its full page: a plain click opens the peek, a modified click (Cmd, Ctrl,
 // Shift, middle) goes to the page as the browser would. Folded groups live in session storage, so
 // back from a full page finds them as they were.
 
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils/cn";
 import { keyedNodes } from "../keyed";
 import { useBrowserValue } from "../hooks/use-browser-value";
 import { Icon } from "../icons/icon";
+import { GROUP_ROW_INDENT, GroupHeader } from "./group-header";
 import { LEGEND, type LegendTone } from "../vocabulary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useReportShown } from "../hooks/use-page-shown";
@@ -60,17 +62,17 @@ export interface ListRowView {
 
 /** One grid template for the header and every row, so the columns line up without a table. */
 const COLS =
-  "grid grid-cols-[104px_minmax(0,1fr)_168px_220px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_180px]";
+  "grid grid-cols-[104px_minmax(0,1fr)_168px_220px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_180px]";
 /** The same grid with the ETA column between Waiting on and Owner·age. */
 const COLS_ETA =
-  "grid grid-cols-[104px_minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_164px_112px]";
+  "grid grid-cols-[104px_minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_164px_112px]";
 
 /** The two grids without the key column, for a list whose rows lead with their title (REQ-11 BC-19). */
 const COLS_TITLE =
-  "grid grid-cols-[minmax(0,1fr)_168px_220px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_180px]";
+  "grid grid-cols-[minmax(0,1fr)_168px_220px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_180px]";
 const COLS_ETA_TITLE =
-  "grid grid-cols-[minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 px-5 max-xl:grid-cols-[minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_164px_112px]";
-const gridOf = (eta: boolean, keyed: boolean) => (keyed ? (eta ? COLS_ETA : COLS) : eta ? COLS_ETA_TITLE : COLS_TITLE);
+  "grid grid-cols-[minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_164px_112px]";
+const gridOf = (eta: boolean, keyed: boolean) => cn(keyed ? (eta ? COLS_ETA : COLS) : eta ? COLS_ETA_TITLE : COLS_TITLE, GROUP_ROW_INDENT);
 
 /** Rows in each group ordered by `value`, lowest first and every row without one last, in their own order. */
 export function sortGroupsBy<R>(groups: readonly ListGroup<R>[], value: (r: R) => number | null): ListGroup<R>[] {
@@ -129,30 +131,24 @@ export function visibleRows<R>(groups: readonly ListGroup<R>[], fold: GroupFold)
 
 const toneText = (t: LegendTone | null | undefined) => (!t || t === "neutral" || t === "done" ? "var(--fg-muted)" : LEGEND[t].fg);
 
-function GroupHeader<R>({ g, open, onToggle }: { g: ListGroup<R>; open: boolean; onToggle: () => void }) {
-  const c = toneText(g.tone);
+/** A group's header: the shared hierarchy (`GroupHeader`), sticky under the list's column header, its summary after the fold. */
+function ListGroupHeader<R>({ g, open, onToggle }: { g: ListGroup<R>; open: boolean; onToggle: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      data-testid="list-group"
-      data-group={g.id}
-      className="sticky top-8 z-[5] flex min-h-[34px] w-full flex-wrap items-center gap-x-2 gap-y-0.5 bg-sunken px-5 py-[5px] text-left text-13 max-md:top-0 max-md:px-3"
-    >
-      <Icon name="chevronDown" size={12} className={cn("text-subtle transition-transform duration-150", !open && "-rotate-90")} />
-      <span className={cn("font-bold", g.mono && "font-mono text-12-5 font-semibold")} style={{ color: g.mono ? "var(--fg-default)" : c }}>
-        {g.label}
-      </span>
-      <span className="font-mono text-12 font-bold" style={{ color: g.mono ? "var(--fg-muted)" : c }}>
-        {g.rows.length}
-      </span>
-      {g.summary?.map((s) => (
+    <GroupHeader
+      id={g.id}
+      label={g.label}
+      count={g.rows.length}
+      tone={g.tone}
+      mono={g.mono}
+      open={open}
+      onToggle={onToggle}
+      className="sticky top-8 max-md:top-0"
+      after={g.summary?.map((s) => (
         <span key={s.label} className="text-11-5 font-semibold" style={{ color: toneText(s.tone) }}>
           {s.label} {s.count}
         </span>
       ))}
-    </button>
+    />
   );
 }
 
@@ -173,7 +169,7 @@ function Row({ v, selected, onPeek, eta, keyed }: { v: ListRowView; selected: bo
       className={cn(
         gridOf(eta, keyed),
         "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-divider py-[7px] text-left text-fg no-underline hover:bg-hover",
-        "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:px-3 max-md:py-2.5",
+        "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:pr-3 max-md:py-2.5",
         selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-sel",
       )}
     >
@@ -283,7 +279,7 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
       {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">{empty ?? t("list.empty")}</p> : null}
       {drawn.map(({ g, open, views }) => (
         <div key={g.id}>
-          <GroupHeader g={g} open={open} onToggle={() => fold.toggle(g.id, g.collapsed)} />
+          <ListGroupHeader g={g} open={open} onToggle={() => fold.toggle(g.id, g.collapsed)} />
           {views.map((v) => (
             <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} eta={eta !== undefined} keyed={keyed} />
           ))}

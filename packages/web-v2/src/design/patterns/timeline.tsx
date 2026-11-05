@@ -1,178 +1,218 @@
-// A list whose rows are lanes on one time axis (ISS-951 round 3, MK-10 C): each row is a link that
-// opens its peek like a list row, with its name and a short line on the left, a track in the middle and
-// a mark on the right. The track draws bars (a stretch: something running, or waiting on a person),
-// ticks (a moment something began) and dots (a moment something moved) at percentages of the axis,
-// up to a dashed "now" edge. The track compresses as the list narrows (a peek beside it); the two side
-// columns keep their width, and step down to a phone's at the page's md breakpoint.
+// A list whose rows are lanes on one time axis (ISS-979, the owner's mockup v3): a column header (the
+// lead's name, the axis with a label at each tick and "now", and the trailing columns), then each
+// group's `GroupHeader` with its lanes indented under it. A lane is its lead (a name and one line), a
+// track and two trailing cells. The track draws light gridlines at each tick, a base line, runs as
+// light bars (a live one solid) and the marks a page places on it (`TimelineMark`), up to a dashed
+// "now" edge. The lanes keep a floor width and scroll sideways inside their own scroller below it, so
+// the page never does; on a phone the side columns step down.
 
-import type { MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
-import { Icon } from "../icons/icon";
-import { LEGEND, type LegendTone } from "../vocabulary";
+import { GROUP_ROW_INDENT } from "./group-header";
 
-/** One grid for the axis and every lane: name · track · mark. */
-const LANE_COLS =
-  "grid grid-cols-[200px_minmax(0,1fr)_112px] items-center gap-x-3 px-5 max-md:grid-cols-[96px_minmax(0,1fr)_84px] max-md:gap-x-2 max-md:px-2.5";
-
-/** What a bar means: `run` something running, `wait` stopped on a person. */
-export type TimelineBarTone = "run" | "wait";
-const BAR_TONE: Record<TimelineBarTone, string> = { run: "bg-info-9 opacity-85", wait: "bg-warn-9" };
-
-/** A lane's marks, each at a percentage (0–100) of the axis. */
-export interface TimelineMarks {
-  bars: { key: string; from: number; to: number; tone: TimelineBarTone }[];
-  ticks: { key: string; at: number }[];
-  dots: { key: string; at: number }[];
-}
+/** One grid for the column header and every lane: lead · track · two trailing cells. */
+const LANE_COLS = "grid grid-cols-[214px_minmax(0,1fr)_92px_100px] items-center max-md:grid-cols-[140px_minmax(0,1fr)_70px_80px]";
+const CELL = "min-w-0 px-4 max-md:px-2.5";
 
 const clamp = (n: number) => Math.min(100, Math.max(0, n));
+const left = (at: number) => ({ left: `${clamp(at)}%` });
 
-/** One lane's track; `marks` null draws `empty` across it instead (a lane with nothing to draw). */
-export function TimelineTrack({ marks, empty }: { marks: TimelineMarks | null; empty?: ReactNode }) {
+/** The lanes' frame: their own sideways scroller over a floor width, so the page itself never scrolls sideways. */
+export function TimelineFrame({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <span className="relative block h-[34px] min-w-0" data-testid="timeline-track">
-      <span aria-hidden className="absolute inset-x-0 top-1/2 h-px bg-line-divider" />
-      {marks === null ? (
-        <span className="absolute inset-0 flex items-center justify-center text-11-5 text-subtle" data-testid="timeline-empty">
-          <span className="bg-surface px-1.5">{empty}</span>
+    <section aria-label={label} className="overflow-x-auto" data-testid="timeline-frame">
+      <div className="min-w-[900px]">{children}</div>
+    </section>
+  );
+}
+
+/** The column header: the lead's name, the axis (a label at each tick, "now" at its end), the trailing names. */
+export function TimelineHead({ lead, ticks, now, trail }: { lead: string; ticks: { key: string; at: number; text: string }[]; now: string; trail: [string, string] }) {
+  return (
+    <div className={cn(LANE_COLS, "min-h-[34px] border-b border-line-divider bg-sunken text-12 text-subtle")} data-testid="timeline-axis">
+      <span className={CELL}>{lead}</span>
+      <span className={cn(CELL, "relative h-[34px]")}>
+        <span className="absolute inset-y-0 right-4 left-4 max-md:right-2.5 max-md:left-2.5">
+          {ticks.map((t) => (
+            <span key={t.key} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-11 tabular-nums" style={left(t.at)}>
+              {t.text}
+            </span>
+          ))}
+          <span className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 text-11 font-semibold text-muted">{now}</span>
         </span>
-      ) : (
-        <>
-          {marks.bars.map((b) => (
-            <span
-              key={b.key}
-              className={cn("absolute top-[11px] h-3 rounded-[2px]", BAR_TONE[b.tone])}
-              style={{ left: `${clamp(b.from)}%`, right: `${100 - clamp(b.to)}%`, minWidth: 3 }}
-              data-testid="timeline-bar"
-              data-tone={b.tone}
-            />
-          ))}
-          {marks.ticks.map((t) => (
-            <span key={t.key} className="absolute top-[5px] h-6 w-0.5 -translate-x-1/2 bg-neutral-9" style={{ left: `${clamp(t.at)}%` }} data-testid="timeline-tick" />
-          ))}
-          {marks.dots.map((d) => (
-            <span
-              key={d.key}
-              className="absolute top-1/2 box-content size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-surface bg-ok-9"
-              style={{ left: `${clamp(d.at)}%` }}
-              data-testid="timeline-dot"
-            />
-          ))}
-        </>
-      )}
-      <span aria-hidden className="absolute inset-y-0.5 right-0 border-r-[1.5px] border-dashed border-fg" />
+      </span>
+      <span className={cn(CELL, "text-right")}>{trail[0]}</span>
+      <span className={cn(CELL, "text-right")}>{trail[1]}</span>
+    </div>
+  );
+}
+
+/** A run on a track: a light bar from `from` to `to` (percentages), solid while it still runs. */
+export interface TimelineRun {
+  key: string;
+  from: number;
+  to: number;
+  live: boolean;
+  /** Its time, on hover. */
+  title: string;
+}
+
+/** One lane's track: gridlines at `ticks`, the base line, its runs, the marks a page places, the dashed now edge. */
+export function TimelineTrack({ ticks, runs, children }: { ticks: number[]; runs: TimelineRun[]; children?: ReactNode }) {
+  return (
+    <span className="relative block h-8 min-w-0" data-testid="timeline-track">
+      {ticks.map((t) => (
+        <span key={t} aria-hidden className="absolute inset-y-0 w-px bg-line-divider" style={left(t)} />
+      ))}
+      <span aria-hidden className="absolute inset-x-0 top-1/2 h-px bg-line-divider" />
+      {runs.map((r) => (
+        <span
+          key={r.key}
+          title={r.title}
+          className={cn("absolute top-1/2 -mt-[3px] h-1.5 rounded-[3px]", r.live ? "bg-info-9" : "bg-info-6")}
+          style={{ left: `${clamp(r.from)}%`, right: `${100 - clamp(r.to)}%`, minWidth: 3 }}
+          data-testid="timeline-run"
+          data-live={r.live || undefined}
+        />
+      ))}
+      {children}
+      <span aria-hidden className="absolute inset-y-0.5 right-0 border-l border-dashed border-line-strong" />
     </span>
   );
 }
 
-/** The axis over the lanes: each label at its percentage; a `minor` one is left out on a phone. */
-export function TimelineAxis({ labels }: { labels: { key: string; at: number; text: string; minor?: boolean }[] }) {
-  return (
-    <div className={cn(LANE_COLS, "sticky top-0 z-[6] h-7 border-b border-line-divider bg-sunken text-11 text-subtle")} data-testid="timeline-axis" aria-hidden>
-      <span />
-      <span className="relative h-full font-mono">
-        {labels.map((l) => (
-          <span
-            key={l.key}
-            className={cn("absolute top-1/2 -translate-y-1/2 whitespace-nowrap", l.at <= 0 ? "" : l.at >= 100 ? "-translate-x-full" : "-translate-x-1/2", l.minor && "max-md:hidden")}
-            style={{ left: `${clamp(l.at)}%` }}
-          >
-            {l.text}
-          </span>
-        ))}
+/** What a mark on a track looks like: a numbered circle, a diamond in a state's tone, or an amber pin with its count. */
+export type TimelineMarkShape =
+  | { kind: "count"; n: number }
+  | { kind: "diamond"; tone: "ok" | "info" | "danger" | "neutral" }
+  | { kind: "pin"; n: number };
+
+const DIAMOND: Record<"ok" | "info" | "danger" | "neutral", string> = { ok: "bg-ok-9", info: "bg-info-9", danger: "bg-danger-9", neutral: "bg-neutral-8" };
+
+/** A mark's look alone, for the legend and the track. */
+export function TimelineGlyph({ shape, small = false }: { shape: TimelineMarkShape; small?: boolean }) {
+  if (shape.kind === "count") {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center justify-center rounded-full border-[1.5px] border-current bg-surface font-semibold leading-none text-muted tabular-nums",
+          small ? "h-4 min-w-[18px] px-1 text-[10px]" : "h-5 min-w-5 px-[5px] text-11",
+        )}
+      >
+        {shape.n}
       </span>
-      <span />
-    </div>
+    );
+  }
+  if (shape.kind === "diamond") {
+    return <span className={cn("inline-block rotate-45", small ? "size-2.5 rounded-[1px]" : "size-3.5 rounded-[2px]", DIAMOND[shape.tone])} />;
+  }
+  return (
+    <span className={cn("inline-flex -rotate-45 items-center justify-center rounded-[50%_50%_50%_0] bg-warn-9", small ? "size-3" : "size-[22px]")}>
+      {small ? null : (
+        <span className="rotate-45 text-11 font-semibold leading-none" style={{ color: "var(--on-warn)" }}>
+          {shape.n}
+        </span>
+      )}
+    </span>
   );
 }
 
-/** What each mark means, one short label each. */
-export function TimelineLegend({ run, tick, dot, wait }: { run: string; tick: string; dot: string; wait: string }) {
-  return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 px-5 py-2 text-12 text-muted max-md:px-2.5" data-testid="timeline-legend">
-      <span className="inline-flex items-center gap-1.5">
-        <i aria-hidden className="inline-block h-2 w-3.5 rounded-[2px] bg-info-9" />
-        {run}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <i aria-hidden className="inline-block h-3 w-0.5 bg-neutral-9" />
-        {tick}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <i aria-hidden className="inline-block size-2 rounded-full bg-ok-9" />
-        {dot}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <i aria-hidden className="inline-block h-2 w-3.5 rounded-[2px] bg-warn-9" />
-        {wait}
-      </span>
-    </div>
-  );
-}
-
-/** A group's sticky header under the axis, label first, folding its lanes. */
-export function TimelineGroupHeader({ id, label, tone, count, open, onToggle }: { id: string; label: string; tone: LegendTone; count: number; open: boolean; onToggle: () => void }) {
-  const color = tone === "neutral" || tone === "done" ? "var(--fg-muted)" : LEGEND[tone].fg;
+/**
+ * A mark placed on a track at `at` (a percentage), a button: its summary on hover and on keyboard
+ * focus (`label`, also its accessible name), and what it opens on click is the page's. A pin stands
+ * on its point, above the line; the others are centred on it.
+ */
+export function TimelineMark({
+  at,
+  shape,
+  label,
+  onOpen,
+  open,
+  markRef,
+  testId,
+}: {
+  at: number;
+  shape: TimelineMarkShape;
+  label: string;
+  onOpen: () => void;
+  open: boolean;
+  markRef?: (el: HTMLButtonElement | null) => void;
+  testId: string;
+}) {
   return (
     <button
+      ref={markRef}
       type="button"
-      onClick={onToggle}
+      aria-label={label}
       aria-expanded={open}
-      data-testid="list-group"
-      data-group={id}
-      className="sticky top-7 z-[5] flex min-h-[34px] w-full items-center gap-2 bg-sunken px-5 py-[5px] text-left text-13 max-md:px-2.5"
+      aria-haspopup="dialog"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      className={cn(
+        "group/mark absolute z-[2] flex cursor-pointer items-center justify-center rounded-full outline-none hover:z-[3] hover:brightness-105 focus-visible:z-[3] focus-visible:shadow-focus",
+        shape.kind === "pin" ? "top-[calc(50%+2px)] -translate-x-1/2 -translate-y-full" : "top-1/2 -translate-x-1/2 -translate-y-1/2",
+      )}
+      style={left(at)}
+      data-testid={testId}
     >
-      <Icon name="chevronDown" size={12} className={cn("text-subtle transition-transform duration-150", !open && "-rotate-90")} />
-      <span className="font-bold" style={{ color }}>
-        {label}
-      </span>
-      <span className="font-mono text-12 font-bold" style={{ color }}>
-        {count}
-      </span>
+      <TimelineGlyph shape={shape} />
+      {open ? null : (
+        // the summary on hover and on keyboard focus; out of the layout until then, so it never widens the lanes' scroller
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute bottom-full mb-1.5 hidden whitespace-nowrap rounded-md bg-fg px-2 py-1 text-12 font-normal text-surface group-hover/mark:block group-focus-visible/mark:block",
+            at > 70 ? "right-0" : at < 20 ? "left-0" : "left-1/2 -translate-x-1/2",
+          )}
+          data-testid="timeline-tip"
+        >
+          {label}
+        </span>
+      )}
     </button>
   );
 }
 
-const modified = (e: MouseEvent) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
-
-/** One lane: a link to its full page that a plain click opens in the peek, as a list row does. */
-export function TimelineRow({
-  rowKey,
-  href,
-  selected,
-  onPeek,
-  lead,
-  track,
-  trail,
-}: {
-  rowKey: string;
-  href: string;
-  selected: boolean;
-  onPeek: (key: string) => void;
-  lead: ReactNode;
-  track: ReactNode;
-  trail: ReactNode;
-}) {
+/** What each mark means: one swatch and a short label each. */
+export function TimelineLegend({ items }: { items: { key: string; swatch: ReactNode; label: string }[] }) {
   return (
-    <a
-      href={href}
-      onClick={(e) => {
-        if (modified(e)) return;
-        e.preventDefault();
-        onPeek(rowKey);
-      }}
+    <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 border-b border-line-divider px-5 py-2.5 text-12 text-subtle max-md:px-4" data-testid="timeline-legend">
+      {items.map((i) => (
+        <span key={i.key} className="inline-flex items-center gap-1.5" data-testid={`legend-${i.key}`}>
+          <span aria-hidden className="inline-flex">
+            {i.swatch}
+          </span>
+          {i.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** A run's swatch for the legend. */
+export function TimelineRunSwatch() {
+  return <i className="inline-block h-1.5 w-[18px] rounded-[3px] bg-info-6" />;
+}
+
+/** One lane, indented under its group's label: its lead, its track and its two trailing cells. */
+export function TimelineRow({ rowKey, selected, lead, track, you, last }: { rowKey: string; selected: boolean; lead: ReactNode; track: ReactNode; you: ReactNode; last: ReactNode }) {
+  return (
+    <div
       aria-current={selected ? "true" : undefined}
       data-testid="list-row"
       data-key={rowKey}
       className={cn(
         LANE_COLS,
-        "relative min-h-[54px] w-full cursor-pointer border-b border-line-divider py-2 text-left text-fg no-underline hover:bg-hover",
-        selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-sel",
+        "relative min-h-[52px] border-b border-line-divider text-fg",
+        selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link",
       )}
     >
-      <span className="flex min-w-0 flex-col gap-0.5">{lead}</span>
-      {track}
-      <span className="flex min-w-0 justify-end">{trail}</span>
-    </a>
+      <span className={cn(CELL, GROUP_ROW_INDENT, "flex flex-col py-1.5 max-md:pl-8")}>{lead}</span>
+      <span className={CELL}>{track}</span>
+      <span className={cn(CELL, "flex justify-end")}>{you}</span>
+      <span className={cn(CELL, "text-right text-12 text-subtle")}>{last}</span>
+    </div>
   );
 }
