@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.505] - 2026-11-05
+
+Failed support answers retry on their own; runner restarts no longer fail resumed turns
+
+### Fixed
+
+- **A support turn failing on Forge's side is retried before anyone is told.** After three tries with a short back-off the thread hears the assistant answers when it can, the message still queued; one session runs one turn at once.
+
 ## [0.4.0-dev.504] - 2026-11-05
 
 Judges are no longer told the old login-file rule
