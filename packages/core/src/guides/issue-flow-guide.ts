@@ -105,12 +105,15 @@ written against. The same tag anywhere else in the line traces nothing, so it is
 \`PUT /api/issues/:id/criteria\` a criterion sent with \`requirementCriterionId\` is traced by that
 field and its words are text; one sent without it is read like a line of the field. Only an
 unchanged wording keeps its row and its trace, so rewording or removing a traced line without
-restating its trace is refused \`CRITERIA_TRACE_DROPPED\`, naming each line and its BC: open the line
-with its tag, or send \`requirementCriterionId\` on it. To drop a trace on purpose, PUT every
-criterion with \`requirementCriterionId\` stated (\`null\` for none): each BC's id reads at
-\`GET /api/issues/:id/requirement\` (\`revision.criteria\`), and an id that is no BC of the issue's
-requirement is refused \`CRITERIA_TRACE_UNRESOLVED\`, as is a tag naming another requirement:
-a criterion proves a BC of its own issue's requirement. The PUT answers \`verdicts\`:
+restating its trace is refused \`CRITERIA_TRACE_DROPPED\`, naming each line by its number and words
+as you sent it, and its BC: a reworded line is found by its words or its place between unchanged
+lines, never by its old number. Open the line it names with its tag, or send
+\`requirementCriterionId\` on it; put a removed line back with its tag; where the words cannot tell
+which line carries the BC on, every candidate is named and you tag the one that does. To drop a
+trace on purpose, PUT every criterion with \`requirementCriterionId\` stated (\`null\` for none):
+each BC's id reads at \`GET /api/issues/:id/requirement\` (\`revision.criteria\`), and an id that
+is no BC of the issue's requirement is refused \`CRITERIA_TRACE_UNRESOLVED\`, as is a tag naming
+another requirement: a criterion proves a BC of its own issue's requirement. The PUT answers \`verdicts\`:
 \`kept\` names the verdicts on unchanged wordings, \`voided\` those on reworded or removed ones, which
 stop counting.
 
