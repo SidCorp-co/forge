@@ -5,8 +5,8 @@ export const WHAT_IS_AN_ISSUE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'What is an issue?',
   summary:
-    'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and how to give a residual an owner.',
-  version: 5,
+    'The four gates a thing must pass to be an issue at all, the two lanes a finding goes in (product through Feedback, technical in the backlog of its module), how a technical item is filed, where a note / question goes instead, and how to give a residual an owner.',
+  version: 6,
   body: `## What is an issue?
 
 An issue is a unit of **work** — not a note, not a question, not a record of something already done.
@@ -31,8 +31,30 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 | A session log or summary of what you did | a record | a handoff doc, or project memory |
 | A note, learning, or convention | knowledge | \`POST /api/memory\` (durable business logic → repo \`docs/\`) |
 | An open question needing a human decision | a decision | a comment on the issue that raised it + \`needs_info\` (\`waitingKind: needs_decision\`) if it blocks that issue; a standing policy question → \`docs/proposals/<topic>.md\` marked *pending sign-off* |
-| An audit or scan finding | an observation | memory, until it becomes work with a deliverable |
+| An audit or scan finding that names no work yet | an observation | memory; once it names work, it goes in its lane (below) |
 | A fix you already made by hand | a record | move the status, capture the learning in memory |
+
+### Two lanes for what you find
+
+What you find while working goes in one of two lanes, decided by one question: **does it change what a user sees or should expect?** Yes is product; a defect that only restores what was already expected is technical.
+
+| Lane | What goes in it | Where it goes | Example |
+|---|---|---|---|
+| **Product** | anything that changes what a user sees or should expect, and every report from a user or the owner | Feedback (\`POST /api/projects/:id/feedback\`), then triage, a requirement, and only then an issue | a filter the export screen lacks, which you would add: Feedback of kind \`idea\`, never an issue you file |
+| **Technical** | your own finding against an expectation that already exists: a defect, security, performance, debt, contract typing, cleanup | the technical backlog of its module, which stays in Delivery: an issue filed as below | a list query with no index on its filter column; a route that answers an untyped body |
+| **Inside your issue** | a defect in what the issue you are working already touches | fixed there, declared under \`Extra fixes:\` | a wrong label on the screen you are changing |
+
+**A feature never starts as an issue an agent filed.** Core does not refuse one, so this lane is yours to keep: an issue with no requirement and no Feedback behind it is a technical item, or it is in the wrong lane. A defect is technical only while the expectation it breaks is already agreed (a requirement, or the screen as it works today); a defect that asks to change what users expect is product.
+
+#### Filing a technical item today
+
+Until the backlog has a screen of its own, a technical item is an issue at \`draft\` (\`POST /api/projects/:id/issues\` with \`"status": "draft"\`, since a create with no status is admitted to \`open\` and dispatched) carrying:
+
+- \`category\`: its kind, one of \`bug\`, \`security\`, \`performance\`, \`debt\` or \`contract\`;
+- \`labels\`: its business module as the primary, \`[{ "labelId": "<module name>", "isPrimary": true }]\`; \`GET /api/projects/:id/labels\` lists the modules (\`kind: module\`);
+- a \`description\` whose first line is \`Found in: <the issue or run you were working> — <evidence: the file, query, log line or measurement>\`, and, where you were working an issue, a \`relates\` edge onto it: \`relations: [{ "kind": "relates", "dependsOnId": "<its id>" }]\`.
+
+Its age is when it was filed. Nothing else is asked: no requirement, no Feedback. On a project that delivers fast, debt a cleanup run clears (a red check, code to simplify) goes to the cleanup ledger instead, guide \`fast-delivery\`.
 
 ### Residuals — give each one an owner
 
@@ -43,7 +65,7 @@ So decide where each one goes:
 1. **In reach here** → usually cheapest to fix it, declared under \`Extra fixes:\` in your comment. A declared extra fix is authorized work, judged on merit.
 2. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
 3. **It needs a human decision** → \`needs_info\` + \`waitingKind: needs_decision\` + \`reason\` when it blocks this issue; a standing policy question → a line in \`docs/proposals/\`.
-4. **It is separate work** → an issue of its own that passes the four gates, with someone who will pick it up.
+4. **It is separate work** → its lane, above: product-shaped → Feedback; technical → an issue of its own in its module's technical backlog, filed as above so someone can pick it up. Never a bare \`draft\` with no module, kind or evidence.
 
 ### When you find one that is not work — act on it, don't leave it
 
@@ -66,8 +88,8 @@ export const WRITING_AN_ISSUE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Writing an issue',
   summary:
-    'The three shapes an issue body takes and how to tell which one you are writing, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
-  version: 2,
+    'The three shapes an issue body takes and how to tell which one you are writing, the line a technical backlog item opens with, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
+  version: 3,
   body: `## Writing an issue
 
 A reader must get the problem in about fifteen seconds. How you get them there depends on which of three things you are writing, so pick the shape FIRST — most of the unreadable issue bodies in this tracker are the wrong shape, not bad writing.
@@ -81,6 +103,8 @@ A reader must get the problem in about fifteen seconds. How you get them there d
 Do not inflate the first shape into the second. A diagram of *"tab to the toggle → no ring appears"* has two nodes and tells the reader nothing the title did not; a *Who it hurts* table with one row is a sentence in a costume. Both make the issue longer and no clearer, which is the one thing this format exists to prevent.
 
 Do not compress the third shape into the second either. In an epic the locked decisions ARE the deliverable, and an agent that re-derives a rejected option has done the work twice. Summarise the problem in the four blocks, then keep every decision, its rejected alternatives and its sequencing under **Decisions**. The four blocks are for the reader deciding whether to care; **Decisions** is for whoever builds it.
+
+**A technical backlog item is the first shape**, after one line saying where it was found: \`Found in: <the issue or run you were working> — <evidence>\`, with its kind as \`category\` and its module as its primary label (guide \`what-is-an-issue\`, *Two lanes*). Something that changes what a user sees or should expect is not written here at all: it is Feedback first.
 
 The six blocks, in this order. The last two appear only when they earn it.
 
@@ -126,7 +150,7 @@ export const PIPELINE_AND_ISSUE_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Pipeline & issue lifecycle',
   summary:
     "What belongs in a description, the ten statuses an issue moves through and the guard each move carries, why a run's progress is its step and not a status, status-last discipline, why a park returns to the status it left, the three kinds of `needs_info`, and who owns which derived fields.",
-  version: 14,
+  version: 15,
   body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -291,7 +315,7 @@ Three things write it: \`POST /api/issues/:id/merge\`, which is a claim you make
 - \`acceptanceCriteria\` — written by **clarify/plan**. Draft ACs from the requester belong in \`description\` prose, not in this field.
 - \`merged_at\` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above. It is **caller-asserted, never verified against git** — so before stamping it, confirm the commit is actually reachable from the target branch, and never read someone else's \`merged_at\` as proof a merge happened.
 
-When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline.
+When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline. An agent's own finding is filed in its lane first: product through Feedback, technical in its module's backlog (guide \`what-is-an-issue\`).
 
 ### A crash is not a reason to hold
 If your job fails mechanically (process crash, non-zero exit), the system itself retries the job with a retry budget and leaves the issue where it is — you never need to (and shouldn't) set \`on_hold\` to paper over that.`,

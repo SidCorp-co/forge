@@ -18,7 +18,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 11,
+  version: 12,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -442,8 +442,12 @@ body its route accepts, so a guess costs one read of the refusal, not one call p
 - Something another issue owns: a comment on that issue, and a \`routed\` record on this one naming
   where it went.
 - Out of reach: give it an owner — a \`blocks\` edge onto the issue that would ship without it, a
-  line in the project's proposals, \`needs_info\` on this one, or an issue of its own where it is
-  separate work someone will pick up.
+  line in the project's proposals, or \`needs_info\` on this one.
+- Separate work goes in its lane (guide \`what-is-an-issue\`, *Two lanes*). A product finding, one
+  that changes what a user sees or should expect, is Feedback, never an issue you file. A technical
+  one (a defect against an existing expectation, security, performance, debt, contract typing) is an
+  issue of its own in its module's technical backlog: its kind as \`category\`, its module as the
+  primary label, and \`Found in:\` this issue with the evidence.
 - A lesson a different issue would reuse: \`POST /api/memory\`. Another project's issue key is
   written \`<its slug> ISS-n\`, never bare, since a bare key is read as this project's. What a sweep, a
   reconcile or a consolidation did is bookkeeping, not a lesson, and is never written as a \`decision\`.

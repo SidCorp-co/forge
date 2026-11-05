@@ -41,8 +41,13 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
     expect(prose).toContain('ISSUE_SCOPE_HELD');
   });
 
-  it('lets an out-of-reach residual become an issue someone owns', () => {
+  it('lets separate work become an issue someone owns, in its lane', () => {
     expect(prose).not.toContain('Never a new issue filed to carry it');
-    expect(prose).toContain('or an issue of its own where it is separate work');
+    expect(prose).not.toContain(
+      'or an issue of its own where it is separate work someone will pick up',
+    );
+    expect(prose).toContain('Separate work goes in its lane');
+    expect(prose).toContain('is Feedback, never an issue you file');
+    expect(prose).toContain("issue of its own in its module's technical backlog");
   });
 });

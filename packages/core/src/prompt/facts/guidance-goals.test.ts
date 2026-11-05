@@ -62,9 +62,9 @@ describe('a drive run recalls by judgement and splits by judgement', () => {
     expect(DRIVE_RULES_TEXT).toContain('Splitting is your judgement');
   });
 
-  it('may give a defect an issue of its own', () => {
+  it('may give a defect an issue of its own, in its lane', () => {
     expect(DRIVE_RULES_TEXT).not.toContain('Do not file it as a new issue either');
-    expect(DRIVE_RULES_TEXT).toContain('or an issue of its own');
+    expect(DRIVE_RULES_TEXT).toContain("as an issue of its own in its module's backlog");
   });
 });
 
@@ -97,5 +97,73 @@ describe('the orientation affordances are judgement guidance, with the refusals 
     const setup = getGuide('agent-setup')?.body ?? '';
     expect(setup).not.toContain('### Red flags');
     expect(setup).not.toContain('plan-by-hand');
+  });
+});
+
+// ISS-984 (owner, 2026-11-05): masters filed their own findings straight into Delivery, features
+// among them, because "fix it now or file it" read as "file a draft issue". Core refuses nothing
+// here; the texts an agent reads draw the product lane apart from the technical one, with examples.
+describe('the texts an agent reads draw two lanes for what it finds', () => {
+  const issue = flat(getGuide('what-is-an-issue')?.body ?? '');
+  const affordances = flat(OPERATING_AFFORDANCES_TEXT);
+
+  it('the orientation table routes a product finding to Feedback and a technical one to its module', () => {
+    for (const row of [
+      '| A product finding: it changes what a user sees or should expect (a feature you noticed)',
+      'Feedback, `projects/<id>/feedback -X POST`',
+      'a feature never starts as an issue an agent filed',
+      '| A technical finding of your own:',
+      '(a missing index, an untyped route)',
+      "its module's technical backlog",
+      '| A defect inside the issue you are working | fix it there, and say so under `Extra fixes:`',
+    ]) {
+      expect(affordances).toContain(row);
+    }
+    expect(affordances).not.toContain('`needs_info`, or an issue of its own |');
+  });
+
+  it('what-is-an-issue draws both lanes and the issue lane, each with an example', () => {
+    for (const lane of [
+      '### Two lanes for what you find',
+      'does it change what a user sees or should expect?',
+      '| **Product** |',
+      'a filter the export screen lacks, which you would add: Feedback of kind `idea`, never an issue you file',
+      '| **Technical** |',
+      'a list query with no index on its filter column; a route that answers an untyped body',
+      '| **Inside your issue** |',
+      'declared under `Extra fixes:`',
+      '**A feature never starts as an issue an agent filed.** Core does not refuse one',
+    ]) {
+      expect(issue).toContain(lane);
+    }
+  });
+
+  it('what-is-an-issue says exactly how a technical item is filed today', () => {
+    expect(issue).toContain('#### Filing a technical item today');
+    expect(issue).toContain('one of `bug`, `security`, `performance`, `debt` or `contract`');
+    expect(issue).toContain('[{ "labelId": "<module name>", "isPrimary": true }]');
+    expect(issue).toContain('`Found in: <the issue or run you were working> — <evidence');
+    expect(issue).toContain('Nothing else is asked: no requirement, no Feedback.');
+  });
+
+  it('a residual that is separate work goes to its lane, never a bare draft', () => {
+    expect(issue).not.toContain(
+      'an issue of its own that passes the four gates, with someone who will pick it up',
+    );
+    expect(issue).toContain('**It is separate work** → its lane, above');
+    expect(issue).toContain('Never a bare `draft` with no module, kind or evidence.');
+  });
+
+  it('the other issue guides point a finding to its lane', () => {
+    expect(flat(getGuide('writing-an-issue')?.body ?? '')).toContain(
+      '**A technical backlog item is the first shape**, after one line saying where it was found',
+    );
+    expect(flat(getGuide('pipeline-and-issue-lifecycle')?.body ?? '')).toContain(
+      "An agent's own finding is filed in its lane first",
+    );
+    expect(flat(getGuide('issue-flow')?.body ?? '')).toContain('Separate work goes in its lane');
+    expect(flat(DRIVE_RULES_TEXT)).toContain(
+      'a product finding (it changes what a user sees or should expect) to Feedback',
+    );
   });
 });

@@ -552,6 +552,30 @@ mod tests {
         }
     }
 
+    /// Owner, 2026-11-05 (ISS-984): masters filed their own findings straight into Delivery, a feature
+    /// among them, because nothing drew the product lane apart from the technical one. Core refuses
+    /// neither, so the skill teaches both, with an example of each and the issue's own lane.
+    #[test]
+    fn the_skill_draws_the_product_lane_and_the_technical_lane() {
+        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
+        for word in [
+            "**What you find goes in its lane.**",
+            "**Product**",
+            "It goes in as Feedback",
+            "A feature never starts as an issue you filed.",
+            "**Technical**",
+            "a missing index, an untyped contract",
+            "technical backlog of its module",
+            "`what-is-an-issue`",
+            "declared under `Extra fixes:`",
+        ] {
+            assert!(
+                prose.contains(word),
+                "forge-master-skill.md no longer says {word:?}, so a master files a product finding straight into Delivery or a technical one with no module"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [

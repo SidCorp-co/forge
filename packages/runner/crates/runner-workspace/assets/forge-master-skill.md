@@ -262,6 +262,19 @@ triage written on the item. All of it goes through the project's feedback door,
 
 A filed issue from a triage is an ordinary row from there on, admissible on the next read.
 
+**What you find goes in its lane.** Core refuses none of these, so keeping the lanes is yours:
+
+- **Product**: a finding that changes what a user sees or should expect, such as a feature you
+  noticed, and every report from a user or the owner. It goes in as Feedback
+  (`forge-runner api projects/<projectId>/feedback`, POST) and reaches Delivery only through its
+  triage and a requirement. A feature never starts as an issue you filed.
+- **Technical**: your own finding against an expectation that already exists, such as a missing
+  index, an untyped contract, a security or performance gap, or debt. It stays in Delivery, in the
+  technical backlog of its module: an issue with its kind, its module and where you found it, filed
+  as the `what-is-an-issue` guide's *Two lanes* says.
+- **Inside the issue being built**: a defect there is fixed in that issue and declared under
+  `Extra fixes:`.
+
 **Returned work is yours until it is revised.** When the nudge names a returned design or a returned
 requirement revision, an approver sent back something an agent of this project wrote, with a reason,
 and nobody else holds it: the run that drew it has ended, and the person who returned it is waiting

@@ -77,7 +77,9 @@ What counts as an issue, and where a note, a question or a done record usually g
 | A fix made by hand, outside the pipeline | mark it shipped (\`issues/<id>/merge -X POST\`, naming where it landed), then move it to \`awaiting_release\`; the release that claims it closes it (with no production environment, \`projects/<projectId>/release-records\`) | \`closed\` on code is refused \`CLOSE_ONLY_BY_RELEASE\` |
 | An issue that turns out not to be work | a comment saying why, then \`needs_info\` where a person owes the requirement, or \`dropped\` | \`closed\` says it shipped (\`CLOSE_ONLY_BY_RELEASE\`, \`DESIGN_NOT_DELIVERED\`) |
 | Design work (a workflow's states, steps or rules) | a design revision on that workflow, proposed for approval; an issue holding only design moves to \`closed\` once its revisions are approved (\`design_delivered\`) | a release skips a design-only issue (\`RELEASE_ALL_DESIGN_ONLY\`) |
-| A defect you find while working | fix it here where it is in reach, and say so under \`Extra fixes:\`; otherwise give it an owner — a comment on the issue that owns it, a \`blocks\` edge, \`needs_info\`, or an issue of its own | a defect nobody owns |
+| A product finding: it changes what a user sees or should expect (a feature you noticed), or a user or owner reported it | Feedback, \`projects/<id>/feedback -X POST\`; its triage leads to a requirement, then an issue | a feature never starts as an issue an agent filed |
+| A technical finding of your own: a defect against an existing expectation, security, performance, debt, contract typing (a missing index, an untyped route) | its module's technical backlog: an issue with its kind as \`category\`, its module as the primary label, and \`Found in:\` with the evidence (\`what-is-an-issue\`, *Two lanes*) | a draft with no module, kind or evidence |
+| A defect inside the issue you are working | fix it there, and say so under \`Extra fixes:\`; out of reach, a comment on the issue that owns it, a \`blocks\` edge or \`needs_info\` | a defect nobody owns |
 
 How to write the body of an issue: guide \`writing-an-issue\`.`;
 
@@ -146,7 +148,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 15,
+    version: 16,
     render: () => PIPELINE_RULES_TEXT,
   },
   {
