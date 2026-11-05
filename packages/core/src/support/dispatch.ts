@@ -4,10 +4,11 @@
 // process rather than a fresh spawn. A message goes to the session the moment it is recorded: as a
 // turn of its own when none runs, or written into the running turn (`inject.ts`), which Claude Code
 // takes at its next tool call or answers straight after it. The drain timer only recovers what a
-// crash left undelivered. A turn that ends without completing tells each thread it left unanswered
-// so, in core's one last-resort line for the thread (`last-resort.ts`), and those messages are not
-// handed to a turn again. A turn whose end core never heard, as one
-// cut off by a core restart, is read lost once it goes silent (`lost-turns.ts`, ISS-850).
+// crash left undelivered, and re-offers a room whose back-off ended. A turn that ends without
+// completing, or never reaches its box, gives the messages it left unanswered back to be tried again,
+// and tells a thread only once its tries ran out (`turn-retry.ts`, ISS-977). A turn whose end core
+// never heard, as one cut off by a core restart, is read lost once it goes silent (`lost-turns.ts`,
+// ISS-850), and its messages are tried again the same way.
 
 import type { SupportDeliveryPath, SupportRoomConfig, SupportTool } from '@forge/contracts/support';
 import type { ChatRole } from '@forge/contracts/support-operations';
@@ -26,12 +27,13 @@ import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.j
 import { activeSupportApi } from '../integrations/support-api/index.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
+import { RefusalError } from '../lib/refusal.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
 import { briefChannel, channelNews } from './channel-read.js';
 import {
   claimUndelivered,
+  hasReady,
   roomsWithUndelivered,
-  toldFailed,
   unansweredOfLastTurn,
   unclaim,
   undeliveredThreads,
@@ -45,15 +47,11 @@ import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { agentMarkerOf, ensureSupportRoom, roomIsBound } from './rooms.js';
-import { type ActionRow, insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
+import { insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
+import { retryOrTell } from './turn-retry.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
 const SUPPORT_SESSION_GRANT = ['projects:write'] as const;
-
-/** How long a room whose dispatch failed waits before the drain tries it again. */
-const RETRY_AFTER_MS = 30_000;
-
-const lastFailure = new Map<string, number>();
 
 /**
  * When each room last handed its session a turn. Read when that turn ends, to tell only the threads
@@ -343,9 +341,11 @@ export type DeliverOutcome =
 
 /**
  * Hand every message waiting in a room to its session at once: written into the running turn when
- * one runs, else as a turn of its own. A turn that could not be handed to a box gives its messages
- * back. Finding no box online is not a failed dispatch and arms no back-off: each waiting thread is
- * told once (`tellOffline`), and the messages go the moment a box can take them.
+ * one runs, else as a turn of its own. A room whose every waiting message is backing off from a
+ * failed try waits (`turn-retry.ts`); one message ready takes the rest along. A turn that could not
+ * be handed to a box gives its messages back as a failed try. Finding no box online is not a failed
+ * try and arms no back-off: each waiting thread is told once (`tellOffline`), and the messages go
+ * the moment a box can take them.
  */
 export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   const room = await roomWithSession(roomId);
@@ -362,8 +362,7 @@ async function handOn(room: RoomRow): Promise<DeliverOutcome> {
   const session = await sessionOf(room);
   if (!session) return 'nothing-waiting';
   if (session.status === 'running') return injectWaiting(room, session);
-  const failedAt = lastFailure.get(room.id);
-  if (failedAt && Date.now() - failedAt < RETRY_AFTER_MS) return 'backing-off';
+  if (!(await hasReady(room.id))) return 'backing-off';
 
   const client = await turnCredentialChatDevice(session);
   if (!client.deviceId) {
@@ -385,21 +384,30 @@ async function handOn(room: RoomRow): Promise<DeliverOutcome> {
         messages: await roomMessages(room, rows),
       },
     );
-    lastFailure.delete(room.id);
     return 'dispatched';
   } catch (err) {
+    // a turn started since the session was read: the messages go into it, and spend no try (ISS-977)
+    if (refusedAs(err, 'SESSION_RUNNING')) {
+      await unclaim(
+        rows.map((r) => r.id),
+        at,
+      );
+      const running = await sessionOf(room);
+      return running?.status === 'running' ? injectWaiting(room, running) : 'turn-running';
+    }
     logger.error(
       { err, roomId: room.id, sessionId: session.id },
       'support: the turn did not reach its box',
     );
-    await unclaim(
-      rows.map((r) => r.id),
-      at,
-    );
-    lastFailure.set(room.id, Date.now());
+    await retryOrTell(room, rows, `the turn did not reach its box: ${errorText(err)}`, { at });
     return 'dispatch-failed';
   }
 }
+
+const refusedAs = (err: unknown, code: string) =>
+  err instanceof RefusalError && err.refusals.some((r) => r.code === code);
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Tell each thread with a message waiting that its assistant has no box to run on, once; the messages wait. */
 async function tellOffline(room: RoomRow): Promise<void> {
@@ -445,7 +453,7 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
     ? (await roomsOfSession(row.id)).map((r) => r.id)
     : [marker.roomId];
   for (const roomId of served) {
-    if (!COMPLETED.has(row.status)) await tellTurnFailed(roomId, row.status, row.updatedAt);
+    if (!COMPLETED.has(row.status)) await retryFailedTurn(roomId, row);
     // what the box refused to write into the turn now waits again, and goes with the rest
     await settleInjects(roomId);
     await deliverWaiting(roomId);
@@ -458,54 +466,19 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
 const COMPLETED = new Set<string>(['completed', 'completed_via_recovery']);
 
 /**
- * A turn that failed or was cancelled tells each thread it left unanswered, once, and records why:
- * the messages stay delivered, so a box that fails every turn is never handed them again. A message
- * a failed turn was already reported for is not reported again by a later one; a warm-up that fails
- * reports only what was written into it.
+ * A turn that failed or was cancelled gives back each message it took and left unanswered, to be
+ * tried again, naming the end as the try's cause (ISS-977); a warm-up that fails gives back only
+ * what was written into it.
  */
-async function tellTurnFailed(roomId: string, status: string, endedAt: Date): Promise<void> {
+async function retryFailedTurn(roomId: string, row: SessionRow): Promise<void> {
   const room = await roomById(roomId);
   if (!room) return;
   // a message handed to the next turn after this one ended is that turn's, not this one's
-  const taken = await unansweredOfLastTurn(room.id, lastTurn.get(room.id) ?? null, endedAt);
-  await tellUnanswered(room, taken, `the session's turn ended ${status} before it answered`);
-}
-
-/**
- * Record each thread of `taken` as left without an answer, with `reason`, and tell it so in core's
- * one last-resort line where it was told none yet: a message some turn was already reported for is
- * not reported again.
- */
-export async function tellUnanswered(
-  room: RoomRow,
-  taken: readonly ActionRow[],
-  reason: string,
-): Promise<void> {
-  const told = await toldFailed(
-    room.id,
-    taken.map((m) => m.id),
+  const taken = await unansweredOfLastTurn(room.id, lastTurn.get(room.id) ?? null, row.updatedAt);
+  const why = [row.failureReason, row.failureDetail].filter(Boolean).join(': ');
+  await retryOrTell(
+    room,
+    taken,
+    `the session's turn ended ${row.status} before it answered${why ? ` (${why})` : ''}`,
   );
-  const left = taken.filter((m) => !told.has(m.id));
-  const threads = new Map(left.map((m) => [m.thread, m] as const));
-  for (const [thread, first] of threads) {
-    // a scheduled check or a release note is no member's thread: its failure is recorded, and
-    // nothing is posted (BC-13, ISS-854); a thread told a last-resort line already is not told again
-    const told = await tellLastResort(room, thread, 'turn_failed');
-    const posted = told.posted ? told : null;
-    await insertAction({
-      roomId: room.id,
-      projectId: room.projectId,
-      conversationId: posted?.conversationId ?? first.conversationId,
-      thread,
-      kind: 'refused',
-      actorKind: 'core',
-      tool: 'turn_failed',
-      output: {
-        reason,
-        messages: left.filter((m) => m.thread === thread).map((m) => m.id),
-        posted: Boolean(posted),
-      },
-      externalId: posted?.messageId ?? null,
-    });
-  }
 }

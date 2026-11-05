@@ -43,6 +43,7 @@ export {
   type LastResortKind,
   type LastResortPlace,
   releaseLastResort,
+  STILL_QUEUED_LINE,
 } from './last-resort.js';
 export {
   addableHandles,

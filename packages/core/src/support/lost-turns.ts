@@ -6,9 +6,9 @@
 // Nothing reaps a chat session's silence (`db/session-vocabulary.ts:heartbeatReapedSql`).
 //
 // So when core starts, when a box reconnects, and on the sweep between, a support session whose
-// turn has gone silent past the beat window is read lost: the turn is ended, each message it took
-// that no session action in its thread answered since is handed to the session once more, and one
-// already handed on once, or whose room is no longer bound, is told it went unanswered instead.
+// turn has gone silent past the beat window is read lost: the turn is ended, and each message it took
+// that no session action in its thread answered since is tried again as any failed turn's is
+// (`turn-retry.ts`, ISS-977); one whose room is no longer bound is told it went unanswered instead.
 
 import { JOB_HEARTBEAT_REAP_DEFAULT_MS } from '@forge/contracts/run-standing';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -17,10 +17,11 @@ import { db } from '../db/client.js';
 import { agentSessions, kernelTransitions } from '../db/schema.js';
 import { heartbeatBeatSql } from '../db/session-vocabulary.js';
 import { logger } from '../lib/logger.js';
-import { giveBackLost, roomsToWarm, unansweredOfLastTurn } from './delivery.js';
-import { deliverWaiting, noteTurn, tellUnanswered } from './dispatch.js';
+import { roomsToWarm, unansweredOfLastTurn } from './delivery.js';
+import { noteTurn } from './dispatch.js';
 import { roomIsBound } from './rooms.js';
 import { type ActionRow, roomById } from './store.js';
+import { retryOrTell, tellUnanswered } from './turn-retry.js';
 
 /**
  * How long a running turn's beat may be silent before it is read lost: the box beats a live turn
@@ -75,30 +76,21 @@ async function recoverSession(sessionId: string, roomIds: string[], now: Date): 
   for (const [roomId, messages] of taken) await handOnOrTell(roomId, messages, now);
 }
 
-/** The lost turn's messages: handed on once where the room is still answered, told otherwise. */
+/** The lost turn's messages: tried again where the room is still answered, told otherwise. */
 async function handOnOrTell(roomId: string, messages: ActionRow[], now: Date): Promise<void> {
   const room = await roomById(roomId);
   if (!room || messages.length === 0) return;
-  const bound = await roomIsBound(room);
-  const fresh = bound ? messages.filter((m) => !handedOnBefore(m)) : [];
-  const spent = messages.filter((m) => !fresh.includes(m));
-  await giveBackLost(
-    fresh.map((m) => m.id),
-    now,
-  );
-  await tellUnanswered(
-    room,
-    spent,
-    bound
-      ? 'the turn it was handed on to was lost as well'
-      : 'its turn was lost and its group is no longer answered',
-  );
-  // with no box to take it, the room is told its assistant is offline and the message waits
-  if (fresh.length > 0) await deliverWaiting(room.id);
+  if (await roomIsBound(room)) {
+    await retryOrTell(
+      room,
+      messages,
+      'the turn went silent with no end reported (a runner or core restart); core read it lost',
+      { now },
+    );
+    return;
+  }
+  await tellUnanswered(room, messages, 'its turn was lost and its group is no longer answered');
 }
-
-const handedOnBefore = (m: ActionRow) =>
-  typeof (m.output as { redelivered?: unknown } | null)?.redelivered === 'string';
 
 /**
  * When the session's running turn began, as messages are delivered: when its last turn before it

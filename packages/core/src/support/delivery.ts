@@ -168,25 +168,73 @@ export async function settleInjected(ids: readonly string[]): Promise<void> {
 }
 
 /**
- * Messages a lost turn took wait again for the next turn, each marked handed on once at `at`
- * (ISS-850): one already so marked is never given back again.
+ * Messages a turn took and left unanswered, for a cause on Forge's side, wait again for the next
+ * turn (ISS-977): each counts the try it spent (`tries`), names the cause, and is stamped with when
+ * it may go again (`retryAt`: `delays[n - 1]` ms after `now` for its new count n, the last delay
+ * standing for every count past the list). Only a message still read
+ * delivered is given back, and given `at`, only one delivered at that hand-over: two paths reading
+ * one failure count it once. Answers what was given back, each with its new count.
  */
-export async function giveBackLost(ids: readonly string[], at: Date): Promise<void> {
-  if (ids.length === 0) return;
-  await db
+export async function giveBackFailed(
+  ids: readonly string[],
+  cause: string,
+  now: Date,
+  delays: readonly number[],
+  at?: Date,
+): Promise<{ id: string; thread: string; tries: number; retryAt: string }[]> {
+  if (ids.length === 0) return [];
+  const tries = sql`(COALESCE((${supportActions.output}->>'tries')::int, 0) + 1)`;
+  const last = delays.length;
+  const delay = sql.join(
+    delays.map((ms, i) => sql`WHEN ${tries} = ${i + 1}::int THEN ${ms}::int`),
+    sql` `,
+  );
+  const retryAt = sql`(${now.toISOString()}::timestamptz
+    + (CASE ${delay} ELSE ${delays[last - 1] ?? 0}::int END) * interval '1 millisecond')`;
+  const rows = await db
     .update(supportActions)
     .set({
       deliveredAt: null,
       output: sql`(COALESCE(${supportActions.output}, '{}'::jsonb) - 'injectSeq' - 'injectSettled' - 'path')
-        || jsonb_build_object('redelivered', ${at.toISOString()}::text)`,
+        || jsonb_build_object('tries', ${tries}, 'retryAt', ${retryAt}, 'lastCause', ${cause}::text)`,
     })
     .where(
       and(
         inArray(supportActions.id, [...ids]),
-        sql`${supportActions.deliveredAt} IS NOT NULL`,
-        sql`NOT (COALESCE(${supportActions.output}, '{}'::jsonb) ? 'redelivered')`,
+        eq(supportActions.kind, 'message_in'),
+        at ? eq(supportActions.deliveredAt, at) : sql`${supportActions.deliveredAt} IS NOT NULL`,
       ),
-    );
+    )
+    .returning({
+      id: supportActions.id,
+      thread: supportActions.thread,
+      output: supportActions.output,
+    });
+  return rows.map((r) => {
+    const out = r.output as { tries: number; retryAt: string };
+    return { id: r.id, thread: r.thread, tries: Number(out.tries), retryAt: out.retryAt };
+  });
+}
+
+/** A waiting message no back-off holds: one never tried, or one whose `retryAt` has come. */
+const READY = sql`(NOT (COALESCE(${supportActions.output}, '{}'::jsonb) ? 'retryAt')
+  OR (${supportActions.output}->>'retryAt')::timestamptz <= now())`;
+
+/** Whether a room holds a waiting message that may go now (ISS-977: one backing off may not). */
+export async function hasReady(roomId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: supportActions.id })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        isNull(supportActions.deliveredAt),
+        READY,
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 /** A message the box did not take into a turn waits again for the next one. */
@@ -308,12 +356,12 @@ export async function hasUndelivered(roomId: string): Promise<boolean> {
   return Boolean(row);
 }
 
-/** Rooms holding an inbound message no turn has taken. */
+/** Rooms holding an inbound message no turn has taken and no back-off holds (ISS-977). */
 export async function roomsWithUndelivered(): Promise<string[]> {
   const rows = await db
     .selectDistinct({ roomId: supportActions.roomId })
     .from(supportActions)
-    .where(and(eq(supportActions.kind, 'message_in'), isNull(supportActions.deliveredAt)));
+    .where(and(eq(supportActions.kind, 'message_in'), isNull(supportActions.deliveredAt), READY));
   return rows.map((r) => r.roomId);
 }
 

@@ -26,6 +26,7 @@ import { checkResult } from './checks.js';
 import { settleLatency } from './delivery.js';
 import { agreeTo } from './fixes.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
+import { endLastResortWait } from './last-resort.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
@@ -152,9 +153,11 @@ export async function supportAct(
   if (!out.ok && 'thread' in input && input.action !== 'read' && input.thread) {
     await recordNotGranted(room, input.thread, input.action, out);
   }
-  // the session's first post in a thread answers every message of it the session had been handed
+  // the session's first post in a thread answers every message of it the session had been handed,
+  // and ends the wait a last-resort line told the thread of (ISS-977)
   if (out.ok && 'thread' in input && input.thread && POSTS.has(input.action)) {
     await settleLatency(room.id, input.thread, new Date());
+    await endLastResortWait(room, input.thread);
   }
   return out;
 }
