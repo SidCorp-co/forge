@@ -234,6 +234,27 @@ impl Ledger {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
+    /// Every tree a run was declared over when it already stood, with that run, ended or not: no
+    /// release and no reaper removes one, because the run never took it (ISS-1016).
+    pub fn adopted_worktrees(&self) -> Result<Vec<(PathBuf, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT worktree_path, run_id FROM runs
+                  WHERE worktree_origin IS NOT 'created' ORDER BY created_at, run_id",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    PathBuf::from(row.get::<_, String>(0)?),
+                    row.get::<_, String>(1)?,
+                ))
+            })
+            .map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
     /// Which run `typed` names: its whole id, or the start of exactly one.
     ///
     /// A person names a run the way this box writes one for them — its first

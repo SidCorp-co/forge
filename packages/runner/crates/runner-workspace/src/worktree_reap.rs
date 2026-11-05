@@ -18,7 +18,9 @@
 //!
 //! The ledger is first among those because the other three are all SHAPE, and
 //! a well-behaved park has exactly the shape of an abandoned tree (ISS-964
-//! criteria 25, 36).
+//! criteria 25, 36). It also names every tree a run was declared over when it
+//! already stood, and those are never reaped at all: a run's release leaves
+//! such a tree to whoever made it, and so does this sweep (ISS-1016).
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -139,25 +141,49 @@ fn older_than(p: &Path, age: Duration) -> bool {
         .is_some_and(|d| d >= age)
 }
 
+/// The trees the ledger says this sweep may not take, each with the run that says so.
 #[derive(Debug, Default)]
-pub struct HeldTrees(std::collections::HashMap<PathBuf, String>);
+pub struct HeldTrees(
+    std::collections::HashMap<PathBuf, String>,
+    /// Trees a run was declared over when they already stood (ISS-1016). Kept apart from the
+    /// held ones because nothing ends this: the run gave back its claim, and the tree was never
+    /// the box's to take.
+    std::collections::HashMap<PathBuf, String>,
+);
+
+/// Both spellings of each path, the one recorded and the one it resolves to.
+fn by_path(rows: Vec<(PathBuf, String)>) -> std::collections::HashMap<PathBuf, String> {
+    let mut map = std::collections::HashMap::new();
+    for (path, run_id) in rows {
+        if let Ok(real) = path.canonicalize() {
+            map.insert(real, run_id.clone());
+        }
+        map.insert(path, run_id);
+    }
+    map
+}
 
 impl HeldTrees {
     pub fn from_ledger(ledger: &Ledger) -> Result<Self> {
-        let mut held = std::collections::HashMap::new();
-        for (path, run_id) in ledger.held_worktrees()? {
-            if let Ok(real) = path.canonicalize() {
-                held.insert(real, run_id.clone());
-            }
-            held.insert(path, run_id);
-        }
-        Ok(Self(held))
+        Ok(Self(
+            by_path(ledger.held_worktrees()?),
+            by_path(ledger.adopted_worktrees()?),
+        ))
     }
 
     // Its one caller is scratch_reap's Linux-only test module; on other targets it is dead code.
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn for_test(held: std::collections::HashMap<PathBuf, String>) -> Self {
-        Self(held)
+        Self(held, std::collections::HashMap::new())
+    }
+
+    /// The run that was declared over `path` when it already stood, if one was.
+    fn adopter(&self, path: &Path) -> Option<&str> {
+        path.canonicalize()
+            .ok()
+            .and_then(|real| self.1.get(&real))
+            .or_else(|| self.1.get(path))
+            .map(String::as_str)
     }
 
     /// The run holding a tree that is `entry`, lies inside it, or contains it.
@@ -408,6 +434,15 @@ pub async fn reap_repo_clearing(
                 held.push((p, run_id.to_string()));
                 continue;
             }
+            if let Some(run_id) = held_by.adopter(&p) {
+                tracing::debug!(
+                    "[worktree-reap] keeping {} — run {run_id} was declared over it when it \
+                     already stood, and this box removes no tree it did not cut",
+                    p.display()
+                );
+                held.push((p, run_id.to_string()));
+                continue;
+            }
             if !older_than(&p, min_age) || holds_work(&p).await {
                 continue;
             }
@@ -480,3 +515,7 @@ pub async fn reap_repo_clearing(
     forget_strays(repo, &strays);
     Reaped { removed, held }
 }
+
+#[cfg(test)]
+#[path = "worktree_reap_tests.rs"]
+mod tests;
