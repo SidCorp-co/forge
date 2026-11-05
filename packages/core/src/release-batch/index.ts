@@ -30,7 +30,7 @@ export { deleteCoolifyEnv, listCoolifyEnv, setCoolifyEnv } from './coolify-env.j
 export { confirmPendingProdDeploy } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
 export { criteriaWeighingOf } from './criteria-weighing.js';
-export type { CriterionReading } from './criterion-reading.js';
+export { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { nextDraftVersion } from './draft-version.js';
 export { readEndedRunHolds } from './ended-claims.js';
@@ -74,7 +74,7 @@ export {
   warnedReleaseNotes,
 } from './queries.js';
 export { bindingReachesProduction, dispatchCoolifyDeployDirect } from './release-coolify.js';
-export type { CarriedVerdict } from './release-facts.js';
+export type { CarriedVerdict, IssueFact } from './release-facts.js';
 export {
   listReleases,
   type ReleaseRecord,

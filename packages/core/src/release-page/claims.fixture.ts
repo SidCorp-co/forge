@@ -3,8 +3,7 @@
 
 import type { CriterionClass } from '@forge/contracts/issue-design';
 import type { PolicyQaMode } from '@forge/contracts/project-config';
-import { criterionReadingsAt } from '../release-batch/criterion-reading.js';
-import type { IssueFact } from '../release-batch/release-facts.js';
+import { criterionReadingsAt, type IssueFact } from '../release-batch/index.js';
 import {
   type CarriedCriterion,
   type CarriedVerdict,
