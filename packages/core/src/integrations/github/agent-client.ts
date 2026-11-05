@@ -15,6 +15,7 @@ import {
   listBindingsForProject,
   readInboundDoorTraffic,
   resolveApiBaseUrl,
+  withBindingHealth,
 } from '../index.js';
 import { SourceHostCallError } from '../source-host/index.js';
 import { installationStandings } from './binding-installation.js';
@@ -125,7 +126,7 @@ function instanceDoorFor(apiBase: string | null, observedUrl: string | null): st
  */
 export async function githubAgentBindings(projectId: string): Promise<GitHubAgentBindingReport[]> {
   const decl = getIntegration('github');
-  const pairs = await githubPairs(projectId);
+  const pairs = await withBindingHealth(await githubPairs(projectId));
   if (pairs.length === 0) return [];
 
   const slug = await forgeReads().projectSlug(projectId);

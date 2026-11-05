@@ -498,7 +498,7 @@
     "integrations": {
       "kind": "adapter",
       "context": "adapters",
-      "owns": ["integrationConnections", "integrationDeliveries"],
+      "owns": ["integrationConnections", "integrationDeliveries", "integrationBindingHealth"],
       "serves": [
         "github-merge-sequence#p-integrations",
         "github-merge-sequence#m-delivery",

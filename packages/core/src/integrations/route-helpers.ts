@@ -7,7 +7,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import type { AgentAccess } from './agent-access.js';
-import { bindingHealth } from './binding-health.js';
+import { type BindingWithHealth, bindingHealth } from './binding-health.js';
 import { bindingNames } from './binding-name.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
@@ -67,7 +67,7 @@ export function notifyConnectionChanged(provider: string, connectionId: string):
  * removed, suspended, or lost the repository — and makes it read degraded naming that, never a
  * connection-wide verdict.
  */
-export function summarizeBinding(pair: BindingWithConnection, standing: Said | null = null) {
+export function summarizeBinding(pair: BindingWithHealth, standing: Said | null = null) {
   const { binding, connection } = pair;
   const health = bindingHealth(pair);
   return {

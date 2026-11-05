@@ -12,6 +12,7 @@ import {
   readInboundDoorTraffic,
   resolveApiBaseUrl,
   sameEndpoint,
+  withBindingHealth,
 } from '../index.js';
 import { type GitLabConfig, gitlabHostOf } from './types.js';
 
@@ -39,9 +40,11 @@ export async function gitlabBindingReports(
   projectId: string,
 ): Promise<Array<{ provider: string } & Record<string, unknown>>> {
   const decl = getIntegration('gitlab');
-  const pairs = (await listBindingsForProject(projectId))
-    .filter((p) => p.binding.provider === 'gitlab')
-    .sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());
+  const pairs = await withBindingHealth(
+    (await listBindingsForProject(projectId))
+      .filter((p) => p.binding.provider === 'gitlab')
+      .sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime()),
+  );
   if (pairs.length === 0) return [];
   const slug = await forgeReads().projectSlug(projectId);
   const apiBase = resolveApiBaseUrl();
@@ -51,7 +54,7 @@ export async function gitlabBindingReports(
       const config = effectiveConfig<GitLabConfig>(pair);
       const traffic = await readInboundDoorTraffic(pair.binding.id);
       // the hooks are the bound project's: its own observation, never the connection's (ISS-983)
-      const observed = ownObservation(pair.binding.inboundEndpointObserved ?? null, expectedUrl);
+      const observed = ownObservation(pair.health?.inboundEndpointObserved ?? null, expectedUrl);
       const state = inboundDoorState({
         inboundUnprompted: decl?.capabilities.inboundUnprompted ?? false,
         expectedUrl,

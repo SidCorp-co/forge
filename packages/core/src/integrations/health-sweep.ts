@@ -3,7 +3,7 @@ import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { healthReadsBinding } from './binding-health.js';
+import { healthReadsBinding, withBindingHealth } from './binding-health.js';
 import { thrownSaid } from './health-said.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
@@ -41,7 +41,7 @@ export async function runIntegrationsHealthSweep(): Promise<{
   durationMs: number;
 }> {
   const t0 = Date.now();
-  const pairs = await listActivePairs();
+  const pairs = await withBindingHealth(await listActivePairs());
 
   // A provider whose check reads only the credential is probed once per connection, through its
   // oldest binding (the resolver's ordering), so the probed context is stable. One whose check reads
@@ -62,7 +62,7 @@ export async function runIntegrationsHealthSweep(): Promise<{
     const credentialFailed =
       pair.connection.lastHealthStatus != null && pair.connection.lastHealthStatus !== 'ok';
     const recent = perBinding
-      ? fresh(pair.binding.lastHealthAt) ||
+      ? fresh(pair.health?.checkedAt ?? null) ||
         (credentialFailed && fresh(pair.connection.lastHealthAt))
       : fresh(pair.connection.lastHealthAt);
     if (recent) {

@@ -1,6 +1,11 @@
 import { type Said, sayEn } from '@forge/contracts/said';
-import type { integrationBindings, ObservedEndpoint } from '../db/schema.js';
-import { setBindingHealth } from '../project-config/binding-store.js';
+import { inArray } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import {
+  type IntegrationBindingHealthRow,
+  integrationBindingHealth,
+  type ObservedEndpoint,
+} from '../db/schema.js';
 import { getAdapter } from './registry.js';
 import { type BindingWithConnection, updateConnection } from './store.js';
 import type { AdapterContext, HealthStatus } from './types.js';
@@ -18,8 +23,8 @@ export interface HealthPart {
  * A health check's reading, split by whose it is (ISS-983). `connection` is what is true of the
  * credential, and every binding of the connection reads it alike: recognised or not, its scope, the
  * host answering. `binding` is what is true of this binding's own target — its repository seen, its
- * hooks, its deploy targets, its site — and lands on the binding alone, where no other project reads
- * it. A check that never reached the target names no `binding` and leaves the last one standing;
+ * hooks, its deploy targets, its site — and lands in that binding's own health row, where no other
+ * project reads it. A check that never reached the target names no `binding` and leaves the last one standing;
  * one that never called the provider (the binding names no target) names no `connection`.
  */
 export async function recordHealth(
@@ -51,7 +56,11 @@ export async function recordHealth(
   }
 }
 
-/** Writes what a check observed of one binding's own target, through its owner (`setBindingHealth`). */
+/**
+ * Writes what a check observed of one binding's own target into its row of
+ * `integration_binding_health`, the adapter's own table: never the binding document, so a probe never
+ * moves the binding's `revision`. A field left out keeps what is stored.
+ */
 export async function updateBindingHealth(
   bindingId: string,
   patch: {
@@ -61,17 +70,41 @@ export async function updateBindingHealth(
     inboundEndpointObserved?: ObservedEndpoint | null;
   },
 ): Promise<void> {
-  const set: Partial<typeof integrationBindings.$inferInsert> = {};
-  if (patch.status !== undefined) set.lastHealthStatus = patch.status;
+  const set: Partial<typeof integrationBindingHealth.$inferInsert> = {};
+  if (patch.status !== undefined) set.status = patch.status;
   if (patch.detail !== undefined) {
-    set.lastHealthDetail = patch.detail === null ? null : sayEn(patch.detail);
-    set.lastHealthSays = patch.detail;
+    set.detail = patch.detail === null ? null : sayEn(patch.detail);
+    set.says = patch.detail;
   }
-  if (patch.at !== undefined) set.lastHealthAt = patch.at;
+  if (patch.at !== undefined) set.checkedAt = patch.at;
   if (patch.inboundEndpointObserved !== undefined) {
     set.inboundEndpointObserved = patch.inboundEndpointObserved;
   }
-  await setBindingHealth(bindingId, set);
+  if (Object.keys(set).length === 0) return;
+  await db
+    .insert(integrationBindingHealth)
+    .values({ bindingId, ...set })
+    .onConflictDoUpdate({ target: integrationBindingHealth.bindingId, set });
+}
+
+/** A pair with its binding's own health row beside it: `null` where no check has reached it yet. */
+export type BindingWithHealth<P extends BindingWithConnection = BindingWithConnection> = P & {
+  health: IntegrationBindingHealthRow | null;
+};
+
+/** Each pair with its binding's own health row, read in one query. */
+export async function withBindingHealth<P extends BindingWithConnection>(
+  pairs: readonly P[],
+): Promise<BindingWithHealth<P>[]> {
+  const ids = pairs.map((p) => p.binding.id);
+  const rows = ids.length
+    ? await db
+        .select()
+        .from(integrationBindingHealth)
+        .where(inArray(integrationBindingHealth.bindingId, ids))
+    : [];
+  const byId = new Map(rows.map((r) => [r.bindingId, r]));
+  return pairs.map((p) => ({ ...p, health: byId.get(p.binding.id) ?? null }));
 }
 
 /** A reading as a project reads it: one status, its sentence in English and as said, and when. */
@@ -99,9 +132,9 @@ export function healthReadsBinding(provider: string): boolean {
  * a binding (ISS-983).
  */
 export function bindingHealth(
-  pair: Pick<BindingWithConnection, 'binding' | 'connection'>,
+  pair: Pick<BindingWithHealth, 'binding' | 'connection' | 'health'>,
 ): HealthReading {
-  const { binding, connection } = pair;
+  const { binding, connection, health } = pair;
   const credential: HealthReading = {
     status: connection.lastHealthStatus ?? null,
     detail: connection.lastHealthDetail ?? null,
@@ -110,12 +143,12 @@ export function bindingHealth(
   };
   const status = credential.status?.toLowerCase() ?? null;
   if (status !== null && !CREDENTIAL_HOLDS.has(status)) return credential;
-  if (binding.lastHealthStatus) {
+  if (health?.status) {
     return {
-      status: binding.lastHealthStatus,
-      detail: binding.lastHealthDetail ?? null,
-      says: binding.lastHealthSays ?? null,
-      at: binding.lastHealthAt ?? null,
+      status: health.status,
+      detail: health.detail ?? null,
+      says: health.says ?? null,
+      at: health.checkedAt ?? null,
     };
   }
   if (healthReadsBinding(binding.provider)) {

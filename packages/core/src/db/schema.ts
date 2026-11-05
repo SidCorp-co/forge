@@ -19,6 +19,7 @@ export * from './schema-agent-reports.js';
 export * from './schema-agent-sessions.js';
 export * from './schema-auth.js';
 export * from './schema-beta-port.js';
+export * from './schema-binding-health.js';
 export * from './schema-cleanup.js';
 export * from './schema-comments.js';
 export * from './schema-credentials.js';

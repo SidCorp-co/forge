@@ -1,9 +1,5 @@
 export { personGateOf, readApprovals } from './approvals.js';
-export {
-  encryptPlaintextBindingSecrets,
-  setBindingHealth,
-  setBindingInboundSecret,
-} from './binding-store.js';
+export { encryptPlaintextBindingSecrets, setBindingInboundSecret } from './binding-store.js';
 export { planBinding, readBinding, writeBinding } from './bindings.js';
 export {
   type BindingsItem,

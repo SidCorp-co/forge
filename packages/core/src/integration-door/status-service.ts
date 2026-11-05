@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { installationStandings } from '../integrations/github/index.js';
 import {
-  type BindingWithConnection,
+  type BindingWithHealth,
   bindingHealth,
   bindingNames,
   connectionHealthStatus,
@@ -17,6 +17,7 @@ import {
   notFound,
   reportedBindingIdentities,
   toIso,
+  withBindingHealth,
 } from '../integrations/index.js';
 import { hostOfRepository } from '../integrations/source-host/index.js';
 import { readDeclaredSource, readDeployMap, webUrlOf } from '../project-config/index.js';
@@ -149,9 +150,9 @@ function buildProviderCards(opts: {
 
 /** The binding serving the declared repository's host, a live one before a switched-off one, oldest first. */
 function repositoryBinding(
-  pairs: readonly BindingWithConnection[],
+  pairs: readonly BindingWithHealth[],
   host: string,
-): { pair: BindingWithConnection; label: string } | null {
+): { pair: BindingWithHealth; label: string } | null {
   const onHost = pairs
     .flatMap((pair) => {
       const factory = getIntegration(pair.binding.provider)?.sourceHost;
@@ -184,7 +185,7 @@ function providerServing(host: string): { provider: string; label: string } | nu
  * the act that fixes it (`meta.connectProvider`).
  */
 function repositoryCard(
-  pairs: readonly BindingWithConnection[],
+  pairs: readonly BindingWithHealth[],
   source: Pick<Awaited<ReturnType<typeof readDeclaredSource>>, 'repository' | 'defaultBranch'>,
   standings: ReadonlyMap<string, Said> = new Map(),
 ): StatusCard {
@@ -268,7 +269,7 @@ function repositoryCard(
  * provider that declares a presentation, in registry order (ISS-1071).
  */
 async function providerCards(
-  pairs: readonly BindingWithConnection[],
+  pairs: readonly BindingWithHealth[],
   deployMap: Awaited<ReturnType<typeof readDeployMap>>,
   standings: ReadonlyMap<string, Said>,
 ): Promise<StatusCard[]> {
@@ -281,7 +282,7 @@ async function providerCards(
     config: effectiveConfig(pair),
   }));
   const reported = await reportedBindingIdentities(
-    named.map((row, i) => ({ ...row, connection: (pairs[i] as BindingWithConnection).connection })),
+    named.map((row, i) => ({ ...row, connection: (pairs[i] as BindingWithHealth).connection })),
   );
   const names = bindingNames(named, reported);
   const rows: ProviderRow[] = pairs.map((pair, i) => {
@@ -328,7 +329,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     .limit(1);
   if (!project) throw notFound('project');
   const [pairs, deployMap, source] = await Promise.all([
-    listBindingsForProject(projectId),
+    listBindingsForProject(projectId).then(withBindingHealth),
     readDeployMap(projectId),
     readDeclaredSource(projectId),
   ]);

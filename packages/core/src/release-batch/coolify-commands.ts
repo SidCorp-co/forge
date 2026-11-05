@@ -21,6 +21,7 @@ import {
   effectiveConfig,
   findLastOutboundForTarget,
   listActiveDeployBindingsForProvider,
+  withBindingHealth,
 } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
 import { gateOf, readDeployMap } from '../project-config/index.js';
@@ -48,7 +49,7 @@ export const refuseCoolify = refuser<CoolifyRefusalCode>('COOLIFY_REFUSED');
  */
 export async function activeCoolifyIntegrations(projectId: string) {
   const [pairs, map] = await Promise.all([
-    listActiveDeployBindingsForProvider(projectId, 'coolify'),
+    listActiveDeployBindingsForProvider(projectId, 'coolify').then(withBindingHealth),
     readDeployMap(projectId),
   ]);
   return pairs.map((pair) => ({

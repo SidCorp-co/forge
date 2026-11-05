@@ -3,8 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { registerAllIntegrations } from '../integration-registry.js';
+import type { BindingWithHealth } from './binding-health.js';
 import { bindingHealth } from './binding-health.js';
-import type { BindingWithConnection } from './store.js';
 
 registerAllIntegrations();
 
@@ -17,20 +17,24 @@ function pair(
   binding: { status: string | null; detail?: string | null } = { status: null },
 ) {
   return {
-    binding: {
-      provider,
-      lastHealthStatus: binding.status,
-      lastHealthDetail: binding.detail ?? null,
-      lastHealthSays: null,
-      lastHealthAt: binding.status ? LATER : null,
-    },
+    binding: { provider },
+    health:
+      binding.status === null
+        ? null
+        : {
+            status: binding.status,
+            detail: binding.detail ?? null,
+            says: null,
+            checkedAt: LATER,
+            inboundEndpointObserved: null,
+          },
     connection: {
       lastHealthStatus: connection.status,
       lastHealthDetail: connection.detail ?? null,
       lastHealthSays: null,
       lastHealthAt: connection.status ? AT : null,
     },
-  } as unknown as BindingWithConnection;
+  } as unknown as BindingWithHealth;
 }
 
 describe('bindingHealth', () => {

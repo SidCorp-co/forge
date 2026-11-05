@@ -6,6 +6,7 @@ import {
   getIntegration,
   grantHolds,
   listBindingsForProject,
+  withBindingHealth,
 } from '../../integrations/index.js';
 import { readDeployMap } from '../../project-config/index.js';
 
@@ -33,7 +34,9 @@ export async function loadActiveIntegrationRows(
     listBindingsForProject(projectId),
     readDeployMap(projectId),
   ]);
-  const active = pairs.filter((p) => p.binding.active && p.connection.active);
+  const active = await withBindingHealth(
+    pairs.filter((p) => p.binding.active && p.connection.active),
+  );
   if (active.length === 0) return [];
 
   const orgGuides = orgId ? await loadOrgGuideProviders(orgId) : new Set<string>();

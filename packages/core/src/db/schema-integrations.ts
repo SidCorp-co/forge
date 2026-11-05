@@ -88,13 +88,13 @@ export const integrationConnections = pgTable(
     active: boolean('active').notNull().default(true),
     breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
     // What the last health check learned of the CREDENTIAL, which every binding of it reads alike;
-    // what it learned of one binding's own target is on the binding (ISS-983).
+    // what it learned of one binding's own target is in `integration_binding_health` (ISS-983).
     lastHealthStatus: text('last_health_status'),
     lastHealthDetail: text('last_health_detail'),
     /** The sentence `last_health_detail` was rendered from (`@forge/contracts/said`); null on a detail written before it was stored. */
     lastHealthSays: jsonb('last_health_says').$type<Said>(),
     lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
-    /** Where the credential's own hook calls (a GitHub App's); a hook of one bound target is on its binding. */
+    /** Where the credential's own hook calls (a GitHub App's); a hook of one bound target is in its binding's health row. */
     inboundEndpointObserved: jsonb('inbound_endpoint_observed').$type<ints.ObservedEndpoint>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

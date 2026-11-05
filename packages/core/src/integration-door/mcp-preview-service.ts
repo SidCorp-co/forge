@@ -2,6 +2,7 @@ import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import type { BindingRole } from '../db/schema.js';
 import {
   type BindingWithConnection,
+  type BindingWithHealth,
   bindingHealth,
   directMcpIntegrations,
   effectiveConfig,
@@ -14,6 +15,7 @@ import {
   mcpServerNameFor,
   relayUrlFor,
   toIso,
+  withBindingHealth,
 } from '../integrations/index.js';
 import { resolveSessionMcpServers } from '../jobs/index.js';
 import { refuser } from '../lib/refusal.js';
@@ -21,7 +23,7 @@ import { refuser } from '../lib/refusal.js';
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 /** The binding's own health as a row reads it (`bindingHealth`, ISS-983). */
-function healthOfRow(pair: BindingWithConnection) {
+function healthOfRow(pair: BindingWithHealth) {
   const health = bindingHealth(pair);
   return { lastHealthStatus: health.status, lastHealthAt: toIso(health.at) };
 }
@@ -112,7 +114,7 @@ interface Delivered {
 
 async function integrationRows(
   projectId: string,
-  pairs: BindingWithConnection[],
+  pairs: BindingWithHealth[],
   delivered: Delivered,
 ): Promise<McpServerPreviewEntry[]> {
   const rows: McpServerPreviewEntry[] = [];
@@ -186,7 +188,7 @@ async function integrationRows(
  */
 export async function buildMcpPreview(projectId: string): Promise<McpPreview> {
   const [pairs, resolved] = await Promise.all([
-    listBindingsForProject(projectId),
+    listBindingsForProject(projectId).then(withBindingHealth),
     resolveSessionMcpServers(projectId),
   ]);
 

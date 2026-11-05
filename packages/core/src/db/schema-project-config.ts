@@ -1,4 +1,3 @@
-import type { Said } from '@forge/contracts/said';
 import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
@@ -16,7 +15,6 @@ import {
 } from 'drizzle-orm/pg-core';
 import * as axes from './release-axes.js';
 import { users } from './schema-auth.js';
-import type { ObservedEndpoint } from './schema-integration-types.js';
 import { integrationConnections, integrationDeliveries } from './schema-integrations.js';
 import { projects } from './schema-projects.js';
 
@@ -58,17 +56,6 @@ export const integrationBindings = pgTable(
     agentAccess: text('agent_access', { enum: axes.agentAccessValues }).notNull().default('none'),
     instructions: text('instructions'),
     revision: integer('revision').notNull().default(1),
-    // What the last health check learned of THIS binding's own target (its repository's
-    // visibility, its hooks, its deploy targets, its site), apart from what it learned of the
-    // credential, which is the connection's (ISS-983). Never part of the binding document: written
-    // by a probe without touching `revision` or `updated_at`. Read through
-    // `integrations/store.ts:bindingHealth`, never alone.
-    lastHealthStatus: text('last_health_status'),
-    lastHealthDetail: text('last_health_detail'),
-    lastHealthSays: jsonb('last_health_says').$type<Said>(),
-    lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
-    /** Where this binding's own hook calls, where the hook is the target's (a GitLab project's). */
-    inboundEndpointObserved: jsonb('inbound_endpoint_observed').$type<ObservedEndpoint>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

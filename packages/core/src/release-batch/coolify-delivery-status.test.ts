@@ -17,6 +17,7 @@ vi.mock('../integrations/index.js', async (orig) => ({
   ],
   effectiveConfig: () => config,
   bindingHealth: () => ({ status: 'ok', detail: null, says: null, at: null }),
+  withBindingHealth: async (pairs: object[]) => pairs.map((p) => ({ ...p, health: null })),
   findLastOutboundForTarget: async () => null,
 }));
 

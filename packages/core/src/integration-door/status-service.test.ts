@@ -39,6 +39,8 @@ vi.mock('../integrations/deploy/coolify/applications.js', async (orig) => ({
 vi.mock('../integrations/index.js', async (orig) => ({
   ...(await orig<typeof import('../integrations/index.js')>()),
   listBindingsForProject: async () => pairs,
+  // each fixture pair already carries its binding's own health row (ISS-983)
+  withBindingHealth: async (ps: unknown[]) => ps,
 }));
 
 const { registerAllIntegrations } = await import('../integration-registry.js');
@@ -63,11 +65,16 @@ function pair(opts: {
       label: '',
       config: opts.config ?? {},
       active: opts.active ?? true,
-      // what the last check found of this binding's own target (ISS-983)
-      lastHealthStatus: opts.lastHealthStatus ?? 'ok',
-      lastHealthDetail: null,
-      lastHealthAt: new Date('2026-10-07T00:00:00Z'),
       createdAt: new Date('2026-10-01T00:00:00Z'),
+    },
+    // what the last check found of this binding's own target (ISS-983)
+    health: {
+      bindingId: opts.id,
+      status: opts.lastHealthStatus ?? 'ok',
+      detail: null,
+      says: null,
+      checkedAt: new Date('2026-10-07T00:00:00Z'),
+      inboundEndpointObserved: null,
     },
     connection: {
       id: `c-${opts.id}`,
