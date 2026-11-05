@@ -12,6 +12,7 @@ import {
   type LegendTone,
   TimelineFrame,
   TimelineHead,
+  lowerColliding,
   TimelineMark,
   TimelineRow,
   type TimelineRun,
@@ -117,6 +118,11 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
     live: r.to === null,
     title: r.to === null ? t("activity.run.live", { from: w.clock(r.from) }) : t("activity.run.past", { from: w.clock(r.from), to: w.clock(r.to) }),
   }));
+  const lowered = lowerColliding([
+    ...(batches ? lane.batches.map((b) => ({ key: `b:${b.at}`, at: x(b.at), pin: false })) : []),
+    ...lane.releases.map((r) => ({ key: `r:${r.version}`, at: x(r.at), pin: false })),
+    ...lane.waits.map((wt) => ({ key: `w:${wt.at}`, at: x(wt.at), pin: true })),
+  ]);
   return (
     <TimelineTrack ticks={halfHours(lane.from, generatedAt).map((h) => x(new Date(h).toISOString()))} runs={runs}>
       {batches
@@ -125,6 +131,7 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
               key={`b:${b.at}`}
               at={x(b.at)}
               shape={{ kind: "count", n: b.moves.length }}
+              lowered={lowered.has(`b:${b.at}`)}
               label={w.batchTip(b)}
               open={isOpen("batch", b.at)}
               markRef={ref(`b:${b.at}`)}
@@ -138,6 +145,7 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
           key={`r:${r.version}`}
           at={x(r.at)}
           shape={{ kind: "diamond", tone: RELEASE_TONE[r.state] }}
+          lowered={lowered.has(`r:${r.version}`)}
           label={w.releaseTip(r)}
           open={isOpen("release", r.at)}
           markRef={ref(`r:${r.version}`)}
@@ -149,11 +157,11 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
         <TimelineMark
           key={`w:${wt.at}`}
           at={x(wt.at)}
-          shape={{ kind: "pin", n: wt.items.length }}
+          shape={{ kind: "pin", n: wt.items.length + wt.more }}
           label={w.waitTip(wt.items)}
           open={isOpen("wait", wt.at)}
           markRef={ref(`w:${wt.at}`)}
-          onOpen={fire(`w:${wt.at}`, { kind: "wait", project: p, items: wt.items, since: wt.at, more: 0 })}
+          onOpen={fire(`w:${wt.at}`, { kind: "wait", project: p, items: wt.items, since: wt.at, more: wt.more })}
           testId="mark-wait"
         />
       ))}

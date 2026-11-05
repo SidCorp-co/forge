@@ -197,7 +197,13 @@ async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
   const projectIds = ids ? ids.split(',') : [];
   const out = new Map<string, PeopleGlance>(projectIds.map((id) => [id, { total: 0, items: [] }]));
   if (projectIds.length === 0) return out;
-  const owed = await readNeedsYouAcross(userId, agency, new Date(), projectIds);
+  const owed = await readNeedsYouAcross(
+    userId,
+    agency,
+    new Date(),
+    projectIds,
+    ORG_ACTIVITY_WAIT_LIMIT,
+  );
   const projects = rowsOf<{ id: string; slug: string; issue_prefix: string | null }>(
     await db.execute(
       sql`SELECT id, slug, issue_prefix FROM projects WHERE id IN (${uuids(projectIds)})`,
@@ -394,7 +400,7 @@ export async function readOrgActivity(
       release: release?.read ? release.value : null,
       releasePending: !release?.read,
       awaitingRelease: awaiting.get(p.id) ?? 0,
-      lane: laneOf(projectEvents, laneFrom, now, shipped.get(p.id) ?? [], owedHere.items),
+      lane: laneOf(projectEvents, laneFrom, now, shipped.get(p.id) ?? [], owedHere),
       lastActivityAt: lastActivityOf(projectEvents, master.lastPassEndedAt),
     };
   });

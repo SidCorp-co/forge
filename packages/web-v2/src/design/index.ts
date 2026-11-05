@@ -117,6 +117,8 @@ export {
   TimelineGlyph,
   TimelineHead,
   TimelineLegend,
+  lowerColliding,
+  MARK_GAP,
   TimelineMark,
   type TimelineMarkShape,
   TimelineRow,

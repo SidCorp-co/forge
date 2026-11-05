@@ -13,7 +13,8 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ADMINHUB, AHAPI, CATALOG, FORGE, ORG, QUESTION_ID, read, SILENT, serve } from "@/test/activity.fixture";
+import { ADMINHUB, AHAPI, ago, CATALOG, FORGE, ORG, project, QUESTION_ID, read, SILENT, serve } from "@/test/activity.fixture";
+import { lowerColliding } from "@/design";
 import { renderWithQuery } from "@/test/render";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
@@ -179,5 +180,64 @@ describe("the Activity tab's marks", () => {
     const peek = await screen.findByTestId("activity-peek");
     expect(within(peek).getByRole("region", { name: "To release" }).textContent).toBe("To release44");
     expect(within(peek).getByTestId("activity-release").textContent).toContain("7/15");
+  });
+});
+
+describe("the Activity tab's marks never cover each other (ISS-979 fix round)", () => {
+  // the live page drew a release diamond on a batch circle (Agenfold about 12:44, Forge at now), so
+  // the one beneath could be neither hovered nor clicked; and Forge's pin read 3 while 6 waited
+  const CROWDED = project({
+    projectId: "p-crowd",
+    slug: "crowd-slug",
+    name: "Crowded",
+    standing: "idle",
+    people: { total: 7, items: [] },
+    lane: {
+      from: ago(7200),
+      runs: [],
+      batches: [{ at: ago(1200), moves: [{ issueKey: "ISS-1", title: "One", from: "open", to: "in_progress" }] }],
+      releases: [
+        { at: ago(1190), version: "1.0.1", state: "released", total: 1, issues: [{ key: "ISS-1", title: "One" }] },
+        { at: ago(4000), version: "1.0.0", state: "released", total: 1, issues: [{ key: "ISS-0", title: "Zero" }] },
+      ],
+      waits: [{ at: ago(7200), items: [], more: 7 }],
+    },
+  });
+
+  it("a release on a batch hangs below the line, the earlier keeps it, and one standing alone stays on it", async () => {
+    serve(read([CROWDED]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Crowded");
+    const lane = within(within(rowOf("Crowded")).getByTestId("timeline-track"));
+    expect(lane.getByTestId("mark-batch").hasAttribute("data-lowered")).toBe(false);
+    const [late, alone] = lane.getAllByTestId("mark-release");
+    expect(late?.getAttribute("aria-label")).toContain("1.0.1");
+    expect(late?.hasAttribute("data-lowered")).toBe(true);
+    expect(alone?.hasAttribute("data-lowered")).toBe(false);
+  });
+
+  it("a pin counts every decision waiting, those core carries no item for included, as the You count does", async () => {
+    serve(read([CROWDED]));
+    renderWithQuery(<ActivityScreen />);
+    await screen.findByText("Crowded");
+    const [pin] = within(rowOf("Crowded")).getAllByTestId("mark-wait");
+    expect(pin?.firstElementChild?.textContent).toBe("7");
+    expect(within(rowOf("Crowded")).getByTestId("activity-you").textContent).toBe("7");
+    if (!pin) throw new Error("no pin");
+    fireEvent.click(pin);
+    expect(within(await pop()).getByText("+7 more")).toBeTruthy();
+  });
+
+  it("lowers a centred mark near a pin or an earlier centred mark, never a pin", () => {
+    expect(
+      lowerColliding([
+        { key: "pin", at: 10, pin: true },
+        { key: "near-pin", at: 11, pin: false },
+        { key: "first", at: 50, pin: false },
+        { key: "second", at: 51.5, pin: false },
+        { key: "alone", at: 80, pin: false },
+      ]),
+    ).toEqual(new Set(["near-pin", "second"]));
+    expect(lowerColliding([{ key: "a", at: 10, pin: true }, { key: "b", at: 10, pin: true }])).toEqual(new Set());
   });
 });

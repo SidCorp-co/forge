@@ -201,10 +201,13 @@ export interface OrgActivityLaneRelease {
 /**
  * Decisions waiting on the reader that began close in time, drawn as one amber pin at `at`, where the
  * first of them began (the lane's start where it began before it, or where core holds no start).
+ * `more` counts the decisions past what the read carries by name: core holds no start for them, so
+ * they stand on the pin at the lane's start, and every lane's pins add up to the reader's total.
  */
 export interface OrgActivityWait {
 	at: string;
 	items: OrgActivityPerson[];
+	more: number;
 }
 
 /**

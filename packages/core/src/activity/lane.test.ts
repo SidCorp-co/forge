@@ -111,7 +111,7 @@ describe('a lane reads status moves as batches', () => {
       { at: at('08:02'), kind: 'merged', issueKey: 'ISS-3', issueTitle: 'x' },
     ];
     expect(batchesOf(events, FROM, NOW)).toEqual([]);
-    expect(Object.keys(laneOf(events, FROM, NOW, [], []))).toEqual([
+    expect(Object.keys(laneOf(events, FROM, NOW, [], { total: 0, items: [] }))).toEqual([
       'from',
       'runs',
       'batches',
@@ -133,11 +133,28 @@ describe('a lane pins what waits on the reader where each wait began', () => {
       ],
       FROM,
     );
-    expect(waits.map((w) => [w.at, w.items.map((i) => i.decisionId)])).toEqual([
-      [FROM.toISOString(), ['c', 'd']],
-      [at('08:40'), ['a', 'b']],
-      [at('09:00'), ['e']],
+    expect(waits.map((w) => [w.at, w.items.map((i) => i.decisionId), w.more])).toEqual([
+      [FROM.toISOString(), ['c', 'd'], 0],
+      [at('08:40'), ['a', 'b'], 0],
+      [at('09:00'), ['e'], 0],
     ]);
+  });
+
+  it('decisions past what the read carries by name stand on the pin at the lane start, so the pins add up to the total', () => {
+    const named = [person({ decisionId: 'a', since: at('08:40') })];
+    const opened = waitsOf(named, FROM, 4);
+    expect(opened.map((w) => [w.at, w.items.length, w.more])).toEqual([
+      [FROM.toISOString(), 0, 3],
+      [at('08:40'), 1, 0],
+    ]);
+    const atStart = waitsOf([person({ decisionId: 'b', since: null }), ...named], FROM, 6);
+    expect(atStart.map((w) => [w.at, w.items.length, w.more])).toEqual([
+      [FROM.toISOString(), 1, 4],
+      [at('08:40'), 1, 0],
+    ]);
+    const sum = (ws: typeof opened) => ws.reduce((n, w) => n + w.items.length + w.more, 0);
+    expect(sum(opened)).toBe(4);
+    expect(sum(atStart)).toBe(6);
   });
 
   it('nothing waiting draws no pin', () => {

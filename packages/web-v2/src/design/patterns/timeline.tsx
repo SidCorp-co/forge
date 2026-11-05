@@ -120,7 +120,8 @@ export function TimelineGlyph({ shape, small = false }: { shape: TimelineMarkSha
 /**
  * A mark placed on a track at `at` (a percentage), a button: its summary on hover and on keyboard
  * focus (`label`, also its accessible name), and what it opens on click is the page's. A pin stands
- * on its point, above the line; the others are centred on it.
+ * on its point, above the line; the others are centred on it, or hang just below it where `lowered`,
+ * so a mark that would sit on another stays in reach (`lowerColliding`).
  */
 export function TimelineMark({
   at,
@@ -130,8 +131,10 @@ export function TimelineMark({
   open,
   markRef,
   testId,
+  lowered = false,
 }: {
   at: number;
+  lowered?: boolean;
   shape: TimelineMarkShape;
   label: string;
   onOpen: () => void;
@@ -152,10 +155,15 @@ export function TimelineMark({
       }}
       className={cn(
         "group/mark absolute z-[2] flex cursor-pointer items-center justify-center rounded-full outline-none hover:z-[3] hover:brightness-105 focus-visible:z-[3] focus-visible:shadow-focus",
-        shape.kind === "pin" ? "top-[calc(50%+2px)] -translate-x-1/2 -translate-y-full" : "top-1/2 -translate-x-1/2 -translate-y-1/2",
+        shape.kind === "pin"
+          ? "top-[calc(50%+2px)] -translate-x-1/2 -translate-y-full"
+          : lowered
+            ? "top-[calc(50%+3px)] -translate-x-1/2"
+            : "top-1/2 -translate-x-1/2 -translate-y-1/2",
       )}
       style={left(at)}
       data-testid={testId}
+      data-lowered={lowered ? "" : undefined}
     >
       <TimelineGlyph shape={shape} />
       {open ? null : (
@@ -173,6 +181,26 @@ export function TimelineMark({
       )}
     </button>
   );
+}
+
+/** How near two marks may stand, in percent of the track, before one would cover the other. */
+export const MARK_GAP = 2.4;
+
+/**
+ * Which marks hang below the line so none covers another: pins stand above it, and a centred mark
+ * that falls within `gap` of a pin or of a centred mark already placed is lowered. Placed in time
+ * order, so the earlier of two keeps the line. The keys of the lowered marks.
+ */
+export function lowerColliding(marks: readonly { key: string; at: number; pin: boolean }[], gap: number = MARK_GAP): Set<string> {
+  const pins = marks.filter((m) => m.pin).map((m) => m.at);
+  const centred: number[] = [];
+  const lowered = new Set<string>();
+  for (const m of [...marks].filter((m) => !m.pin).sort((a, b) => a.at - b.at)) {
+    const near = (x: number) => Math.abs(x - m.at) < gap;
+    if (pins.some(near) || centred.some(near)) lowered.add(m.key);
+    else centred.push(m.at);
+  }
+  return lowered;
 }
 
 /** What each mark means: one swatch and a short label each. */

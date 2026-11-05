@@ -85,12 +85,27 @@ export function batchesOf(
 
 /**
  * The decisions waiting on the reader as pins: each placed where its wait began, at the lane's start
- * where it began before the lane or where core holds no start, and gathered as batches are.
+ * where it began before the lane or where core holds no start, and gathered as batches are. Those of
+ * `total` the read carries no item for have no start core holds, so they are counted on the pin at the
+ * lane's start (`more`): the pins add up to the reader's count, never fewer.
  */
-export function waitsOf(items: readonly OrgActivityPerson[], from: Date): OrgActivityWait[] {
+export function waitsOf(
+  items: readonly OrgActivityPerson[],
+  from: Date,
+  total: number = items.length,
+): OrgActivityWait[] {
   const placed = (p: OrgActivityPerson) =>
     p.since === null ? from.getTime() : Math.max(from.getTime(), Date.parse(p.since));
-  return gathered(items, placed).map((w) => ({ at: new Date(w.at).toISOString(), items: w.items }));
+  const waits = gathered(items, placed).map(
+    (w): OrgActivityWait => ({ at: new Date(w.at).toISOString(), items: w.items, more: 0 }),
+  );
+  const more = Math.max(0, total - items.length);
+  if (more === 0) return waits;
+  const start = from.toISOString();
+  const first = waits[0];
+  if (first?.at === start) first.more = more;
+  else waits.unshift({ at: start, items: [], more });
+  return waits;
 }
 
 /** When core last recorded anything on the project: its newest event, or its master's last pass. */
@@ -109,13 +124,13 @@ export function laneOf(
   from: Date,
   to: Date,
   releases: readonly OrgActivityLaneRelease[],
-  waiting: readonly OrgActivityPerson[],
+  waiting: { total: number; items: readonly OrgActivityPerson[] },
 ): OrgActivityLane {
   return {
     from: from.toISOString(),
     runs: runsOf(events, from),
     batches: batchesOf(events, from, to),
     releases: [...releases],
-    waits: waitsOf(waiting, from),
+    waits: waitsOf(waiting.items, from, waiting.total),
   };
 }

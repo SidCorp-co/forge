@@ -98,8 +98,8 @@ export const FORGE = project({
       { at: ago(600), version: "0.4.0-dev.503", state: "releasing", total: 1, issues: [{ key: "ISS-972", title: "Steward token minted twice" }] },
     ],
     waits: [
-      { at: ago(1800), items: [PERSON_A, PERSON_B] },
-      { at: ago(300), items: [PERSON_C] },
+      { at: ago(1800), items: [PERSON_A, PERSON_B], more: 0 },
+      { at: ago(300), items: [PERSON_C], more: 0 },
     ],
   },
   lastActivityAt: ago(180),

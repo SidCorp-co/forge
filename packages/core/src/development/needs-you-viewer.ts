@@ -48,6 +48,8 @@ export async function readNeedsYouAcross(
   now: Date = new Date(),
   /** Narrows the visible projects to these (a workspace's, ISS-951); it never admits one more. */
   within: readonly string[] | null = null,
+  /** How many of each project's decisions are carried by name: a person's few, or a read placing each (Activity). */
+  cap: number = NEEDS_YOU_PERSON_CAP,
 ): Promise<NeedsYouProjectDecisions[]> {
   const visible = await loadVisibleProjectIds(userId);
   const ids = within ? visible.filter((id) => within.includes(id)) : visible;
@@ -80,7 +82,7 @@ export async function readNeedsYouAcross(
               projectSlug: p.slug,
               projectName: p.name,
               total: read.total,
-              decisions: read.decisions.slice(0, NEEDS_YOU_PERSON_CAP),
+              decisions: read.decisions.slice(0, cap),
               owed,
               ids,
             },

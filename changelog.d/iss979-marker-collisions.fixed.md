@@ -1,0 +1,1 @@
+**Activity markers never cover each other.** A release or batch that falls on another marker hangs just below the line so both stay clickable, and each amber pin counts every decision waiting, matching the You count.
