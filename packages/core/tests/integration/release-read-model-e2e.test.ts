@@ -500,9 +500,8 @@ describe('an issue reopened between two releases reads as the rework of the one 
         screen: null,
       },
     ]);
-    expect(dev225.actionRequired).toEqual([
-      expect.objectContaining({ kind: 'migration', ref: MIGRATION, issues: [key] }),
-    ]);
+    const ask = expect.objectContaining({ kind: 'migration', ref: MIGRATION, issues: [key] });
+    expect(dev225.actionRequired).toEqual([ask]);
 
     const dev224 = await page('0.4.0-dev.224');
     expect(dev224.fixes).toEqual([]);
