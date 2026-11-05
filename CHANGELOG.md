@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.514] - 2026-11-05
+
+Support screenshots reach the agent; Activity lanes and Releases read as short reports
+
+### Changed
+
+- **Releases read as one short report.** The list groups what waits on you, what is going out and what is live, folding carried landings; each release page shows one proof number, changes by screen and what needs attention.
+
+### Fixed
+
+- **A support room's screenshots now reach its session.** Forge records each picture a message carries, hands it to the session through support.image, attaches it to Feedback filed from the thread, and names why one cannot be read.
+- **Activity's chips count what the list shows.** While Forge still reads what waits on you, the chips follow the groups on screen, a first load says "Waiting on you …", and on a phone the name column has an edge.
+
 ## [0.4.0-dev.513] - 2026-11-05
 
 People decide questions and proposals from three plain lines the agent writes
