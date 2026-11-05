@@ -198,7 +198,7 @@ describe('release sweep (ISS-1117)', () => {
     expect(reason.split(SERVING)).toHaveLength(2);
     // nothing answers whether SERVING holds the landing, so no commit is named to judge at, only the
     // check that tells (ISS-997)
-    expect(reason).toContain(`\`git merge-base --is-ancestor ${LANDED} ${SERVING}\``);
+    expect(reason).toContain(`\`git merge-base --is-ancestor ${LANDED} <served>\``);
     expect(reason).not.toContain('judged at a commit this project is serving');
   });
 

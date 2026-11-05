@@ -195,7 +195,8 @@ describe('a release hold asks for verdicts only at a commit holding the landing 
     expect(reason).toContain(
       `whether what production serves holds this issue's landing could not be read: ${NO_HOST}, so no commit is named here to judge at`,
     );
-    expect(reason).toContain(`\`git merge-base --is-ancestor ${LANDED} ${SERVED}\``);
+    expect(reason).toContain(`\`git merge-base --is-ancestor ${LANDED} <served>\``);
+    expect(reason.split(SERVED)).toHaveLength(2);
     expect(reason).not.toContain('judged at a commit this project is serving');
     expect(hold?.waitingFor).toBe(
       'a verdict on each criterion named at a served commit shown to hold its landing, or the release that carries it',

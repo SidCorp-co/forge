@@ -161,15 +161,16 @@ function landingJudgeClause(
       `ships. ${RIDES}`
     );
   }
-  const commits = [...new Set(serving.served.map((s) => s.commit))];
   const { landing } = held;
+  const project = weighedOn === null ? 'this project' : `\`${weighedOn}\``;
   const check =
     landing === null
-      ? 'Where'
-      : `Check it with git (${commits.map((c) => `\`git merge-base --is-ancestor ${landing} ${c}\``).join(', ')}): where`;
+      ? ''
+      : `; check it with git, \`git merge-base --is-ancestor ${landing} <served>\` for each commit it serves`;
   return (
     `whether what ${where} serves holds this issue's landing could not be read: ${held.why}, so no ` +
-    `commit is named here to judge at. ${check} it holds, record a verdict on each criterion ` +
+    `commit is named here to judge at. What ${project} is serving — ${servingClause(serving)} — ` +
+    `counts only where it holds the landing${check}. Where it holds, record a verdict on each criterion ` +
     `named judged at that commit; where it does not, its criteria are owed after the release that ` +
     `carries it, ${carrier}. ${RIDES}`
   );

@@ -155,7 +155,8 @@ describe('a production a landing reached keeps weighing at what it serves', () =
     expect(hold?.reason).toContain(
       "whether what production serves holds this issue's landing could not be read: no history",
     );
-    expect(hold?.reason).toContain(`\`git merge-base --is-ancestor ${LANDED} ${SERVED}\``);
+    expect(hold?.reason).toContain(`\`git merge-base --is-ancestor ${LANDED} <served>\``);
+    expect(hold?.reason).toContain(SERVED);
     expect(hold?.reason).not.toContain('judged at a commit this project is serving');
     expect(await coverageLandingHolds(projectId, [id])).toBeNull();
   });
