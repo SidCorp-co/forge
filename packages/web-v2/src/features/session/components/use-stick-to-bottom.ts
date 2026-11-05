@@ -9,6 +9,18 @@ export function tailOutputSize(items: readonly ConversationItem[]): number {
   return tail ? JSON.stringify(tail).length : 0;
 }
 
+/**
+ * Take the thread's own scroller to its end, and nothing else. `scrollIntoView` on a sentinel at the
+ * end scrolls every ancestor that can scroll as well, an `overflow: hidden` one included: in the Ask
+ * Agent panel that moved the whole workspace shell up, and the page beside it read as a top strip over
+ * white (ISS-1006, owner's dashboard with the panel open). Only the scroller moves here.
+ */
+function toEnd(el: HTMLElement | null, smooth: boolean): void {
+  if (!el) return;
+  if (smooth && typeof el.scrollTo === "function") el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  else el.scrollTop = el.scrollHeight;
+}
+
 export function useStickToBottom({
   conversationKey,
   ready,
@@ -31,7 +43,6 @@ export function useStickToBottom({
   streamedChars?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const lastJumpedKeyRef = useRef<string | undefined>(undefined);
 
@@ -55,7 +66,7 @@ export function useStickToBottom({
     atBottomRef.current = true;
     setAtBottom(true);
     setNewOutput(false);
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    toEnd(scrollRef.current, false);
   };
 
   // Conversation switch: reset the one-shot guard and jump to bottom once the
@@ -67,7 +78,7 @@ export function useStickToBottom({
     atBottomRef.current = true;
     setAtBottom(true);
     setNewOutput(false);
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    toEnd(scrollRef.current, false);
   }, [conversationKey, ready]);
 
   // Growth / stream: keep pinned to latest only when already near the bottom.
@@ -81,10 +92,8 @@ export function useStickToBottom({
       return;
     }
     setNewOutput(false);
-    bottomRef.current?.scrollIntoView(
-      streaming ? { block: "end" } : { behavior: "smooth", block: "end" },
-    );
+    toEnd(scrollRef.current, !streaming);
   }, [itemCount, live, streaming, streamedChars]);
 
-  return { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom };
+  return { scrollRef, onScroll, atBottom, newOutput, toBottom };
 }

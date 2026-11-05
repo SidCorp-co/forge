@@ -4,6 +4,8 @@ import { EmptyState, ErrorState, IconButton, ProjectLoader } from "@/design";
 import { ThreadSub } from "@/features/onboarding";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
+import type { TurnStage as TurnStageName } from "@/features/session";
+import { roomStatusOf } from "../room-status";
 import { type ConversationMode, type ConversationListItem, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
 
@@ -18,12 +20,15 @@ export function RoomHeader({
   projectId,
   onMembers,
   actions,
+  stage,
 }: {
   room: ConversationListItem | undefined;
   firstSaid: string | undefined;
   projectId: string;
   onMembers: () => void;
   actions: ReactNode;
+  /** The turn the thread draws running, which the header's status reads too (`room-status.ts`). */
+  stage: TurnStageName | null;
 }) {
   const t = useCopy();
   const untitled = t("shell.dock.newConversation");
@@ -34,7 +39,7 @@ export function RoomHeader({
           <h2 className="truncate text-14 font-bold leading-snug text-fg @2xl:text-24 @2xl:leading-tight">
             {room ? conversationTitle(room, firstSaid, untitled) : untitled}
           </h2>
-          <ThreadSub kind={room?.kind} status={room?.threadStatus} projectId={projectId} />
+          <ThreadSub kind={room?.kind} status={roomStatusOf(room?.threadStatus, stage)} projectId={projectId} />
         </div>
         {room && <IconButton icon="users" size="sm" aria-label={t("shell.chat.members")} onClick={onMembers} />}
         {actions}

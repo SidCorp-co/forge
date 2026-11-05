@@ -56,8 +56,11 @@ export function Words({ answer, onSend, onCancel }: { answer: DecisionAnswer; on
   );
 }
 
-/** One answer: its label, the digit that presses it, and what it does, all inside the one pressable button. */
-function AnswerButton({ a, n, onPress }: { a: DecisionAnswer; n: number; onPress: (a: DecisionAnswer) => void }) {
+/**
+ * One answer: its label, the digit that presses it, and what it does, all inside the one pressable
+ * button. A decision read from its plain text names only the outcome; what it does is behind the fold.
+ */
+function AnswerButton({ a, n, onPress, outcomeOnly }: { a: DecisionAnswer; n: number; onPress: (a: DecisionAnswer) => void; outcomeOnly: boolean }) {
   const t = useCopy();
   return (
     <Button
@@ -72,7 +75,7 @@ function AnswerButton({ a, n, onPress }: { a: DecisionAnswer; n: number; onPress
         {a.recommended ? <span className="flex-none text-11 font-medium opacity-85">{t("approvals.peek.recommended")}</span> : null}
         {n <= 9 ? <Kbd className="flex-none max-lg:hidden">{n}</Kbd> : null}
       </span>
-      {a.effect ? <span className={cn("break-words text-12 font-normal", a.recommended ? "opacity-90" : "text-muted")}>{a.effect}</span> : null}
+      {a.effect && !outcomeOnly ? <span className={cn("break-words text-12 font-normal", a.recommended ? "opacity-90" : "text-muted")}>{a.effect}</span> : null}
     </Button>
   );
 }
@@ -84,10 +87,12 @@ interface AnswersProps {
   onPress: (a: DecisionAnswer, words: string | null) => void;
   /** A proposal's own page, where it is changed before it is approved. */
   editHref?: React.ReactNode;
+  /** The decision is read from its plain text (ISS-1006): each button names its outcome alone. */
+  outcomesOnly?: boolean;
 }
 
 /** The answers that decide it, held in the peek's foot, with the keys that press them. */
-export function DecisionAnswers({ d, typing, onType, onPress, editHref }: AnswersProps) {
+export function DecisionAnswers({ d, typing, onType, onPress, editHref, outcomesOnly = false }: AnswersProps) {
   const t = useCopy();
   const answers = drawnAnswers(d);
   const press = (a: DecisionAnswer) => {
@@ -104,7 +109,7 @@ export function DecisionAnswers({ d, typing, onType, onPress, editHref }: Answer
         <ul className="flex flex-col gap-2" aria-label={t("approvals.peek.answersLabel")}>
           {answers.map((a, i) => (
             <li key={a.id}>
-              <AnswerButton a={a} n={i + 1} onPress={press} />
+              <AnswerButton a={a} n={i + 1} onPress={press} outcomeOnly={outcomesOnly} />
             </li>
           ))}
         </ul>

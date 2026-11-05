@@ -65,7 +65,7 @@ export function SessionThread({
   const stage = sessionTurnStage({ live, display, truncated, ...(items.length ? { tail: items[items.length - 1] } : {}) });
 
   // Auto-scroll the thread to the newest message (ISS-728).
-  const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
+  const { scrollRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: sessionId,
     ready: turnsQ.isSuccess,
     itemCount: items.length,
@@ -115,7 +115,6 @@ export function SessionThread({
                 </div>
               )}
               {newOutput && <NewOutput onGo={toBottom} />}
-              <div ref={bottomRef} />
             </div>
           </div>
           <SessionComposer

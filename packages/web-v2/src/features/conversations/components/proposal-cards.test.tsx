@@ -1,9 +1,16 @@
 // A chat's write waits for the person it answers (REQ-30 BC-4, ISS-439): the room shows what would
 // be recorded and what it relates to, only that person can Record it or Decline, and the press is
 // the one core call that writes it. Everyone else reads whom it waits on.
+//
+// ISS-1006: the person decides from the agent's one plain line; the held call's raw fields sit behind
+// one closed "Technical" fold, the card folds to its line, and a card whose agent wrote no line says
+// so. Planted red by drawing `summary.lines` outside the fold, and by drawing nothing where `plain` is
+// null.
+//
+// @direct-test-of packages/web-v2/src/features/conversations/components/proposal-cards.tsx
 
 import type { ChatProposalView } from "@forge/contracts/chat-proposals";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ProposalCards } from "./proposal-cards";
@@ -16,6 +23,9 @@ afterEach(() => {
 const ROOM = "22222222-2222-4222-8222-222222222222";
 const ID = "33333333-3333-4333-8333-333333333333";
 
+/** Open the card's one technical fold, where the held call's own fields are. */
+const openTechnical = () => fireEvent.click(within(screen.getByTestId("proposal-technical")).getByRole("button", { name: "Technical" }));
+
 const proposal = (over: Partial<ChatProposalView> = {}): ChatProposalView => ({
   id: ID,
   conversationId: ROOM,
@@ -25,6 +35,7 @@ const proposal = (over: Partial<ChatProposalView> = {}): ChatProposalView => ({
     title: "Feedback (bug): The dock loses my draft",
     lines: ["Switching tabs clears it."],
     relates: ["REQ-30"],
+    plain: "Your draft stays when you switch tabs. I recommend recording it.",
   },
   proposedTo: { userId: "44444444-4444-4444-8444-444444444444", label: "Lan" },
   canDecide: true,
@@ -51,7 +62,9 @@ describe("a held write waits in the room for its person", () => {
     });
     renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={2} />);
 
-    expect(await screen.findByText("Feedback (bug): The dock loses my draft")).toBeTruthy();
+    expect(await screen.findByText("Your draft stays when you switch tabs. I recommend recording it.")).toBeTruthy();
+    openTechnical();
+    expect(screen.getByText("Feedback (bug): The dock loses my draft")).toBeTruthy();
     expect(screen.getByText("Switching tabs clears it.")).toBeTruthy();
     expect(screen.getByText("Relates to REQ-30")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Record it" }));
@@ -72,7 +85,7 @@ describe("a held write waits in the room for its person", () => {
       if (c.method === "GET" && c.path === `/conversations/${ROOM}/proposals`) {
         return {
           body: {
-            proposals: [proposal({ kind: "requirement_draft", summary: { title: "New requirement: Keep drafts", lines, relates: [] } })],
+            proposals: [proposal({ kind: "requirement_draft", summary: { title: "New requirement: Keep drafts", lines, relates: [], plain: null } })],
           },
         };
       }
@@ -80,9 +93,12 @@ describe("a held write waits in the room for its person", () => {
     });
     renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
 
-    expect(await screen.findByText("New requirement: Keep drafts")).toBeTruthy();
+    await screen.findByTestId("proposal-card");
+    openTechnical();
+    expect(screen.getByText("New requirement: Keep drafts")).toBeTruthy();
     for (const line of lines) expect(screen.getByText(line)).toBeTruthy();
-    expect(screen.getByTestId("proposal-lines").children).toHaveLength(lines.length);
+    // the title, then every line
+    expect(screen.getByTestId("proposal-lines").children).toHaveLength(lines.length + 1);
   });
 
   it("declines without writing, through the decline route alone", async () => {
@@ -145,5 +161,48 @@ describe("a held write waits in the room for its person", () => {
     renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={2} />);
     fireEvent.click(await screen.findByRole("button", { name: "Record it" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/recorded already/);
+  });
+});
+
+describe("the person decides from the agent's plain line (ISS-1006)", () => {
+  const listing = (p: ChatProposalView) =>
+    fakeCore((c) => (c.method === "GET" && c.path === `/conversations/${ROOM}/proposals` ? { body: { proposals: [p] } } : undefined));
+  const RAW = {
+    title: "Revision of REQ-68",
+    lines: ["baseRevision: 1", 'spec: {"goal":"Problem: people re-review"}', "kind: screen", "tldr: Approvals lead", "changeSummary: Make it readable", "writtenLang: en"],
+    relates: ["REQ-68"],
+  };
+
+  it("shows the plain line and the two buttons; the raw fields stay behind the closed fold", async () => {
+    listing(proposal({ kind: "requirement_revision", summary: { ...RAW, plain: "Approvals open on one plain line per decision. I recommend recording this revision." } }));
+    renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
+    const card = await screen.findByTestId("proposal-card");
+    expect(within(card).getByTestId("proposal-plain").textContent).toBe("Approvals open on one plain line per decision. I recommend recording this revision.");
+    for (const raw of [RAW.title, ...RAW.lines, "Relates to REQ-68"]) expect(within(card).queryByText(raw)).toBeNull();
+    expect(card.textContent).not.toMatch(/REQ-68|baseRevision|writtenLang/);
+    expect(within(card).getByRole("button", { name: "Record it" })).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Decline" })).toBeTruthy();
+    openTechnical();
+    expect(within(card).getByText("baseRevision: 1")).toBeTruthy();
+  });
+
+  it("says plainly that the agent wrote no line, and is still decided from its buttons", async () => {
+    listing(proposal({ summary: { ...RAW, plain: null } }));
+    renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
+    expect((await screen.findByTestId("proposal-no-plain")).textContent).toBe("The agent wrote no summary");
+    expect(screen.getByRole("button", { name: "Record it" })).toBeTruthy();
+  });
+
+  it("folds to its one line and unfolds again, the buttons kept", async () => {
+    listing(proposal());
+    renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
+    const fold = await screen.findByRole("button", { name: "Fold the card" });
+    expect(fold.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(fold);
+    expect(screen.getByTestId("proposal-card").getAttribute("data-folded")).toBe("true");
+    expect(screen.queryByTestId("proposal-technical")).toBeNull();
+    expect(screen.getByRole("button", { name: "Record it" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Unfold the card" }));
+    expect(screen.getByTestId("proposal-technical")).toBeTruthy();
   });
 });

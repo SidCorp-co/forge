@@ -3,9 +3,15 @@
 // the panel's foot above the phone's tab bar, the one answer list, each answer a button saying what it
 // does. Flat: no tinted box, hierarchy from type and whitespace. Nothing here builds an act: every
 // button presses one core gave.
+//
+// A question an agent asked (ISS-1006, owner 2026-11-05) is decided from the asker's own plain text
+// alone: that text, then the answers as buttons naming their outcome. What is asked, why, what it
+// rests on and what each answer does sit behind one closed "Technical" fold that is never needed to
+// decide. Where the asker wrote no plain text, the peek says so in its place, so whether the teaching
+// took is seen where the person decides, and the decision is still made from the buttons.
 
 import type { DecisionAnswer, DecisionEvidence, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
-import { type FullPage, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Disclosure, type FullPage, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { QuestionSubjectLine } from "@/features/questions";
 import { ChangeRequestList } from "@/features/releases";
 import { Link } from "@/lib/navigation/router";
@@ -186,6 +192,59 @@ function Reasons({ d }: { d: NeedsYouDecision }) {
 }
 
 
+/** The asker's plain text the person decides from, or the plain word that it wrote none (ISS-1006). */
+export function PlainText({ plain }: { plain: string | null }) {
+  const t = useCopy();
+  return plain ? (
+    <p className="whitespace-pre-line text-15 leading-relaxed text-fg" data-testid="approval-peek-plain">
+      {plain}
+    </p>
+  ) : (
+    <p className="text-13 italic text-muted" data-testid="approval-peek-no-plain">
+      {t("approvals.peek.noPlain")}
+    </p>
+  );
+}
+
+/** What each answer does, said once behind the fold: a plain decision's buttons carry only their outcome. */
+function AnswerEffects({ d }: { d: NeedsYouDecision }) {
+  const t = useCopy();
+  const said = d.answers.filter((a) => a.effect);
+  if (said.length === 0) return null;
+  return (
+    <section data-testid="approval-peek-effects">
+      <Heading>{t("approvals.peek.effects")}</Heading>
+      <dl className="divide-y divide-line-subtle border-y border-line-subtle text-13">
+        {said.map((a) => (
+          <Fact key={a.id} name={a.label}>
+            {a.effect}
+          </Fact>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** Everything behind a plain decision's one fold: what is asked, its stakes, why, and what it rests on. */
+function Technical({ d, slug }: { d: NeedsYouDecision; slug: string }) {
+  const t = useCopy();
+  return (
+    <Disclosure title={t("approvals.peek.technical")} testId="approval-peek-technical">
+      <div className="flex flex-col gap-5 pt-1">
+        <Asked d={d} slug={slug} />
+        <Stakes d={d} />
+        <DecisionTags d={d} />
+        <Reasons d={d} />
+        <AnswerEffects d={d} />
+        {d.evidence ? <Evidence e={d.evidence} slug={slug} /> : null}
+      </div>
+    </Disclosure>
+  );
+}
+
+/** A decision an agent writes plain text for: a question, where its asker's text is read or its absence said. */
+export const decidedFromPlain = (d: NeedsYouDecision): d is NeedsYouDecision & { plain: string | null } => d.plain !== undefined;
+
 interface PeekProps {
   d: NeedsYouDecision;
   peek: PeekState;
@@ -220,7 +279,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
       noun={noun}
       full={full}
       testId="approval-peek"
-      foot={<DecisionAnswers d={d} typing={typing} onType={onType} onPress={onPress} editHref={edit} />}
+      foot={<DecisionAnswers d={d} typing={typing} onType={onType} onPress={onPress} editHref={edit} outcomesOnly={decidedFromPlain(d)} />}
     >
       <PeekHead
         noun={noun}
@@ -228,6 +287,12 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
         badge={d.touchedAt ? <span className="text-12 text-subtle">· {t("approvals.waiting", { age: time.age(d.touchedAt) })}</span> : undefined}
         title={d.title || keyShown(d)}
       />
+      {decidedFromPlain(d) ? (
+        <div className="flex flex-col gap-4 px-4.5 pb-5" data-testid="approval-peek-decide">
+          <PlainText plain={d.plain} />
+          <Technical d={d} slug={slug} />
+        </div>
+      ) : (
       <div className="flex flex-col gap-5 px-4.5 pb-5">
         <Asked d={d} slug={slug} />
         <Stakes d={d} />
@@ -242,6 +307,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
           </section>
         ) : null}
       </div>
+      )}
     </PeekPanel>
   );
 }

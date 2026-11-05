@@ -53,6 +53,13 @@ function DecisionChip({ d }: { d: NeedsYouDecision }) {
   return <StatusChip tone={d.proposal.recommends ? "ready" : "you"} label={recommends} reason={tags.join(" · ") || null} testId="approval-tags" />;
 }
 
+/** A question's row reads its asker's plain text, first line; or says the asker wrote none (ISS-1006). */
+function RowPlain({ plain }: { plain: string | null }) {
+  const t = useCopy();
+  const first = plain?.split("\n").find((line) => line.trim())?.trim();
+  return first ? <span className="text-fg" data-testid="approval-row-plain">{first}</span> : <span className="italic" data-testid="approval-row-no-plain">{t("approvals.peek.noPlain")}</span>;
+}
+
 interface RowProps {
   d: NeedsYouDecision;
   open: boolean;
@@ -123,11 +130,13 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
         <span className="block w-full min-w-0 truncate text-14 font-medium text-fg" title={d.key} data-testid="approval-title">
           {d.title || d.key}
         </span>
-        <span className="block w-full min-w-0 truncate text-13 text-muted" data-testid="approval-proposal">
+        <span className="block w-full min-w-0 truncate text-13 text-muted" data-testid="approval-proposal" title={d.plain ?? undefined}>
           {d.proposal ? (
             <>
               <span className="font-semibold text-fg">{d.proposal.verb}</span> {d.proposal.what}
             </>
+          ) : d.plain !== undefined ? (
+            <RowPlain plain={d.plain} />
           ) : (
             d.question
           )}

@@ -194,7 +194,11 @@
     "conversations.refused.rename": "Couldn't rename",
     "conversations.refused.stop": "Couldn't stop this answer",
     "conversations.refused.unarchive": "Couldn't unarchive",
-    "conversations.refused.unpin": "Couldn't unpin"
+    "conversations.refused.unpin": "Couldn't unpin",
+    "conversations.proposal.technical": "Technical",
+    "conversations.proposal.noPlain": "The agent wrote no summary",
+    "conversations.proposal.fold": "Fold the card",
+    "conversations.proposal.unfold": "Unfold the card"
   },
   "vi": {
     "conversations.add.agentFailed": "Không tải được danh sách agent",
@@ -318,6 +322,10 @@
     "conversations.ui.revisedOne": "Đã sửa bảng ({n} chỉnh sửa: {ops})",
     "conversations.ui.selected": "Đã chọn {keys}",
     "conversations.ui.undo": "Hoàn tác",
-    "conversations.ui.undone": "Đã hoàn tác"
+    "conversations.ui.undone": "Đã hoàn tác",
+    "conversations.proposal.technical": "Kỹ thuật",
+    "conversations.proposal.noPlain": "Agent chưa viết tóm tắt",
+    "conversations.proposal.fold": "Thu gọn thẻ",
+    "conversations.proposal.unfold": "Mở thẻ"
   }
 }

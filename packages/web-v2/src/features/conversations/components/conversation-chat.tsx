@@ -79,7 +79,7 @@ function RoomScroll({
   thread,
   stage,
 }: {
-  scroll: { scrollRef: RefObject<HTMLDivElement | null>; bottomRef: RefObject<HTMLDivElement | null>; onScroll: () => void; newOutput: boolean; toBottom: () => void };
+  scroll: { scrollRef: RefObject<HTMLDivElement | null>; onScroll: () => void; newOutput: boolean; toBottom: () => void };
   empty: boolean;
   data: ComponentProps<typeof ThreadDataProvider>["value"];
   thread: ComponentProps<typeof ConversationThread>;
@@ -97,7 +97,6 @@ function RoomScroll({
         )}
         {stage ? <div className="mt-4">{stage}</div> : null}
         {scroll.newOutput && <NewOutput onGo={scroll.toBottom} />}
-        <div ref={scroll.bottomRef} />
       </div>
     </div>
   );
@@ -178,7 +177,7 @@ export function ConversationChat({
 
   const refusal = roomQ.data ? composerRefusal(roomQ.data, t) : null;
 
-  const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
+  const { scrollRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: resolvedId,
     ready: roomQ.isSuccess,
     itemCount: messages.length + outbox.length,
@@ -196,6 +195,7 @@ export function ConversationChat({
       projectId={projectId}
       onMembers={() => setMembersOpen(true)}
       actions={headerActions}
+      stage={stage}
     />
   );
 
@@ -215,7 +215,7 @@ export function ConversationChat({
       {roomQ.data && <ScopeNotice room={roomQ.data} />}
 
       <RoomScroll
-        scroll={{ scrollRef, bottomRef, onScroll, newOutput, toBottom }}
+        scroll={{ scrollRef, onScroll, newOutput, toBottom }}
         empty={messages.length === 0 && outbox.length === 0}
         data={{ projectId, projectSlug: projectRow?.slug, conversationId: resolvedId ?? "", kind: roomQ.data?.kind ?? null, questionnaires: roomQ.data?.questionnaires ?? [] }}
         thread={{ projectId, projectSlug: projectRow?.slug, conversationId: resolvedId, atBottom, messages, windows: roomQ.data?.windows ?? [], outbox, progress, withdrawn, agentTurns: roomQ.data?.agentTurns ?? [], onRetry: retry, afterEntry }}
