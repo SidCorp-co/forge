@@ -17,8 +17,12 @@ import { supportPromises } from '../db/schema-support.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { landedBuildsOf, servedCarries, servedOnEnvironment } from '../release-batch/index.js';
-import type { Reading } from '../release-batch/provider-live.js';
+import {
+  landedBuildsOf,
+  type Reading,
+  servedCarries,
+  servedOnEnvironment,
+} from '../release-batch/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { environmentNamed, promiseNote, untrackedWhy } from './promise-rules.js';
 import { insertAction, roomById, threadConversation } from './store.js';

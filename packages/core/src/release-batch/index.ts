@@ -63,6 +63,7 @@ export {
 export { promotionPinnedFor } from './promotion-standing.js';
 export {
   provideReleaseBatchPorts,
+  type Reading,
   servedCarries,
   servedProductionCommit,
 } from './provider-live.js';
