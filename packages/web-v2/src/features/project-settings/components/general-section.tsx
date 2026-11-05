@@ -7,7 +7,7 @@ import { useId } from "react";
 import { CONTENT_LANGUAGE_CHOICES, contentLanguageName, contentLanguageProblem } from "@forge/contracts/content-language";
 import { SENSITIVE_DATA_LEVELS } from "@forge/contracts/data-policy";
 import { FEEDBACK_VERIFY_WINDOW } from "@forge/contracts/feedback";
-import { PERSON_GATES } from "@forge/contracts/person-gates";
+import { PERSON_GATE_STEPS, PERSON_GATES } from "@forge/contracts/person-gates";
 import { Input, SettingRow, SettingsGroup, Skeleton } from "@/design";
 import { useProjectDocument, useWriteProjectDocument } from "@/features/project-config";
 import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
@@ -188,7 +188,7 @@ export function GeneralSettings({ project, canEdit }: { project: ProjectDetail; 
 						key={gate}
 						draft={draft}
 						path={["approvals", gate]}
-						fallback={false}
+						fallback={PERSON_GATE_STEPS[gate].unset}
 						label={t(`settings.project.general.approvals.${gate}`)}
 						disabled={off}
 					/>
