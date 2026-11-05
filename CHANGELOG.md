@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.522] - 2026-11-05
+
+Core keeps within its Postgres connection budget and answers busy, not 500
+
+### Fixed
+
+- **Core holds at most 12 Postgres connections per process, and a request finding none answers 503.** Every pool draws from `DATABASE_CONNECTIONS`, drain ends them all, and refused connections answer `DB_CONNECTIONS_EXHAUSTED`, retryable, instead of a bare 500.
+
 ## [0.4.0-dev.521] - 2026-11-05
 
 An agent's merge mark is its word, wherever the work landed

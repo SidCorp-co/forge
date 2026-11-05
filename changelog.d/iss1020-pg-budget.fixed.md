@@ -1,1 +1,0 @@
-**Core holds at most 12 Postgres connections per process, and a request finding none answers 503.** Every pool draws from `DATABASE_CONNECTIONS`, drain ends them all, and refused connections answer `DB_CONNECTIONS_EXHAUSTED`, retryable, instead of a bare 500.
