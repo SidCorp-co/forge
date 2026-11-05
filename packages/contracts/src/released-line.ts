@@ -27,8 +27,10 @@ export interface ReleasedLine {
 			/** The issues its own record names (ISS-957); absent where the reader did not list them. */
 			issueIds?: readonly string[];
 			/**
-			 * Of those, the ones reopened since it claimed them (ISS-967): it carried an earlier round of
-			 * each, never the fix re-landed after, so it holds none of them (`releaseHoldsIssue`).
+			 * Of those, the ones reopened since it claimed them and re-landed since, or with no landing
+			 * standing now (ISS-967, ISS-971): it carried an earlier round of each, never the fix
+			 * re-landed after, so it holds none of them (`releaseHoldsIssue`). One reopened with its
+			 * landing unchanged is not listed: the release still holds the landing it shipped.
 			 */
 			reworked?: readonly string[];
 		}
@@ -92,8 +94,9 @@ export function readOnRelease(
  * Whether release `version` holds issue `issueId` by the record (ISS-957): its own record names the
  * issue, or the record of an earlier release it carries does, for the round the issue stands in now.
  * A release recorded before an issue landed names none of it, so a verdict judged on it judged a build
- * without the change; one that shipped the issue before its last reopen carried the round the reopen
- * rejected, never the fix re-landed since (ISS-967, `ShippedOnLine.reworked`). Null where the line
+ * without the change; one that shipped the issue before its last reopen and its re-land since carried
+ * the round the reopen rejected, never the fix re-landed (ISS-967, `ShippedOnLine.reworked`), while a
+ * reopen that left the landing unchanged leaves it held (ISS-971). Null where the line
  * lists no issues for its releases, so nothing places it.
  */
 export function releaseHoldsIssue(

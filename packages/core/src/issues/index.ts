@@ -223,6 +223,7 @@ export {
   arrivedAfterOf,
   closedAtOf,
   reopenedAtOf,
+  reopenedRoundsOf,
   reworkedSince,
   shipsWithdrawnOf,
   voidedUpTo,

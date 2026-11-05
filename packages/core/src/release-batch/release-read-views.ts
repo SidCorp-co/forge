@@ -109,7 +109,7 @@ export interface Shared {
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
-/** The issues `p` carries that were reopened since it claimed them (`issues/release-evidence.ts:reworkedSince`). */
+/** The issues `p` carries whose round it shipped is no longer their current one (`issues/release-evidence.ts:reworkedSince`). */
 export function reworkedIn(
   p: Pick<Part, 'issueIds' | 'openedAt' | 'releasedAt'>,
   facts: ReleaseFacts,

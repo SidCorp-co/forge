@@ -7,7 +7,7 @@
 // live. Read from Forge's own rows alone: no probe, host or box is asked, and no commit is compared.
 
 import { db } from '../db/client.js';
-import { closedAtOf, reopenedAtOf, reworkedSince } from '../issues/index.js';
+import { reopenedRoundsOf, reworkedSince } from '../issues/index.js';
 import {
   type NamedEnvironment,
   productionOf,
@@ -27,8 +27,9 @@ interface ShippedOnLine {
   carries: readonly string[];
   /** The issues its own record names (`versions.ts:issueIdsOf`), which it holds (ISS-957). */
   issueIds: readonly string[];
-  /** Of those, the ones reopened since it claimed them (`issues/release-evidence.ts:reworkedSince`):
-   *  it holds the round it carried, never the fix re-landed after (ISS-967). */
+  /** Of those, the ones reopened since it claimed them and re-landed since, or with no landing now
+   *  (`issues/release-evidence.ts:reworkedSince`): it holds the round it carried, never the fix
+   *  re-landed after (ISS-967), and still holds one whose landing the reopen left unchanged (ISS-971). */
   reworked: readonly string[];
 }
 
@@ -108,24 +109,24 @@ export async function releasedLineOf(projectId: string): Promise<ReleasedLineRea
 }
 
 /**
- * Per shipped release, the issues its record names that were reopened since it claimed them, by the
- * one rule the release read names them reworked by (`issues/release-evidence.ts:reworkedSince`): it
- * carried their earlier round, so it holds none of the fix re-landed after (ISS-967, FB-495: agenfold's
+ * Per shipped release, the issues its record names whose round it carried is no longer their current
+ * one, by the one rule the release read names them reworked by (`issues/release-evidence.ts:reworkedSince`):
+ * reopened since it claimed them, and re-landed since, or with no landing standing now. It carried
+ * their earlier round, so it holds none of the fix re-landed after (ISS-967, FB-495: agenfold's
  * ISS-160 failed live on 0.128.0, was reopened and re-landed, and its observable criterion was owed on
- * 0.128.0 for ever). Read from the issues' move history alone, two statements for the whole line.
+ * 0.128.0 for ever). One reopened with its landing unchanged is still held by the release that shipped
+ * that landing (ISS-971, FB-497: agenfold's ISS-5). Read from the issues' move history and merge marks
+ * alone, three statements for the whole line.
  */
 async function reworkedOf(
   named: ReadonlyArray<{ issueIds: readonly string[] }>,
 ): Promise<(v: { openedAt: Date; at: Date }, issueIds: readonly string[]) => string[]> {
   const ids = [...new Set(named.flatMap((n) => n.issueIds.map((id) => id.toLowerCase())))];
-  const reopened = await reopenedAtOf(db, ids);
-  const closed = await closedAtOf(db, [...reopened.keys()]);
+  const rounds = await reopenedRoundsOf(db, ids);
   return (v, issueIds) =>
     issueIds.filter((id) => {
-      const reopenedAt = reopened.get(id.toLowerCase());
-      if (!reopenedAt) return false;
-      const closedAt = closed.get(id.toLowerCase()) ?? [];
-      return reworkedSince({ openedAt: v.openedAt, releasedAt: v.at }, { reopenedAt, closedAt });
+      const i = rounds.get(id.toLowerCase());
+      return i !== undefined && reworkedSince({ openedAt: v.openedAt, releasedAt: v.at }, i);
     });
 }
 

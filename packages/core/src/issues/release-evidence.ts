@@ -157,10 +157,46 @@ interface ReleaseClaimSpan {
   releasedAt: Date | null;
 }
 
-/** An issue's move history as a release's claim on it is read (`reopenedAtOf`, `closedAtOf`). */
-interface IssueRounds {
+/**
+ * An issue's rounds as a release's claim on it is read: its move history (`reopenedAtOf`,
+ * `closedAtOf`) and when its current landing was marked (`issues.merged_at`), null where no mark
+ * stands now. A reopen leaves the mark; only a cleared mark (`merge-record.ts:clearIssueMerge`) or a
+ * re-land, which writes a new one, changes it.
+ */
+export interface IssueRounds {
   reopenedAt: Date | null;
   closedAt: readonly Date[];
+  merged: { at: Date | null };
+}
+
+/**
+ * The rounds (`IssueRounds`) of each of these issues ever reopened, for a whole release line at once:
+ * three statements for the list, never one per issue. An issue never reopened is absent, since no
+ * release carried a round of it other than its current one.
+ */
+export async function reopenedRoundsOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, IssueRounds>> {
+  const reopened = await reopenedAtOf(executor, issueIds);
+  const ids = [...reopened.keys()];
+  if (ids.length === 0) return new Map();
+  const [closed, marks] = await Promise.all([
+    closedAtOf(executor, ids),
+    executor.execute(sql`
+      SELECT id::text AS id, merged_at AS at FROM issues
+       WHERE id IN (${sql.join(
+         ids.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})`) as unknown as Promise<Array<{ id: string; at: Date | string | null }>>,
+  ]);
+  const markedAt = new Map([...marks].map((m) => [m.id, m.at === null ? null : new Date(m.at)]));
+  return new Map(
+    [...reopened].map(([id, reopenedAt]) => [
+      id,
+      { reopenedAt, closedAt: closed.get(id) ?? [], merged: { at: markedAt.get(id) ?? null } },
+    ]),
+  );
 }
 
 /**
@@ -175,16 +211,21 @@ function claimedAt(p: ReleaseClaimSpan, i: Pick<IssueRounds, 'closedAt'>): Date 
 }
 
 /**
- * True where the issue was reopened after release `p` claimed it: it carried an earlier round, and
- * its note and its mark now say a later one, which it did not ship (J9 on 0.4.0-dev.224: ISS-455's
- * dev.225 retry fix read as a dev.224 fix). Read against the run's start instead, a reopen inside the
- * window of the release that went on to ship the rework hid that release's own note (J10 on
- * 0.4.0-dev.227: dev.225). The one rule for a release and a reopened issue: the release read names
- * such an issue reworked, and the release line holds it nowhere past that release
+ * True where release `p` carried a round of the issue that is no longer its current one: the issue
+ * was reopened after `p` claimed it, AND its current landing was marked after that claim, or no mark
+ * stands now (a rework under way). Its note and its mark then say a later round, which `p` did not
+ * ship (J9 on 0.4.0-dev.224: ISS-455's dev.225 retry fix read as a dev.224 fix). A reopen whose mark
+ * still predates the claim changed nothing `p` shipped: `p` holds the landing it shipped, which is
+ * still the current one (ISS-971, FB-497: agenfold's ISS-5, reopened with its mark c633f84 unchanged,
+ * had every verdict on 0.133.0 refused). Read against the run's start instead of the release's own
+ * close, a reopen inside the window of the release that went on to ship the rework hid that release's
+ * own note (J10 on 0.4.0-dev.227: dev.225). The one rule for a release and a reopened issue: the
+ * release read names such an issue reworked, and the release line holds it nowhere past that release
  * (`release-batch/released-line.ts:releasedLineOf`, ISS-967), so a criterion of the re-landed round is
  * never owed on, nor counted on, a release that shipped the round before it.
  */
 export function reworkedSince(p: ReleaseClaimSpan, i: IssueRounds): boolean {
   const claimed = claimedAt(p, i);
-  return claimed !== null && i.reopenedAt !== null && i.reopenedAt > claimed;
+  if (claimed === null || i.reopenedAt === null || i.reopenedAt <= claimed) return false;
+  return i.merged.at === null || i.merged.at > claimed;
 }
