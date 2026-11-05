@@ -35,7 +35,8 @@ const developer = {
       title: "Every refusal names the field and the fix",
       completes: false,
       proven: SEVEN.map((statement, i) => ({ code: "BC-18", statement, short: i === 6, issueKey: "ISS-201", n: i + 2, countedUnderCutover: false })),
-      unproven: 30,
+      // the page lists the criteria the header counts (ISS-1001): 22 of 22 proven leaves none unproven
+      unproven: 0,
       business: { total: 26, proven: [{ code: "BC-18", statement: BC18 }] },
     },
   ],
@@ -84,9 +85,19 @@ function reads(): string[] {
   return [...wrong, ...sideways()];
 }
 
+/** Technical's still-open list agrees with the header's bar: a release proven whole lists nothing open (ISS-1001). */
+function stillOpenAgrees(): string[] {
+  const bar = document.querySelector("[data-testid=release-detail] [data-testid=release-proof]");
+  const unproven = Number(bar?.getAttribute("data-total")) - Number(bar?.getAttribute("data-proven"));
+  const open = document.querySelectorAll("[data-testid=page-known-issue]").length;
+  return unproven === 0 && open > 0 ? [`the header proves every criterion and Technical lists ${open} issues still open`] : [];
+}
+
 async function technical(): Promise<string[]> {
   const fold = document.querySelector<HTMLDetailsElement>("[data-testid=release-technical-fold]");
   if (!fold) return ["no Technical section is drawn"];
+  // shot at 1440 light and at 420 dark, the two the round-2 reading asks for
+  theme(window.innerWidth < 800 ? "dark" : "light");
   fold.open = true;
   await settle(300);
   document.querySelector<HTMLButtonElement>("[data-testid=page-change][data-row-key=ISS-201] button")?.click();
@@ -98,7 +109,7 @@ async function technical(): Promise<string[]> {
   if (lines.length !== 7) wrong.push(`ISS-201 opens on ${lines.length} criteria, not 7`);
   if (new Set(lines).size !== lines.length) wrong.push(`ISS-201 draws ${lines.length} lines and only ${new Set(lines).size} read apart`);
   if (!fold.querySelector("[data-testid=release-merges-section]")) wrong.push("Technical lists no change requests");
-  return [...wrong, ...sideways()];
+  return [...wrong, ...stillOpenAgrees(), ...sideways()];
 }
 
 /** How many lines a drawn element's text runs over: a flex item is one box, so its text's line boxes are counted. */
