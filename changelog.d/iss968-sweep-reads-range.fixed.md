@@ -1,1 +1,0 @@
-**The release sweep no longer cuts a release known to abort.** Where what production builds already holds an issue held at the gate, it waits on that issue, saying once which issue, its hold and what clears it.

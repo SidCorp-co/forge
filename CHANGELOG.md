@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.501] - 2026-11-05
+
+Automatic releases wait on a held gate issue instead of looping on aborted cuts
+
+### Fixed
+
+- **The release sweep no longer cuts a release known to abort.** Where what production builds already holds an issue held at the gate, it waits on that issue, saying once which issue, its hold and what clears it.
+
 ## [0.4.0-dev.500] - 2026-11-05
 
 A reopened fix is judged on the release that carries it
