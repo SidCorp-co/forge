@@ -45,6 +45,19 @@ type Release = {
   };
 };
 
+/** The release page's header and acts, as `GET …/releases/:version/page` answers them. */
+type Page = { header: { recordedNotCut: boolean }; can: { approve: boolean } };
+
+const pageOf = async (version: string): Promise<Page> => {
+  const res = await api(
+    world.token,
+    'GET',
+    `/api/projects/${world.projectId}/releases/${version}/page?view=user`,
+  );
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return res.body as unknown as Page;
+};
+
 let agentId = '';
 let agentToken = '';
 
@@ -199,14 +212,9 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
     const d = await draft();
     expect(d.gates.map((g) => g.code)).toContain('NO_RELEASE_GATE');
     expect(d.can).toMatchObject({ cut: false, decide: true });
-    const page = await api(
-      world.token,
-      'GET',
-      `/api/projects/${world.projectId}/releases/${d.version}/page?view=user`,
-    );
-    expect(page.status, JSON.stringify(page.body)).toBe(200);
-    expect(page.body.header.recordedNotCut).toBe(true);
-    expect(page.body.can.approve).toBe(true);
+    const page = await pageOf(d.version);
+    expect(page.header.recordedNotCut).toBe(true);
+    expect(page.can.approve).toBe(true);
     expect(
       (await decide(world.token, d.version, { decision: 'approve', reason: 'ok' })).status,
     ).toBe(201);
@@ -222,14 +230,9 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
     const d = await draft();
     expect(d.gates.map((g) => g.code)).not.toContain('NO_RELEASE_GATE');
     expect(d.can.decide).toBe(false);
-    const page = await api(
-      world.token,
-      'GET',
-      `/api/projects/${world.projectId}/releases/${d.version}/page?view=user`,
-    );
-    expect(page.status, JSON.stringify(page.body)).toBe(200);
-    expect(page.body.header.recordedNotCut).toBe(false);
-    expect(page.body.can.approve).toBe(false);
+    const page = await pageOf(d.version);
+    expect(page.header.recordedNotCut).toBe(false);
+    expect(page.can.approve).toBe(false);
     const res = await decide(world.token, d.version, { decision: 'approve', reason: 'ok' });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body.code).toBe('RELEASE_DRAFT_NOT_APPROVABLE');
