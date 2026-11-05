@@ -55,3 +55,19 @@ export async function shippedReleaseRuns(projectId: string): Promise<ShippedRele
       : [],
   );
 }
+
+const WHOLE = /^[0-9a-f]{40}$/i;
+const MIN_ABBREVIATION = 7;
+
+/**
+ * The releases, oldest first, Forge recorded shipping at `sha`: whole, or an abbreviation of exactly
+ * one release commit. Empty where none did, so a sentence about a served commit says what it is
+ * (ISS-997) and never that no release shipped one a release did.
+ */
+export function releasesAt<R extends ShippedRelease>(sha: string, releases: readonly R[]): R[] {
+  const s = sha.trim().toLowerCase();
+  if (WHOLE.test(s)) return releases.filter((r) => r.commit === s);
+  if (s.length < MIN_ABBREVIATION) return [];
+  const named = releases.filter((r) => r.commit.startsWith(s));
+  return new Set(named.map((r) => r.commit)).size === 1 ? named : [];
+}

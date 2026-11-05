@@ -292,6 +292,7 @@ export {
   carriageKey,
   coveredChanges,
   type JudgedOnReading,
+  type LandingHeld,
   type RuntimeReading,
   rotated,
   UNWEIGHED,

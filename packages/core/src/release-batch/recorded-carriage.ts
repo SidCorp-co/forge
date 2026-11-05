@@ -18,21 +18,17 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { type Carriage, carriageKey } from '../issues/index.js';
-import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
+import { releasesAt, type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 
 const WHOLE = /^[0-9a-f]{40}$/i;
-const MIN_ABBREVIATION = 7;
 
 /** The release a commit names: whole, or an abbreviation of exactly one release's commit. */
 function releaseAt(
   sha: string,
   releases: readonly ShippedReleaseRun[],
 ): ShippedReleaseRun | undefined {
-  const s = sha.trim().toLowerCase();
-  if (WHOLE.test(s)) return releases.find((r) => r.commit === s);
-  if (s.length < MIN_ABBREVIATION) return undefined;
-  const named = releases.filter((r) => r.commit.startsWith(s));
-  return named.length === 1 ? named[0] : undefined;
+  const named = releasesAt(sha, releases);
+  return sha.trim().length === 40 || named.length === 1 ? named[0] : undefined;
 }
 
 /** Per landing commit, the earliest release that shipped an issue landed at it. */

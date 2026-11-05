@@ -37,6 +37,16 @@ export type JudgedOnReading =
   | { readonly kind: 'read'; readonly name: string; readonly serving: ServingReading }
   | { readonly kind: 'none'; readonly why: string };
 
+/**
+ * What the reading an unreleased issue is weighed on holds of that issue's landing commit (ISS-997):
+ * the served commits that hold it, that none does and who said so, or why nobody could say. A hold
+ * asks for verdicts at a served commit only where it holds the landing.
+ */
+export type LandingHeld =
+  | { readonly kind: 'holds'; readonly landing: string; readonly at: readonly string[] }
+  | { readonly kind: 'lacks'; readonly landing: string; readonly by: string }
+  | { readonly kind: 'unread'; readonly landing: string | null; readonly why: string };
+
 export interface Weighing {
   /** False only for `UNWEIGHED`: then a pair absent below was never asked, not missed. */
   readonly read: boolean;
@@ -45,6 +55,8 @@ export interface Weighing {
   readonly carriage: ReadonlyMap<string, Carriage>;
   /** Where an unreleased issue's runtime verdicts are weighed; absent where it was not read. */
   readonly judgedOn?: JudgedOnReading;
+  /** Per issue id (lower case), what that reading holds of its landing; absent where not read. */
+  readonly landings?: ReadonlyMap<string, LandingHeld>;
 }
 
 /** Nothing read: equality alone decides, which can hold a verdict and never earn one. */

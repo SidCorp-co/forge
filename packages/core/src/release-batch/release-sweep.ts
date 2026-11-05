@@ -19,7 +19,8 @@ import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index
 import { gateOf, readGateProfile } from '../project-config/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
 import { type CriteriaBasis, criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
-import { criteriaHold, landingCriteriaHold } from './criteria-hold-words.js';
+import { criteriaHold, landingCriteriaHold, type ServedRecords } from './criteria-hold-words.js';
+import { draftedVersion } from './draft-version.js';
 import { heldIssues, readEndedRunHolds } from './ended-claims.js';
 import { resolveReleaseGate } from './gate.js';
 import {
@@ -51,6 +52,7 @@ import {
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 import { shippedInHold, shippedInOwed } from './shipped-in.js';
+import { shippedReleaseRuns } from './shipped-releases.js';
 import { headCarriesHeldHold, readSweepRange } from './sweep-head.js';
 import { clearAnsweredQuestionHolds } from './unclosed-hold.js';
 
@@ -153,13 +155,29 @@ async function holdOnCriteria(
   const serving = first?.serving;
   if (serving?.kind !== 'undeclared' || first?.released) {
     const owes = await holdOwer(write.projectId);
+    const records = await servedRecords(write.projectId);
     await hold({
       ...write,
-      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport, owes),
+      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport, owes, records),
     });
     return;
   }
   await holdAlike(write, runtimeUnroutedHold(serving.missing, serving.route));
+}
+
+/**
+ * What a criteria hold names beside its report (ISS-997): the releases that say what production
+ * serves, and the release drafted to carry what waits. A draft whose version cannot be decided is
+ * named as the next release cut with it, never a guess at its number.
+ */
+async function servedRecords(projectId: string): Promise<ServedRecords> {
+  const releases = await shippedReleaseRuns(projectId);
+  try {
+    return { releases, draft: await draftedVersion(projectId) };
+  } catch (err) {
+    logger.warn({ err, projectId }, 'release-sweep: the drafted version could not be read');
+    return { releases, draft: null };
+  }
 }
 
 /**

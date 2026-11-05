@@ -5,10 +5,17 @@
  */
 
 import type { ReleaseHoldOwer } from '@forge/contracts/releases';
-import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
-import { type LandingCriteriaReport, landingWhere, servingWhere } from './criteria-basis.js';
+import type { IssueCriteriaReport, LandingHeld, RuntimeReading } from '../issues/index.js';
+import { sameIdentity } from '../messaging/verdict-identity.js';
+import {
+  type LandingCriteriaReport,
+  landingWhere,
+  servedNamed,
+  servingWhere,
+} from './criteria-basis.js';
 import type { ReleaseHold } from './hold.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
+import type { ShippedRelease } from './shipped-releases.js';
 
 function criteriaNamed(numbers: readonly number[]): string {
   if (numbers.length === 1) return `criterion ${numbers[0]}`;
@@ -97,23 +104,111 @@ export type CriteriaHoldOwer = ReleaseHoldOwer;
 const clearer = (owes: CriteriaHoldOwer) =>
   owes === 'human' ? 'A person clears this' : "The project's master clears this";
 
-export function criteriaHold(report: IssueCriteriaReport, owes: CriteriaHoldOwer): ReleaseHold {
+/**
+ * What a served-basis hold reads from Forge's records beside the report (ISS-997): the releases it
+ * recorded shipping, to say what a served commit is, and the release drafted from what waits at the
+ * gate, which carries an issue production does not hold yet.
+ */
+export interface ServedRecords {
+  readonly releases: readonly ShippedRelease[];
+  readonly draft: string | null;
+}
+
+const NO_RECORDS: ServedRecords = { releases: [], draft: null };
+
+/** The release that carries an issue production does not hold yet, by name, never a commit. */
+function carrierOf(draft: string | null): string {
+  return draft === null
+    ? 'the next release cut with it'
+    : `release ${draft}, drafted from what waits at the gate`;
+}
+
+// a start naming its roster is never weighed for criteria (`blockers.ts:gatedBlockers`)
+const RIDES =
+  'The automatic release carries only an issue whose every criterion is earned, so it leaves this one ' +
+  'at the gate; a release started naming it in its roster (`POST /api/projects/:id/release-batches` ' +
+  'with `issueIds`) is not weighed for criteria and can carry it';
+
+/** The reading narrowed to the served commits that hold the landing: the only ones a verdict counts at. */
+function holding(serving: ServingReading, at: readonly string[]): ServingReading {
+  if (serving.kind !== 'serving') return serving;
+  const served = serving.served.filter((s) =>
+    at.some((a) => sameIdentity(a, s.commit, { abbreviating: true })),
+  );
+  return served.length === 0 ? serving : { ...serving, served };
+}
+
+/**
+ * Where a verdict counts, by what the reading holds of the landing (ISS-997): at a served commit only
+ * where it holds the landing; where none does, after the release that carries it, named and no commit;
+ * where nobody could say, why, by name, and how to check it, never a guess.
+ */
+function landingJudgeClause(
+  report: IssueCriteriaReport,
+  held: LandingHeld | undefined,
+  draft: string | null,
+): string {
+  const { serving, runtimes, weighedOn } = report;
+  if (!held || serving.kind !== 'serving') return judgeClause(serving, runtimes, weighedOn);
+  if (held.kind === 'holds') return judgeClause(holding(serving, held.at), runtimes, weighedOn);
+  const where = weighedOn === null ? 'production' : `\`${weighedOn}\``;
+  const carrier = carrierOf(draft);
+  if (held.kind === 'lacks') {
+    return (
+      `${where} serves no commit that holds this issue's landing yet (read from ${held.by}), so no ` +
+      `verdict judged at what it serves now can be about this change: its criteria are owed after ` +
+      `the release that carries it, ${carrier}, judged at what production serves once that release ` +
+      `ships. ${RIDES}`
+    );
+  }
+  const commits = [...new Set(serving.served.map((s) => s.commit))];
+  const { landing } = held;
+  const check =
+    landing === null
+      ? 'Where'
+      : `Check it with git (${commits.map((c) => `\`git merge-base --is-ancestor ${landing} ${c}\``).join(', ')}): where`;
+  return (
+    `whether what ${where} serves holds this issue's landing could not be read: ${held.why}, so no ` +
+    `commit is named here to judge at. ${check} it holds, record a verdict on each criterion ` +
+    `named judged at that commit; where it does not, its criteria are owed after the release that ` +
+    `carries it, ${carrier}. ${RIDES}`
+  );
+}
+
+function servedWaitingFor(held: LandingHeld | undefined, owes: CriteriaHoldOwer): string {
+  const byHand = owes === 'human' ? ', or the issue closed by hand' : '';
+  if (held?.kind === 'lacks') {
+    return `the release that carries it to ship, then a verdict on each criterion named${byHand}`;
+  }
+  if (held?.kind === 'unread') {
+    return `a verdict on each criterion named at a served commit shown to hold its landing, or the release that carries it${byHand}`;
+  }
+  return `a verdict on each criterion named at the running deployment${byHand}`;
+}
+
+export function criteriaHold(
+  report: IssueCriteriaReport,
+  owes: CriteriaHoldOwer,
+  records: ServedRecords = NO_RECORDS,
+): ReleaseHold {
   const reasons = reasonsByWhy(report);
   // a project weighed on its release record is weighed at each landing (`landingCriteriaHold`, ISS-957)
-  const judge = judgeClause(report.serving, report.runtimes, report.weighedOn);
+  const held = report.landingHeld;
+  const judge = landingJudgeClause(report, held, records.draft);
   // only a person closes by hand; the master clears it by the verdicts or by moving the issue on
   const byHand =
     owes === 'human'
       ? 'or, having seen the change running in production, close the issue by hand; '
       : '';
+  const where = servingWhere(report.weighedOn, servedNamed(report.serving, records.releases));
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${reasons}. I${servingWhere(report.weighedOn).slice(1)}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
+      `this one is not — ${reasons}. I${where.slice(1)}. ${clearer(owes)}: ${judge}; ${byHand}or move it out of ` +
       '`awaiting_release` if it is not to ship.',
     owes,
-    waitingFor: `a verdict on each criterion named at the running deployment${owes === 'human' ? ', or the issue closed by hand' : ''}`,
+    waitingFor: servedWaitingFor(held, owes),
     criteria: report.unearned.map((c) => c.criterion),
   };
 }

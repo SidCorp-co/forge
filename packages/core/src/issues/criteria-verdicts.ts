@@ -37,7 +37,7 @@ import {
   type VerdictIdentity,
   type VerdictStanding,
 } from './verdict-standing.js';
-import { type RuntimeReading, UNWEIGHED, type Weighing } from './weighing.js';
+import { type LandingHeld, type RuntimeReading, UNWEIGHED, type Weighing } from './weighing.js';
 
 export interface CriterionVerdict {
   readonly criterion: number;
@@ -171,6 +171,12 @@ export interface IssueCriteriaReport {
    * on. Null on any other project.
    */
   readonly released: ReleasedLine | null;
+  /**
+   * What `serving` holds of this unreleased issue's landing commit (ISS-997), where the weighing read
+   * it: a hold asks for verdicts at a served commit only where it holds the landing. Absent on a
+   * closed issue and where nothing was read.
+   */
+  readonly landingHeld?: LandingHeld;
 }
 
 /** Every name the tracker holds an attachment under for this issue, its comments' included. */
@@ -361,11 +367,14 @@ async function reportFor(
   const { runtimes } = weighing;
   // a closed issue's change was released; until then it is weighed where it was judged
   const on = weighedOn(row.status === 'closed', serving, weighing);
+  const landingHeld =
+    row.status === 'closed' ? undefined : weighing.landings?.get(row.id.toLowerCase());
   const placed = {
     serving: on.serving,
     weighedOn: on.environment,
     runtimes,
     released: anchors.released ?? null,
+    ...(landingHeld ? { landingHeld } : {}),
   };
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), ...anchors };

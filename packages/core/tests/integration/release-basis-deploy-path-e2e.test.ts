@@ -8,7 +8,8 @@
  * commit it serves is the one its last release shipped, no `delivery.judgedOn`, and an issue landed
  * after that release with a pass at its landing. The automatic release carries it. And the negative: a
  * production serving a commit no release shipped, which a landing reached, keeps weighing at what is
- * served, and the hold says so. Against real Postgres; production's probe and deployments are planted.
+ * served, and the hold says so: where nothing reads whether that commit holds the landing, it names
+ * none to judge at (ISS-997). Against real Postgres; production's probe and deployments are planted.
  *
  * @direct-test-of packages/core/src/release-batch/criteria-basis.ts
  * @direct-test-of packages/core/src/release-batch/criteria-hold.ts
@@ -147,9 +148,15 @@ describe('a production a landing reached keeps weighing at what it serves', () =
     const hold = await fx.holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(hold?.reason).toContain(
-      "It is weighed at what this project's production serves, a commit no release shipped",
+      "It is weighed at what this project's production serves (a commit no release names)",
     );
-    expect(hold?.reason).toContain(SERVED);
+    // nothing here reads whether what is served holds the landing, so the hold says so and asks at
+    // no commit (ISS-997), naming the served one only in the check it teaches
+    expect(hold?.reason).toContain(
+      "whether what production serves holds this issue's landing could not be read: no history",
+    );
+    expect(hold?.reason).toContain(`\`git merge-base --is-ancestor ${LANDED} ${SERVED}\``);
+    expect(hold?.reason).not.toContain('judged at a commit this project is serving');
     expect(await coverageLandingHolds(projectId, [id])).toBeNull();
   });
 });

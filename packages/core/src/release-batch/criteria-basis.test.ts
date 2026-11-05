@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ReleasePath } from '../project-config/index.js';
-import { basisOfPath, landingWhere, servingWhere } from './criteria-basis.js';
+import { basisOfPath, landingWhere, servedNamed, servingWhere } from './criteria-basis.js';
 
 type Deployment =
   | { binding: string; trigger: 'on-land' | 'on-request' | 'provider' }
@@ -143,7 +143,29 @@ describe('the words a hold names its basis in', () => {
   });
 
   it('says what is served and why, for production and for a judged-on environment', () => {
-    expect(servingWhere(null)).toContain('a commit no release shipped');
+    expect(servingWhere(null)).toContain("what this project's production serves, as on a project");
     expect(servingWhere('stg')).toContain('`stg` serves');
+  });
+
+  it('says what a served commit is by the releases recorded, never that no release shipped it (ISS-997)', () => {
+    const at = (commit: string) =>
+      ({
+        kind: 'serving',
+        served: [{ commit, where: 'prod' }],
+        unread: [],
+        readAt: 'now',
+      }) as const;
+    const releases = [
+      { runId: 'r1', version: '0.138.0', commit: 'a'.repeat(40) },
+      { runId: 'r2', version: '0.139.0', commit: 'a'.repeat(40) },
+    ];
+    const shipped = servingWhere(null, servedNamed(at('a'.repeat(40)), releases));
+    expect(shipped).toContain('(the commit release 0.139.0 shipped)');
+    expect(shipped).not.toContain('no release');
+    expect(servedNamed(at('aaaaaaa'), releases)).toBe('the commit release 0.139.0 shipped');
+    expect(servedNamed(at('c'.repeat(40)), releases)).toBe('a commit no release names');
+    expect(servedNamed({ kind: 'unreadable', why: 'x', hosts: [], readAt: 'now' }, releases)).toBe(
+      undefined,
+    );
   });
 });

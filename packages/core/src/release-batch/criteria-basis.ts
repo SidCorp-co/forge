@@ -51,6 +51,7 @@ import {
 } from './landed-build-holds.js';
 import { servedCommitUnnamed } from './released-line.js';
 import { readServingNow, type ServingReading } from './serving-reading.js';
+import { releasesAt, type ShippedRelease } from './shipped-releases.js';
 
 /**
  * Why a change cannot be in what production serves before its release: a promotion stands between
@@ -210,11 +211,33 @@ export function landingWhere(basis: Extract<CriteriaBasis, { kind: 'landing' }>)
   return `this project's production is deployed only by a release (${how}: ${seen}), and no environment it judges a change on (\`delivery.judgedOn\`) serves the change before that release, so what production serves cannot hold it`;
 }
 
-/** Why a change is weighed at what is served, in the words a hold of it shares (ISS-964). */
-export function servingWhere(judgedOn: string | null): string {
+/**
+ * Why a change is weighed at what is served, in the words a hold of it shares (ISS-964). `named` says
+ * what production serves by Forge's release records (`servedNamed`): agenfold's 0.140.0 hold called
+ * 87a8c61, the commit 0.139.0 shipped, "a commit no release shipped" (ISS-997).
+ */
+export function servingWhere(judgedOn: string | null, named?: string): string {
+  const what = named === undefined ? '' : ` (${named})`;
   return judgedOn === null
-    ? "it is weighed at what this project's production serves, a commit no release shipped, so a landing reaches it before its release"
-    : `it is weighed at what \`${judgedOn}\` serves, the environment this project judges a change on before its release (\`delivery.judgedOn\`)`;
+    ? `it is weighed at what this project's production serves${what}, as on a project whose landings reach production before their release`
+    : `it is weighed at what \`${judgedOn}\` serves${what}, the environment this project judges a change on before its release (\`delivery.judgedOn\`)`;
+}
+
+/**
+ * What each commit a reading serves is, by the releases Forge recorded shipping: the release it
+ * shipped as (the latest, where several did), or that no release names it. Undefined where the
+ * reading names no commit.
+ */
+export function servedNamed(
+  serving: ServingReading,
+  releases: readonly ShippedRelease[],
+): string | undefined {
+  if (serving.kind !== 'serving' || serving.served.length === 0) return undefined;
+  const said = serving.served.map((s) => {
+    const shipped = releasesAt(s.commit, releases).at(-1);
+    return shipped ? `the commit release ${shipped.version} shipped` : 'a commit no release names';
+  });
+  return [...new Set(said)].join(' and ');
 }
 
 /**
