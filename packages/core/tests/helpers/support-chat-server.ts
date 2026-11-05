@@ -23,6 +23,8 @@ export interface BotLine {
   text: string;
   tmid: string | null;
   attachments: { actions?: { text: string; msg: string }[] }[];
+  /** The image a line posts, where it is one (`rooms.mediaConfirm`, ISS-1024). */
+  file?: { name: string; mime: string; bytes: Buffer };
 }
 
 /** What a test needs of a chat server, stand-in or real. */
@@ -95,6 +97,10 @@ export class StandInRocketChat implements ChatServer {
   readonly uploads = new Map<string, { bytes: Buffer; mime: string; status?: number }>();
   /** Every upload the bot fetched, by id. */
   readonly uploadReads: string[] = [];
+  /** Every image the bot uploaded with `rooms.media`, posted or not (ISS-1024). */
+  readonly media = new Map<string, { rid: string; name: string; mime: string; bytes: Buffer }>();
+  /** Whether `rooms.media` refuses the bot's upload, as a server whose upload limit it passes does. */
+  mediaRefused = false;
 
   /** How many times a group's history was read. */
   historyReads = 0;
@@ -119,7 +125,9 @@ export class StandInRocketChat implements ChatServer {
   private async rest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
-    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
+    const raw = Buffer.concat(chunks);
+    const multipart = String(req.headers['content-type'] ?? '').startsWith('multipart/form-data');
+    const body = chunks.length && !multipart ? JSON.parse(raw.toString('utf8')) : {};
     const url = new URL(req.url ?? '/', this.serverUrl);
     const json = (status: number, payload: unknown) => {
       res.writeHead(status, { 'content-type': 'application/json' });
@@ -127,6 +135,14 @@ export class StandInRocketChat implements ChatServer {
     };
     if (req.headers['x-auth-token'] !== this.bot.authToken) return json(401, { success: false });
     if (url.pathname.startsWith('/file-upload/')) return this.serveUpload(url.pathname, res);
+    if (url.pathname.startsWith('/api/v1/rooms.media/')) {
+      const rid = decodeURIComponent(url.pathname.split('/')[4] ?? '');
+      return json(...(await this.stageMedia(rid, raw, String(req.headers['content-type']))));
+    }
+    if (url.pathname.startsWith('/api/v1/rooms.mediaConfirm/')) {
+      const [, , , , rid = '', fileId = ''] = url.pathname.split('/').map(decodeURIComponent);
+      return json(...this.confirmMedia(rid, fileId, body.tmid));
+    }
     switch (url.pathname) {
       case '/api/v1/me':
         return json(200, { _id: this.bot.userId, username: 'supportbot', name: 'Support' });
@@ -221,6 +237,41 @@ export class StandInRocketChat implements ChatServer {
       default:
         return json(404, { success: false, error: `the stand-in serves no ${url.pathname}` });
     }
+  }
+
+  /** `rooms.media/:rid`: the file held for the bot, posted by nobody until it is confirmed. */
+  private async stageMedia(rid: string, raw: Buffer, type: string): Promise<[number, unknown]> {
+    if (this.mediaRefused) return [400, { success: false, error: 'error-file-too-large' }];
+    const form = await new Response(new Uint8Array(raw), {
+      headers: { 'content-type': type },
+    }).formData();
+    const file = form.get('file');
+    if (!(file instanceof Blob)) return [400, { success: false, error: 'No file uploaded' }];
+    const id = `F${randomUUID().slice(0, 12)}`;
+    this.media.set(id, {
+      rid,
+      name: (file as File).name,
+      mime: file.type,
+      bytes: Buffer.from(await file.arrayBuffer()),
+    });
+    return [200, { success: true, file: { _id: id, url: `/file-upload/${id}/x` } }];
+  }
+
+  /** `rooms.mediaConfirm/:rid/:fileId`: the held file posted as the bot's message, in `tmid` where given. */
+  private confirmMedia(rid: string, fileId: string, tmid: unknown): [number, unknown] {
+    const file = this.media.get(fileId);
+    if (!file || file.rid !== rid) return [400, { success: false, error: 'invalid-file' }];
+    const id = this.nextId();
+    this.lines.push({
+      id,
+      rid,
+      text: '',
+      tmid: typeof tmid === 'string' ? tmid : null,
+      attachments: [],
+      file: { name: file.name, mime: file.mime, bytes: file.bytes },
+      at: Date.now(),
+    });
+    return [200, { success: true, message: { _id: id } }];
   }
 
   private serveUpload(path: string, res: ServerResponse): void {
