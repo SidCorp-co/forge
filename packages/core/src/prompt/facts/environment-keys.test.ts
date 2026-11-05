@@ -26,10 +26,10 @@ describe('a judge is told to sign in through judge-login and handed only a sessi
       expect(text).toContain('curl -H @<file>');
       expect(text).toContain('Playwright storage state');
       expect(text).toMatch(/never open, print or measure either file/);
-      // a priced amnesty (decision f8d8948c on ISS-959): forge-dev's box runner predates ISS-959, so
-      // its judges are told how to use the old login file safely; the runner release that carries
-      // ISS-959 removes the sentence. Served text names no issue key (`guides/registry.test.ts`).
-      expect(text).toContain('until the box runs a runner that hands back a session');
+      // the older-runner login-file amnesty ended once the box ran a runner whose judge-login hands
+      // back a session (ISS-978); served text names no issue key (`guides/registry.test.ts`)
+      expect(text).not.toContain('older box runner');
+      expect(text).not.toContain('login file');
       expect(text).not.toMatch(/ISS-\d+/);
       for (const old of ['0600', 'field names', 'writes the value', 'writes that one secret']) {
         expect(text, `${where} still says "${old}"`).not.toContain(old);
