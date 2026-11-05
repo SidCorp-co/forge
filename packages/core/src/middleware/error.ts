@@ -2,7 +2,7 @@ import { redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { activeChildUnderTerminalRun } from '../lib/db-errors.js';
+import { activeChildUnderTerminalRun, connectionUnavailable } from '../lib/db-errors.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { getLogger } from '../lib/logger.js';
 import {
@@ -70,6 +70,53 @@ function extractCause(cause: unknown): {
   return {};
 }
 
+/** How long a caller refused for want of a connection waits: a deploy's overlap lasts seconds. */
+export const DB_CONNECTIONS_RETRY_AFTER_SECONDS = 5;
+
+/** One report to Sentry per burst of connection refusals; the rest are counted into the next. */
+const CONNECTION_REPORT_WINDOW_MS = 60_000;
+const connectionReports = { lastAt: Number.NEGATIVE_INFINITY, unreported: 0 };
+
+function reportConnectionsExhausted(err: unknown, c: Context<{ Variables: RequestIdVars }>): void {
+  const now = Date.now();
+  if (now - connectionReports.lastAt < CONNECTION_REPORT_WINDOW_MS) {
+    connectionReports.unreported += 1;
+    return;
+  }
+  const unreported = connectionReports.unreported;
+  connectionReports.lastAt = now;
+  connectionReports.unreported = 0;
+  reportRequestFailure(err, c, 'DB_CONNECTIONS_EXHAUSTED', { refusedSinceLastReport: unreported });
+}
+
+/** Starts the next refusal's burst afresh, for a test that reads one burst at a time. */
+export function resetConnectionReports(): void {
+  connectionReports.lastAt = Number.NEGATIVE_INFINITY;
+  connectionReports.unreported = 0;
+}
+
+/**
+ * A request whose statement could not get a Postgres connection (`lib/db-errors.ts:
+ * connectionUnavailable`): a 503 the caller retries, never a 500 that reads as a defect (ISS-1020).
+ */
+function connectionsExhausted(
+  c: Context<{ Variables: RequestIdVars }>,
+  err: unknown,
+  why: 'refused' | 'timed-out',
+) {
+  getLogger(c).warn({ err, why }, 'http.db_connections_exhausted');
+  reportConnectionsExhausted(err, c);
+  c.header('Retry-After', String(DB_CONNECTIONS_RETRY_AFTER_SECONDS));
+  return httpProblem(c, 503, {
+    code: 'DB_CONNECTIONS_EXHAUSTED',
+    message:
+      why === 'refused'
+        ? `the database has no connection free for this request; nothing was written, retry after ${DB_CONNECTIONS_RETRY_AFTER_SECONDS} s`
+        : `no database connection came free in time for this request; nothing was written, retry after ${DB_CONNECTIONS_RETRY_AFTER_SECONDS} s`,
+    details: { retryable: true, retryAfterSeconds: DB_CONNECTIONS_RETRY_AFTER_SECONDS },
+  });
+}
+
 export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c) => {
   const log = getLogger(c);
 
@@ -89,6 +136,9 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     );
     return problem(c, envelope);
   }
+
+  const unavailable = connectionUnavailable(err);
+  if (unavailable !== null) return connectionsExhausted(c, err, unavailable);
 
   if (err instanceof HTTPException) {
     const status = err.status;
@@ -144,6 +194,7 @@ function reportRequestFailure(
   err: unknown,
   c: Context<{ Variables: RequestIdVars }>,
   code: string,
+  extra?: Record<string, unknown>,
 ): void {
   const requestId = c.get('requestId');
   reportFailure(err, {
@@ -153,6 +204,7 @@ function reportRequestFailure(
       'error.code': code,
       ...(requestId ? { 'request.id': requestId } : {}),
     },
+    ...(extra ? { extra } : {}),
   });
 }
 

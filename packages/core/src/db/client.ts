@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import { CONNECTION_NAMES, connectionBudget } from '../lib/connection-budget.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import { timeQueries } from './query-timing.js';
@@ -61,10 +62,12 @@ const schema = {
 
 let queryClient: ReturnType<typeof postgres> | undefined;
 
-function buildDb() {
-  queryClient = postgres(env.DATABASE_URL, {
-    max: 10,
+/** The query pool's options: its size is its share of the process's connection budget (ISS-1020). */
+export function queryClientOptions() {
+  return {
+    max: connectionBudget(env.DATABASE_CONNECTIONS).queries,
     connection: {
+      application_name: CONNECTION_NAMES.queries,
       statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
       idle_in_transaction_session_timeout: env.DATABASE_IDLE_IN_TX_TIMEOUT_MS,
       // Postgres compiles a statement it costs above `jit_above_cost` before running it, and a read
@@ -73,7 +76,11 @@ function buildDb() {
       // three times over. Core's statements are short; none is the long analytic scan JIT pays for.
       jit: 'off',
     },
-  });
+  } satisfies postgres.Options<Record<string, never>>;
+}
+
+function buildDb() {
+  queryClient = postgres(env.DATABASE_URL, queryClientOptions());
 
   const built = drizzle(queryClient, { schema });
   refuseBareDates(queryClient);

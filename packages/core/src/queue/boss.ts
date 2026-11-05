@@ -1,4 +1,5 @@
-import { type CommandResponse, PgBoss, type Queue } from 'pg-boss';
+import { type CommandResponse, type ConstructorOptions, PgBoss, type Queue } from 'pg-boss';
+import { CONNECTION_NAMES, connectionBudget } from '../lib/connection-budget.js';
 import { env } from '../lib/env.js';
 import { onBossError } from './boss-errors.js';
 import { carryOverV10Jobs } from './v10-carry-over.js';
@@ -13,11 +14,24 @@ export const BOSS_SCHEMA = 'pgboss_v12';
 /** A `retentionSeconds` for a queue whose waiting jobs are a record nothing may expire. */
 export const KEEP_WAITING_JOBS_SECONDS = 2_147_483_647;
 
+/**
+ * pg-boss's options: its pool is its share of the process's connection budget (ISS-1020), where its
+ * default of 10 alone was most of what two containers in a deploy may hold.
+ */
+export function bossOptions(): ConstructorOptions {
+  return {
+    connectionString: env.DATABASE_URL,
+    schema: BOSS_SCHEMA,
+    max: connectionBudget(env.DATABASE_CONNECTIONS).queue,
+    application_name: CONNECTION_NAMES.queue,
+  };
+}
+
 let instance: PgBoss | null = null;
 
 function getBoss(): PgBoss {
   if (!instance) {
-    instance = new PgBoss({ connectionString: env.DATABASE_URL, schema: BOSS_SCHEMA });
+    instance = new PgBoss(bossOptions());
     // never without this: an `error` nobody listens for is thrown out of a loop nothing awaits
     instance.on('error', onBossError);
   }

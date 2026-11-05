@@ -3,22 +3,44 @@ import { HTTPException } from 'hono/http-exception';
 import pg from 'pg';
 import { RateLimiterPostgres, RateLimiterRes } from 'rate-limiter-flexible';
 import { RATE_LIMIT_POINTS_TABLE } from '../db/schema-rate-limits.js';
+import { CONNECTION_NAMES, connectionBudget } from '../lib/connection-budget.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import type { RateLimitRule } from '../lib/rate-limits.js';
+
+/** How long a limited request waits for the store's connection before it is refused, not forever. */
+const STORE_CONNECT_WAIT_MS = 5_000;
+
+/** The store's options: its pool is its share of the process's connection budget (ISS-1020). */
+export function storePoolOptions(): pg.PoolConfig {
+  return {
+    connectionString: env.DATABASE_URL,
+    max: connectionBudget(env.DATABASE_CONNECTIONS).rateLimit,
+    application_name: CONNECTION_NAMES.rateLimit,
+    connectionTimeoutMillis: STORE_CONNECT_WAIT_MS,
+    statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
+  };
+}
 
 let pool: pg.Pool | undefined;
 
 function storePool(): pg.Pool {
   if (!pool) {
-    pool = new pg.Pool({
-      connectionString: env.DATABASE_URL,
-      max: 3,
-      statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
-    });
+    pool = new pg.Pool(storePoolOptions());
     pool.on('error', (err) => logger.warn({ err }, 'rate-limit: idle store connection lost'));
   }
   return pool;
+}
+
+/**
+ * Ends the store's pool, for core's shutdown: a draining container gives its connections back to
+ * the server the new one shares. The limiters built over it go with it.
+ */
+export async function closeRateLimitStore(): Promise<void> {
+  const ending = pool;
+  pool = undefined;
+  limiters.clear();
+  if (ending) await ending.end();
 }
 
 /** One limiter per (max, window) pair; every one writes the same table under the caller's key. */

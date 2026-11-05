@@ -97,6 +97,7 @@ import { provideChatWriteHold } from './middleware/chat-write-hold.js';
 import { allowedOrigins, corsMiddleware } from './middleware/cors.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
+import { closeRateLimitStore } from './middleware/rate-limit.js';
 import { readMemo } from './middleware/read-memo.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import {
@@ -380,6 +381,28 @@ app.onError(errorHandler);
 mountRoutes(app);
 app.fetch = resolvingRouteRefs(app as unknown as Hono<never>, app.fetch);
 
+/**
+ * What core tears down on SIGTERM, in order. Every client holding a Postgres connection is ended
+ * here, so a draining container gives back its whole connection budget to the server the new one
+ * shares (ISS-1020): the chat manager its session connection, the queue pg-boss's pool, and the
+ * database step the query pool and the rate limiter's store.
+ */
+export const coreShutdownSteps: ShutdownSteps = {
+  services: [
+    { name: 'ws', run: closeWs },
+    { name: 'chat-manager', run: stopRocketChatManager },
+    { name: 'timers', run: stopTimers },
+    { name: 'outbox', run: stopOutboxWorker },
+    { name: 'queue', run: stopBoss },
+  ],
+  database: {
+    name: 'db',
+    run: async () => {
+      await Promise.all([closeRateLimitStore(), closeDb()]);
+    },
+  },
+};
+
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMain) {
@@ -448,21 +471,11 @@ if (isMain) {
   await startTimers(coreTimers());
   if (servesRunnerReleases()) void refreshMainRunnerHead();
 
-  const shutdownSteps: ShutdownSteps = {
-    services: [
-      { name: 'ws', run: closeWs },
-      { name: 'chat-manager', run: stopRocketChatManager },
-      { name: 'timers', run: stopTimers },
-      { name: 'outbox', run: stopOutboxWorker },
-      { name: 'queue', run: stopBoss },
-    ],
-    database: { name: 'db', run: closeDb },
-  };
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    const code = await runShutdown(signal, server, shutdownSteps);
+    const code = await runShutdown(signal, server, coreShutdownSteps);
     process.exit(code);
   };
 

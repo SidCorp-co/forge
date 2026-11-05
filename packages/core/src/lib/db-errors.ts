@@ -65,3 +65,26 @@ export function pgConstraintName(err: unknown): string | undefined {
   }
   return undefined;
 }
+
+/** Postgres's `too_many_connections`: the server, a role or a database has no slot left (ISS-1020). */
+const TOO_MANY_CONNECTIONS = '53300';
+
+/** pg-pool's wait for a connection running out: it throws a bare Error carrying only this sentence. */
+const POOL_WAIT_EXPIRED = 'timeout exceeded when trying to connect';
+
+/**
+ * Why a statement could not get a connection to send on, or null when it got one: Postgres refused
+ * a new one (53300, under `cause` too, where drizzle wraps it), postgres.js gave up opening one
+ * (`CONNECT_TIMEOUT`), or a pg pool's wait expired. Each passes once connections come back.
+ */
+export function connectionUnavailable(err: unknown): 'refused' | 'timed-out' | null {
+  let cur: unknown = err;
+  for (let depth = 0; cur && typeof cur === 'object' && depth < MAX_CAUSE_DEPTH; depth++) {
+    const { code, message, cause } = cur as { code?: unknown; message?: unknown; cause?: unknown };
+    if (code === TOO_MANY_CONNECTIONS) return 'refused';
+    if (code === 'CONNECT_TIMEOUT') return 'timed-out';
+    if (code === undefined && message === POOL_WAIT_EXPIRED) return 'timed-out';
+    cur = cause;
+  }
+  return null;
+}

@@ -16,6 +16,7 @@ import pg from 'pg';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
 import { sessionLockHeld, tryLockSession, unlockSession } from '../../lib/advisory-lock.js';
+import { CONNECTION_NAMES } from '../../lib/connection-budget.js';
 import { env } from '../../lib/env.js';
 import { reportFailure } from '../../lib/error-tracking.js';
 import { logger } from '../../lib/logger.js';
@@ -32,15 +33,14 @@ import { subjectForThread } from './thread-registry.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
 const MAX_BACKOFF_MS = 30_000;
-const LOCK_REACQUIRE_DELAY_MS = 5000;
 const RELOAD_CHANNEL = 'forge_rocketchat_reload';
-const LISTEN_RETRY_MS = 5000;
+/** How long after its session connection is lost (or fails to open) the manager opens it again. */
+const SESSION_RETRY_MS = 5000;
 const DDP_REFRESH_INTERVAL_MS = 10 * 60_000;
 const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 export interface ActiveConnection {
   client?: RocketChatDdpClient;
-  lockClient: pg.Client;
   botUserId: string;
   /** Capitalized RC handle ("Babo") — the bot's self-reference in replies. */
   botName: string;
@@ -64,13 +64,31 @@ export interface ActiveConnection {
 class RocketChatConnectionManager {
   private readonly conns = new Map<string, ActiveConnection>();
   private started = false;
-  private listenClient?: pg.Client | undefined;
-  private listenRetryTimer?: NodeJS.Timeout | undefined;
+  /**
+   * The one connection this process's chat holds outside the query pool (ISS-1020): the reload
+   * LISTEN and the session advisory lock of every chat connection it owns, so its count is the
+   * connection budget's `session` share whatever number of chat connections it owns.
+   */
+  private session?: pg.Client | undefined;
+  private sessionOpening?: Promise<pg.Client> | undefined;
+  private sessionRetryTimer?: NodeJS.Timeout | undefined;
+  private readonly acquiring = new Set<string>();
 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    this.startReloadListener();
+    await this.resume();
+  }
+
+  /** Opens the session connection and acquires every active chat connection over it. */
+  private async resume(): Promise<void> {
+    try {
+      await this.ensureSession();
+    } catch (err) {
+      logger.warn({ err }, 'rocketchat: session connection failed to open; retrying');
+      this.scheduleResume();
+      return;
+    }
     const rows = await db
       .select()
       .from(integrationConnections)
@@ -101,7 +119,22 @@ class RocketChatConnectionManager {
     return this.conns;
   }
 
+  /**
+   * Takes the connection's lock and dials it. A session advisory lock is re-entrant inside the one
+   * session that holds every lock here, so this process's own claim is kept out by `conns` and
+   * `acquiring`, and only another process's is kept out by the lock.
+   */
   private async acquire(connectionId: string): Promise<void> {
+    if (this.conns.has(connectionId) || this.acquiring.has(connectionId)) return;
+    this.acquiring.add(connectionId);
+    try {
+      await this.acquireOnce(connectionId);
+    } finally {
+      this.acquiring.delete(connectionId);
+    }
+  }
+
+  private async acquireOnce(connectionId: string): Promise<void> {
     const [conn] = await db
       .select()
       .from(integrationConnections)
@@ -109,33 +142,40 @@ class RocketChatConnectionManager {
       .limit(1);
     if (!conn?.active) return;
 
-    const lockClient = new pg.Client({ connectionString: env.DATABASE_URL });
-    await lockClient.connect();
-    if (!(await tryLockSession(lockClient, 'rocketchatConnection', connectionId))) {
-      await lockClient.end();
+    const session = await this.ensureSession();
+    if (!(await tryLockSession(session, 'rocketchatConnection', connectionId))) {
       logger.info({ connectionId }, 'rocketchat: another process owns this connection; skipping');
       return;
     }
+    let active: ActiveConnection | null;
+    try {
+      active = await this.connectionFor(connectionId, conn);
+    } catch (err) {
+      await unlockSession(session, 'rocketchatConnection', connectionId).catch(() => {});
+      throw err;
+    }
+    if (!active) {
+      await unlockSession(session, 'rocketchatConnection', connectionId);
+      return;
+    }
+    this.conns.set(connectionId, active);
+    logger.info(
+      { connectionId, rooms: [...active.routes.keys()] },
+      'rocketchat: connection acquired, dialing',
+    );
+    await this.dial(connectionId);
+  }
 
-    lockClient.on('error', (err) => {
-      logger.warn({ err, connectionId }, 'rocketchat: advisory-lock connection lost');
-      const ac = this.conns.get(connectionId);
-      if (!ac || ac.closing) return;
-      void this.teardown(connectionId).then(() => {
-        setTimeout(() => {
-          void this.acquire(connectionId).catch((e) =>
-            logger.error({ err: e, connectionId }, 'rocketchat: re-acquire after lock loss failed'),
-          );
-        }, LOCK_REACQUIRE_DELAY_MS).unref?.();
-      });
-    });
-
+  /** The connection's live state from its row, or null when the row cannot be dialled. */
+  private async connectionFor(
+    connectionId: string,
+    conn: typeof integrationConnections.$inferSelect,
+  ): Promise<ActiveConnection | null> {
     const secrets = decryptConnectionSecrets<RocketChatSecrets>(conn);
     const config = (conn.config ?? {}) as RocketChatConfig;
     if (!config.serverUrl || !secrets.authToken || !secrets.userId) {
       logger.error({ connectionId }, 'rocketchat: connection missing serverUrl/credentials');
-      await lockClient.end();
-      return;
+      return null;
     }
 
     const restAuth = {
@@ -147,8 +187,7 @@ class RocketChatConnectionManager {
       buildRoutes(connectionId),
       fetchOwnIdentity(restAuth),
     ]);
-    const active: ActiveConnection = {
-      lockClient,
+    return {
       botUserId: secrets.userId,
       botName: capitalize(identity.username ?? 'bot'),
       ownUsername: identity.username,
@@ -161,12 +200,6 @@ class RocketChatConnectionManager {
       routeTails: new Map(),
       closing: false,
     };
-    this.conns.set(connectionId, active);
-    logger.info(
-      { connectionId, rooms: [...routes.keys()] },
-      'rocketchat: connection acquired, dialing',
-    );
-    await this.dial(connectionId);
   }
 
   private async dial(connectionId: string): Promise<void> {
@@ -328,11 +361,13 @@ class RocketChatConnectionManager {
     try {
       ac.client?.close();
     } catch {}
-    try {
-      await unlockSession(ac.lockClient, 'rocketchatConnection', connectionId);
-      await ac.lockClient.end();
-    } catch {}
     this.conns.delete(connectionId);
+    const session = this.session;
+    if (session) {
+      await unlockSession(session, 'rocketchatConnection', connectionId).catch((err) =>
+        logger.warn({ err, connectionId }, 'rocketchat: connection lock release failed'),
+      );
+    }
   }
 
   /**
@@ -378,52 +413,71 @@ class RocketChatConnectionManager {
     return true;
   }
 
-  /** Dedicated LISTEN connection for {@link RELOAD_CHANNEL}; self-heals with a
-   *  flat retry so a DB blip can't permanently sever hot-reload. */
-  private startReloadListener(): void {
-    if (this.listenClient) return;
-    const client = new pg.Client({ connectionString: env.DATABASE_URL });
-    this.listenClient = client;
+  /** The session connection, opened once however many callers ask for it at the same time. */
+  private ensureSession(): Promise<pg.Client> {
+    if (this.session) return Promise.resolve(this.session);
+    this.sessionOpening ??= this.openSession().finally(() => {
+      this.sessionOpening = undefined;
+    });
+    return this.sessionOpening;
+  }
+
+  private async openSession(): Promise<pg.Client> {
+    const client = new pg.Client({
+      connectionString: env.DATABASE_URL,
+      application_name: CONNECTION_NAMES.session,
+    });
     client.on('error', (err) => {
-      logger.warn({ err }, 'rocketchat: reload listener connection lost');
-      this.restartReloadListener(client);
+      logger.warn({ err }, 'rocketchat: session connection lost');
+      void this.sessionLost(client);
     });
     client.on('notification', (n) => {
       if (n.channel !== RELOAD_CHANNEL || !n.payload) return;
       void this.reload(n.payload);
     });
-    client
-      .connect()
-      .then(() => client.query(`listen ${RELOAD_CHANNEL}`))
-      .then(() => logger.info('rocketchat: reload listener live'))
-      .catch((err) => {
-        logger.warn({ err }, 'rocketchat: reload listener failed to connect');
-        this.restartReloadListener(client);
-      });
+    try {
+      await client.connect();
+      await client.query(`listen ${RELOAD_CHANNEL}`);
+    } catch (err) {
+      await client.end().catch(() => {});
+      throw err;
+    }
+    this.session = client;
+    logger.info('rocketchat: session connection live (reload listener, connection locks)');
+    return client;
   }
 
-  private restartReloadListener(failed: pg.Client): void {
-    if (this.listenClient !== failed) return;
-    this.listenClient = undefined;
-    void failed.end().catch(() => {});
-    if (!this.started || this.listenRetryTimer) return;
-    this.listenRetryTimer = setTimeout(() => {
-      this.listenRetryTimer = undefined;
-      if (this.started) this.startReloadListener();
-    }, LISTEN_RETRY_MS);
-    this.listenRetryTimer.unref?.();
+  /** Every lock this process held went with the session: its sockets close, and all is taken again. */
+  private async sessionLost(lost: pg.Client): Promise<void> {
+    if (this.session !== lost) return;
+    this.session = undefined;
+    void lost.end().catch(() => {});
+    for (const connectionId of [...this.conns.keys()]) await this.teardown(connectionId);
+    this.scheduleResume();
+  }
+
+  private scheduleResume(): void {
+    if (!this.started || this.sessionRetryTimer) return;
+    this.sessionRetryTimer = setTimeout(() => {
+      this.sessionRetryTimer = undefined;
+      if (!this.started) return;
+      void this.resume().catch((err) =>
+        logger.error({ err }, 'rocketchat: resume after session loss failed'),
+      );
+    }, SESSION_RETRY_MS);
+    this.sessionRetryTimer.unref?.();
   }
 
   async stop(): Promise<void> {
     this.started = false;
-    if (this.listenRetryTimer) clearTimeout(this.listenRetryTimer);
-    this.listenRetryTimer = undefined;
-    const listen = this.listenClient;
-    this.listenClient = undefined;
-    if (listen) await listen.end().catch(() => {});
+    if (this.sessionRetryTimer) clearTimeout(this.sessionRetryTimer);
+    this.sessionRetryTimer = undefined;
     for (const connectionId of [...this.conns.keys()]) {
       await this.teardown(connectionId);
     }
+    const session = this.session ?? (await this.sessionOpening?.catch(() => undefined));
+    this.session = undefined;
+    if (session) await session.end().catch(() => {});
   }
 }
 

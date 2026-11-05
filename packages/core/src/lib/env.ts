@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_DATABASE_CONNECTIONS, MIN_DATABASE_CONNECTIONS } from './connection-budget.js';
 
 const EnvSchema = z.object({
   DATABASE_URL: z.url(),
@@ -140,6 +141,14 @@ const EnvSchema = z.object({
   FEEDBACK_MAX_PER_JOB: z.coerce.number().int().positive().default(5),
   DATABASE_IDLE_IN_TX_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  /** Every Postgres connection this process may hold, split across its clients by `lib/connection-budget.ts`. */
+  DATABASE_CONNECTIONS: z.coerce
+    .number()
+    .int()
+    .min(MIN_DATABASE_CONNECTIONS, {
+      error: `DATABASE_CONNECTIONS takes a whole number of at least ${MIN_DATABASE_CONNECTIONS} (default ${DEFAULT_DATABASE_CONNECTIONS}): fewer leaves the query pool no room for a transaction beside a read`,
+    })
+    .default(DEFAULT_DATABASE_CONNECTIONS),
 });
 
 /**
