@@ -28,7 +28,7 @@ import { personGateOf } from '../project-config/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { confirmWaitsOf } from './confirm-wait-read.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
-import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
+import { linkedOf, summaryOf } from './list-read.js';
 import { shipEvidenceOfShipped } from './loop-close.js';
 import { occurrencesOf } from './occurrences.js';
 import { questionsOnFeedback, questionViewsOf } from './questions-read.js';
@@ -38,6 +38,7 @@ import { productsOfAccounts } from './server-keys.js';
 import { shipNoticeOf } from './ship-notice.js';
 import { clarificationViewOf } from './told.js';
 import { recordCheckOf, verifyHeldOf } from './verify-window.js';
+import { viewerCanOf } from './viewer-can.js';
 
 export interface FeedbackActor {
   userId: string;

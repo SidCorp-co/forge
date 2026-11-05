@@ -65,10 +65,28 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
   // ISS-639: with approvals.triage off a project writer routes, so the item waits on one and a writer owns it
   it('names a writer, and is a writer’s own turn, where the project turned approvals.triage off', () => {
     const off = { routeAsks: 'project.write' as const };
-    const other = feedbackStandingOf('new', null, [], 'Reporter', viewer(off), null, NO_STANDING_FACTS, AT);
+    const other = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      viewer(off),
+      null,
+      NO_STANDING_FACTS,
+      AT,
+    );
     expect(other.waitingOn).toMatchObject({ kind: 'person', who: 'Member', act: 'triage it' });
     const writer = viewer({ ...off, canWrite: true, canRoute: true });
-    const mine = feedbackStandingOf('new', null, [], 'Reporter', writer, null, NO_STANDING_FACTS, AT);
+    const mine = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      writer,
+      null,
+      NO_STANDING_FACTS,
+      AT,
+    );
     expect(mine.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'triage it' });
   });
 

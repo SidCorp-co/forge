@@ -33,9 +33,13 @@ import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { isRefusal, type Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
-import { type PermissionFacts, permissionRefusal, requireDeclaredOn } from '../permissions/index.js';
-import { personGateOf } from '../project-config/index.js';
+import {
+  type PermissionFacts,
+  permissionRefusal,
+  requireDeclaredOn,
+} from '../permissions/index.js';
 import { readRecording } from '../previews/index.js';
+import { personGateOf } from '../project-config/index.js';
 import { feedbackTriageRecord } from './checklist-record.js';
 import { keepTriageAsCorrection } from './correction.js';
 import { phaseOfRow } from './list-read.js';

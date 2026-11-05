@@ -10,7 +10,6 @@ import {
   feedbackKey,
 } from '@forge/contracts/feedback';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { eq, inArray } from 'drizzle-orm';
@@ -23,8 +22,6 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
-import { holds, masterFactsOf } from '../permissions/index.js';
-import { personGateOf } from '../project-config/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
@@ -45,6 +42,7 @@ import {
 } from './standing.js';
 import { targetView } from './target-view.js';
 import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
+import type { ViewerCan } from './viewer-can.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
 export interface Linked extends StandingFacts {
@@ -90,35 +88,6 @@ export interface Linked extends StandingFacts {
   untold: UntoldAmong;
   /** Where each row reported through the Forge door came from (`forge-reads.ts:forgeOriginsOf`). */
   origins: Map<string, FeedbackOriginView>;
-}
-
-/** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
-export type ViewerCan = Omit<StandingViewer, 'isReporter'>;
-
-type PermissionFacts = Parameters<typeof holds>[0];
-
-/** `routeAsks` is what the project's `approvals.triage` asks of a router (`personGateOf`, ISS-639). */
-export function viewerCanOf(facts: PermissionFacts, routeAsks: ProjectPermission): ViewerCan {
-  return {
-    canTriage: holds(facts, 'feedback.approve'),
-    routeAsks,
-    canRoute: holds(facts, routeAsks),
-    canApproveRelease: holds(facts, 'releases.approve'),
-    canWrite: holds(facts, 'project.write'),
-    canAdmin: holds(facts, 'project.admin'),
-  };
-}
-
-/** The viewer's acts, with what the project's master holds outside strict (REQ-79 r6 BC-11). */
-export async function viewerCanIn(
-  viewer: { userId: string; agency: ActorAgency },
-  projectId: string,
-): Promise<ViewerCan> {
-  const [facts, gate] = await Promise.all([
-    masterFactsOf(viewer.userId, projectId, viewer.agency),
-    personGateOf(projectId, 'triage'),
-  ]);
-  return viewerCanOf(facts, gate.permission);
 }
 
 const AT_RELEASE_GATE = 'awaiting_release';

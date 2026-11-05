@@ -20,10 +20,11 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { personGateOf } from '../project-config/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
-import { linkedOf, summaryOf, viewerCanIn } from './list-read.js';
+import { linkedOf, summaryOf } from './list-read.js';
 import type { FeedbackActor } from './read.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
+import { viewerCanIn } from './viewer-can.js';
 
 type ListQuery = {
   phases?: readonly FeedbackPhase[] | undefined;
