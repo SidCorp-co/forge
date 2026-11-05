@@ -1,1 +1,0 @@
-**A release page counts one way, top to bottom.** Nothing its header counts proven reads open under Technical, a draft's promotion is only the request carrying its source branch, and a version stays on one line on phones.
