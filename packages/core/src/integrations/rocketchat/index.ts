@@ -1,5 +1,11 @@
 export { rocketchatIntegration } from './adapter.js';
 export {
+  type AttachmentFetch,
+  type AttachmentFetchFailure,
+  fetchAttachment,
+  fetchAttachmentBytes,
+} from './attachment-fetch.js';
+export {
   activeRocketChatBinding,
   isRocketChatConnection,
   type ProjectThread,
@@ -28,12 +34,8 @@ export {
 } from './outbound.js';
 export { roomForProject } from './project-room.js';
 export {
-  type AttachmentFetch,
-  type AttachmentFetchFailure,
   type BotMembership,
   buildMessagePermalink,
-  fetchAttachment,
-  fetchAttachmentBytes,
   fetchBotMembership,
   fetchBotRooms,
   fetchMessage,
