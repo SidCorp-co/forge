@@ -108,9 +108,9 @@ export async function refusalOf(
   projectId: string,
   acts: readonly StewardAct[],
   now: Date,
-  opts: { exceptRunId?: string; tx?: Tx; trigger?: string } = {},
+  opts: { exceptRunId?: string; tx?: Tx; trigger?: string; stance?: StewardStance } = {},
 ): Promise<StewardSkipReason | 'next_day' | null> {
-  const stance = await stewardStanceOf(projectId);
+  const stance = opts.stance ?? (await stewardStanceOf(projectId));
   if (!stance.enabled) return 'steward_off';
   const day = utcDayStart(now);
   const cost = costOf(acts);
@@ -145,12 +145,17 @@ export async function admitRun(
   acts: readonly StewardAct[],
   now: Date,
 ): Promise<StewardSkipReason | 'next_day' | null> {
+  // read before the transaction: a run holding its connection while it waits on the project's lock
+  // must not ask the pool for a second, or as many runs as the pool has connections wait on each
+  // other forever (ISS-1020: eight runs of one project against a query pool of eight)
+  const stance = await stewardStanceOf(run.projectId);
   return db.transaction(async (tx) => {
     await lockXact(tx, 'stewardBudget', run.projectId);
     const refused = await refusalOf(run.projectId, acts, now, {
       exceptRunId: run.id,
       tx,
       trigger: run.trigger,
+      stance,
     });
     if (!refused) await markStarted(run.id, new Date(), tx);
     return refused;
