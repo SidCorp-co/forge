@@ -180,7 +180,9 @@ holder of \`plans.approve\` has moved the issue to \`approved\` since its plan w
 on a code-property criterion is the review's (\`judge: 'review'\`), recorded by a run declared
 \`--role reviewer\`, over an issue that is closed too; one recorded as QA's is refused
 \`VERDICT_JUDGED_BY_REVIEW\`, and a run sending another role's judgement than its own is refused
-\`VERDICT_JUDGE_NOT_RUN_ROLE\`.
+\`VERDICT_JUDGE_NOT_RUN_ROLE\`. Both verdict doors read the judge: \`judge\` on
+\`POST /api/issues/:id/verdicts\` (left out, QA's), and a \`judge: qa\` or \`judge: review\` line in a
+comment's verdict fence (left out, the recording run's own role's).
 
 A question only a person can answer parks the issue:
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', reason, waitingKind, needs }\`, with

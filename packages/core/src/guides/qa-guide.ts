@@ -55,7 +55,8 @@ Read these before judging anything, while whoever sent you can still equip you.
 - \`GET /api/issues/:id/design\` gives the proof the design names for each criterion.
 - \`GET /api/issues/:id/review\` lists what the review owes: the code-property criteria are its, not
   yours. A run declared \`--role reviewer\` judges them, a closed issue's too; ask for one rather than
-  sending \`judge: "review"\` yourself, which a \`qa\` run is refused (\`VERDICT_JUDGE_NOT_RUN_ROLE\`).
+  sending the review's judgement yourself (\`judge: "review"\` at \`POST /api/issues/:id/verdicts\`, or a
+  \`judge: review\` line in a verdict fence), which a \`qa\` run is refused (\`VERDICT_JUDGE_NOT_RUN_ROLE\`).
 - \`GET /api/issues/:id/judged-build\` answers the build a verdict on the issue defaults to: the sha the
   environment serves, and in \`basis\` whether it holds the issue's landed commit. Where the project
   names its testing environment (\`delivery.judgedOn\`), that is the build that environment serves

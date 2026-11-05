@@ -1,0 +1,1 @@
+**A reviewer run's verdict fence is recorded as the review's.** A fence's `judge:` line is read, a fence naming none is its run's own role's, and a judge naming neither qa nor review is refused by name.
