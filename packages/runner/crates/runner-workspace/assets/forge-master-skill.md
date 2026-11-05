@@ -318,9 +318,14 @@ judgement, so a closed issue's code-property criteria go to a `reviewer` run. An
 refused a closed issue by name.
 Never reopen an issue so it can be judged.
 
-The tree you declare is a worktree that exists. A path that is gone — the one a run you just closed
-gave back — or one that is no worktree is refused by name, and nothing is recorded; so is a worktree
-of another repository than the checkout you work in, where the box can read which that is.
+The tree you declare is either a worktree that already exists, which the run adopts, or one the box
+cuts for it with `--cut <branch>` (from `--from <ref>`, or your checkout's `HEAD`), which the run
+owns. An adopted tree is never removed: when the run ends it gives back only its claim, so a tree you
+cut by hand and declared is yours to remove once nothing in it is wanted. A tree the box cut is
+removed after the run ends, unless it holds uncommitted files or commits on no remote; then it is
+kept and named. A path that is gone or is no worktree is refused by name, and nothing is recorded;
+so is a worktree of another repository than the checkout you work in, where the box can read which
+that is, and a `--cut` over a path that already exists.
 
 **The run is bound by the declaration and the tool call the box let through, never by the words of
 the prompt.** So the prompt is whatever every gate in front of the dispatch accepts:
@@ -344,7 +349,7 @@ One declaration, one dispatch. A declaration you decide not to use is closed wit
 `forge-runner run close`.
 
 **Close a run once you will not resume its subagent**, when its report is in and you are sending it
-nothing more. That is what gives its tree and its issues back, and the claims its run took on them,
+nothing more. That is what gives its tree back if the box cut it, and its issues, and the claims its run took on them,
 so the next run on an issue can take it at once. Only your close, or this pane's end,
 ends a run: a subagent quiet for an hour is named in the journal and nothing more.
 
