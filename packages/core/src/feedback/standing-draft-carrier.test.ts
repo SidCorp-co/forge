@@ -16,6 +16,8 @@ const AT = {
 const reader = {
   isReporter: false,
   canTriage: true,
+  canRoute: true,
+  routeAsks: 'feedback.approve' as const,
   canApproveRelease: false,
   canWrite: true,
   canAdmin: false,

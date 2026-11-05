@@ -7,7 +7,7 @@ import {
   type FeedbackView,
   feedbackKey,
 } from '@forge/contracts/feedback';
-import type { ActorAgency } from '@forge/contracts/permissions';
+import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 import { and, asc, count, eq, inArray } from 'drizzle-orm';
@@ -24,6 +24,7 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { holds, masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
+import { personGateOf } from '../project-config/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { confirmWaitsOf } from './confirm-wait-read.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
@@ -113,6 +114,8 @@ type Facts = Parameters<typeof holds>[0];
  */
 export function canOf(i: {
   facts: Facts;
+  /** What the project's `approvals.triage` asks of whoever routes the item (ISS-639). */
+  routeAsks: ProjectPermission;
   row: Row;
   phase: FeedbackPhase;
   userId: string;
@@ -122,7 +125,7 @@ export function canOf(i: {
   const approver = holds(facts, 'feedback.approve');
   const untriaged = phase === 'new' || phase === 'reopened';
   return {
-    triage: approver && (untriaged || phase === 'triaged'),
+    triage: holds(facts, i.routeAsks) && (untriaged || phase === 'triaged'),
     // feedback-lifecycle draws declined from triaged, which reads planned while something carries it
     drop: approver && phase === 'planned',
     // owner, 2026-10-07: anyone on the project may confirm a fix, not only a BA
@@ -244,6 +247,7 @@ export async function detailAs(
     messages,
     mergedAttachments,
     occurrences,
+    routeGate,
   ] = await Promise.all([
     dataPolicyOf(projectId),
     // the master's grant read in, so `can` says what its doors take (REQ-79 r6 BC-11)
@@ -279,9 +283,12 @@ export async function detailAs(
       .where(eq(feedback.duplicateOf, row.id))
       .orderBy(asc(feedbackAttachments.createdAt)),
     occurrencesOf(row),
+    // who routes the item: the project's approvals.triage (ISS-639)
+    personGateOf(projectId, 'triage'),
   ]);
+  const routeAsks = routeGate.permission;
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
-  const summary = summaryOf(row, linked, viewer, withhold, viewerCanOf(facts));
+  const summary = summaryOf(row, linked, viewer, withhold, viewerCanOf(facts, routeAsks));
   const phase = summary.phase;
   const approver = holds(facts, 'feedback.approve');
   // an internal note is for project members, and not for the reporter it may be about unless they triage
@@ -371,6 +378,7 @@ export async function detailAs(
       can: {
         ...canOf({
           facts,
+          routeAsks,
           row,
           phase,
           userId: viewer.userId,

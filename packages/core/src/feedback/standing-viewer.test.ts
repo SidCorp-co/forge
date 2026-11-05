@@ -21,6 +21,8 @@ const feedbackStandingOf = ((...a: Parameters<typeof feedbackStandingOf_>) =>
 const viewer = (over: Partial<StandingViewer> = {}): StandingViewer => ({
   isReporter: false,
   canTriage: false,
+  canRoute: false,
+  routeAsks: 'feedback.approve' as const,
   canApproveRelease: false,
   canWrite: false,
   canAdmin: false,
@@ -50,7 +52,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
       null,
       [],
       'Reporter',
-      viewer({ canTriage: true }),
+      viewer({ canTriage: true, canRoute: true }),
       null,
       NO_STANDING_FACTS,
       AT,
@@ -60,13 +62,23 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
     expect(s.attentionGroup).toBe('needs_you');
   });
 
+  // ISS-639: with approvals.triage off a project writer routes, so the item waits on one and a writer owns it
+  it('names a writer, and is a writer’s own turn, where the project turned approvals.triage off', () => {
+    const off = { routeAsks: 'project.write' as const };
+    const other = feedbackStandingOf('new', null, [], 'Reporter', viewer(off), null, NO_STANDING_FACTS, AT);
+    expect(other.waitingOn).toMatchObject({ kind: 'person', who: 'Member', act: 'triage it' });
+    const writer = viewer({ ...off, canWrite: true, canRoute: true });
+    const mine = feedbackStandingOf('new', null, [], 'Reporter', writer, null, NO_STANDING_FACTS, AT);
+    expect(mine.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'triage it' });
+  });
+
   it('names the project master for an item it owes a triage, whoever reads it', () => {
     const s = feedbackStandingOf(
       'new',
       null,
       [],
       'Reporter',
-      viewer({ canTriage: true }),
+      viewer({ canTriage: true, canRoute: true }),
       null,
       {
         masterOwesTriage: true,

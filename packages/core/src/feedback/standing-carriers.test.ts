@@ -30,6 +30,8 @@ const routedTo = (...statuses: string[]): PhaseFacts => ({
 const reader = {
   isReporter: false,
   canTriage: false,
+  canRoute: false,
+  routeAsks: 'feedback.approve' as const,
   canApproveRelease: false,
   canWrite: false,
   canAdmin: false,

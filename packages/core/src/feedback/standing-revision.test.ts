@@ -12,6 +12,8 @@ const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
 const reader: StandingViewer = {
   isReporter: false,
   canTriage: false,
+  canRoute: false,
+  routeAsks: 'feedback.approve' as const,
   canApproveRelease: false,
   canWrite: false,
   canAdmin: false,

@@ -12,6 +12,7 @@ import type {
   FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
 import type { ReleaseMode } from '@forge/contracts/forecast';
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import { type Said, say } from '@forge/contracts/said';
 import { type Standing, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing, StandingTimes } from '@forge/contracts/steward';
@@ -126,6 +127,10 @@ export interface StandingViewer {
   isReporter: boolean;
   /** `feedback.approve`. */
   canTriage: boolean;
+  /** What the project's `approvals.triage` asks of whoever routes an item (ISS-639). */
+  routeAsks: ProjectPermission;
+  /** `routeAsks`. */
+  canRoute: boolean;
   /** `releases.approve`. */
   canApproveRelease: boolean;
   /** `project.write`. */
@@ -177,6 +182,9 @@ export interface FeedbackTimesFacts {
 export type Owed = { wait: FeedbackWaitingOn; yours: boolean };
 
 const TRIAGER = say('standing.who.holderOf', { perm: 'feedback.approve' });
+/** Who routes an item on this project: whom its `approvals.triage` asks (ISS-639). */
+const routerOf = (viewer: StandingViewer) =>
+  say('standing.who.holderOf', { perm: viewer.routeAsks });
 
 /** Who or what an item waits on, and whether that act is one the viewer holds. */
 function waitingOf(
@@ -196,7 +204,7 @@ function waitingOf(
         return theirs(
           wait(
             'person',
-            TRIAGER,
+            routerOf(viewer),
             say('feedback.act.triageAfterSnooze', { date: facts.snoozedUntil.slice(0, 10) }),
             say('feedback.rule.snoozed', { phase, until: facts.snoozedUntil }),
             { dueAt: facts.snoozedUntil },
@@ -215,28 +223,33 @@ function waitingOf(
       return {
         wait: wait(
           'person',
-          TRIAGER,
+          routerOf(viewer),
           say('standing.act.triageIt'),
           say('feedback.rule.triagerTriages', { phase }),
         ),
-        yours: viewer.canTriage,
+        yours: viewer.canRoute,
       };
     case 'triaged':
       if (facts.draftCarrier) return draftCarrierWait(facts.draftCarrier);
       if (route === null) {
         return {
-          wait: wait('person', TRIAGER, say('feedback.act.route'), say('feedback.rule.noRoute')),
-          yours: viewer.canTriage,
+          wait: wait(
+            'person',
+            routerOf(viewer),
+            say('feedback.act.route'),
+            say('feedback.rule.noRoute'),
+          ),
+          yours: viewer.canRoute,
         };
       }
       return {
         wait: wait(
           'person',
-          TRIAGER,
+          routerOf(viewer),
           say('standing.act.triageAgain'),
           say('feedback.rule.carrierGone'),
         ),
-        yours: viewer.canTriage,
+        yours: viewer.canRoute,
       };
     case 'planned':
       if (route === 'issue') {

@@ -119,7 +119,7 @@ export const forgeRecordingTool: ContextScopedMcpToolFactory = (ctx) => ({
             pressable: item.can.triage,
             why: item.can.triage
               ? null
-              : `${item.key} reads ${item.phase}: a route is picked by a holder of feedback.approve while the item is new, reopened, or triaged with nothing carrying it`,
+              : `${item.key} reads ${item.phase}: a route is picked, by whoever the project's approvals.triage asks (feedback.approve unless it is off), while the item is new, reopened, or triaged with nothing carrying it`,
           }
         : null,
     };

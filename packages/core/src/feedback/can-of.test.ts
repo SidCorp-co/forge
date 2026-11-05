@@ -18,6 +18,7 @@ const roles = ['admin', 'member', 'viewer'] as const;
 const can = (phase: FeedbackPhase, role: (typeof roles)[number]) =>
   canOf({
     facts: { projectId, role, grants: [] },
+    routeAsks: 'feedback.approve',
     row,
     phase,
     userId: VIEWER,

@@ -10,7 +10,7 @@ import {
   feedbackKey,
 } from '@forge/contracts/feedback';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import type { ActorAgency } from '@forge/contracts/permissions';
+import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { eq, inArray } from 'drizzle-orm';
@@ -24,6 +24,7 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { holds, masterFactsOf } from '../permissions/index.js';
+import { personGateOf } from '../project-config/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
@@ -96,9 +97,12 @@ export type ViewerCan = Omit<StandingViewer, 'isReporter'>;
 
 type PermissionFacts = Parameters<typeof holds>[0];
 
-export function viewerCanOf(facts: PermissionFacts): ViewerCan {
+/** `routeAsks` is what the project's `approvals.triage` asks of a router (`personGateOf`, ISS-639). */
+export function viewerCanOf(facts: PermissionFacts, routeAsks: ProjectPermission): ViewerCan {
   return {
     canTriage: holds(facts, 'feedback.approve'),
+    routeAsks,
+    canRoute: holds(facts, routeAsks),
     canApproveRelease: holds(facts, 'releases.approve'),
     canWrite: holds(facts, 'project.write'),
     canAdmin: holds(facts, 'project.admin'),
@@ -110,7 +114,11 @@ export async function viewerCanIn(
   viewer: { userId: string; agency: ActorAgency },
   projectId: string,
 ): Promise<ViewerCan> {
-  return viewerCanOf(await masterFactsOf(viewer.userId, projectId, viewer.agency));
+  const [facts, gate] = await Promise.all([
+    masterFactsOf(viewer.userId, projectId, viewer.agency),
+    personGateOf(projectId, 'triage'),
+  ]);
+  return viewerCanOf(facts, gate.permission);
 }
 
 const AT_RELEASE_GATE = 'awaiting_release';
@@ -412,8 +420,9 @@ const SETTLED: readonly FeedbackPhase[] = ['resolved', 'verified', 'declined'];
 function standingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
   const root = r.route === 'duplicate' && r.duplicateOf ? l.roots.get(r.duplicateOf) : undefined;
   if (!root || SETTLED.includes(phaseIn(root, l))) return ownStandingIn(r, l, viewer, now);
-  const none = { canTriage: false, canApproveRelease: false, canWrite: false, canAdmin: false };
-  return ownStandingIn(root, l, { ...none, isReporter: false }, now);
+  const none = { canTriage: false, canRoute: false, canApproveRelease: false, canWrite: false };
+  const asNobody = { ...none, canAdmin: false, routeAsks: viewer.routeAsks, isReporter: false };
+  return ownStandingIn(root, l, asNobody, now);
 }
 
 function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {

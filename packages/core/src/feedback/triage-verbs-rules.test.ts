@@ -16,6 +16,8 @@ const inDays = (n: number) => new Date(now.getTime() + n * 86_400_000);
 const viewer = {
   isReporter: false,
   canTriage: true,
+  canRoute: true,
+  routeAsks: 'feedback.approve' as const,
   canApproveRelease: false,
   canWrite: true,
   canAdmin: false,

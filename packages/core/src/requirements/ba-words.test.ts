@@ -115,6 +115,8 @@ describe('the act a feedback item waits on reads in a BA’s words', () => {
   const viewer = (over: Partial<StandingViewer> = {}): StandingViewer => ({
     isReporter: false,
     canTriage: false,
+    canRoute: false,
+    routeAsks: 'feedback.approve' as const,
     canApproveRelease: false,
     canWrite: false,
     canAdmin: false,

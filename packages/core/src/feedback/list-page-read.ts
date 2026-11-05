@@ -18,6 +18,7 @@ import { memoizedRead } from '../db/read-memo.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { requireDeclaredOn } from '../permissions/index.js';
+import { personGateOf } from '../project-config/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
 import { linkedOf, summaryOf, viewerCanIn } from './list-read.js';
 import type { FeedbackActor } from './read.js';
@@ -43,7 +44,13 @@ type ListAnswer =
 
 /** No viewer: nothing reads as anyone's own, so no item groups needs_you (REQ-48 BC-8). */
 const NO_VIEWER: FeedbackActor = { userId: '', agency: 'agent' };
-const NO_CAN = { canTriage: false, canApproveRelease: false, canWrite: false, canAdmin: false };
+const NO_CAN = {
+  canTriage: false,
+  canRoute: false,
+  canApproveRelease: false,
+  canWrite: false,
+  canAdmin: false,
+};
 
 /**
  * The newest items' summaries as no viewer reads them: the one standing read (REQ-48 BC-8) and the
@@ -56,8 +63,12 @@ export async function feedbackStandingsOf(projectId: string): Promise<FeedbackSu
     .where(eq(feedback.projectId, projectId))
     .orderBy(desc(feedback.createdAt))
     .limit(LIST_WINDOW);
-  const linked = await linkedOf(projectId, rows);
-  return rows.map((r) => summaryOf(r, linked, NO_VIEWER, false, NO_CAN));
+  const [linked, gate] = await Promise.all([
+    linkedOf(projectId, rows),
+    personGateOf(projectId, 'triage'),
+  ]);
+  const can = { ...NO_CAN, routeAsks: gate.permission };
+  return rows.map((r) => summaryOf(r, linked, NO_VIEWER, false, can));
 }
 
 export async function listFeedbackAs(
