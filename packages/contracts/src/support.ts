@@ -75,7 +75,10 @@ export const SUPPORT_ABILITY_MEANING: Record<SupportAbility, string> = {
 export const SUPPORT_READERS = ["users", "team"] as const;
 export type SupportReaders = (typeof SUPPORT_READERS)[number];
 
-/** Which messages reach the session: every one, or only those that mention the bot. */
+/**
+ * Which messages reach the session: every one, or those that mention the bot and the replies
+ * mentioning nobody in a thread the bot has replied in (ISS-985).
+ */
 export const SUPPORT_ANSWERS = ["every-message", "mentions"] as const;
 export type SupportAnswers = (typeof SUPPORT_ANSWERS)[number];
 

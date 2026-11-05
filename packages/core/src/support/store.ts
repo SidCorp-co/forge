@@ -265,6 +265,26 @@ export async function unansweredInThread(roomId: string, thread: string): Promis
   return Boolean(row.lastIn && new Date(row.lastIn).getTime() > new Date(row.lastReply).getTime());
 }
 
+/**
+ * Whether the session has posted a reply in a thread: a `reply` row, which only `service.ts:reply`
+ * writes, after the line was posted in that room's thread (ISS-985).
+ */
+export async function sessionRepliedInThread(roomId: string, thread: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: supportActions.id })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.thread, thread),
+        eq(supportActions.kind, 'reply'),
+        eq(supportActions.actorKind, 'session'),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
 /** The member who wrote last in a thread: whom an operations room's act in it runs for. */
 export async function latestThreadWriter(
   roomId: string,

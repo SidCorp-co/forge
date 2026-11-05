@@ -257,7 +257,8 @@ support group* saves, in one write through the binding door, everything the room
 - `readers`: `users` for a customer group, screened as `support-reply`; `team` for a group of the
   team's own people whose members are not mapped, screened as `operations-reply`;
 - `answers`: `every-message`, or `mentions`, where every message is recorded as the thread's context
-  and only one naming the bot is handed to the session;
+  and only one naming the bot, or a reply mentioning nobody in a thread the bot has replied in
+  (ISS-985), is handed to the session;
 - `grants`.
 
 The `support-rooms` consumer declares the room and warms its session from that write alone

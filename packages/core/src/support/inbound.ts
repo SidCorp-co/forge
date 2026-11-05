@@ -1,7 +1,8 @@
 // A message in a support group or an operations room (REQ-75 BC-11, BC-13, BC-18, BC-20): recorded on its thread's conversation
 // and as a `message_in` action, marked received, and handed to the group's session — unless the
-// writer is past the hourly limit, who is told so once in the thread. A person's answer to a proposal ("ok", "confirm …") is an ordinary
-// message: the session cites it to `agree` (ISS-845).
+// writer is past the hourly limit, who is told so once in the thread, or the room answers only mentions and the message is
+// neither one nor a reply in a thread the session has replied in (ISS-985), which is kept as the thread's context. A person's
+// answer to a proposal ("ok", "confirm …") is an ordinary message: the session cites it to `agree` (ISS-845).
 
 import type { SupportRoomConfig } from '@forge/contracts/support';
 import { containsSecret, scrubLogText } from '@forge/observability';
@@ -25,7 +26,12 @@ import { settleOwnerAnswer } from './owner-ask.js';
 import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
-import { insertAction, memberMessagesSince, type RoomRow } from './store.js';
+import {
+  insertAction,
+  memberMessagesSince,
+  type RoomRow,
+  sessionRepliedInThread,
+} from './store.js';
 import { roomAuth, threadConversationOf } from './thread.js';
 
 const RECEIVED_EMOJI = 'eyes';
@@ -39,6 +45,23 @@ export type Addressed = 'you' | 'others' | 'nobody';
 export function addressedOf(mentions: readonly string[], botUserId: string): Addressed {
   if (mentions.includes(botUserId)) return 'you';
   return mentions.length > 0 ? 'others' : 'nobody';
+}
+
+/**
+ * Whether a room answering only mentions hands the session this message (REQ-75 r5, ISS-985): one
+ * that mentions the bot, or one mentioning nobody that replies in a thread the session has already
+ * replied in, where a person carrying on the conversation they opened with the bot expects it to
+ * keep answering. A top-level message, a reply in a thread the bot never answered, and a reply
+ * naming someone else stay the thread's context.
+ */
+async function heardInMentionsRoom(
+  room: RoomRow,
+  m: Pick<RocketChatIncomingMessage, 'tmid'>,
+  addressed: Addressed,
+): Promise<boolean> {
+  if (addressed === 'you') return true;
+  if (addressed !== 'nobody' || !m.tmid) return false;
+  return sessionRepliedInThread(room.id, m.tmid);
 }
 
 export async function handleSupportMessage(input: {
@@ -99,10 +122,11 @@ export async function handleSupportMessage(input: {
 
   // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5);
   // a channel agent's group may say so for itself (ISS-874)
+  const addressed = addressedOf(m.mentions, input.ac.botUserId);
   if (
     answersOfConfig(m, config) === 'mentions' &&
-    !m.mentions.includes(input.ac.botUserId) &&
-    !ownerAnswer
+    !ownerAnswer &&
+    !(await heardInMentionsRoom(room, m, addressed))
   ) {
     await recordAndFlag(m, author, { deliver: false });
     return;
@@ -135,7 +159,7 @@ export async function handleSupportMessage(input: {
   const fresh = await recordAndFlag(m, author, {
     deliver: true,
     maxChars: limits.messageMaxChars,
-    addressed: addressedOf(m.mentions, input.ac.botUserId),
+    addressed,
   });
   if (!fresh) return;
   void reactToMessage(auth, m.id, RECEIVED_EMOJI, true).catch(() => {});

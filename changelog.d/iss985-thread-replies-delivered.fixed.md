@@ -1,0 +1,1 @@
+**A room answering only mentions now answers follow-ups in its own threads.** A reply mentioning nobody, in a thread the bot already replied in, reaches the assistant as a mention would; other messages without a mention stay context.

@@ -456,7 +456,7 @@
     "integrations.support.readers.team": "The team",
     "integrations.support.answers": "Answers",
     "integrations.support.answers.every-message": "Every message",
-    "integrations.support.answers.mentions": "Only mentions of the bot",
+    "integrations.support.answers.mentions": "Mentions and the bot's threads",
     "integrations.support.abilities": "Abilities",
     "integrations.support.deployTargets": "Deploy targets",
     "integrations.support.noDeployTargets": "No targets",
