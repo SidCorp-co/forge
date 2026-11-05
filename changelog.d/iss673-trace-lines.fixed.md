@@ -1,1 +1,0 @@
-**A dropped-trace refusal names the line as you sent it.** A reworded traced criterion is found by its words or place, never its old number, so tagging the line it names keeps the trace where it belongs.

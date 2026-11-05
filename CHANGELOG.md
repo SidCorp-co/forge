@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.531] - 2026-11-05
+
+A dropped requirement trace is named by the line you sent
+
+### Fixed
+
+- **A dropped-trace refusal names the line as you sent it.** A reworded traced criterion is found by its words or place, never its old number, so tagging the line it names keeps the trace where it belongs.
+
 ## [0.4.0-dev.530] - 2026-11-05
 
 Projects can let their writers triage feedback without a person approving it
