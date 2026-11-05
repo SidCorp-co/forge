@@ -48,6 +48,24 @@ const failingKeys = (rows: readonly RequirementCoverage[]) =>
 const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code).join(', ');
 
 /**
+ * Whether every judgement on the current wording of `c` was weighed and counts on no build where it
+ * was judged, its criterion saying why (ISS-1018): judging it again at the same identity changes
+ * nothing, so the turn names that reason, and the identity that would count, rather than asking for
+ * the judgement once more. A link no judgement was recorded on still owes one, and so does one whose
+ * build counts and whose judge does not (`inLiveBuild` true: the policy's judge has not judged it).
+ */
+const judgedUncounted = (c: RequirementCoverage) => {
+  const current = [...c.issues, ...c.verdicts].filter((l) => !l.stale);
+  return (
+    c.why !== null &&
+    current.length > 0 &&
+    current.every(
+      (l) => verdictExercised(l.verdict) && l.notCounted !== null && l.inLiveBuild !== true,
+    )
+  );
+};
+
+/**
  * Where a project's production names no commit it serves (ISS-900), a verdict on a release its agent
  * recorded counts: the release a judgement counts on, or `none` where no release is recorded, so no
  * judgement can count yet; on a promotion project, whose landings a commit counts at, only once one
@@ -181,7 +199,9 @@ export function carriedByLinked(
 // failing one on the master to fix it, naming the issue whose fail is the newest; one no criterion
 // traces to on the master to trace it where a linked issue can carry it (`carriedByLinked`), and
 // where none can, on the master to file an issue for it or revise the requirement, since no trace
-// can be made. The judge's acts go first, since they need no new work, then a trace; the
+// can be made. One every judgement of which was recorded and counts on no build names why, and what
+// would count (`judgedUncounted`, ISS-1018), never asking for the same judgement again.
+// The judge's acts go first, since they need no new work, then a trace; the
 // rule names every unproven BC. Where a verdict counts only on a release (`releaseAskOf`, ISS-900),
 // the judge judges on that release: on the issues tracing the current wording, which carry a release
 // verdict as the requirement does, and at the requirement only for what no such issue traces
@@ -221,7 +241,11 @@ export function proofTurn(
   // each issue is asked what its own project counts: a release, a record, or a commit (ISS-900)
   const asked = askedOf(judgeable, issueRelease);
   const onRelease = asked.filter((l) => l.ask !== null && l.ask !== 'none');
-  const byCommit = asked.filter((l) => l.ask === null);
+  const uncountedCodes = new Set(judgeable.filter(judgedUncounted).map((c) => c.code));
+  const byCommit = asked.filter((l) => l.ask === null && !uncountedCodes.has(l.code));
+  const uncounted = judgeable.filter(
+    (c) => uncountedCodes.has(c.code) && asked.some((l) => l.code === c.code && l.ask === null),
+  );
   if (onRelease.length > 0) {
     return {
       group: 'waiting',
@@ -242,6 +266,21 @@ export function proofTurn(
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
         say('standing.act.judgeOn', { codes: codesIn(byCommit), keys: keysIn(byCommit) }),
+        rule,
+      ),
+    };
+  }
+  if (uncounted.length > 0) {
+    // every judgement was recorded and counts on no build: the judge is told why and what would count
+    const why =
+      uncounted.length === 1
+        ? (uncounted[0]?.why ?? '')
+        : uncounted.map((c) => `${c.code}: ${c.why}`).join('; ');
+    return {
+      group: 'waiting',
+      waitingOn: wait(
+        JUDGE_WHO[judge ?? 'self'],
+        say('standing.act.uncounted', { codes: codesOf(uncounted), why }),
         rule,
       ),
     };

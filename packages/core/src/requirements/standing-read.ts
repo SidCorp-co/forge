@@ -48,10 +48,10 @@ import {
   issueTimesOf,
   latestContractPinsOf,
   latestPinsOf,
-  liveBuildOf,
   statusFactsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
+import { liveBuildOf } from './standing-live-build.js';
 import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
 import { askedOf } from './steward-asked.js';
 import { requirementVerdictsIn } from './verdicts-read.js';

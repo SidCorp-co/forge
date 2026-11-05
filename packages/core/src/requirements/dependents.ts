@@ -6,7 +6,7 @@ import type { ReadDoor } from '../feedback/index.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { ProposeDuplicate } from './near-duplicate.js';
 import type { LiveBuildHolds } from './standing.js';
-import type { ReleasedLine } from './standing-identity.js';
+import type { LandedHolds, ReleasedLine } from './standing-identity.js';
 
 /**
  * What feedback and suggestions answer for, and file on, a requirement, what the release owes the
@@ -45,6 +45,17 @@ export interface RequirementDependents {
     issueIds: readonly string[],
     judged: ReadonlyMap<string, readonly { kind: string; value: string }[]>,
   ): Promise<LiveBuildHolds | null>;
+  /**
+   * Where the release weighs at what is served, each issue's landing as the landing weighing reads it,
+   * with what the commits `judged` names for an issue hold of it
+   * (`release-batch/criteria-basis.ts:servedLandingHolds`, ISS-1018): where a verdict the live build
+   * does not hold is weighed.
+   */
+  servedLandings(
+    projectId: string,
+    issueIds: readonly string[],
+    judged: ReadonlyMap<string, readonly { kind: string; value: string }[]>,
+  ): Promise<ReadonlyMap<string, LandedHolds>>;
   /**
    * On a project whose production names no commit it serves (no source probe), its shipped releases
    * and the one its record says is live, which a verdict naming a release is weighed on

@@ -50,6 +50,7 @@
     "standing.act.judgeAfterRelease": "chấm trên bản phát hành khi đã phát hành",
     "standing.act.judgeCriteria": "đánh giá các tiêu chí còn nợ",
     "standing.act.judgeOn": "chấm {codes} trên {keys}",
+    "standing.act.uncounted": "{codes} không được tính trên bản build nào: {why}",
     "standing.act.judgeOnRelease": "chấm {codes} tại yêu cầu trên bản phát hành {version}",
     "standing.act.judgeOnReleaseOn": "chấm {codes} trên {keys} ở bản phát hành {version}",
     "standing.act.labelRunner": "gắn nhãn một runner cho release",

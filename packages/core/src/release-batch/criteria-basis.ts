@@ -266,6 +266,23 @@ export async function coverageLandingHolds(
   };
 }
 
+/**
+ * Where the release weighs at what is served, each of `issueIds` at its landing commit, by the very
+ * reading `coverageLandingHolds` gives a landing basis (`landedBuildsOf`, `holdsOnBuilds`): a
+ * requirement's coverage weighs there a verdict the live build does not hold (ISS-1018,
+ * `requirements/standing-identity.ts:LiveBuildHolds.landings`), so one judged on a build that carries
+ * its issue's landing outside the lineage production serves counts as its release would count it.
+ */
+export async function servedLandingHolds(
+  projectId: string,
+  issueIds: readonly string[],
+  judged: ReadonlyMap<string, readonly JudgedAgainst[]> = new Map(),
+): Promise<LandingHoldsRead['landed']> {
+  if (issueIds.length === 0) return new Map();
+  const builds = await landedBuildsOf(issueIds);
+  return (await holdsOnBuilds(projectId, builds, judged)).landed;
+}
+
 /** One waiting issue weighed at its landing: each criterion that does not count there, and why. */
 export interface LandingCriteriaReport {
   issueId: string;

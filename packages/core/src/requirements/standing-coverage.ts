@@ -190,7 +190,13 @@ export function coverageOf(
     const verdicts = requirementVerdictsOn(bc, input, byId);
     const counts = countedOf(links, verdicts);
     const verdict = verdictOf(links, verdicts, counts);
-    const why = whyOf(verdict, links, verdicts, input.liveBuild?.landed !== undefined);
+    const why = whyOf(
+      verdict,
+      links,
+      verdicts,
+      input.liveBuild?.landed !== undefined,
+      input.liveBuild?.landings !== undefined,
+    );
     const uncovered = verdict === 'gap' ? (input.uncovered?.get(bc.code) ?? null) : null;
     return {
       code: bc.code,
@@ -454,6 +460,8 @@ function whyOf(
   links: readonly CoverageIssue[],
   verdicts: readonly CoverageRequirementVerdict[],
   landed: boolean,
+  /** Whether a verdict the live build does not hold was weighed at its issue's landing too (ISS-1018). */
+  landings = false,
 ): string | null {
   const keys = (ls: readonly CoverageIssue[]) =>
     [...new Set(ls.map((l) => l.displayId))].join(', ');
@@ -485,6 +493,10 @@ function whyOf(
     const at = off.map((l) => `${l.label}: ${l.identity}`).join('; ');
     if (landed) {
       return `judged only at commits other than their issue's landing and not holding it (${at}): judge it again at the landing or at a later build that holds it${also}`;
+    }
+    if (landings) {
+      // each reason names both readings and the identities that would count (`orAtLanding`)
+      return `judged only at builds the live one does not hold, nor counted at their issue's landing: ${named(off)}${also}`;
     }
     return `judged only at builds the live one does not hold (${at}): judge it again on the live build${also}`;
   }

@@ -47,7 +47,8 @@ import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js
 import { openRevisionOf, withdrawRevisionIn } from './revision-write.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 import { deliveryAt, type LiveBuildHolds, type ProofIssue } from './standing.js';
-import { issueCriteriaOf, liveBuildOf, requirementVerdictsOf } from './standing-facts.js';
+import { issueCriteriaOf, requirementVerdictsOf } from './standing-facts.js';
+import { liveBuildOf } from './standing-live-build.js';
 import { restsOnShipped } from './standing-shipped.js';
 import {
   answer,

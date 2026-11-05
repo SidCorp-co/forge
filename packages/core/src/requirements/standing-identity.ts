@@ -86,6 +86,15 @@ export interface LiveBuildHolds {
    */
   released?: ReleasedLine;
   /**
+   * Where the release weighs an issue's criteria at what is served (no `landed`), each issue's landing
+   * as the landing weighing reads it (`release-batch/criteria-basis.ts:servedLandingHolds`), asked
+   * only for the issues holding a commit or runtime verdict the live build does not hold. A verdict the
+   * live build does not hold still counts where it carries its issue's landing (ISS-1018: sidcorp-mail
+   * ISS-8's control runs a build of the working branch holding its landing, outside the lineage
+   * production serves). Absent where nothing was asked.
+   */
+  landings?: ReadonlyMap<string, LandedHolds>;
+  /**
    * Per issue id (lower case) of another project delivering the requirement, what that project's own
    * build holds of its verdicts: a sibling project ships on its own build, so its issue's verdicts are
    * weighed there and never on the requirement project's (`holdsFor`). Null where nothing was asked.
@@ -251,14 +260,20 @@ export function resolve(
     if ('why' in named) return none(named.why);
     return atLanding(named.sha, landed.get(issueId.toLowerCase()) ?? null, covers);
   }
+  // a commit, or the commit a runtime served, the live build does not hold is weighed at its issue's landing
+  const orLanded = (r: Resolved, commit: string) =>
+    orAtLanding(r, commit, live?.landings, issueId, covers);
   switch (identity.kind) {
     case 'commit':
-      return atCommit(identity.sha, `commit ${short(identity.sha)}`);
+      return orLanded(atCommit(identity.sha, `commit ${short(identity.sha)}`), identity.sha);
     case 'runtime': {
       const ref = identity.ref.toLowerCase();
       const served = live?.runtimes.get(ref);
       if (served)
-        return atCommit(served, `runtime ${short(ref)}, which served commit ${short(served)}`);
+        return orLanded(
+          atCommit(served, `runtime ${short(ref)}, which served commit ${short(served)}`),
+          served,
+        );
       return none(
         served === null
           ? `runtime ${short(ref)} is not a commit and no release Forge verified served it, so nothing says which build it was`
@@ -290,6 +305,39 @@ export function resolve(
         `judged at abbreviated commit ${identity.sha}, a backfilled identity that never resolved to a whole commit`,
       );
   }
+}
+
+// Where the release weighs at what is served, a verdict counts on the live build, and where the live
+// build does not hold it, or nobody could say, at its issue's landing by the one weighing the release
+// and the issue's own read give a landing (`atLanding`, ISS-1018): a component deployed outside the
+// release, as sidcorp-mail's control is (mta1 runs a2fb071, a build of the working branch holding
+// ISS-8's landing 286764e, never under what production serves), is judged on a build that carries the
+// work, and its verdicts read "not judged" for ever otherwise. Neither counting, the reason names both
+// readings and the identities that would count: the live build, the landing, or a later build a
+// landing Forge recorded places after it (`VISION: state-never-lies`).
+function orAtLanding(
+  live: Resolved,
+  commit: string,
+  landings: ReadonlyMap<string, LandedHolds> | undefined,
+  issueId: string,
+  covers: readonly string[] | null,
+): Resolved {
+  if (live.notCounted === null || !landings) return live;
+  const landed = landings.get(issueId.toLowerCase()) ?? null;
+  const at = atLanding(commit, landed, covers);
+  if (at.notCounted === null) {
+    return {
+      ...at,
+      countedAs: at.countedAs ?? `judged at commit ${short(commit)}, its issue's landing`,
+    };
+  }
+  const instead = landed?.sha
+    ? `: judge it again on the live build or at ${short(landed.sha)}, its issue's landing, or at a later build a landing Forge recorded places after it`
+    : '';
+  return {
+    ...live,
+    notCounted: `${live.notCounted}; nor does it count at its issue's landing: ${at.notCounted}${instead}`,
+  };
 }
 
 // With no production environment the build a verdict counts on is its issue's landing

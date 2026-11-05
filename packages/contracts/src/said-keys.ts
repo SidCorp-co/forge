@@ -1013,6 +1013,10 @@ export const SAID = {
 		en: "judge {codes} on {keys}",
 		vars: { codes: "key", keys: "key" },
 	},
+	"standing.act.uncounted": {
+		en: "{codes} count on no build: {why}",
+		vars: { codes: "key", why: "text" },
+	},
 	"standing.act.judgeOnRelease": {
 		en: "judge {codes} at the requirement on release {version}",
 		vars: { codes: "key", version: "version" },
