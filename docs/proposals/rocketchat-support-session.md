@@ -160,6 +160,24 @@ result there, once. Nothing is posted for any earlier phase (r6 BC-15: output, n
 decline emits no event, so the `support.result-follow` timer reads every followed item again each
 minute (`support/result.ts:tellAllResults`).
 
+### A promise to tell a person when an issue reaches an environment (ISS-1012)
+
+A person may ask to be told when an issue reaches staging, whether or not their thread filed it
+(FB-512). `promise { thread, issue, environment, asker?, project? }` names the issue by key, of the
+home project or one the channel agent follows, and the environment by the project document's own
+name for it; it needs no deployment target id (`support/promise.ts:makePromise`). It is recorded in
+`support_promises` (migration 0605) with who asked, which issue, which environment and when, and
+noted on the issue for its master. One the room cannot keep is refused when asked:
+`SUPPORT_PROMISE_NOT_FOLLOWED`, `SUPPORT_PROMISE_ISSUE_UNKNOWN`, `SUPPORT_PROMISE_ISSUE_DROPPED`, and
+`SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED` for a name the document does not declare (listing those it
+does) or one deployed outside Forge with no source probe. The `support-results` consumer and the
+`support.result-follow` timer answer it once (`support/promise-watch.ts:tellProjectPromises`): when
+the environment first serves a commit holding the issue's landing (`landedBuildsOf`, read through
+`servedOnEnvironment` and weighed by `servedCarries`), when the issue is dropped, or when the
+environment stops being tracked. The session is handed one note naming the issue by its title and
+says it in the thread in its own words; a guarded write from `open` keeps two watches from telling
+it twice.
+
 ### The channel record (r6)
 
 Each bound group has one record per project (`support_channels`, migration 0549), read by every
