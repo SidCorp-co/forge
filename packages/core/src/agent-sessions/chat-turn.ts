@@ -437,18 +437,25 @@ async function writeTurn(
       .where(eq(agentSessions.id, session.id))
       .returning();
     if (!written) throw new Error('agent_sessions: update returned no row');
-    if (written.status !== 'running') {
-      movedRow(
-        await transitionSessions(tx, {
-          to: 'running',
-          expect: written.status,
-          where: eq(agentSessions.id, session.id),
-          actor: actor ?? { type: 'system' },
-          source: 'chat-turn',
-          returning: ['id'],
-        }),
+    // One session runs one turn at a time (ISS-977). The update above holds the row, so a second
+    // turn racing this one waits here and reads the first's `running`: it is refused, and rolls
+    // back before it writes a seed row inside the seqs the first turn's lines are numbered into.
+    if (written.status === 'running' || written.status === 'queued') {
+      throw refuseSession(
+        'SESSION_RUNNING',
+        `session ${session.id} already runs a turn (${written.status}); a second turn is not started beside it`,
       );
     }
+    movedRow(
+      await transitionSessions(tx, {
+        to: 'running',
+        expect: written.status,
+        where: eq(agentSessions.id, session.id),
+        actor: actor ?? { type: 'system' },
+        source: 'chat-turn',
+        returning: ['id'],
+      }),
+    );
     const updated = { ...written, status: 'running' as const };
     const { appended } = await writeTranscript(tx, updated.id, [
       ...plan.prevMessages,
