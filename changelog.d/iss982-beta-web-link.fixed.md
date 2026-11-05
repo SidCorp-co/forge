@@ -1,0 +1,1 @@
+**A beta issue ported to dev now links to the beta page a person can open,** taken from its own declared web address instead of beta's API host; without one, the item names its beta key and the port says which setting is missing.

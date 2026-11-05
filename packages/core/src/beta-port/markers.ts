@@ -73,24 +73,27 @@ export function portedDescription(
   return [portedFirstLine(betaKey, betaIssueId), ...(text ? ['', text] : [])].join('\n');
 }
 
-/** Where a person opens the beta issue: its page on forge-beta. */
-export function betaIssueLink(baseUrl: string, betaSlug: string, betaIssueId: string): string {
-  return `${baseUrl.replace(/\/+$/, '')}/projects/${encodeURIComponent(betaSlug)}/issues/${betaIssueId}`;
+/** Where a person opens the beta issue: its page on forge-beta's web origin, never its API host. */
+export function betaIssueLink(webUrl: string, betaSlug: string, betaIssueId: string): string {
+  return `${webUrl.replace(/\/+$/, '')}/projects/${encodeURIComponent(betaSlug)}/issues/${betaIssueId}`;
 }
 
 /**
  * A beta issue ported as Feedback (ISS-982): the provenance line first, as a ported issue opens, then
- * the link to the beta issue, then a blank line and the beta body as its reporter wrote it.
+ * the link to the beta issue where beta's web origin is known, then a blank line and the beta body as
+ * its reporter wrote it.
  */
 export function portedFeedbackBody(
   beta: { key: string; id: string },
-  link: string,
+  link: string | null,
   body: string | null | undefined,
 ): string {
   const text = body?.trim();
-  return [portedFirstLine(beta.key, beta.id), `Beta: ${link}`, ...(text ? ['', text] : [])].join(
-    '\n',
-  );
+  return [
+    portedFirstLine(beta.key, beta.id),
+    ...(link ? [`Beta: ${link}`] : []),
+    ...(text ? ['', text] : []),
+  ].join('\n');
 }
 
 /** The dedup key a ported Feedback item is filed under: one item per beta issue, whatever fails after. */

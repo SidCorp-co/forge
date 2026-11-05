@@ -131,6 +131,10 @@ describe('a beta issue in flight or landed on beta (ISS-982 2)', () => {
     // only the one still waiting on beta arrives, and as Feedback
     const items = await devFeedbackOf(twin.id);
     expect(items.map((i) => i.title)).toEqual([waiting.title]);
+    // no beta web origin is set on this project: the item names its beta key and carries no link a
+    // person could not open, and the fire says which secret would give it one (ISS-982 c1)
+    expect(items[0]?.body ?? '').not.toContain('Beta: ');
+    expect(first.output).toContain('the project secret integration/forge-beta-web-url is not set');
     expect(await devIssuesOf(twin.id)).toHaveLength(0);
     for (const b of left) {
       expect(commentsOf(b), b.displayId).toEqual([]);

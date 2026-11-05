@@ -68,6 +68,7 @@ export const MAX_MIRRORS_PER_FIRE = 50;
 
 export const BETA_URL_REF = secretRefOf(BETA_PORT_SECRET_SCOPE, BETA_PORT_SECRET_NAMES.url);
 export const BETA_TOKEN_REF = secretRefOf(BETA_PORT_SECRET_SCOPE, BETA_PORT_SECRET_NAMES.token);
+export const BETA_WEB_URL_REF = secretRefOf(BETA_PORT_SECRET_SCOPE, BETA_PORT_SECRET_NAMES.webUrl);
 
 type Refused = { kind: 'refused'; code: BetaPortFireRefusal; detail: string };
 
@@ -87,6 +88,8 @@ interface Budget {
 
 interface FireContext {
   peer: PeerForge;
+  /** Beta's web origin, where a person opens a beta issue; null where no secret declares it. */
+  webUrl: string | null;
   fireId: string;
   cutoff: Date;
   report: BetaPortReport;
@@ -121,9 +124,13 @@ export async function startBetaPort(args: {
   }
   const token = secrets.values.get(BETA_TOKEN_REF) as string;
   const peer: PeerForge = { baseUrl: secrets.values.get(BETA_URL_REF) as string, token };
+  // beta's API host serves no pages, so a link a person opens takes beta's web origin, declared on its
+  // own; without it an item names its beta key and no link, and the fire says so (ISS-982 c1)
+  const web = await readProjectSecrets(args.projectId, [BETA_WEB_URL_REF]);
+  const webUrl = web.ok ? ((web.values.get(BETA_WEB_URL_REF) as string) ?? null) : null;
   const run = async (): Promise<BetaPortOutcome> => {
     try {
-      return await runBetaPort({ peer, fireId: args.fireId, cutoff });
+      return await runBetaPort({ peer, webUrl, fireId: args.fireId, cutoff });
     } catch (err) {
       return { kind: 'failed', error: scrubLogText(errText(err), [token]) };
     }
@@ -133,6 +140,7 @@ export async function startBetaPort(args: {
 
 async function runBetaPort(args: {
   peer: PeerForge;
+  webUrl: string | null;
   fireId: string;
   cutoff: Date;
 }): Promise<BetaPortOutcome> {
@@ -152,6 +160,7 @@ async function runBetaPort(args: {
 
   const ctx: FireContext = {
     peer,
+    webUrl: args.webUrl,
     fireId: args.fireId,
     cutoff,
     report: emptyReport(cutoff),
@@ -366,7 +375,14 @@ async function portOne(ctx: FireContext, beta: PeerIssue, twin: DevTwin): Promis
     }
     description = read.value;
   }
-  const link = betaIssueLink(ctx.peer.baseUrl, twin.slug, beta.id);
+  const link = ctx.webUrl === null ? null : betaIssueLink(ctx.webUrl, twin.slug, beta.id);
+  const webSecret = `${BETA_PORT_SECRET_SCOPE}/${BETA_PORT_SECRET_NAMES.webUrl}`;
+  if (link === null && !ctx.report.refused.some((l) => l.includes(webSecret))) {
+    // named by scope and name: the report is scrubbed, and a secret:// ref does not survive it
+    ctx.report.refused.push(
+      `beta links: the project secret ${webSecret} is not set, so a ported item names its beta key and carries no link; PUT /api/projects/<id>/secrets/${webSecret} with beta's web origin`,
+    );
+  }
   const filed = await createFeedback({
     projectId: twin.id,
     actor: { userId: twin.createdBy, agency: 'agent' },

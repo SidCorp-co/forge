@@ -94,6 +94,9 @@ afterAll(async () => {
 });
 
 const betaPortSchedule = () => betaPortScheduleOn(say, scheduleProjectId);
+/** Beta's web origin, a different host from its API, as forge-beta serves them. */
+const BETA_WEB = 'https://forge-beta-web.test';
+
 const setSecret = (name: string, value: string) =>
   putBetaSecret(say, scheduleProjectId, name, value);
 const fire = (id: string) => fireOnce(say, id);
@@ -122,6 +125,8 @@ describe('a beta port fire (ISS-923)', () => {
   it('(a) a missing ruling refuses the fire by name, before beta is read, and nothing is created', async () => {
     await setSecret('forge-beta-url', baseUrl);
     await setSecret('forge-beta-token', TOKEN);
+    // where a person opens a beta issue: beta's web origin, not its API host (ISS-982 c1)
+    await setSecret('forge-beta-web-url', BETA_WEB);
     const settled = await fire(scheduleId);
     expect(settled.http).toBe(422);
     expect(settled).toMatchObject({
@@ -158,7 +163,8 @@ describe('a beta port fire (ISS-923)', () => {
     });
     const lines = (item?.body ?? '').split('\n');
     expect(lines[0]).toBe(`Ported from forge-beta ISS-1 (${source.id}).`);
-    expect(lines[1]).toBe(`Beta: ${baseUrl}/projects/${twin.slug}/issues/${source.id}`);
+    expect(lines[1]).toBe(`Beta: ${BETA_WEB}/projects/${twin.slug}/issues/${source.id}`);
+    expect(item?.body).not.toContain(baseUrl);
     expect(item?.body).toContain('What beta issue 1 asks for.');
     const fbKey = `FB-${item?.fb_seq}`;
     expect(beta.comments.get(source.id)).toEqual([`Ported to forge-dev: ${fbKey}`]);

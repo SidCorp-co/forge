@@ -34,6 +34,8 @@ export const BETA_PORT_SECRET_SCOPE = "integration";
 export const BETA_PORT_SECRET_NAMES = {
 	url: "forge-beta-url",
 	token: "forge-beta-token",
+	/** Where a person opens beta's pages: its web origin, which is not its API host. Optional: without it a ported item carries no link. */
+	webUrl: "forge-beta-web-url",
 } as const;
 
 /** Why a `beta_port` fire did nothing, recorded as its refusal (`schedule_runs.refusal`). */
