@@ -61,6 +61,7 @@ export {
   provideRoomHandlers,
   provideSupportRoomHandler,
 } from './room-handlers.js';
+export { postStagedMedia, type StagedMedia, stageRoomMedia } from './room-media.js';
 export { buildRoutes, type Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
 export {

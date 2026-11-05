@@ -658,6 +658,20 @@ export const SUPPORT_CONFIRM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
 export const SUPPORT_RECORD_KINDS = ["defect", "feature", "request"] as const;
 export type SupportRecordKind = (typeof SUPPORT_RECORD_KINDS)[number];
 
+/**
+ * How many pictures a room message carries and how large each is, wherever core reads or posts them:
+ * the chat-room Assistant's turn, a support session's read (ISS-1010) and a master's post (ISS-1024).
+ */
+export const ROOM_IMAGE_CAPS = { perMessage: 4, bytes: 4_000_000 } as const;
+
+/** The picture types a room message's image is read or posted as; svg is a document, never one. */
+export const ROOM_IMAGE_MIMES = [
+	"image/png",
+	"image/jpeg",
+	"image/gif",
+	"image/webp",
+] as const;
+
 export const supportThreadIdSchema = z
 	.string()
 	.min(1)
@@ -1195,6 +1209,18 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_IMAGE_OFF_SERVER",
 	/** The chat server could not be read for the picture (ISS-1010). */
 	"SUPPORT_IMAGE_UNREACHABLE",
+	/** A master's post names an image no issue, comment or session upload has (ISS-1024). */
+	"SUPPORT_POST_IMAGE_UNKNOWN",
+	/** A master's post names an upload of a project its caller cannot read (ISS-1024). */
+	"SUPPORT_POST_IMAGE_UNREADABLE",
+	/** A master's post names an upload that is no png, jpeg, gif or webp (ISS-1024). */
+	"SUPPORT_POST_IMAGE_NOT_AN_IMAGE",
+	/** A master's post names an image larger than a room's picture (ISS-1024). */
+	"SUPPORT_POST_IMAGE_TOO_LARGE",
+	/** A master's post names an upload whose file is gone from storage (ISS-1024). */
+	"SUPPORT_POST_IMAGE_FILE_MISSING",
+	/** The chat server took no image of a master's post (ISS-1024). */
+	"SUPPORT_POST_IMAGE_UNPOSTED",
 	/** A promise naming an issue of a project the room does not follow (ISS-1012). */
 	"SUPPORT_PROMISE_NOT_FOLLOWED",
 	/** A promise naming no issue of the project its key or `project` names (ISS-1012). */
@@ -1294,6 +1320,12 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_IMAGE_REFUSED: 503,
 	SUPPORT_IMAGE_OFF_SERVER: 409,
 	SUPPORT_IMAGE_UNREACHABLE: 503,
+	SUPPORT_POST_IMAGE_UNKNOWN: 404,
+	SUPPORT_POST_IMAGE_UNREADABLE: 403,
+	SUPPORT_POST_IMAGE_NOT_AN_IMAGE: 400,
+	SUPPORT_POST_IMAGE_TOO_LARGE: 400,
+	SUPPORT_POST_IMAGE_FILE_MISSING: 404,
+	SUPPORT_POST_IMAGE_UNPOSTED: 503,
 	SUPPORT_PROMISE_NOT_FOLLOWED: 403,
 	SUPPORT_PROMISE_ISSUE_UNKNOWN: 404,
 	SUPPORT_PROMISE_ISSUE_DROPPED: 409,

@@ -12,7 +12,8 @@
 // in it), never at its top level (ISS-872, the owner's trial of 2026-11-02), naming nobody but the
 // asker or a member the channel lists, in plain words with no internal code (`screen.ts`). An
 // operations room every project of the organization shares takes a top-level post only in the
-// project's own thread its binding records (ISS-934).
+// project's own thread its binding records (ISS-934). Images the post names follow its text into the
+// same room and thread, each checked before anything is posted (ISS-1024, `master-post-images.ts`).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
 import { findBindingWithConnectionById } from '../integrations/index.js';
@@ -20,6 +21,13 @@ import { fetchMessage } from '../integrations/rocketchat/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { askerOf, mentionRefusal } from './channel.js';
 import { readersOf } from './grants.js';
+import {
+  checkPostImages,
+  type PostedImage,
+  type PostImage,
+  postImagesAfter,
+  stagePostImages,
+} from './master-post-images.js';
 import { no, type Outcome } from './outcome.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
@@ -48,7 +56,22 @@ interface Postable {
 }
 
 type Actor = { userId: string; projectId: string };
-type Posted = Outcome<{ rid: string; messageId: string | null; thread?: string }>;
+type Posted = Outcome<{
+  rid: string;
+  messageId: string | null;
+  thread?: string;
+  attachments?: { attachmentId: string; messageId: string | null }[];
+}>;
+
+/** What a post's record and answer say of its images: the record names each, never its bytes. */
+const recordedImages = (posted: readonly PostedImage[]) =>
+  posted.length > 0 ? { attachments: posted } : {};
+const answeredImages = (posted: readonly PostedImage[]) =>
+  posted.length > 0
+    ? {
+        attachments: posted.map(({ attachmentId, messageId }) => ({ attachmentId, messageId })),
+      }
+    : {};
 
 /** Every room the project's bindings answer now, of any kind, with who reads each. */
 async function postableRoomsOf(projectId: string): Promise<Postable[]> {
@@ -246,6 +269,7 @@ async function postInNamedThread(
   actor: Actor,
   rooms: readonly Postable[],
   input: SupportMasterPostRequest & { thread: string },
+  images: readonly PostImage[],
 ): Promise<Posted> {
   const found = await roomOfThread(rooms, input.rid, input.thread);
   if (!found.ok) return found;
@@ -270,12 +294,15 @@ async function postInNamedThread(
     TOOL,
   );
   if (!admitted.ok) return admitted;
+  const staged = await stagePostImages(room, images);
+  if (!staged.ok) return staged;
   const posted = await postInThread({
     room,
     thread: input.thread,
     text: admitted.value.text,
     proof: admitted.value.proof,
   });
+  const shown = await postImagesAfter(room, staged.value, input.thread, posted.messageId);
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
@@ -284,10 +311,19 @@ async function postInNamedThread(
     kind: 'routed',
     actorKind: 'session',
     tool: TOOL,
-    input: { text, by: actor.userId },
+    input: { text, by: actor.userId, ...recordedImages(shown.posted) },
     externalId: posted.messageId,
   });
-  return { ok: true, value: { rid: room.rid, messageId: posted.messageId, thread: input.thread } };
+  if (shown.failure) return shown.failure;
+  return {
+    ok: true,
+    value: {
+      rid: room.rid,
+      messageId: posted.messageId,
+      thread: input.thread,
+      ...answeredImages(shown.posted),
+    },
+  };
 }
 
 /**
@@ -301,11 +337,14 @@ async function postAtTop(
   at: Postable,
   given: string,
   to: string | null,
+  images: readonly PostImage[],
 ): Promise<Posted> {
   const room = at.room;
   const text = await scrubbedForRoom(room, given);
   const admitted = await screenForThread(room, null, TOP_LEVEL, text, doorOf(at), TOOL);
   if (!admitted.ok) return admitted;
+  const staged = await stagePostImages(room, images);
+  if (!staged.ok) return staged;
   const out = await postForTopLevel({
     room,
     text: admitted.value.text,
@@ -314,6 +353,7 @@ async function postAtTop(
   });
   if (!out.ok) return out;
   const posted = out.value;
+  const shown = await postImagesAfter(room, staged.value, posted.thread, posted.messageId);
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
@@ -322,15 +362,17 @@ async function postAtTop(
     kind: 'announced',
     actorKind: 'session',
     tool: TOOL,
-    input: { text, by: actor.userId },
+    input: { text, by: actor.userId, ...recordedImages(shown.posted) },
     externalId: posted.messageId,
   });
+  if (shown.failure) return shown.failure;
   return {
     ok: true,
     value: {
       rid: room.rid,
       messageId: posted.messageId,
       ...(posted.thread ? { thread: posted.thread } : {}),
+      ...answeredImages(shown.posted),
     },
   };
 }
@@ -355,18 +397,20 @@ async function roomRecording(
  */
 export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest): Promise<Posted> {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
+  const images = await checkPostImages(actor.userId, input.attachments);
+  if (!images.ok) return images;
   const rooms = await postableRoomsNaming(actor.projectId, input.rid);
   if (input.rid && !rooms.some((r) => r.room.rid === input.rid)) {
     return roomRefusal(actor.projectId, input.rid, rooms);
   }
   if (input.thread) {
     const own = await roomRecording(rooms, input.rid, input.thread);
-    if (own) return postAtTop(actor, own, input.text, input.thread);
-    return postInNamedThread(actor, rooms, { ...input, thread: input.thread });
+    if (own) return postAtTop(actor, own, input.text, input.thread, images.value);
+    return postInNamedThread(actor, rooms, { ...input, thread: input.thread }, images.value);
   }
   const chosen = topLevelRoomOf(rooms, input.rid);
   if (!chosen.ok) return chosen;
   const to = await topLevelThreadOf(chosen.value.room);
   if (!to.ok) return to;
-  return postAtTop(actor, chosen.value, input.text, to.value);
+  return postAtTop(actor, chosen.value, input.text, to.value, images.value);
 }

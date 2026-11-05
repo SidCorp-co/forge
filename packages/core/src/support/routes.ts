@@ -432,7 +432,7 @@ supportRoutes.post(
   '/:id/support/master-posts',
   projectParam,
   requiresOnParam('project.write', 'id'),
-  strictBody(supportMasterPostRequestSchema, '{ text, rid?, thread? }'),
+  strictBody(supportMasterPostRequestSchema, '{ text, rid?, thread?, attachments? }'),
   async (c) => {
     const out = await postAsMaster(
       { userId: c.get('userId'), projectId: c.req.valid('param').id },

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { REASON_NOTE_MAX } from "./reason-text.js";
 import {
 	chatUsernameSchema,
+	ROOM_IMAGE_CAPS,
 	supportRoomConfigSchema,
 	supportThreadIdSchema,
 } from "./support.js";
@@ -191,8 +192,31 @@ export const supportAnnounceRequestSchema = z.strictObject({
  * room), as that room's bot. `rid` names the room; with none, the project's one room the team reads.
  * Core writes none of the words (agent-is-the-voice): it screens, posts and records who posted.
  */
+/**
+ * An image a master's post carries (ISS-1024): an upload Forge already stores on an issue, a comment
+ * or an agent session, named as the `uploads` door names it. Its project is read from the upload, and
+ * the caller reads that project. A feedback item's file is reporter data and never leaves for a room.
+ */
+export const supportMasterPostAttachmentSchema = z.strictObject({
+	target: z.enum(["issue", "comment", "session"]),
+	attachmentId: z.uuid(),
+});
+export type SupportMasterPostAttachment = z.infer<
+	typeof supportMasterPostAttachmentSchema
+>;
+
 export const supportMasterPostRequestSchema = z.strictObject({
 	text: z.string().trim().min(3).max(4000),
+	/**
+	 * Images posted after the text, in the same room and thread (ISS-1024): at most a room message's
+	 * picture count, each a png, jpeg, gif or webp of at most the room's picture size
+	 * (`ROOM_IMAGE_CAPS`). Every one is checked before anything is posted.
+	 */
+	attachments: z
+		.array(supportMasterPostAttachmentSchema)
+		.min(1)
+		.max(ROOM_IMAGE_CAPS.perMessage)
+		.optional(),
 	rid: z.string().trim().min(1).max(200).optional(),
 	/**
 	 * The thread the post goes in (ISS-871, ISS-943), by its first message's id: one of the named

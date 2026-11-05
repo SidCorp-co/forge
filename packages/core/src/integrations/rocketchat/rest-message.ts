@@ -1,3 +1,5 @@
+import { ROOM_IMAGE_CAPS } from '@forge/contracts/support';
+
 /** Simplified REST message (both history + thread endpoints map to this). */
 export interface RocketChatRestMessage {
   id: string;
@@ -55,7 +57,7 @@ export interface RocketChatImageRef {
  * a reader gains nothing from the tail, and each one costs a download plus its share of the vision
  * budget.
  */
-export const ROCKETCHAT_IMAGE_CAPS = { perMessage: 4, bytes: 4_000_000 } as const;
+export const ROCKETCHAT_IMAGE_CAPS = ROOM_IMAGE_CAPS;
 
 const IMAGE_MIME_RE = /^image\/(png|jpe?g|gif|webp)$/i;
 
