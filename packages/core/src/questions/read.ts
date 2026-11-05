@@ -64,6 +64,7 @@ function shapeOf(
     prompt: current?.prompt ?? '',
     round: current?.round ?? 0,
     askedAt: current?.askedAt ?? '',
+    plain: current?.plain ?? null,
   };
 }
 

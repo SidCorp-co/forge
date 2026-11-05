@@ -1,4 +1,5 @@
-// A parked decision over HTTP: ask one, list a project's or an issue's, read one, answer one, void one.
+// A parked decision over HTTP: ask one, list a project's or an issue's, read one, answer one, void
+// one, and write the plain text a person decides it from onto one already asked.
 //
 // A rule refusal leaves as the refusal envelope `middleware/error.ts` answers a thrown refusal with.
 
@@ -27,6 +28,7 @@ import { requiresByRule, requiresOnResolved } from '../permissions/index.js';
 import { assertTokenMayAnswer } from './answer-door.js';
 import { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
 import { askAs } from './ask.js';
+import { writePlainAs } from './plain-door.js';
 import { doorOfRequest } from './ports.js';
 import {
   answerAs,
@@ -156,6 +158,10 @@ const ASK = requiresByRule(
   'questions/ask.ts:askAs',
   "project.write on the project the body names, or its issue's; one the caller has no role on is not found",
 );
+const PLAIN = requiresByRule(
+  'questions/plain-door.ts:writePlainAs',
+  "the question's asker, the project's master (an agent's credential holding project.write) or project.admin on its project; one the caller has no role on is not found",
+);
 const VOID = requiresByRule(
   'questions/void-door.ts:voidQuestionAs',
   "project.write on the question's project, then the question's own named refusals",
@@ -280,6 +286,25 @@ questionRoutes.post(
         userId: c.get('userId'),
         agency: restActor(c).agency,
         reason: c.req.valid('json').reason,
+      }),
+    ),
+);
+
+// the plain text a person decides the open round from, written onto a question already asked (ISS-1006)
+questionRoutes.put(
+  '/:id/plain',
+  PLAIN,
+  strictBody(
+    z.strictObject({ plain: plainDecisionSchema.min(1) }),
+    '{ plain } is what the person decides from: at most three plain lines',
+  ),
+  async (c) =>
+    c.json(
+      await writePlainAs({
+        questionId: questionId(c),
+        userId: c.get('userId'),
+        agency: restActor(c).agency,
+        plain: c.req.valid('json').plain,
       }),
     ),
 );

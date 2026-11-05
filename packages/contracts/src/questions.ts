@@ -86,6 +86,11 @@ export interface QuestionRoundFacts {
 	recommendedOptionId: string;
 	/** The viewer may not answer this free-text round. */
 	locked: boolean;
+	/**
+	 * The asker's plain text the person decides the open round from (ISS-1006); null where it wrote
+	 * none, which `PUT /api/questions/:id/plain` writes onto a question already asked.
+	 */
+	plain: string | null;
 }
 
 /**

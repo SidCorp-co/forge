@@ -91,3 +91,15 @@ describe('the dispatch guide names the room door a master posts its own results 
     }
   });
 });
+
+// ISS-1006 round 2: a decision raised before its asker was taught reads "No summary"; the master that
+// finds one of its project's writes the plain text onto it, one sentence where it reads its method.
+describe('the dispatch guide teaches the master to write a pending decision its plain text', () => {
+  it('names the read that finds one and the door that writes it', () => {
+    expect(prose).toContain(
+      'An open question of this project with `plain: null` (`GET /api/questions?projectId=<id>&status=open`)',
+    );
+    expect(prose).toContain('write it, `PUT /api/questions/:id/plain` `{ plain }`');
+    expect(prose).toContain('never let an ISS-, REQ- or BC- key carry the meaning');
+  });
+});

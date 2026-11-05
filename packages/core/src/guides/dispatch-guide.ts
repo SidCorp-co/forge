@@ -5,6 +5,7 @@
 // Altitude (NT1): the order of the acts and what refuses each. What the master role owes is the
 // forge-master skill the box installs; what a dispatched run does is the `issue-flow` guide.
 
+import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
@@ -14,7 +15,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 6,
+  version: 7,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -48,6 +49,9 @@ run out stands; \`GET /api/projects/:id/masters/standing\` how many slots this b
   \`GET /api/issues/:id/dependencies\` says whether a live \`blocks\` edge holds one back.
 - Take a lower-ranked issue whenever a reason the metadata cannot carry says so — a person's stated
   order, a file a running run holds, a chain being cleared — and the fold names the reason.
+- An open question of this project with \`plain: null\` (\`GET /api/questions?projectId=<id>&status=open\`)
+  reads "No summary" where its person decides: write it, \`PUT /api/questions/:id/plain\`
+  \`{ plain }\`, ${PLAIN_DECISION_RULE}.
 
 ### 3. Triage, before anything is dispatched
 For each candidate decide whether it is worth a run at all: real, already fixed, a duplicate,
