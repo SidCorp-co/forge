@@ -111,6 +111,13 @@ undeclared tool, a diagnose tool with a writing method or an argument not declar
 name, and the credential is never in the session's hands, its prompt or any answer — responses and
 every posted line pass the scrubber with the credential's values named (BC-17).
 
+A credential reads one scope (one Agenfold workspace), so a project binds one `support-api`
+connection per credential, each beyond the first under its own `target.label`. The door serves every
+active one (`integrations/support-api/binding.ts:supportApisOf`): the session's tool list names each
+tool's binding, and a tool is called with its own binding's host grant and credential alone
+(`integrations/support-api/call.ts:planSupportCall`). A tool name names one tool across them: a
+write granting a name another binding grants is refused `SUPPORT_TOOL_NAME_TAKEN` (ISS-1011).
+
 ### Agreement: the person's own plain answer, cited by the session (ISS-845)
 
 The owner ruled on 2026-11-01 that in a room the session agent is the only voice: nobody is asked to
@@ -618,7 +625,9 @@ holds the bot; one connection may carry the bindings of several projects, one gr
    ```
 
    A `diagnose` tool is GET or HEAD only; a `fix` waits on the asker. Hosts other than the base
-   URL's are named in `hosts`; nothing else is ever called, and a redirect is refused.
+   URL's are named in `hosts`; nothing else is ever called, and a redirect is refused. A second
+   workspace with its own key is a second connection, bound with `"label": "<workspace>"` in its
+   target and tool names no other binding of the project grants.
 
 3. The box: on the runner that serves the project, `forge-runner bind <project slug> --path <checkout>`
    (the checkout is where the session reads the product's docs). The room and its session are
