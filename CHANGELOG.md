@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.527] - 2026-11-05
+
+A runner call whose answer breaks off now fails by name, never empty success
+
+### Fixed
+
+- **`forge-runner api` fails an answer cut mid-body instead of printing nothing.** It exits `BODY_CUT` for any status, sends a cut GET again within the rollover budget, and tells a cut write to read back before resending.
+
 ## [0.4.0-dev.526] - 2026-11-05
 
 A no-production draft says its master records it, and Approve reads Approve record
