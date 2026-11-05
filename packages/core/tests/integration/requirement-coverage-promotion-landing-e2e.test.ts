@@ -13,6 +13,7 @@
  * @direct-test-of packages/core/src/release-batch/landing-records.ts
  * @direct-test-of packages/core/src/requirements/standing-facts.ts
  * @direct-test-of packages/core/src/requirements/standing-coverage.ts
+ * @direct-test-of packages/core/src/requirements/standing-proof.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -166,7 +167,10 @@ describe('a promotion project: coverage counts what its shipped issue earned at 
     expect(bc?.issues[0]?.notCounted).toContain(
       `judged at commit ${SERVED.slice(0, 12)}, not at its issue's landing ${LANDING.slice(0, 12)}`,
     );
-    // the one BC the issue did not earn is the one its turn asks to be judged again
-    expect(JSON.stringify(read.standing)).toContain('standing.act.judgeOn');
+    // the one BC the issue did not earn is the one its turn names, with why, rather than asking
+    // for the same judgement again (ISS-1018)
+    const standing = JSON.stringify(read.standing);
+    expect(standing).toContain('standing.act.uncounted');
+    expect(standing).not.toContain('standing.act.judgeOn"');
   });
 });

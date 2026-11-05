@@ -41,10 +41,14 @@ none: its standing asks for an issue of its own under the requirement, or a revi
   pass, short or fail on any issue criterion tracing its current wording that its identity lets
   count, and the BC names it. An unjudged one masks nothing. On an issue, a commit, or the commit a
   runtime served, counts where the release weighs that issue's criteria: at its landing where the
-  project has no production or a promotion stands before it, else only where the live build is read
-  to hold it, as is a verdict at the requirement on a project with production. One it does not
-  hold, and one nobody could check (production unreadable, or its ancestry unanswered), do not count
-  and say which on their line, so an outage reads \`not_judged\` with its reason, never \`passing\`. A
+  project has no production or a promotion stands before it, else where the live build is read to
+  hold it, as is a verdict at the requirement on a project with production, or, where it does not,
+  at its issue's landing as the release weighs one: the landing itself, or a later build a landing
+  Forge recorded places after it (a component deployed outside what production serves). One neither
+  holds, and one nobody could check (production unreadable, or its ancestry unanswered), do not count
+  and say which on their line, naming the identity that would, so an outage reads \`not_judged\` with
+  its reason, never \`passing\`, and a criterion whose every judgement counts nowhere names that
+  reason in its turn rather than asking for the same judgement again. A
   runtime that resolves to no commit, a design revision or contract version other than the one the
   requirement's latest baseline pins, a storefront draft and a backfilled abbreviated commit never
   count, and each says why on its line. A BC traced only at an earlier wording reads \`stale\`, one
