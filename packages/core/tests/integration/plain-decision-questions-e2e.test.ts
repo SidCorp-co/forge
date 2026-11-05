@@ -68,8 +68,20 @@ async function askOnIssue(extra: Record<string, unknown>): Promise<Reply> {
     issueId: issue.id,
     prompt: 'Turn the CSV export on now, or after the release?',
     options: [
-      { id: 'now', label: 'Turn it on now', authority: 'writer', bindsTo: 'session', executedBy: 'agent' },
-      { id: 'later', label: 'Wait for the release', authority: 'writer', bindsTo: 'session', executedBy: 'agent' },
+      {
+        id: 'now',
+        label: 'Turn it on now',
+        authority: 'writer',
+        bindsTo: 'session',
+        executedBy: 'agent',
+      },
+      {
+        id: 'later',
+        label: 'Wait for the release',
+        authority: 'writer',
+        bindsTo: 'session',
+        executedBy: 'agent',
+      },
     ],
     recommendedOptionId: 'now',
     ...extra,
@@ -87,7 +99,12 @@ beforeAll(async () => {
   const { mintStewardCredential } = await import('../../src/steward/credential.js');
   stewardId = await stewardAccountOf(projectId);
   const stewardToken = (
-    await mintStewardCredential({ projectId, stewardId, acts: ['stuck_diagnosis'], ttlMs: 30 * 60_000 })
+    await mintStewardCredential({
+      projectId,
+      stewardId,
+      acts: ['stuck_diagnosis'],
+      ttlMs: 30 * 60_000,
+    })
   ).token;
   say = requester(app, { owner: await signUserToken(ownerId), steward: stewardToken });
   const { db } = await import('../../src/db/client.js');
@@ -101,7 +118,10 @@ beforeAll(async () => {
       VALUES (${projectId}, 'issue', ${issue.id}, ${issue.key}, 'standing.stuck', '[]'::jsonb,
               ARRAY['stuck_diagnosis']::text[], 'done', now(), now(), now())
       RETURNING id`);
-    const [run] = await db.select().from(stewardRuns).where(eq(stewardRuns.id, made?.id ?? ''));
+    const [run] = await db
+      .select()
+      .from(stewardRuns)
+      .where(eq(stewardRuns.id, made?.id ?? ''));
     if (!run) throw new Error('the run row was not written');
     resetScript();
     script.steps = [{ tool: { name: 'steward_decide', args } }, { text: 'Asked.' }];

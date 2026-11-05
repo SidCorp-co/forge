@@ -144,7 +144,7 @@ async function holdSessionWrite(c: Context, kind: ChatProposalKind, sessionId: s
   });
   throw refuse(
     'CHAT_WRITE_AWAITS_AGREEMENT',
-    `nothing was written yet. Core holds this ${kind} as proposal ${row.id} until the person agrees to it in this conversation; nothing you send agrees for them. Send this request again only to change what it proposes. Now write the line the person decides it from (${PLAIN_DECISION_RULE}): \`forge-runner api conversations/${turn.conversationId}/proposals/${row.id}/plain -X PUT -f plain=@- <<'FORGE_TEXT'\`, the line, then FORGE_TEXT; until you do, its card says you wrote none.`,
+    `nothing was written yet. Core holds this ${kind} as proposal ${row.id} until the person agrees to it in this conversation; nothing you send agrees for them. Send this request again only to change what it proposes. Now write the line the person decides it from (${PLAIN_DECISION_RULE}): \`forge-runner api conversations/${turn.conversationId}/proposals/${row.id}/plain -X POST -f plain=@- <<'FORGE_TEXT'\`, the line, then FORGE_TEXT; until you do, its card says you wrote none.`,
   );
 }
 

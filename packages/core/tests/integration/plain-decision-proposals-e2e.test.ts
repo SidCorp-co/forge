@@ -28,8 +28,10 @@ const text = (r: { content: { type: string; text?: string }[] }) =>
   r.content.map((b) => b.text ?? '').join('\n');
 const heldId = (said: string) => /proposal ([0-9a-f-]{36})/.exec(said)?.[1] ?? '';
 const cardOf = async (id: string) =>
-  (((await say('owner', 'GET', `/api/conversations/${roomId}/proposals`)).json.proposals ??
-    []) as Doc[]).find((p) => p.id === id);
+  (
+    ((await say('owner', 'GET', `/api/conversations/${roomId}/proposals`)).json.proposals ??
+      []) as Doc[]
+  ).find((p) => p.id === id);
 const heldCall = async (id: string) =>
   (await rows<{ call: Doc }>(sql`SELECT call FROM chat_proposals WHERE id = ${id}`))[0]?.call;
 
@@ -46,9 +48,8 @@ describe("an Assistant turn's held call carries its plain line beside the write"
   it('offers `plain` on every tool a held write is made through', () => {
     const offered = w.gate().tools.tools.filter((t) => t.function.name === 'project_feedback');
     expect(offered).toHaveLength(1);
-    expect(
-      (offered[0]?.function.parameters.properties as Record<string, unknown>).plain,
-    ).toMatchObject({ type: 'string' });
+    const properties = offered[0]?.function.parameters.properties as Record<string, unknown>;
+    expect(properties.plain).toMatchObject({ type: 'string' });
   });
 
   it('stores the line on the card and leaves it out of the call the press makes', async () => {
@@ -68,7 +69,8 @@ describe("an Assistant turn's held call carries its plain line beside the write"
     const call = await heldCall(id);
     expect(JSON.parse(String(call?.arguments))).not.toHaveProperty('plain');
     // the card's technical lines are the write's own fields, never the plain line
-    expect(((await cardOf(id))?.summary.lines as string[]).join('\n')).not.toContain(PLAIN);
+    const card = await cardOf(id);
+    expect((card?.summary.lines as string[]).join('\n')).not.toContain(PLAIN);
   });
 
   it('holds a call sent without `plain`, says so to the turn, and its card reads null', async () => {
@@ -98,7 +100,7 @@ describe("an Agent session writes its held request's plain line to the proposal"
     expect(codeOf(r)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
     const said = String(r.json?.error?.refusals?.[0]?.detail ?? JSON.stringify(r.json));
     held = heldId(said);
-    expect(said).toContain(`conversations/${roomId}/proposals/${held}/plain -X PUT`);
+    expect(said).toContain(`conversations/${roomId}/proposals/${held}/plain -X POST`);
   });
 
   it('holds the card with no line until the session writes one', async () => {
@@ -106,7 +108,7 @@ describe("an Agent session writes its held request's plain line to the proposal"
   });
 
   it('refuses the line from anyone but the proposing session', async () => {
-    const r = await say('owner', 'PUT', `/api/conversations/${roomId}/proposals/${held}/plain`, {
+    const r = await say('owner', 'POST', `/api/conversations/${roomId}/proposals/${held}/plain`, {
       plain: PLAIN,
     });
     expect(r.status, JSON.stringify(r.json)).toBe(403);
@@ -115,7 +117,7 @@ describe("an Agent session writes its held request's plain line to the proposal"
   });
 
   it("takes the session's own line, and the card reads it", async () => {
-    const r = await say('agent', 'PUT', `/api/conversations/${roomId}/proposals/${held}/plain`, {
+    const r = await say('agent', 'POST', `/api/conversations/${roomId}/proposals/${held}/plain`, {
       plain: PLAIN,
     });
     expect(r.status, JSON.stringify(r.json)).toBe(200);
@@ -130,7 +132,7 @@ describe("an Agent session writes its held request's plain line to the proposal"
       {},
     );
     expect(declined.status, JSON.stringify(declined.json)).toBe(200);
-    const r = await say('agent', 'PUT', `/api/conversations/${roomId}/proposals/${held}/plain`, {
+    const r = await say('agent', 'POST', `/api/conversations/${roomId}/proposals/${held}/plain`, {
       plain: 'too late',
     });
     expect(codeOf(r)).toBe('CHAT_PROPOSAL_SETTLED');

@@ -5,7 +5,6 @@
  * in that channel's own door layer, and what is true of the tracker's verbs in `tools.ts`.
  */
 
-import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import type { PromptLayer } from './layer.js';
 
 export const BASE_LAYER: PromptLayer = {
@@ -71,7 +70,8 @@ is true of that channel.
 - **A write you call is held as a proposal until the person agrees to it in this conversation**;
   core's answer names it (\`CHAT_WRITE_AWAITS_AGREEMENT\`). Say in your own words what you proposed,
   and never that it is recorded before the conversation shows it was. Give each such call \`plain\`,
-  the line the person decides it from on its card: ${PLAIN_DECISION_RULE}.
+  the line the person decides it from on its card: what changes for them, why now and what you
+  recommend, in plain words with no record key as its meaning.
 - **A write no proposal can carry is refused \`CHAT_WRITE_REFUSED\`**, naming why and where the
   person does it themselves.
 

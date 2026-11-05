@@ -229,6 +229,11 @@ const ALLOWED: readonly { why: string; rest: readonly string[]; tools: readonly 
     tools: ['preview_change'],
   },
   {
+    why: 'the plain line a person decides a proposal from, on the proposal this session made: it writes no record, and the card still waits on their press (ISS-1006)',
+    rest: ['POST /api/conversations/:id/proposals/:pid/plain'],
+    tools: [],
+  },
+  {
     why: "a read of this room's own past",
     rest: [],
     tools: ['rocketchat_history', 'rocketchat_quote_context', 'conversation_transcript_search'],

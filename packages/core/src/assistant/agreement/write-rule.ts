@@ -121,7 +121,7 @@ export const NOT_A_BUSINESS_WRITE: readonly NotABusinessWrite[] = [
   },
   {
     why: 'the plain line a person decides a proposal from, on the proposal this session made: it writes no record, and the card still waits on their press (ISS-1006)',
-    rest: ['PUT /api/conversations/:id/proposals/:pid/plain'],
+    rest: ['POST /api/conversations/:id/proposals/:pid/plain'],
     tools: [],
   },
   {

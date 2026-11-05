@@ -88,7 +88,7 @@ conversationProposalRoutes.post(
 );
 
 // the line the person decides a held REST request from, written by the session that sent it (ISS-1006)
-conversationProposalRoutes.put(
+conversationProposalRoutes.post(
   '/:id/proposals/:pid/plain',
   proposalParam,
   PROPOSAL_PLAIN,
