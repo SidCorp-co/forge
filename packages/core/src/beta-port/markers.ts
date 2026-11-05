@@ -188,8 +188,9 @@ export function firstLineNamesBetaIssue(
 }
 
 /**
- * The beta status each dev status mirrors to. Beta runs the same ten-status machine, so a status is
- * mirrored by its own name; `draft` is not mirrored, because a dev issue held at draft by its ready
+ * The beta status each dev status mirrors to, by its own name. Beta may also stand at older names no
+ * dev status takes (`developed`, `testing`, …), which the mirror reads only to order its moves
+ * (`BETA_PORT_PROGRESS`). `draft` is not mirrored, because a dev issue held at draft by its ready
  * check says nothing about the work beta should record. Whether beta takes the edge is beta's: a
  * move it refuses is commented there by code, never forced.
  */

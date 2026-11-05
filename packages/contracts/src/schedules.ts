@@ -12,7 +12,7 @@ export const SCHEDULE_KINDS = [
 	"cleanup",
 	/** A daily review (ISS-862): hands the project's master its review brief, a nudge in its pane. */
 	"daily_review",
-	/** A beta port (ISS-923): core ports forge-beta's issues to their same-slug project here and mirrors their status back. */
+	/** A beta port (ISS-923, ISS-982): core files forge-beta's issues as Feedback in their same-slug project here and mirrors the work back. */
 	"beta_port",
 ] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];

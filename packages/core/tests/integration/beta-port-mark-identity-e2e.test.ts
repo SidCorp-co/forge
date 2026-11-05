@@ -51,12 +51,17 @@ const mark = (issueId: string, commit: string) =>
     note: 'landed on beta under its beta key',
   });
 
-/** A beta pair naming `betaKey` for a dev issue (a twin) or a Feedback item. */
-const pair = (betaKey: string, dev: { issue: string } | { feedback: string }) =>
+/** A beta pair naming `betaKey` for a dev issue: a twin. */
+const twinPair = (betaKey: string, issueId: string) =>
   rows(sql`
-    INSERT INTO beta_port_pairs (beta_issue_id, beta_key, beta_project_slug, dev_issue_id, dev_feedback_id)
-    VALUES (${randomUUID()}, ${betaKey}, 'sidpeak', ${'issue' in dev ? dev.issue : null},
-            ${'feedback' in dev ? dev.feedback : null})`);
+    INSERT INTO beta_port_pairs (beta_issue_id, beta_key, beta_project_slug, dev_issue_id)
+    VALUES (${randomUUID()}, ${betaKey}, 'sidpeak', ${issueId})`);
+
+/** A beta pair naming `betaKey` for a Feedback item the beta issue was ported as. */
+const feedbackPair = (betaKey: string, feedbackId: string) =>
+  rows(sql`
+    INSERT INTO beta_port_pairs (beta_issue_id, beta_key, beta_project_slug, dev_feedback_id)
+    VALUES (${randomUUID()}, ${betaKey}, 'sidpeak', ${feedbackId})`);
 
 describe('a twin’s mark reads its landing commit against the beta key its pair names', () => {
   beforeAll(async () => {
@@ -67,7 +72,7 @@ describe('a twin’s mark reads its landing commit against the beta key its pair
 
   it('takes a commit declaring the twin’s own beta key', async () => {
     const twin = await issue(1, 'in_progress');
-    await pair('ISS-621', { issue: twin });
+    await twinPair('ISS-621', twin);
     const sha = 'a6'.repeat(20);
     messages.set(sha, 'fix(leave): the balance rounds half-days down (ISS-621)');
 
@@ -78,7 +83,7 @@ describe('a twin’s mark reads its landing commit against the beta key its pair
 
   it('refuses a commit declaring neither key, or another pair’s beta key', async () => {
     const twin = await issue(2, 'in_progress');
-    await pair('ISS-620', { issue: twin });
+    await twinPair('ISS-620', twin);
     const neither = 'b7'.repeat(20);
     messages.set(neither, 'fix(leave): an unrelated fix (ISS-777)');
     const other = 'c8'.repeat(20);
@@ -111,7 +116,7 @@ describe('a twin’s mark reads its landing commit against the beta key its pair
       { answers: TRIAGE_ANSWERS, route: 'issue', issue: 'ISS-3' },
     );
     expect(triaged.status, JSON.stringify(triaged.body)).toBe(200);
-    await pair('ISS-630', { feedback: fb.id });
+    await feedbackPair('ISS-630', fb.id);
     const sha = 'e1'.repeat(20);
     messages.set(sha, 'fix(payroll): the export keeps its currency (ISS-630)');
 
