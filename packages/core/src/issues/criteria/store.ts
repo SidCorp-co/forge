@@ -35,14 +35,9 @@ import {
   TRACE_TAG_SHAPE,
   traceTagOf,
 } from './criteria-text.js';
+import { droppedTraceDetail, droppedTraces } from './dropped-traces.js';
 import { failureOwnedElsewhere } from './fail-owner.js';
-import {
-  ambiguousDetail,
-  droppedTraceDetail,
-  droppedTraces,
-  matchCriteria,
-  sameCriteria,
-} from './match.js';
+import { ambiguousDetail, matchCriteria, sameCriteria } from './match.js';
 import { foreignTraceFault } from './own-requirement.js';
 import { liveWordingAt } from './trace-wording.js';
 

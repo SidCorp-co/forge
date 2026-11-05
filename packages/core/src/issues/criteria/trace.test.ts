@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { strayTraceTagsOf, traceTagOf } from './criteria-text.js';
-import { droppedTraceDetail, droppedTraces } from './match.js';
+import { droppedTraceDetail, droppedTraces } from './dropped-traces.js';
+import { matchCriteria } from './match.js';
 
 // Why REQ-25 BC-1 and BC-2 read "no issue traces here" while ISS-39 closed proving them: on
 // 2026-10-06 its criteria were rewritten through the text path, which retired the three traced rows
@@ -32,17 +33,71 @@ const iss39Before = [
   },
 ];
 
+type Line = { n: number; statement: string; requirementCriterionId?: string | null };
+type Row = { n: number; statement: string; requirementCriterionId: string | null };
+const idOf = new Map([...codeOf].map(([id, code]) => [code, id]));
+
+/** Each finding as `<line as sent> <BC>`, `removed <live line> <BC>` or `unclear <lines> <BC>`. */
+const named = (live: readonly Row[], sent: readonly Line[]) =>
+  dropped(live, sent).map((d) =>
+    d.kind === 'line'
+      ? `${d.line.n} ${d.code}`
+      : d.kind === 'removed'
+        ? `removed ${d.was.n} ${d.code}`
+        : `unclear ${d.candidates.map((c) => c.n).join(',')} ${d.code}`,
+  );
+
+/** The trace each line holds once the write is taken, as `[n, BC]`: its own, or its kept row's. */
+function stored(live: readonly Row[], sent: readonly Line[]): [number, string | null][] {
+  const { kept } = matchCriteria(live, sent);
+  return sent.map((c, i) => {
+    const id =
+      c.requirementCriterionId === undefined
+        ? kept.get(i)?.requirementCriterionId
+        : c.requirementCriterionId;
+    return [c.n, (id && codeOf.get(id)) ?? null];
+  });
+}
+
+/**
+ * Apply the refusal's advice word for word, as a text writer would: open each line it names with the
+ * tag it names (the store reads that lead tag as the trace, `store.ts:tracedInputs`), and put back each
+ * removed line it names, tagged, at the end.
+ */
+function follow(live: readonly Row[], sent: readonly Line[], detail: string): Line[] {
+  const out = sent.map((c) => ({ ...c }));
+  for (const [, n, code] of detail.matchAll(/open criterion (\d+) with \((REQ-\d+ BC-\d+)\)/g)) {
+    const line = out.find((c) => c.n === Number(n)) as Line;
+    line.statement = `(${code}) ${line.statement}`;
+    line.requirementCriterionId = idOf.get(code as string) ?? null;
+  }
+  for (const [, n, code] of detail.matchAll(
+    /put live criterion (\d+) back, opening with \((REQ-\d+ BC-\d+)\)/g,
+  )) {
+    const was = live.find((r) => r.n === Number(n)) as Row;
+    out.push({
+      n: out.length + 1,
+      statement: `(${code}) ${was.statement}`,
+      requirementCriterionId: idOf.get(code as string) ?? null,
+    });
+  }
+  return out;
+}
+
 describe('a criteria write that would drop a trace', () => {
-  it('names every BC the ISS-39 rewrite would leave unproven', () => {
+  it('names every BC the ISS-39 rewrite would leave unproven, and guesses no line for it', () => {
     const rewrite = Array.from({ length: 19 }, (_, i) => ({
       n: i + 1,
       statement: `English criterion ${i + 1}`,
     }));
-    expect(dropped(iss39Before, rewrite)).toEqual([
-      { n: 1, code: 'REQ-25 BC-1' },
-      { n: 2, code: 'REQ-25 BC-2' },
-      { n: 3, code: 'REQ-25 BC-7' },
+    const found = dropped(iss39Before, rewrite);
+    expect(found.map((d) => [d.kind, d.code])).toEqual([
+      ['unclear', 'REQ-25 BC-1'],
+      ['unclear', 'REQ-25 BC-2'],
+      ['unclear', 'REQ-25 BC-7'],
     ]);
+    expect(found.every((d) => d.kind === 'unclear' && d.candidates.length === 19)).toBe(true);
+    expect(droppedTraceDetail(found)).toContain('cannot be told from their words');
   });
 
   it('drops nothing where the rewrite restates each trace', () => {
@@ -81,7 +136,7 @@ describe('a criteria write that would drop a trace', () => {
 });
 
 // catalog-api ISS-3: the reworded line lost BC-3 while another line still traced it, and a count of
-// BCs read nothing dropped; the lines are counted per BC.
+// BCs read nothing dropped; the lines are paired one by one.
 describe('a reworded line whose BC another line still traces', () => {
   const iss3 = [
     { n: 1, statement: 'Lists products.', requirementCriterionId: BC1 },
@@ -89,13 +144,24 @@ describe('a reworded line whose BC another line still traces', () => {
     { n: 3, statement: 'Shows the site currency.', requirementCriterionId: BC7 },
   ];
 
-  it('names that line and only it', () => {
+  it('names that line as sent, with its new words and the live line it rewords', () => {
     const rewrite = [
       { n: 1, statement: 'Lists products.' },
       { n: 2, statement: 'Shows a price.' },
       { n: 3, statement: 'Shows the currency it sells in.' },
     ];
-    expect(dropped(iss3, rewrite)).toEqual([{ n: 3, code: 'REQ-25 BC-7' }]);
+    expect(dropped(iss3, rewrite)).toEqual([
+      {
+        kind: 'line',
+        code: 'REQ-25 BC-7',
+        line: { n: 3, statement: 'Shows the currency it sells in.' },
+        was: [{ n: 3, statement: 'Shows the site currency.' }],
+        reworded: true,
+      },
+    ]);
+    expect(droppedTraceDetail(dropped(iss3, rewrite))).toContain(
+      'criterion 3 ("Shows the currency it sells in.") as sent rewords live criterion 3 ("Shows the site currency."), which proved REQ-25 BC-7, and does not carry it',
+    );
   });
 
   it('drops nothing where the reworded line restates the trace', () => {
@@ -113,20 +179,201 @@ describe('a reworded line whose BC another line still traces', () => {
     expect(
       droppedTraces(live, [{ n: 1, statement: 'New words.', requirementCriterionId: BC7 }], codes),
     ).toEqual([]);
-    expect(droppedTraces(live, [{ n: 1, statement: 'New words.' }], codes)).toEqual([
-      { n: 1, code: 'REQ-25 BC-7' },
-    ]);
+    expect(
+      droppedTraces(live, [{ n: 1, statement: 'New words.' }], codes).map((d) => d.kind),
+    ).toEqual(['line']);
   });
 
   it('loses nothing where the trace is no proof to lose', () => {
     const live = [{ n: 1, statement: 'Old words.', requirementCriterionId: 'rc-retired' }];
     expect(dropped(live, [{ n: 1, statement: 'New words.' }])).toEqual([]);
   });
+
+  it('names a kept line sent with another trace', () => {
+    expect(
+      named(iss3, [
+        { n: 1, statement: 'Lists products.' },
+        { n: 2, statement: 'Shows a price.', requirementCriterionId: BC2 },
+        { n: 3, statement: 'Shows the site currency.' },
+      ]),
+    ).toEqual(['2 REQ-25 BC-7']);
+  });
+});
+
+// ISS-673, K76 (dev.309): the refusal named lines by their old numbers, so where a line was inserted
+// above a reworded traced one, it named the inserted line, and tagging that line was taken with the
+// reworded one untraced. Each case below sends the write, follows the refusal word for word, and
+// reads which line ends up holding the BC.
+describe('the line a refusal names is the one the writer sent', () => {
+  const plan: Row[] = [
+    { n: 1, statement: 'A site lists its products', requirementCriterionId: BC1 },
+    { n: 2, statement: 'A price shows in the site currency', requirementCriterionId: BC7 },
+  ];
+
+  it('a traced line reworded in place: names it, and following puts the BC on it', () => {
+    const sent = [
+      { n: 1, statement: 'A site lists its products' },
+      { n: 2, statement: 'A price shows in the currency the site sells in' },
+    ];
+    expect(named(plan, sent)).toEqual(['2 REQ-25 BC-7']);
+    const retry = follow(plan, sent, droppedTraceDetail(dropped(plan, sent)));
+    expect(dropped(plan, retry)).toEqual([]);
+    expect(stored(plan, retry)).toEqual([
+      [1, 'REQ-25 BC-1'],
+      [2, 'REQ-25 BC-7'],
+    ]);
+  });
+
+  it('a traced line reworded and moved below an inserted line: names its new number, never the old', () => {
+    const live: Row[] = [plan[1] as Row];
+    const sent = [
+      { n: 1, statement: 'Search narrows the list' },
+      { n: 2, statement: 'A price shows in the currency the site sells in' },
+    ].map((c, i) => ({ ...c, n: i + 1 }));
+    const moved: Row[] = [{ ...(live[0] as Row), n: 1 }];
+    expect(named(moved, sent)).toEqual(['2 REQ-25 BC-7']);
+    const detail = droppedTraceDetail(dropped(moved, sent));
+    expect(detail).toContain(
+      'criterion 2 ("A price shows in the currency the site sells in") as sent rewords live criterion 1 ("A price shows in the site currency")',
+    );
+    expect(detail).not.toContain('open criterion 1 ');
+
+    const retry = follow(moved, sent, detail);
+    expect(dropped(moved, retry)).toEqual([]);
+    expect(stored(moved, retry)).toEqual([
+      [1, null],
+      [2, 'REQ-25 BC-7'],
+    ]);
+  });
+
+  it('refuses, naming the reworded line, a write that tags the inserted line instead (the dev.309 advice)', () => {
+    const moved: Row[] = [{ ...(plan[1] as Row), n: 1 }];
+    const wrong = [
+      { n: 1, statement: '(REQ-25 BC-7) Search narrows the list', requirementCriterionId: BC7 },
+      { n: 2, statement: 'A price shows in the currency the site sells in' },
+    ];
+    expect(named(moved, wrong)).toEqual(['2 REQ-25 BC-7']);
+  });
+
+  it('two lines on one BC with one dropping its tag (K65): names that line, and following converges', () => {
+    const live: Row[] = [
+      { n: 1, statement: 'A buyer sees the price', requirementCriterionId: BC7 },
+      { n: 2, statement: 'A buyer sees the tax', requirementCriterionId: BC7 },
+      { n: 3, statement: 'A buyer sees the total', requirementCriterionId: BC7 },
+    ];
+    const sent = [
+      {
+        n: 1,
+        statement: '(REQ-25 BC-7) A buyer sees the price at checkout',
+        requirementCriterionId: BC7,
+      },
+      { n: 2, statement: 'A buyer sees the tax at checkout' },
+      {
+        n: 3,
+        statement: '(REQ-25 BC-7) A buyer sees the total at checkout',
+        requirementCriterionId: BC7,
+      },
+    ];
+    expect(named(live, sent)).toEqual(['2 REQ-25 BC-7']);
+    const retry = follow(live, sent, droppedTraceDetail(dropped(live, sent)));
+    expect(dropped(live, retry)).toEqual([]);
+    expect(stored(live, retry).map(([, code]) => code)).toEqual(Array(3).fill('REQ-25 BC-7'));
+  });
+
+  it('a line deleted outright: names it as removed, and putting it back tagged keeps the BC on it', () => {
+    const live: Row[] = [
+      { n: 1, statement: 'A site lists its products', requirementCriterionId: BC1 },
+      { n: 2, statement: 'A price shows in the site currency', requirementCriterionId: BC7 },
+      { n: 3, statement: 'A cart holds the products', requirementCriterionId: BC2 },
+    ];
+    const sent = [
+      { n: 1, statement: 'A site lists its products' },
+      { n: 2, statement: 'A cart holds the products' },
+      { n: 3, statement: 'Search narrows the list' },
+    ];
+    expect(named(live, sent)).toEqual(['removed 2 REQ-25 BC-7']);
+    const detail = droppedTraceDetail(dropped(live, sent));
+    expect(detail).toContain(
+      'live criterion 2 ("A price shows in the site currency"), which proved REQ-25 BC-7, has no line in its place',
+    );
+    const retry = follow(live, sent, detail);
+    expect(dropped(live, retry)).toEqual([]);
+    expect(stored(live, retry)).toEqual([
+      [1, 'REQ-25 BC-1'],
+      [2, 'REQ-25 BC-2'],
+      [3, null],
+      [4, 'REQ-25 BC-7'],
+    ]);
+  });
+
+  it('names every candidate, guessing none, where the words cannot tell which line carries it on', () => {
+    const live: Row[] = [{ n: 1, statement: 'Prices are local', requirementCriterionId: BC7 }];
+    const sent = [
+      { n: 1, statement: 'Search narrows the list' },
+      { n: 2, statement: 'Checkout takes a card' },
+    ];
+    expect(named(live, sent)).toEqual(['unclear 1,2 REQ-25 BC-7']);
+    const detail = droppedTraceDetail(dropped(live, sent));
+    expect(detail).toContain(
+      'which of criteria 1 ("Search narrows the list") or 2 ("Checkout takes a card") as sent carries it on cannot be told from their words',
+    );
+    expect(detail).not.toMatch(/open criterion \d/);
+    // the writer says which: the BC lands on the line they tagged, and nowhere else
+    const chosen = [
+      sent[0] as Line,
+      { n: 2, statement: '(REQ-25 BC-7) Checkout takes a card', requirementCriterionId: BC7 },
+    ];
+    expect(dropped(live, chosen)).toEqual([]);
+    expect(stored(live, chosen)).toEqual([
+      [1, null],
+      [2, 'REQ-25 BC-7'],
+    ]);
+  });
+
+  it('names the one free line by its place where the words share nothing, but only one line is free', () => {
+    const live: Row[] = [
+      { n: 1, statement: 'Alpha', requirementCriterionId: BC7 },
+      { n: 2, statement: 'Bravo', requirementCriterionId: BC7 },
+      { n: 3, statement: 'Charlie', requirementCriterionId: BC7 },
+    ];
+    const sent = [
+      { n: 1, statement: '(REQ-25 BC-7) Delta', requirementCriterionId: BC7 },
+      { n: 2, statement: '(REQ-25 BC-7) Echo', requirementCriterionId: BC7 },
+      { n: 3, statement: 'Foxtrot' },
+    ];
+    expect(named(live, sent)).toEqual(['3 REQ-25 BC-7']);
+  });
+
+  it('names a reworded line between two kept ones by its place, and no new line elsewhere', () => {
+    const live: Row[] = [
+      { n: 1, statement: 'Alpha', requirementCriterionId: BC1 },
+      { n: 2, statement: 'Bravo', requirementCriterionId: BC7 },
+      { n: 3, statement: 'Charlie', requirementCriterionId: BC2 },
+    ];
+    const sent = [
+      { n: 1, statement: 'Zulu' },
+      { n: 2, statement: 'Alpha' },
+      { n: 3, statement: 'Delta' },
+      { n: 4, statement: 'Charlie' },
+    ];
+    expect(named(live, sent)).toEqual(['3 REQ-25 BC-7']);
+  });
+
+  it('calls two BCs short in one place unclear, as which line takes which cannot be told', () => {
+    const live: Row[] = [
+      { n: 1, statement: 'Alpha', requirementCriterionId: BC1 },
+      { n: 2, statement: 'Bravo', requirementCriterionId: BC7 },
+    ];
+    const sent = [
+      { n: 1, statement: 'Delta' },
+      { n: 2, statement: 'Echo' },
+    ];
+    expect(named(live, sent)).toEqual(['unclear 1,2 REQ-25 BC-1', 'unclear 1,2 REQ-25 BC-7']);
+  });
 });
 
 // ISS-673 (K65): three lines on one BC reworded, two restating it; the refusal named a line that
-// already carried the tag, so following it looped. A line is named only where its number no longer
-// carries the BC.
+// already carried the tag, so following it looped.
 describe('several lines on one BC reworded, some restating it', () => {
   const k65 = [1, 2, 3].map((n) => ({ n, statement: `Old ${n}.`, requirementCriterionId: BC7 }));
 
@@ -136,7 +383,7 @@ describe('several lines on one BC reworded, some restating it', () => {
       { n: 2, statement: 'New 2.', requirementCriterionId: BC7 },
       { n: 3, statement: 'New 3.' },
     ];
-    expect(dropped(k65, rewrite)).toEqual([{ n: 3, code: 'REQ-25 BC-7' }]);
+    expect(named(k65, rewrite)).toEqual(['3 REQ-25 BC-7']);
   });
 
   it('names a middle line, never the first by default', () => {
@@ -145,20 +392,22 @@ describe('several lines on one BC reworded, some restating it', () => {
       { n: 2, statement: 'New 2.' },
       { n: 3, statement: 'New 3.', requirementCriterionId: BC7 },
     ];
-    expect(dropped(k65, rewrite)).toEqual([{ n: 2, code: 'REQ-25 BC-7' }]);
+    expect(named(k65, rewrite)).toEqual(['2 REQ-25 BC-7']);
   });
 
-  it('names every line whose number lost it where the BC moved to a new line, so tagging them converges', () => {
+  it('names each line that rewords a traced one where the BC moved to a new line, so tagging them converges', () => {
     const rewrite = [
       { n: 1, statement: 'New 1.' },
       { n: 2, statement: 'New 2.' },
       { n: 3, statement: 'New 3.' },
       { n: 4, statement: 'New 4.', requirementCriterionId: BC7 },
     ];
-    expect(dropped(k65, rewrite).map((d) => d.n)).toEqual([1, 2, 3]);
+    expect(named(k65, rewrite)).toEqual(['1 REQ-25 BC-7', '2 REQ-25 BC-7', '3 REQ-25 BC-7']);
+    const retry = follow(k65, rewrite, droppedTraceDetail(dropped(k65, rewrite)));
+    expect(dropped(k65, retry)).toEqual([]);
   });
 
-  it('says which BC is short where no line that held it can be named', () => {
+  it('names the reworded line where an unchanged one moved above it', () => {
     const live = [
       { n: 1, statement: 'Old 1.', requirementCriterionId: BC7 },
       { n: 2, statement: 'Kept.', requirementCriterionId: BC7 },
@@ -168,10 +417,7 @@ describe('several lines on one BC reworded, some restating it', () => {
       { n: 1, statement: 'Kept.' },
       { n: 2, statement: 'New 1.' },
     ];
-    expect(dropped(live, rewrite)).toEqual([{ n: null, code: 'REQ-25 BC-7' }]);
-    expect(droppedTraceDetail(dropped(live, rewrite))).toMatch(
-      /^this write leaves REQ-25 BC-7 on fewer lines than it had, .* open its line with \(REQ-25 BC-7\)/,
-    );
+    expect(named(live, rewrite)).toEqual(['2 REQ-25 BC-7']);
   });
 });
 

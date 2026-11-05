@@ -10,6 +10,7 @@
  *
  * @direct-test-of packages/core/src/issues/criteria/store.ts
  * @direct-test-of packages/core/src/issues/criteria/match.ts
+ * @direct-test-of packages/core/src/issues/criteria/dropped-traces.ts
  * @direct-test-of packages/core/src/requirements/criterion-trace.ts
  */
 
@@ -97,12 +98,21 @@ describe('a text write that rewords a traced criterion', () => {
     const refusal = refusalOf(r.body);
     expect(refusal?.code).toBe('CRITERIA_TRACE_DROPPED');
     expect(refusal?.path).toBe('/acceptanceCriteria');
-    expect(refusal?.detail).toContain('criterion 3');
-    expect(refusal?.detail).toContain('REQ-1 BC-3');
+    expect(refusal?.detail).toContain(
+      'criterion 3 ("A price shows in the currency the site sells in") as sent rewords live criterion 3 ("A price shows in the site currency"), which proved REQ-1 BC-3',
+    );
+    expect(refusal?.detail).toContain('open criterion 3 with (REQ-1 BC-3)');
     expect(refusal?.detail).toContain('PUT /api/issues/:id/criteria');
     expect(refusal?.detail).toContain('requirementCriterionId');
     expect(refusal?.detail).not.toContain('criterion 2');
     expect(await traced()).toEqual(before);
+
+    // a line reworded in place: the advice, followed word for word, puts the BC back on that line
+    expect(await taken(followText(REWORDED, refusal?.detail ?? '', before))).toEqual([
+      [1, 'BC-1'],
+      [2, 'BC-3'],
+      [3, 'BC-3'],
+    ]);
   });
 
   it('is refused by name where the line traces an earlier wording of a BC the requirement still holds', async () => {
@@ -137,7 +147,8 @@ describe('a text write that rewords a traced criterion', () => {
       '1. A site lists its products\n2. A product page shows a price\n3. Prices are local',
     );
     expect(r.status, JSON.stringify(r.body)).toBe(422);
-    expect(refusalOf(r.body)?.detail).toContain('criteria 2 and 3');
+    expect(refusalOf(r.body)?.detail).toContain('open criterion 2 with (REQ-1 BC-3)');
+    expect(refusalOf(r.body)?.detail).toContain('open criterion 3 with (REQ-1 BC-3)');
   });
 
   it('keeps the trace where the line opens with its tag', async () => {
@@ -198,57 +209,160 @@ describe('a text write that rewords a traced criterion', () => {
   });
 });
 
+/**
+ * Apply a CRITERIA_TRACE_DROPPED refusal word for word to the text that was refused: open each line
+ * it names with the tag it names, and put back each removed line it names, tagged, at the end.
+ */
+function followText(
+  text: string,
+  detail: string,
+  live: readonly [number, string, string | null][],
+): string {
+  const lines = text.split('\n');
+  for (const [, n, tag] of detail.matchAll(/open criterion (\d+) with (\(REQ-\d+ BC-\d+\))/g)) {
+    const at = lines.findIndex((l) => l.startsWith(`${n}. `));
+    lines[at] = (lines[at] as string).replace(/^(\d+\. )/, `$1${tag} `);
+  }
+  for (const [, n, tag] of detail.matchAll(
+    /put live criterion (\d+) back, opening with (\(REQ-\d+ BC-\d+\))/g,
+  )) {
+    const was = live.find(([m]) => m === Number(n))?.[1];
+    lines.push(`${lines.length + 1}. ${tag} ${was}`);
+  }
+  return lines.join('\n');
+}
+
+/** Write the text, expect it refused CRITERIA_TRACE_DROPPED with nothing moved, and return the detail. */
+async function refusedText(text: string): Promise<string> {
+  const before = await traced();
+  const r = await writeText(text);
+  expect(r.status, JSON.stringify(r.body)).toBe(422);
+  expect(refusalOf(r.body)?.code).toBe('CRITERIA_TRACE_DROPPED');
+  expect(await traced()).toEqual(before);
+  return refusalOf(r.body)?.detail ?? '';
+}
+
+async function taken(text: string) {
+  const r = await writeText(text);
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  return (await traced()).map(([n, , code]) => [n, code]);
+}
+
 // ISS-673 (K65, judged at dev.304): three lines on one BC reworded, the first two opening with their
 // tag and the third not. The refusal named criterion 1, which already carried the tag, so tagging
-// the line it named changed nothing and the writer looped. It names the untagged line, and the write
-// that follows its advice is taken.
+// the line it named changed nothing and the writer looped.
 describe('several lines on one BC reworded, only one without its tag (K65)', () => {
   const K65 = [
     { n: 1, statement: 'A buyer sees the price', requirementCriterionId: 'BC-3' },
     { n: 2, statement: 'A buyer sees the tax', requirementCriterionId: 'BC-3' },
     { n: 3, statement: 'A buyer sees the total', requirementCriterionId: 'BC-3' },
   ];
-  const reworded = (third: string) =>
-    `1. (REQ-1 BC-3) A buyer sees the price before checkout\n2. (REQ-1 BC-3) A buyer sees the tax before checkout\n3. ${third}`;
+  const REWORDED_K65 =
+    '1. (REQ-1 BC-3) A buyer sees the price before checkout\n2. (REQ-1 BC-3) A buyer sees the tax before checkout\n3. A buyer sees the total before checkout';
 
-  it('names the untagged line and only it', async () => {
+  it('names the untagged line and only it, and the write that follows the advice is taken', async () => {
     await planned(K65);
-    const before = await traced();
+    const live = await traced();
+    const detail = await refusedText(REWORDED_K65);
+    expect(detail).toContain(
+      'criterion 3 ("A buyer sees the total before checkout") as sent rewords live criterion 3 ("A buyer sees the total")',
+    );
+    expect(detail).not.toMatch(/criterion [12] /);
 
-    const r = await writeText(reworded('A buyer sees the total before checkout'));
-
-    expect(r.status, JSON.stringify(r.body)).toBe(422);
-    const refusal = refusalOf(r.body);
-    expect(refusal?.code).toBe('CRITERIA_TRACE_DROPPED');
-    expect(refusal?.detail).toContain('the trace of criterion 3: criterion 3 (REQ-1 BC-3)');
-    expect(refusal?.detail).not.toMatch(/criterion [12]\b/);
-    expect(await traced()).toEqual(before);
-  });
-
-  it('takes the write that follows the advice, on the first retry', async () => {
-    await planned(K65);
-    const refused = await writeText(reworded('A buyer sees the total before checkout'));
-    expect(refused.status).toBe(422);
-    // follow the advice as written: open each line it names with the tag it names
-    const named = [
-      ...(refusalOf(refused.body)?.detail ?? '').matchAll(/criterion (\d+) \(REQ-1 BC-3\)/g),
-    ].map((m) => Number(m[1]));
-    const retry = reworded('A buyer sees the total before checkout')
-      .split('\n')
-      .map((line, i) =>
-        named.includes(i + 1) && !line.includes('(REQ-1 BC-3)')
-          ? line.replace(/^(\d+\. )/, '$1(REQ-1 BC-3) ')
-          : line,
-      )
-      .join('\n');
-
-    const r = await writeText(retry);
-
-    expect(r.status, JSON.stringify(r.body)).toBe(200);
-    expect((await traced()).map(([n, , code]) => [n, code])).toEqual([
+    expect(await taken(followText(REWORDED_K65, detail, live))).toEqual([
       [1, 'BC-3'],
       [2, 'BC-3'],
       [3, 'BC-3'],
+    ]);
+  });
+});
+
+// ISS-673 (K76, judged at dev.309): the refusal named a reworded traced line by its OLD number. With a
+// line inserted above it, the reworded line moved from 1 to 2, the refusal named criterion 1, and
+// tagging criterion 1 as advised was taken: the BC sat on the inserted line, and the line that proves
+// it was untraced, in silence.
+describe('a traced line reworded and moved below an inserted line (K76)', () => {
+  const PLAN = [
+    { n: 1, statement: 'A price shows in the site currency', requirementCriterionId: 'BC-3' },
+  ];
+  const K76 = '1. Search narrows the list\n2. A price shows in the currency the site sells in';
+
+  it('names the line by its number and words as sent, and following it puts the BC on that line', async () => {
+    await planned(PLAN);
+    const live = await traced();
+
+    const detail = await refusedText(K76);
+    expect(detail).toContain(
+      'criterion 2 ("A price shows in the currency the site sells in") as sent rewords live criterion 1 ("A price shows in the site currency"), which proved REQ-1 BC-3',
+    );
+    expect(detail).toContain('open criterion 2 with (REQ-1 BC-3)');
+    expect(detail).not.toContain('open criterion 1 ');
+
+    expect(await taken(followText(K76, detail, live))).toEqual([
+      [1, null],
+      [2, 'BC-3'],
+    ]);
+    expect((await traced())[1]?.[1]).toBe(
+      '(REQ-1 BC-3) A price shows in the currency the site sells in',
+    );
+  });
+
+  it('refuses the write the dev.309 refusal advised, tagging the inserted line, naming the reworded one', async () => {
+    await planned(PLAN);
+    const detail = await refusedText(
+      '1. (REQ-1 BC-3) Search narrows the list\n2. A price shows in the currency the site sells in',
+    );
+    expect(detail).toContain('open criterion 2 with (REQ-1 BC-3)');
+    expect(detail).not.toContain('open criterion 1 ');
+  });
+});
+
+describe('a traced line removed outright', () => {
+  const PLAN = [
+    { n: 1, statement: 'A site lists its products', requirementCriterionId: 'BC-1' },
+    { n: 2, statement: 'A product page shows its price', requirementCriterionId: 'BC-2' },
+    { n: 3, statement: 'A price shows in the site currency', requirementCriterionId: 'BC-3' },
+  ];
+  const REMOVED =
+    '1. A site lists its products\n2. A price shows in the site currency\n3. Search narrows the list';
+
+  it('is named as removed, by its live number and words, and putting it back tagged keeps the BC on it', async () => {
+    await planned(PLAN);
+    const live = await traced();
+
+    const detail = await refusedText(REMOVED);
+    expect(detail).toContain(
+      'live criterion 2 ("A product page shows its price"), which proved REQ-1 BC-2, has no line in its place',
+    );
+    expect(detail).toContain('put live criterion 2 back, opening with (REQ-1 BC-2)');
+    expect(detail).not.toMatch(/open criterion \d/);
+
+    expect(await taken(followText(REMOVED, detail, live))).toEqual([
+      [1, 'BC-1'],
+      [2, 'BC-3'],
+      [3, null],
+      [4, 'BC-2'],
+    ]);
+  });
+});
+
+describe('a traced line whose words share nothing with the lines in its place', () => {
+  const PLAN = [{ n: 1, statement: 'Prices are local', requirementCriterionId: 'BC-3' }];
+  const UNCLEAR = '1. Search narrows the list\n2. Checkout takes a card';
+
+  it('names every candidate line and guesses none; the line the writer tags takes the BC', async () => {
+    await planned(PLAN);
+    const detail = await refusedText(UNCLEAR);
+    expect(detail).toContain(
+      'which of criteria 1 ("Search narrows the list") or 2 ("Checkout takes a card") as sent carries it on cannot be told from their words',
+    );
+    expect(detail).not.toMatch(/open criterion \d/);
+
+    expect(
+      await taken('1. Search narrows the list\n2. (REQ-1 BC-3) Checkout takes a card'),
+    ).toEqual([
+      [1, null],
+      [2, 'BC-3'],
     ]);
   });
 });

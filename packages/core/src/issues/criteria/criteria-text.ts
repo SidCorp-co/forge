@@ -90,6 +90,11 @@ export function traceTagOf(statement: string): TraceTag {
   return open ? { kind: 'malformed', tag: open[0].trim() } : { kind: 'none' };
 }
 
+/** A statement without the lead tag `traceTagOf` reads, well formed or not: the words a criterion says. */
+export function withoutLeadTag(statement: string): string {
+  return statement.replace(TAG_OPEN, '').trim();
+}
+
 /**
  * Every `(REQ-n BC-m)` tag a statement holds after its start (ISS-625): where it stands it traces
  * nothing, since only a lead tag is read as the trace (`traceTagOf`). A mention in prose without the
