@@ -20,6 +20,7 @@ import { useReleases } from "../hooks";
 import { releaseProofOf, unprovenOf } from "../proof";
 import { type ReleaseLine, releaseListOf, versionsOf } from "../release-list";
 import type { ReleaseSummary } from "../types";
+import { ReleaseVersion } from "./release-bits";
 import { ReleaseProofBar, type ReleaseTag, ReleaseTags } from "./release-proof";
 
 /** What needs the decider's attention on a row, in two words each. */
@@ -37,16 +38,20 @@ const actOf = (r: ReleaseSummary, t: Copy): string => t(r.state === "draft" && !
 
 const ROW = cn("relative flex min-h-14 items-center gap-4 border-b border-line-divider py-3 pr-5 hover:bg-hover max-md:flex-wrap max-md:pr-3", GROUP_ROW_INDENT);
 
+/** A version whose hyphens never break a line: U+2011, the non-breaking hyphen. */
+const unbroken = (version: string) => version.replaceAll("-", "\u2011");
+
 function Carried({ carries, slug }: { carries: readonly ReleaseSummary[]; slug: string }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   if (carries.length === 0) return null;
   const newest = carries[0];
   const oldest = carries[carries.length - 1];
+  // inside the sentence a version keeps its hyphens unbroken, as `ReleaseVersion` keeps it whole
   const said =
     carries.length === 1
-      ? t("releases.carries.one", { v: newest.version })
-      : t("releases.carries.many", { n: carries.length, from: oldest.version, to: newest.version });
+      ? t("releases.carries.one", { v: unbroken(newest.version) })
+      : t("releases.carries.many", { n: carries.length, from: unbroken(oldest.version), to: unbroken(newest.version) });
   return (
     <div className={cn("border-b border-line-divider py-2.5 pr-5 text-13 text-muted", GROUP_ROW_INDENT)} data-testid="release-carries" data-n={carries.length}>
       <span>{said}</span>
@@ -58,7 +63,7 @@ function Carried({ carries, slug }: { carries: readonly ReleaseSummary[]; slug: 
           {carries.map((c) => (
             <li key={c.version} data-testid="release-carried" data-key={c.version}>
               <Link href={releaseHref(slug, c.version)} className="text-fg hover:text-link hover:underline">
-                <span className="font-mono">{c.version}</span>
+                <ReleaseVersion version={c.version} />
                 {c.name ? <span className="ml-2">{c.name}</span> : null}
               </Link>
             </li>
@@ -81,7 +86,7 @@ function ReleaseLineView({ line, slug, acts }: { line: ReleaseLine; slug: string
         <span className="grid min-w-0 flex-1 gap-1.5">
           {/* the row is one link to the page; its act sits above that link */}
           <Link href={releaseHref(slug, r.version)} className="flex min-w-0 items-baseline gap-2 text-fg after:absolute after:inset-0" data-testid="release-row-link">
-            <span className="font-mono text-14 font-semibold">{r.version}</span>
+            <ReleaseVersion version={r.version} className="text-14 font-semibold" />
             {r.name ? <span className="truncate text-14 font-medium">{r.name}</span> : null}
           </Link>
           {shipped ? null : <ReleaseProofBar proof={releaseProofOf(r.verified)} issues={r.issueCount} />}

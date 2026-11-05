@@ -5,7 +5,6 @@ import { Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import type { Copy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
@@ -13,9 +12,31 @@ import type { ReleaseDetail, ReleaseGateView } from "../types";
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
-/** A release as it is named everywhere: its version and the name it was cut with (REQ-40 BC-14). */
-export const releaseTitle = (r: { version: string; name: string | null }, t: Copy): string =>
-  r.name ? `${r.version} · ${r.name}` : t("releases.releaseVersion", { version: r.version });
+/**
+ * A release's version, drawn whole: never broken at its hyphen, so forge-dev's 0.4.0-dev.515 never
+ * reads as "0.4.0-" over "dev.515" at 420 px (ISS-1001). Every version on the list and the page is
+ * drawn by this.
+ */
+export function ReleaseVersion({ version, className }: { version: string; className?: string }) {
+  return (
+    <span className={cn("flex-none whitespace-nowrap font-mono", className)} data-testid="release-version">
+      {version}
+    </span>
+  );
+}
+
+/**
+ * A release as it is named everywhere: its version, whole, and the name it was cut with (REQ-40
+ * BC-14); an unnamed one by its version alone, which the screen it heads already says is a release.
+ */
+export function ReleaseTitle({ r }: { r: { version: string; name: string | null } }) {
+  return (
+    <>
+      <ReleaseVersion version={r.version} />
+      {r.name ? ` · ${r.name}` : null}
+    </>
+  );
+}
 
 const NAMED_IN_SENTENCE = 5;
 

@@ -2,7 +2,9 @@
 // both themes over adminhub-fe's draft 0.56.0: its one act at the top, its one proof bar, what users
 // see by screen with no key or sha on the face, Needs attention naming the release it ships with and
 // what it removes, and everything technical folded. Opened, the Technical section's roster still
-// draws seven criteria of one issue as seven lines a reader tells apart (REQ-40 BC-5, ISS-492).
+// draws seven criteria of one issue as seven lines a reader tells apart (REQ-40 BC-5, ISS-492). Its
+// last stage reads a forge-dev version, which wrapped at 420 on dev.515: the page names its release at
+// every width, the version on one line.
 //
 //   pnpm --filter web-v2 witness witness/release-page.witness.tsx --out <dir>
 
@@ -75,6 +77,7 @@ function reads(): string[] {
   if (keys.length > 0) wrong.push(`raw keys on the face: ${keys.join("; ")}`);
   const screens = [...page.querySelectorAll("[data-testid=page-screen] dt")].map((d) => d.textContent);
   if (screens[0] !== "Supplier · Mapping") wrong.push(`the first screen reads ${screens[0] ?? "nothing"}`);
+  wrong.push(...named("0.56.0"));
   const kinds = [...page.querySelectorAll("[data-testid=page-attention-item]")].map((i) => i.getAttribute("data-kind"));
   if (kinds.join() !== "step,removed") wrong.push(`Needs attention reads ${kinds.join() || "nothing"}, not the release it ships with and what it removes`);
   if (page.querySelector("[data-testid=release-technical-fold]")?.hasAttribute("open")) wrong.push("Technical opens unasked");
@@ -98,6 +101,28 @@ async function technical(): Promise<string[]> {
   return [...wrong, ...sideways()];
 }
 
+/** How many lines a drawn element's text runs over: a flex item is one box, so its text's line boxes are counted. */
+function linesOf(el: Element): number {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  return new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size;
+}
+
+/** The release named at the head of the page as a reader sees it, and every version on it on one line. */
+function named(version: string): string[] {
+  const shown = [...document.querySelectorAll<HTMLElement>("[data-testid=release-version]")].filter((v) => v.getClientRects().length > 0);
+  if (!shown.some((v) => v.textContent === version)) return [`the page does not name ${version} at ${window.innerWidth} px`];
+  return shown.flatMap((v) => (linesOf(v) > 1 ? [`${v.textContent} wraps over ${linesOf(v)} lines`] : []));
+}
+
+async function devVersion(): Promise<string[]> {
+  const version = "0.4.0-dev.515";
+  client.setQueryData(["release", P, "0.56.0"], { release: { ...DETAIL, key: version, version, name: "Clearer Release Check Guidance for Approvers" } });
+  await settle(300);
+  window.scrollTo(0, 0);
+  return [...named(version), ...sideways()];
+}
+
 window.__witness = {
   cases: [
     { name: "phone", width: 420 },
@@ -108,5 +133,6 @@ window.__witness = {
     { name: "light", run: async () => (theme("light"), await settle(), reads()) },
     { name: "dark", run: async () => (theme("dark"), await settle(), reads()) },
     { name: "technical", run: technical },
+    { name: "dev-version", run: devVersion },
   ],
 };
