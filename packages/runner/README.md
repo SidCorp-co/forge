@@ -140,9 +140,10 @@ refuses any other role a closed issue, and the box refuses a dispatch of another
 `--worktree` names a tree that already stands, which the run adopts: no close, release or reaper
 removes it, and `run close` says so. With `--cut <branch>` the box cuts the tree from the master's
 checkout instead, from `--from <ref>` or `origin`'s default branch, and records that ref as the
-tree's base. The release after the run ends removes it once every commit's change is in the base
-(`git cherry`, so a rebase landing counts), and keeps it, named, while it holds uncommitted files,
-an unlanded commit, or a base it cannot read (ISS-1016).
+tree's base. The release after the run ends fetches that one ref (15 s, no tags) where it tracks a
+remote, and removes the tree once every commit's change is in the base (`git cherry`, so a rebase
+landing from any clone counts). It keeps it, named, while it holds uncommitted files, an unlanded
+commit, or a base it could not fetch or read (ISS-1016).
 
 ### A chat session's credential
 

@@ -323,8 +323,10 @@ const COMMITS_NAMED: usize = 3;
 ///   Content, not sha: a branch landed by a rebase lands as other commits with the same patches,
 ///   and asking by sha kept every such tree for ever.
 ///
-/// A base that cannot be read — none recorded, or a ref this repository no longer holds — keeps
-/// the directory too, and says so: not knowing whether work landed is not knowing it did.
+/// A remote-tracking base is fetched first, that one ref alone, so a landing pushed from another
+/// clone counts. A base that cannot be read — none recorded, a fetch that failed or did not
+/// answer, or a ref this repository no longer holds — keeps the directory too, and says so: not
+/// knowing whether work landed is not knowing it did.
 pub async fn work_only_here(worktree: &Path, base: Option<&str>) -> Option<String> {
     match git(
         worktree,
@@ -372,8 +374,70 @@ fn named(items: &[&str], max: usize) -> String {
     }
 }
 
+/// How long the fetch of a tree's base may take before the tree is kept over it.
+const BASE_FETCH_BUDGET: Duration = Duration::from_secs(15);
+
+/// The remote and branch `base` tracks, where it is a remote-tracking ref (`origin/dev`): the
+/// longest remote name it begins with. `Ok(None)` for a local branch or any other ref.
+async fn tracked_by(worktree: &Path, base: &str) -> Result<Option<(String, String)>, String> {
+    let out = match git(worktree, &["remote"]).await {
+        Some(out) if out.status.success() => out,
+        Some(out) => {
+            return Err(format!(
+                "git would not list this repository's remotes, so whether its base {base} is one \
+                 to fetch cannot be read ({})",
+                stderr_brief(&out)
+            ))
+        }
+        None => return Err("git could not be asked which remotes this repository has".into()),
+    };
+    let listed = stdout_trim(&out);
+    Ok(listed
+        .lines()
+        .filter_map(|remote| {
+            let branch = base.strip_prefix(remote)?.strip_prefix('/')?;
+            (!branch.is_empty()).then(|| (remote.to_string(), branch.to_string()))
+        })
+        .max_by_key(|(remote, _)| remote.len()))
+}
+
+/// Bring a remote-tracking base up to what its remote holds now, that one ref and nothing else,
+/// so a landing pushed from another clone is read as landed (ISS-1016). A local branch needs no
+/// fetch. A fetch that fails or does not answer in [`BASE_FETCH_BUDGET`] is the reason the tree
+/// stays: its base was not read as it stands, and a stale base is not one to remove on.
+async fn fetch_base(worktree: &Path, base: &str) -> Result<(), String> {
+    let Some((remote, branch)) = tracked_by(worktree, base).await? else {
+        return Ok(());
+    };
+    let refspec = format!("+refs/heads/{branch}:refs/remotes/{remote}/{branch}");
+    let cred = RepoCred::of(worktree).await;
+    let args = ["fetch", "--quiet", "--no-tags", &remote, &refspec];
+    let fetched = tokio::time::timeout(BASE_FETCH_BUDGET, git_over_network(worktree, &args, &cred));
+    match fetched.await {
+        Ok(Some(out)) if out.status.success() => Ok(()),
+        Ok(Some(out)) => Err(format!(
+            "could not fetch {base}, offering {}: {} — its base was not read as it stands, so \
+             whether its commits landed cannot be said",
+            cred.source(),
+            stderr_brief(&out)
+        )),
+        Ok(None) => Err(format!(
+            "could not fetch {base}: `git fetch` could not be started — its base was not read as \
+             it stands, so whether its commits landed cannot be said"
+        )),
+        Err(_) => Err(format!(
+            "could not fetch {base}: it did not answer within {}s — its base was not read as it \
+             stands, so whether its commits landed cannot be said",
+            BASE_FETCH_BUDGET.as_secs()
+        )),
+    }
+}
+
 /// The commits at HEAD whose patch `base` does not hold, said as [`work_only_here`] says them.
 async fn unlanded(worktree: &Path, base: &str) -> Option<String> {
+    if let Err(why) = fetch_base(worktree, base).await {
+        return Some(why);
+    }
     let at = format!("{base}^{{commit}}");
     match git(worktree, &["rev-parse", "--verify", "--quiet", &at]).await {
         Some(out) if out.status.success() => {}

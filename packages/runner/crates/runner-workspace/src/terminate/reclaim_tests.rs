@@ -124,6 +124,11 @@ fn declare(led: &mut Ledger, run_id: &str, wt: &Path) {
 }
 
 fn declare_as(led: &mut Ledger, run_id: &str, wt: &Path, origin: TreeOrigin) {
+    let base = (origin == TreeOrigin::Created).then_some(BASE);
+    declare_on(led, run_id, wt, origin, base);
+}
+
+fn declare_on(led: &mut Ledger, run_id: &str, wt: &Path, origin: TreeOrigin, base: Option<&str>) {
     led.create_run_group(NewRun {
         run_id: run_id.into(),
         project_id: "proj-1".into(),
@@ -134,7 +139,7 @@ fn declare_as(led: &mut Ledger, run_id: &str, wt: &Path, origin: TreeOrigin) {
         role: None,
         requirement: None,
         worktree_origin: origin,
-        worktree_base: (origin == TreeOrigin::Created).then(|| BASE.to_string()),
+        worktree_base: base.map(str::to_string),
     })
     .unwrap();
 }
@@ -490,14 +495,19 @@ async fn a_cut_tree_landed_by_a_rebase_is_removed_at_its_close() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// A base the release cannot read — a ref this repository no longer holds — keeps the tree and
-/// names why, however landed its work may be.
+/// A base the release cannot read — a local branch this repository no longer holds — keeps the
+/// tree and names why, however landed its work may be.
 #[tokio::test]
 async fn a_cut_tree_whose_base_is_gone_is_kept_and_named() {
     let (base, root, wt, mut led) = a_repo_with_an_origin("created-base-gone").await;
     git(&wt, &["push", "-q", "origin", "iss-23:main"]).await;
-    git(&root, &["branch", "-q", "-r", "-D", "origin/main"]).await;
-    declare(&mut led, "run-1", &wt);
+    declare_on(
+        &mut led,
+        "run-1",
+        &wt,
+        TreeOrigin::Created,
+        Some("release-gone"),
+    );
 
     let Release::Done(forced) = close_and_release(&mut led, &root).await else {
         panic!("a tree whose base is gone was refused rather than kept");
@@ -505,7 +515,77 @@ async fn a_cut_tree_whose_base_is_gone_is_kept_and_named() {
     let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
         panic!("a tree whose base cannot be read was not kept: {forced:?}");
     };
-    assert!(why.contains("origin/main is no ref"), "{why}");
+    assert!(why.contains("release-gone is no ref"), "{why}");
+    assert!(wt.exists());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The master lands the run's change from a clone of its own: `main` moves on in `origin` with the
+/// change rebased onto it, and this repository has not fetched. The release fetches the base before
+/// it compares, so the tree is read as landed and removed at the close.
+#[tokio::test]
+async fn a_cut_tree_landed_from_another_clone_is_removed_at_its_close() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("created-landed-elsewhere").await;
+    let bare = base.join("origin.git");
+    git(&wt, &["push", "-q", "origin", "iss-23"]).await;
+    let other = base.join("other");
+    git(
+        &base,
+        &[
+            "clone",
+            "-q",
+            &bare.to_string_lossy(),
+            &other.to_string_lossy(),
+        ],
+    )
+    .await;
+    git(&other, &["config", "user.email", "o@o"]).await;
+    git(&other, &["config", "user.name", "o"]).await;
+    std::fs::write(other.join("x.txt"), "x").unwrap();
+    git(&other, &["add", "x.txt"]).await;
+    git(&other, &["commit", "-q", "-m", "x"]).await;
+    git(&other, &["cherry-pick", "origin/iss-23"]).await;
+    git(&other, &["push", "-q", "origin", "main"]).await;
+    assert_ne!(
+        said(&root, &["rev-parse", "origin/main"]).await,
+        said(&other, &["rev-parse", "main"]).await,
+        "this repository already holds the landing, so nothing here needs a fetch"
+    );
+    declare(&mut led, "run-1", &wt);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("a tree landed from another clone was refused");
+    };
+    assert_eq!(
+        forced.worktree,
+        WorktreeOutcome::Released,
+        "the release read a base that had not been fetched"
+    );
+    assert!(!wt.exists(), "the landed tree is still on disk");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A remote-tracking base that cannot be fetched keeps the tree, named, even where the stale copy
+/// this repository holds would read every change as landed.
+#[tokio::test]
+async fn a_cut_tree_whose_base_cannot_be_fetched_is_kept_and_named() {
+    let (base, root, wt, mut led) = a_repo_with_an_origin("created-fetch-fails").await;
+    git(&wt, &["push", "-q", "origin", "iss-23:main"]).await;
+    let gone = base.join("no-such-origin.git");
+    git(
+        &root,
+        &["remote", "set-url", "origin", &gone.to_string_lossy()],
+    )
+    .await;
+    declare(&mut led, "run-1", &wt);
+
+    let Release::Done(forced) = close_and_release(&mut led, &root).await else {
+        panic!("a tree whose base could not be fetched was refused rather than kept");
+    };
+    let WorktreeOutcome::KeptWithWork { why } = &forced.worktree else {
+        panic!("a tree whose base could not be fetched was removed: {forced:?}");
+    };
+    assert!(why.contains("could not fetch origin/main"), "{why}");
     assert!(wt.exists());
     let _ = std::fs::remove_dir_all(&base);
 }
