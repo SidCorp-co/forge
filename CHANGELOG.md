@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.533] - 2026-11-05
+
+Room posts from a master can carry up to four screenshots
+
+### Added
+
+- **A master's room post carries its screenshots.** `master-posts` takes up to four image uploads by id; each follows the text into the same room and thread, and an item that cannot go is refused by name before anything posts.
+
 ## [0.4.0-dev.532] - 2026-11-05
 
 Support rooms can promise to tell a person when an issue goes live
