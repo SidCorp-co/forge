@@ -1,10 +1,13 @@
 // The mirror half of a beta port fire (ISS-923): each ported pair's dev status, tried onto its beta
 // issue once, and never backward (ISS-982: `markers.ts:BETA_PORT_PROGRESS` is the order). A pair
 // ported as Feedback follows the issues its triage routed to once they land, or is told its outcome.
-// A move beta takes is reported; a close beta refuses for want of a shipped record is finished the
-// nearest legal way (`finishClose`), its merge mark in the beta project's landing shape; a move beta
-// refuses outright is commented there once. Each try is recorded on the pair with the status beta
-// stood at after it, so nothing repeats and nothing claims a status beta never took.
+// A move beta takes is reported, at the status beta stored; a move beta refuses outright is commented
+// there once. A close is beta's by a release (ISS-1005): where beta refuses a plain close, its merge
+// mark is sent in the beta project's landing shape, and the dev release that closed the twin is
+// recorded on beta, which closes it (`closeOnBeta`); where beta refuses that too, the beta issue
+// stands at the nearest status it takes, the refusal is commented there once, and the close is tried
+// again at every fire until beta takes it. Each try is recorded on the pair with the status beta
+// stood at after it, so nothing claims a status beta never took.
 
 import {
   markPeerIssueLanded,
@@ -14,9 +17,14 @@ import {
   type PeerLanding,
   postPeerComment,
   readPeerLanding,
+  readPeerReleaseNoted,
+  recordPeerRelease,
   transitionPeerIssue,
+  writePeerReleaseNote,
 } from '../integrations/peer-forge/index.js';
 import {
+  betaReleaseNote,
+  closeRefusedComment,
   type FeedbackTold,
   feedbackMirroredComment,
   feedbackToldComment,
@@ -29,12 +37,16 @@ import {
   nearestReason,
   owesTry,
   progressOf,
+  releaseRecordAccount,
+  releaseRecordRef,
 } from './markers.js';
 import { type PortedTriage, triageOutcomesOf } from './ports.js';
 import type { BetaPortReport } from './report.js';
 import {
+  type DevRelease,
   type DevTwin,
   devIssuesById,
+  devReleasesOf,
   type MirroredDevIssue,
   type Pair,
   recordTold,
@@ -48,16 +60,21 @@ export interface MirrorContext {
   budget: { mirrors: number };
 }
 
-/** One beta project and its dev twin, with its landing shape read at most once per fire. */
+/**
+ * One beta project and its dev twin, with its landing shape and the twin's releases each read at
+ * most once per fire, and only where a close needs them.
+ */
 interface MirrorProject {
   twin: DevTwin;
+  betaProjectId: string;
   landing: () => Promise<PeerAnswer<PeerLanding>>;
+  releases: () => Promise<DevRelease[]>;
 }
 
-/** One try's outcome: the beta status after it, and whether its close's mark question was settled. */
+/** One try's outcome: the beta status after it, and the close refusal it commented on beta. */
 interface Tried {
   reached: string;
-  shapeSettled: boolean;
+  closeRefused?: string;
 }
 
 export async function mirrorProject(
@@ -68,11 +85,17 @@ export async function mirrorProject(
 ): Promise<void> {
   const { twin } = where;
   let landing: Promise<PeerAnswer<PeerLanding>> | null = null;
+  let releases: Promise<DevRelease[]> | null = null;
   const project: MirrorProject = {
     twin,
+    betaProjectId: where.betaProjectId,
     landing: () => {
       landing ??= readPeerLanding(ctx.peer, where.betaProjectId);
       return landing;
+    },
+    releases: () => {
+      releases ??= devReleasesOf(twin);
+      return releases;
     },
   };
   const betaById = new Map(betaIssues.map((i) => [i.id, i]));
@@ -137,14 +160,14 @@ async function mirrorPair(
     return;
   }
   ctx.budget.mirrors -= 1;
-  const tried = await mirrorOne(ctx, project, beta, dev, target, owed !== 'try');
+  const tried = await mirrorOne(ctx, project, { pair, beta, dev }, target, owed !== 'try');
   // recorded whatever beta answered, so the same try is never made or commented twice
   await recordTry({
     betaIssueId: beta.id,
     tried: dev.status,
     reached: tried.reached,
     taken: tried.reached === target,
-    shapeSettled: target === 'closed' && tried.shapeSettled,
+    ...(tried.closeRefused ? { closeRefused: tried.closeRefused } : {}),
   });
   if (followed && tried.reached !== beta.status) await followed(tried.reached);
 }
@@ -238,16 +261,23 @@ async function tellOnce(
   ctx.report.told.push(`${project.twin.slug}: ${triage.key} → beta ${beta.key} (${told})`);
 }
 
-/** One mirror move onto beta; the beta status beta stands at after it. */
+/** One pair as a mirror move reads it: its record, its beta issue and its dev issue. */
+interface Move {
+  pair: Pair;
+  beta: PeerIssue;
+  dev: MirroredDevIssue;
+}
+
+/** One mirror move onto beta; the beta status beta stands at after it, as beta stored it. */
 async function mirrorOne(
   ctx: MirrorContext,
   project: MirrorProject,
-  beta: PeerIssue,
-  dev: MirroredDevIssue,
+  move: Move,
   target: string,
   commentedBefore: boolean,
 ): Promise<Tried> {
   const { twin } = project;
+  const { beta, dev } = move;
   const line = (to: string, how = '') =>
     `${twin.slug}: ${dev.key}: ${beta.status} → ${to} (beta ${beta.key})${how}`;
   const moved = await transitionPeerIssue(
@@ -256,27 +286,23 @@ async function mirrorOne(
     target,
     mirrorReason(dev.key, dev.status),
   );
-  if (moved.ok) {
+  const stored = moved.ok ? (moved.value.stored ?? target) : null;
+  if (stored === target) {
     ctx.report.mirrored.push(line(target));
-    return { reached: target, shapeSettled: true };
+    return { reached: target };
   }
-  const refused = [moved.refusal.code];
-  let shapeSettled = true;
-  if (target === 'closed') {
-    const finished = await finishClose(ctx, project, beta, dev, moved.refusal.code, refused);
-    shapeSettled = finished.shapeSettled;
-    if (finished.reached) {
-      ctx.report.mirrored.push(line(finished.reached, finished.how));
-      return { reached: finished.reached, shapeSettled };
-    }
+  if (target === 'closed') return closeOnBeta(ctx, project, move, moved, line);
+  if (stored !== null) {
+    ctx.report.mirrored.push(line(stored, `; beta stored ${stored} where ${target} was asked`));
+    return { reached: stored };
   }
-  const codes = refused.join(', ');
-  ctx.report.refused.push(`${twin.slug}: ${dev.key} → beta ${beta.key} ${target}: ${codes}`);
+  const code = moved.ok ? '' : moved.refusal.code;
+  ctx.report.refused.push(`${twin.slug}: ${dev.key} → beta ${beta.key} ${target}: ${code}`);
   if (!commentedBefore) {
     const told = await postPeerComment(
       ctx.peer,
       beta.id,
-      mirrorRefusedComment(dev.key, dev.status, codes),
+      mirrorRefusedComment(dev.key, dev.status, code),
     );
     if (!told.ok) {
       ctx.report.refused.push(
@@ -284,87 +310,209 @@ async function mirrorOne(
       );
     }
   }
-  return { reached: beta.status, shapeSettled };
+  return { reached: beta.status };
 }
 
 /**
- * A close beta refused, finished the nearest legal way: where it was refused for want of a shipped
- * record, beta's merge mark records where the work landed, in the shape the beta project's landing
- * takes (`landingMark`), and the close is tried again; where beta still refuses it, beta moves to
- * `awaiting_release`, the status a close is taken from. No mark is sent where beta already holds one,
- * where the dev issue holds no commit a git twin's mark names, or where the beta project's shape
- * cannot be read; the last leaves the close owed (`shapeSettled` false), so the next fire tries it
- * again. `reached` is null where beta took neither move; every refusal met is added to `refused`.
+ * A close beta did not take, finished the way beta closes an issue (ISS-1005). Beta's merge mark is
+ * sent where beta holds none, in the beta project's landing shape (`sendMark`), and a close refused
+ * for want of it is asked again. Where beta still has not closed it, the dev release that closed the
+ * twin is recorded on beta (`closeByRelease`), from beta's release gate. Where beta refuses that too,
+ * the beta issue stands at the nearest status it took, the refusal is commented there once (the
+ * pair's `closeRefused`), and the close stays owed (`markers.ts:owesTry`).
  */
-async function finishClose(
+async function closeOnBeta(
   ctx: MirrorContext,
   project: MirrorProject,
-  beta: PeerIssue,
-  dev: MirroredDevIssue,
-  code: string,
-  refused: string[],
-): Promise<{ reached: string | null; how: string; shapeSettled: boolean }> {
+  move: Move,
+  first: PeerAnswer<{ stored: string | null }>,
+  line: (to: string, how?: string) => string,
+): Promise<Tried> {
+  const { twin } = project;
+  const { pair, beta, dev } = move;
+  const refused: string[] = [];
+  let at = beta.status;
+  if (first.ok) {
+    at = first.value.stored ?? at;
+    refused.push(`closed was stored as ${at}`);
+  } else {
+    refused.push(first.refusal.code);
+  }
   let recorded = '';
-  let shapeSettled = true;
-  if (code === 'CLOSE_REQUIRES_SHIPPED' && beta.marked === true) {
-    refused.push('beta already holds a merge mark on it, so no second one was sent');
-  } else if (code === 'CLOSE_REQUIRES_SHIPPED') {
-    const sent = await sendMark(ctx, project, beta, dev, refused);
-    shapeSettled = sent.shapeSettled;
-    if (sent.says) {
-      recorded = `, ${sent.says}`;
-      const closed = await transitionPeerIssue(
+  if (beta.marked !== true) {
+    const says = await sendMark(ctx, project, beta, dev, refused);
+    if (says) recorded = `, ${says}`;
+    if (says && !first.ok && first.refusal.code === 'CLOSE_REQUIRES_SHIPPED') {
+      const again = await transitionPeerIssue(
         ctx.peer,
         beta.id,
         'closed',
         mirrorReason(dev.key, dev.status),
       );
-      if (closed.ok) return { reached: 'closed', how: recorded, shapeSettled };
-      refused.push(`after the landing was recorded: ${closed.refusal.code}`);
+      const stored = again.ok ? (again.value.stored ?? 'closed') : null;
+      if (stored === 'closed') {
+        ctx.report.mirrored.push(line('closed', recorded));
+        return { reached: 'closed' };
+      }
+      if (stored !== null) at = stored;
+      refused.push(
+        `after the landing was recorded: ${again.ok ? `closed was stored as ${stored}` : again.refusal.code}`,
+      );
     }
   }
-  if (beta.status === 'awaiting_release') return { reached: null, how: '', shapeSettled };
-  const nearest = await transitionPeerIssue(
+  const released = await closeByRelease(ctx, project, move, at, refused);
+  if (released.closed) {
+    ctx.report.mirrored.push(
+      line(
+        'closed',
+        `${recorded}, by forge-dev release ${released.release?.version} recorded on beta`,
+      ),
+    );
+    return { reached: 'closed' };
+  }
+  at = released.at;
+  const codes = refused.join(', ');
+  ctx.report.refused.push(`${twin.slug}: ${dev.key} → beta ${beta.key} closed: ${codes}`);
+  if (at !== beta.status) {
+    ctx.report.mirrored.push(
+      line(at, `${recorded}; closed refused (${codes}), the nearest status beta takes`),
+    );
+  }
+  if (pair.closeRefused !== null) return { reached: at };
+  const told = await postPeerComment(
     ctx.peer,
     beta.id,
-    'awaiting_release',
-    nearestReason(dev.key, refused.join(', ')),
+    closeRefusedComment(dev.key, released.release, codes),
   );
-  if (nearest.ok) {
-    return {
-      reached: 'awaiting_release',
-      how: `${recorded}; closed refused (${refused.join(', ')}), the nearest status beta takes`,
-      shapeSettled,
-    };
+  if (!told.ok) {
+    ctx.report.refused.push(`${twin.slug}: beta ${beta.key} refusal comment: ${told.refusal.code}`);
+    return { reached: at };
   }
-  refused.push(`awaiting_release: ${nearest.refusal.code}`);
-  return { reached: null, how: '', shapeSettled };
+  return { reached: at, closeRefused: codes };
 }
 
-/** Beta's merge mark for a dev issue, sent in its project's landing shape; how the report words it. */
+/**
+ * The dev release that closed the twin, recorded on beta by the door beta serves for a release
+ * already performed (`POST /api/projects/:id/release-records`), which closes the issues it carries
+ * from beta's release gate. The beta issue is first moved to that gate (`awaiting_release`), the
+ * nearest status a close is taken from, and given the twin's release note where it holds none, both
+ * of which beta's record requires. Every refusal met is added to `refused`; `at` is where beta stands.
+ */
+async function closeByRelease(
+  ctx: MirrorContext,
+  project: MirrorProject,
+  move: Move,
+  from: string,
+  refused: string[],
+): Promise<{ closed: boolean; at: string; release: DevRelease | null }> {
+  const { twin } = project;
+  const { beta, dev } = move;
+  const release = (await project.releases()).find((r) => r.issueIds.includes(dev.id)) ?? null;
+  if (!release) {
+    refused.push(
+      `BETA_PORT_NO_DEV_RELEASE: no forge-dev release of ${twin.slug} carries ${dev.key}, so none was recorded on beta`,
+    );
+  }
+  let at = from;
+  if (at !== 'awaiting_release') {
+    const nearest = await transitionPeerIssue(
+      ctx.peer,
+      beta.id,
+      'awaiting_release',
+      nearestReason(dev.key, refused.join(', ')),
+    );
+    if (!nearest.ok) {
+      refused.push(`awaiting_release: ${nearest.refusal.code}`);
+      return { closed: false, at, release };
+    }
+    at = nearest.value.stored ?? 'awaiting_release';
+    if (at !== 'awaiting_release') {
+      refused.push(`awaiting_release was stored as ${at}`);
+      return { closed: false, at, release };
+    }
+  }
+  if (!release) return { closed: false, at, release };
+  if (!release.commit) {
+    refused.push(
+      `BETA_PORT_NO_RELEASE_COMMIT: forge-dev ${twin.slug} ${release.version} names no commit, and beta's release record names the commit production serves`,
+    );
+    return { closed: false, at, release };
+  }
+  if (!(await noteOnBeta(ctx, move, refused))) return { closed: false, at, release };
+  const record = await recordPeerRelease(ctx.peer, project.betaProjectId, {
+    issueIds: [beta.id],
+    commit: release.commit,
+    account: releaseRecordAccount(twin.slug, dev.key, release),
+    providerRef: releaseRecordRef(twin.slug, release),
+  });
+  if (!record.ok) {
+    refused.push(`recording forge-dev release ${release.version}: ${record.refusal.code}`);
+    return { closed: false, at, release };
+  }
+  if (record.value.closed.includes(beta.id)) return { closed: true, at: 'closed', release };
+  const failed = record.value.failed.find((f) => f.id === beta.id);
+  refused.push(
+    `forge-dev release ${release.version} was recorded on beta, which did not close it: ${failed?.reason ?? 'its record names it neither closed nor failed'}`,
+  );
+  return { closed: false, at, release };
+}
+
+/**
+ * Whether the beta issue holds a release note, which beta's release record requires of every issue it
+ * closes: read from the issue, and where it holds none, the dev twin's written there. A dev twin with
+ * no note is named and nothing is written: a note is never made up.
+ */
+async function noteOnBeta(ctx: MirrorContext, move: Move, refused: string[]): Promise<boolean> {
+  const { beta, dev } = move;
+  const held = await readPeerReleaseNoted(ctx.peer, beta.id);
+  if (!held.ok) {
+    refused.push(`reading its release note: ${held.refusal.code}`);
+    return false;
+  }
+  if (held.value === true) return true;
+  const note = betaReleaseNote(dev);
+  if (!note) {
+    refused.push(
+      `BETA_PORT_NO_RELEASE_NOTE: ${dev.key} holds no release note, and beta's release record requires one`,
+    );
+    return false;
+  }
+  const wrote = await writePeerReleaseNote(ctx.peer, beta.id, note);
+  if (!wrote.ok) {
+    refused.push(`writing its release note: ${wrote.refusal.code}`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Beta's merge mark for a dev issue, sent in its project's landing shape; how the report words it, or
+ * null where none was sent: the dev issue holds no commit a git twin's mark names, the beta project's
+ * shape cannot be read, or beta refused it, each added to `refused`.
+ */
 async function sendMark(
   ctx: MirrorContext,
   project: MirrorProject,
   beta: PeerIssue,
   dev: MirroredDevIssue,
   refused: string[],
-): Promise<{ says: string | null; shapeSettled: boolean }> {
+): Promise<string | null> {
   const landing = await project.landing();
   if (!landing.ok) {
     const named = `${project.twin.slug}: beta landing shape: ${landing.refusal.code} (${landing.refusal.detail})`;
     if (!ctx.report.refused.includes(named)) ctx.report.refused.push(named);
     refused.push(`the beta project's landing shape: ${landing.refusal.code}`);
-    return { says: null, shapeSettled: false };
+    return null;
   }
   const built = landingMark(dev, landing.value);
   if (!built.ok) {
     refused.push(built.refusal);
-    return { says: null, shapeSettled: true };
+    return null;
   }
   const mark = await markPeerIssueLanded(ctx.peer, beta.id, built.mark);
   if (!mark.ok) {
     refused.push(`recording the landing: ${mark.refusal.code}`);
-    return { says: null, shapeSettled: true };
+    return null;
   }
-  return { says: built.says, shapeSettled: true };
+  return built.says;
 }

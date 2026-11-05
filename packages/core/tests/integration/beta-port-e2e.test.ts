@@ -440,14 +440,23 @@ describe('a beta port close (ISS-923)', () => {
       `${twin.slug}: ${keys.get(releases.id)}: open → awaiting_release (beta ISS-21)`,
     );
     expect(settled.output).toContain('CLOSE_ONLY_BY_RELEASE');
-    // moved, so nothing is commented
-    expect([...beta.comments.values()].flat()).toHaveLength(commentsBefore);
+    // no dev release carries it, so none is recorded on beta: the close beta refused is commented
+    // on its issue once, by name (ISS-1005), and nothing else is
+    expect(settled.output).toContain('BETA_PORT_NO_DEV_RELEASE');
+    expect([...beta.comments.values()].flat()).toHaveLength(commentsBefore + 1);
+    expect(beta.comments.get(releases.id)?.at(-1)).toContain(
+      `forge-dev ${keys.get(releases.id)} was closed; forge-beta refused to close this issue to match: CLOSE_REQUIRES_SHIPPED`,
+    );
 
+    // the close it refused stays owed: tried again, with no second mark or comment; the rest are done
     const moves = beta.transitions.length;
     const marks = beta.marks.size;
     await fire(scheduleId);
-    expect(beta.transitions).toHaveLength(moves);
+    expect(beta.transitions.slice(moves).map((t) => [t.issueId, t.toStatus])).toEqual([
+      [releases.id, 'closed'],
+    ]);
     expect(beta.marks.size).toBe(marks);
+    expect([...beta.comments.values()].flat()).toHaveLength(commentsBefore + 1);
     beta.closeNeedsMark = false;
   });
 });

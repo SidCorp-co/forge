@@ -8,11 +8,17 @@ export {
   type PeerIssue,
   type PeerMergeMark,
   type PeerProject,
+  type PeerRecorded,
   type PeerRefusal,
+  type PeerReleaseNote,
+  type PeerReleaseRecord,
   peerMovedIntoSince,
   postPeerComment,
   readPeerIssueDescription,
   readPeerLanding,
+  readPeerReleaseNoted,
+  recordPeerRelease,
   transitionPeerIssue,
+  writePeerReleaseNote,
 } from './client.js';
 export { type PeerLanding, peerLandingOf, peerLandingOfProject } from './landing.js';

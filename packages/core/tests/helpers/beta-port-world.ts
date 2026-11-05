@@ -1,9 +1,11 @@
 /**
  * forge-beta as the beta port reads and writes it (ISS-923), for `beta-port-e2e.test.ts`: a stub HTTP
  * server holding projects, their project documents, issues, comments, activity and merge marks,
- * answering a transition the way beta's issue machine does where a test asks it to, refusing a mark
- * whose shape is not the project's the way beta's mark writer does (`landingMarkRefusal`), and
- * counting every request it took.
+ * answering a transition the way beta's issue machine does where a test asks it to (with the status
+ * it stored, as beta's transition answers), refusing a mark whose shape is not the project's the way
+ * beta's mark writer does (`landingMarkRefusal`), taking a release note and a release record the way
+ * beta's record door does (ISS-1005: the issue at the release gate, marked and noted, every one or
+ * none), and counting every request it took.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -29,6 +31,15 @@ export interface StubIssue {
   mergedAt?: string | null;
   mergedCommitSha?: string | null;
   mergedLanding?: string | null;
+  /** Beta's release note on the row, as its issue read carries it. */
+  releaseNotes?: Record<string, unknown> | null;
+}
+
+/** A release record beta was sent, and the code it refused it with, where it did. */
+export interface StubRecord {
+  projectId: string;
+  body: Record<string, unknown>;
+  refused: string | null;
 }
 
 export interface StubActivity {
@@ -53,6 +64,18 @@ export const beta = {
   closeNeedsMark: false,
   /** The code a close of an issue is refused with once its mark is recorded (beta's release rule). */
   closeAfterMark: new Map<string, string>(),
+  /**
+   * Beta's release gate as an agent's close meets it (forge-beta 51939268, `resolveAgentCloseTarget`):
+   * a close of an issue named here is stored as `awaiting_release` and answered 200, and a close asked
+   * at the gate is `NO_OP`.
+   */
+  releaseGate: new Set<string>(),
+  /** The code every release record is refused with, before any issue is read; null takes it. */
+  refuseRecord: null as string | null,
+  /** Every release record beta was sent, taken or refused. */
+  records: [] as StubRecord[],
+  /** Every release note written, by issue. */
+  notes: new Map<string, Record<string, unknown>>(),
   /** Each project's document, as `GET /api/projects/:id/config` answers it; unset is undeclared. */
   configs: new Map<string, Record<string, unknown>>(),
   /** How many times each project's document was read. */
@@ -89,6 +112,27 @@ function closeRefusal(id: string, toStatus: string): string | null {
   if (toStatus !== 'closed' || !beta.closeNeedsMark) return null;
   if (!beta.marks.has(id)) return 'CLOSE_REQUIRES_SHIPPED';
   return beta.closeAfterMark.get(id) ?? null;
+}
+
+/**
+ * Beta's release-record door (`recordPerformedRelease` at forge-beta 51939268), as far as a port's
+ * record meets it: the body's shape, then every issue named at the release gate unclaimed, merge-marked
+ * and noted, refused by beta's codes; a record taken closes every issue it names.
+ */
+function recordRefusal(projectId: string, body: Record<string, unknown>): string | null {
+  if (beta.refuseRecord) return beta.refuseRecord;
+  const ids = Array.isArray(body.issueIds) ? (body.issueIds as string[]) : [];
+  const account = typeof body.account === 'string' ? body.account.trim() : '';
+  if (ids.length === 0 || typeof body.commit !== 'string' || account.length < 20) {
+    return 'BAD_REQUEST';
+  }
+  const issues = ids.map((id) => (beta.issues.get(projectId) ?? []).find((i) => i.id === id));
+  if (issues.some((i) => i === undefined)) return 'CLAIM_CONFLICT';
+  const found = issues as StubIssue[];
+  if (found.some((i) => !i.releaseNotes)) return 'RELEASE_RECORD_MISSING';
+  if (found.some((i) => !i.mergedAt)) return 'RELEASE_WORK_UNMERGED';
+  if (found.some((i) => i.status !== 'awaiting_release')) return 'CLAIM_CONFLICT';
+  return null;
 }
 
 const projectOf = (issueId: string) => {
@@ -224,17 +268,51 @@ export function startBeta(): Promise<string> {
       const body = await readBody(req);
       const toStatus = String(body.toStatus);
       beta.transitions.push({ issueId: id, toStatus, reason: String(body.reason) });
-      const refusal = closeRefusal(id, toStatus);
+      const issue = findIssue(id);
+      const held =
+        beta.releaseGate.has(id) && toStatus === 'closed' ? 'awaiting_release' : toStatus;
+      const refusal =
+        held === issue?.status && held !== toStatus ? 'NO_OP' : closeRefusal(id, held);
       if (refusal) {
-        return send(422, {
+        return send(refusal === 'NO_OP' ? 409 : 422, {
           code: refusal,
           message: 'refused, nothing written',
           error: { code: refusal, message: 'refused', refusals: [] },
         });
       }
+      if (issue) issue.status = held;
+      return send(200, { id, status: held, reopenCount: 0 });
+    }
+    if (req.method === 'PATCH' && parts[1] === 'issues' && parts.length === 3) {
+      const id = parts[2] as string;
+      const body = await readBody(req);
       const issue = findIssue(id);
-      if (issue) issue.status = toStatus;
-      return send(200, { ok: true });
+      if (!issue) return send(404, { code: 'NOT_FOUND', message: 'no issue' });
+      const note = body.releaseNotes as Record<string, unknown> | undefined;
+      if (note) {
+        beta.notes.set(id, note);
+        issue.releaseNotes = note;
+      }
+      return send(200, issue);
+    }
+    if (req.method === 'POST' && parts[1] === 'projects' && parts[3] === 'release-records') {
+      const projectId = parts[2] as string;
+      const body = await readBody(req);
+      const refused = recordRefusal(projectId, body);
+      beta.records.push({ projectId, body, refused });
+      if (refused) {
+        return send(refused === 'BAD_REQUEST' ? 400 : 409, {
+          code: refused,
+          message: 'refused, nothing recorded',
+          error: { code: refused, message: 'refused' },
+        });
+      }
+      const ids = body.issueIds as string[];
+      for (const id of ids) {
+        const issue = findIssue(id);
+        if (issue) issue.status = 'closed';
+      }
+      return send(201, { runId: randomUUID(), commit: body.commit, closed: ids, failed: [] });
     }
     return send(404, { code: 'NOT_FOUND', message: `${req.method} ${url.pathname}` });
   });
@@ -266,6 +344,7 @@ export function betaIssue(seq: number, over: Partial<StubIssue> = {}): StubIssue
     category: 'bug',
     createdAt: afterRuling(),
     reopenCount: 0,
+    releaseNotes: null,
     ...over,
   };
 }

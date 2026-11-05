@@ -174,28 +174,25 @@ describe('the fire report', () => {
 });
 
 describe('a mirror try', () => {
-  const shaped = new Date('2026-11-03T12:00:00.000Z');
-  const fresh = { lastMirroredStatus: 'open', lastTriedStatus: 'open', closeShapeTriedAt: null };
-  const old = { lastMirroredStatus: 'closed', lastTriedStatus: null, closeShapeTriedAt: null };
+  const fresh = { lastMirroredStatus: 'open', lastTriedStatus: 'open', betaReached: 'open' };
+  const old = { lastMirroredStatus: 'closed', lastTriedStatus: null, betaReached: null };
 
   it('is owed once per dev status under this rule', () => {
     expect(owesTry(fresh, 'open', 'open')).toBeNull();
     expect(owesTry(fresh, 'closed', 'open')).toBe('try');
-    expect(
-      owesTry(
-        { ...fresh, lastTriedStatus: 'closed', closeShapeTriedAt: shaped },
-        'closed',
-        'awaiting_release',
-      ),
-    ).toBeNull();
+    expect(owesTry({ ...fresh, lastTriedStatus: 'dropped' }, 'dropped', 'open')).toBeNull();
   });
 
-  it('retries once a close tried before its mark took the beta landing shape, until beta closes it', () => {
-    const held = { ...fresh, lastTriedStatus: 'closed' };
-    expect(owesTry(held, 'closed', 'awaiting_release')).toBe('retry-shape');
+  it('(ISS-1005) retries a close beta has not taken at every fire, while beta stands where the last try left it', () => {
+    const held = { ...fresh, lastTriedStatus: 'closed', betaReached: 'awaiting_release' };
+    expect(owesTry(held, 'closed', 'awaiting_release')).toBe('retry-close');
     expect(owesTry(held, 'closed', 'closed')).toBeNull();
-    expect(owesTry({ ...held, closeShapeTriedAt: shaped }, 'closed', 'open')).toBeNull();
-    expect(owesTry({ ...fresh, lastTriedStatus: 'dropped' }, 'dropped', 'open')).toBeNull();
+    // a person moved the beta issue since: it is left as they moved it
+    expect(owesTry(held, 'closed', 'reopen')).toBeNull();
+    // only a close is retried
+    expect(
+      owesTry({ ...held, lastTriedStatus: 'on_hold', betaReached: 'open' }, 'on_hold', 'open'),
+    ).toBeNull();
   });
 
   it('retries once a status the old rule recorded as mirrored where beta does not stand at it', () => {

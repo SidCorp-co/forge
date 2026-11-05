@@ -6,6 +6,7 @@
  * named and sent nothing; a beta project whose shape cannot be read is named and its close stays
  * owed; and a pair the old landing-only mark held at awaiting_release is tried once more, closing
  * without a second mark where beta already holds one (sid-desk ISS-769 and ISS-770, marked by hand).
+ * A close beta has not taken stays owed and is tried again at every fire (ISS-1005).
  * The outside_git mark is `beta-port-e2e.test.ts`'s close test. forge-beta is a stub HTTP server
  * enforcing beta's mark rule (`landingMarkRefusal`). ISS-986: a beta that serves no project document
  * (0.3.0, `/config` answers 404 ROUTE_ABSENT) is read from its project row by `kind`, so its twin
@@ -210,11 +211,14 @@ describe('a beta port mark in the twin project landing shape (ISS-923 fix forwar
       beta_reached: 'closed',
     });
 
-    // the next fire tries none of them again but the project whose shape it could not read
+    // the next fire tries again only the closes beta has not taken (ISS-1005: a close stays owed
+    // until beta closes it), sending no second mark; the closed ones are left alone
     beta.transitions.length = 0;
     const marks = beta.marks.size;
     const again = await fire(scheduleId);
-    expect(beta.transitions.map((t) => t.issueId)).toEqual([unreadable.id]);
+    expect(new Set(beta.transitions.map((t) => t.issueId))).toEqual(
+      new Set([noCommit.id, releaseOnly.id, unreadable.id]),
+    );
     expect(beta.marks.size).toBe(marks);
     expect(again.output).toContain('PEER_FORGE_LANDING_UNDECLARED');
     beta.closeNeedsMark = false;

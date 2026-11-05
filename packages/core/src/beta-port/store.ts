@@ -2,12 +2,13 @@
 // and the dev side it reads: the twin projects by slug, and the issues a pair or a first line names.
 // Nothing beta answers is stored here but the pair's own bookkeeping.
 
-import { and, asc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { betaPortPairs, issues, projects } from '../db/schema.js';
+import { betaPortPairs, issues, pipelineRuns, projects } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { orgKnowledgeCreatedAt } from '../knowledge/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { issueIdsOf } from '../release-batch/index.js';
 
 export interface DevTwin {
   id: string;
@@ -22,11 +23,26 @@ export interface DevIssue {
   status: string;
 }
 
-/** A dev issue as a mirror reads it: where its work landed, when it did. */
+/** A dev issue's release note, as its row holds it. */
+export interface DevReleaseNote {
+  section: string;
+  userFacing: string;
+  technical?: string | null | undefined;
+}
+
+/** A dev issue as a mirror reads it: where its work landed, when it did, and its release note. */
 export interface MirroredDevIssue extends DevIssue {
   mergedLanding: string | null;
   mergedCommitSha: string | null;
   mergedAt: Date | null;
+  releaseNotes: DevReleaseNote | null;
+}
+
+/** A release the twin shipped: the version it shipped as, its commit where it names one, what it carried. */
+export interface DevRelease {
+  version: string;
+  commit: string | null;
+  issueIds: readonly string[];
 }
 
 export interface Pair {
@@ -44,8 +60,8 @@ export interface Pair {
   lastTriedStatus: string | null;
   /** The beta status beta stood at after that try. */
   betaReached: string | null;
-  /** When a close was last tried with beta's mark in its project's landing shape; null before. */
-  closeShapeTriedAt: Date | null;
+  /** The refusal a close by release met that was commented on beta, so it is commented once; null before. */
+  closeRefused: string | null;
 }
 
 /** The slug of the org knowledge entry holding the owner's ruling: its creation is the cutoff. */
@@ -107,6 +123,7 @@ export async function devIssuesById(
       mergedLanding: issues.mergedLanding,
       mergedCommitSha: issues.mergedCommitSha,
       mergedAt: issues.mergedAt,
+      releaseNotes: issues.releaseNotes,
     })
     .from(issues)
     .where(inArray(issues.id, [...ids]));
@@ -128,7 +145,7 @@ export async function pairsOf(betaIssueIds: readonly string[]): Promise<Map<stri
       lastMirroredStatus: betaPortPairs.lastMirroredStatus,
       lastTriedStatus: betaPortPairs.lastTriedStatus,
       betaReached: betaPortPairs.betaReached,
-      closeShapeTriedAt: betaPortPairs.closeShapeTriedAt,
+      closeRefused: betaPortPairs.closeRefused,
     })
     .from(betaPortPairs)
     .where(inArray(betaPortPairs.betaIssueId, [...betaIssueIds]));
@@ -146,21 +163,20 @@ export async function recordPair(pair: Pair & { betaProjectSlug: string }): Prom
 /**
  * One try of a dev status onto a pair's beta issue: the status tried, the beta status beta stood at
  * after it, and, where beta took the move, that status as mirrored. A try beta did not take leaves
- * the mirrored status as it was, unless it named this same dev status, which beta never took. A
- * close whose mark question was settled in the beta project's landing shape says so (`shapeSettled`),
- * so it is not tried again for it.
+ * the mirrored status as it was, unless it named this same dev status, which beta never took. A close
+ * whose refusal was commented on beta records it (`closeRefused`), so it is commented once.
  */
 export async function recordTry(args: {
   betaIssueId: string;
   tried: string;
   reached: string;
   taken: boolean;
-  shapeSettled?: boolean;
+  closeRefused?: string;
 }): Promise<void> {
   await db
     .update(betaPortPairs)
     .set({
-      ...(args.shapeSettled ? { closeShapeTriedAt: new Date() } : {}),
+      ...(args.closeRefused ? { closeRefused: args.closeRefused } : {}),
       lastTriedStatus: args.tried,
       betaReached: args.reached,
       lastMirroredStatus: args.taken
@@ -169,6 +185,44 @@ export async function recordTry(args: {
       at: new Date(),
     })
     .where(eq(betaPortPairs.betaIssueId, args.betaIssueId));
+}
+
+/** The commit a release's run names: a batch's finish, else a record's own; null where it names none. */
+function releaseCommitOf(meta: Record<string, unknown>): string | null {
+  const finish = meta.finish;
+  const finished =
+    typeof finish === 'object' && finish !== null
+      ? (finish as Record<string, unknown>).commit
+      : undefined;
+  const commit = typeof finished === 'string' ? finished : meta.commit;
+  return typeof commit === 'string' && commit.trim() !== '' ? commit.trim() : null;
+}
+
+/**
+ * The releases a dev twin shipped, newest first: every run of it stamped shipped with a version
+ * (a finished batch or a record), with the issues it carries (`release-batch:issueIdsOf`). Only a
+ * release closes a dev issue, so the newest one carrying a closed twin is the release that closed it.
+ */
+export async function devReleasesOf(twin: DevTwin): Promise<DevRelease[]> {
+  const rows = await db
+    .select({ version: pipelineRuns.releaseVersion, metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.projectId, twin.id),
+        isNotNull(pipelineRuns.releaseVersion),
+        isNotNull(pipelineRuns.releaseReleasedAt),
+      ),
+    )
+    .orderBy(desc(pipelineRuns.releaseReleasedAt), desc(pipelineRuns.id));
+  return rows.map((r) => {
+    const meta = (r.metadata ?? {}) as Record<string, unknown>;
+    return {
+      version: r.version as string,
+      commit: releaseCommitOf(meta),
+      issueIds: issueIdsOf(meta),
+    };
+  });
 }
 
 /** Record that a Feedback pair's triage outcome was commented on beta, so it is commented once. */

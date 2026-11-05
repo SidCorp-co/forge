@@ -3,7 +3,11 @@
 // to, and the one order of progress both vocabularies are read in, which no mirror moves back along.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { PeerLanding, PeerMergeMark } from '../integrations/peer-forge/index.js';
+import type {
+  PeerLanding,
+  PeerMergeMark,
+  PeerReleaseNote,
+} from '../integrations/peer-forge/index.js';
 
 /**
  * How far an issue's work has come, in both vocabularies: forge-dev's ten statuses and the
@@ -296,28 +300,76 @@ export function nearestReason(devKey: string, refused: string): string {
 
 /**
  * Whether a pair owes beta a try of the dev status. A pair tried under this rule is tried once per dev
- * status. One tried under the old rule (no `lastTriedStatus`) recorded the dev status as mirrored
- * whether beta took it or not; where beta does not stand at that status's target, beta refused it,
- * and it is tried once more under this rule. A close tried before the mark took the beta project's
- * landing shape (no `closeShapeTriedAt`) that beta has not taken is tried once more under it
- * (`retry-shape`); so is one whose shape could not be read, until it is.
+ * status, but a close: one beta has not taken is tried again at every fire while beta stands where
+ * the last try left it (`retry-close`, ISS-1005), until beta closes it, since beta closes an issue only
+ * by a release whose record it may refuse for a while; a beta issue a person moved since is left as
+ * they moved it. One tried under the old rule (no `lastTriedStatus`) recorded the dev status as
+ * mirrored whether beta took it or not; where beta does not stand at that status's target, beta
+ * refused it, and it is tried once more under this rule.
  */
 export function owesTry(
   pair: {
     lastMirroredStatus: string | null;
     lastTriedStatus: string | null;
-    closeShapeTriedAt: Date | null;
+    betaReached: string | null;
   },
   devStatus: string,
   betaStatus: string,
-): 'try' | 'retry-old' | 'retry-shape' | null {
+): 'try' | 'retry-old' | 'retry-close' | null {
   if (pair.lastTriedStatus !== null) {
     if (devStatus !== pair.lastTriedStatus) return 'try';
-    const shapeOwed =
-      devStatus === 'closed' && betaStatus !== 'closed' && pair.closeShapeTriedAt === null;
-    return shapeOwed ? 'retry-shape' : null;
+    const closeOwed =
+      devStatus === 'closed' && betaStatus !== 'closed' && betaStatus === pair.betaReached;
+    return closeOwed ? 'retry-close' : null;
   }
   if (devStatus !== pair.lastMirroredStatus) return 'try';
   const target = mirrorTarget(devStatus);
   return target !== null && target !== betaStatus ? 'retry-old' : null;
+}
+
+/** A dev release, as the beta record of it names it: its version and the commit it shipped. */
+export interface ReleaseNamed {
+  version: string;
+  commit: string | null;
+}
+
+/** The account a beta release record of a dev release carries: what shipped, where, and why here. */
+export function releaseRecordAccount(
+  twinSlug: string,
+  devKey: string,
+  release: ReleaseNamed,
+): string {
+  const at = release.commit ? ` at commit ${release.commit}` : '';
+  return `forge-dev released ${twinSlug} ${release.version}${at}, carrying ${devKey}. The work was done and shipped on forge-dev; the beta port records that release here (owner ruling beta-issues-are-worked-on-dev).`;
+}
+
+/** The handle a beta release record carries for a dev release: the version it shipped as. */
+export function releaseRecordRef(twinSlug: string, release: ReleaseNamed): string {
+  return `forge-dev ${twinSlug} ${release.version}`;
+}
+
+/**
+ * The one comment a close beta refused leaves on the beta issue: the dev release that closed its
+ * twin, where one did, and every refusal met, by name.
+ */
+export function closeRefusedComment(
+  devKey: string,
+  release: ReleaseNamed | null,
+  codes: string,
+): string {
+  const how = release ? ` by its release ${release.version}` : '';
+  return `forge-dev ${devKey} was closed${how}; forge-beta refused to close this issue to match: ${codes}. The beta port keeps trying at every fire until it closes.`;
+}
+
+/** The release note a beta issue is given from its dev twin's, in the fields beta's note takes. */
+export function betaReleaseNote(dev: {
+  releaseNotes: {
+    section: string;
+    userFacing: string;
+    technical?: string | null | undefined;
+  } | null;
+}): PeerReleaseNote | null {
+  const note = dev.releaseNotes;
+  if (!note) return null;
+  return { section: note.section, userFacing: note.userFacing, technical: note.technical ?? null };
 }

@@ -347,7 +347,7 @@ async function adopt(
     lastMirroredStatus: null,
     lastTriedStatus: null,
     betaReached: null,
-    closeShapeTriedAt: null,
+    closeRefused: null,
   };
   await recordPair({ ...pair, betaProjectSlug: twin.slug });
   return pair;
@@ -412,7 +412,7 @@ async function portOne(ctx: FireContext, beta: PeerIssue, twin: DevTwin): Promis
     lastMirroredStatus: null,
     lastTriedStatus: null,
     betaReached: beta.status,
-    closeShapeTriedAt: null,
+    closeRefused: null,
     betaProjectSlug: twin.slug,
   });
   const again = filed.created === false ? ' (already filed under its dedup key)' : '';

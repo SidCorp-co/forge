@@ -3844,6 +3844,13 @@
       "when": 1835049600000,
       "tag": "0603_a_binding_holds_its_own_health",
       "breakpoints": true
+    },
+    {
+      "idx": 604,
+      "version": "7",
+      "when": 1835136000000,
+      "tag": "0604_a_beta_pair_records_its_close_by_release",
+      "breakpoints": true
     }
   ]
 }

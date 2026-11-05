@@ -41,11 +41,11 @@ export const betaPortPairs = pgTable(
      */
     bodyBackfilledAt: timestamp('body_backfilled_at', { withTimezone: true }),
     /**
-     * When a close was last tried with beta's merge mark in the beta project's landing shape (commit
-     * and target in git, landing outside it); null on a pair whose close was tried only with the old
-     * landing-only mark, which beta refused in git, so it owes one more try (ISS-923 fix forward).
+     * The refusal a close by release met on beta (ISS-1005: the mirror records the dev release that
+     * closed the twin on beta, which closes the beta issue), commented on the beta issue once; null
+     * where none was. The close stays owed and is tried at every fire until beta stands closed.
      */
-    closeShapeTriedAt: timestamp('close_shape_tried_at', { withTimezone: true }),
+    closeRefused: text('close_refused'),
     /** The fire that made that backfill. */
     bodyBackfillFireId: uuid('body_backfill_fire_id').references(() => scheduleRuns.id, {
       onDelete: 'set null',

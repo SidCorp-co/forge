@@ -91,7 +91,7 @@ function messageOf(body: unknown): string | null {
 
 async function call(
   peer: PeerForge,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PATCH',
   route: string,
   body?: Record<string, unknown>,
 ): Promise<PeerAnswer<unknown>> {
@@ -392,15 +392,115 @@ export async function postPeerComment(
   return got.ok ? { ok: true, value: null } : got;
 }
 
+/**
+ * A peer issue moved, and the status the peer stored: a peer may store another than the one asked
+ * (a release gate holds an agent's close at `awaiting_release` and answers 200), so the answer's
+ * `status` is read, never assumed; null where the peer's answer names none.
+ */
 export async function transitionPeerIssue(
   peer: PeerForge,
   issueId: string,
   toStatus: string,
   reason: string,
-): Promise<PeerAnswer<null>> {
+): Promise<PeerAnswer<{ stored: string | null }>> {
   const got = await call(peer, 'POST', `/issues/${encodeURIComponent(issueId)}/transition`, {
     toStatus,
     reason,
   });
+  if (!got.ok) return got;
+  return { ok: true, value: { stored: isRecord(got.value) ? str(got.value.status) : null } };
+}
+
+/**
+ * Whether one peer issue holds a release note, read from the issue itself (a list row never carries
+ * it); null where the peer's issue carries no `releaseNotes` field.
+ */
+export async function readPeerReleaseNoted(
+  peer: PeerForge,
+  issueId: string,
+): Promise<PeerAnswer<boolean | null>> {
+  const route = `/issues/${encodeURIComponent(issueId)}`;
+  const got = await call(peer, 'GET', route);
+  if (!got.ok) return got;
+  if (!isRecord(got.value)) return shape(`/api${route}`, 'issue');
+  if (!('releaseNotes' in got.value)) return { ok: true, value: null };
+  return { ok: true, value: got.value.releaseNotes !== null };
+}
+
+/** A release note as a peer issue holds one: its section, the line a user reads, and the technical one. */
+export interface PeerReleaseNote {
+  section: string;
+  userFacing: string;
+  technical: string | null;
+}
+
+/** Write a peer issue's release note, which the peer's release record requires of every issue it closes. */
+export async function writePeerReleaseNote(
+  peer: PeerForge,
+  issueId: string,
+  note: PeerReleaseNote,
+): Promise<PeerAnswer<null>> {
+  const got = await call(peer, 'PATCH', `/issues/${encodeURIComponent(issueId)}`, {
+    releaseNotes: {
+      section: note.section,
+      userFacing: note.userFacing,
+      ...(note.technical ? { technical: note.technical } : {}),
+    },
+  });
   return got.ok ? { ok: true, value: null } : got;
+}
+
+/** A release already performed, as a peer project's release-record door takes it. */
+export interface PeerReleaseRecord {
+  issueIds: string[];
+  /** The commit production serves, as the release that shipped it names it. */
+  commit: string;
+  /** How it was released: at least twenty characters, as the door requires. */
+  account: string;
+  /** The handle on the act: here the version the release shipped as. */
+  providerRef: string;
+}
+
+/** What a peer's release record closed, and what it could not, by issue id. */
+export interface PeerRecorded {
+  runId: string | null;
+  closed: string[];
+  failed: { id: string; reason: string }[];
+}
+
+/**
+ * Record on a peer project a release already performed (`POST /api/projects/:id/release-records`,
+ * the door forge-beta serves for one): the peer closes each issue it carries from its release gate.
+ * An answer naming no `closed` list is refused by name: whether anything closed is never guessed.
+ */
+export async function recordPeerRelease(
+  peer: PeerForge,
+  projectId: string,
+  record: PeerReleaseRecord,
+): Promise<PeerAnswer<PeerRecorded>> {
+  const route = `/projects/${encodeURIComponent(projectId)}/release-records`;
+  const got = await call(peer, 'POST', route, { ...record });
+  if (!got.ok) return got;
+  const body = isRecord(got.value) ? got.value : null;
+  if (!body || !Array.isArray(body.closed)) {
+    return refuse(
+      'PEER_FORGE_SHAPE',
+      200,
+      `POST /api${route} answered no \`closed\` list this client can read`,
+    );
+  }
+  const failed: { id: string; reason: string }[] = [];
+  for (const row of Array.isArray(body.failed) ? body.failed : []) {
+    const id = isRecord(row) ? str(row.id) : null;
+    if (id)
+      failed.push({ id, reason: (isRecord(row) ? str(row.reason) : null) ?? 'no reason given' });
+  }
+  return {
+    ok: true,
+    value: {
+      runId: str(body.runId),
+      closed: body.closed.filter((id): id is string => typeof id === 'string'),
+      failed,
+    },
+  };
 }
