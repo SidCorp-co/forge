@@ -39,7 +39,16 @@ export function markTrailWorld() {
       await recordMarkTrail(
         tx,
         op === 'mark'
-          ? { ...base, op, target: 'dev', commit, stamped: !rest.includes(NOT_STAMPED) }
+          ? {
+              ...base,
+              op,
+              target: 'dev',
+              commit,
+              stamped: !rest.includes(NOT_STAMPED),
+              said: { target: 'dev', ...(commit ? { commit } : {}) },
+              run: null,
+              commitReading: null,
+            }
           : { ...base, op },
       );
     });

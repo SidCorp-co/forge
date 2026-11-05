@@ -143,14 +143,24 @@ const projectOf = (issueId: string) => {
 };
 
 /**
+ * Beta's own refusal of a landing on its shape, as beta's older core wrote it: a `landing` on git is
+ * `LANDING_NOT_THIS_SHAPE`, and outside git a mark naming none is `LANDING_REQUIRED`. Dev's mark
+ * writer refuses neither since ISS-1017, and beta answers by its own release until it takes that one,
+ * so the twin keeps beta's rule here rather than reading dev's.
+ */
+function betaLandingRefusal(shape: 'git' | 'outside_git', landing: string | null): string | null {
+  if (shape === 'git' && landing) return 'LANDING_NOT_THIS_SHAPE';
+  if (shape === 'outside_git' && !landing) return 'LANDING_REQUIRED';
+  return null;
+}
+
+/**
  * Beta's mark writer, as far as a port's mark meets it: the project's landing shape read from its
- * document, `landingMarkRefusal` over it, and a git mark naming no target refused as beta's
+ * document, beta's landing refusal over it, and a git mark naming no target refused as beta's
  * `markTargetRequired` does. A mark taken is stamped on the row; the first stamp wins.
  */
 async function markRefusal(issueId: string, body: Record<string, unknown>): Promise<string | null> {
-  const { landingMarkRefusal, landingShapeOf } = await import(
-    '../../src/issues/landing-evidence.js'
-  );
+  const { landingShapeOf } = await import('../../src/issues/landing-evidence.js');
   const projectId = projectOf(issueId) ?? '';
   const row = beta.legacy.get(projectId);
   const document = beta.configs.get(projectId);
@@ -161,8 +171,8 @@ async function markRefusal(issueId: string, body: Record<string, unknown>): Prom
   const shape = landingShapeOf(type ?? null);
   if (shape === null) return 'SOURCE_UNDECLARED';
   const landing = typeof body.landing === 'string' ? body.landing : null;
-  const refusal = landingMarkRefusal({ shape, landing, observed: false });
-  if (refusal) return refusal.code;
+  const refusal = betaLandingRefusal(shape, landing);
+  if (refusal) return refusal;
   if (shape === 'git' && !landing && typeof body.target !== 'string') return 'VALIDATION_FAILED';
   return null;
 }
