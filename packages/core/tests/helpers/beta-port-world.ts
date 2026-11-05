@@ -57,6 +57,13 @@ export const beta = {
   configs: new Map<string, Record<string, unknown>>(),
   /** How many times each project's document was read. */
   configReads: new Map<string, number>(),
+  /**
+   * Projects as forge-beta 0.3.0 serves them (ISS-986): no `/config` route (404 ROUTE_ABSENT), the
+   * project row at `GET /api/projects/:id`, and a mark judged by its `kind`.
+   */
+  legacy: new Map<string, { kind: string; baseBranch: string | null; releaseChain: unknown[] }>(),
+  /** How many times each legacy project's row was read. */
+  projectReads: new Map<string, number>(),
   /** Every mark beta took, by issue, as the body that was sent. */
   marks: new Map<string, Record<string, unknown>>(),
   /** Every mark beta refused, with its code. */
@@ -100,9 +107,14 @@ async function markRefusal(issueId: string, body: Record<string, unknown>): Prom
   const { landingMarkRefusal, landingShapeOf } = await import(
     '../../src/issues/landing-evidence.js'
   );
-  const document = beta.configs.get(projectOf(issueId) ?? '');
+  const projectId = projectOf(issueId) ?? '';
+  const row = beta.legacy.get(projectId);
+  const document = beta.configs.get(projectId);
   const source = document?.source as { type?: string } | undefined;
-  const shape = landingShapeOf(source?.type ?? null);
+  const type = row
+    ? ({ standard: 'git', website: 'storefront' } as Record<string, string>)[row.kind]
+    : source?.type;
+  const shape = landingShapeOf(type ?? null);
   if (shape === null) return 'SOURCE_UNDECLARED';
   const landing = typeof body.landing === 'string' ? body.landing : null;
   const refusal = landingMarkRefusal({ shape, landing, observed: false });
@@ -137,6 +149,16 @@ export function startBeta(): Promise<string> {
     if (req.method === 'GET' && url.pathname === '/api/projects') {
       if (beta.delayMs > 0) await new Promise((r) => setTimeout(r, beta.delayMs));
       return send(200, beta.projects);
+    }
+    if (req.method === 'GET' && parts[1] === 'projects' && beta.legacy.has(parts[2] as string)) {
+      const id = parts[2] as string;
+      if (parts.length === 3) {
+        beta.projectReads.set(id, (beta.projectReads.get(id) ?? 0) + 1);
+        return send(200, { id, ...beta.legacy.get(id) });
+      }
+      if (parts[3] === 'config') {
+        return send(404, { code: 'ROUTE_ABSENT', message: `GET ${url.pathname}` });
+      }
     }
     if (req.method === 'GET' && parts[1] === 'projects' && parts[3] === 'config') {
       const document = beta.configs.get(parts[2] as string);

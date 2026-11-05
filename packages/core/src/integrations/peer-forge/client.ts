@@ -5,7 +5,7 @@
 // token is added here and scrubbed out of every detail that leaves.
 
 import { scrubLogText } from '@forge/observability';
-import { type PeerLanding, peerLandingOf } from './landing.js';
+import { type PeerLanding, peerLandingOf, peerLandingOfProject } from './landing.js';
 
 /** Where the peer is, and the token it is read and written with. */
 export interface PeerForge {
@@ -337,14 +337,28 @@ export type PeerMergeMark =
   | { commit: string; target: string; mergedAt: string | null; note: string }
   | { landing: string; note: string };
 
-/** How a peer project's work lands, read from its project document; refused by name where unread. */
+/**
+ * How a peer project's work lands, read from its project document; refused by name where unread. A
+ * peer that answers 404 there serves no project document (forge-beta 0.3.0, ISS-986), so its landing
+ * is read from its project row, by the rule that peer judges a mark with (`peerLandingOfProject`).
+ */
 export async function readPeerLanding(
   peer: PeerForge,
   projectId: string,
 ): Promise<PeerAnswer<PeerLanding>> {
-  const route = `/projects/${encodeURIComponent(projectId)}/config`;
+  const project = `/projects/${encodeURIComponent(projectId)}`;
+  const route = `${project}/config`;
   const got = await call(peer, 'GET', route);
-  if (!got.ok) return got;
+  if (!got.ok && got.refusal.status !== 404) return got;
+  if (!got.ok) {
+    const row = await call(peer, 'GET', project);
+    if (!row.ok) return row;
+    const read = peerLandingOfProject(row.value);
+    if (!read.ok) {
+      return refuse(read.code, 200, `GET /api${project} (it serves no /config): ${read.detail}`);
+    }
+    return { ok: true, value: read.landing };
+  }
   const read = peerLandingOf(got.value);
   if (!read.ok) return refuse(read.code, 200, `GET /api${route}: ${read.detail}`);
   return { ok: true, value: read.landing };

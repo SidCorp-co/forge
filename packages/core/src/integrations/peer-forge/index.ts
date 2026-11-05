@@ -15,4 +15,4 @@ export {
   readPeerLanding,
   transitionPeerIssue,
 } from './client.js';
-export { type PeerLanding, peerLandingOf } from './landing.js';
+export { type PeerLanding, peerLandingOf, peerLandingOfProject } from './landing.js';

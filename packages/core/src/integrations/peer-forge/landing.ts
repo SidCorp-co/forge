@@ -1,7 +1,9 @@
 // How a peer Forge project's work lands, read from its project document (ISS-923 fix forward): the
 // same `source.type` its mark writer judges a mark by (`landing-evidence.ts:landingMarkRefusal`), and
 // for git the branch a landing lands on. The peer may run an older release, so the document is read
-// for these few fields alone and a document that does not answer them is refused by name.
+// for these few fields alone and a document that does not answer them is refused by name. A peer old
+// enough to serve no project document (forge-beta 0.3.0, ISS-986) judges a mark by its project's
+// `kind` instead, so its landing is read from its project row by that same rule (`peerLandingOfProject`).
 
 /** Where a peer project's work lands, as its merge mark has to name it. */
 export type PeerLanding =
@@ -101,4 +103,39 @@ export function peerLandingOf(answer: unknown): PeerLandingRead {
     return { ok: true, landing: { shape: 'git', target: deploysFrom, from: 'deploysFrom' } };
   }
   return { ok: true, landing: { shape: 'git', target: defaultBranch, from: 'defaultBranch' } };
+}
+
+/**
+ * A peer project's landing, from its `GET /api/projects/:id` answer, for a peer that serves no project
+ * document (ISS-986). Such a Forge judges a mark by `kind` (`standard` lands in git, `website` outside
+ * it), and its branch by `releaseChain`, first where work merges and last live: a git mark names the
+ * live branch where the chain promotes, else `baseBranch`, else the chain's first branch. Any other
+ * kind, or a git project naming no branch, is refused by name.
+ */
+export function peerLandingOfProject(answer: unknown): PeerLandingRead {
+  const project = isRecord(answer) ? answer : null;
+  const kind = project ? project.kind : undefined;
+  if (kind === 'website') return { ok: true, landing: { shape: 'outside_git' } };
+  if (kind !== 'standard') {
+    return {
+      ok: false,
+      code: 'PEER_FORGE_LANDING_UNREADABLE',
+      detail: `the beta project's kind is ${typeof kind === 'string' ? `\`${kind}\`` : 'unreadable'}, not standard or website, so whether its work lands in git is unknown and no mark was sent`,
+    };
+  }
+  const chain = Array.isArray(project?.releaseChain)
+    ? project.releaseChain.filter(isRecord).map((e) => branch(e.branch))
+    : [];
+  const live = chain.length >= 2 ? (chain[chain.length - 1] ?? null) : null;
+  if (live) return { ok: true, landing: { shape: 'git', target: live, from: 'deploysFrom' } };
+  const merges = branch(project?.baseBranch) ?? chain[0] ?? null;
+  if (!merges) {
+    return {
+      ok: false,
+      code: 'PEER_FORGE_LANDING_UNREADABLE',
+      detail:
+        'the beta project lands in git and names no baseBranch or releaseChain, so the branch a mark names is unknown and no mark was sent',
+    };
+  }
+  return { ok: true, landing: { shape: 'git', target: merges, from: 'defaultBranch' } };
 }

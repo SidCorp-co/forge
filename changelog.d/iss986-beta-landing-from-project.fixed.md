@@ -1,0 +1,1 @@
+**Beta twin closes carry a mark beta takes.** Where forge-beta serves no project document, the beta port reads a project's landing from its project row by kind and branch, so closes are no longer refused on every fire.

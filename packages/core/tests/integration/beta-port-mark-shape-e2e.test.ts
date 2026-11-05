@@ -7,7 +7,9 @@
  * owed; and a pair the old landing-only mark held at awaiting_release is tried once more, closing
  * without a second mark where beta already holds one (sid-desk ISS-769 and ISS-770, marked by hand).
  * The outside_git mark is `beta-port-e2e.test.ts`'s close test. forge-beta is a stub HTTP server
- * enforcing beta's mark rule (`landingMarkRefusal`). Against real Postgres.
+ * enforcing beta's mark rule (`landingMarkRefusal`). ISS-986: a beta that serves no project document
+ * (0.3.0, `/config` answers 404 ROUTE_ABSENT) is read from its project row by `kind`, so its twin
+ * closes carry a mark it takes. Against real Postgres.
  *
  * @direct-test-of packages/core/src/beta-port/mirror.ts
  * @direct-test-of packages/core/src/beta-port/markers.ts
@@ -70,48 +72,48 @@ afterAll(async () => {
 
 const fire = (id: string) => fireOnce(say, id);
 
+const X = 'b7c393812cd5a0f1e2d3c4b5a6978877665544aa';
+const Y = '0123456789abcdef0123456789abcdef01234567';
+const MERGED_AT = '2026-11-03T07:45:47.000Z';
+
+/** A dev twin with a beta project of its slug holding `document`, or undeclared where none. */
+async function twinWith(document: Record<string, unknown> | null) {
+  const dev = await createTestProject(ownerId);
+  const betaId = randomUUID();
+  beta.projects.push({ id: betaId, slug: dev.slug });
+  if (document) beta.configs.set(betaId, document);
+  return { dev, betaId };
+}
+
+const pairOf = async (betaId: string) =>
+  (
+    await rows<{
+      dev_issue_id: string;
+      last_tried_status: string | null;
+      beta_reached: string | null;
+    }>(
+      sql`SELECT dev_issue_id, last_tried_status, beta_reached FROM beta_port_pairs WHERE beta_issue_id = ${betaId}`,
+    )
+  )[0];
+
+/** The dev issue of a beta issue's pair, closed with the mark given; its key. */
+async function closeDev(betaIssueId: string, commit: string | null): Promise<string> {
+  const pair = await pairOf(betaIssueId);
+  const devId = pair?.dev_issue_id as string;
+  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+  const { db } = await import('../../src/db/client.js');
+  await withKernelMarker(db, (tx) =>
+    tx.execute(
+      sql`UPDATE issues SET status = 'closed', merged_at = ${MERGED_AT}::timestamptz, merged_commit_sha = ${commit}, merged_target = 'dev' WHERE id = ${devId}`,
+    ),
+  );
+  const [dev] = await rows<{ iss_seq: number }>(
+    sql`SELECT iss_seq FROM issues WHERE id = ${devId}`,
+  );
+  return `ISS-${dev?.iss_seq}`;
+}
+
 describe('a beta port mark in the twin project landing shape (ISS-923 fix forward)', () => {
-  const X = 'b7c393812cd5a0f1e2d3c4b5a6978877665544aa';
-  const Y = '0123456789abcdef0123456789abcdef01234567';
-  const MERGED_AT = '2026-11-03T07:45:47.000Z';
-
-  /** A dev twin with a beta project of its slug holding `document`, or undeclared where none. */
-  async function twinWith(document: Record<string, unknown> | null) {
-    const dev = await createTestProject(ownerId);
-    const betaId = randomUUID();
-    beta.projects.push({ id: betaId, slug: dev.slug });
-    if (document) beta.configs.set(betaId, document);
-    return { dev, betaId };
-  }
-
-  const pairOf = async (betaId: string) =>
-    (
-      await rows<{
-        dev_issue_id: string;
-        last_tried_status: string | null;
-        beta_reached: string | null;
-      }>(
-        sql`SELECT dev_issue_id, last_tried_status, beta_reached FROM beta_port_pairs WHERE beta_issue_id = ${betaId}`,
-      )
-    )[0];
-
-  /** The dev issue of a beta issue's pair, closed with the mark given; its key. */
-  async function closeDev(betaIssueId: string, commit: string | null): Promise<string> {
-    const pair = await pairOf(betaIssueId);
-    const devId = pair?.dev_issue_id as string;
-    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
-    const { db } = await import('../../src/db/client.js');
-    await withKernelMarker(db, (tx) =>
-      tx.execute(
-        sql`UPDATE issues SET status = 'closed', merged_at = ${MERGED_AT}::timestamptz, merged_commit_sha = ${commit}, merged_target = 'dev' WHERE id = ${devId}`,
-      ),
-    );
-    const [dev] = await rows<{ iss_seq: number }>(
-      sql`SELECT iss_seq FROM issues WHERE id = ${devId}`,
-    );
-    return `ISS-${dev?.iss_seq}`;
-  }
-
   it('(a)(c)(d)(e) a git twin is marked with the commit and its landing branch, never a landing; a dev issue with no commit is named and nothing is sent; a held pair already marked on beta closes without a second mark', async () => {
     const git = await twinWith(gitDocument('main'));
     const promoted = await twinWith(promotedDocument('dev', 'master'));
@@ -215,6 +217,64 @@ describe('a beta port mark in the twin project landing shape (ISS-923 fix forwar
     expect(beta.transitions.map((t) => t.issueId)).toEqual([unreadable.id]);
     expect(beta.marks.size).toBe(marks);
     expect(again.output).toContain('PEER_FORGE_LANDING_UNDECLARED');
+    beta.closeNeedsMark = false;
+  });
+});
+
+describe('a beta port mark against a beta serving no project document (ISS-986)', () => {
+  it('(ISS-986) a beta serving no /config is read from its project row: standard marks its base branch, or the live branch where the chain promotes; an unknown kind is named and nothing is sent', async () => {
+    const legacyTwin = async (row: {
+      kind: string;
+      baseBranch: string | null;
+      releaseChain: unknown[];
+    }) => {
+      const t = await twinWith(null);
+      beta.legacy.set(t.betaId, row);
+      return t;
+    };
+    const plain = await legacyTwin({ kind: 'standard', baseBranch: 'staging', releaseChain: [] });
+    const chained = await legacyTwin({
+      kind: 'standard',
+      baseBranch: 'dev',
+      releaseChain: [{ branch: 'dev' }, { branch: 'master', from: { kind: 'merge' } }],
+    });
+    const odd = await legacyTwin({ kind: 'mystery', baseBranch: 'dev', releaseChain: [] });
+    const a = betaIssue(40);
+    const b = betaIssue(41);
+    const c = betaIssue(42);
+    beta.issues.set(plain.betaId, [a]);
+    beta.issues.set(chained.betaId, [b]);
+    beta.issues.set(odd.betaId, [c]);
+    await seedTwin(say, plain.dev, a);
+    await seedTwin(say, chained.dev, b);
+    await seedTwin(say, odd.dev, c);
+    const keyA = await closeDev(a.id, X);
+    await closeDev(b.id, Y);
+    await closeDev(c.id, Y);
+    beta.closeNeedsMark = true;
+    beta.refusedMarks.length = 0;
+
+    const settled = await fire(scheduleId);
+
+    expect(settled.output).not.toContain('ROUTE_ABSENT');
+    expect(beta.refusedMarks).toEqual([]);
+    expect(beta.marks.get(a.id)).toMatchObject({ commit: X, target: 'staging' });
+    expect(beta.marks.get(a.id)).not.toHaveProperty('landing');
+    expect(a.status).toBe('closed');
+    expect(settled.output).toContain(
+      `${plain.dev.slug}: ${keyA}: open → closed (beta ISS-40), its landing recorded as commit ${X.slice(0, 12)} on staging`,
+    );
+    expect(beta.marks.get(b.id)).toMatchObject({ commit: Y, target: 'master' });
+    expect(b.status).toBe('closed');
+    // an unknown kind is refused by name; nothing is guessed or sent
+    expect(beta.marks.has(c.id)).toBe(false);
+    expect(settled.output).toContain(
+      `${odd.dev.slug}: beta landing shape: PEER_FORGE_LANDING_UNREADABLE`,
+    );
+    expect(settled.output).toContain('kind is `mystery`');
+    // the row is read once per project per fire
+    expect(beta.projectReads.get(plain.betaId)).toBe(1);
+    expect(beta.projectReads.get(chained.betaId)).toBe(1);
     beta.closeNeedsMark = false;
   });
 });
