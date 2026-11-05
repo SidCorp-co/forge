@@ -184,6 +184,20 @@ describe('criteria-coverage', () => {
   it('holds no rows for a requirement with no criteria', () => {
     expect(criteriaCoverageFrame([req('REQ-1', [])]).rows).toEqual([]);
   });
+
+  // ISS-1018: sidcorp-mail REQ-7 read "not judged" here after three accepted writes, with nothing saying why
+  it('carries why a criterion reads as it does, null where a verdict counts', () => {
+    const why =
+      "no verdict counts yet: ISS-8 criterion 1: judged at commit a2fb0710b1c2, which the live build (f3afc54c0d1e) does not hold; nor does it count at its issue's landing";
+    const frame = criteriaCoverageFrame([
+      req('REQ-7', [{ ...cov('BC-1', 'not_judged', ['ISS-8']), why }, cov('BC-2', 'passing', [])]),
+    ]);
+    expect(ReportFrameSchema.safeParse(frame).success).toBe(true);
+    expect(frame.rows.map((r) => [r.criterion, r.why])).toEqual([
+      ['BC-1', why],
+      ['BC-2', null],
+    ]);
+  });
 });
 
 const counts = (over: Partial<Record<HealthMarkerKind, number>> = {}) => ({

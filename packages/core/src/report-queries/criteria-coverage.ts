@@ -29,6 +29,7 @@ const descriptor = defineReportQuery({
     { name: 'verdict', type: 'status', label: 'Verdict', vocabulary: 'bcVerdict' },
     { name: 'issues', type: 'string', label: 'Traced by' },
     { name: 'issueCount', type: 'number', unit: 'issues', label: 'Issues' },
+    { name: 'why', type: 'string', label: 'Why' },
   ],
   permission: 'project.read',
   egress: 'product',
@@ -37,7 +38,8 @@ const descriptor = defineReportQuery({
 
 const numberOf = (key: string) => Number(key.replace(/\D/g, ''));
 
-/** One row per criterion, in requirement then criterion order; `verdict` is the read's own word. */
+/** One row per criterion, in requirement then criterion order; `verdict` is the read's own word, and
+ *  `why` the read's own sentence for it (`RequirementCoverage.why`). */
 export function criteriaCoverageFrame(
   list: readonly Pick<RequirementSummary, 'key' | 'title' | 'standing'>[],
   only?: string,
@@ -54,6 +56,8 @@ export function criteriaCoverageFrame(
         verdict: c.verdict,
         issues: c.issues.map((i) => i.displayId).join(', '),
         issueCount: c.issues.length,
+        // why it reads as it does where no verdict counts, so "not judged" is never a silence (ISS-1018)
+        why: c.why ?? null,
       });
     }
   }
