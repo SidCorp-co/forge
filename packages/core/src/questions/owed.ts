@@ -4,9 +4,10 @@
 // product direction; or where the project's own rule names that person's act (ISS-869): a project
 // that wrote a rule asking for its owner keeps it, whatever its gate profile. Every other decision is
 // the project's master's or agent's. The ask doors, the questions core asks, the answer door and the
-// void door all read it here.
+// void door all read it here; what makes an act serious is the one table's (`@forge/contracts/who-owes`).
 
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
+import { SERIOUS } from '@forge/contracts/who-owes';
 import type { QuestionBlockerKind } from '../db/schema-questions.js';
 import { readProjectRule } from '../knowledge/index.js';
 import { refuser } from '../lib/refusal.js';
@@ -50,8 +51,8 @@ export async function decisionOwedBy(
   return (await agentDecidesWhy(projectId, { serious })) === null ? 'human' : 'master_or_peer';
 }
 
-/** What makes a decision serious, as a refusal names it. */
-export const SERIOUS = 'irreversible, real money, credentials or product direction';
+/** What makes a decision serious, as a refusal names it: the one rule's classes (`@forge/contracts/who-owes`). */
+export { SERIOUS };
 
 const refuse = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
 

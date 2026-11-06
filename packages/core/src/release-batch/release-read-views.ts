@@ -23,6 +23,7 @@ import {
 } from '@forge/contracts/releases';
 import { say } from '@forge/contracts/said';
 import { nobodyWaits } from '@forge/contracts/standing';
+import type { OwedPolicy } from '@forge/contracts/who-owes';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { reworkedSince } from '../issues/index.js';
 import type { ApprovalView } from './approvals.js';
@@ -37,6 +38,7 @@ import { judgedOnReleaseAt } from './judged-on-release.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { IssueFact, ReleaseFacts } from './release-facts.js';
 import { noteSections } from './release-notes-view.js';
+import { irreversibleOf, releaseOwesOf } from './release-owes.js';
 import {
   completionOf,
   proofOf,
@@ -94,8 +96,8 @@ export interface Shared {
   approvers: ReleasePerson[];
   /** Who holds project.admin, by name. */
   admins: string[];
-  /** Whether the project's master cuts its drafts (`provider-live.ts:masterCutsReleases`, ISS-1043). */
-  masterCuts: boolean;
+  /** The project's policy, which who owes each release's acts is read with (`release-owes.ts`, ISS-1058). */
+  policy: OwedPolicy;
   facts: ReleaseFacts;
   /** The project's content language tag, which its release notes are written in. */
   contentLanguage: string;
@@ -129,6 +131,10 @@ function approvalFacts(p: Part) {
     : null;
 }
 
+/** What the release's issues do that cannot be undone, as their notes say it. */
+const irreversibleIn = (p: Part, s: Shared): string[] =>
+  irreversibleOf(p.issueIds.map((id) => s.facts.issues.get(id)?.releaseNotes));
+
 function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }) {
   return turnOf({
     state: p.state,
@@ -141,7 +147,7 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
     approval: approvalFacts(p),
     approvers: s.approvers,
     admins: s.admins,
-    masterCuts: s.masterCuts,
+    owes: releaseOwesOf(s.policy, irreversibleIn(p, s)),
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),
@@ -318,6 +324,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     name: p.naming?.name ?? null,
     summary: p.naming?.summary ?? null,
     issueCount: p.issueIds.length,
+    irreversible: irreversibleIn(p, s),
     requirements: reqs,
     criteria,
     verified: {

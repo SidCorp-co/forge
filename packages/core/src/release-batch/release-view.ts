@@ -23,6 +23,7 @@ import {
 } from '@forge/contracts/standing';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { agrees } from '../lib/plural.js';
+import type { ReleaseOwes } from './release-owes.js';
 
 export interface ViewerFacts {
   userId: string;
@@ -53,10 +54,10 @@ interface TurnFacts {
   /** Who holds project.admin, by name: whom a cut names where the master does not take it. */
   admins: readonly string[];
   /**
-   * Whether the project's master cuts its drafts: outside strict its accounts take the cut whatever
-   * their role (REQ-79 r6 BC-11, `development/needs-you-agent-takes.ts:masterTakesCut`).
+   * Who owes this release's acts, by the one rule read with the project's policy and what the release
+   * carries (`release-owes.ts`, ISS-1058): a routine cut is the master's whether or not one stands now.
    */
-  masterCuts: boolean;
+  owes: ReleaseOwes;
   viewer: ViewerFacts | null;
   /** The blockers, in the order the door refuses in, each with whoever owes its act. */
   gates: readonly { code: string; owner: ReleaseGateOwner }[];
@@ -160,14 +161,15 @@ function queuedTurn(f: TurnFacts): Turn | null {
 }
 
 /**
- * A draft no gate holds waits on its cut: the project's master's where it takes the cut (outside
- * strict, REQ-79 r6 BC-11), as Needs you, the steward and a room's release read all read it from
- * this one answer (ISS-1043); otherwise its admins', a person's decision.
+ * A draft no gate holds waits on its cut: the project's master's where the one rule gives it the cut
+ * (ISS-1058: routine unless the project is strict or the release carries what cannot be undone), as
+ * Needs you, the steward and a room's release read all read it from this one answer (ISS-1043);
+ * otherwise its admins', a person's decision.
  */
 function draftTurn(f: TurnFacts): Turn {
   if (f.gates.length > 0) return gatedTurn(f);
   const act = say('standing.act.cut', { v: f.version, more: null });
-  if (f.masterCuts) {
+  if (f.owes('release.cut').by === 'master') {
     return turn('waiting', 'agent', { who: MASTER, act, rule: say('releases.rule.masterCuts') });
   }
   const rule = say('releases.rule.adminCuts');

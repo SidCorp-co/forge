@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DECISION_ACT_NAMES, DECISION_ACT_OF_SAID } from "./needs-you-decisions.js";
 import { PERSON_GATES } from "./person-gates.js";
-import { OWED_ACTS, type OwedPolicy, owedActOfSaid, RELEASE_GATE_ACTS, whoOwes } from "./who-owes.js";
+import { OWED_ACTS, type OwedPolicy, owedActOfSaid, OTHER_OWED_ACTS, whoOwes } from "./who-owes.js";
 
 const OPEN: OwedPolicy = {
 	strict: false,
@@ -11,7 +11,7 @@ const OPEN: OwedPolicy = {
 
 describe("who owes an act (ISS-1058): one table, serious or routine", () => {
 	it("names every act kind a button or a release gate asks for, each with why", () => {
-		for (const kind of [...DECISION_ACT_NAMES, ...RELEASE_GATE_ACTS]) {
+		for (const kind of [...DECISION_ACT_NAMES, ...OTHER_OWED_ACTS]) {
 			const rule = OWED_ACTS[kind];
 			expect(rule, kind).toBeDefined();
 			expect(rule.why.length, kind).toBeGreaterThan(20);

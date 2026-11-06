@@ -5,8 +5,16 @@
 import { describe, expect, it } from 'vitest';
 import { blocker } from './blocker-kit.js';
 import { gateViews } from './release-gates.js';
+import { releaseOwesOf } from './release-owes.js';
 import { turnOf } from './release-view.js';
 
+const POLICY = (strict: boolean) => ({
+  strict,
+  gates: { agree: false, revisions: false, breakdown: false, admit: false, accept: false, designs: false, triage: true },
+  releaseApproval: false,
+});
+
+// `masterCuts` true reads a project that turned no person's gate on, false a strict one (ISS-1058)
 const draftTurn = (blockers: ReturnType<typeof blocker>[], masterCuts = false) =>
   turnOf({
     state: 'draft',
@@ -19,9 +27,9 @@ const draftTurn = (blockers: ReturnType<typeof blocker>[], masterCuts = false) =
     approval: null,
     approvers: [],
     admins: ['Ada'],
-    masterCuts,
+    owes: releaseOwesOf(POLICY(!masterCuts), []),
     viewer: { userId: 'u', agency: 'human', isAdmin: true, mayApprove: true },
-    gates: gateViews(blockers, [], ['Ada']),
+    gates: gateViews(blockers, [], ['Ada'], releaseOwesOf(POLICY(!masterCuts), [])),
     inFlight: null,
     testing: null,
   });

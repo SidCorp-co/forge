@@ -26,6 +26,12 @@ export const SERIOUS_BECAUSE = [
 ] as const;
 export type SeriousBecause = (typeof SERIOUS_BECAUSE)[number];
 
+/**
+ * The serious classes as one phrase, what a refusal names: the ask door's (`questions/owed.ts`) and
+ * every other reader's, so the classes a question is judged by are the ones an act is.
+ */
+export const SERIOUS = "irreversible, real money, credentials or product direction";
+
 /** A switch of the project's own policy that keeps a routine act a person's while it is on. */
 export type OwedPolicySwitch =
 	/** the project asked for control: `gates.profile` is `strict` */
@@ -46,18 +52,20 @@ export type OwedActRule =
 			byContent?: true;
 	  };
 
-/** The release acts no decision button carries, owed at the release gate or after a landing. */
-export const RELEASE_GATE_ACTS = [
+/** The acts no decision button carries as its own act: a breakdown's accept, and the release acts owed at the gate or after a landing. */
+export const OTHER_OWED_ACTS = [
+	/** a suggestion accepted as a requirement's breakdown, which follows the breakdown gate (`suggestions/accept-gate.ts`) */
+	"breakdown.accept",
 	"release.record",
 	"release.split",
 	"release.settleClaim",
 	"release.cutAndApprove",
 	"release.setup",
 ] as const;
-export type ReleaseGateAct = (typeof RELEASE_GATE_ACTS)[number];
+export type OtherOwedAct = (typeof OTHER_OWED_ACTS)[number];
 
 /** Every act an owner is named for: each decision a button takes, and each release act none does. */
-export type OwedActKind = DecisionAct | ReleaseGateAct;
+export type OwedActKind = DecisionAct | OtherOwedAct;
 
 const STRICT: OwedPolicySwitch = { kind: "strict" };
 const RELEASE_APPROVAL: OwedPolicySwitch = { kind: "release_approval" };
@@ -92,6 +100,11 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		why: "accepting a suggestion the agents wrote is the master's; a breakdown follows its own gate",
 		personWhen: [STRICT],
 	},
+	"breakdown.accept": {
+		serious: false,
+		why: "accepting the agents' breakdown of an agreed requirement is planning, which the master does unless the breakdown gate asks a person",
+		personWhen: [gate("breakdown")],
+	},
 	"suggestion.reject": {
 		serious: false,
 		why: "declining a suggestion the agents wrote is the master's",
@@ -121,6 +134,11 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 	},
 	"design.decide": { serious: false, why: ROUTINE_DESIGN, personWhen: [gate("designs")] },
 	"design.repin": { serious: false, why: ROUTINE_DESIGN, personWhen: [gate("designs")] },
+	"contract.decide": {
+		serious: false,
+		why: "approving the project's own contract version is the master's outside strict (REQ-79 r6 BC-11): it holds contracts.approve there",
+		personWhen: [STRICT],
+	},
 	"mockup.accept": {
 		serious: true,
 		because: "direction",
@@ -248,7 +266,15 @@ const RELEASE_SAID: Readonly<Record<string, OwedActKind>> = {
 	"standing.act.sayIfGone": "feedback.verify",
 };
 
+/** The act kind a decision's act is, read with the page group a breakdown is accepted under. */
+export function owedActOfDecision(act: DecisionAct, topic?: string | null): OwedActKind {
+	return act === "suggestion.accept" && topic === "breakdown" ? "breakdown.accept" : act;
+}
+
 /** The act kind a said act key names, or null where it names none an owner is asked for here. */
 export function owedActOfSaid(key: string): OwedActKind | null {
-	return RELEASE_SAID[key] ?? DECISION_ACT_OF_SAID[key]?.act ?? null;
+	const released = RELEASE_SAID[key];
+	if (released) return released;
+	const decided = DECISION_ACT_OF_SAID[key];
+	return decided ? owedActOfDecision(decided.act, decided.topic) : null;
 }

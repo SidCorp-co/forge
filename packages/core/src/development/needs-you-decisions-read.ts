@@ -53,7 +53,11 @@ export async function needsYouListOf(
   const all = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions])
     .map((d) => agedProposal(d, now))
     .sort(byDecisionOrder);
-  const agentTakes = await agentTakesOf(projectId, all);
+  // a release decision reads what its release carries that cannot be undone (ISS-1058)
+  const carried = new Map(attention.releases.releases.map((r) => [r.version, r.irreversible]));
+  const agentTakes = await agentTakesOf(projectId, (d) =>
+    d.opens?.kind === 'release' ? { irreversible: carried.get(d.opens.key) ?? [] } : null,
+  );
   const taken = all.filter(agentTakes);
   if (taken.length > 0) left.set('agent_takes', taken.map(agentTakesItem));
   const decisions = all.filter((d) => !agentTakes(d));

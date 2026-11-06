@@ -1,4 +1,5 @@
 export { personGateOf, readApprovals } from './approvals.js';
+export { readOwedPolicy } from './owed-policy.js';
 export { encryptPlaintextBindingSecrets, setBindingInboundSecret } from './binding-store.js';
 export { planBinding, readBinding, writeBinding } from './bindings.js';
 export {

@@ -12,7 +12,9 @@ import {
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
+import { waitingIssueIds } from './queries.js';
 import { gateViews } from './release-gates.js';
+import { readReleaseOwes } from './release-owes.js';
 import { READ_PATH_HELD_ONLY, readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 
@@ -123,7 +125,12 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     gaps,
     blockers,
     warnings: report.warnings,
-    gates: gateViews(blockers, report.warnings, await holderNames('project.admin', projectId)),
+    gates: gateViews(
+      blockers,
+      report.warnings,
+      await holderNames('project.admin', projectId),
+      await readReleaseOwes(projectId, await waitingIssueIds(projectId)),
+    ),
   };
 }
 

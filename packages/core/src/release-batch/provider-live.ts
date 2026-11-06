@@ -99,19 +99,12 @@ interface ReleaseBatchPorts {
   contractProviderGate(issueIds: readonly string[]): Promise<ProviderLiveGate>;
   /** Wake the project's master boxes to a release at its gate (the ws door's `master.wake`). */
   wakeMasters(projectId: string): Promise<{ boxes: number; delivered: number }>;
-  /**
-   * Whether the project's master cuts its releases, outside strict whatever its accounts' role (the
-   * development module's `needs-you-agent-takes.ts:masterTakesCut`): the one reading a draft's page,
-   * Needs you, the steward and a room's release read all take (ISS-1043).
-   */
-  masterCuts(projectId: string): Promise<boolean>;
 }
 
 const slot = portSlot<ReleaseBatchPorts>('release-batch', 'provideReleaseBatchPorts');
 export const provideReleaseBatchPorts = slot.provide;
 const contractProviderGate = slot.port('contractProviderGate');
 export const wakeMastersForRelease = slot.port('wakeMasters');
-export const masterCutsReleases = slot.port('masterCuts');
 
 /** What a release records of a gate it passed because the ecosystem turned it off. */
 export type GateOffRecord = Pick<LiveShortfall, 'issue' | 'contract' | 'needed' | 'live'>[];

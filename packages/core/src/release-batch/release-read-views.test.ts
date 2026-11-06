@@ -119,6 +119,12 @@ function part(
   };
 }
 
+const POLICY = {
+  strict: false,
+  gates: { agree: false, revisions: false, breakdown: false, admit: false, accept: false, designs: false, triage: true },
+  releaseApproval: false,
+};
+
 const shared = (n: number, isAdmin = true): Shared => ({
   projectId: 'p1',
   ownerDeploys: false,
@@ -127,7 +133,7 @@ const shared = (n: number, isAdmin = true): Shared => ({
   viewer: { userId: 'u1', agency: 'human', isAdmin, mayApprove: isAdmin },
   approvers: [],
   admins: ['Ada'],
-  masterCuts: false,
+  policy: { ...POLICY, strict: true },
   facts: facts(n),
   contentLanguage: 'en',
   provider: null,

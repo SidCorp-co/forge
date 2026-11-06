@@ -29,7 +29,7 @@ const wordsIn = (text: string) => text.split(/\s+/u).filter(Boolean).length;
 
 /**
  * An issue's release note as stored. `title` is the change's short name a reader scans; `userFacing`
- * the one sentence that says it in full; `adminSteps` what an admin must do before it goes out.
+ * the one sentence that says it in full; `adminSteps` what an admin must do before it goes out; `irreversible` what it does that cannot be undone.
  * `title` and `adminSteps` are absent on a note written before they existed, which a reader shows
  * whole: its sentence is never cut into a title.
  */
@@ -46,6 +46,12 @@ export const ReleaseNotesSchema = z
       .array(z.string().trim().min(1).max(200))
       .max(RELEASE_NOTE_ADMIN_STEPS_MAX)
       .optional(),
+    /**
+     * What the change does that cannot be undone, said for the person who decides its release (a
+     * migration dropping a table): a release carrying one is that person's to cut and approve
+     * (`who-owes.ts:whoOwes`, ISS-1058). Absent on a change that can be undone.
+     */
+    irreversible: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
 export type ReleaseNotes = z.infer<typeof ReleaseNotesSchema>;

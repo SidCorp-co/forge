@@ -285,8 +285,8 @@ describe('three all-earned issues in one draft on a project with production (adm
  */
 async function cutWait(): Promise<WaitingOn> {
   const { turnOf } = await import('../../src/release-batch/release-view.js');
-  // the release module's own reading of whether the master cuts, as the page takes it
-  const { masterCutsReleases } = await import('../../src/release-batch/provider-live.js');
+  // the release module's own reading of who owes the cut, as the page takes it (ISS-1058)
+  const { readReleaseOwes } = await import('../../src/release-batch/release-owes.js');
   const { holderNames } = await import('../../src/permissions/index.js');
   return turnOf({
     state: 'draft',
@@ -299,7 +299,7 @@ async function cutWait(): Promise<WaitingOn> {
     approval: null,
     approvers: [],
     admins: await holderNames('project.admin', projectId),
-    masterCuts: await masterCutsReleases(projectId),
+    owes: await readReleaseOwes(projectId, []),
     viewer: null,
     gates: [],
     inFlight: null,

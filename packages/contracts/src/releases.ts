@@ -342,6 +342,11 @@ export interface ReleaseSummary
 	name: string | null;
 	summary: string | null;
 	issueCount: number;
+	/**
+	 * What the changes it carries do that cannot be undone, each as its release note says it
+	 * (`ReleaseNotes.irreversible`): non-empty, its cut and approval are a person's (ISS-1058).
+	 */
+	irreversible: string[];
 	requirements: string[];
 	criteria: ReleaseCriteriaTotals;
 	/** What was verified, in one level a reader states in words (JU-11). */

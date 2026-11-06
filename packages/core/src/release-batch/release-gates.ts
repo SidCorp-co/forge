@@ -2,8 +2,10 @@ import type { ReleaseGateOwner, ReleaseGateView } from '@forge/contracts/release
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { type Said, type SaidPlainKey, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
+import { owedActOfSaid } from '@forge/contracts/who-owes';
 import { agrees } from '../lib/plural.js';
 import type { ReleaseBlocker, ReleaseReasonCode, ReleaseWarning } from './blocker-sentences.js';
+import type { ReleaseOwes } from './release-owes.js';
 
 type Details = Record<string, unknown> | undefined;
 
@@ -388,18 +390,32 @@ const owner = (
   says,
 });
 
-// an admin's act names the project's admins, and where none holds project.admin says where it is granted
+/**
+ * Whether an act this table gives an admin is the project's master's instead, by the one rule
+ * (`@forge/contracts/who-owes:whoOwes`, ISS-1058): a routine act is, unless the project's policy or
+ * what the release carries keeps it a person's. An act the table does not know stays an admin's, and
+ * the who-owes test refuses by name an admin act the table misses.
+ */
+const masterTakes = (act: Said, owes: ReleaseOwes): boolean => {
+  const kind = owedActOfSaid(act.key);
+  return kind !== null && owes(kind).by === 'master';
+};
+
+// an admin's act names the project's admins, and where none holds project.admin says where it is
+// granted; a routine one names the project's master (ISS-1058)
 function ownerOf(
   code: ReleaseReasonCode,
   details: Details,
   admins: readonly string[],
+  owes: ReleaseOwes,
 ): ReleaseGateOwner {
   const owed = OWED[code];
   const act = owed.act(details);
   const effect = owed.effect ? { effect: owed.effect(details) } : {};
-  if (owed.by !== 'admin') {
-    const by = OWNER_OF[owed.by];
-    return owner(by.kind, { who: by.who, act, ...effect });
+  const by = owed.by === 'admin' && masterTakes(act, owes) ? 'master' : owed.by;
+  if (by !== 'admin') {
+    const named = OWNER_OF[by];
+    return owner(named.kind, { who: named.who, act, ...effect });
   }
   return owner('person', {
     who: holdersWho(admins),
@@ -412,6 +428,7 @@ function gateView(
   entry: ReleaseBlocker | ReleaseWarning,
   kind: ReleaseGateView['kind'],
   admins: readonly string[],
+  owes: ReleaseOwes,
 ): ReleaseGateView {
   const reading = READINGS[entry.code];
   const title = say(reading.title);
@@ -423,19 +440,29 @@ function gateView(
     sentence: sayEn(sentence),
     detail: entry.message,
     issues: issuesNamed(entry.details),
-    owner: ownerOf(entry.code, entry.details, admins),
+    owner: ownerOf(entry.code, entry.details, admins, owes),
     says: { title, sentence },
   };
 }
 
-/** Every blocker and warning as the gate shows it; `admins` are the names of project.admin's holders, whom an admin's act names. */
+/**
+ * Every blocker and warning as the gate shows it; `admins` are the names of project.admin's holders,
+ * whom an admin's act names, and `owes` the one rule for this roster (`release-owes.ts`), which gives
+ * a routine one to the master.
+ */
 export function gateViews(
   blockers: readonly ReleaseBlocker[],
   warnings: readonly ReleaseWarning[],
   admins: readonly string[],
+  owes: ReleaseOwes,
 ): ReleaseGateView[] {
   return [
-    ...blockers.map((b) => gateView(b, 'blocker', admins)),
-    ...warnings.map((w) => gateView(w, 'warning', admins)),
+    ...blockers.map((b) => gateView(b, 'blocker', admins, owes)),
+    ...warnings.map((w) => gateView(w, 'warning', admins, owes)),
   ];
 }
+
+/** Every act this table gives an admin, by its said key: what the who-owes test checks the one table names. */
+export const ADMIN_ACT_KEYS: readonly string[] = (Object.values(OWED) as Owed[]).flatMap((o) =>
+  o.by === 'admin' ? [o.act(undefined).key] : [],
+);

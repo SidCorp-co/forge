@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { blocker } from './blocker-kit.js';
 import { NO_RELEASE_GATE_HOLD } from './hold.js';
 import { gateViews } from './release-gates.js';
+import { releaseOwesOf } from './release-owes.js';
+const POLICY = (strict: boolean) => ({
+  strict,
+  gates: { agree: false, revisions: false, breakdown: false, admit: false, accept: false, designs: false, triage: true },
+  releaseApproval: false,
+});
 
 // PR #1055 review: catalog-api 0.1.0's banner read "Waiting on you: declare a production environment"
 // while its gate, on the same page, read "No release step. This project ships on close; there is no
@@ -11,7 +17,7 @@ import { gateViews } from './release-gates.js';
 // gate names that act rather than one the project never asked for.
 
 describe('a project with no production environment, said by its gate', () => {
-  const [gate] = gateViews([blocker('NO_RELEASE_GATE')], [], ['orchestrator']);
+  const [gate] = gateViews([blocker('NO_RELEASE_GATE')], [], ['orchestrator'], releaseOwesOf(POLICY(false), []));
 
   it('names what is missing, in the words the banner and the rail use', () => {
     expect(gate?.title).toBe('No production');

@@ -7,8 +7,19 @@ import { say } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { feedbackStandingOf, type StandingViewer } from '../feedback/standing.js';
 import { gateViews } from '../release-batch/release-gates.js';
+import { releaseOwesOf } from '../release-batch/release-owes.js';
 import { turnOf } from '../release-batch/release-view.js';
 import { deriveStanding, type StandingIssue } from './standing.js';
+
+/** A project that turned no person's gate on, owing a release that carries nothing irreversible (ISS-1058). */
+const OPEN_OWES = releaseOwesOf(
+  {
+    strict: false,
+    gates: { agree: false, revisions: false, breakdown: false, admit: false, accept: false, designs: false, triage: true },
+    releaseApproval: false,
+  },
+  [],
+);
 
 /** When the times read: a master serves, so no wait here reads stuck by the master alone. */
 const AT = {
@@ -180,7 +191,7 @@ describe('the release gate speaks in plain words', () => {
       message: 'kernel detail',
       details: {},
     }));
-    const views = gateViews(entries as never, [], ['Ada']);
+    const views = gateViews(entries as never, [], ['Ada'], OPEN_OWES);
     expect(views.length).toBeGreaterThan(5);
     for (const v of views) {
       expect(`${v.owner.act} ${v.sentence} ${v.title}`, v.code).not.toMatch(/roster|in parts/i);
@@ -196,6 +207,7 @@ describe('the release gate speaks in plain words', () => {
       ] as never,
       [],
       [],
+      OPEN_OWES,
     );
     expect(v?.sentence).toContain('63 issues are waiting');
     expect(v?.sentence).toContain('at most 50');

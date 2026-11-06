@@ -14,6 +14,7 @@ import type { ReleaseRunRow } from '../pipeline/index.js';
 import {
   approvalRequired,
   readContentLanguage,
+  readOwedPolicy,
   readProjectDocument,
   readReleasePath,
 } from '../project-config/index.js';
@@ -39,12 +40,12 @@ import { readLandingReadings } from './landing-surfaces.js';
 import { draftNaming, readReleaseNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { draftPromotionViewOf, promotionViewOf } from './promotion-release.js';
-import { masterCutsReleases } from './provider-live.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
 import { loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
+import { readReleaseOwes } from './release-owes.js';
 import {
   detailOf,
   type Part,
@@ -77,10 +78,11 @@ interface DraftPart {
 async function draftPart(projectId: string): Promise<DraftPart | null> {
   const ids = await waitingIssueIds(projectId);
   if (ids.length === 0) return null;
-  const [decision, report, admins] = await Promise.all([
+  const [decision, report, admins, owes] = await Promise.all([
     decideRosterVersion(projectId, ids),
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
     holderNames('project.admin', projectId),
+    readReleaseOwes(projectId, ids),
   ]);
   const version = draftVersionOf(decision);
   const [naming, draftApproval, refused] = await Promise.all([
@@ -99,7 +101,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       releasedAt: null,
       attempts: [],
       approvals: [],
-      gates: gateViews(report.blockers, report.warnings, admins),
+      gates: gateViews(report.blockers, report.warnings, admins, owes),
       verification: null,
       commit: null,
       cuts: [],
@@ -267,10 +269,7 @@ async function sharedFor(
     viewer,
     approvers,
     admins,
-    // read only where a draft is listed: only a draft's cut is the master's or an admin's
-    masterCuts: parts.some((p) => p.state === 'draft')
-      ? await masterCutsReleases(projectId)
-      : false,
+    policy: await readOwedPolicy(projectId),
     facts,
     contentLanguage: language.contentLanguage,
     provider: productionProviderOf(channels),
