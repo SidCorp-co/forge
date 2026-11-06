@@ -6,7 +6,8 @@
 // `pnpm verify`. Before the tests it rebuilds the workspace packages they load from dist, and before
 // verify the ones verify loads that the tests did not, and stops PACKAGE_BUILD_STALE where one cannot
 // match its source (`lib/package-builds.mjs`, ISS-587, ISS-679); a checkout with no install of its own
-// is refused NOT_INSTALLED before anything runs. No
+// is refused NOT_INSTALLED before anything runs, and a stale or malformed `.forge/high-impact-paths.json`
+// is refused by its HIGH_IMPACT_* names, exit 1 (ISS-1061). No
 // import-graph widening, no whole-suite fallback. It writes
 // the report the tracker records on the issue — each check with its kind and duration, recorded once
 // (ISS-474) — which the merge mark then asks for. On the fast lane (REQ-39 BC-7: a change a person
@@ -44,10 +45,12 @@ import {
   touchedBetween,
 } from './lib/direct-test-run.mjs';
 import { dieAs, gitOut, ROOT } from './lib/gate.mjs';
+import { readHighImpactPaths } from './lib/high-impact-paths.mjs';
 import {
   behindRefusal,
   dirtyRefusal,
   emptyRefusal,
+  highImpactVerdict,
   LANES,
   missingCheck,
   NOT_RUN_HERE,
@@ -132,6 +135,14 @@ const head = git('rev-parse', 'HEAD');
 const dirty = dirtyRefusal(git('status', '--porcelain', '--untracked-files=all'));
 if (dirty) die(dirty);
 
+// The high-impact list held to the tree HEAD holds (the checkout is clean), on every lane, before
+// anything runs: a stale or malformed list is this change's red, by its own names (ISS-1061).
+const highImpact = highImpactVerdict(readHighImpactPaths(ROOT));
+if (highImpact.exit !== 0) {
+  console.error(highImpact.line);
+  process.exit(highImpact.exit);
+}
+
 const target = mergeTarget(ROOT);
 if (target.refusal) die(`no base to check against: ${target.refusal}`);
 const branch = target.branch;
@@ -212,6 +223,7 @@ const patchId = read.id;
 console.log(
   `merge-check: ${head.slice(0, 12)} against ${branch} at ${baseSha.slice(0, 12)}${since ? ' (landed)' : ''}, ${touched.length} file(s) touched, ${lane} lane, patch id ${patchId}`,
 );
+console.log(highImpact.line);
 
 checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) => t.path) }));
 // No `narrow`: a test's @direct-test-when lines shorten the developer's run only, so every

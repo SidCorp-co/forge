@@ -13,11 +13,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { parseHighImpactPaths } from './high-impact-paths.mjs';
 import {
   behindRefusal,
   dirtyRefusal,
   emptyRefusal,
   FAST_LANE_CHECKS,
+  highImpactVerdict,
   LANES,
   missingCheck,
   NOT_RUN_HERE,
@@ -330,5 +332,58 @@ describe("dev's CI is the merge check, and main's is as it was", () => {
       "if: needs.changes.outputs.scoped != 'true' && github.event_name != 'pull_request'",
     );
     expect(job('lang-check')).toContain("if: needs.changes.outputs.scoped != 'true'\n");
+  });
+});
+
+describe('the merge check holds the high-impact list to the tree (ISS-1061)', () => {
+  const TRACKED = [
+    'packages/core/src/issues/review-rules.ts',
+    'packages/core/drizzle/migrations/0001.sql',
+  ];
+  const listOf = (paths) => JSON.stringify({ $why: 'why', paths });
+  const verdictOf = (paths) => highImpactVerdict(parseHighImpactPaths(listOf(paths), TRACKED));
+
+  it('a sound list is one line and exit 0', () => {
+    const v = verdictOf([
+      { pattern: 'packages/core/drizzle/migrations/**', reason: 'schema' },
+      { pattern: 'packages/core/src/issues/review-rules.ts', reason: 'review_by_builder' },
+    ]);
+    expect(v).toEqual({
+      exit: 0,
+      line: 'merge-check: .forge/high-impact-paths.json holds 2 high-impact path(s), each matching a tracked file',
+    });
+    expect(v.line).not.toContain('\n');
+  });
+
+  it('an entry naming a moved file is red, exit 1, by HIGH_IMPACT_ENTRY_STALE', () => {
+    const v = verdictOf([{ pattern: 'packages/core/src/issues/review-guard.ts', reason: 'moved' }]);
+    expect(v.exit).toBe(1);
+    expect(v.line).toMatch(/^merge-check: \.forge\/high-impact-paths\.json is refused/);
+    expect(v.line).toContain(
+      'HIGH_IMPACT_ENTRY_STALE: paths[0] "packages/core/src/issues/review-guard.ts" matches no tracked file',
+    );
+  });
+
+  it('a malformed or reasonless entry is red, exit 1, by the names test:changed uses', () => {
+    const v = verdictOf([
+      { pattern: '/abs/**', reason: 'r' },
+      { pattern: 'packages/core/drizzle/migrations/**' },
+    ]);
+    expect(v.exit).toBe(1);
+    expect(v.line).toContain('HIGH_IMPACT_ENTRY_MALFORMED: paths[0]');
+    expect(v.line).toContain('HIGH_IMPACT_REASON_MISSING: paths[1]');
+  });
+
+  it('a missing list is red, exit 1; git failing to list the tree could not run, exit 2', () => {
+    expect(highImpactVerdict({ refusal: 'HIGH_IMPACT_LIST_MISSING: x' }).exit).toBe(1);
+    expect(highImpactVerdict({ refusal: 'git ls-files failed', unreadable: true }).exit).toBe(2);
+  });
+
+  it('the CLI holds the list on every lane, before any check runs', () => {
+    // a top-level statement, not inside a lane's branch, and ahead of the first check
+    const at = CLI.indexOf('\nconst highImpact = highImpactVerdict(readHighImpactPaths(ROOT));');
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(CLI.indexOf('runTypecheck(ROOT'));
+    expect(at).toBeLessThan(CLI.indexOf("'fetch', '--quiet'"));
   });
 });

@@ -3,6 +3,7 @@
 // records on the issue (`POST /api/issues/:id/merge-check`). `scripts/merge-check.mjs` runs them.
 
 import { LANDED_SINCE } from './base-branch.mjs';
+import { HIGH_IMPACT_FILE } from './high-impact-paths.mjs';
 
 /**
  * Every check a merge needs, in the order they run. `probes` is the issue's kept probes, run against
@@ -98,6 +99,22 @@ export function dirtyRefusal(status) {
     'checks run here would not describe the commit they are recorded against. Commit or stash ' +
     'them, then run the merge check again.'
   );
+}
+
+/**
+ * What the merge check makes of the high-impact list `test:changed` widens by
+ * (`lib/high-impact-paths.mjs:readHighImpactPaths` of the checkout, ISS-1061), on every lane: a list
+ * stale, malformed, reasonless or missing is the change's red, exit 1, by the same names
+ * `test:changed` refuses it with; git failing to list the tree is exit 2, it could not run. A sound
+ * list is one line. Held here because a branch moving a listed module would otherwise land green,
+ * and every builder's `test:changed` after it would stop on the entry it left stale.
+ */
+export function highImpactVerdict(read) {
+  if (read.refusal) return { exit: read.unreadable ? 2 : 1, line: `merge-check: ${read.refusal}` };
+  return {
+    exit: 0,
+    line: `merge-check: ${HIGH_IMPACT_FILE} holds ${read.entries.length} high-impact path(s), each matching a tracked file`,
+  };
 }
 
 /** The refusal for a change with nothing in it, or null. */
