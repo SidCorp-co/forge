@@ -25,6 +25,7 @@ import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { holds, masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
+import { confirmWaitMetOf } from './confirm-wait-facts.js';
 import { confirmWaitsOf } from './confirm-wait-read.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf } from './list-read.js';
@@ -317,6 +318,7 @@ export async function detailAs(
       ...summary,
       verified: verifiedViewOf(row, decisions, deciders, withhold),
       confirmWait: (await confirmWaitsOf([row.id], withhold)).get(row.id) ?? null,
+      confirmWaitMet: confirmWaitMetOf(row, withhold),
       recordCheck: (() => {
         const at = recordCheckOf(row, phase, linked.verifyWindowDays);
         return at ? { at: at.toISOString(), windowDays: linked.verifyWindowDays } : null;

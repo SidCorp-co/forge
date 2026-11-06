@@ -79,6 +79,7 @@ describe('an agent reporter’s confirm on the owed line', () => {
       home: true,
       reportedFrom: 'p',
       waitEnded: null,
+      waitMet: null,
     };
     const own: AgentConfirmOwed = {
       ...forge,
@@ -107,6 +108,7 @@ describe('an agent reporter’s confirm on the owed line', () => {
       home: true,
       reportedFrom: 'p',
       waitEnded: 'lapsed',
+      waitMet: null,
     };
     const line = owedLine({
       ...none,
@@ -121,6 +123,33 @@ describe('an agent reporter’s confirm on the owed line', () => {
     );
     expect(line).toContain('`/confirm-wait`');
     expect(line).toContain('"reason":"<why it waits>"');
+  });
+
+  it('names the room message that ended a wait: which, where, by whom, when, and its words as data (ISS-1038)', () => {
+    const met: AgentConfirmOwed = {
+      key: 'FB-4',
+      feedbackId: 'f4',
+      reporter: 'sidpeak-chat',
+      itemProjectId: 'p',
+      home: false,
+      reportedFrom: 'p',
+      waitEnded: 'met',
+      waitMet: {
+        message: 'm-77',
+        rid: 'GRP1',
+        thread: 't-4',
+        author: 'tuyen',
+        at: '2026-11-06T08:30:00.000Z',
+        text: 'it works now, thanks',
+      },
+    };
+    const line = owedLine({ ...none, confirms: [met] });
+    expect(line).toContain(
+      'FB-4 from sidpeak-chat, its wait ended: @tuyen wrote message m-77 in thread t-4 of group GRP1 at 2026-11-06T08:30:00.000Z: ',
+    );
+    expect(line).toContain('it works now, thanks');
+    expect(line).toContain('source="room message by @tuyen"');
+    expect(line).not.toContain('the room message came');
   });
 
   it('names the reporter, never a refused command, for an item in a project that is no door of the master’s (ISS-880)', () => {

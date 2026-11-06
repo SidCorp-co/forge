@@ -4,7 +4,7 @@
  * BC-8), and reply once to its answer (REQ-47 BC-12). Every refusal is named and writes nothing.
  */
 
-import { type FeedbackConfirmWaitOn, feedbackKey } from '@forge/contracts/feedback';
+import { feedbackKey } from '@forge/contracts/feedback';
 import type {
   ForgeFeedbackAnswersClaimed,
   ForgeFeedbackFiled,
@@ -14,7 +14,9 @@ import type {
 } from '@forge/contracts/forge-feedback';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import {
+  type ConfirmWaitRequest,
   claimAnswersTold,
+  confirmWaitMetsOf,
   confirmWaitsOf,
   type ForgeCaller,
   feedbackEgress,
@@ -72,13 +74,16 @@ async function itemsById(
   // what triage told the reporter is theirs to read at the item, through this door too (BC-10)
   const told = await toldOf(homeId, shown, withhold);
   const waits = await confirmWaitsOf(ids, withhold);
+  const mets = await confirmWaitMetsOf(ids, withhold);
   const items: ForgeFeedbackItem[] = [];
   for (const s of shown) {
     const evidence = withhold ? null : await shipEvidenceOfShipped(homeId, s.id, s.phase);
     const said = told.get(s.id);
     if (!said)
       throw new Error(`forge feedback: what item ${s.id} told its reporter does not read back`);
-    items.push(forgeItemOf(s, reads, evidence, said, waits.get(s.id) ?? null));
+    items.push(
+      forgeItemOf(s, reads, evidence, said, waits.get(s.id) ?? null, mets.get(s.id) ?? null),
+    );
   }
   return { items, asOf: reads.asOf };
 }
@@ -245,7 +250,7 @@ export async function settleForgeFeedback(
 export async function waitForgeFeedback(
   viewer: ForgeViewer,
   key: string,
-  wait: { until: Date; on: FeedbackConfirmWaitOn | undefined; reason: string | undefined },
+  wait: ConfirmWaitRequest,
   door: ReadDoor,
 ): Promise<Answer<ForgeFeedbackItem>> {
   const found = await readableItem(viewer, key);

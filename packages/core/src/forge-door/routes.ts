@@ -162,7 +162,7 @@ forgeFeedbackRoutes.post(
       await waitForgeFeedback(
         callerOf(c),
         c.req.valid('param').key,
-        { until: new Date(body.until), on: body.on, reason: body.reason },
+        { ...body, until: new Date(body.until) },
         REST_DOOR,
       ),
     );

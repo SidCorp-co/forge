@@ -6,6 +6,7 @@
  */
 
 import type {
+  FeedbackConfirmWaitMetView,
   FeedbackConfirmWaitView,
   FeedbackShipEvidence,
   FeedbackSummary,
@@ -92,6 +93,7 @@ export function forgeItemOf(
   shipEvidence: FeedbackShipEvidence | null,
   told: FeedbackToldView,
   confirmWait: FeedbackConfirmWaitView | null,
+  confirmWaitMet: FeedbackConfirmWaitMetView | null,
 ): ForgeFeedbackItem {
   return {
     key: s.key,
@@ -107,5 +109,6 @@ export function forgeItemOf(
     shipEvidence,
     told,
     confirmWait,
+    confirmWaitMet,
   };
 }

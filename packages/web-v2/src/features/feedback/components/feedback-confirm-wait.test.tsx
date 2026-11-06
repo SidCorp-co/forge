@@ -36,13 +36,14 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     verifyHeld: null,
     snoozed: null,
     confirmWait: null,
+    confirmWaitMet: null,
     shipNotice: null,
     attachments: [],
     decisions: [],
     ...over,
   }) as unknown as FeedbackView;
 
-const wait = { until: "2099-01-05T02:00:00.000Z", on: null, reason: "needs the owner’s next message", setAt: "2026-11-02T00:00:00.000Z", setBy: "m1" };
+const wait = { until: "2099-01-05T02:00:00.000Z", on: null, room: null, reason: "needs the owner’s next message", setAt: "2026-11-02T00:00:00.000Z", setBy: "m1" };
 
 describe("a waiting confirm on the item's page", () => {
   it("shows the date in a short label, the reason on hover only", () => {

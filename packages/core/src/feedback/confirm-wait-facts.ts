@@ -6,6 +6,7 @@
 import {
   FEEDBACK_CONFIRM_WAIT_SHAPE,
   FEEDBACK_LIMITS,
+  type FeedbackConfirmWaitMetView,
   type FeedbackConfirmWaitOn,
   type FeedbackConfirmWaitView,
   type FeedbackPhase,
@@ -15,8 +16,11 @@ import { type FeedbackRefusal, refusal } from './rules.js';
 
 export interface ConfirmWaitRequest {
   until: Date;
-  on: FeedbackConfirmWaitOn | undefined;
-  reason: string | undefined;
+  on?: FeedbackConfirmWaitOn | undefined;
+  reason?: string | undefined;
+  /** With `on` room_message, the group and thread the message is awaited in (ISS-1038); else the item's own. */
+  rid?: string | undefined;
+  thread?: string | undefined;
 }
 
 type WaitFacts = Pick<
@@ -27,6 +31,8 @@ type WaitFacts = Pick<
   | 'confirmWaitSetAt'
   | 'confirmWaitSetBy'
   | 'confirmWaitMetAt'
+  | 'confirmWaitRid'
+  | 'confirmWaitThread'
 >;
 
 const DAY_MS = 86_400_000;
@@ -59,6 +65,16 @@ export function confirmWaitRefusal(
       `${Number.isNaN(wait.until.getTime()) ? 'that' : wait.until.toISOString()} is not a date after now (${now.toISOString()}); a wait ends on a date still to come.`,
     );
   }
+  const named = [wait.rid, wait.thread].filter(Boolean).length;
+  if (named === 1 || (named === 2 && wait.on !== 'room_message')) {
+    return refusal(
+      'FEEDBACK_CONFIRM_WAIT_ROOM',
+      named === 1 ? (wait.rid ? '/thread' : '/rid') : '/on',
+      named === 1
+        ? `a wait names the room message's group and thread together (rid and thread), or neither, which waits in the thread ${item.key} was recorded from; send ${FEEDBACK_CONFIRM_WAIT_SHAPE}.`
+        : `rid and thread name where a room message is awaited, so they go with on: room_message; a wait on its date alone names neither.`,
+    );
+  }
   if (wait.until.getTime() > now.getTime() + maxDays * DAY_MS) {
     return refusal(
       'FEEDBACK_CONFIRM_WAIT_TOO_FAR',
@@ -87,6 +103,10 @@ export function confirmWaitOf(
   return {
     until: r.confirmWaitUntil.toISOString(),
     on: r.confirmWaitOn,
+    room:
+      r.confirmWaitRid && r.confirmWaitThread
+        ? { rid: r.confirmWaitRid, thread: r.confirmWaitThread }
+        : null,
     reason: withhold ? null : r.confirmWaitReason,
     setAt: r.confirmWaitSetAt.toISOString(),
     setBy: r.confirmWaitSetBy,
@@ -103,4 +123,24 @@ export function confirmWaitEnded(
   if (r.confirmWaitMetAt) return 'met';
   if (withdrawn) return 'withdrawn';
   return r.confirmWaitUntil.getTime() <= now.getTime() ? 'lapsed' : null;
+}
+
+/**
+ * The room message that ended a wait, as the item shows it (ISS-1038): null where none did, or the wait
+ * ended otherwise; its words null where the item's words are withheld from the viewer.
+ */
+export function confirmWaitMetOf(
+  r: Pick<Row, 'confirmWaitMetAt' | 'confirmWaitMetBy'>,
+  withhold: boolean,
+): FeedbackConfirmWaitMetView | null {
+  const m = r.confirmWaitMetBy;
+  if (!r.confirmWaitMetAt || !m) return null;
+  return {
+    message: m.message,
+    rid: m.rid,
+    thread: m.thread,
+    author: m.author,
+    at: m.at,
+    text: withhold ? null : m.text,
+  };
 }

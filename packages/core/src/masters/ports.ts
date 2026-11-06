@@ -1,3 +1,4 @@
+import type { FeedbackConfirmWaitMetView } from '@forge/contracts/feedback';
 import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { MasterMode } from '@forge/contracts/master-mode';
 import type { AnswerResume } from '@forge/contracts/questions';
@@ -26,6 +27,8 @@ export interface AgentConfirmOwed {
   reportedFrom: string;
   /** A wait set on its confirm that ended, and how (ISS-902): named again with it. */
   waitEnded: 'met' | 'withdrawn' | 'lapsed' | null;
+  /** The room message that ended it (ISS-1038): which, where, by whom, when, and its words. */
+  waitMet: FeedbackConfirmWaitMetView | null;
 }
 
 /** A merged change request delivering an issue that holds no merged mark (`issues/owed-merges.ts`). */

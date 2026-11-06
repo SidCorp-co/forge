@@ -3886,6 +3886,13 @@
       "when": 1835568000000,
       "tag": "0609_a_channel_rule_names_who_decides_an_act",
       "breakpoints": true
+    },
+    {
+      "idx": 610,
+      "version": "7",
+      "when": 1835654400000,
+      "tag": "0610_a_room_message_ends_only_its_own_threads_wait_and_is_kept",
+      "breakpoints": true
     }
   ]
 }

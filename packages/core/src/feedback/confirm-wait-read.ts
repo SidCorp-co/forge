@@ -9,11 +9,14 @@
  * the moment the reopen commits, with no consumer between, and the end stands when the fix ships again.
  */
 
-import type { FeedbackConfirmWaitView } from '@forge/contracts/feedback';
+import type {
+  FeedbackConfirmWaitMetView,
+  FeedbackConfirmWaitView,
+} from '@forge/contracts/feedback';
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
-import { confirmWaitOf } from './confirm-wait-facts.js';
+import { confirmWaitMetOf, confirmWaitOf } from './confirm-wait-facts.js';
 
 /**
  * Whether an issue carrying the item's fix, or its duplicate root's, left \`closed\` after the wait was
@@ -42,10 +45,29 @@ export async function confirmWaitsOf(
       confirmWaitReason: feedback.confirmWaitReason,
       confirmWaitSetAt: feedback.confirmWaitSetAt,
       confirmWaitSetBy: feedback.confirmWaitSetBy,
+      confirmWaitRid: feedback.confirmWaitRid,
+      confirmWaitThread: feedback.confirmWaitThread,
       confirmWaitMetAt: feedback.confirmWaitMetAt,
       withdrawn: withdrawnSql,
     })
     .from(feedback)
     .where(inArray(feedback.id, [...ids]));
   return new Map(rows.map((r) => [r.id, confirmWaitOf(r, now, withhold, r.withdrawn)]));
+}
+
+/** The room message that ended the wait on each of `ids` (ISS-1038), where one did. */
+export async function confirmWaitMetsOf(
+  ids: readonly string[],
+  withhold: boolean,
+): Promise<Map<string, FeedbackConfirmWaitMetView | null>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: feedback.id,
+      confirmWaitMetAt: feedback.confirmWaitMetAt,
+      confirmWaitMetBy: feedback.confirmWaitMetBy,
+    })
+    .from(feedback)
+    .where(inArray(feedback.id, [...ids]));
+  return new Map(rows.map((r) => [r.id, confirmWaitMetOf(r, withhold)]));
 }

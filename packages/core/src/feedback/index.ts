@@ -6,8 +6,9 @@ export {
   feedbackAttachmentOf,
 } from './attachments.js';
 export { feedbackTriageRecord } from './checklist-record.js';
-export { meetRoomConfirmWaits, setConfirmWait } from './confirm-wait.js';
-export { confirmWaitsOf } from './confirm-wait-read.js';
+export { meetRoomConfirmWaits, type RoomMessage, setConfirmWait } from './confirm-wait.js';
+export type { ConfirmWaitRequest } from './confirm-wait-facts.js';
+export { confirmWaitMetsOf, confirmWaitsOf } from './confirm-wait-read.js';
 export { fileContractChangeIn } from './contract-change.js';
 export { provideFeedbackDependents } from './dependents.js';
 export { feedbackEgress, type ReadDoor } from './egress.js';

@@ -385,7 +385,7 @@ feedbackRoutes.post(
         projectId: id,
         ref: fb,
         actor: actorOf(c),
-        wait: { until: new Date(body.until), on: body.on, reason: body.reason },
+        wait: { ...body, until: new Date(body.until) },
       }),
     );
   },

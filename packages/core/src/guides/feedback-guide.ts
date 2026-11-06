@@ -205,14 +205,17 @@ route, declining included, closes the open question.
   reported from is owed that confirm: its pass names each such item with the door to settle it through,
   the release that ships one wakes it, and that door admits it, an agent writing that project, to read,
   verify and reopen the item for its reporter.
-- \`confirm-wait\` \`{ until, on?, reason }\` (\`POST …/feedback/:fb/confirm-wait\` or
+- \`confirm-wait\` \`{ until, on?, reason, rid?, thread? }\` (\`POST …/feedback/:fb/confirm-wait\` or
   \`POST /api/forge/feedback/:key/confirm-wait\`) records why such a confirm waits, where only a later
   event can test the fix: the agent reporter or its master sets it on a shipped item an agent reported
   (\`FEEDBACK_CONFIRM_WAIT_NOT_OWED\` otherwise). The pass leaves the item out until \`until\` (within
   30 days, \`FEEDBACK_CONFIRM_WAIT_PAST\`/\`_TOO_FAR\`) or, with \`on: room_message\`, a member's next
-  message in a support room of the project it was reported from, or at once when an issue carrying
-  the fix is reopened, then names it again saying which; the item reads
-  \`confirmWait\` meanwhile. No reason is \`FEEDBACK_CONFIRM_WAIT_REASON_REQUIRED\`; the verify or reopen
+  message in the one thread it waits on: the thread the item was recorded from, or the group and
+  thread named as \`rid\` and \`thread\` (\`FEEDBACK_CONFIRM_WAIT_NO_THREAD\` where neither is known,
+  \`FEEDBACK_CONFIRM_WAIT_ROOM\` for a group no room of that project answers); a message elsewhere
+  leaves it. Or at once when an issue carrying the fix is reopened. Then the pass names it again saying
+  which, naming the message that ended it; the item reads \`confirmWait\` meanwhile and
+  \`confirmWaitMet\` (the message's id, group, thread, author, time and words) after. No reason is \`FEEDBACK_CONFIRM_WAIT_REASON_REQUIRED\`; the verify or reopen
   clears it.
 - \`verify-ask\` sends a resolved item to its reporter's bell again, where it stays until the item is
   verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),

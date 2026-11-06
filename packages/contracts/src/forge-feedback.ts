@@ -8,6 +8,7 @@ import {
 	FEEDBACK_KINDS,
 	FEEDBACK_LIMITS,
 	FEEDBACK_SEVERITIES,
+	type FeedbackConfirmWaitMetView,
 	type FeedbackConfirmWaitView,
 	type FeedbackKind,
 	type FeedbackOriginView,
@@ -148,6 +149,8 @@ export interface ForgeFeedbackItem {
 	told: FeedbackToldView;
 	/** While its confirm waits on a date or an event (ISS-902): why and until when; null when none holds. */
 	confirmWait: FeedbackConfirmWaitView | null;
+	/** The room message that ended its wait (ISS-1038); null where none did. */
+	confirmWaitMet: FeedbackConfirmWaitMetView | null;
 }
 
 /**

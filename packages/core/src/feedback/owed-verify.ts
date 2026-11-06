@@ -8,13 +8,13 @@
  * agent's own); an item with none was filed in its own project, which is where its reporter works.
  */
 
-import { feedbackKey } from '@forge/contracts/feedback';
+import { type FeedbackConfirmWaitMetView, feedbackKey } from '@forge/contracts/feedback';
 import { and, eq, inArray, isNotNull, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import { userNames } from '../lib/people.js';
-import { type ConfirmWaitEnd, confirmWaitEnded } from './confirm-wait-facts.js';
+import { type ConfirmWaitEnd, confirmWaitEnded, confirmWaitMetOf } from './confirm-wait-facts.js';
 import { withdrawnSql } from './confirm-wait-read.js';
 import { linkedOf, phaseIn } from './list-read.js';
 import type { Row } from './read.js';
@@ -32,6 +32,8 @@ export interface OwedAgentConfirm {
   reportedFrom: string;
   /** A wait set on its confirm that ended, and how (ISS-902): the line names the item again with it. */
   waitEnded: ConfirmWaitEnd | null;
+  /** The room message that ended it (ISS-1038), named on the line; null where none did. */
+  waitMet: FeedbackConfirmWaitMetView | null;
 }
 
 /**
@@ -110,6 +112,8 @@ async function resolvedAmong(rows: Candidate[]): Promise<OwedAgentConfirm[]> {
         home: projectId === home?.id,
         reportedFrom: r.from,
         waitEnded: confirmWaitEnded(r, new Date(), r.withdrawn),
+        // the master reads the item's words here as its own door does: the words are its to judge
+        waitMet: confirmWaitMetOf(r, false),
       });
     }
   }

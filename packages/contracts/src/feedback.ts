@@ -274,7 +274,8 @@ export const FEEDBACK_LIMITS = {
 
 /**
  * What a confirm wait may wait on besides its date (ISS-902): `room_message`, a member's next message
- * in a support room of the project the item was reported from, which Forge records as it arrives.
+ * in the room thread the wait names, or the one the item was recorded from (ISS-1038), which Forge
+ * records as it arrives. A message in any other thread or room leaves the wait standing.
  */
 export const FEEDBACK_CONFIRM_WAIT_ON = ["room_message"] as const;
 export type FeedbackConfirmWaitOn = (typeof FEEDBACK_CONFIRM_WAIT_ON)[number];
@@ -324,6 +325,10 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_CONFIRM_WAIT_NOT_OWED",
 	/** Only the agent that reported it, or the master of the project it reported from, sets its wait. */
 	"FEEDBACK_CONFIRM_WAIT_FORBIDDEN",
+	/** A wait on a room message names no thread, and the item was recorded from none Forge knows (ISS-1038). */
+	"FEEDBACK_CONFIRM_WAIT_NO_THREAD",
+	/** The room and thread a wait names: one without the other, without `on: room_message`, or no room of the project (ISS-1038). */
+	"FEEDBACK_CONFIRM_WAIT_ROOM",
 	"FEEDBACK_MESSAGE_EMPTY",
 	"FEEDBACK_MESSAGE_NO_RECIPIENT",
 	"FEEDBACK_RELAY_NOT_TO_REPORTERS",
@@ -577,20 +582,51 @@ export const feedbackConfirmWaitRequestSchema = z.strictObject({
 	until: z.iso.datetime({ offset: true }),
 	on: z.enum(FEEDBACK_CONFIRM_WAIT_ON).optional(),
 	reason: z.string().max(FEEDBACK_LIMITS.confirmWaitReason).optional(),
+	/**
+	 * With `on: room_message`, the chat group (`rid`) and thread (its first message's id) the message
+	 * is awaited in (ISS-1038); absent, the thread the item was recorded from. Both or neither.
+	 */
+	rid: z.string().trim().min(1).max(200).optional(),
+	thread: z.string().trim().min(1).max(200).optional(),
 });
 export type FeedbackConfirmWaitRequest = z.infer<
 	typeof feedbackConfirmWaitRequestSchema
 >;
-export const FEEDBACK_CONFIRM_WAIT_SHAPE = `{ until: ISO 8601 date-time within ${FEEDBACK_LIMITS.confirmWaitDays} days, on?: ${FEEDBACK_CONFIRM_WAIT_ON.join(" | ")}, reason }`;
+export const FEEDBACK_CONFIRM_WAIT_SHAPE = `{ until: ISO 8601 date-time within ${FEEDBACK_LIMITS.confirmWaitDays} days, on?: ${FEEDBACK_CONFIRM_WAIT_ON.join(" | ")}, reason, rid? and thread? (with on: room_message, where the message is awaited; else the thread the item was recorded from) }`;
+
+/** The room thread a wait on a room message is ended from (ISS-1038). */
+export interface FeedbackConfirmWaitRoom {
+	/** The chat group. */
+	rid: string;
+	/** The thread, by its first message's id. */
+	thread: string;
+}
 
 /** A confirm wait still holding: until when, on what besides, why, and who set it when. */
 export interface FeedbackConfirmWaitView {
 	until: string;
 	on: FeedbackConfirmWaitOn | null;
+	/**
+	 * With `on: room_message`, the one thread whose next member message ends it (ISS-1038). Null on a
+	 * room-message wait set before Forge kept one, on an item no room thread is known for: only its date
+	 * ends that wait.
+	 */
+	room: FeedbackConfirmWaitRoom | null;
 	/** Null where the item's words are withheld from the viewer. */
 	reason: string | null;
 	setAt: string;
 	setBy: string | null;
+}
+
+/**
+ * The room message that ended a wait (ISS-1038): which message, in which room and thread, who wrote
+ * it and when, and its words as the item's project keeps them (null where withheld from the viewer).
+ */
+export interface FeedbackConfirmWaitMetView extends FeedbackConfirmWaitRoom {
+	message: string;
+	author: string;
+	at: string;
+	text: string | null;
 }
 
 /** Who a message reaches: the item's own reporter, every reporter merged into it, or nobody (a note for members). */
@@ -997,6 +1033,8 @@ export interface FeedbackView extends FeedbackSummary {
 	verified: FeedbackVerifiedView | null;
 	/** While a shipped agent-reported item's confirm waits (ISS-902): why, and until when; null when none holds. */
 	confirmWait: FeedbackConfirmWaitView | null;
+	/** The room message that ended its wait (ISS-1038), until the wait is set again or the item settles; else null. */
+	confirmWaitMet: FeedbackConfirmWaitMetView | null;
 	/**
 	 * While it reads resolved and names a violated criterion: when the record is read on "is the
 	 * problem gone?" if nobody has answered, and the window that dates it. Null where no criterion is

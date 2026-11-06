@@ -2,16 +2,31 @@
  * ISS-902 (FB-480): a confirm wait is a reason and a date to come within the limit, on a shipped item
  * an agent reported; it holds until its date passes or its event happens, and then reads as ended.
  *
+ * ISS-1038: a room-message wait names its group and thread, and keeps the message that met it.
+ *
  * @direct-test-of packages/core/src/feedback/confirm-wait-facts.ts
  */
 
 import { describe, expect, it } from 'vitest';
-import { confirmWaitEnded, confirmWaitOf, confirmWaitRefusal } from './confirm-wait-facts.js';
+import {
+  confirmWaitEnded,
+  confirmWaitMetOf,
+  confirmWaitOf,
+  confirmWaitRefusal,
+} from './confirm-wait-facts.js';
 
 const now = new Date('2026-11-02T10:00:00.000Z');
 const days = (n: number) => new Date(now.getTime() + n * 86_400_000);
 const owed = { key: 'FB-470', phase: 'resolved' as const, agentReported: true };
-const wait = (o: Partial<{ until: Date; reason: string | undefined }> = {}) => ({
+const wait = (
+  o: Partial<{
+    until: Date;
+    reason: string | undefined;
+    on: 'room_message' | undefined;
+    rid: string;
+    thread: string;
+  }> = {},
+) => ({
   until: days(3),
   on: 'room_message' as const,
   reason: 'needs the owner’s next message in the room',
@@ -31,7 +46,7 @@ describe('confirmWaitRefusal', () => {
       expect(r?.path).toBe('/reason');
       expect(r?.detail).toContain('FB-470');
       expect(r?.detail).toContain('{ until: ISO 8601 date-time within 30 days');
-      expect(r?.detail).toContain('reason }');
+      expect(r?.detail).toContain('reason, rid? and thread?');
     }
   });
 
@@ -54,6 +69,46 @@ describe('confirmWaitRefusal', () => {
   });
 });
 
+// ISS-1038: a room-message wait names the group and thread its message is awaited in, both or neither
+describe('the room a wait names', () => {
+  it('takes both with on room_message, or neither', () => {
+    expect(confirmWaitRefusal(owed, wait({ rid: 'GRP1', thread: 't-4' }), now)).toBeNull();
+    expect(confirmWaitRefusal(owed, wait(), now)).toBeNull();
+  });
+
+  it('refuses one without the other, or either without on room_message, by name', () => {
+    expect(confirmWaitRefusal(owed, wait({ rid: 'GRP1' }), now)).toMatchObject({
+      code: 'FEEDBACK_CONFIRM_WAIT_ROOM',
+      path: '/thread',
+    });
+    expect(confirmWaitRefusal(owed, wait({ thread: 't-4' }), now)).toMatchObject({
+      code: 'FEEDBACK_CONFIRM_WAIT_ROOM',
+      path: '/rid',
+    });
+    expect(
+      confirmWaitRefusal(owed, wait({ on: undefined, rid: 'GRP1', thread: 't-4' }), now),
+    ).toMatchObject({ code: 'FEEDBACK_CONFIRM_WAIT_ROOM', path: '/on' });
+  });
+
+  it('shows the message that met a wait, its words withheld where the item’s are', () => {
+    const metBy = {
+      message: 'm-77',
+      rid: 'GRP1',
+      thread: 't-4',
+      author: 'tuyen',
+      at: now.toISOString(),
+      text: 'works now',
+    };
+    expect(confirmWaitMetOf({ confirmWaitMetAt: now, confirmWaitMetBy: metBy }, false)).toEqual(
+      metBy,
+    );
+    expect(confirmWaitMetOf({ confirmWaitMetAt: now, confirmWaitMetBy: metBy }, true)?.text).toBe(
+      null,
+    );
+    expect(confirmWaitMetOf({ confirmWaitMetAt: null, confirmWaitMetBy: null }, false)).toBeNull();
+  });
+});
+
 describe('confirmWaitOf and confirmWaitEnded', () => {
   const set = {
     confirmWaitUntil: days(3),
@@ -61,6 +116,8 @@ describe('confirmWaitOf and confirmWaitEnded', () => {
     confirmWaitReason: 'needs the owner’s next message',
     confirmWaitSetAt: now,
     confirmWaitSetBy: 'u1',
+    confirmWaitRid: 'GRP1' as string | null,
+    confirmWaitThread: 't-4' as string | null,
     confirmWaitMetAt: null as Date | null,
   };
   const none = {
@@ -76,6 +133,7 @@ describe('confirmWaitOf and confirmWaitEnded', () => {
     expect(confirmWaitOf(set, now, false, false)).toEqual({
       until: days(3).toISOString(),
       on: 'room_message',
+      room: { rid: 'GRP1', thread: 't-4' },
       reason: 'needs the owner’s next message',
       setAt: now.toISOString(),
       setBy: 'u1',

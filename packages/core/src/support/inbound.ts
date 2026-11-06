@@ -206,8 +206,17 @@ async function recordInbound(
       tx,
     );
     if (!action) return false;
-    // a member's message is the event a confirm waiting on the next room message waits for (ISS-902)
-    await meetRoomConfirmWaits(tx, room.projectId, new Date());
+    // a member's message is the event a confirm waiting on the next message in this thread of this
+    // group waits for (ISS-902, ISS-1038); the item keeps which message it was
+    await meetRoomConfirmWaits(tx, {
+      projectId: room.projectId,
+      rid: room.rid,
+      thread,
+      id: m.id,
+      author: author.label ?? author.key,
+      text,
+      at: new Date(),
+    });
     // the bar on the project's pages reads the room's waiting message (REQ-15 BC-10)
     await pushProjectNow(tx, room.projectId, 'rooms');
     const written = await appendMessagesIn(tx, {

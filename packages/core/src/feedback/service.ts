@@ -144,7 +144,10 @@ export const NO_CONFIRM_WAIT = {
   confirmWaitReason: null,
   confirmWaitSetAt: null,
   confirmWaitSetBy: null,
+  confirmWaitRid: null,
+  confirmWaitThread: null,
   confirmWaitMetAt: null,
+  confirmWaitMetBy: null,
 } as const;
 
 type NewFeedback = Omit<typeof feedback.$inferInsert, 'fbSeq'>;

@@ -5,6 +5,8 @@
  * wait with its reason on either door; the line leaves the item out until the date passes or a member's
  * message arrives in the project's room, then names it again; the item shows why it waits.
  *
+ * ISS-1038: a room-message wait ends only on a message in its own thread, and the item keeps it.
+ *
  * @direct-test-of packages/core/src/feedback/confirm-wait.ts
  * @direct-test-of packages/core/src/feedback/confirm-wait-read.ts
  * @direct-test-of packages/core/src/feedback/owed-verify.ts
@@ -261,31 +263,76 @@ describe('a reopened fix ends the wait at once', () => {
 });
 
 describe('the project door: a wait on the next room message (FB-476)', () => {
-  it('leaves the line until a member’s message arrives in the project’s room, then names it again', async () => {
+  /** The message `meetRoomConfirmWaits` is told arrived, as `support/inbound.ts` tells it. */
+  const said = (projectId: string, thread: string, text: string) => ({
+    projectId,
+    rid: 'GRP-own',
+    thread,
+    id: `m-${thread}`,
+    author: 'tuyen',
+    text,
+    at: new Date(),
+  });
+
+  it('ends only on a message in its own thread, keeps that message, and names it on the line (ISS-1038)', async () => {
     const key = await shippedOwnItem();
     expect(ownListed(await owedLine(), key)).toBeDefined();
-    const set = await ownWait(tokens.master, key, {
+    // no room recorded this item, so a room-message wait has to name where it is awaited
+    const unnamed = await ownWait(tokens.master, key, {
       until: inDays(14),
       on: 'room_message',
       reason: 'the owner’s next message in the room tests the fix',
     });
-    expect(set.status, JSON.stringify(set.body)).toBe(200);
-    expect((set.body.feedback as Body).confirmWait).toMatchObject({ on: 'room_message' });
+    expect(unnamed.status, JSON.stringify(unnamed.body)).toBe(422);
+    expect(refusalOf(unnamed.body)).toMatchObject({
+      code: 'FEEDBACK_CONFIRM_WAIT_NO_THREAD',
+      path: '/on',
+    });
+    const nowhere = await ownWait(tokens.master, key, {
+      until: inDays(14),
+      on: 'room_message',
+      reason: 'the owner’s next message in the room tests the fix',
+      rid: 'GRP-nobody',
+      thread: 't-1',
+    });
+    expect(refusalOf(nowhere.body)).toMatchObject({
+      code: 'FEEDBACK_CONFIRM_WAIT_ROOM',
+      path: '/rid',
+    });
+    expect(ownListed(await owedLine(), key)).toBeDefined();
+
+    // the wait as a room the project answers holds it (the room's own door is support-room-wait-e2e's)
+    await db.execute(sql`
+      UPDATE feedback SET confirm_wait_until = now() + interval '14 days', confirm_wait_on = 'room_message',
+             confirm_wait_reason = 'the owner’s next message in the room tests the fix',
+             confirm_wait_set_at = now() - interval '1 minute', confirm_wait_rid = 'GRP-own',
+             confirm_wait_thread = 't-item'
+       WHERE project_id = ${own.projectId} AND fb_seq = ${Number(key.slice(3))}
+    `);
     expect(ownListed(await owedLine(), key)).toBeUndefined();
 
-    // a message in another project's room meets nothing here
-    expect(await db.transaction((tx) => meetRoomConfirmWaits(tx, home.projectId, new Date()))).toBe(
-      0,
-    );
+    // a message in another project's room, or in another thread of this one, meets nothing here
+    const meet = (m: ReturnType<typeof said>) =>
+      db.transaction((tx) => meetRoomConfirmWaits(tx, m));
+    expect(await meet(said(home.projectId, 't-item', 'unrelated'))).toBe(0);
+    expect(await meet(said(own.projectId, 't-other', 'release 620 now'))).toBe(0);
     expect(ownListed(await owedLine(), key)).toBeUndefined();
 
-    expect(await db.transaction((tx) => meetRoomConfirmWaits(tx, own.projectId, new Date()))).toBe(
-      1,
-    );
+    expect(await meet(said(own.projectId, 't-item', 'it works now, thanks'))).toBe(1);
     const back = ownListed(await owedLine(), key);
-    expect(back ?? 'not listed', 'the item returns once the message came').toContain(
-      'its wait ended: the room message came',
+    expect(back ?? 'not listed', 'the item returns naming the message that came').toContain(
+      'its wait ended: @tuyen wrote message m-t-item in thread t-item of group GRP-own at ',
     );
+    expect(back).toContain('it works now, thanks');
+    const read = await api(tokens.master, 'GET', `/api/projects/${own.projectId}/feedback/${key}`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    expect((read.body.feedback as Body).confirmWaitMet).toMatchObject({
+      message: 'm-t-item',
+      rid: 'GRP-own',
+      thread: 't-item',
+      author: 'tuyen',
+      text: 'it works now, thanks',
+    });
   });
 
   it('refuses a wait with no reason, a date past the limit, and a person’s item, by name', async () => {

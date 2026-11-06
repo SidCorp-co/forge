@@ -8,7 +8,6 @@ import {
   FEEDBACK_SEVERITIES,
   FEEDBACK_STATUSES,
 } from '@forge/contracts/feedback';
-import { FEEDBACK_EXTERNAL_CHANNELS } from '@forge/contracts/widget';
 import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { sql } from 'drizzle-orm';
 import {
@@ -31,7 +30,6 @@ import { contractVersions } from './schema-ecosystem.js';
 import { issues } from './schema-issues.js';
 import { mockups } from './schema-mockups.js';
 import { pipelineRuns } from './schema-pipeline.js';
-import { integrationBindings } from './schema-project-config.js';
 import { projects } from './schema-projects.js';
 import { requirementCriteria, requirements } from './schema-requirements.js';
 import { suggestions } from './schema-suggestions.js';
@@ -44,6 +42,16 @@ export {
   FEEDBACK_SEVERITIES,
   FEEDBACK_STATUSES,
 } from '@forge/contracts/feedback';
+
+/** The room message that ended a confirm wait, as `confirm_wait_met_by` keeps it (ISS-1038). */
+export interface ConfirmWaitMetBy {
+  message: string;
+  rid: string;
+  thread: string;
+  author: string;
+  at: string;
+  text: string;
+}
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
@@ -129,8 +137,20 @@ export const feedback = pgTable(
     confirmWaitSetBy: uuid('confirm_wait_set_by').references(() => users.id, {
       onDelete: 'set null',
     }),
+    /**
+     * With `confirmWaitOn` room_message, the chat group and thread whose next member message ends the
+     * wait (ISS-1038): the ones the wait named, else the thread the item was recorded from. Null on a
+     * wait set before they were kept on an item no thread is known for, which only its date ends.
+     */
+    confirmWaitRid: text('confirm_wait_rid'),
+    confirmWaitThread: text('confirm_wait_thread'),
     /** When the event `confirmWaitOn` names happened, which ends the wait before its date. */
     confirmWaitMetAt: timestamp('confirm_wait_met_at', { withTimezone: true }),
+    /**
+     * The room message that ended it (ISS-1038): its id, group, thread, author, time and words, the
+     * words stored as the item's project's data policy keeps text.
+     */
+    confirmWaitMetBy: jsonb('confirm_wait_met_by').$type<ConfirmWaitMetBy>(),
     status: text('status', { enum: FEEDBACK_STATUSES }).notNull().default('new'),
     route: text('route', { enum: FEEDBACK_ROUTES }),
     // an issue route's carriers are rows of `feedback_route_issues`, one or more (ISS-265)
@@ -201,6 +221,10 @@ export const feedback = pgTable(
     verifyHeldChk: check(
       'feedback_verify_held_chk',
       sql`(${t.verifyHeldAt} IS NULL) = (${t.verifyHeldWhy} IS NULL)`,
+    ),
+    confirmWaitRoomChk: check(
+      'feedback_confirm_wait_room_chk',
+      sql`(${t.confirmWaitRid} IS NULL) = (${t.confirmWaitThread} IS NULL) AND (${t.confirmWaitRid} IS NULL OR ${t.confirmWaitOn} = 'room_message') AND (${t.confirmWaitMetBy} IS NULL OR ${t.confirmWaitMetAt} IS NOT NULL)`,
     ),
     confirmWaitChk: check(
       'feedback_confirm_wait_chk',
@@ -421,57 +445,6 @@ export const feedbackMessages = pgTable(
     ),
     agencyChk: check('feedback_messages_agency_chk', sql`${t.sentAgency} IN ('human', 'agent')`),
     feedbackIdx: index('feedback_messages_feedback_idx').on(t.feedbackId, t.createdAt),
-  }),
-);
-
-/**
- * Who filed an item from outside Forge (`feedback.reported_by` is then the channel's own account):
- * the visitor as they identified themselves, the binding they came through, the page they were on,
- * and, for a widget visitor only, the SHA-256 of their private status link (the token is shown
- * once); a support group member is handed none, since anyone in the group could open it and the
- * thread is its status. The email, the name, the signed id and the page are reporter data, cleared
- * with the rest of it on a redaction.
- */
-export const feedbackExternalReporters = pgTable(
-  'feedback_external_reporters',
-  {
-    feedbackId: uuid('feedback_id')
-      .primaryKey()
-      .references(() => feedback.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    channel: text('channel', { enum: FEEDBACK_EXTERNAL_CHANNELS }).notNull(),
-    bindingId: uuid('binding_id').references(() => integrationBindings.id, {
-      onDelete: 'set null',
-    }),
-    visitorId: uuid('visitor_id').notNull(),
-    email: text('email'),
-    name: text('name'),
-    signedUserId: text('signed_user_id'),
-    pageContext: jsonb('page_context'),
-    statusTokenHash: text('status_token_hash'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    statusTokenUq: uniqueIndex('feedback_external_reporters_status_token_uq').on(t.statusTokenHash),
-    projectIdx: index('feedback_external_reporters_project_idx').on(t.projectId),
-    channelChk: check(
-      'feedback_external_reporters_channel_chk',
-      sql`${t.channel} IN (${sql.raw(FEEDBACK_EXTERNAL_CHANNELS.map((c) => `'${c}'`).join(', '))})`,
-    ),
-    statusTokenChk: check(
-      'feedback_external_reporters_status_token_chk',
-      sql`${t.statusTokenHash} ~ '^[0-9a-f]{64}$'`,
-    ),
-    statusLinkChk: check(
-      'feedback_external_reporters_status_link_chk',
-      sql`(${t.channel} = 'widget') = (${t.statusTokenHash} IS NOT NULL)`,
-    ),
-    pageContextChk: check(
-      'feedback_external_reporters_page_context_chk',
-      sql`${t.pageContext} IS NULL OR jsonb_typeof(${t.pageContext}) = 'object'`,
-    ),
   }),
 );
 
