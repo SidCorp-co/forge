@@ -10,7 +10,7 @@ export const RELEASE_TAGS_GUIDE: CoreGuide = {
   title: 'Release tags: how a build reads its release version',
   summary:
     'Forge tags the commit a release names v<version> on the project source host before anything is deployed from it: the promotion merge, or the cut commit. How a project deployed outside Forge reads that version at build time with no redeploy, and what the release says when it could not tag.',
-  version: 2,
+  version: 3,
   body: `## Release tags: how a build reads its release version
 
 Forge puts the lightweight tag \`v<version>\` (release \`0.5.0\` → \`v0.5.0\`) on the commit a
@@ -19,6 +19,11 @@ credential: the tag goes through the project's GitHub or GitLab binding, the sam
 take, and nothing is asked of a caller. A project deployed outside Forge reads its own release
 version from that tag at build time, with no redeploy; it never stamps a version file or sets a tag
 by hand.
+
+### Which version
+A cut takes the next version Forge decides; to wear one the owner named, send \`version\` on the
+cut (\`POST /api/projects/:id/release-batches\` \`{ "issueIds": [...], "version": "1.15.0" }\`), refused
+by name where another release wears it or it is not above the highest version the project claimed.
 
 ### Which commit, and when
 - A promotion release: the promotion's merge commit, the moment Forge records it merged. Merged

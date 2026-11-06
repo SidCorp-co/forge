@@ -7,8 +7,7 @@ import { recordPerformedRelease } from './recorded.js';
 import { recordLanding } from './recorded-landing.js';
 import { refuseRelease } from './refuse.js';
 import { closeResidue, residueRelease } from './residue.js';
-import { RELEASE_VERSION_SHAPE } from './version.js';
-import { givenReleaseVersion } from './version-store.js';
+import { givenVersionOrRefuse } from './version-store.js';
 
 /** The version a production release is recorded under, refused by name where missing or misshapen. */
 function recordedVersion(sent: string | undefined): string {
@@ -19,15 +18,7 @@ function recordedVersion(sent: string | undefined): string {
       '/version',
     );
   }
-  const version = givenReleaseVersion(sent);
-  if (!version) {
-    throw refuseRelease(
-      'RELEASE_VERSION_SHAPE',
-      `\`${sent}\` is no release version: send ${RELEASE_VERSION_SHAPE}, with or without a leading \`v\`.`,
-      '/version',
-    );
-  }
-  return version;
+  return givenVersionOrRefuse(sent);
 }
 
 /**

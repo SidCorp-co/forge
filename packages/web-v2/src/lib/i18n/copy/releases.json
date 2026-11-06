@@ -170,7 +170,7 @@
     "releases.rule.bumpedOvertaken": "A new version, {v}: {from} is below {above}, claimed since.",
     "releases.rule.first": "First cut of these issues: new version {v}.",
     "releases.rule.reused": "A re-cut of the same issues: it keeps {v}.",
-    "releases.rule.given": "Recorded by its agent as {v}.",
+    "releases.rule.given": "Named by its agent as {v}.",
     "releases.rule.unrecorded": "Cut before Forge recorded how each version was chosen.",
     "releases.shippedFailing.one": "Shipped with 1 failing criterion",
     "releases.shippedFailing.many": "Shipped with {n} failing criteria",

@@ -242,7 +242,8 @@ export interface ReleaseVersionCarrier {
  * the attempt before it on the same roster, `bumped` past it because something outside Forge
  * carries that one, another release already wears it, the declared prerelease line moved off it, or
  * an attempt has since claimed a higher one; `given` by the agent that recorded the release it
- * shipped (ISS-851); `unrecorded` on a run cut before the rule was recorded on the run.
+ * shipped (ISS-851) or named it at the cut (ISS-1034); `unrecorded` on a run cut before the rule
+ * was recorded on the run.
  */
 export const RELEASE_VERSION_DECISIONS = [
 	"first",
@@ -982,6 +983,10 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_RECORD_VERSION_TAKEN",
 	/** A promotion release's record naming a version other than the one its cut wears (ISS-851). */
 	"RELEASE_RECORD_VERSION_MISMATCH",
+	/** A cut naming a version another release of the project already wears (ISS-1034). */
+	"RELEASE_CUT_VERSION_TAKEN",
+	/** A cut naming a version not above the highest the project has claimed: a version never goes backwards (ISS-1034). */
+	"RELEASE_CUT_VERSION_BEHIND",
 	/** A promotion release cut without `promotion.request`, the change request the agent says carries its roster. */
 	"RELEASE_PROMOTION_REQUEST_UNNAMED",
 	/** A promotion release cut naming a request number the projection does not hold across the declared promotion. */

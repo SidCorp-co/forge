@@ -30,8 +30,10 @@ import {
 import {
   cutRecordOf,
   decideVersion,
+  highestClaimed,
   type LineageRun,
   lineageOf,
+  predecessorOf,
   type VersionCutRecord,
   type VersionDecision,
 } from './version-rule.js';
@@ -238,6 +240,12 @@ export function undecidedDetails(
   };
 }
 
+/** Every attempt of the release `run` belongs to, first first. */
+function chainOf(runs: readonly LineageRun[], run: LineageRun): LineageRun[] {
+  const { headOf, attemptsOf } = lineageOf(runs);
+  return attemptsOf.get(headOf.get(run.id)?.id ?? run.id) ?? [run];
+}
+
 /** A decision that names no version to wear, refused by its own rule's name. Nothing is cut. */
 function refuseDecision(
   projectId: string,
@@ -245,9 +253,10 @@ function refuseDecision(
   runs: readonly LineageRun[],
 ): never {
   if (d.kind === 'undecided') {
-    const { headOf, attemptsOf } = lineageOf(runs);
-    const chain = attemptsOf.get(headOf.get(d.recutOf.id)?.id ?? d.recutOf.id) ?? [d.recutOf];
-    throw blockerRefusal('RELEASE_VERSION_UNDECIDED', undecidedDetails(projectId, d, chain));
+    throw blockerRefusal(
+      'RELEASE_VERSION_UNDECIDED',
+      undecidedDetails(projectId, d, chainOf(runs, d.recutOf)),
+    );
   }
   if (d.kind === 'exhausted') {
     throw refuseRelease(
@@ -272,12 +281,17 @@ interface CutReleaseVersionArgs {
   projectId: string;
   /** The roster the run was cut with: what decides whether this is a re-cut. */
   issueIds: readonly string[];
+  /** The version the agent names at the cut, in the stored shape (`givenVersionOrRefuse`); null or
+   *  absent, the rule decides (ISS-1034). */
+  given?: string | null;
 }
 
 /**
  * The only writer of `pipeline_runs.release_version`. Called on the executor that inserted the
  * release row, so no committed release row ever exists without a version; the rule it was given is
  * written beside it (`metadata.versionCut`) in the same unit, so the page reads why, never guesses.
+ * A version the agent names is worn as `given` (ISS-1034), unless it is the very version the rule
+ * reuses for this re-cut, which is recorded as the reuse it is.
  */
 export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Promise<string> {
   const { runId, projectId, issueIds } = args;
@@ -288,6 +302,18 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
     releaseLineOf(projectId),
   ]);
   const decision = decideVersion(runs, issueIds, line);
+  const given = args.given ?? null;
+  if (given !== null && !(decision.kind === 'reused' && decision.version === given)) {
+    await refuseUnwearable(tx, { runId, projectId, version: given, at: 'cut', runs });
+    const pred = predecessorOf(runs, issueIds, null, null);
+    return wearGiven(tx, {
+      runId,
+      projectId,
+      version: given,
+      recutOf: pred,
+      attempt: pred ? chainOf(runs, pred).length + 1 : 1,
+    });
+  }
   if (decision.kind !== 'first' && decision.kind !== 'reused' && decision.kind !== 'bumped') {
     refuseDecision(projectId, decision, runs);
   }
@@ -304,6 +330,104 @@ export function givenReleaseVersion(text: string): string | null {
   return parsed && isStorableReleaseVersion(parsed) ? formatReleaseVersion(parsed) : null;
 }
 
+/** A version an agent sent, in the stored shape, or refused by name with the shape that is valid. */
+export function givenVersionOrRefuse(sent: string): string {
+  const version = givenReleaseVersion(sent);
+  if (!version) {
+    throw refuseRelease(
+      'RELEASE_VERSION_SHAPE',
+      `\`${sent}\` is no release version: send ${RELEASE_VERSION_SHAPE}, with or without a leading \`v\`.`,
+      '/version',
+    );
+  }
+  return version;
+}
+
+/**
+ * The one check on a version an agent names, at both doors that take one (ISS-1034). Another release
+ * of the project still wearing it is refused at either. At a cut it must also stand above the highest
+ * version the project claimed (`version-rule.ts:highestClaimed`, what the rule's own 'behind' reads),
+ * so a cut never moves the version backwards. A record is not held to that: it names what shipped,
+ * which may be older than what was claimed since, and the serving rule reads the highest anyway
+ * (`servingRelease`).
+ */
+async function refuseUnwearable(
+  tx: Tx,
+  args: {
+    runId: string;
+    projectId: string;
+    version: string;
+    at: 'record' | 'cut';
+    /** The lineage the cut decided over, the new run excluded; a record reads none. */
+    runs?: readonly LineageRun[];
+  },
+): Promise<void> {
+  const { runId, projectId, version, at } = args;
+  const worn = await tx.execute<{ id: string }>(sql`
+    SELECT id FROM pipeline_runs
+    WHERE project_id = ${projectId} AND release_version = ${version} AND id <> ${runId}
+      AND (release_released_at IS NOT NULL OR status NOT IN ('cancelled', 'failed'))
+    LIMIT 1
+  `);
+  if (at === 'record') {
+    if (worn[0]) {
+      throw refuseRelease(
+        'RELEASE_RECORD_VERSION_TAKEN',
+        `release ${version} is already on record for this project (run ${worn[0].id}): record this release under the version it shipped as.`,
+        '/version',
+      );
+    }
+    return;
+  }
+  const highest = highestClaimed(args.runs ?? []);
+  const above = highest
+    ? ` above ${formatReleaseVersion(highest)}, the highest it has claimed,`
+    : '';
+  if (worn[0]) {
+    throw refuseRelease(
+      'RELEASE_CUT_VERSION_TAKEN',
+      `release ${version} is already worn by another release of this project (run ${worn[0].id}), so a cut cannot wear it. Nothing was cut. Send a version${above} or send no \`version\` and Forge cuts the next one.`,
+      '/version',
+    );
+  }
+  const given = parseReleaseVersion(version);
+  if (highest && given && compareReleaseVersions(given, highest) <= 0) {
+    throw refuseRelease(
+      'RELEASE_CUT_VERSION_BEHIND',
+      `${version} is not above ${formatReleaseVersion(highest)}, the highest version this project has claimed, and a release version never goes backwards. Nothing was cut. Send a version above ${formatReleaseVersion(highest)}, or send no \`version\` and Forge cuts the next one.`,
+      '/version',
+    );
+  }
+}
+
+/** The version an agent named, written on the run with the rule it was given: `given`. */
+async function wearGiven(
+  tx: Tx,
+  args: {
+    runId: string;
+    projectId: string;
+    version: string;
+    /** The attempt a cut re-cuts, where it re-cuts one: the given version moves its release off `from`. */
+    recutOf: LineageRun | null;
+    attempt: number;
+  },
+): Promise<string> {
+  const { runId, projectId, version, recutOf } = args;
+  if (!(await stampReleaseVersion(runId, version, tx))) throw versionConflict(projectId, version);
+  const given: VersionCutRecord = {
+    decided: 'given',
+    recutOf: recutOf?.id ?? null,
+    from: recutOf?.version ?? null,
+    attempt: args.attempt,
+    carriers: [],
+    line: null,
+    takenBy: null,
+    overtakenBy: null,
+  };
+  await writeRunMetadata(runId, { merge: { versionCut: given }, touch: false }, tx);
+  return version;
+}
+
 /**
  * Write the version an agent says it released onto a recorded release (owner, 2026-11-01: a release
  * is the agent's record under an explicit version). Forge decides nothing here: it refuses a version
@@ -315,30 +439,6 @@ export async function takeGivenVersion(
 ): Promise<string> {
   const { runId, projectId, version } = args;
   await lockProjectVersions(tx, projectId);
-  const worn = await tx.execute<{ id: string }>(sql`
-    SELECT id FROM pipeline_runs
-    WHERE project_id = ${projectId} AND release_version = ${version} AND id <> ${runId}
-      AND (release_released_at IS NOT NULL OR status NOT IN ('cancelled', 'failed'))
-    LIMIT 1
-  `);
-  if (worn[0]) {
-    throw refuseRelease(
-      'RELEASE_RECORD_VERSION_TAKEN',
-      `release ${version} is already on record for this project (run ${worn[0].id}): record this release under the version it shipped as.`,
-      '/version',
-    );
-  }
-  if (!(await stampReleaseVersion(runId, version, tx))) throw versionConflict(projectId, version);
-  const given: VersionCutRecord = {
-    decided: 'given',
-    recutOf: null,
-    from: null,
-    attempt: 1,
-    carriers: [],
-    line: null,
-    takenBy: null,
-    overtakenBy: null,
-  };
-  await writeRunMetadata(runId, { merge: { versionCut: given }, touch: false }, tx);
-  return version;
+  await refuseUnwearable(tx, { runId, projectId, version, at: 'record' });
+  return wearGiven(tx, { runId, projectId, version, recutOf: null, attempt: 1 });
 }

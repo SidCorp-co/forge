@@ -46,6 +46,7 @@ type OpenRun = (args: {
   metadata: Record<string, unknown>;
   naming: ReleaseNaming | null;
   userId: string;
+  version: string | null;
 }) => Promise<{ run: { id: string }; version: string }>;
 
 /** What a promotion release keeps on its run beside its one merge step. */
@@ -67,6 +68,8 @@ export async function cutPromotionRelease(
     userId: string;
     naming?: ReleaseNaming | null;
     promotion?: { request: number } | undefined;
+    /** The version the agent named at the cut, in the stored shape (ISS-1034). */
+    version?: string | undefined;
   },
   decl: PromotionDeclaration,
   openClaimedRun: OpenRun,
@@ -119,6 +122,7 @@ export async function cutPromotionRelease(
     },
     naming: args.naming ?? null,
     userId,
+    version: args.version ?? null,
   });
   // a promotion already merged when the release is cut is seen merged now: its tag is owed on the
   // merge before anything is deployed from it (REQ-63 BC-13); one still open owes it when it merges

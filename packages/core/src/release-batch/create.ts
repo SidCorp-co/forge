@@ -37,7 +37,7 @@ import { RECORDED_VERIFICATION } from './recorded.js';
 import { blockerRefusal, reasonOf, refuseRelease } from './refuse.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
-import { cutReleaseVersion } from './version-store.js';
+import { cutReleaseVersion, givenVersionOrRefuse } from './version-store.js';
 
 interface CreateReleaseBatchArgs {
   projectId: string;
@@ -49,6 +49,9 @@ interface CreateReleaseBatchArgs {
   changeRequests?: number[] | undefined;
   /** On a promotion project: the change request the agent says carries its roster. */
   promotion?: { request: number } | undefined;
+  /** The version the release wears, as the agent names it (`v1.15.0` or `1.15.0`); absent, the
+   *  version rule decides (ISS-1034). */
+  version?: string | undefined;
 }
 
 export interface CreateReleaseBatchResult {
@@ -150,12 +153,19 @@ export async function openClaimedRun(args: {
   metadata: Record<string, unknown>;
   naming: ReleaseNaming | null;
   userId: string;
+  /** The version the agent named, in the stored shape; null lets the rule decide. */
+  version: string | null;
 }) {
   const { projectId, issueIds, metadata } = args;
   const runSpec: OneShotRunSpec = { projectId, kind: 'system', metadata };
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, runSpec);
-    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
+    const cut = await cutReleaseVersion(tx, {
+      runId: row.id,
+      projectId,
+      issueIds,
+      given: args.version,
+    });
     await carryNaming(tx, {
       projectId,
       version: cut,
@@ -220,8 +230,13 @@ async function withoutDesignOnly(projectId: string, named: string[]): Promise<st
 }
 
 export async function createReleaseBatch(
-  args: CreateReleaseBatchArgs,
+  sent: CreateReleaseBatchArgs,
 ): Promise<CreateReleaseBatchResult> {
+  // a misshapen version is refused before anything is read or claimed
+  const args = {
+    ...sent,
+    version: sent.version === undefined ? undefined : givenVersionOrRefuse(sent.version),
+  };
   const { projectId, userId } = args;
 
   const code = await withoutDesignOnly(projectId, args.issueIds);
@@ -276,6 +291,7 @@ export async function createReleaseBatch(
     },
     naming: args.naming ?? null,
     userId,
+    version: args.version ?? null,
   });
 
   const batchPrefix = await activeIssuePrefix(projectId);
@@ -354,6 +370,7 @@ async function cutChangeRequestRelease(
     },
     naming: args.naming ?? null,
     userId,
+    version: args.version ?? null,
   });
   const order = steps.map((s) => label(s)).join(', ');
   const n = alreadyLanded.length;

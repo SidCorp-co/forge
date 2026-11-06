@@ -77,6 +77,12 @@ const createBodySchema = z
       .optional(),
     /** A promotion project's cut names the change request that carries the roster the agent states. */
     promotion: z.object({ request: z.number().int().positive() }).strict().optional(),
+    /**
+     * The version the release wears, as the owner named it (`v1.15.0` or `1.15.0`): refused by name
+     * where it is no release version, another release wears it, or it is not above the highest the
+     * project claimed. Absent, the version rule decides (ISS-1034).
+     */
+    version: z.string().optional(),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -112,7 +118,7 @@ releaseBatchRoutes.post(
   zValidator('json', createBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds, name, summary, changeRequests, promotion } = c.req.valid('json');
+    const { issueIds, name, summary, changeRequests, promotion, version } = c.req.valid('json');
     const userId = c.get('userId');
 
     await requireReleaseAct(c, projectId, 'cutting a release');
@@ -125,6 +131,7 @@ releaseBatchRoutes.post(
       naming,
       changeRequests,
       promotion,
+      version,
     });
     return c.json(result, 201);
   },
