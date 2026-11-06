@@ -112,6 +112,8 @@ const READS: [RegExp, () => unknown][] = [
   [/^\/projects\/[^/]+\/feedback$/, () => FEEDBACK],
   [/\/forecast\/requirements$/, () => ({ projectId: PH, requirements: [] })],
   [/\/forecast\/feedback$/, () => ({ projectId: PH, items: [] })],
+  // the newest shipped, newest first, as core answers `releases/shipped?limit=3` (ISS-1070)
+  [/\/releases\/shipped$/, () => ({ releases: RELEASES.releases.filter((r) => "releasedAt" in r).slice(0, 3) })],
   [/\/releases$/, () => RELEASES],
   [/\/workflows$/, () => ({ workflows: [], returned: 0 })],
   [/\/workflow-templates$/, () => ({ templates: [] })],

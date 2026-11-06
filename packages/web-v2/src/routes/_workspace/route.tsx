@@ -61,8 +61,8 @@ import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
 import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
 import { HelpToursButton } from "@/features/tours/components/help-tours-button";
-import { TourReleaseProvider } from "@/features/tours/release-context";
-import { useReleases } from "@/features/releases";
+import { type TourRelease, TourReleaseProvider } from "@/features/tours/release-context";
+import { useShippedReleases } from "@/features/releases";
 import { TourLauncher } from "@/features/tours/components/tour-launcher";
 import { WORKSPACE_MAIN, WORKSPACE_PAGE_COLUMN } from "@/design/templates/workspace-frame";
 
@@ -118,6 +118,17 @@ function useShellProject(pathname: string) {
   return { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject, railRef };
 }
 
+/**
+ * The release a tour opens: the project's newest shipped one (any release carries a tour's anchors),
+ * read only once the tour list asks, so no route but Releases reads the release list (ISS-1070).
+ */
+function useTourRelease(railRef: string | undefined): TourRelease {
+  const [wanted, setWanted] = useState(false);
+  const want = useCallback(() => setWanted(true), []);
+  const version = useShippedReleases(wanted ? railRef : undefined, 1).data?.releases[0]?.version ?? null;
+  return useMemo(() => ({ version, want }), [version, want]);
+}
+
 /** ⌘K / Ctrl+K anywhere in the workspace toggles the command palette. */
 function usePaletteShortcut(toggle: () => void) {
   useEffect(() => {
@@ -157,7 +168,7 @@ function ShellContext({
 }: {
   project: Parameters<typeof CurrentProjectProvider>[0]["project"];
   projectRef: Parameters<typeof CurrentProjectProvider>[0]["projectRef"];
-  tourRelease: string | null;
+  tourRelease: TourRelease;
   dock: ChatDockApi;
   openPalette: () => void;
   children: React.ReactNode;
@@ -197,8 +208,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     useShellProject(pathname);
   const dock = useChatDockState(railProject?.id ?? null);
   const pageColumnRef = useRef<HTMLDivElement>(null);
-  const releases = useReleases(railRef).data?.releases;
-  const tourRelease = (releases?.find((r) => r.current) ?? releases?.[0])?.version ?? null; // any release carries a tour's anchors
+  const tourRelease = useTourRelease(railRef);
   const needsYou = useNeedsYou(railRef).data;
   const decisions = useNeedsYouDecisions(railRef).data;
   const slug = activeSlug(pathname);

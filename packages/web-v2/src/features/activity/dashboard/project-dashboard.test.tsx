@@ -8,6 +8,7 @@
 //
 // @direct-test-of packages/web-v2/src/routes/_workspace/projects/$slug/index.tsx
 // @direct-test-of packages/web-v2/src/features/activity/dashboard/project-dashboard.tsx
+// @direct-test-of packages/web-v2/src/features/releases/hooks.ts
 
 import type { DebtLedgerView } from "@forge/contracts/cleanup";
 import { act, cleanup, screen, within } from "@testing-library/react";
@@ -45,13 +46,9 @@ const decision = {
 const decisions = (n: number) => ({ generatedAt: AT, decisions: n ? [decision] : [], total: n, notDecisions: [] });
 
 const release = (version: string, name: string, at: string) => ({ key: version, version, name, state: "shipped", releasedAt: at, at, issueCount: 2 });
-const RELEASES = {
+/** `GET releases/shipped?limit=3`: the newest shipped, newest first, as core orders them (ISS-1070). */
+const SHIPPED = {
   releases: [release("0.4.0-dev.552", "Clearer Activity", AT), release("0.4.0-dev.551", "Calmer rail", "2026-11-06T22:00:00.000Z")],
-  counts: {},
-  approvalRequired: false,
-  production: null,
-  landings: [],
-  endedRunHolds: [],
 };
 const LEDGER_ON: DebtLedgerView = {
   fast: true,
@@ -67,7 +64,7 @@ function serve(n: number): Call[] {
     if (path === "/projects") return { body: [project] };
     if (path.endsWith("/needs-you/decisions")) return { body: decisions(n) };
     if (path.endsWith("/issues/standing")) return { body: STANDING_LIST };
-    if (path.endsWith("/releases")) return { body: RELEASES };
+    if (path.endsWith("/releases/shipped") && c.path.endsWith("?limit=3")) return { body: SHIPPED };
     if (path.endsWith("/debts")) return { body: LEDGER_ON };
     // anything else the page asks for is a read it should not send; answer it so the count says so
     return { body: {} };
@@ -123,6 +120,9 @@ describe("the project Dashboard (ISS-1067)", () => {
     const paths = calls.map((c) => c.path.split("?")[0] ?? "");
     expect(paths.filter((p) => /steward-budget|\/memory\/entries|\/onboarding|\/workflows|\/workflow-templates|\/forecast\//.test(p))).toEqual([]);
     expect(paths.length).toBeLessThanOrEqual(8);
+    // the newest shipped releases, never the project's whole release list (ISS-1070)
+    expect(paths.filter((p) => /\/releases$/.test(p))).toEqual([]);
+    expect(paths.filter((p) => p.endsWith("/releases/shipped"))).toHaveLength(1);
     expect(screen.queryByTestId("onboarding-hint")).toBeNull();
     expect(screen.queryByText(/Next release|Lands this week/)).toBeNull();
   });

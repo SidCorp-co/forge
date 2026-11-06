@@ -5,7 +5,12 @@ import { readOf, useWrite } from "@/lib/api/query-kit";
 import { releasesApi } from "./api";
 import type { ReleaseDecisionBody } from "./types";
 
+/** The project's whole release list: the Releases page's read, and no other page's (ISS-1070). */
 export const useReleases = (projectId: string | undefined) => useQuery(readOf(["releases", projectId], () => releasesApi.list(projectId as string)));
+
+/** The newest `limit` releases that shipped, newest first, under the list's key so a decision or a cut refreshes them too. */
+export const useShippedReleases = (projectId: string | undefined, limit: number) =>
+  useQuery(readOf(["releases", projectId, "shipped", limit], () => releasesApi.shipped(projectId as string, limit)));
 
 export const useRelease = (projectId: string | undefined, version: string | undefined) =>
   useQuery(readOf(["release", projectId, version], () => releasesApi.get(projectId as string, version as string), 0));

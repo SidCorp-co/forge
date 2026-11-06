@@ -13,7 +13,7 @@ import { GroupedList, type ListGroup, type ListRowView, ProjectLoader, StatusBad
 import { AuditLine } from "../components/cleanup";
 import { issueRowView, useIssueStanding, useRowWords } from "@/features/issues";
 import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
-import { useReleases } from "@/features/releases";
+import { useShippedReleases } from "@/features/releases";
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { approvalsHref, questionDecisionHref } from "@/lib/routes/approvals";
 import { issuesHref } from "@/lib/routes/issues";
@@ -38,14 +38,6 @@ const keyOf = (row: DashRow): string =>
 function decisionPlace(slug: string, d: NeedsYouDecision): string {
   if (d.entity === "question") return questionDecisionHref(slug, d.key);
   return decisionHref(slug, d.opens) ?? approvalsHref(slug);
-}
-
-/** The newest releases that shipped, newest first. */
-export function shippedOf(releases: readonly ReleaseSummary[] | undefined): ReleaseSummary[] {
-  return (releases ?? [])
-    .filter((r) => Boolean(r.releasedAt))
-    .sort((a, b) => Date.parse(b.releasedAt ?? "") - Date.parse(a.releasedAt ?? ""))
-    .slice(0, DASHBOARD_ROWS);
 }
 
 function useRowView(slug: string): (row: DashRow) => ListRowView {
@@ -120,11 +112,12 @@ export function ProjectDashboard({ projectId, slug }: { projectId: string; slug:
   const fold = useGroupFold("web-v2:dashboard-fold");
   const needsQ = useNeedsYouDecisions(projectId);
   const issuesQ = useIssueStanding(projectId, "open");
-  const releasesQ = useReleases(projectId);
+  // the newest releases that shipped, newest first, as core orders them: never the whole list (ISS-1070)
+  const releasesQ = useShippedReleases(projectId, DASHBOARD_ROWS);
   const needs = needsQ.data;
   const decisions = { listed: needs?.decisions ?? [], total: needs?.total ?? 0 };
   const issues = issuesQ.data?.issues ?? [];
-  const shipped = shippedOf(releasesQ.data?.releases);
+  const shipped = releasesQ.data?.releases ?? [];
   const view = useRowView(slug);
   const groups = groupsOf(t, slug, { decisions, issues, shipped });
   const hrefs = new Map(groups.flatMap((g) => g.rows.map((r) => [keyOf(r), view(r).href] as const)));

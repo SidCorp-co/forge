@@ -1,7 +1,7 @@
 
 import type { TourStateValue } from "@forge/contracts/product-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useCurrentProject } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { toursApi } from "./api";
@@ -31,13 +31,19 @@ export function useTourCopy() {
   return useCopy();
 }
 
-/** Where a tour opens: a page of the open project, a release of it for the release tour; null where none is open. */
-export function useTourTarget() {
+/**
+ * Where a tour opens: a page of the open project, a release of it for the release tour; null where
+ * none is open. The release is read only while `listing` (the tour list is open), never on every route.
+ */
+export function useTourTarget(listing: boolean) {
   const project = useCurrentProject();
-  const latest = useTourRelease() ?? undefined;
+  const { version, want } = useTourRelease();
+  useEffect(() => {
+    if (listing) want();
+  }, [listing, want]);
   return (tour: TourDefinition) =>
     tour.id === "release-what-changes"
-      ? tourHref(tour, project?.slug, { version: latest })
+      ? tourHref(tour, project?.slug, { version: version ?? undefined })
       : tourHref(tour, project?.slug);
 }
 

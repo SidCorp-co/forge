@@ -14,7 +14,7 @@ export function ToursSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const router = useRouter();
   const pathname = usePathname() || "/";
   const search = useLocationSearch();
-  const target = useTourTarget();
+  const target = useTourTarget(open);
 
   function show(tour: TourDefinition) {
     onClose();

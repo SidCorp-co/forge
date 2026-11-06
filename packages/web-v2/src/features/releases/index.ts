@@ -5,7 +5,7 @@ export { ReleaseItemScreen } from "./components/release-item-screen";
 export { ChangeRequestList } from "./components/release-merges";
 export { ReleasesScreen } from "./components/releases-screen";
 export { SharedReleaseView } from "./components/shared-release";
-export { useReleases } from "./hooks";
+export { useReleases, useShippedReleases } from "./hooks";
 export { parseReleaseRoster } from "./roster";
 export { type ReleaseSummary } from "./types";
 export { verifiedSentence } from "./verified";
