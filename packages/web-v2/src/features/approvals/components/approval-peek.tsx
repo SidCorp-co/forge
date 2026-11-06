@@ -69,8 +69,11 @@ function Fact({ name, children }: { name: string; children: React.ReactNode }) {
 
 const linkClass = "font-medium text-link hover:underline";
 
-/** The requirement fact: its key and revision as a link, its title under it. */
-function RequirementFact({ e, slug }: { e: DecisionEvidence; slug: string }) {
+/**
+ * The requirement fact: its key and revision as a link, its title under it, unless the head is
+ * already titled with it (a decision on the requirement itself): each fact once (ISS-680).
+ */
+function RequirementFact({ e, slug, headTitle }: { e: DecisionEvidence; slug: string; headTitle: string }) {
   const t = useCopy();
   const r = e.requirement;
   return (
@@ -80,7 +83,7 @@ function RequirementFact({ e, slug }: { e: DecisionEvidence; slug: string }) {
           <Link href={requirementHref(slug, r.key)} className={linkClass}>
             {r.revision ? t("approvals.evidence.revision", { key: r.key, n: r.revision }) : r.key}
           </Link>
-          <span className="block text-12 text-muted">{r.title}</span>
+          {r.title === headTitle ? null : <span className="block text-12 text-muted">{r.title}</span>}
         </>
       ) : (
         <span className="text-muted">{t("approvals.evidence.none")}</span>
@@ -90,7 +93,7 @@ function RequirementFact({ e, slug }: { e: DecisionEvidence; slug: string }) {
 }
 
 /** What the decision rests on (REQ-48 r3 BC-15): the requirement and revision, the plan, the criteria, each a link. */
-function Evidence({ e, slug }: { e: DecisionEvidence; slug: string }) {
+function Evidence({ e, slug, headTitle }: { e: DecisionEvidence; slug: string; headTitle: string }) {
   const t = useCopy();
   const criteriaHref = e.requirement ? requirementHref(slug, e.requirement.key) : null;
   const criteria = e.criteria.codes.length > 0 ? t("approvals.evidence.criteriaTraced", { n: e.criteria.count, codes: e.criteria.codes.join(", ") }) : t("approvals.evidence.criteriaCount", { n: e.criteria.count });
@@ -98,7 +101,7 @@ function Evidence({ e, slug }: { e: DecisionEvidence; slug: string }) {
     <section data-testid="approval-peek-evidence">
       <Heading>{t("approvals.peek.evidence")}</Heading>
       <dl className="divide-y divide-line-subtle border-y border-line-subtle text-13">
-        <RequirementFact e={e} slug={slug} />
+        <RequirementFact e={e} slug={slug} headTitle={headTitle} />
         <Fact name={t("approvals.evidence.criteria")}>
           {criteriaHref ? (
             <Link href={criteriaHref} className={linkClass}>
@@ -265,7 +268,7 @@ function Technical({ d, slug }: { d: NeedsYouDecision; slug: string }) {
         <DecisionTags d={d} />
         <Reasons d={d} />
         <AnswerEffects d={d} />
-        {d.evidence ? <Evidence e={d.evidence} slug={slug} /> : null}
+        {d.evidence ? <Evidence e={d.evidence} slug={slug} headTitle={titleShown(d)} /> : null}
       </div>
     </Disclosure>
   );
@@ -289,9 +292,14 @@ interface PeekProps {
  * The key the head names. A question's own key is its id, never shown as text (ui-copy-rule), and the
  * item it opens is named where the question says it rests on it (its subject, its evidence, its
  * impact), once: so a question's head names the item's kind alone (ISS-687 round 5, judge run
- * 13b796d4 read a uuid beside "Feedback").
+ * 13b796d4 read a uuid beside "Feedback"). A decision on a requirement its evidence names leaves the
+ * key to Rests on, which links it with its revision (ISS-680: judged naming REQ-74 three times).
  */
-const keyShown = (d: NeedsYouDecision): string | undefined => (d.entity === "question" ? undefined : d.key);
+const keyShown = (d: NeedsYouDecision): string | undefined =>
+  d.entity === "question" || d.evidence?.requirement?.key === d.key ? undefined : d.key;
+
+/** The head's title: the decision's own, else the key it shows. */
+const titleShown = (d: NeedsYouDecision): string => d.title || keyShown(d) || "";
 
 export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPress }: PeekProps) {
   const t = useCopy();
@@ -314,7 +322,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
         noun={noun}
         itemKey={keyShown(d)}
         badge={d.touchedAt ? <span className="text-12 text-subtle">· {t("approvals.waiting", { age: time.age(d.touchedAt) })}</span> : undefined}
-        title={d.title || keyShown(d)}
+        title={titleShown(d)}
       />
       {decidedFromPlain(d) ? (
         <div className="flex flex-col gap-4 px-4.5 pb-5" data-testid="approval-peek-decide">
@@ -328,7 +336,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
         <PeekMockup d={d} itemHref={full.href} />
         <DecisionTags d={d} />
         <Reasons d={d} />
-        {d.evidence ? <Evidence e={d.evidence} slug={slug} /> : null}
+        {d.evidence ? <Evidence e={d.evidence} slug={slug} headTitle={titleShown(d)} /> : null}
         {d.changeRequests && d.changeRequests.length > 0 ? (
           <section data-testid="approval-peek-merges">
             <Heading>{t("approvals.peek.merges")}</Heading>

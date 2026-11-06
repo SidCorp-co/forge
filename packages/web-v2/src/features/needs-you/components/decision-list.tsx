@@ -74,9 +74,20 @@ function Stakes({ d }: { d: NeedsYouDecision }) {
   );
 }
 
+/**
+ * What the row's link names: for a question, titled by its own prompt, the requirement it opens, by
+ * the title its evidence gives, so a line saying "the requirement" reads whole beside it (ISS-680);
+ * else the decision's title, else the key it opens.
+ */
+const itemNameOf = (d: NeedsYouDecision): string => {
+  const r = d.evidence?.requirement;
+  if (r && d.entity === "question" && d.opens?.kind === "requirement" && d.opens.key === r.key) return r.title;
+  return d.title || (d.opens?.key ?? d.key);
+};
+
 /** The item's title leads; its key sits behind the link and in the tooltip (ui-copy-rule 10). */
 function ItemTitle({ d, href }: { d: NeedsYouDecision; href: string | null }) {
-  const name = d.title || (d.opens?.key ?? d.key);
+  const name = itemNameOf(d);
   return (
     <p className="fg-caption text-muted">
       <Tooltip label={d.opens?.key ?? d.key} className="min-w-0 max-w-full">
@@ -101,7 +112,8 @@ function ItemTitle({ d, href }: { d: NeedsYouDecision; href: string | null }) {
 function DenseQuestion({ d, href }: { d: NeedsYouDecision; href: string | null }) {
   const t = useCopy();
   const key = d.opens?.key ?? d.key;
-  const name = d.title ? `${d.title} · ${key}` : key;
+  const title = itemNameOf(d);
+  const name = title === key ? key : `${title} · ${key}`;
   const said = (
     <>
       {decisionLineOf(d).line}
