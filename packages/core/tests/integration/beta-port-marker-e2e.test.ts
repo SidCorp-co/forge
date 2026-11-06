@@ -102,7 +102,7 @@ describe('a beta port marker is a comment first line (ISS-1045)', () => {
     const settled = await fire();
     expect(settled.status, JSON.stringify(settled)).toBe('success');
     const item = (await devFeedbackOf(twin.id)).find((f) => f.where_seen === 'forge-beta ISS-60');
-    expect(item, settled.output).toBeDefined();
+    expect(item, settled.output ?? '').toBeDefined();
     const fbKey = `FB-${item?.fb_seq}`;
     expect(settled.output).toContain(`${twin.slug}: beta ISS-60 → ${fbKey}`);
     expect(settled.output).not.toContain('ISS-60 (marked ported');
