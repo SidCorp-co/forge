@@ -8,8 +8,9 @@
 // or one Forge cuts. A commit is optional evidence, kept and never required, compared or read for
 // ancestry. It refuses only what is not a fact: a malformed body, an issue that carries no mark. A
 // mark naming no commit is the agent's word too (ISS-1017): it is recorded, its build said unread.
-// Verdicts are gates before a merge or a cut (BC-15), never after: each issue's coverage at its
-// landing is read beside the record (`landing-coverage.ts`, BC-14), refusing nothing.
+// Verdicts gate a merge or a cut only where the project's gates ask it (BC-15: an owed merge check's
+// probes, an enforced `release_criteria`), and never a landing that already happened: each issue's coverage at its landing is read beside the record
+// (`landing-coverage.ts`, BC-14), refusing nothing.
 
 import { db } from '../db/client.js';
 import { issueDisplayIds, releaseRunClaims } from '../issues/index.js';
