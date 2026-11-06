@@ -41,13 +41,41 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
     expect(prose).toContain('ISSUE_SCOPE_HELD');
   });
 
-  it('lets separate work become an issue someone owns, in its lane', () => {
+  // ISS-1057: each defect seen has one place — the fix, the debt ledger, or its owner — and a part
+  // is an issue of its own only for priority, a handoff or independent tracking
+  it('gives each finding one place, and separate work an issue only for priority, handoff or tracking', () => {
     expect(prose).not.toContain('Never a new issue filed to carry it');
     expect(prose).not.toContain(
       'or an issue of its own where it is separate work someone will pick up',
     );
-    expect(prose).toContain('Separate work goes in its lane');
+    expect(prose).not.toContain('A defect in reach and inside this issue');
+    expect(prose).not.toContain('**More than one run** — split it');
+    expect(prose).toContain(
+      '**Your fix needs it**, to bound its impact or to prove itself: fix it here',
+    );
+    expect(prose).toContain(
+      '**It stands alone**: record it as debt for the Audit, with its evidence',
+    );
+    expect(prose).toContain(
+      'Recorded there it is discharged; mentioned only in a comment it is not.',
+    );
+    expect(prose).toContain('**Out of reach**: routed to whoever owns it');
+    expect(prose).toContain('Separate work goes to its place');
     expect(prose).toContain('is Feedback, never an issue you file');
     expect(prose).toContain("issue of its own in its module's technical backlog");
+    expect(prose).toContain(
+      'A part becomes an issue of its own only for priority, a handoff or independent tracking',
+    );
+  });
+
+  // ISS-1057: verification follows the blast radius, and the close is the criteria met in scope
+  it('checks wide early by blast radius, and keeps the three marks apart', () => {
+    expect(prose).toContain(
+      'Where the change touches shared logic, billing, permissions or data, check wide early',
+    );
+    expect(prose).toContain('**An issue closes when its criteria are met in scope**');
+    expect(prose).toContain('are marks on the release, never issue statuses');
+    expect(prose).toContain("**Today the kernel still makes the close a release's act:**");
+    expect(prose).toContain('CLOSE_ONLY_BY_RELEASE');
   });
 });

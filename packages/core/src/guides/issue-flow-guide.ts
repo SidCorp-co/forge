@@ -22,12 +22,14 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Taking one issue from open to awaiting_release',
   summary:
-    'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 14,
+    'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge and move it to `awaiting_release` — today never to `closed`.',
+  version: 15,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
-can claim. Every act on the tracker below is a REST call to the core that holds the project. On a
+can claim. An issue is one verifiable outcome, and one run may carry it end to end: investigate,
+fix, check, and bring the fix to the integration mark. While a decision waits on a person, go on with
+the part that does not depend on it. Every act on the tracker below is a REST call to the core that holds the project. On a
 runner box \`forge-runner api <path>\` makes it with the pane's credential: \`-d -\` reads the JSON body
 from stdin, and its \`-h\` lists the exit codes. A long body is written to a file outside the
 checkout and sent on stdin — a payload left in the working tree is one the project's own checkers
@@ -66,9 +68,11 @@ Then decide what it is:
 - **Build it** — go on.
 - **The claim is false** — post the evidence as a comment, then \`dropped\` with a reason, or
   \`needs_info\` where a person owes the requirement.
-- **More than one run** — split it. The other half is filed with
+- **More than one outcome** — the size of the work is no reason to split it: one outcome is built
+  whole, its steps split and grouped inside the run. A part becomes an issue of its own only for
+  priority, a handoff or independent tracking. That part is filed with
   \`POST /api/projects/:id/issues\` carrying \`relations: [{ kind: 'blocks', dependsOnId }]\` in the
-  create itself, \`dependsOnId\` this issue where that half builds on this one, and a \`decision\`
+  create itself, \`dependsOnId\` this issue where that part builds on this one, and a \`decision\`
   record on this issue names it.
 
 ### 2. Take it
@@ -245,8 +249,14 @@ the mark or the decision answers it, so the business question is asked on its ow
 - A file another run's tree holds is not yours to edit: the brief lists what the other trees hold.
   Route what you found to the issue that owns it.
 - Before you change behaviour, know what you are replacing, and remove it in the same change.
-- Run the project's own gate before you push: its typecheck and the direct tests of what you
-  touched, never a whole suite — the project's knowledge names the command.
+- The fix does what bounds its own impact or proves it, and nothing else. Cleanup that can stand
+  alone is not done here: it is recorded as debt for the Audit (section 7).
+- Verification follows the blast radius. Run the project's own gate before you push: its typecheck
+  and the direct tests of what you touched, never a whole suite — the project's knowledge names the
+  command. Where the change touches shared logic, billing, permissions or data, check wide early —
+  the integration tests and the suites of what it shares — instead of leaving it to the wide check
+  at the release mark; line count is only a secondary signal. A small fix with a clear blast radius
+  goes on without waiting for a person.
 - Record each check you ran with how long it took, so the issue shows where its time went:
   \`POST /api/issues/:id/checks\` \`{ head, checks: [{ id, kind, name, scope, command, files, result,
   durationMs, startedAt }] }\`, \`kind\` one of \`tests\`, \`typecheck\`, \`probes\`, \`review\`,
@@ -441,8 +451,12 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    \`MERGE_NOT_RECORDED\` while the merge is not recorded; it asks no verdict, since verdicts are
    judged on the release that carries the work.
 
-**Never move an issue that ships code to \`closed\`.** Only a release that claimed it closes it
-(\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`. On a project that
+**An issue closes when its criteria are met in scope**; released, and confirmed on the target
+environment, are marks on the release, never issue statuses. A criterion this issue cannot meet is
+moved out on the record before the close — to the next batch's issue, a new issue or the
+requirement — and the close names where each one went. **Today the kernel still makes the close a
+release's act:** never move an issue that ships code to \`closed\`, since only a release that
+claimed it closes it (\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`. On a project that
 declares no production environment that release is the recorded landing
 (\`POST /api/projects/:id/release-records\`): the agent's record in its own words, a version
 optional and a commit only evidence, never checked. The record reports each criterion by the pass
@@ -467,17 +481,20 @@ body its route accepts, so a guess costs one read of the refusal, not one call p
 - impact: \`POST /api/issues/:id/impact\` \`{ "type": "api", "rating": "medium", "reason": "<why this rating>" }\`
 
 ### 7. What you found beside the work
-- A defect in reach and inside this issue's ownership line: fix it here and declare it in the
-  closing comment under \`Extra fixes:\`.
-- Something another issue owns: a comment on that issue, and a \`routed\` record on this one naming
-  where it went.
-- Out of reach: give it an owner — a \`blocks\` edge onto the issue that would ship without it, a
-  line in the project's proposals, or \`needs_info\` on this one.
-- Separate work goes in its lane (guide \`what-is-an-issue\`, *Two lanes*). A product finding, one
-  that changes what a user sees or should expect, is Feedback, never an issue you file. A technical
-  one (a defect against an existing expectation, security, performance, debt, contract typing) is an
-  issue of its own in its module's technical backlog: its kind as \`category\`, its module as the
-  primary label, and \`Found in:\` this issue with the evidence.
+Each defect you see goes to exactly one place (guide \`what-is-an-issue\`, *Where what you find goes*):
+- **Your fix needs it**, to bound its impact or to prove itself: fix it here, whoever caused it, and
+  declare it in the closing comment under \`Extra fixes:\`.
+- **It stands alone**: record it as debt for the Audit, with its evidence —
+  \`POST /api/projects/:id/debts\` \`{ issue, items: [{ kind, check?, where, detail, impact }] }\` — and
+  do not do it inside the fix. Recorded there it is discharged; mentioned only in a comment it is
+  not. A red you rate high is refused as debt and stays this issue's to fix.
+- **Out of reach**: routed to whoever owns it — a comment on the issue that owns it and a \`routed\`
+  record on this one naming where it went, a \`blocks\` edge onto the issue that would ship without
+  it, or \`needs_info\` on this one.
+- Separate work goes to its place. A product finding, one that changes what a user sees or should
+  expect, is Feedback, never an issue you file. A technical one needing its own priority, a handoff
+  or independent tracking is an issue of its own in its module's technical backlog: its kind as
+  \`category\`, its module as the primary label, and \`Found in:\` this issue with the evidence.
 - A lesson a different issue would reuse: \`POST /api/memory\`. Another project's issue key is
   written \`<its slug> ISS-n\`, never bare, since a bare key is read as this project's. What a sweep, a
   reconcile or a consolidation did is bookkeeping, not a lesson, and is never written as a \`decision\`.

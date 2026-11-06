@@ -64,7 +64,8 @@ const TECHNICAL_KINDS: ReadonlySet<string> = new Set(TECHNICAL_ISSUE_KINDS);
 
 /**
  * A technical backlog item: an agent's own finding, filed at draft under one of the technical kinds
- * (guide `what-is-an-issue`, *Two lanes*). Once admitted it is delivery work, no longer the backlog.
+ * (guide `what-is-an-issue`, *Where what you find goes*). Once admitted it is delivery work, no longer
+ * the backlog.
  */
 export const isTechnicalItem = (r: Pick<IssueStandingRow, "byAgent" | "category" | "status">): boolean =>
   r.byAgent && r.status === "draft" && TECHNICAL_KINDS.has(r.category ?? "");

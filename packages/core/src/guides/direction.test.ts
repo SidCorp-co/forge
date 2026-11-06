@@ -187,3 +187,55 @@ describe('Audit does not gate delivery', () => {
     expect(audit).not.toContain('when a change rated high waits');
   });
 });
+
+// Round 2 of ISS-1057 (owner deltas, 2026-11-07): an issue is one verifiable outcome; each defect
+// seen has one place (the fix, the debt ledger, its owner); an issue closes when its criteria are
+// met in scope, and released and confirmed are marks on the release.
+describe('an issue is one outcome, and each defect seen has one place', () => {
+  it('what-is-an-issue files a separate issue only for priority, handoff or independent tracking', async () => {
+    const guide = await served('what-is-an-issue');
+    expect(guide).toContain('An issue is **one verifiable outcome**');
+    expect(guide).toContain(
+      'A separate issue is filed only for one of three reasons: **priority** (a part must go ahead of, or wait behind, other work), **handoff**',
+    );
+    expect(guide).toContain('A step, a layer or a file set is none of those.');
+    expect(guide).not.toContain('An issue is a unit of **work**');
+  });
+
+  it('what-is-an-issue sends a standalone defect to the debt ledger, never into the fix', async () => {
+    const guide = await served('what-is-an-issue');
+    expect(guide).toContain('| **Debt for Audit** |');
+    expect(guide).toContain('`POST /api/projects/:id/debts`');
+    expect(guide).toContain('Cleanup the fix does not need is not this.');
+    expect(guide).not.toContain('In reach here** → usually cheapest to fix it');
+    expect(guide).not.toContain('a defect in what the issue you are working already touches');
+  });
+
+  it('writing-an-issue writes one outcome', async () => {
+    const guide = await served('writing-an-issue');
+    expect(guide).toContain('**Write one outcome.**');
+    expect(guide).toContain(
+      'that is when the issue closes, and what it cannot meet is moved out on the record first',
+    );
+  });
+
+  it('the lifecycle guide keeps three marks apart and states today’s kernel in one clause', async () => {
+    const guide = await served('pipeline-and-issue-lifecycle');
+    expect(guide).toContain(
+      '**Three marks, kept apart.** An issue closes when its criteria are met in scope. Released, and confirmed on the target environment, are marks on the release — never issue statuses',
+    );
+    expect(guide).toContain('"is it live" is read from the release record');
+    expect(guide).toContain('the close names where each one went');
+    expect(guide).toContain(
+      "Today the kernel still makes a close the release's act (`CLOSE_ONLY_BY_RELEASE`",
+    );
+    expect(guide).not.toContain('**`closed` means the work shipped');
+    expect(guide).not.toContain('`closed` claims the work shipped');
+  });
+
+  it('the orientation every prompt carries routes a standalone defect to the debt ledger', () => {
+    const table = flat(renderFact('pipeline-rules'));
+    expect(table).toContain('debt for the Audit, `projects/<id>/debts -X POST` with its evidence');
+    expect(table).not.toContain('`closed` says it shipped');
+  });
+});

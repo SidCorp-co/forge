@@ -133,9 +133,10 @@ export const ISSUE_PRIORITY_BARS: Record<IssuePriorityValue, number> = {
 };
 
 /**
- * The kinds a technical backlog item is filed under (guide `what-is-an-issue`, *Two lanes*): an
- * agent's own finding against an expectation that already exists, never a feature. The Issues list's
- * Technical filter (ISS-1001) shows the agent-filed issues of these kinds.
+ * The kinds a technical backlog item is filed under (guide `what-is-an-issue`, *Where what you find
+ * goes*): an agent's own finding against an expectation that already exists, never a feature, filed as
+ * an issue only for priority, handoff or independent tracking. The Issues list's Technical filter
+ * (ISS-1001) shows the agent-filed issues of these kinds.
  */
 export const TECHNICAL_ISSUE_KINDS = [
 	"bug",

@@ -5,19 +5,21 @@ export const WHAT_IS_AN_ISSUE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'What is an issue?',
   summary:
-    'The four gates a thing must pass to be an issue at all, the two lanes a finding goes in (product through Feedback, technical in the backlog of its module), how a technical item is filed, where a note / question goes instead, and how to give a residual an owner.',
-  version: 7,
+    'An issue is one verifiable outcome: the four gates it must pass, when the work inside it becomes a separate issue, the places a finding goes (product through Feedback, a standalone technical defect on the debt ledger for Audit, an issue only for priority, handoff or independent tracking), where a note / question goes instead, and how to give a residual an owner.',
+  version: 8,
   body: `## What is an issue?
 
-An issue is a unit of **work** — not a note, not a question, not a record of something already done.
+An issue is **one verifiable outcome** — not a note, not a question, not a record of something already done, and not a step of someone's plan.
 
-> An issue is a unit of work with a named deliverable and an owner, whose completion someone other than the author can verify.
+> An issue is one outcome with an owner, whose completion someone other than the author can verify.
+
+**The work inside it is yours to shape.** One agent may carry the outcome end to end — investigate, fix, check, bring the fix to the integration mark — and splits and groups the steps internally: in its plan, its commits, its builders. A separate issue is filed only for one of three reasons: **priority** (a part must go ahead of, or wait behind, other work), **handoff** (another owner or another project takes it), or **independent tracking** (it must be seen and closed on its own). A step, a layer or a file set is none of those.
 
 ### The four gates — file it only if it passes all four
 
 | # | Gate | Ask | If it fails |
 |---|---|---|---|
-| 1 | **Deliverable** | When this is done, what *thing* exists? A diff, a merged branch, a changed config, a deleted file. | If "done" produces only TEXT — an answer, a note, a record — it is not an issue |
+| 1 | **Outcome** | When this is done, what *thing* exists or behaves differently? A diff, a merged branch, a changed config, a deleted file. | If "done" produces only TEXT — an answer, a note, a record — it is not an issue |
 | 2 | **Executable** | Can whoever picks it up finish it with what the description says? | If step one is "someone must decide X", the decision is the blocker and the issue does not exist yet |
 | 3 | **Verifiable exit** | Can a second person tell done from not-done by observing behaviour? | Clarify it first |
 | 4 | **Owner + due signal** | Who will look at it, and what makes it speak up if forgotten? | No owner and no aging signal means filing it BURIES it |
@@ -35,27 +37,32 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 | An audit or scan finding that names no work yet | an observation | memory; once it names work, it goes in its lane (below) |
 | A fix you already made by hand | a record | move the status, capture the learning in memory |
 
-### Two lanes for what you find
+### Where what you find goes
 
-What you find while working goes in one of two lanes, decided by one question: **does it change what a user sees or should expect?** Yes is product; a defect that only restores what was already expected is technical.
+What you find while working is sorted by two questions. First: **does it change what a user sees or should expect?** Yes is product. Otherwise it is technical, and the second question is **does the fix you are making need it?**
 
-| Lane | What goes in it | Where it goes | Example |
+| Place | What goes in it | Where it goes | Example |
 |---|---|---|---|
 | **Product** | anything that changes what a user sees or should expect, and every report from a user or the owner | Feedback (\`POST /api/projects/:id/feedback\`), then triage, a requirement, and only then an issue | a filter the export screen lacks, which you would add: Feedback of kind \`idea\`, never an issue you file |
-| **Technical** | your own finding against an expectation that already exists: a defect, security, performance, debt, contract typing, cleanup | the technical backlog of its module, which stays in Delivery: an issue filed as below | a list query with no index on its filter column; a route that answers an untyped body |
-| **Inside your issue** | a defect in what the issue you are working already touches | fixed there, declared under \`Extra fixes:\` | a wrong label on the screen you are changing |
+| **Inside your fix** | a defect your fix needs, to bound its own impact or to prove itself | fixed there, declared under \`Extra fixes:\` | the unchecked input your new route would pass straight to the query |
+| **Debt for Audit** | a technical defect that stands alone: a defect against an expectation that already exists, debt, code to simplify, a red check, contract typing, cleanup | the debt ledger, with its evidence (below). Never done inside the fix | a list query with no index on its filter column; a wrong label on a screen you are not changing |
+| **An issue of its own** | a technical defect that must not wait for the cleanup window, or another owner must take | the technical backlog of its module (below), only for priority, handoff or independent tracking | a security hole, or a defect another project owns |
 
 **A feature never starts as an issue an agent filed.** Core does not refuse one, so this lane is yours to keep: an issue with no requirement and no Feedback behind it is a technical item, or it is in the wrong lane. A defect is technical only while the expectation it breaks is already agreed (a requirement, or the screen as it works today); a defect that asks to change what users expect is product.
 
-#### Filing a technical item today
+#### Recording a standalone defect as debt
 
-Until the backlog has a screen of its own, a technical item is an issue at \`draft\` (\`POST /api/projects/:id/issues\` with \`"status": "draft"\`, since a create with no status is admitted to \`open\` and dispatched) carrying:
+\`POST /api/projects/:id/debts\` with \`{ issue?, items: [{ kind, check?, where, detail, impact: { type, rating, reason } }] }\`: \`kind\` is \`red\` (a check that ended red, naming it in \`check\`), \`debt\` or \`simplify\`; \`where\` and \`detail\` carry the evidence; \`issue\` names the issue you were working when you saw it. The Audit's cleanup run reads the ledger and clears it (guide \`cleanup-audit\`). A defect recorded there is discharged; one only mentioned in a comment is not. Two are refused, and stay the issue's to fix: a red you rate high (\`CLEANUP_REFUSED\`), and anything on a project that turned fast delivery off (\`FAST_DELIVERY_OFF\`).
+
+#### Filing a technical issue of its own
+
+Only for priority, handoff or independent tracking, a technical item is an issue at \`draft\` (\`POST /api/projects/:id/issues\` with \`"status": "draft"\`, since a create with no status is admitted to \`open\` and dispatched) carrying:
 
 - \`category\`: its kind, one of \`bug\`, \`security\`, \`performance\`, \`debt\` or \`contract\`;
 - \`labels\`: its business module as the primary, \`[{ "labelId": "<module name>", "isPrimary": true }]\`; \`GET /api/projects/:id/labels\` lists the modules (\`kind: module\`);
 - a \`description\` whose first line is \`Found in: <the issue or run you were working> — <evidence: the file, query, log line or measurement>\`, and, where you were working an issue, a \`relates\` edge onto it: \`relations: [{ "kind": "relates", "dependsOnId": "<its id>" }]\`.
 
-Its age is when it was filed. Nothing else is asked: no requirement, no Feedback. On a project that delivers fast, debt a cleanup run clears (a red check, code to simplify) goes to the cleanup ledger instead, guide \`fast-delivery\`.
+Its age is when it was filed. Nothing else is asked: no requirement, no Feedback.
 
 ### Residuals — give each one an owner
 
@@ -63,10 +70,11 @@ A residual nobody owns is the failure: four stages once flagged the same data le
 
 So decide where each one goes:
 
-1. **In reach here** → usually cheapest to fix it, declared under \`Extra fixes:\` in your comment. A declared extra fix is authorized work, judged on merit.
-2. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
-3. **It needs a decision only a person owns** (irreversible, real money, credentials, product direction, standing policy) → \`needs_info\` + \`waitingKind: needs_decision\` + \`reason\` when it blocks this issue, with your recommendation. Any other decision is yours: make it and record it.
-4. **It is separate work** → its lane, above: product-shaped → Feedback; technical → an issue of its own in its module's technical backlog, filed as above so someone can pick it up. Never a bare \`draft\` with no module, kind or evidence.
+1. **Your fix needs it**, to bound its impact or to prove itself → fix it, declared under \`Extra fixes:\` in your comment. A declared extra fix is authorized work, judged on merit. Cleanup the fix does not need is not this.
+2. **It stands alone** → debt for the Audit, on the ledger with its evidence (above).
+3. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
+4. **It needs a decision only a person owns** (irreversible, real money, credentials, product direction, standing policy) → \`needs_info\` + \`waitingKind: needs_decision\` + \`reason\` when it blocks this issue, with your recommendation. Any other decision is yours: make it and record it.
+5. **It is separate work** → its place, above: product-shaped → Feedback; technical and needing priority, a handoff or its own tracking → an issue of its own in its module's technical backlog, filed as above so someone can pick it up. Never a bare \`draft\` with no module, kind or evidence.
 
 ### When you find one that is not work — act on it, don't leave it
 
@@ -74,7 +82,7 @@ Finding a filed item that fails the gates is not someone else's job. You are the
 
 1. **Comment first** — which gate it fails, and where the content went (the memory entry, the proposals file, the issue it duplicates). A status move with no comment leaves the next reader unable to tell why.
 2. **Then move it**: \`needs_info\` when a human owes you requirements and it could become real work; \`dropped\` when it is not work at all.
-3. **Non-work leaves by \`dropped\`, never by \`closed\`.** \`closed\` means the work shipped: it is reached only from \`awaiting_release\`, by a release that claimed the issue (\`CLOSE_ONLY_BY_RELEASE\`), with its merge recorded (\`CLOSE_REQUIRES_SHIPPED\`). On a project that declares no production environment that release is its recorded landing (\`POST /api/projects/:id/release-records\`): it is the agent's record in its own words, under the version it names or one Forge cuts, names the branch, says nothing was deployed, and keeps a commit only as evidence, never checked: its verdicts never refuse it, and each criterion is reported beside the record by the pass it stands on. \`dropped\` is terminal without the claim, and it expires this issue's outgoing \`blocks\` edges so nothing is left waiting on an issue that can never land.
+3. **Non-work leaves by \`dropped\`, never by \`closed\`.** \`closed\` says the issue's criteria were met in scope; today the kernel reaches it only from \`awaiting_release\`, by a release that claimed the issue (\`CLOSE_ONLY_BY_RELEASE\`), with its merge recorded (\`CLOSE_REQUIRES_SHIPPED\`). On a project that declares no production environment that release is its recorded landing (\`POST /api/projects/:id/release-records\`): it is the agent's record in its own words, under the version it names or one Forge cuts, names the branch, says nothing was deployed, and keeps a commit only as evidence, never checked: its verdicts never refuse it, and each criterion is reported beside the record by the pass it stands on. \`dropped\` is terminal without the claim, and it expires this issue's outgoing \`blocks\` edges so nothing is left waiting on an issue that can never land.
 
 Do not move it INTO \`draft\` — no move of yours puts an issue back there; only a run's end hands back a draft its holder took. \`dropped\` is the exit for something that turned out not to be work.
 
@@ -89,9 +97,11 @@ export const WRITING_AN_ISSUE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Writing an issue',
   summary:
-    'The three shapes an issue body takes and how to tell which one you are writing, the line a technical backlog item opens with, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
-  version: 3,
+    'One issue, one verifiable outcome; the three shapes an issue body takes and how to tell which one you are writing, the line a technical backlog item opens with, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
+  version: 4,
   body: `## Writing an issue
+
+**Write one outcome.** An issue is one verifiable outcome, and the steps inside it — layers, files, builders — are its plan, not issues of their own. Write a second issue only where a part needs its own priority, goes to another owner, or must be tracked on its own (guide \`what-is-an-issue\`). The criteria you write say when the outcome is met in scope; that is when the issue closes, and what it cannot meet is moved out on the record first.
 
 A reader must get the problem in about fifteen seconds. How you get them there depends on which of three things you are writing, so pick the shape FIRST — most of the unreadable issue bodies in this tracker are the wrong shape, not bad writing.
 
@@ -99,13 +109,13 @@ A reader must get the problem in about fifteen seconds. How you get them there d
 |---|---|---|
 | **One symptom** with one cause — a missing focus ring, a rule to add, a slice already scoped elsewhere | Opening line, then **Evidence** | 2 blocks |
 | **A problem** whose cost, spread or mechanism a reader will not guess | The six blocks below | 4 blocks + Evidence |
-| **An epic or a design record** — locked decisions, tiers, children | The six blocks below, then a **Decisions** block kept intact | 4 blocks + Decisions + Evidence |
+| **An epic or a design record** — locked decisions, tiers, and children only where a part needs its own priority, owner or tracking | The six blocks below, then a **Decisions** block kept intact | 4 blocks + Decisions + Evidence |
 
 Do not inflate the first shape into the second. A diagram of *"tab to the toggle → no ring appears"* has two nodes and tells the reader nothing the title did not; a *Who it hurts* table with one row is a sentence in a costume. Both make the issue longer and no clearer, which is the one thing this format exists to prevent.
 
 Do not compress the third shape into the second either. In an epic the locked decisions ARE the deliverable, and an agent that re-derives a rejected option has done the work twice. Summarise the problem in the four blocks, then keep every decision, its rejected alternatives and its sequencing under **Decisions**. The four blocks are for the reader deciding whether to care; **Decisions** is for whoever builds it.
 
-**A technical backlog item is the first shape**, after one line saying where it was found: \`Found in: <the issue or run you were working> — <evidence>\`, with its kind as \`category\` and its module as its primary label (guide \`what-is-an-issue\`, *Two lanes*). Something that changes what a user sees or should expect is not written here at all: it is Feedback first.
+**A technical backlog item is the first shape** — filed only for priority, handoff or independent tracking; a standalone defect otherwise goes on the debt ledger, not here — after one line saying where it was found: \`Found in: <the issue or run you were working> — <evidence>\`, with its kind as \`category\` and its module as its primary label (guide \`what-is-an-issue\`, *Two lanes*). Something that changes what a user sees or should expect is not written here at all: it is Feedback first.
 
 The six blocks, in this order. The last two appear only when they earn it.
 
@@ -150,8 +160,8 @@ export const PIPELINE_AND_ISSUE_LIFECYCLE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Pipeline & issue lifecycle',
   summary:
-    "What belongs in a description, the ten statuses an issue moves through and the guard each move carries, why a run's progress is its step and not a status, status-last discipline, why a park returns to the status it left, the three kinds of `needs_info`, and who owns which derived fields.",
-  version: 17,
+    "What belongs in a description, the ten statuses an issue moves through and the guard each move carries, the three marks an issue's work earns (met in scope, released, confirmed on the target environment), why a run's progress is its step and not a status, status-last discipline, why a park returns to the status it left, the three kinds of `needs_info`, and who owns which derived fields.",
+  version: 18,
   body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -164,7 +174,7 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 
 | You have | Do | Why |
 |---|---|---|
-| Finished the work entirely by hand; the pipeline has nothing left to do | claim it while \`draft\` (a lease in \`sessionContext.lease\`), move it straight to \`in_progress\`, mark merged, \`awaiting_release\`; a release closes it | Never through \`open\`: \`open\` wakes the project's masters (\`ws/master-wake.ts\`), and on a project whose policy dispatches on \`open\` it is theirs to take and build again. An issue that ships code closes only through a release (a release batch, or a recorded release), and only with its merge recorded; a design-only one closes once its design revisions are approved |
+| Finished the work entirely by hand; the pipeline has nothing left to do | claim it while \`draft\` (a lease in \`sessionContext.lease\`), move it straight to \`in_progress\`, mark merged, \`awaiting_release\`; today a release closes it | Never through \`open\`: \`open\` wakes the project's masters (\`ws/master-wake.ts\`), and on a project whose policy dispatches on \`open\` it is theirs to take and build again. Today an issue that ships code closes only through a release (a release batch, or a recorded release), and only with its merge recorded; a design-only one closes once its design revisions are approved |
 | Started it yourself and are building it | \`in_progress\` holding a lease, from \`draft\` or \`open\` | \`in_progress\` is refused (\`NO_HOLDER\`) while nothing holds the issue, so a master cannot race an agent into the worktree you are in |
 | Not started it; you want the project's agents to build it | \`open\` | The project's master takes it in its next pass |
 | Decided against it; the work will not happen | \`dropped\` with a reason | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
@@ -177,9 +187,11 @@ Every status answers one question — whose move is next. It is declared per sta
 
 The evidence questions are answered by row fields instead, and you read them directly: \`merged_at\` (it landed), \`workState.branch\` (a branch exists), \`workState.headSha\` and the implementation handoff's \`commitSha\`. \`merged_at\` is caller-asserted rather than verified — the merge mark (\`POST /api/issues/:id/merge\`) writes what the caller says landed, and no transition writes it at all — so it is evidence of a claim, which is what an evidence field is.
 
-**\`closed\` means the work shipped, and \`dropped\` is the exit for everything else.** A close is refused (\`CLOSE_REQUIRES_SHIPPED\`) while the issue carries no \`merged_at\`, and the database refuses the same TRANSITION whatever route it took: \`trg_issues_closed_means_shipped\` names the issue and the rule on any UPDATE moving a row into \`closed\` with no claim, on any INSERT creating one there, and on any write clearing the claim from under a row already standing there — raw SQL included. **The rule governs the transition and not the state**, so rows closed before it landed keep what they hold: they still read \`closed\` with no \`merged_at\`, they are still writable, and migration \`0304_closed_means_shipped\` counted them in a \`NOTICE\` when it ran rather than deciding for them. Whoever owns such a row marks it merged where the work landed, or moves it to \`dropped\` where it did not, and no sweep decides them by rule. Use \`dropped\` for anything discarded: a note, a question, a duplicate, something already done. Where the work DID land outside the pipeline, claim it first with \`POST /api/issues/:id/merge\`. **Whether the work is done is the agent's call** (owner, 2026-11-05): the mark refuses no evidence it lacks — no commit, branch, handoff, target or landing of the project's shape is asked — and records what it names, as named, with who said it and the run that held the issue: \`commit\`, \`target\`, \`landing\` (a live URL, docs store, CMS entry or storefront resource), \`artifacts\`, a \`liveReading\` (\`{ url, status }\`), a \`note\`, on any project; a mark naming nothing says so. A commit it names is read against the repository and what that finds is recorded on the mark as a reading, never a refusal. Input of the wrong shape — a malformed sha, an unknown field, an artifact missing a key — is still refused by name at its path. **Recording a landing moves no status**: the mark (or the host's merge webhook) records the merge and nothing else, and the run moves the issue to \`awaiting_release\` itself once the mark stands; no verdict is asked there, since verdicts are judged on the release that carries the work. \`awaiting_release\` and \`closed\` rest on the mark existing, whatever it names and whatever the project's shape.
+**Three marks, kept apart.** An issue closes when its criteria are met in scope. Released, and confirmed on the target environment, are marks on the release — never issue statuses — so "is it live" is read from the release record (\`GET /api/projects/:id/releases\`), never from \`closed\`. A criterion the issue cannot meet is moved out on the record before the close — to the next batch's issue, a new issue or the requirement — and the close names where each one went.
 
-One thing about \`dropped\` is worth knowing before you reach for it: **it releases the dependents it was holding, and you do not retract their edges by hand.** \`issues/drop-cascade.ts\` expires this issue's outgoing \`blocks\` edges inside the same transaction that moves the status, and names the dependents it freed back to you, so a rollback takes the expiry with it. \`closed\` claims the work shipped, \`dropped\` claims only that it will not happen, and neither leaves an issue waiting on something that can never land.
+**\`closed\` means the criteria were met in scope, and \`dropped\` is the exit for everything else.** Today the kernel still makes a close the release's act (\`CLOSE_ONLY_BY_RELEASE\`, the \`closed\` row below). A close is refused (\`CLOSE_REQUIRES_SHIPPED\`) while the issue carries no \`merged_at\`, and the database refuses the same TRANSITION whatever route it took: \`trg_issues_closed_means_shipped\` names the issue and the rule on any UPDATE moving a row into \`closed\` with no claim, on any INSERT creating one there, and on any write clearing the claim from under a row already standing there — raw SQL included. **The rule governs the transition and not the state**, so rows closed before it landed keep what they hold: they still read \`closed\` with no \`merged_at\`, they are still writable, and migration \`0304_closed_means_shipped\` counted them in a \`NOTICE\` when it ran rather than deciding for them. Whoever owns such a row marks it merged where the work landed, or moves it to \`dropped\` where it did not, and no sweep decides them by rule. Use \`dropped\` for anything discarded: a note, a question, a duplicate, something already done. Where the work DID land outside the pipeline, claim it first with \`POST /api/issues/:id/merge\`. **Whether the work is done is the agent's call** (owner, 2026-11-05): the mark refuses no evidence it lacks — no commit, branch, handoff, target or landing of the project's shape is asked — and records what it names, as named, with who said it and the run that held the issue: \`commit\`, \`target\`, \`landing\` (a live URL, docs store, CMS entry or storefront resource), \`artifacts\`, a \`liveReading\` (\`{ url, status }\`), a \`note\`, on any project; a mark naming nothing says so. A commit it names is read against the repository and what that finds is recorded on the mark as a reading, never a refusal. Input of the wrong shape — a malformed sha, an unknown field, an artifact missing a key — is still refused by name at its path. **Recording a landing moves no status**: the mark (or the host's merge webhook) records the merge and nothing else, and the run moves the issue to \`awaiting_release\` itself once the mark stands; no verdict is asked there, since verdicts are judged on the release that carries the work. \`awaiting_release\` and \`closed\` rest on the mark existing, whatever it names and whatever the project's shape.
+
+One thing about \`dropped\` is worth knowing before you reach for it: **it releases the dependents it was holding, and you do not retract their edges by hand.** \`issues/drop-cascade.ts\` expires this issue's outgoing \`blocks\` edges inside the same transaction that moves the status, and names the dependents it freed back to you, so a rollback takes the expiry with it. \`closed\` claims the outcome was met, \`dropped\` claims only that it will not happen, and neither leaves an issue waiting on something that can never land.
 
 ### The status set, and it is closed
 
@@ -233,7 +245,7 @@ release closes the issue from \`draft\`, where the release's commit contains the
 **The legacy statuses.** \`confirmed\`, \`clarified\`, \`developed\`, \`testing\`, \`tested\`, \`releasing\` and \`waiting\` are not statuses: the first six were steps of a run written as statuses, which is how an issue came to rest at \`developed\` with no owner of the next move, and \`waiting\` folded into \`needs_info\` with its kind kept. Every door refuses each by name and maps none: a move, a list filter or a search filter naming one answers 422 \`ISSUE_STATUS_LEGACY\`, each refusal carrying \`received\` and \`validStatuses\`. A run's progress inside a status is \`workState.step\`.
 
 ### What is enforced
-Every move not in the table above is refused with \`ILLEGAL_TRANSITION\`, naming the moves that are legal from where the issue stands. One move is a recovery rather than a claim: an \`in_progress\` issue that nothing holds any more — its run ended without moving it, the reconciler found it wedged, or a judge that is not its builder failed a criterion and let go — is handed back to \`open\`, \`approved\` or \`reopen\`, the status its run took it from (the recovery edges of \`@forge/contracts/issue-machine:ISSUE_MACHINE\`, drawn in revision 8), and only while nothing holds it. The reconciler leaves one whose merge for this round stands: it stays at \`in_progress\`, and the project's master is woken once per mark and owes its move to \`awaiting_release\` (\`pipeline/reconciler.ts:leaveLandedWork\`). The kernel makes it on its own whenever a run session ends, whatever its outcome; a person or a judge makes it explicitly with \`recovery: true\` in the \`POST /api/issues/:id/transition\` body, sending a failed verdict back to \`reopen\` with the failed criteria as the reason. A person's hand-back to \`open\` or \`approved\` carries why as \`reason\` too, posted on the issue, and is refused \`TRANSITION_REASON_REQUIRED\` without it. Anywhere else \`recovery\` is refused \`ILLEGAL_TRANSITION\` by name. Nothing closes an issue but a release, so a release batch is where a missing \`releaseNotes\` is answered, at the claim: refused with \`RELEASE_RECORD_MISSING\` on a strict project, drafted from the issue's title on any other. \`dropped\` has no exit: reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move.
+Every move not in the table above is refused with \`ILLEGAL_TRANSITION\`, naming the moves that are legal from where the issue stands. One move is a recovery rather than a claim: an \`in_progress\` issue that nothing holds any more — its run ended without moving it, the reconciler found it wedged, or a judge that is not its builder failed a criterion and let go — is handed back to \`open\`, \`approved\` or \`reopen\`, the status its run took it from (the recovery edges of \`@forge/contracts/issue-machine:ISSUE_MACHINE\`, drawn in revision 8), and only while nothing holds it. The reconciler leaves one whose merge for this round stands: it stays at \`in_progress\`, and the project's master is woken once per mark and owes its move to \`awaiting_release\` (\`pipeline/reconciler.ts:leaveLandedWork\`). The kernel makes it on its own whenever a run session ends, whatever its outcome; a person or a judge makes it explicitly with \`recovery: true\` in the \`POST /api/issues/:id/transition\` body, sending a failed verdict back to \`reopen\` with the failed criteria as the reason. A person's hand-back to \`open\` or \`approved\` carries why as \`reason\` too, posted on the issue, and is refused \`TRANSITION_REASON_REQUIRED\` without it. Anywhere else \`recovery\` is refused \`ILLEGAL_TRANSITION\` by name. Today nothing closes a code issue but a release, so a release batch is where a missing \`releaseNotes\` is answered, at the claim: refused with \`RELEASE_RECORD_MISSING\` on a strict project, drafted from the issue's title on any other. \`dropped\` has no exit: reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move.
 
 Reason from the refusal, never from the shape of the ladder: each one names what was missing and the move that is legal.
 
@@ -306,17 +318,17 @@ Entering a park costs a sentence; leaving one costs nothing. That asymmetry is d
 
 Write the reason for the person who will read it, not for the audit trail. "blocked" is not a reason. "Need a Stripe test account with 3DS enabled — I cannot create one, and the checkout AC cannot be walked without it" is: it says what is needed, why the agent cannot get it, and what it unblocks.
 
-There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
+There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means the approach must change (reread the cause, narrow the reproduction, bring in a reviewer or specialist where the kind of work needs one), while 5 rounds each making progress is normal work. A stuck fix is a person's only where what is missing is a decision or a resource only a person owns.
 
 ### \`merged_at\` is written deliberately, and by nothing else
-Three things write it: \`POST /api/issues/:id/merge\`, which is a claim you make, an observed merge of a pull request Forge has projected, and the approval of a workflow design revision, which records the revision as the landing of the issue it was drawn under (on a project whose work lands outside git it re-points a landing somebody's word wrote, never a merge Forge observed, and never the mark of an issue already \`closed\` or \`dropped\`) — unless that issue is linked as the build of a workflow, where the build is the deliverable and the approval is a notice on the issue, never its mark. No transition stamps it as a side effect — closing once did and no longer does, and the \`mergeStates.baseBranch\` rule that once stamped it on the way out of a state was removed before that. \`DELETE /api/issues/:id/merge\` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a \`closed\` issue — \`closed\` means the work shipped, so reopen it first and take \`dropped\` from there where the work never landed. Where a \`closed\` issue's mark holds the wrong commit — another issue's merge misread it as its own — \`POST /api/issues/:id/merge/correction\` with \`{ commit, reason, misread? }\` replaces it with the whole sha that really landed it: the status never moves, and the correction is written on the issue's history with the commit it replaced. It is refused on an issue that is not \`closed\` (\`CORRECTION_REQUIRES_CLOSED\`, use the unmark and mark there), on a commit that is not a whole sha (\`COMMIT_NOT_WHOLE\`) and without a reason (\`CORRECTION_REASON_MISSING\`).
+Three things write it: \`POST /api/issues/:id/merge\`, which is a claim you make, an observed merge of a pull request Forge has projected, and the approval of a workflow design revision, which records the revision as the landing of the issue it was drawn under (on a project whose work lands outside git it re-points a landing somebody's word wrote, never a merge Forge observed, and never the mark of an issue already \`closed\` or \`dropped\`) — unless that issue is linked as the build of a workflow, where the build is the deliverable and the approval is a notice on the issue, never its mark. No transition stamps it as a side effect — closing once did and no longer does, and the \`mergeStates.baseBranch\` rule that once stamped it on the way out of a state was removed before that. \`DELETE /api/issues/:id/merge\` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a \`closed\` issue — a close stands on its mark, so reopen it first and take \`dropped\` from there where the work never landed. Where a \`closed\` issue's mark holds the wrong commit — another issue's merge misread it as its own — \`POST /api/issues/:id/merge/correction\` with \`{ commit, reason, misread? }\` replaces it with the whole sha that really landed it: the status never moves, and the correction is written on the issue's history with the commit it replaced. It is refused on an issue that is not \`closed\` (\`CORRECTION_REQUIRES_CLOSED\`, use the unmark and mark there), on a commit that is not a whole sha (\`COMMIT_NOT_WHOLE\`) and without a reason (\`CORRECTION_REASON_MISSING\`).
 
 ### Derived fields you don't hand-set
 - \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.
 - \`acceptanceCriteria\` — written by **clarify/plan**. Draft ACs from the requester belong in \`description\` prose, not in this field.
 - \`merged_at\` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above. It is **the marker's word**: core refuses no mark for the evidence it lacks and only reads a commit it names as a reading — so before stamping it, confirm the work is there (the commit reachable from the target branch, or the live page showing the change), name what you checked, and never read someone else's \`merged_at\` as proof a merge happened.
 
-When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline. An agent's own finding is filed in its lane first: product through Feedback, technical in its module's backlog (guide \`what-is-an-issue\`).
+When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline. An agent's own finding goes to its place first: product through Feedback, a standalone technical defect on the debt ledger for the Audit, and an issue in its module's backlog only for priority, a handoff or independent tracking (guide \`what-is-an-issue\`).
 
 ### A crash is not a reason to hold
 If your job fails mechanically (process crash, non-zero exit), the system itself retries the job with a retry budget and leaves the issue where it is — you never need to (and shouldn't) set \`on_hold\` to paper over that.`,
