@@ -1,5 +1,6 @@
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { ReleaseNamingSchema } from '@forge/contracts/release-notes';
+import { RELEASES_SHIPPED_MAX } from '@forge/contracts/releases';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -16,7 +17,7 @@ import {
 import { decideDraftApproval } from './draft-approval.js';
 import { nameReleaseAs } from './naming.js';
 import { findReleaseBatchRun } from './queries.js';
-import { listReleases, readRelease } from './release-read.js';
+import { listReleases, listShippedReleases, readRelease } from './release-read.js';
 import { repairRelease } from './release-repair.js';
 import type { ViewerFacts } from './release-view.js';
 
@@ -83,6 +84,28 @@ releaseVersionRoutes.get(
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     return c.json(await listReleases(projectId, viewerOf(c, access)));
+  },
+);
+
+// The newest few releases that shipped (ISS-1070): what a page showing the last releases reads, where
+// the whole list above is the Releases page's. Registered before `/:version`, which it would match.
+releaseVersionRoutes.get(
+  '/:projectId/releases/shipped',
+  projectParam,
+  requiresOnParam('project.read', 'projectId'),
+  zValidator(
+    'query',
+    z.strictObject({ limit: z.coerce.number().int().min(1).max(RELEASES_SHIPPED_MAX) }),
+    invalid(
+      `the query is ?limit=n, n a whole number from 1 to ${RELEASES_SHIPPED_MAX}: how many of the newest shipped releases to read`,
+      'RELEASES_SHIPPED_LIMIT',
+    ),
+  ),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const { limit } = c.req.valid('query');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    return c.json(await listShippedReleases(projectId, viewerOf(c, access), limit));
   },
 );
 

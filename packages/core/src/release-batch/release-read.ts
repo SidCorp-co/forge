@@ -4,6 +4,7 @@ import type {
   ReleaseListResponse,
   ReleaseProduction,
   ReleaseShippedFailing,
+  ReleaseShippedResponse,
 } from '@forge/contracts/releases';
 import { RELEASE_ATTENTION_GROUPS, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
@@ -333,6 +334,42 @@ export async function listReleases(
   // an ended run still claiming gate issues is in no part's roster: it is named here with its act
   const endedRunHolds = await readEndedRunHolds(projectId);
   return { releases, counts, approvalRequired: required, production, landings, endedRunHolds };
+}
+
+/**
+ * The newest `limit` releases that shipped, newest first, summarised as `listReleases` summarises
+ * them: the releases are placed as the list places them, and only the ones returned are weighed, so
+ * a page showing the last few never pays for the whole list (ISS-1070).
+ */
+export async function listShippedReleases(
+  projectId: string,
+  viewer: ViewerFacts | null,
+  limit: number,
+): Promise<ReleaseShippedResponse> {
+  const [required, current] = await Promise.all([
+    approvalRequired(projectId),
+    currentReleaseVersion(projectId),
+  ]);
+  const [runs, draft, lineage] = await Promise.all([
+    runParts(projectId, undefined, required),
+    draftPart(projectId),
+    readLineage(projectId),
+  ]);
+  const placed = placeParts(releaseLinesOf(lineage), runs, draft);
+  const parts = placed.parts
+    .filter((p) => p.continuedAs === null && p.releasedAt !== null)
+    .sort((a, b) => (b.releasedAt?.getTime() ?? 0) - (a.releasedAt?.getTime() ?? 0))
+    .slice(0, limit);
+  const shared = await sharedFor(
+    projectId,
+    parts,
+    viewer,
+    current,
+    required,
+    parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
+  );
+  await fillCuts(projectId, parts, placed.groupOf, shared.facts.cutters);
+  return { releases: parts.map((p) => summaryOf(p, shared)) };
 }
 
 const REWORKED: IssueLandingReading = {

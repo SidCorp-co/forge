@@ -507,6 +507,19 @@ export interface ReleaseListResponse {
 	endedRunHolds: ReleaseEndedRunHold[];
 }
 
+/** How many releases one shipped read may ask for: a page's few newest, never the list (ISS-1070). */
+export const RELEASES_SHIPPED_MAX = 20;
+
+/**
+ * `GET /projects/:id/releases/shipped?limit=n`: the newest `limit` releases that shipped, newest
+ * first, each summarised as the whole list summarises it. What a page showing the last few releases
+ * reads (the Dashboard's Shipped group, a tour opening the newest release), where the whole list is
+ * the Releases page's (ISS-1070).
+ */
+export interface ReleaseShippedResponse {
+	releases: ReleaseSummary[];
+}
+
 export interface ReleaseIssueView {
 	id: string;
 	key: string;
