@@ -15,14 +15,38 @@ export interface GuideIndexInput {
   project: readonly string[];
   /** Its org's on-demand slugs the project does not shadow, in their order. */
   org: readonly string[];
+  /**
+   * What each named entry rests on, by slug (ISS-1064), shown on its line; null for an entry written
+   * before a source was asked for, shown as owing one. Absent, the lines name the slugs alone.
+   */
+  sources?: Readonly<Record<string, string | null>> | undefined;
   /** How this agent reads one: `forge-runner api` from a pane, a REST path elsewhere. */
   read: (path: string) => string;
   depth: 2 | 3;
 }
 
+/** The most characters of a source one line shows; the entry's read gives the whole of it. */
+export const GUIDE_SOURCE_MAX_CHARS = 80;
+
+/** One entry's line: its slug, `(org)` where its org wrote it, and what it rests on where known. */
+function guideLine(slug: string, org: boolean, sources: GuideIndexInput['sources']): string {
+  const line = `- ${slug}${org ? ' (org)' : ''}`;
+  if (!sources) return line;
+  const source = sources[slug]?.replace(/\s+/g, ' ').trim();
+  if (!source) return `${line} — source: none recorded`;
+  const shown =
+    source.length > GUIDE_SOURCE_MAX_CHARS
+      ? `${source.slice(0, GUIDE_SOURCE_MAX_CHARS - 1)}…`
+      : source;
+  return `${line} — source: ${shown}`;
+}
+
 /** The index's text, or null where neither the project nor its org holds an on-demand guide. */
 export function guideIndexText(input: GuideIndexInput): string | null {
-  const items = [...input.project.map((s) => `- ${s}`), ...input.org.map((s) => `- ${s} (org)`)];
+  const items = [
+    ...input.project.map((s) => guideLine(s, false, input.sources)),
+    ...input.org.map((s) => guideLine(s, true, input.sources)),
+  ];
   if (items.length === 0) return null;
   const head = [
     `${'#'.repeat(input.depth)} Project guides (fetch on demand)`,

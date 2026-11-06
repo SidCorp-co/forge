@@ -5,6 +5,7 @@ import {
   selectAlwaysInjectFromKnowledge,
   selectLessonEntries,
   selectOnDemandSlugsFromKnowledge,
+  selectOnDemandSourcesFromKnowledge,
 } from '../knowledge/index.js';
 import { lessonsMapText, restLessonDoors } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
@@ -29,7 +30,12 @@ export type OrientationRules =
       entries: readonly AlwaysInjectFact[];
       lessons?: readonly LessonEntry[];
       /** The on-demand slugs of the project and of its org it does not shadow (ISS-867). */
-      guides?: { project: readonly string[]; org: readonly string[] };
+      guides?: {
+        project: readonly string[];
+        org: readonly string[];
+        /** What each rests on, by slug (ISS-1064). */
+        sources?: Readonly<Record<string, string | null>>;
+      };
     }
   | { unreadable: true };
 
@@ -55,6 +61,7 @@ The project's knowledge could not be read when this orientation was written, so 
     projectId,
     project: (rules.guides?.project ?? []).filter((s) => !always.has(s)),
     org: rules.guides?.org ?? [],
+    sources: rules.guides?.sources,
     read: (path) => `\`forge-runner api ${path}\``,
     depth: 2,
   });
@@ -111,13 +118,14 @@ ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
 export async function servedCheckoutOrientation(projectId: string, slug: string): Promise<string> {
   let rules: OrientationRules;
   try {
-    const [entries, lessons, project, org] = await Promise.all([
+    const [entries, lessons, project, org, sources] = await Promise.all([
       selectAlwaysInjectFromKnowledge(projectId),
       selectLessonEntries(projectId),
       selectOnDemandSlugsFromKnowledge(projectId),
       orgOnDemandSlugsOf(projectId),
+      selectOnDemandSourcesFromKnowledge(projectId),
     ]);
-    rules = { entries, lessons, guides: { project, org } };
+    rules = { entries, lessons, guides: { project, org, sources } };
   } catch (err) {
     logger.error(
       { err: (err as Error).message, projectId },

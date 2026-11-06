@@ -11,6 +11,7 @@ import {
   selectAlwaysInjectFromKnowledge,
   selectLessonEntries,
   selectOnDemandSlugsFromKnowledge,
+  selectOnDemandSourcesFromKnowledge,
 } from '../../knowledge/index.js';
 import { lessonsMapText, restLessonDoors } from '../../lessons/index.js';
 import { logger } from '../../lib/logger.js';
@@ -61,6 +62,8 @@ interface ProjectFactInputs {
   /** Slugs of its org's on-demand entries the project does not shadow (ISS-867), named in the same
    *  index and read through the project's own knowledge door. */
   orgFactKeys: string[];
+  /** What each entry the index names rests on, by slug (ISS-1064); absent, the index names slugs alone. */
+  guideSources?: Record<string, string | null>;
   /** This project's `injection: 'always'` knowledge entries: rendered VERBATIM
    *  into the preamble (like a mandatory ForgeFact), and excluded from the
    *  fetch-on-demand index. Paired with their full body, in order. */
@@ -139,6 +142,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let lessons: LessonEntry[] = [];
   let projectFactKeys: string[] = [];
   let orgFactKeys: string[] = [];
+  let guideSources: Record<string, string | null> = {};
   let factsUnavailable = false;
   let missingObligations: KnowledgeObligation[] = [];
   try {
@@ -166,13 +170,15 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 
   try {
     let heldSlugs: string[];
-    [alwaysInjectFacts, projectFactKeys, orgFactKeys, heldSlugs, lessons] = await Promise.all([
-      selectAlwaysInjectFromKnowledge(projectId),
-      selectOnDemandSlugsFromKnowledge(projectId),
-      orgOnDemandSlugsOf(projectId),
-      selectAllSlugsFromKnowledge(projectId),
-      selectLessonEntries(projectId),
-    ]);
+    [alwaysInjectFacts, projectFactKeys, orgFactKeys, heldSlugs, lessons, guideSources] =
+      await Promise.all([
+        selectAlwaysInjectFromKnowledge(projectId),
+        selectOnDemandSlugsFromKnowledge(projectId),
+        orgOnDemandSlugsOf(projectId),
+        selectAllSlugsFromKnowledge(projectId),
+        selectLessonEntries(projectId),
+        selectOnDemandSourcesFromKnowledge(projectId),
+      ]);
     missingObligations = missingProjectKnowledge(
       { repository: repositoryOf(document), production },
       heldSlugs,
@@ -203,6 +209,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     }),
     projectFactKeys,
     orgFactKeys,
+    guideSources,
     alwaysInjectFacts,
     lessons,
     factsUnavailable,
@@ -292,6 +299,7 @@ export function renderStageFactsText(
       projectId,
       project: inputs.projectFactKeys.filter((key) => !alwaysInjectKeys.has(key)),
       org: inputs.orgFactKeys,
+      sources: inputs.guideSources,
       read: (path) => `\`forge-runner api ${path}\``,
       depth: 3,
     });

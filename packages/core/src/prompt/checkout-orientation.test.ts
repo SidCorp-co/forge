@@ -5,12 +5,14 @@ const store = vi.hoisted(() => ({
   lessons: vi.fn(),
   guides: vi.fn(),
   orgGuides: vi.fn(),
+  sources: vi.fn(),
 }));
 vi.mock('../knowledge/index.js', () => ({
   selectAlwaysInjectFromKnowledge: store.read,
   selectLessonEntries: store.lessons,
   selectOnDemandSlugsFromKnowledge: store.guides,
   orgOnDemandSlugsOf: store.orgGuides,
+  selectOnDemandSourcesFromKnowledge: store.sources,
 }));
 
 import { LESSONS_MAP_MAX_CHARS } from '../lessons/index.js';
@@ -88,6 +90,7 @@ describe('the orientation core serves reads the rules from the knowledge store',
     store.lessons.mockReset().mockResolvedValue([]);
     store.guides.mockReset().mockResolvedValue([]);
     store.orgGuides.mockReset().mockResolvedValue([]);
+    store.sources.mockReset().mockResolvedValue({});
   });
 
   it("reads this project's always-applied entries", async () => {
@@ -95,7 +98,10 @@ describe('the orientation core serves reads the rules from the knowledge store',
     const body = await servedCheckoutOrientation('p-1', 'forge');
     expect(store.read).toHaveBeenCalledWith('p-1');
     expect(body).toBe(
-      checkoutOrientation('p-1', 'forge', { ...RULES, guides: { project: [], org: [] } }),
+      checkoutOrientation('p-1', 'forge', {
+        ...RULES,
+        guides: { project: [], org: [], sources: {} },
+      }),
     );
   });
 
@@ -117,7 +123,7 @@ describe('the orientation core serves reads the rules from the knowledge store',
       checkoutOrientation('p-1', 'forge', {
         ...RULES,
         lessons: [lesson],
-        guides: { project: [], org: [] },
+        guides: { project: [], org: [], sources: {} },
       }),
     );
     expect(body).toContain('lesson-3 [all work]');
@@ -132,10 +138,30 @@ describe('the orientation core serves reads the rules from the knowledge store',
     const body = await servedCheckoutOrientation('p-1', 'forge');
     expect(store.orgGuides).toHaveBeenCalledWith('p-1');
     expect(body).toContain('## Project guides (fetch on demand)');
-    expect(body).toContain('- deploy-notes\n- org-voice-guide (org)');
+    expect(body).toContain(
+      '- deploy-notes — source: none recorded\n- org-voice-guide (org) — source: none recorded',
+    );
     expect(body).toContain('`forge-runner api projects/p-1/knowledge/<slug>`');
     // an always-applied entry is carried whole, so the index does not name it again
     expect(body).not.toContain('- ui-copy-rule');
+  });
+
+  it('shows what each named guide rests on, cut to one short line (ISS-1064)', async () => {
+    store.read.mockResolvedValue([]);
+    store.guides.mockResolvedValue(['deploy-notes', 'release-steps']);
+    store.orgGuides.mockResolvedValue(['org-voice-guide']);
+    const long = `packages/core/src/release/${'x'.repeat(200)}.ts:cut`;
+    store.sources.mockResolvedValue({
+      'deploy-notes': 'scripts/deploy.sh:main, ISS-12',
+      'release-steps': long,
+      'org-voice-guide': 'REQ-50 BC-3',
+    });
+    const body = await servedCheckoutOrientation('p-1', 'forge');
+    expect(store.sources).toHaveBeenCalledWith('p-1');
+    expect(body).toContain('- deploy-notes — source: scripts/deploy.sh:main, ISS-12\n');
+    expect(body).toContain('- org-voice-guide (org) — source: REQ-50 BC-3');
+    const line = body.split('\n').find((l) => l.startsWith('- release-steps'));
+    expect(line).toBe(`- release-steps — source: ${long.slice(0, 79)}…`);
   });
 
   it('stays a map within its budget however many lessons and guides there are', async () => {
@@ -154,7 +180,13 @@ describe('the orientation core serves reads the rules from the knowledge store',
     const full = checkoutOrientation('p-1', 'forge', {
       ...RULES,
       lessons,
-      guides: { project, org },
+      guides: {
+        project,
+        org,
+        sources: Object.fromEntries(
+          [...project, ...org].map((slug) => [slug, `packages/core/src/${'y'.repeat(300)}.ts`]),
+        ),
+      },
     });
     expect(full.length - bare.length).toBeLessThanOrEqual(
       LESSONS_MAP_MAX_CHARS + GUIDE_INDEX_MAX_CHARS + 4,
