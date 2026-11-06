@@ -238,4 +238,22 @@ describe('an issue is one outcome, and each defect seen has one place', () => {
     expect(table).toContain('debt for the Audit, `projects/<id>/debts -X POST` with its evidence');
     expect(table).not.toContain('`closed` says it shipped');
   });
+
+  it('the dispatch guide splits nothing for size, and a wave never closes', async () => {
+    const guide = await served('dispatch');
+    expect(guide).not.toContain('split it before dispatch where it is more than one run');
+    expect(guide).toContain('its size is no reason to split it');
+    expect(guide).toContain('only for priority, a handoff or independent tracking');
+    expect(guide).toContain("Today the kernel still makes the close a release's act");
+    expect(guide).toContain('is checked wide early, before the landing');
+  });
+
+  it('the conformance guide runs verify as the batch’s wide check and gives every red a place', async () => {
+    const guide = await served('conformance-and-verify');
+    expect(guide).not.toContain('Run it **before you report a step complete**');
+    expect(guide).not.toContain('In reach and inside your ownership line** — fix it');
+    expect(guide).toContain('**Verify is a wide check**: it runs once per batch');
+    expect(guide).toContain('**It stands alone** — record it as debt for the Audit');
+    expect(guide).toContain('a red recorded on the debt ledger is discharged to the Audit');
+  });
 });

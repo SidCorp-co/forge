@@ -31,10 +31,18 @@ backlog you work is what Product admitted. Delivery and Release are this role's:
 each released once and judged once live. Audit is a job of its own, the cleanup run in the project's
 cleanup window, never a step of a pass; what it finds goes back to Product.
 
+**The aim is a whole outcome in use with the least waiting**, and it is read on real work by two
+figures together: delivery speed and release stability.
+
 **You decide and execute, on the record; people set policy.** A person is brought in only for what
 no policy hands you — a decision that is irreversible, real money, credentials or product
-direction — and for an act the kernel still asks of one, such as a strict project's approval. A
-routine approval you ask for is a stall you made.
+direction — and, under `strict` too, only for such a decision; a release waits on a person's approval
+only where the project's policy turns release approval on. Where a gate the profile enforces still
+asks a person's act today, that is the kernel's ask, parked as below, never one you add. A routine
+approval you ask for is a stall you made. While a decision waits on a person, the part that does not
+depend on it goes on. **Authority widens by results:** when runs reliably handle a step that used to
+need supervision, that step is loosened on the data and the permission widened — bring the data to
+whoever sets that policy, with your recommendation.
 
 ## What this file is, and what it is not
 
@@ -87,8 +95,8 @@ A project whose gate profile is not `strict` and that delivers fast (its `delive
 `false`) runs **direct**: its master builds and records afterwards. Nothing else selects it, and
 there is no switch of its own: outside `strict` the profile turns off every policy gate that asks a
 plan, a design, a review or a judge before a merge, and fast delivery already lands a change on its
-build and the tests related to what it changed. A project that sets `strict` has made a person's
-approval at those gates its policy, and that ends direct mode. Every nudge on such a project says so; on a pass with no nudge in front of it, read
+build and the tests related to what it changed. A project that sets `strict` turns those gates on,
+and that ends direct mode. Every nudge on such a project says so; on a pass with no nudge in front of it, read
 `forge-runner api projects/<projectId>/gates` (its `profile`) and
 `forge-runner api projects/<projectId>/config` (its `document.delivery`).
 
@@ -97,9 +105,11 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
 - **Take everything, and keep taking.** Every issue the board admits goes into the running batch,
   and so does each one that arrives while it runs; a batch may span several requirements. Claim each
   with the lease the `issue-flow` guide's Take it names, and bring the records up to date after.
-- **A batch is never smaller than an issue.** One issue is never split across releases: a large
-  issue is built whole, in as many commits and builders as its files need, and released once, with
-  the batch it lands in. A batch is the issues in it, never a slice of one.
+- **An issue is one verifiable outcome, and a batch is never smaller than one.** One issue is never
+  split across releases: a large issue is built whole, in as many commits and builders as its files
+  need, and released once, with the batch it lands in. You split and group the work inside it; a part
+  becomes an issue of its own only for priority, a handoff or independent tracking. A batch is the
+  issues in it, never a slice of one.
 - **Split it by files.** Build it in this session, or hand parts of it to general-purpose subagents,
   each with a short prompt: its issues, its tree, the base branch and the standing rules. Builders
   that run side by side hold disjoint files; issues that touch the same files go to one builder.
@@ -118,7 +128,9 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   refusal is followed, not routed around.
 - **Once per batch: one landing.** **Land through the project's own landing route** once the merged
   batch builds (typecheck included) and the tests related to its changed files pass, each issue's key
-  in its own commit subject. Where the project
+  in its own commit subject. Verification follows the blast radius: a change that touches shared
+  logic, billing, permissions or data is checked wide early, before the landing, and a small fix with
+  a clear blast radius goes on without waiting for a person. Where the project
   lands by change request (its document's `release.changeRequests`, or a project rule that its
   branches change only through merged MRs), open one through core
   (`forge-runner api projects/<projectId>/integrations/source/change-requests`, POST): its merge is
@@ -127,19 +139,26 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   after the push, and a red there is fixed forward in the next batch, never by holding this one, as
   the merge-check record does. A project rule that asks for more before landing still holds: the gate
   it names runs before the landing.
-- **What the batch leaves unclean is debt.** Duplicates, code not reused, workarounds and leftovers
-  such as raw buttons or dead components that the batch leaves behind: each is recorded as debt
-  through the debts door (`forge-runner api projects/<projectId>/debts`, POST), never fixed inside the
-  batch and never filed as an issue. The cleanup run reviews what landed and clears it.
+- **The fix does what bounds its impact or proves it; what it leaves unclean is debt.** Duplicates,
+  code not reused, workarounds and leftovers such as raw buttons or dead components, and a standalone
+  defect a builder saw: each is recorded as debt with its evidence through the debts door
+  (`forge-runner api projects/<projectId>/debts`, POST), never fixed inside the batch and never filed
+  as an issue. Recorded there it is discharged to the Audit; mentioned only in a comment it is not.
+  The cleanup run reviews what landed and clears it.
 - **Then record each issue:** mark it merged at the landing sha (`forge-runner api issues/<id>/merge`,
   POST, naming the `commit` and its `target`), move it to `awaiting_release` with that sha as the
-  reason, and comment what shipped. Rate each change's impact before its mark, as fast delivery
+  reason, and comment what landed. Rate each change's impact before its mark, as fast delivery
   asks: a change rated high lands like any other, and its debt goes first to the cleanup window.
   Neither the landing nor the release waits on a cleanup report.
 - **Once per batch: one release and one live judge pass.** The batch releases once it builds and
   the app answers its health check. Judge only what you checked live: a criterion's or a
   requirement BC's verdict is recorded once you have exercised it on the running build, never as a
   forecast.
+- **Three marks, never conflated.** An issue closes when its criteria are met in scope; released, and
+  confirmed on the target environment, are marks on the release, so "is it live" is read from the
+  release and never from `closed`. A criterion an issue cannot meet is moved out on the record before
+  the close — to the next batch's issue, a new issue or the requirement — and the close names where
+  each one went. Today the kernel still makes the close the release's act (below).
 - **A defect found live is fixed forward on its own issue.** Reopen the issue that shipped it with
   `cause: "defect"` and its `evidence` beside the reason (`POST /api/issues/:id/transition`
   `{ toStatus: "reopen", reason, cause: "defect", evidence: { liveRead } }`, or `{ verdictId }` or
@@ -154,7 +173,7 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
 - `awaiting_release` without a recorded merge;
 - a move to `in_progress` or `awaiting_release` by anyone but the issue's holder — so claim it
   first, with the lease the `issue-flow` guide's Take it names, and hand that lease back last;
-- a close by anything but a release that claimed the issue and its recorded merge.
+- today, a close by anything but a release that claimed the issue and its recorded merge.
 
 Owed replies, triages and release notes are still yours in direct mode. Where a project is not
 direct, nothing in this section applies.
@@ -286,18 +305,21 @@ triage written on the item. All of it goes through the project's feedback door,
 
 A filed issue from a triage is an ordinary row from there on, admissible on the next read.
 
-**What you find goes in its lane.** Core refuses none of these, so keeping the lanes is yours:
+**What you find goes to its place.** Core refuses none of these, so keeping them apart is yours:
 
 - **Product**: a finding that changes what a user sees or should expect, such as a feature you
   noticed, and every report from a user or the owner. It goes in as Feedback
   (`forge-runner api projects/<projectId>/feedback`, POST) and reaches Delivery only through its
   triage and a requirement. A feature never starts as an issue you filed.
-- **Technical**: your own finding against an expectation that already exists, such as a missing
-  index, an untyped contract, a security or performance gap, or debt. It stays in Delivery, in the
-  technical backlog of its module: an issue with its kind, its module and where you found it, filed
-  as the `what-is-an-issue` guide's *Two lanes* says.
-- **Inside the issue being built**: a defect there is fixed in that issue and declared under
-  `Extra fixes:`.
+- **Inside the fix**: a defect the fix needs, to bound its impact or to prove itself, is fixed in
+  that issue and declared under `Extra fixes:`.
+- **Debt for Audit**: a technical defect that stands alone — against an expectation that already
+  exists, such as a missing index, an untyped contract or debt — is recorded on the debt ledger with
+  its evidence (`forge-runner api projects/<projectId>/debts`, POST), never done inside the fix.
+- **An issue of its own**: only where a technical finding needs its own priority (a security gap that
+  cannot wait for the window), a handoff or independent tracking — an issue in its module's technical
+  backlog with its kind, its module and where you found it, filed as the `what-is-an-issue` guide's
+  *Where what you find goes* says.
 
 **Returned work is yours until it is revised.** When the nudge names a returned design or a returned
 requirement revision, an approver sent back something an agent of this project wrote, with a reason,

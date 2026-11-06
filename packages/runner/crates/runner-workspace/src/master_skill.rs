@@ -480,7 +480,7 @@ mod tests {
             "no issue gets its own full suite or its own release",
             // ISS-1048: epod read a batch as any slice of work, split one large issue into
             // mini-batches and released each; a batch is at least a whole issue
-            "**A batch is never smaller than an issue.**",
+            "**An issue is one verifiable outcome, and a batch is never smaller than one.**",
             "One issue is never split across releases",
             "a large issue is built whole",
             "goes into the next batch, never a release of its own",
@@ -492,8 +492,8 @@ mod tests {
             "The whole suite, lint and CI run after the push, and a red there is fixed forward",
             "A project rule that asks for more before landing still holds",
             // ISS-1050 (REQ-79 BC-21): what a batch leaves unclean is debt, for the cleanup run
-            "**What the batch leaves unclean is debt.**",
-            "is recorded as debt through the debts door (`forge-runner api projects/<projectId>/debts`, POST)",
+            "**The fix does what bounds its impact or proves it; what it leaves unclean is debt.**",
+            "is recorded as debt with its evidence through the debts door (`forge-runner api projects/<projectId>/debts`, POST)",
             "never fixed inside the batch and never filed as an issue",
             "fixed forward in the next batch",
             "**Once per batch: one release and one live judge pass.**",
@@ -501,13 +501,18 @@ mod tests {
             "Push to the base branch only where the project lands by push",
             "mark it merged at the landing sha",
             "move it to `awaiting_release`",
-            "comment what shipped",
+            "comment what landed",
             "only what you checked live",
             "a move that is not a legal edge, or that lacks its reason",
             "`awaiting_release` without a recorded merge",
             "by anyone but the issue's holder",
-            "a close by anything but a release",
+            "today, a close by anything but a release",
             "Outside direct mode, every issue goes out this way.",
+            // ISS-1057 round 2: blast radius chooses the checks, and three marks stay apart
+            "a change that touches shared logic, billing, permissions or data is checked wide early",
+            "**Three marks, never conflated.** An issue closes when its criteria are met in scope",
+            "\"is it live\" is read from the release and never from `closed`",
+            "the close names where each one went",
         ] {
             assert!(
                 prose.contains(word),
@@ -524,6 +529,9 @@ mod tests {
             "once it builds and its own tests pass",
             "its own tests pass",
             "its build and its own tests",
+            "comment what shipped",
+            "**What the batch leaves unclean is debt.**",
+            "**A batch is never smaller than an issue.**",
         ] {
             assert!(
                 !prose.contains(gone),
@@ -568,25 +576,39 @@ mod tests {
     }
 
     /// Owner, 2026-11-05 (ISS-984): masters filed their own findings straight into Delivery, a feature
-    /// among them, because nothing drew the product lane apart from the technical one. Core refuses
-    /// neither, so the skill teaches both, with an example of each and the issue's own lane.
+    /// among them, because nothing drew the product lane apart from the technical one. Owner,
+    /// 2026-11-07 (ISS-1057): a standalone technical defect is debt for Audit, an issue of its own
+    /// only for priority, handoff or tracking, and only what the fix needs is fixed inside it.
     #[test]
-    fn the_skill_draws_the_product_lane_and_the_technical_lane() {
+    fn the_skill_gives_each_finding_its_place() {
         let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
         for word in [
-            "**What you find goes in its lane.**",
+            "**What you find goes to its place.**",
             "**Product**",
             "It goes in as Feedback",
             "A feature never starts as an issue you filed.",
-            "**Technical**",
+            "**Inside the fix**: a defect the fix needs, to bound its impact or to prove itself",
+            "**Debt for Audit**: a technical defect that stands alone",
             "a missing index, an untyped contract",
-            "technical backlog of its module",
+            "never done inside the fix",
+            "**An issue of its own**: only where a technical finding needs its own priority",
+            "technical backlog",
             "`what-is-an-issue`",
             "declared under `Extra fixes:`",
         ] {
             assert!(
                 prose.contains(word),
-                "forge-master-skill.md no longer says {word:?}, so a master files a product finding straight into Delivery or a technical one with no module"
+                "forge-master-skill.md no longer says {word:?}, so a master files a product finding straight into Delivery, a technical one with no module, or cleans inside the fix"
+            );
+        }
+        for gone in [
+            "**What you find goes in its lane.**",
+            "**Inside the issue being built**: a defect there is fixed in that issue",
+            "It stays in Delivery, in the technical backlog of its module",
+        ] {
+            assert!(
+                !prose.contains(gone),
+                "forge-master-skill.md again says {gone:?}, which files standalone debt as an issue or fixes it inside the fix"
             );
         }
     }
@@ -606,6 +628,12 @@ mod tests {
             "**You decide and execute, on the record; people set policy.**",
             "irreversible, real money, credentials or product direction",
             "A routine approval you ask for is a stall you made.",
+            // ISS-1057 round 2: the aim and measure; under strict too, only a serious decision
+            "**The aim is a whole outcome in use with the least waiting**",
+            "delivery speed and release stability",
+            "under `strict` too, only for such a decision",
+            "only where the project's policy turns release approval on",
+            "**Authority widens by results:**",
             "Neither the landing nor the release waits on a cleanup report.",
         ] {
             assert!(
@@ -619,6 +647,8 @@ mod tests {
             "Where the route is a person's call",
             "backlog a person holding `issues.admit` put there",
             "a change rated high waits for its green cleanup",
+            "and for an act the kernel still asks of one, such as a strict project's approval",
+            "has made a person's approval at those gates its policy",
         ] {
             assert!(
                 !prose.contains(gone),

@@ -15,7 +15,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 8,
+  version: 9,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -60,9 +60,10 @@ its evidence, and the issue moves: \`dropped\` with the reason, or \`needs_info\
 where a person owes the answer.
 
 A candidate that survives goes into the batch. Write down what the run could not see for itself —
-a priority, a \`complexity\` (\`PATCH /api/issues/:id\`), a reading as a comment — where it helps,
-and split it before dispatch where it is more than one run, the other half filed with a \`blocks\`
-edge in its create.
+a priority, a \`complexity\` (\`PATCH /api/issues/:id\`), a reading as a comment — where it helps.
+An issue is one verifiable outcome and its size is no reason to split it: the run splits and groups
+the work inside it. A part becomes an issue of its own only for priority, a handoff or independent
+tracking, filed with a \`blocks\` edge in its create.
 
 ### 4. Batch by files
 A wave takes every issue it may, and an issue that arrives while it runs joins it; the records catch
@@ -135,7 +136,9 @@ records — before acting on it.
 - A run that parked is resumed with a message to the same agent, never replaced by a fresh one.
 - \`forge-runner run close <run id> --reason <why>\` once a run's subagent will not be resumed; that
   gives back its tree and its issues.
-- The statuses past \`awaiting_release\` are the release's: a wave never moves an issue to \`closed\`.
+- An issue closes when its criteria are met in scope; released and confirmed on the target
+  environment are marks on the release. Today the kernel still makes the close a release's act
+  (\`CLOSE_ONLY_BY_RELEASE\`): a wave never moves an issue to \`closed\`.
 - The fold ends with a \`fold\` record on the headline carrying the wave's one-line summary. Until it
   is written the wave is open, whatever its members' statuses say.
 
@@ -194,14 +197,15 @@ approval, design record, review or judge before the landing. It works in batches
    core (\`POST /api/projects/:id/integrations/source/change-requests\`): its merge is the landing,
    and the marks wait for it. Push to the base branch only where the project lands by push; never
    force-push. Every other test, lint and CI follow the push, as the merge-check record does; a
-   red there is fixed forward in the next batch. Where a project rule asks for more before the
+   red there is fixed forward in the next batch. Verification follows the blast radius: a part that
+   touches shared logic, billing, permissions or data is checked wide early, before the landing. Where a project rule asks for more before the
    landing, that rule holds. What the batch leaves unclean (duplicates, code not reused, workarounds, leftovers
    such as raw buttons or dead components) is recorded as debt through the debts door
    (\`POST /api/projects/:id/debts\`), never fixed inside the batch and never filed as an issue.
 4. Record each issue. Rate its impact (${guideRef('fast-delivery')}) and mark it,
    \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <the branch it landed on> }\`. Move it,
    \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`.
-   Comment what shipped, then hand the lease back.
+   Comment what landed, then hand the lease back.
 5. Release the batch once, on the minimum bar: it builds and the app answers its health check. Then
    one live judge pass over the batch: a criterion's or a requirement BC's verdict is recorded only
    once it was checked on the running build. A criterion found red there reopens its issue, which
@@ -209,6 +213,6 @@ approval, design record, review or judge before the landing. It works in batches
 
 The kernel holds in this mode as in every other: a legal edge with its reason, \`awaiting_release\`
 only on a recorded merge, the holder alone moving the issue into \`in_progress\` and
-\`awaiting_release\`, and a close only by a release. A gate the project's overrides enforce again
+\`awaiting_release\`, and, today, a close only by a release. A gate the project's overrides enforce again
 still refuses by name.`,
 };
