@@ -833,7 +833,6 @@ export const SUPPORT_ACTIONS = [
 	"owner_act",
 	"owner_sign_in",
 ] as const;
-export type SupportAction =(typeof SUPPORT_ACTIONS)[number];
 
 export const supportSearchRequestSchema = z.strictObject({
 	query: z.string().trim().min(2).max(300),
@@ -1094,8 +1093,6 @@ export type SupportOwnerActRequest = z.infer<
  * or by confirming the sign-in core started for him in the product (`sign_in`, ISS-1047).
  */
 export const SUPPORT_OWNER_CONSENT_ROUTES = ["message", "sign_in"] as const;
-export type SupportOwnerConsentRoute =
-	(typeof SUPPORT_OWNER_CONSENT_ROUTES)[number];
 
 /**
  * The owner's sign-in to a product, started by core (ISS-1047, REQ-85 BC-3): the session is handed

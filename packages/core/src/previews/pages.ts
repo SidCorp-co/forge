@@ -6,9 +6,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { PreviewFailureReason, PreviewState } from '@forge/contracts/preview';
 import { env } from '../lib/env.js';
+import { escapeHtml } from '../lib/escape-html.js';
 import { gateCsp, gateScript } from './gate.js';
-
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export interface Page {
   /** Why the relay answered this and not the dev server; sent as `x-forge-preview-refusal`. */

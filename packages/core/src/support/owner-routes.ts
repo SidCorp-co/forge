@@ -13,6 +13,7 @@ import {
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { escapeHtml } from '../lib/escape-html.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -120,8 +121,6 @@ export function mountOwnerRoutes(app: Hono<{ Variables: AuthVars }>): void {
     },
   );
 }
-
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 /** The one page the owner's browser lands on: signed in, or why not. */
 function signInPage(out: OwnerSignInFinished): string {

@@ -34,7 +34,8 @@ function approverOf(r: Standing, t: Copy): string {
   return r.approvalRequired || r.approval ? t("releases.standing.approver.admin") : t("releases.standing.approver.notNeeded");
 }
 
-const ENDED: readonly ReleaseState[] = ["failed", "aborted"];
+/** An attempt that ended without shipping. */
+export const ENDED: readonly ReleaseState[] = ["failed", "aborted"];
 
 /** Whether the owner's review waits on the judge: criteria not all passing on the testing environment (REQ-36 BC-18). */
 function untested(r: Standing): string | null {

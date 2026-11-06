@@ -136,9 +136,6 @@ export type AgreeChatProposalRequest = z.infer<
 export const chatProposalPlainRequestSchema = z.strictObject({
 	plain: plainDecisionSchema,
 });
-export type ChatProposalPlainRequest = z.infer<
-	typeof chatProposalPlainRequestSchema
->;
 export const CHAT_PROPOSAL_PLAIN_SHAPE =
 	"{ plain }: what the person decides this proposal from, sent by the session whose request it holds, while it waits";
 

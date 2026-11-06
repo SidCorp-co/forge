@@ -108,7 +108,6 @@ export const chatDecisionSetParamsSchema = z
 			"name decisions (Needs-you decisions to answer), acts (Product acts on items), or both",
 		path: ["decisions"],
 	});
-export type ChatDecisionSetParams = z.infer<typeof chatDecisionSetParamsSchema>;
 
 /** One decision of a set as core keeps it: the decision, its row's key, and the answer it gives. */
 export const chatDecisionSetItemSchema = z.strictObject({

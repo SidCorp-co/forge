@@ -1,3 +1,4 @@
+import { ENDED } from "./release-standing";
 import type { ReleaseSummary } from "./types";
 
 // The Releases list in three groups (ISS-1001, the approved report shape): what waits on the reader,
@@ -25,10 +26,8 @@ export interface ReleaseList {
 /** How many releases in production the list shows before folding the rest. */
 export const PRODUCTION_SHOWN = 3;
 
-const ENDED_UNSHIPPED: ReadonlySet<ReleaseSummary["state"]> = new Set(["failed", "aborted"]);
-
 /** A release that a later release carries: a landing off production's branch, or an attempt that ended. */
-const carriable = (r: ReleaseSummary) => r.state === "landed" || ENDED_UNSHIPPED.has(r.state);
+const carriable = (r: ReleaseSummary) => r.state === "landed" || ENDED.includes(r.state);
 
 /**
  * The release that carries `r`, among those newer than it: the newest still on its way (a draft, one
