@@ -207,8 +207,8 @@ describe('a debt no change can clear, carried as a priced amnesty (BC-10, ISS-84
     await carry(debt);
     const idle = await cleanupFirePlan({ projectId, fireId: randomUUID() });
     expect(idle.kind).toBe('nothing');
-    const high = await fx.insertIssue('in_progress');
-    await rate(high, 'high');
+    // a carried debt alone starts no run; an open uncarried one does (ISS-1057: no change waits)
+    await debts({ items: [red('low')] });
     const plan = await cleanupFirePlan({ projectId, fireId: randomUUID() });
     if (plan.kind !== 'run') throw new Error(`no run: ${JSON.stringify(plan)}`);
     expect(plan.prompt).toContain(debt);
@@ -263,8 +263,8 @@ describe('evidence kept on a debt, where the cleanup run reads it (ISS-839)', ()
       { evidence: SEEN, by: memberId, at: expect.any(String) },
     ]);
 
-    const high = await fx.insertIssue('in_progress');
-    await rate(high, 'high');
+    // a carried debt alone starts no run; an open uncarried one does (ISS-1057: no change waits)
+    await debts({ items: [red('low')] });
     const plan = await cleanupFirePlan({ projectId, fireId: randomUUID() });
     if (plan.kind !== 'run') throw new Error(`no run: ${JSON.stringify(plan)}`);
     expect(plan.prompt).toContain(
@@ -283,8 +283,9 @@ describe('evidence kept on a debt, where the cleanup run reads it (ISS-839)', ()
     const debt = await deployDebt();
     await carry(debt);
     await evidence(debt, { evidence: SEEN });
-    const high = await fx.insertIssue('in_progress');
-    await rate(high, 'high');
+    // an open uncarried debt starts each run (ISS-1057: no change waits on a cleanup)
+    const owed = async () => (await debts({ items: [red('low')] })).body.debts[0] as string;
+    let low = await owed();
     const brief = async () => {
       const plan = await cleanupFirePlan({ projectId, fireId: randomUUID() });
       if (plan.kind !== 'run') throw new Error(`no run: ${JSON.stringify(plan)}`);
@@ -293,8 +294,9 @@ describe('evidence kept on a debt, where the cleanup run reads it (ISS-839)', ()
     const first = await brief();
     expect(first).toHaveLength(2);
     const remains = [{ debt, why: 'a person must set the token' }];
-    const green = await reportCleanup({ remains });
+    const green = await reportCleanup({ remains, cleared: [{ debt: low, how: 'fixed' }] });
     expect([green.status, codes(green)]).toEqual([201, []]);
+    low = await owed();
     expect(await brief()).toEqual(first);
   });
 

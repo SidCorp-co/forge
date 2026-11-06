@@ -440,7 +440,7 @@ export function missingCheckDetail(args: {
   const why = {
     project: 'this project declares `validation.mergeCheck: required`',
     pattern: `${args.issueRef} introduces an approved new pattern, whose catalog page the merge check asks for`,
-    cleanup: `${args.issueRef} is rated high impact on a project that deploys on land, so landing it is asked the cleanup rule (REQ-79 BC-5) by the merge check`,
+    cleanup: `${args.issueRef} is rated high impact on a project that deploys on land, so its mark owes a passing merge check whose range holds its commit (REQ-79 BC-5); no cleanup report is asked`,
   }[args.owedBy];
   const at = args.commit
     ? `no passing merge check covers ${args.commit}`

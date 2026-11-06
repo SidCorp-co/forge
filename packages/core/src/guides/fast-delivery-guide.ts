@@ -47,6 +47,9 @@ project document, and then a merge check asks every check and a red is fixed in 
 Audit does not gate delivery. No landing waits on a cleanup report, and no promotion or release
 does either, whatever the change's rating and whatever the production trigger: a change rated high
 lands on the same bar as any other, and its debt waits on the ledger for the cleanup window.
+Where production deploys on land, the mark of a change rated high still owes a passing merge check
+whose range holds its commit (\`MERGE_CHECK_MISSING\`), whatever the gate profile asks: that is
+Delivery's own bar, never a wait on Audit.
 
 ### The cleanup run: Audit
 Delivery ends at the landing and the release; Audit is the cleanup run's, a job of its own. The project's cleanup window is its \`cleanup\` schedule, which exists only where a project admin
