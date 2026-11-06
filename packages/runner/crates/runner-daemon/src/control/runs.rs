@@ -311,11 +311,81 @@ pub(crate) async fn run_declare_as(
         },
         worktree_base: base,
     };
-    let reply = record_declaration(ctl, holder, template, session_id, peer);
+    let mut reply = record_declaration(ctl, holder, template, session_id, peer);
     if let (false, Some((c, from))) = (reply.ok, cut_from) {
         super::cut::uncut_tree(from, worktree_path, c.branch).await;
     }
+    if let (true, Some(run_id)) = (reply.ok, reply.job_id.clone()) {
+        reply.reason = Some(
+            open_at_declare(
+                ctl,
+                &crate::run_record::CoreSessions::of(ctl.core.as_deref()),
+                &run_id,
+            )
+            .await,
+        );
+    }
     reply
+}
+
+/// Open the run just declared at core before the declaration answers, and say what core holds.
+///
+/// Core holds a declared run only once its session is opened there, and the sweep that opened it
+/// came up to thirty seconds later (five minutes while rate-limited). A master that posted a
+/// verdict naming the run it had just declared was refused as if no run had been declared
+/// (adminhub-fe ISS-119, FB-508, ISS-1036). Not opened here, the run stands on the row and the
+/// sweep opens it as before. The ledger is not held while core answers.
+pub(crate) async fn open_at_declare(
+    ctl: &Arc<Control>,
+    opener: &Option<impl crate::run_record::SessionOpener>,
+    run_id: &str,
+) -> String {
+    let Some(opener) = opener else {
+        return format!(
+            "this daemon has no core client, so core holds no session for run {run_id} until a sweep opens it"
+        );
+    };
+    let read = {
+        let held = ctl.ledger.lock().expect("ledger poisoned");
+        held.as_ref().and_then(|led| match led.run(run_id) {
+            Ok(Some(run)) => crate::run_record::open_of(led, &run).map(|open| (run, open)),
+            _ => None,
+        })
+    };
+    let Some((run, open)) = read else {
+        return format!(
+            "run {run_id} could not be read back off this box's registry, so core holds no session for it until a sweep opens it"
+        );
+    };
+    let now = runner_core::agent_activity::now_ms();
+    let gate = ctl
+        .config_dir
+        .as_deref()
+        .map(|dir| runner_core::degraded::report(dir, now).degraded);
+    let answer = opener
+        .open(
+            &open.project_id,
+            run_id,
+            &open.keys,
+            &open.name,
+            gate.as_ref(),
+            crate::run_record::said_of(&run),
+        )
+        .await;
+    let held = ctl.ledger.lock().expect("ledger poisoned");
+    let Some(led) = held.as_ref() else {
+        return format!(
+            "this daemon's registry closed while core answered, so run {run_id}'s session is written back by a sweep"
+        );
+    };
+    match crate::run_record::settle_open(led, &run, &open.keys, &ctl.boot_id, answer, now) {
+        crate::run_record::Settled::Opened(session) => format!(
+            "session {session} is open, so a call naming run {run_id} is this run's from now"
+        ),
+        crate::run_record::Settled::Not(why) => {
+            format!("core holds no open session for run {run_id} yet: {why}")
+        }
+    }
 }
 
 /// Write the declared run, under the master session the pane holds at the moment of writing, and
@@ -1042,6 +1112,89 @@ mod tree_tests {
         assert!(why.contains(&*tree.to_string_lossy()), "{why}");
         assert!(why.contains("git worktree add"), "{why}");
         assert!(why.contains("Nothing was recorded"), "{why}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// ISS-1036, adminhub-fe's FB-508 reopened: a master declared a reviewer run over ISS-119 and
+    /// POSTed a verdict naming it with nothing dispatched under it, and core refused it as if no run
+    /// had been declared. Core holds a declared run only once its session is opened there, which the
+    /// sweep did up to thirty seconds later; the declare now opens it before it answers.
+    #[tokio::test]
+    async fn a_declaration_opens_its_session_at_core_before_it_answers() {
+        let dir = scratch();
+        let (_, tree) = repo_with_tree(&dir);
+        let (client, seen) = crate::test_core::fake_core(|path| match path {
+            "/api/devices/me/run-sessions" => {
+                (200, r#"{"sessionId":"sess-core-1","runId":"run-core-1"}"#)
+            }
+            _ => (200, r#"{"ok":true}"#),
+        })
+        .await;
+        let ctl = ctl_with(&dir, Some(client));
+        let reply = declare(&ctl, &tree).await;
+        assert!(reply.ok, "the declaration was refused: {reply:?}");
+        let run_id = reply.job_id.clone().unwrap();
+        let paths: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(p, _)| p.clone())
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                "/api/devices/me/run-sessions/preflight".to_string(),
+                "/api/devices/me/run-sessions".to_string()
+            ],
+            "the declaration answered before core was told of the run"
+        );
+        let opened: serde_json::Value = serde_json::from_str(&seen.lock().unwrap()[1].1).unwrap();
+        assert_eq!(opened["runId"], run_id.as_str());
+        assert_eq!(opened["issueKeys"][0], "ISS-1");
+        let row = ctl
+            .ledger
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .run(&run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.session_id.as_deref(), Some("sess-core-1"));
+        let said = reply.reason.unwrap_or_default();
+        assert!(said.contains("session sess-core-1 is open"), "{said}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A core that does not open the session at the declare leaves the run to the sweep, as
+    /// before, and the declaration says so rather than claiming core holds the run.
+    #[tokio::test]
+    async fn a_declaration_core_does_not_open_stands_for_the_sweep_and_says_so() {
+        let dir = scratch();
+        let (_, tree) = repo_with_tree(&dir);
+        let (client, _) = crate::test_core::fake_core(|path| match path {
+            "/api/devices/me/run-sessions" => (503, "{}"),
+            _ => (200, r#"{"ok":true}"#),
+        })
+        .await;
+        let ctl = ctl_with(&dir, Some(client));
+        let reply = declare(&ctl, &tree).await;
+        assert!(reply.ok, "the declaration was refused: {reply:?}");
+        let run_id = reply.job_id.clone().unwrap();
+        let held = ctl.ledger.lock().unwrap();
+        let led = held.as_ref().unwrap();
+        assert_eq!(led.run(&run_id).unwrap().unwrap().session_id, None);
+        assert_eq!(
+            led.declared_without_session("boot-1").unwrap().len(),
+            1,
+            "the run no longer waits for the sweep to open it"
+        );
+        let said = reply.reason.unwrap_or_default();
+        assert!(
+            said.contains(&format!("core holds no open session for run {run_id} yet")),
+            "{said}"
+        );
+        assert!(said.contains("the next sweep sends it again"), "{said}");
         let _ = std::fs::remove_dir_all(dir);
     }
 

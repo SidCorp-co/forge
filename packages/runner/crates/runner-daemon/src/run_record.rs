@@ -36,6 +36,13 @@ pub trait SessionOpener {
 
 pub struct CoreSessions<'a>(pub &'a CoreClient);
 
+impl<'a> CoreSessions<'a> {
+    /// The opener over `client`, where this daemon has one.
+    pub fn of(client: Option<&'a CoreClient>) -> Option<Self> {
+        client.map(CoreSessions)
+    }
+}
+
 impl SessionOpener for CoreSessions<'_> {
     async fn open(
         &self,
@@ -83,7 +90,7 @@ fn session_name_of(run: &runner_core::ledger::Run, keys: &[String]) -> String {
     }
 }
 
-fn said_of(run: &runner_core::ledger::Run) -> run_sessions::Said<'_> {
+pub(crate) fn said_of(run: &runner_core::ledger::Run) -> run_sessions::Said<'_> {
     run_sessions::Said {
         role: run.role.as_deref(),
         requirement: run.requirement.as_deref(),
@@ -139,104 +146,179 @@ pub async fn open_declared_runs_at(
                 continue;
             }
         }
-        let Some(project_id) = run.project_id.clone() else {
-            tracing::warn!(
-                "[run-record] run {} names no project, so core cannot be told about it",
-                run.run_id
-            );
+        let Some(open) = open_of(led, &run) else {
             continue;
         };
-        let keys: Vec<String> = match led.issues(&run.run_id) {
-            Ok(m) => m.into_iter().map(|i| i.issue_key).collect(),
-            Err(e) => {
-                tracing::warn!("[run-record] run {}: cannot read issues: {e}", run.run_id);
-                continue;
-            }
-        };
-        if keys.is_empty() && run.requirement.is_none() {
-            tracing::warn!(
-                "[run-record] run {} carries no issues and no requirement, which the ledger should have refused",
-                run.run_id
-            );
-            continue;
-        }
-        let (name, said) = (session_name_of(&run, &keys), said_of(&run));
-        match opener.open(&project_id, &run.run_id, &keys, &name, gate, said).await {
-            Ok((session_id, _)) => match led.attach_session(&run.run_id, &session_id) {
-                Ok(()) => {
-                    tracing::info!(
-                        "[run-record] run {} is now core session {session_id} over {keys:?}",
-                        run.run_id
-                    );
-                    opened += 1;
-                }
-                Err(e) => tracing::error!(
-                    "[run-record] run {} opened core session {session_id} and the id could not be written back: {e} — that session will be reaped in ten minutes and its issues returned from under a live run",
-                    run.run_id
-                ),
-            },
-            // Core named a constraint on the payload, so the payload is
-            // finished: the row it is built from is not touched between
-            // sweeps, and the 223rd attempt carries what the 1st did. One run
-            // spent 240 attempts on this and five more appeared within the
-            // hour (ISS-1284). Ending the row here is honest because no core
-            // session was minted: nothing at core has to be told, and the
-            // close path already reads a run with no session as one whose
-            // session is over.
-            Err(runner_platform::error::Error::Malformed { said, named })
-                if named.iter().all(|n| n.starts_with(RECOMPUTED_EACH_SWEEP)) =>
-            {
-                tracing::warn!(
-                    "[run-record] run {}: {said} — that field is the one this sweep computes \
-                     fresh, so the row stands and the next sweep tries again",
-                    run.run_id
-                );
-            }
-            Err(runner_platform::error::Error::Malformed { said, named }) => {
-                let why = format!(
-                    "core refused this declaration and will refuse it again unchanged: {}",
-                    named.join("; ")
-                );
-                end_refused(led, &run.run_id, &format!("{said} — {why}"), &why);
-            }
-            // A take on an issue at rest is refused at declare (FB-273); one reaching the open was
-            // moved to rest after its declaration, or declared while core could not be asked. A
-            // run over issues all closed takes nothing and core opens it (ISS-576). Core
-            // queues nothing behind it and no sweep lifts it, so the row ends here as the
-            // malformed one does: no core session was minted, and the release that follows
-            // keeps a checkout a live subagent is working in (`terminate::live_subagent`).
-            Err(runner_platform::error::Error::AtRest { said }) => {
-                let why = format!(
-                    "core refuses a run over an issue at rest: {said}. Declare again once the issue is back in work"
-                );
-                end_refused(led, &run.run_id, &why, &why);
-            }
-            // A hold is not a fault of the payload and not of the moment: it stands until
-            // its holder moves. Core has already recorded the declaration as a queued run
-            // behind this refusal, which is where the master reads it (`runs/standing`,
-            // `waiting_gate`), so the box names it once, here, and then asks again only
-            // when `SESSION_RETRY_MS` has gone, which also keeps that queued row alive.
-            Err(runner_platform::error::Error::Held {
-                said,
-                code,
-                holders,
-            }) => match held_by_our_ended_run(led, boot_id, &code, &holders) {
-                // The holder is a run this box ended and has not yet closed at core: the close
-                // leg sends that close on this sweep or the next, and the lease goes with it, so
-                // waiting five minutes for it is waiting on ourselves (ISS-929).
-                Some(ours) => tracing::info!(
-                    "[run-record] run {}: core would not open a session ({code}) while run {ours} still holds the issue; this box ended {ours} and its close at core is owed, so the open is sent again next sweep",
-                    run.run_id
-                ),
-                None => note_session_held(led, &run, &code, &said, now_ms),
-            },
-            Err(e) => tracing::warn!(
-                "[run-record] run {}: core would not open a session: {e} — the row stands and the next sweep tries again",
-                run.run_id
-            ),
+        let answer = opener
+            .open(
+                &open.project_id,
+                &run.run_id,
+                &open.keys,
+                &open.name,
+                gate,
+                said_of(&run),
+            )
+            .await;
+        if let Settled::Opened(_) = settle_open(led, &run, &open.keys, boot_id, answer, now_ms) {
+            opened += 1;
         }
     }
     opened
+}
+
+/// What an open of a declared run sends core, read off its row.
+pub struct Open {
+    pub project_id: String,
+    pub keys: Vec<String>,
+    pub name: String,
+}
+
+/// The open `run` sends core, or `None` where its row cannot make one, which is logged.
+pub fn open_of(led: &Ledger, run: &runner_core::ledger::Run) -> Option<Open> {
+    let Some(project_id) = run.project_id.clone() else {
+        tracing::warn!(
+            "[run-record] run {} names no project, so core cannot be told about it",
+            run.run_id
+        );
+        return None;
+    };
+    let keys: Vec<String> = match led.issues(&run.run_id) {
+        Ok(m) => m.into_iter().map(|i| i.issue_key).collect(),
+        Err(e) => {
+            tracing::warn!("[run-record] run {}: cannot read issues: {e}", run.run_id);
+            return None;
+        }
+    };
+    if keys.is_empty() && run.requirement.is_none() {
+        tracing::warn!(
+            "[run-record] run {} carries no issues and no requirement, which the ledger should have refused",
+            run.run_id
+        );
+        return None;
+    }
+    let name = session_name_of(run, &keys);
+    Some(Open {
+        project_id,
+        keys,
+        name,
+    })
+}
+
+/// What became of a declared run's open at core, as the master who declared it is told.
+#[derive(Debug)]
+pub enum Settled {
+    /// Core opened the run's session, and its id is written onto the row.
+    Opened(String),
+    /// Core holds no open session for the run yet, and why.
+    Not(String),
+}
+
+/// Write core's answer to a declared run's open onto its row, and say what became of it.
+pub fn settle_open(
+    led: &Ledger,
+    run: &runner_core::ledger::Run,
+    keys: &[String],
+    boot_id: &str,
+    answer: runner_platform::error::Result<(String, String)>,
+    now_ms: i64,
+) -> Settled {
+    match answer {
+        Ok((session_id, _)) => match led.attach_session(&run.run_id, &session_id) {
+            Ok(()) => {
+                tracing::info!(
+                    "[run-record] run {} is now core session {session_id} over {keys:?}",
+                    run.run_id
+                );
+                Settled::Opened(session_id)
+            }
+            Err(e) => {
+                tracing::error!(
+                    "[run-record] run {} opened core session {session_id} and the id could not be written back: {e} — that session will be reaped in ten minutes and its issues returned from under a live run",
+                    run.run_id
+                );
+                Settled::Not(format!(
+                    "core opened session {session_id} and this box could not write it onto the run: {e}"
+                ))
+            }
+        },
+        // Core named a constraint on the payload, so the payload is
+        // finished: the row it is built from is not touched between
+        // sweeps, and the 223rd attempt carries what the 1st did. One run
+        // spent 240 attempts on this and five more appeared within the
+        // hour (ISS-1284). Ending the row here is honest because no core
+        // session was minted: nothing at core has to be told, and the
+        // close path already reads a run with no session as one whose
+        // session is over.
+        Err(runner_platform::error::Error::Malformed { said, named })
+            if named.iter().all(|n| n.starts_with(RECOMPUTED_EACH_SWEEP)) =>
+        {
+            tracing::warn!(
+                "[run-record] run {}: {said} — that field is the one this sweep computes \
+                 fresh, so the row stands and the next sweep tries again",
+                run.run_id
+            );
+            Settled::Not(format!("{said}; the next sweep sends it again"))
+        }
+        Err(runner_platform::error::Error::Malformed { said, named }) => {
+            let why = format!(
+                "core refused this declaration and will refuse it again unchanged: {}",
+                named.join("; ")
+            );
+            end_refused(led, &run.run_id, &format!("{said} — {why}"), &why);
+            Settled::Not(format!("{why}. The run is ended on this box"))
+        }
+        // A take on an issue at rest is refused at declare (FB-273); one reaching the open was
+        // moved to rest after its declaration, or declared while core could not be asked. A
+        // run over issues all closed takes nothing and core opens it (ISS-576). Core
+        // queues nothing behind it and no sweep lifts it, so the row ends here as the
+        // malformed one does: no core session was minted, and the release that follows
+        // keeps a checkout a live subagent is working in (`terminate::live_subagent`).
+        Err(runner_platform::error::Error::AtRest { said }) => {
+            let why = format!(
+                "core refuses a run over an issue at rest: {said}. Declare again once the issue is back in work"
+            );
+            end_refused(led, &run.run_id, &why, &why);
+            Settled::Not(format!("{why}. The run is ended on this box"))
+        }
+        // A hold is not a fault of the payload and not of the moment: it stands until
+        // its holder moves. Core has already recorded the declaration as a queued run
+        // behind this refusal, which is where the master reads it (`runs/standing`,
+        // `waiting_gate`), so the box names it once, here, and then asks again only
+        // when `SESSION_RETRY_MS` has gone, which also keeps that queued row alive.
+        Err(runner_platform::error::Error::Held {
+            said,
+            code,
+            holders,
+        }) => match held_by_our_ended_run(led, boot_id, &code, &holders) {
+            // The holder is a run this box ended and has not yet closed at core: the close
+            // leg sends that close on this sweep or the next, and the lease goes with it, so
+            // waiting five minutes for it is waiting on ourselves (ISS-929).
+            Some(ours) => {
+                tracing::info!(
+                    "[run-record] run {}: core would not open a session ({code}) while run {ours} still holds the issue; this box ended {ours} and its close at core is owed, so the open is sent again next sweep",
+                    run.run_id
+                );
+                Settled::Not(format!(
+                    "core holds it queued ({code}) while run {ours}, which this box ended, still holds the issue; the next sweep sends its close and this open again"
+                ))
+            }
+            None => {
+                note_session_held(led, run, &code, &said, now_ms);
+                Settled::Not(format!(
+                    "core holds it queued behind {code}: {said}. It is admitted once that hold lifts"
+                ))
+            }
+        },
+        Err(e) => {
+            tracing::warn!(
+                "[run-record] run {}: core would not open a session: {e} — the row stands and the next sweep tries again",
+                run.run_id
+            );
+            Settled::Not(format!(
+                "core would not open its session: {e}; the next sweep sends it again"
+            ))
+        }
+    }
 }
 
 /// End a run whose open core refused for good, saying `said` and recording `why` on the row. No

@@ -297,7 +297,14 @@ pub async fn run(ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
         );
     }
     match args.cmd {
-        Command::Declare(_) => println!("{}", declared_id(reply.job_id)?),
+        Command::Declare(_) => {
+            println!("{}", declared_id(reply.job_id)?);
+            // Whether core holds the run yet (ISS-1036), on stderr: stdout is the id alone, which
+            // a master reads into a variable.
+            if let Some(at_core) = reply.reason.as_deref() {
+                eprintln!("at core: {at_core}");
+            }
+        }
         Command::Choice(c) => println!(
             "run {} recorded as {}",
             reply.job_id.as_deref().unwrap_or(&c.run_id),

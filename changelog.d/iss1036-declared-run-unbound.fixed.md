@@ -1,0 +1,1 @@
+**A verdict naming a run just declared records under it.** `forge-runner run declare` opens the run at core before it answers, and a run core does not hold is refused saying what core holds, never as undeclared.
