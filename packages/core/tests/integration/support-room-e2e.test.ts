@@ -382,6 +382,7 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
     expect(lines.find((l) => l.text === said)?.tmid).toBe(fb?.thread);
     expect(notes.map((n) => n.thread)).toEqual([fb?.thread]);
     expect(notes[0]?.text).toContain('will not be done');
+    expect(notes[0]?.text).toContain(`(restate it, never paste it): "${note}"`); // ISS-1032
     // core posts no update line of its own
     expect(lines.some((l) => l.text.startsWith('Update on'))).toBe(false);
     const [link] = await rows<{ closed_at: Date | null }>(sql`

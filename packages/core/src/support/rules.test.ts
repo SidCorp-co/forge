@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { settleSupportRoom } from '../integrations/rocketchat/support-binding.js';
 import {
   clipMessage,
+  type ItemResult,
   limitsOf,
   mintConfirmCode,
   resultNote,
@@ -68,13 +69,77 @@ describe('a group runs under limits and threads (BC-11, BC-16)', () => {
   });
 
   it('tells the session a result once an item is final, and nothing for progress (r6 BC-15)', () => {
+    const at = (phase: string) => resultNote({ ...SHIPPED, phase: phase as ItemResult['phase'] });
     for (const p of ['resolved', 'verified', 'declined'] as const) {
-      expect(resultNote(p, 'FB-3')).toContain('Post its result in this thread, once');
+      expect(at(p)).toContain('Post its result in this thread, once');
     }
-    expect(resultNote('resolved', 'FB-3')).toContain('is live now');
     for (const p of ['new', 'triaged', 'planned', 'reopened'] as const) {
-      expect(resultNote(p as never, 'FB-3')).toBeNull();
+      expect(at(p)).toBeNull();
     }
+  });
+});
+
+// ISS-1032: FB-2 was triaged route answer and changed nothing, yet the sid-email room's session was
+// told it was "live now" and told the asker the mailbox had been shared.
+const SHIPPED: ItemResult = {
+  phase: 'resolved',
+  key: 'FB-3',
+  route: 'issue',
+  answer: null,
+  declined: null,
+  shipped: [],
+  withheld: false,
+};
+const POST =
+  "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
+const ANSWER = 'Nothing was shared: an admin adds them under Mail, then Delegation.';
+
+describe('the note says what settled the item, by its route (ISS-1032)', () => {
+  it('tells an answered item as answered, with the answer to restate, never as live', () => {
+    const note = resultNote({ ...SHIPPED, route: 'answer', answer: ANSWER });
+    expect(note).toContain('was answered by the team');
+    expect(note).toContain('nothing was changed or shipped for it unless the answer says so');
+    expect(note).toContain(`(restate it, never paste it): "${ANSWER}"`);
+    expect(note).not.toMatch(/\blive\b/);
+    expect(note?.endsWith(POST)).toBe(true);
+  });
+
+  it('tells an answer the policy withholds as answered, and says its words are withheld', () => {
+    const note = resultNote({ ...SHIPPED, route: 'answer', withheld: true });
+    expect(note).toContain('was answered by the team');
+    expect(note).toContain("withheld from this session by the project's data policy");
+    expect(note).not.toMatch(/\blive\b/);
+  });
+
+  it('keeps a shipped item’s note word for word where nothing names what shipped', () => {
+    for (const route of ['issue', 'new_requirement', 'revision', 'duplicate'] as const) {
+      expect(resultNote({ ...SHIPPED, route })).toBe(
+        `FB-3, recorded from this thread, is live now. ${POST}`,
+      );
+    }
+    expect(resultNote({ ...SHIPPED, phase: 'verified' })).toBe(
+      `FB-3, recorded from this thread, is live and confirmed fixed. ${POST}`,
+    );
+  });
+
+  it('carries what the team shipped, so the room hears what was done (owner, 2026-11-06)', () => {
+    const shipped = ['CSV export of invoices', 'Invoices list paging'];
+    expect(resultNote({ ...SHIPPED, shipped })).toBe(
+      `FB-3, recorded from this thread, is live now. What the team shipped for it (restate it, never paste it): "CSV export of invoices; Invoices list paging" ${POST}`,
+    );
+    expect(resultNote({ ...SHIPPED, phase: 'verified', shipped })).toContain(
+      'is live and confirmed fixed. What the team shipped for it',
+    );
+  });
+
+  it('carries a decline’s reason, and says it declined where none was given', () => {
+    const reason = 'The host owns that limit.';
+    expect(resultNote({ ...SHIPPED, phase: 'declined', route: null, declined: reason })).toBe(
+      `FB-3, recorded from this thread, will not be done: the team declined it. The reason they gave (restate it, never paste it): "${reason}" ${POST}`,
+    );
+    expect(resultNote({ ...SHIPPED, phase: 'declined', route: null, declined: '  ' })).toBe(
+      `FB-3, recorded from this thread, will not be done: the team declined it. ${POST}`,
+    );
   });
 });
 

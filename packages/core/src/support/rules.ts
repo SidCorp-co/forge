@@ -3,7 +3,7 @@
 // the session is told when a recorded item's result is final.
 
 import { createHash, randomInt } from 'node:crypto';
-import type { FeedbackPhase } from '@forge/contracts/feedback';
+import type { FeedbackPhase, FeedbackRoute } from '@forge/contracts/feedback';
 import {
   SUPPORT_LIMIT_DEFAULTS,
   type SupportRecordKind,
@@ -63,20 +63,53 @@ export const FEEDBACK_KIND_OF: Record<SupportRecordKind, 'bug' | 'idea' | 'chang
   request: 'change_request',
 };
 
+/** A recorded item's result as the session is told it: its route, and what it told its reporter. */
+export interface ItemResult {
+  phase: FeedbackPhase;
+  key: string;
+  /** The route that settled it; a duplicate's is its original's. */
+  route: FeedbackRoute | null;
+  /** The answer its reporter reads, on the answer route. */
+  answer: string | null;
+  /** The reason of the decline it stands under. */
+  declined: string | null;
+  /** What carried it live, as its issues or its requirement are titled. */
+  shipped: readonly string[];
+  /** The project's data policy keeps the item's words from the session. */
+  withheld: boolean;
+}
+
 /**
  * What the session is told when a recorded item reaches a final phase, to post its result in the
- * item's thread (REQ-75 r6 BC-15); null for a phase that is progress, which is never posted.
+ * item's thread (REQ-75 r6 BC-15), by the route that settled it (ISS-1032): an item answered changed
+ * nothing and shipped nothing, so it is never told as live. What the team did or said (the answer,
+ * what shipped, the decline's reason) is handed to the session as material to restate, so the room
+ * hears what the master did or decided. Null for a phase that is progress, never posted.
  */
-export function resultNote(phase: FeedbackPhase, key: string): string | null {
+export function resultNote(r: ItemResult): string | null {
   const post =
     "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
-  switch (phase) {
+  const recorded = `${r.key}, recorded from this thread,`;
+  // the team's words are for the session to restate, never to paste
+  const quoted = (lead: string, text: string | null) =>
+    text?.trim() ? ` ${lead} (restate it, never paste it): "${text.trim()}"` : '';
+  const hidden = r.withheld
+    ? " Its words are withheld from this session by the project's data policy."
+    : '';
+  const shipped = quoted('What the team shipped for it', r.shipped.join('; '));
+  switch (r.phase) {
     case 'resolved':
-      return `${key}, recorded from this thread, is live now. ${post}`;
+      if (r.route === 'answer') {
+        const answer = quoted("The team's answer", r.answer) || hidden;
+        return `${recorded} was answered by the team: nothing was changed or shipped for it unless the answer says so.${answer} ${post}`;
+      }
+      return `${recorded} is live now.${shipped} ${post}`;
     case 'verified':
-      return `${key}, recorded from this thread, is live and confirmed fixed. ${post}`;
-    case 'declined':
-      return `${key}, recorded from this thread, will not be done: the team declined it. ${post}`;
+      return `${recorded} is live and confirmed fixed.${shipped} ${post}`;
+    case 'declined': {
+      const reason = quoted('The reason they gave', r.declined) || hidden;
+      return `${recorded} will not be done: the team declined it.${reason} ${post}`;
+    }
     default:
       return null;
   }

@@ -10,7 +10,11 @@
  * SHA-256 of their private status link.
  */
 
-import { type CreateFeedbackRequest, feedbackKey } from '@forge/contracts/feedback';
+import {
+  type CreateFeedbackRequest,
+  type FeedbackPhase,
+  feedbackKey,
+} from '@forge/contracts/feedback';
 import type { FeedbackExternalChannel } from '@forge/contracts/widget';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -18,10 +22,12 @@ import { users } from '../db/schema-auth.js';
 import { feedback, feedbackExternalReporters } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
+import { feedbackEgress } from './egress.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { linkedOf, phaseIn, phaseOfRow } from './list-read.js';
+import { linkedOf, phaseIn, phaseOfRow, routeView } from './list-read.js';
 import type { Row } from './read.js';
 import { insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
+import { toldOf } from './told.js';
 
 /** Who filed an item from outside Forge, as the channel identified them. */
 export interface ExternalReporter {
@@ -169,6 +175,86 @@ export async function externalItemPhases(
     .where(and(eq(feedback.projectId, projectId), inArray(feedback.id, [...feedbackIds])));
   const linked = await linkedOf(projectId, rows);
   return new Map(rows.map((r) => [r.id, { key: feedbackKey(r.fbSeq), phase: phaseIn(r, linked) }]));
+}
+
+/** Where an item a channel followed stands, and what it told its reporter there (ISS-1032). */
+export interface ExternalItemResult {
+  key: string;
+  phase: FeedbackPhase;
+  /** The route that settled it: a duplicate's is its original's, whose answer or reason it carries. */
+  route: Row['route'];
+  /** The answer its reporter reads; null where none was given or the data policy withholds it. */
+  answer: string | null;
+  /** The reason of the decline it stands under; null likewise. */
+  declined: string | null;
+  /** What carried it live: its issues' or its requirement's titles; empty for any other route. */
+  shipped: string[];
+  /** The project's data policy keeps the item's words from an agent. */
+  withheld: boolean;
+}
+
+/**
+ * What each of these items told its reporter, read as every door reads it (`told.ts:toldOf`), for a
+ * channel's agent session to relay: the route that settled it, with its answer or decline reason as
+ * the project's data policy lets them reach an agent. Nothing is copied onto the channel's link.
+ */
+export async function externalItemResults(
+  projectId: string,
+  feedbackIds: readonly string[],
+): Promise<Map<string, ExternalItemResult>> {
+  if (feedbackIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(feedback)
+    .where(and(eq(feedback.projectId, projectId), inArray(feedback.id, [...feedbackIds])));
+  const linked = await linkedOf(projectId, rows);
+  // a duplicate was settled by its original: the answer or decline its reporter reads is the original's
+  const sayerOf = (r: Row) =>
+    r.route === 'duplicate' && r.duplicateOf ? (linked.roots.get(r.duplicateOf) ?? r) : r;
+  const sayers = [...new Map(rows.map((r) => [sayerOf(r).id, sayerOf(r)])).values()];
+  // the session handed the result is an agent: the words reach it as they reach any agent
+  const { withhold, shown } = feedbackEgress(await dataPolicyOf(projectId), 'agent');
+  const told = await toldOf(
+    projectId,
+    sayers.map((s) => ({
+      id: s.id,
+      phase: phaseIn(s, linked),
+      route: routeView(s, linked),
+      reporter: { agency: s.reporterAgency },
+    })),
+    withhold,
+  );
+  // what the team built for it, as its carriers are titled: a dropped issue carried nothing
+  const shippedOf = (s: Row): string[] => {
+    if (s.route === 'issue') {
+      const carried = (linked.routeIssues.get(s.id) ?? []).map((id) => linked.issues.get(id));
+      return carried.flatMap((i) => (i && i.status !== 'dropped' ? [i.title] : []));
+    }
+    const req = s.route === 'new_requirement' && s.routedRequirementId;
+    return req ? [linked.requirements.get(req)?.title ?? ''].filter(Boolean) : [];
+  };
+  return new Map(
+    rows.map((r) => {
+      const sayer = sayerOf(r);
+      const said = told.get(sayer.id);
+      if (!said)
+        throw new Error(`feedback: what item ${sayer.id} told its reporter does not read back`);
+      const words = shown(
+        { answer: withhold ? null : said.answer, declined: said.declined },
+        `what ${feedbackKey(sayer.fbSeq)} told its reporter`,
+      );
+      const result: ExternalItemResult = {
+        key: feedbackKey(r.fbSeq),
+        phase: phaseIn(r, linked),
+        route: sayer.route,
+        answer: words.answer,
+        declined: words.declined,
+        shipped: shippedOf(sayer),
+        withheld: withhold,
+      };
+      return [r.id, result];
+    }),
+  );
 }
 
 /** A redaction takes the external reporter's own data with the rest of what they gave (UC15). */

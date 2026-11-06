@@ -64,13 +64,18 @@ async function declinesOf(ids: readonly string[]): Promise<Map<string, string | 
   return new Map(rows.map((r) => [r.feedbackId, r.reason]));
 }
 
+/** The parts of an item's read that say what it told its reporter: a summary, or the same parts read alone. */
+type ToldItem = Pick<FeedbackSummary, 'id' | 'phase' | 'route'> & {
+  reporter: Pick<FeedbackSummary['reporter'], 'agency'>;
+};
+
 /**
  * What triage told the reporter of each of `items`, by item id; withheld where the project's data
  * policy withholds the item's words from this reader, as its own read withholds them.
  */
 export async function toldOf(
   projectId: string,
-  items: readonly FeedbackSummary[],
+  items: readonly ToldItem[],
   withhold: boolean,
 ): Promise<Map<string, FeedbackToldView>> {
   if (items.length === 0) return new Map();

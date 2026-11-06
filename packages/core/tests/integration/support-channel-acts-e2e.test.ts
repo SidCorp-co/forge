@@ -12,9 +12,12 @@ import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { createTestProject, rows } from '../helpers/factories.js';
 import { ChannelWorld, carol, code } from '../helpers/support-channel.js';
 import type { Member, TurnMessage } from '../helpers/support-world.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/grants.ts
+// @direct-test-of packages/core/src/support/result.ts
+// @direct-test-of packages/core/src/feedback/external.ts
 
 // REQ-75 r6 (ISS-751): what the bot does with a channel's record — a team member's instruction kept
 // as a rule, a question asked again kept with its one answer, each asker answered by role, a need
@@ -22,6 +25,41 @@ import type { Member, TurnMessage } from '../helpers/support-world.js';
 // is live — and #webmail's seed. The record itself is support-channel-e2e's.
 
 const w = new ChannelWorld();
+const ANSWER = 'Nothing was shared: an admin adds a teammate under Mail, then Delegation.';
+
+/** Bob's need, recorded from his own thread once he agrees: the item and the thread it is linked to. */
+async function recorded(text: string): Promise<{ fid: string; key: string; thread: string }> {
+  const asked = await w.ask(w.chat.bob, text, async (m, act) =>
+    act({
+      action: 'record',
+      thread: m.thread,
+      kind: 'request',
+      title: text,
+      summary: `Bob: ${text}`,
+    }),
+  );
+  const proposal = String(asked.out?.proposal);
+  expect(proposal, JSON.stringify(asked.out)).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+  const agreed = await w.agreeBy(w.chat.bob, 'yes, record it', asked.id, proposal);
+  expect(agreed.out, JSON.stringify(agreed.out)).toMatchObject({ recorded: true });
+  w.box.model = async () => {};
+  await w.settleWarm();
+  const [link] = await rows<{ feedback_id: string }>(sql`
+    SELECT feedback_id FROM support_feedback_links WHERE room_id = ${w.roomId}::uuid AND thread = ${asked.id}`);
+  return { fid: String(link?.feedback_id), key: String(agreed.out?.feedbackKey), thread: asked.id };
+}
+
+/** The notes core hands the session from now on. */
+function notesOf(): TurnMessage[] {
+  const notes: TurnMessage[] = [];
+  w.box.model = async (turn) => {
+    for (const m of turn.messages) if (m.from === 'forge') notes.push(m);
+  };
+  return notes;
+}
+
+const triage = (key: string, body: Record<string, unknown>) =>
+  api(w.owner, 'POST', `/api/projects/${w.projectId}/feedback/${key}/triage`, body);
 
 beforeAll(async () => {
   await w.open();
@@ -271,29 +309,9 @@ describe("REQ-75 r6: #webmail's seed, and results never progress", () => {
     );
   });
 
-  it('tells the session an item’s result once it is live, and posts nothing for progress (BC-15)', async () => {
-    const asked = await w.ask(w.chat.bob, 'Please add a CSV export of orders', async (m, act) =>
-      act({
-        action: 'record',
-        thread: m.thread,
-        kind: 'feature',
-        title: 'CSV export of orders',
-        summary: 'Bob wants orders as CSV.',
-      }),
-    );
-    const proposal = String(asked.out?.proposal);
-    expect(proposal, JSON.stringify(asked.out)).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
-    const agreed = await w.agreeBy(w.chat.bob, 'yes, record it', asked.id, proposal);
-    expect(agreed.out, JSON.stringify(agreed.out)).toMatchObject({ recorded: true });
-    w.box.model = async () => {};
-    await w.settleWarm();
-    const [link] = await rows<{ feedback_id: string }>(sql`
-      SELECT feedback_id FROM support_feedback_links WHERE room_id = ${w.roomId}::uuid AND thread = ${asked.id}`);
-    const fid = String(link?.feedback_id);
-    const notes: TurnMessage[] = [];
-    w.box.model = async (turn) => {
-      for (const m of turn.messages) if (m.from === 'forge') notes.push(m);
-    };
+  it('tells the session an answered item’s answer once triage gives it, never as live, and posts nothing for progress (BC-15, ISS-1032)', async () => {
+    const { fid, key, thread } = await recorded('Please share the support mailbox with Dana');
+    const notes = notesOf();
     const linesBefore = (await w.chat.botLines()).length;
     const { tellAllResults } = await import('../../src/support/index.js');
     // progress: the team took it up; nothing is told, nothing is posted
@@ -305,25 +323,68 @@ describe("REQ-75 r6: #webmail's seed, and results never progress", () => {
     await w.settleWarm();
     expect(notes).toEqual([]);
     expect((await w.chat.botLines()).length).toBe(linesBefore);
-    // live: the session is told once, in the item's thread
-    await withKernelMarker(db, (tx) =>
-      tx.execute(
-        sql`UPDATE feedback SET route = 'answer', answer = 'Shipped in the orders page.' WHERE id = ${fid}::uuid`,
-      ),
-    );
+    // answered through the triage door: nothing was changed, and the session is told so, once,
+    // with the answer the reporter reads (FB-2 on sid-email, 2026-11-06, was told "live now")
+    const answered = await triage(key, {
+      answers: TRIAGE_ANSWERS,
+      route: 'answer',
+      answer: ANSWER,
+    });
+    expect(answered.status, JSON.stringify(answered.body)).toBeLessThan(300);
     await tellAllResults();
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
-    expect(notes[0]?.thread).toBe(asked.id);
-    expect(notes[0]?.text).toContain('is live now');
+    expect(notes[0]?.thread).toBe(thread);
+    expect(notes[0]?.text).toContain(`${key}, recorded from this thread, was answered by the team`);
+    expect(notes[0]?.text).toContain(
+      'nothing was changed or shipped for it unless the answer says so',
+    );
+    expect(notes[0]?.text).toContain(`"${ANSWER}"`);
+    expect(notes[0]?.text).not.toMatch(/\blive\b/);
     await w.settleWarm();
     await tellAllResults();
     await settleOutbox();
     await w.settleWarm();
     expect(notes).toHaveLength(1);
     expect((await w.chat.botLines()).length).toBe(linesBefore);
-    const kinds = await rows<{ kind: string }>(sql`
-      SELECT kind FROM support_actions WHERE room_id = ${w.roomId}::uuid AND kind IN ('progress_posted', 'result_told')`);
-    expect(kinds.map((k) => k.kind)).toEqual(['result_told']);
+    const told = await rows<{ kind: string; output: Record<string, unknown> | null }>(sql`
+      SELECT kind, output FROM support_actions
+       WHERE room_id = ${w.roomId}::uuid AND feedback_id = ${fid}::uuid
+         AND kind IN ('progress_posted', 'result_told')`);
+    expect(told).toEqual([
+      { kind: 'result_told', output: { phase: 'resolved', feedbackKey: key, route: 'answer' } },
+    ]);
+    // the answer is read off the item, never kept on the link
+    const [link] = await rows<Record<string, unknown>>(sql`
+      SELECT * FROM support_feedback_links WHERE feedback_id = ${fid}::uuid`);
+    expect(JSON.stringify(link)).not.toContain(ANSWER);
+  });
+
+  it('tells a shipped item as live with what shipped, recording its route (ISS-1032)', async () => {
+    const { fid, key, thread } = await recorded('Please add a CSV export of invoices');
+    const notes = notesOf();
+    const routed = await triage(key, {
+      answers: TRIAGE_ANSWERS,
+      route: 'issue',
+      createIssue: { title: 'CSV export of invoices' },
+    });
+    expect(routed.status, JSON.stringify(routed.body)).toBeLessThan(300);
+    const { tellAllResults } = await import('../../src/support/index.js');
+    // the issue it was routed to lands and closes: the item is live
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`UPDATE issues SET status = 'closed', merged_at = now() WHERE id IN (
+        SELECT issue_id FROM feedback_route_issues WHERE feedback_id = ${fid}::uuid)`),
+    );
+    await tellAllResults();
+    await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
+    expect(notes[0]?.thread).toBe(thread);
+    expect(notes[0]?.text).toBe(
+      `${key}, recorded from this thread, is live now. What the team shipped for it (restate it, never paste it): "CSV export of invoices" Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.`,
+    );
+    await w.settleWarm();
+    const [told] = await rows<{ output: Record<string, unknown> | null }>(sql`
+      SELECT output FROM support_actions
+       WHERE feedback_id = ${fid}::uuid AND kind = 'result_told'`);
+    expect(told?.output).toEqual({ phase: 'resolved', feedbackKey: key, route: 'issue' });
   });
 });
 

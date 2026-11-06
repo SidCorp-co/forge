@@ -19,9 +19,11 @@ export {
 } from './embeddings.js';
 export {
   type ExternalFeedbackStatus,
+  type ExternalItemResult,
   type ExternalReporter,
   externalFeedbackStatus,
   externalItemPhases,
+  externalItemResults,
   fileExternalFeedback,
 } from './external.js';
 export { carryAgentReports } from './forge-carry.js';
