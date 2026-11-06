@@ -1,6 +1,16 @@
 import { CHECK_KINDS, CHECK_RUN_RESULTS, CHECK_RUN_VIAS } from '@forge/contracts/check-runs';
 import { sql } from 'drizzle-orm';
-import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { issues, users } from './schema.js';
 
 const quoted = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
@@ -8,14 +18,15 @@ const quoted = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`
 // The checks a run made on an issue, each with its kind and duration (REQ-36 BC-14; Issue to release
 // r20 `act-build`, `rule-merge`; ISS-474), written by the issue kernel (`issues/check-runs.ts`). The
 // id is the one the script that ran the check gave it, so a resend is the same row and one check is
-// one record. `run_session_id` is the run session holding the issue on the box that sent it, null
+// one record per issue: the key is (id, issue), because a batch's one merge check records on each
+// issue the batch lands, the same check under the same id on each (ISS-1031, 0606). `run_session_id` is the run session holding the issue on the box that sent it, null
 // for a call from no run; no FK, since a cascade that nulled it would be an UPDATE the guard refuses,
 // and a session goes only with its project, which takes the issue and these rows with it.
 // `issue_check_run_guard()` (0476) refuses every UPDATE: a timed check is written once.
 export const issueCheckRuns = pgTable(
   'issue_check_runs',
   {
-    id: uuid('id').primaryKey(),
+    id: uuid('id').notNull(),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issues.id, { onDelete: 'cascade' }),
@@ -38,6 +49,7 @@ export const issueCheckRuns = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    pk: primaryKey({ name: 'issue_check_runs_pkey', columns: [t.id, t.issueId] }),
     issueIdx: index('issue_check_runs_issue_idx').on(t.issueId, t.startedAt),
     kindChk: check('issue_check_runs_kind_chk', sql`${t.kind} IN (${quoted(CHECK_KINDS)})`),
     resultChk: check(

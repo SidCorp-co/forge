@@ -6,9 +6,10 @@
  * A check is timed by the script that ran it — core cannot rerun one, and the runner never sees which
  * commands a session runs — so the record is the box's word for how long it took. Core decides which
  * run it came from: the run session holding the issue on the box that sent it, or the one the call's
- * `run` names (`pattern-runs.ts:runOfCall`), never a session the box claims. One check is one row,
- * keyed by the id its script gave it: `POST /api/issues/:id/checks` and the merge check's record
- * (`merge-check.ts`) both write through `writeCheckRuns`, and a resend adds nothing.
+ * `run` names (`pattern-runs.ts:runOfCall`), never a session the box claims. One check is one row
+ * per issue, keyed by the id its script gave it and the issue: `POST /api/issues/:id/checks` and the
+ * merge check's record (`merge-check.ts`) both write through `writeCheckRuns`, a resend adds nothing,
+ * and a batch's one check records on each issue the batch lands (ISS-1031).
  */
 
 import type {
@@ -56,9 +57,9 @@ function storedOf(row: typeof issueCheckRuns.$inferSelect): StoredCheckRun {
 }
 
 /**
- * Write the checks one call sent, in the caller's transaction, under the issue's check lock: each new
- * one once, a resend of a recorded one as nothing, and a refusal — with nothing written — where a
- * sent id is recorded as another check.
+ * Write the checks one call sent, in the caller's transaction, under the issue's check lock: each one
+ * new to the issue once, a resend of one it holds as nothing, and a refusal — with nothing written —
+ * where a sent id is recorded, here or on another issue, as another check.
  *
  * A write that added a check tells the issue's readers in the same transaction: `issue.updated`
  * naming `checks`, the frame an open issue page already refetches `['issue', id]` on. `checks`

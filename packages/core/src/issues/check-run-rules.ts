@@ -1,8 +1,12 @@
 /**
  * The rules of an issue's timed checks (REQ-36 BC-14; Issue to release r20 `act-build`; ISS-474),
- * pure: which sent checks are new, which are a resend of a check already recorded as it is, and
- * which reuse a recorded check's id for another check; and the view the issue page reads.
- * `check-runs.ts` reads and writes around them.
+ * pure: which sent checks are new to the issue, which are a resend of a check already recorded on it
+ * as it is, and which reuse a recorded check's id for another check; and the view the issue page
+ * reads. `check-runs.ts` reads and writes around them.
+ *
+ * One check is one id, and it records on every issue its head lands (ISS-1031): a batch runs one
+ * merge check and records its report on each issue the batch lands, so the same check, sent exactly
+ * as it was, is linked to each of them. Only a different check under a recorded id is refused.
  */
 
 import {
@@ -43,10 +47,9 @@ export interface StoredCheckRun {
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
-/** Whether `row` is `sent` as it was recorded: the same check sent again, on the same issue and head. */
-function sameCheck(row: StoredCheckRun, sent: CheckRun, issueId: string, head: string): boolean {
+/** Whether `row` holds the check `sent` describes: the same check at the same head, on any issue. */
+function sameCheck(row: StoredCheckRun, sent: CheckRun, head: string): boolean {
   return (
-    row.issueId === issueId &&
     row.headSha === head &&
     row.kind === sent.kind &&
     row.name === sent.name &&
@@ -62,9 +65,10 @@ function sameCheck(row: StoredCheckRun, sent: CheckRun, issueId: string, head: s
 }
 
 /**
- * The sent checks split into those to write and the count already recorded as they are, or a
- * refusal per sent id a recorded check of different content holds. `issueKeys` names each stored
- * row's issue by its key, for the refusal.
+ * The sent checks split into those to write on this issue and the count already recorded on it as
+ * they are, or a refusal per sent id a recorded check of different content holds. A check another
+ * issue holds as it was sent is written here too: the same check, recorded on each issue its head
+ * lands. `issueKeys` names each stored row's issue by its key, for the refusal.
  */
 export function sortSentChecks(args: {
   issueId: string;
@@ -73,25 +77,28 @@ export function sortSentChecks(args: {
   stored: readonly StoredCheckRun[];
   issueKeys: ReadonlyMap<string, string>;
 }): { ok: true; fresh: CheckRun[]; again: number } | { ok: false; refusals: CheckRunRefusal[] } {
-  const byId = new Map(args.stored.map((r) => [r.id, r]));
+  const byId = new Map<string, StoredCheckRun[]>();
+  for (const r of args.stored) byId.set(r.id, [...(byId.get(r.id) ?? []), r]);
   const fresh: CheckRun[] = [];
   const refusals: CheckRunRefusal[] = [];
   let again = 0;
   args.checks.forEach((sent, i) => {
-    const row = byId.get(sent.id);
-    if (!row) {
+    const rows = byId.get(sent.id) ?? [];
+    const here = rows.find((r) => r.issueId === args.issueId);
+    const held = here ?? rows.find((r) => !sameCheck(r, sent, args.head));
+    if (!held) {
       fresh.push(sent);
       return;
     }
-    if (sameCheck(row, sent, args.issueId, args.head)) {
+    if (sameCheck(held, sent, args.head)) {
       again += 1;
       return;
     }
-    const where = args.issueKeys.get(row.issueId) ?? 'another issue';
+    const where = args.issueKeys.get(held.issueId) ?? 'another issue';
     refusals.push({
       code: 'CHECK_RUN_CONFLICT',
       path: `/checks/${i}/id`,
-      detail: `check ${sent.id} is already recorded on ${where} as \`${row.name}\` (${row.kind}, ${row.scope || 'workspace'}) at ${row.headSha.slice(0, 12)}, ${row.result} in ${seconds(row.durationMs)} from ${row.startedAt.toISOString()}. One check is recorded once: a different check takes a new id, and a resend sends it exactly as it was. Nothing was recorded`,
+      detail: `check ${sent.id} is already recorded on ${where} as \`${held.name}\` (${held.kind}, ${held.scope || 'workspace'}) at ${held.headSha.slice(0, 12)}, ${held.result} in ${seconds(held.durationMs)} from ${held.startedAt.toISOString()}. One id is one check: a different check takes a new id, and a resend, or the same check recorded on another issue its head lands, sends it exactly as it was. Nothing was recorded`,
     });
   });
   return refusals.length ? { ok: false, refusals } : { ok: true, fresh, again };

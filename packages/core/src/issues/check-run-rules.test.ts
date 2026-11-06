@@ -67,13 +67,39 @@ describe('which sent checks are written', () => {
     expect(out.refusals[0]?.detail).toContain('`direct-tests` (tests, @forge/core)');
   });
 
-  it("refuses an id another issue's check holds, naming that issue by its key", () => {
-    const out = sort([sent('a')], [stored(sent('a'), { issueId: OTHER })]);
+  it('refuses an id another issue holds as a different check, naming that issue by its key', () => {
+    const out = sort([sent('a')], [stored(sent('a', { durationMs: 99 }), { issueId: OTHER })]);
+    expect(out.ok ? '' : out.refusals[0]?.code).toBe('CHECK_RUN_CONFLICT');
     expect(out.ok ? '' : out.refusals[0]?.detail).toContain('already recorded on ISS-9');
   });
 
   it('refuses the same check sent against another head', () => {
     const out = sort([sent('a')], [stored(sent('a'), { headSha: 'b'.repeat(40) })]);
+    expect(out.ok).toBe(false);
+  });
+
+  it("refuses another head even where it is another issue's check (ISS-1031)", () => {
+    const out = sort([sent('a')], [stored(sent('a'), { issueId: OTHER, headSha: 'b'.repeat(40) })]);
+    expect(out.ok ? '' : out.refusals[0]?.detail).toContain('already recorded on ISS-9');
+  });
+});
+
+describe("a batch's one check, recorded on each issue the batch lands (ISS-1031)", () => {
+  it('writes on this issue the same check another issue of the batch already holds', () => {
+    const out = sort([sent('a'), sent('b')], [stored(sent('a'), { issueId: OTHER })]);
+    expect(out).toEqual({ ok: true, fresh: [sent('a'), sent('b')], again: 0 });
+  });
+
+  it('adds nothing for a resend to an issue that already holds it, whoever else does', () => {
+    const out = sort([sent('a')], [stored(sent('a'), { issueId: OTHER }), stored(sent('a'))]);
+    expect(out).toEqual({ ok: true, fresh: [], again: 1 });
+  });
+
+  it('refuses a different check under an id this issue holds, though another holds it as sent', () => {
+    const out = sort(
+      [sent('a')],
+      [stored(sent('a'), { issueId: OTHER }), stored(sent('a', { result: 'fail' }))],
+    );
     expect(out.ok).toBe(false);
   });
 });

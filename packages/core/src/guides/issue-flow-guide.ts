@@ -248,9 +248,11 @@ the mark or the decision answers it, so the business question is asked on its ow
   durationMs, startedAt }] }\`, \`kind\` one of \`tests\`, \`typecheck\`, \`probes\`, \`review\`,
   \`conformance\`, \`base\`. Where the project's check script writes that report, send it whole; a
   check you timed by hand is sent the same way. Core puts each on the run holding the issue on your
-  box (\`run\` names another), keeps it once by its \`id\` — a resend adds nothing — and refuses
-  an id already recorded as another check (\`CHECK_RUN_CONFLICT\`). A merge check's report records
-  its own checks this way, so they are not sent twice. \`GET /api/issues/:id/checks\` reads them back.
+  box (\`run\` names another), keeps it once per issue by its \`id\` — a resend adds nothing — and
+  refuses an id already recorded as another check (\`CHECK_RUN_CONFLICT\`). A merge check's report
+  records its own checks this way, so they are not sent twice; a batch records its one report on each
+  issue it lands, and the same checks, sent as they were, record on each.
+  \`GET /api/issues/:id/checks\` reads them back.
 - Where a merge check is owed — the project document declares \`validation.mergeCheck: required\`,
   or the issue introduces an approved new pattern — run the project's merge check on the change
   rebased onto the latest base, and record what it wrote before you land:
