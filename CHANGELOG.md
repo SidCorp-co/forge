@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.556] - 2026-11-06
+
+One Activity overview, a simpler Dashboard, and stuck reads that follow project policy
+
+### Changed
+
+- **The project Dashboard is Activity for one project.** Needs you, Moving, Shipped and Stuck in one grouped list, with an Audit line where cleanup runs. The old figures, banner, forecasts and canvas are gone; memory moves to Settings.
+- **Activity is the one cross-project screen.** Ops and Home's Figures are gone and their links open Activity; Home keeps only what you asked for; live runs read one count everywhere; no Spend shows while every cost is $0.
+
+### Fixed
+
+- **Stuck reads the project's policy.** Landed work waits on a judge only where one is declared, a verdict no release asks never falls overdue, re-pins and design markers name the master unless a gate asks, and the steward owns nothing.
+- **A required release approval reaches its approver.** On a project without production that requires release approval, the release waits on "approve or return", which now sits in the approver's Needs you; approving it hands the record to the master.
+
 ## [0.4.0-dev.555] - 2026-11-06
 
 Recording a release waits on its approver where a project requires one

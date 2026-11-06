@@ -1,1 +1,0 @@
-**Stuck reads the project's policy.** Landed work waits on a judge only where one is declared, a verdict no release asks never falls overdue, re-pins and design markers name the master unless a gate asks, and the steward owns nothing.
